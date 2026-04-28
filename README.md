@@ -46,24 +46,24 @@ Most AI agent frameworks make runtime decisions about which agent to use, making
 
 All modules live in a single Maven monorepo, versioned and released together. Java 26, JPMS `module-info.java` throughout.
 
-| Module | Description | Status |
-|---|---|---|
-| `agentforge4j-util` | Shared validation utility. No dependencies beyond JDK and commons-lang3. | Planned |
-| `agentforge4j-core` | Pure Java domain model. No Spring, no IO, no database. | Planned |
-| `agentforge4j-llm` | Shared LLM abstractions. No workflow knowledge. | Planned |
-| `agentforge4j-llm-openai` | OpenAI provider using the Responses API. | Planned |
-| `agentforge4j-llm-ollama` | Ollama provider for local model execution. | Planned |
-| `agentforge4j-llm-claude` | Anthropic Claude provider. | Planned |
-| `agentforge4j-llm-vllm` | vLLM provider. | Planned |
-| `agentforge4j-config-loader` | Loads agent and workflow definitions from the filesystem. | Planned |
-| `agentforge4j-runtime` | Workflow execution state and command model. | Planned |
-| `agentforge4j-persistence-jdbc` | Optional JDBC persistence for workflow state. | Planned |
-| `agentforge4j-persistence-jpa` | Optional JPA persistence for workflow state. | Planned |
-| `agentforge4j-api` | Spring Boot thin facade over the runtime. | Planned |
-| `agentforge4j-spring-boot-starter` | Auto-configuration for Spring Boot applications. | Planned |
-| `agentforge4j-quarkus-extension` | Quarkus extension for auto-configuration. | Planned |
-| `agentforge4j-cli` | Thin CLI facade over the runtime. | Planned |
-| `agentforge4j-web-ui` | Web-based workflow designer and runtime dashboard. | Planned |
+| Module | Description | Status   |
+|---|---|----------|
+| `agentforge4j-util` | Shared validation utility. No dependencies beyond JDK and commons-lang3. | Complete |
+| `agentforge4j-core` | Pure Java domain model. No Spring, no IO, no database. | Planned  |
+| `agentforge4j-llm` | Shared LLM abstractions. No workflow knowledge. | Planned  |
+| `agentforge4j-llm-openai` | OpenAI provider using the Responses API. | Planned  |
+| `agentforge4j-llm-ollama` | Ollama provider for local model execution. | Planned  |
+| `agentforge4j-llm-claude` | Anthropic Claude provider. | Planned  |
+| `agentforge4j-llm-vllm` | vLLM provider. | Planned  |
+| `agentforge4j-config-loader` | Loads agent and workflow definitions from the filesystem. | Planned  |
+| `agentforge4j-runtime` | Workflow execution state and command model. | Planned  |
+| `agentforge4j-persistence-jdbc` | Optional JDBC persistence for workflow state. | Planned  |
+| `agentforge4j-persistence-jpa` | Optional JPA persistence for workflow state. | Planned  |
+| `agentforge4j-api` | Spring Boot thin facade over the runtime. | Planned  |
+| `agentforge4j-spring-boot-starter` | Auto-configuration for Spring Boot applications. | Planned  |
+| `agentforge4j-quarkus-extension` | Quarkus extension for auto-configuration. | Planned  |
+| `agentforge4j-cli` | Thin CLI facade over the runtime. | Planned  |
+| `agentforge4j-web-ui` | Web-based workflow designer and runtime dashboard. | Planned  |
 
 ### Dependency Direction
 
@@ -215,10 +215,10 @@ git push             — always done by the developer, never by an agent
 
 | Agent | Purpose |
 |---|---|
-| `review-agent.md` | Flags standard violations in new or modified code. Reports only — never auto-fixes. |
-| `javadoc-agent.md` | Adds missing Javadoc to exported public API. Scopes itself via `module-info.java`. |
-| `unit-test-agent.md` | Generates JUnit 5 test first drafts. Output must be reviewed before committing. |
-| `commit-agent.md` | Stages files and writes a Conventional Commits message. Never pushes. |
+| `review-agent.agent.md` | Flags standard violations in new or modified code. Reports only — never auto-fixes. |
+| `javadoc-agent.agent.md` | Adds missing Javadoc to exported public API. Scopes itself via `module-info.java`. |
+| `unit-test-agent.agent.md` | Generates JUnit 5 test first drafts. Output must be reviewed before committing. |
+| `commit-agent.agent.md` | Stages files and writes a Conventional Commits message. Never pushes. |
 
 See `.github/agents/` for the full agent files and `.github/copilot-instructions.md` for the project conventions they enforce.
 

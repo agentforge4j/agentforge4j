@@ -1,0 +1,365 @@
+package com.agentforge4j.util;
+
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Nested;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
+
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.function.Supplier;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
+class ValidateTest {
+
+  @TempDir
+  Path tempDir;
+
+  Path baseDir;
+  Path subDir;
+  Path fileInBase;
+
+  @BeforeEach
+  void setUp() throws Exception {
+    baseDir = tempDir.resolve("base");
+    Files.createDirectory(baseDir);
+    subDir = baseDir.resolve("sub");
+    Files.createDirectory(subDir);
+    fileInBase = baseDir.resolve("file.txt");
+    Files.writeString(fileInBase, "content");
+  }
+
+  @Nested
+  class NotBlankTests {
+
+    @Test
+    void shouldReturnValueWhenNotBlank() {
+      String result = Validate.notBlank("test", "message");
+      assertThat(result).isEqualTo("test");
+    }
+
+    @Test
+    void shouldThrowWhenNullWithStringMessage() {
+      assertThatThrownBy(() -> Validate.notBlank(null, "message"))
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessage("message");
+    }
+
+    @Test
+    void shouldThrowWhenNullWithSupplier() {
+      assertThatThrownBy(() -> Validate.notBlank(null, () -> new RuntimeException("custom")))
+          .isInstanceOf(RuntimeException.class)
+          .hasMessage("custom");
+    }
+
+    @Test
+    void shouldThrowWhenEmptyWithStringMessage() {
+      assertThatThrownBy(() -> Validate.notBlank("", "message"))
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessage("message");
+    }
+
+    @Test
+    void shouldThrowWhenEmptyWithSupplier() {
+      assertThatThrownBy(() -> Validate.notBlank("", () -> new RuntimeException("custom")))
+          .isInstanceOf(RuntimeException.class)
+          .hasMessage("custom");
+    }
+
+    @Test
+    void shouldThrowWhenWhitespaceWithStringMessage() {
+      assertThatThrownBy(() -> Validate.notBlank("   ", "message"))
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessage("message");
+    }
+
+    @Test
+    void shouldThrowWhenWhitespaceWithSupplier() {
+      assertThatThrownBy(() -> Validate.notBlank("   ", () -> new RuntimeException("custom")))
+          .isInstanceOf(RuntimeException.class)
+          .hasMessage("custom");
+    }
+
+    @Test
+    void shouldThrowWhenExceptionSupplierNull() {
+      assertThatThrownBy(() -> Validate.notBlank("test", (Supplier<RuntimeException>) null))
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessage("Exception supplier must not be null");
+    }
+  }
+
+  @Nested
+  class NotNullTests {
+
+    @Test
+    void shouldReturnValueWhenNotNull() {
+      Object result = Validate.notNull("test", "message");
+      assertThat(result).isEqualTo("test");
+    }
+
+    @Test
+    void shouldThrowWhenNullWithStringMessage() {
+      assertThatThrownBy(() -> Validate.notNull(null, "message"))
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessage("message");
+    }
+
+    @Test
+    void shouldThrowWhenNullWithSupplier() {
+      assertThatThrownBy(() -> Validate.notNull(null, () -> new RuntimeException("custom")))
+          .isInstanceOf(RuntimeException.class)
+          .hasMessage("custom");
+    }
+
+    @Test
+    void shouldThrowWhenExceptionSupplierNull() {
+      assertThatThrownBy(() -> Validate.notNull("test", (Supplier<RuntimeException>) null))
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessage("Exception supplier must not be null");
+    }
+  }
+
+  @Nested
+  class IsTrueTests {
+
+    @Test
+    void shouldNotThrowWhenTrue() {
+      Validate.isTrue(true, "message");
+    }
+
+    @Test
+    void shouldThrowWhenFalseWithStringMessage() {
+      assertThatThrownBy(() -> Validate.isTrue(false, "message"))
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessage("message");
+    }
+
+    @Test
+    void shouldThrowWhenFalseWithSupplier() {
+      assertThatThrownBy(() -> Validate.isTrue(false, () -> new RuntimeException("custom")))
+          .isInstanceOf(RuntimeException.class)
+          .hasMessage("custom");
+    }
+
+    @Test
+    void shouldThrowWhenExceptionSupplierNull() {
+      assertThatThrownBy(() -> Validate.isTrue(true, (Supplier<RuntimeException>) null))
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessage("Exception supplier must not be null");
+    }
+  }
+
+  @Nested
+  class NotEmptyTests {
+
+    @Test
+    void shouldReturnCollectionWhenNotEmpty() {
+      List<String> list = List.of("item");
+      List<String> result = Validate.notEmpty(list, "message");
+      assertThat(result).isEqualTo(list);
+    }
+
+    @Test
+    void shouldThrowWhenNullWithStringMessage() {
+      assertThatThrownBy(() -> Validate.notEmpty((List<String>) null, "message"))
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessage("message");
+    }
+
+    @Test
+    void shouldThrowWhenNullWithSupplier() {
+      assertThatThrownBy(
+          () -> Validate.notEmpty((List<String>) null, () -> new RuntimeException("custom")))
+          .isInstanceOf(RuntimeException.class)
+          .hasMessage("custom");
+    }
+
+    @Test
+    void shouldThrowWhenEmptyWithStringMessage() {
+      assertThatThrownBy(() -> Validate.notEmpty(List.of(), "message"))
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessage("message");
+    }
+
+    @Test
+    void shouldThrowWhenEmptyWithSupplier() {
+      assertThatThrownBy(() -> Validate.notEmpty(List.of(), () -> new RuntimeException("custom")))
+          .isInstanceOf(RuntimeException.class)
+          .hasMessage("custom");
+    }
+
+    @Test
+    void shouldThrowWhenExceptionSupplierNull() {
+      assertThatThrownBy(() -> Validate.notEmpty(List.of("item"), (Supplier<RuntimeException>) null))
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessage("Exception supplier must not be null");
+    }
+  }
+
+  @Nested
+  class RequireWithinBaseTests {
+
+    @Test
+    void shouldResolveWithinBase() {
+      Path result = Validate.requireWithinBase(baseDir, "file.txt", "message");
+      assertThat(result).isEqualTo(fileInBase.toAbsolutePath().normalize());
+    }
+
+    @Test
+    void shouldResolveSubPathWithinBase() {
+      Path result = Validate.requireWithinBase(baseDir, "sub", "message");
+      assertThat(result).isEqualTo(subDir.toAbsolutePath().normalize());
+    }
+
+    @Test
+    void shouldThrowWhenPathTraversalWithStringMessage() {
+      assertThatThrownBy(() -> Validate.requireWithinBase(baseDir, "../outside", "message"))
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessage("message");
+    }
+
+    @Test
+    void shouldThrowWhenPathTraversalWithSupplier() {
+      assertThatThrownBy(() -> Validate.requireWithinBase(baseDir, "../outside",
+          () -> new RuntimeException("custom")))
+          .isInstanceOf(RuntimeException.class)
+          .hasMessage("custom");
+    }
+
+    @Test
+    void shouldThrowWhenBaseNull() {
+      assertThatThrownBy(() -> Validate.requireWithinBase(null, "file.txt", "message"))
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessage("Base path must not be null");
+    }
+
+    @Test
+    void shouldThrowWhenRelativePathBlank() {
+      assertThatThrownBy(() -> Validate.requireWithinBase(baseDir, "", "message"))
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessage("Relative path must not be blank");
+    }
+
+    @Test
+    void shouldThrowWhenExceptionSupplierNull() {
+      assertThatThrownBy(() -> Validate.requireWithinBase(baseDir, "file.txt", (Supplier<RuntimeException>) null))
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessage("Exception supplier must not be null");
+    }
+  }
+
+  @Nested
+  class RequireDirectoryTests {
+
+    @Test
+    void shouldReturnNormalizedPathWhenDirectory() {
+      Path result = Validate.requireDirectory(baseDir, "message");
+      assertThat(result).isEqualTo(baseDir.toAbsolutePath().normalize());
+    }
+
+    @Test
+    void shouldThrowWhenNotDirectoryWithStringMessage() {
+      assertThatThrownBy(() -> Validate.requireDirectory(fileInBase, "message"))
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessage("message");
+    }
+
+    @Test
+    void shouldThrowWhenNotDirectoryWithSupplier() {
+      assertThatThrownBy(
+          () -> Validate.requireDirectory(fileInBase, () -> new RuntimeException("custom")))
+          .isInstanceOf(RuntimeException.class)
+          .hasMessage("custom");
+    }
+
+    @Test
+    void shouldThrowWhenNullWithStringMessage() {
+      assertThatThrownBy(() -> Validate.requireDirectory(null, "message"))
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessage("Directory path must not be null");
+    }
+
+    @Test
+    void shouldThrowWhenNullWithSupplier() {
+      assertThatThrownBy(
+          () -> Validate.requireDirectory(null, () -> new RuntimeException("custom")))
+          .isInstanceOf(RuntimeException.class)
+          .hasMessage("Directory path must not be null");
+    }
+
+    @Test
+    void shouldThrowWhenExceptionSupplierNull() {
+      assertThatThrownBy(() -> Validate.requireDirectory(baseDir, (Supplier<RuntimeException>) null))
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessage("Exception supplier must not be null");
+    }
+  }
+
+  @Nested
+  class IsBetweenTests {
+
+    @Test
+    void shouldNotThrowWhenWithinBounds() {
+      Validate.isBetween(1, 10, 5, "message");
+    }
+
+    @Test
+    void shouldNotThrowWhenAtLowerBound() {
+      Validate.isBetween(1, 10, 1, "message");
+    }
+
+    @Test
+    void shouldNotThrowWhenAtUpperBound() {
+      Validate.isBetween(1, 10, 10, "message");
+    }
+
+    @Test
+    void shouldThrowWhenBelowLowerBoundWithStringMessage() {
+      assertThatThrownBy(() -> Validate.isBetween(1, 10, 0, "message"))
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessage("message");
+    }
+
+    @Test
+    void shouldThrowWhenBelowLowerBoundWithSupplier() {
+      assertThatThrownBy(() -> Validate.isBetween(1, 10, 0, () -> new RuntimeException("custom")))
+          .isInstanceOf(RuntimeException.class)
+          .hasMessage("custom");
+    }
+
+    @Test
+    void shouldThrowWhenAboveUpperBoundWithStringMessage() {
+      assertThatThrownBy(() -> Validate.isBetween(1, 10, 11, "message"))
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessage("message");
+    }
+
+    @Test
+    void shouldThrowWhenAboveUpperBoundWithSupplier() {
+      assertThatThrownBy(() -> Validate.isBetween(1, 10, 11, () -> new RuntimeException("custom")))
+          .isInstanceOf(RuntimeException.class)
+          .hasMessage("custom");
+    }
+
+    @Test
+    void shouldWorkWithDoubleValues() {
+      Validate.isBetween(1.0, 10.0, 5.5, "message");
+    }
+
+    @Test
+    void shouldWorkWithMixedNumberTypes() {
+      Validate.isBetween(1, 10.0, 5, "message");
+    }
+
+    @Test
+    void shouldThrowWhenExceptionSupplierNull() {
+      assertThatThrownBy(() -> Validate.isBetween(1, 10, 5, (Supplier<RuntimeException>) null))
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessage("Exception supplier must not be null");
+    }
+  }
+}

@@ -105,3 +105,18 @@ Work through these categories in order. Stop and report each violation as you fi
 - Subjective style preferences not grounded in a rule from `copilot-instructions.md`.
 - Missing Javadoc — that is the job of `@javadoc-agent`.
 - Missing tests — that is the job of `@unit-test-agent`.
+
+##  Output in this format:
+# Review Summary
+
+## Findings
+- ...
+
+## Decisions Needed
+- ...
+
+## Action Items
+- [ ] ...
+
+## Optional Improvements
+- ...
