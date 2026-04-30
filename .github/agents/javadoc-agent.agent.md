@@ -50,3 +50,8 @@ Add Javadoc comments to public API surface where they are missing or incomplete.
 - No `@author`, `@version`, or `@since` tags.
 - Present tense, third person singular: "Returns the agent definition", not "Return" and not "This method returns".
 - No filler phrases: not "This class is responsible for", not "This method is used to".
+
+Generate concise public API Javadocs only.
+Do not explain obvious implementation steps.
+Focus on contract, parameters, return value, validation behavior, and thrown exceptions.
+Avoid marketing language and repeated project goals.

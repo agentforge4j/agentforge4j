@@ -28,7 +28,7 @@ All modules live in a single Maven monorepo. Everything is versioned and release
 |---|---|---------------|
 | `agentforge4j-util` | Shared `Validate` utility, no framework deps | Completed     |
 | `agentforge4j-core` | Pure Java domain model, no Spring, no IO, no DB | Planned       |
-| `agentforge4j-llm` | Shared LLM abstractions, no workflow knowledge | Planned       |
+| `agentforge4j-llm` | Shared LLM abstractions, no workflow knowledge | Completed     |
 | `agentforge4j-llm-openai` | OpenAI provider via Responses API | Planned       |
 | `agentforge4j-llm-ollama` | Ollama provider | Planned       |
 | `agentforge4j-llm-claude` | Anthropic Claude provider | Planned       |

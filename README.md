@@ -50,7 +50,7 @@ All modules live in a single Maven monorepo, versioned and released together. Ja
 |---|---|----------|
 | `agentforge4j-util` | Shared validation utility. No dependencies beyond JDK and commons-lang3. | Complete |
 | `agentforge4j-core` | Pure Java domain model. No Spring, no IO, no database. | Planned  |
-| `agentforge4j-llm` | Shared LLM abstractions. No workflow knowledge. | Planned  |
+| `agentforge4j-llm` | Shared LLM abstractions. No workflow knowledge. | Complete |
 | `agentforge4j-llm-openai` | OpenAI provider using the Responses API. | Planned  |
 | `agentforge4j-llm-ollama` | Ollama provider for local model execution. | Planned  |
 | `agentforge4j-llm-claude` | Anthropic Claude provider. | Planned  |
@@ -141,9 +141,9 @@ mvn clean install
 The project is built module by module in a defined order. Each module is fully reviewed before the next one begins.
 
 **Foundation**
-- [ ] `agentforge4j-util` — validation utility
+- [X] `agentforge4j-util` — validation utility
 - [ ] `agentforge4j-core` — domain model
-- [ ] `agentforge4j-llm` — LLM abstractions
+- [X] `agentforge4j-llm` — LLM abstractions
 - [ ] `agentforge4j-llm-openai` — OpenAI provider
 - [ ] `agentforge4j-llm-ollama` — Ollama provider
 - [ ] `agentforge4j-llm-claude` — Anthropic Claude provider
