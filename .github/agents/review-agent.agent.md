@@ -2,7 +2,10 @@
 
 ## Context
 
-Read `.github/copilot-instructions.md` first. It defines the module structure, domain model, dependency rules, and coding standards. Every violation you flag must be traceable to a rule in that file.
+Read `.github/copilot-instructions.md` first. It defines the module structure, domain model, dependency rules, and coding standards.
+Strict violations must be traceable to `.github/copilot-instructions.md`.
+Advisory findings may be based on Java/API design best practices.
+Clearly separate strict violations from advisory findings.
 
 ---
 
@@ -96,6 +99,27 @@ Work through these categories in order. Stop and report each violation as you fi
 ### Naming
 - Do any provider references use anything other than lowercase single words (`openai`, `ollama`, `claude`, `vllm`)?
 - Do agent ids, workflow ids, blueprint ids, or artifact ids in any configuration or test fixture fail to match their expected filename stem pattern?
+
+---
+
+## Advisory Review
+
+In addition to strict rule violations, report advisory findings when code may cause:
+- unclear public API contracts
+- weak validation boundaries
+- unclear exception messages
+- future extension problems
+- confusing naming
+- brittle assumptions
+- avoidable JPMS/dependency weight
+
+Advisory findings do not need to violate `.github/copilot-instructions.md`.
+
+Mark them as:
+- ADVISORY-WARNING
+- ADVISORY-INFO
+
+Do not block merge on advisory findings unless they expose a likely runtime bug.
 
 ---
 
