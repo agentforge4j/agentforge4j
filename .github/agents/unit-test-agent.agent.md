@@ -1,100 +1,153 @@
-# AgentForge4j — Unit Test Agent
+Add or improve tests for module: "[MODULE_NAME]".
 
-You are a unit-test generation and review agent, not a refactoring agent.
+Goal
 
-## Context
+Create meaningful test coverage for this module.
 
-Read `.github/copilot-instructions.md` first. It defines the module structure, domain model, dependency rules, and coding standards. Everything in that file applies here.
+Focus on:
 
----
+- public API behaviour
+- all important method scenarios
+- edge cases
+- negative paths
+- validation failures
+- exception handling
+- provider/request mapping if applicable
 
-## Purpose
-
-Generate JUnit 5 unit tests for code that has no test coverage. Generated tests are a first draft — a developer must review and harden them before they are considered complete.
-
----
-
-## Non-Negotiable Rules
-
-- **JUnit 5 only.** Use `org.junit.jupiter.api.*` throughout. No JUnit 4 annotations.
-- **No empty tests.** Every `@Test` method must contain at least one meaningful assertion.
-- **No tests that only assert no exception.** `assertDoesNotThrow` with nothing else is not acceptable.
-- **No unnecessary mocking of records.** Records are immutable value objects — construct them directly.
-- **Tests live in `src/test/java` inside the same Maven module** as the class under test. Match the production package exactly.
-- **Test class naming:** `{ClassName}Test`.
-- **No `var` keyword.** Explicit types throughout.
-- **Braces always required** on all control flow, even single-line bodies.
+Do NOT create shallow tests just to increase coverage.
 
 ---
 
-## What to Test
+First inspect existing tests
 
-Look at the module's `module-info.java` to identify the exported public API. Focus tests on:
+Before adding new tests:
 
-- **Compact constructor validation on records** — every field that is validated should have a test for the failing case and the passing case.
-- **Static factory methods** — test what they produce and any constraints they enforce.
-- **Interface contracts** — test that implementations honour the contract documented on the interface, including exceptions thrown.
-- **Boundary conditions** — empty collections, null inputs where permitted, minimum and maximum values.
-- **Filesystem operations** — use JUnit 5 `@TempDir` and build the directory structure in `@BeforeEach`.
-- **Both overloads** where a method has a `String message` overload and a `Supplier<RuntimeException>` overload — test both.
+1. inspect existing test classes
+2. check if they are still correct
+3. remove or fix weak/incorrect tests
+4. add only missing meaningful tests
 
 ---
 
-## Structure
+Test naming rules
 
-Use `@Nested` classes to group related scenarios. Use descriptive method names in `should_doX_when_Y` format.
+Unit tests
 
-Create a `TestFixtures` class in the test source root of the module for shared builder helpers and constants. Keep individual test classes readable — extract repeated construction into fixtures.
+Class names ending in:
+
+Test
+
+Rules:
+
+- may use Mockito/mocking
+- should test one class or behaviour in isolation
+- should be fast
+- should not call real external services
+
+Example:
+
+OpenAiLlmClientTest
+ValidateTest
+LlmExecutionRequestTest
 
 ---
 
-## What the Reviewing Developer Must Do
+Integration tests
 
-- Confirm every assertion is testing the right thing, not just mirroring the implementation.
-- Add edge cases the agent missed.
-- Remove any test that compiles but provides no real value.
-- Verify `@TempDir` tests do not leak state between test methods.
-- Add descriptive failure messages using AssertJ's `.as("explanation")` where the default JUnit message would be cryptic.
+Class names ending in:
 
-# Hard Rule: Review Only
+IT
 
-You are NOT allowed to modify production code.
+Rules:
 
-You may only:
-- create or update unit tests
-- suggest code changes in the review report
-- explain why a production code change is needed
+- should avoid mocking
+- should test real wiring/behaviour where useful
+- should not call real paid/external providers
+- for provider modules, use fake/local HTTP server or fake provider endpoint returning deterministic responses
+- should be runnable in normal Maven lifecycle only if current project convention allows it
 
-You must NOT:
-- edit `src/main/java`
-- refactor production classes
-- rename production methods/classes
-- change public APIs
-- change Maven/module configuration
-- apply formatting-only changes to production code
+Example:
 
-If production code needs a change, report it like this:
+OpenAiLlmClientIT
+LlmProviderConfigurationIT
 
-## Production Code Change Needed
+If integration test infrastructure is not ready, list recommended IT scenarios but do not force complex setup.
 
-### File
-`path/to/File.java`
+---
 
-### Problem
-Explain the issue.
+Provider module testing rules
 
-### Recommended Change
-Describe the change, but do not apply it.
+For LLM provider modules:
 
-### Why
-Explain the reason/risk.
+- do NOT call real OpenAI/Claude/Gemini/etc.
+- use a fake HTTP server or fake provider response
+- verify:
+    - request body mapping
+    - headers/auth if applicable
+    - model/provider config handling
+    - successful response parsing
+    - error response handling
+    - timeout/failure behaviour if supported
+    - invalid/malformed response handling
 
-Then continue with test changes only.
+---
 
-## Before making changes, classify every planned file edit:
+Unit test coverage expectations
 
-- TEST_CHANGE: allowed
-- DOC_CHANGE: allowed only if requested
-- PRODUCTION_CHANGE: forbidden
+For each public class/method:
 
-If any planned edit is PRODUCTION_CHANGE, do not perform it. Report it instead.
+Test:
+
+- happy path
+- null/blank/invalid input
+- boundary values
+- unsupported values
+- exception paths
+- immutability/defensive copying if relevant
+
+For utility classes:
+
+- test all branches
+- test invalid inputs heavily
+- test error messages when useful
+
+For DTOs/records:
+
+- only test validation, defaults, or behaviour
+- do not write pointless getter/constructor tests
+
+---
+
+Style requirements
+
+- Use JUnit 5
+- Use AssertJ if already used in the project, otherwise use existing assertion style
+- Use Mockito only in "*Test", not "*IT"
+- Follow existing package and naming conventions
+- Keep tests readable
+- Use descriptive test method names
+- Prefer one clear behaviour per test
+- Avoid over-mocking
+- Avoid testing private methods directly
+
+---
+
+Maven/build requirements
+
+After adding tests:
+
+1. run the relevant module tests
+2. fix compilation/test failures
+3. ensure no real provider API keys are required
+4. ensure tests are deterministic
+
+---
+
+Output
+
+Provide:
+
+- summary of existing tests reviewed
+- tests added/changed
+- key scenarios covered
+- any scenarios intentionally left for later integration tests

@@ -22,7 +22,7 @@ The framework is designed to be embedded by other developers across many domains
 
 ## Module Structure
 
-All modules live in a single Maven monorepo. Everything is versioned and released together. Java 26, JPMS `module-info.java` in every module.
+All modules live in a single Maven monorepo. Everything is versioned and released together. Java 17, JPMS `module-info.java` in every module.
 
 | Module | Purpose | Status        |
 |---|---|---------------|
@@ -79,7 +79,7 @@ These are non-negotiable. Flag any existing code that violates them.
 
 ### Language and syntax
 
-- **Java 26 throughout.** Use modern Java features where they improve clarity.
+- **Java 17 throughout.** Use modern Java features where they improve clarity.
 - **No `var` keyword.** Explicit types everywhere.
 - **Braces always required** on `if`, `else`, `for`, `while`, and `do-while` blocks — even single-line bodies.
 - **`formatted()` for string interpolation** in error messages, not `String.format()` and not concatenation.
