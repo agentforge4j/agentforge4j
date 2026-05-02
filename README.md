@@ -44,7 +44,7 @@ Most AI agent frameworks make runtime decisions about which agent to use, making
 
 ### Module Structure
 
-All modules live in a single Maven monorepo, versioned and released together. Java 26, JPMS `module-info.java` throughout.
+All modules live in a single Maven monorepo, versioned and released together. Java 17, JPMS `module-info.java` throughout.
 
 | Module | Description | Status   |
 |---|---|----------|
@@ -123,7 +123,7 @@ workflows/
 
 ### Prerequisites
 
-- Java 26
+- Java 17
 - Maven 3.9 or later
 
 ### Build from Source
