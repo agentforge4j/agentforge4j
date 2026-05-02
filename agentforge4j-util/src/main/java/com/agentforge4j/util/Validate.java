@@ -62,7 +62,9 @@ public final class Validate {
    * @return the validated value
    */
   public static <T> T notNull(T value, Supplier<RuntimeException> exceptionSupplier) {
-    notNull(exceptionSupplier, "Exception supplier must not be null");
+    if (exceptionSupplier == null) {
+      throw new IllegalArgumentException("Exception supplier must not be null");
+    }
     if (value == null) {
       throw exceptionSupplier.get();
     }
@@ -185,7 +187,7 @@ public final class Validate {
    * Validates that the given value is between the specified bounds.
    *
    * @param lower   the lower bound (inclusive)
-   * @param upper  the upper bound (inclusive)
+   * @param upper   the upper bound (inclusive)
    * @param value   the value to validate
    * @param message the exception message if validation fails
    * @throws IllegalArgumentException if the value is outside the bounds
@@ -198,7 +200,7 @@ public final class Validate {
    * Validates that the given value is between the specified bounds.
    *
    * @param lower             the lower bound (inclusive)
-   * @param upper            the upper bound (inclusive)
+   * @param upper             the upper bound (inclusive)
    * @param value             the value to validate
    * @param exceptionSupplier supplies the exception to throw if validation fails
    * @throws IllegalArgumentException if the value is outside the bounds
@@ -206,9 +208,36 @@ public final class Validate {
   public static void isBetween(Number lower, Number upper, Number value,
       Supplier<RuntimeException> exceptionSupplier) {
     notNull(exceptionSupplier, "Exception supplier must not be null");
-    isTrue(lower.doubleValue() < upper.doubleValue(), "Lower value should be less than upper value");
+    isTrue(lower.doubleValue() < upper.doubleValue(),
+        "Lower value should be less than upper value");
     isTrue(
         value.doubleValue() >= lower.doubleValue() && value.doubleValue() <= upper.doubleValue(),
         exceptionSupplier);
+  }
+
+  /**
+   * Validates that the given value is greater than zero.
+   *
+   * @param value   the value to validate
+   * @param message the exception message if validation fails
+   * @return the validated value
+   * @throws IllegalArgumentException if the value is not greater than zero
+   */
+  public static Number isGreaterThanZero(Number value, String message) {
+    return isGreaterThanZero(value, () -> new IllegalArgumentException(message));
+  }
+
+  /**
+   * Validates that the given value is greater than zero.
+   *
+   * @param value             the value to validate
+   * @param exceptionSupplier supplies the exception to throw if validation fails
+   * @return the validated value
+   */
+  public static Number isGreaterThanZero(Number value,
+      Supplier<RuntimeException> exceptionSupplier) {
+    notNull(exceptionSupplier, "Exception supplier must not be null");
+    isTrue(value.doubleValue() > 0, exceptionSupplier);
+    return value;
   }
 }

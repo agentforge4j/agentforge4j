@@ -1,100 +1,179 @@
-# AgentForge4j — Unit Test Agent
+Add or improve tests for module: "[MODULE_NAME]".
 
-You are a unit-test generation and review agent, not a refactoring agent.
+## Goal
 
-## Context
+Create **production-ready automated test coverage** for this module.
 
-Read `.github/copilot-instructions.md` first. It defines the module structure, domain model, dependency rules, and coding standards. Everything in that file applies here.
+The project must be releasable using **only automated tests**.
 
----
-
-## Purpose
-
-Generate JUnit 5 unit tests for code that has no test coverage. Generated tests are a first draft — a developer must review and harden them before they are considered complete.
+You are working in **test-first mode**.
 
 ---
 
-## Non-Negotiable Rules
+## 🚨 CRITICAL RULE
 
-- **JUnit 5 only.** Use `org.junit.jupiter.api.*` throughout. No JUnit 4 annotations.
-- **No empty tests.** Every `@Test` method must contain at least one meaningful assertion.
-- **No tests that only assert no exception.** `assertDoesNotThrow` with nothing else is not acceptable.
-- **No unnecessary mocking of records.** Records are immutable value objects — construct them directly.
-- **Tests live in `src/test/java` inside the same Maven module** as the class under test. Match the production package exactly.
-- **Test class naming:** `{ClassName}Test`.
-- **No `var` keyword.** Explicit types throughout.
-- **Braces always required** on all control flow, even single-line bodies.
+**DO NOT modify production code.**
 
----
+You are ONLY allowed to:
 
-## What to Test
+* add tests
+* update existing tests
+* remove incorrect tests
 
-Look at the module's `module-info.java` to identify the exported public API. Focus tests on:
+If something in production code prevents proper testing:
 
-- **Compact constructor validation on records** — every field that is validated should have a test for the failing case and the passing case.
-- **Static factory methods** — test what they produce and any constraints they enforce.
-- **Interface contracts** — test that implementations honour the contract documented on the interface, including exceptions thrown.
-- **Boundary conditions** — empty collections, null inputs where permitted, minimum and maximum values.
-- **Filesystem operations** — use JUnit 5 `@TempDir` and build the directory structure in `@BeforeEach`.
-- **Both overloads** where a method has a `String message` overload and a `Supplier<RuntimeException>` overload — test both.
+👉 DO NOT change it
+👉 DO NOT “fix” it
 
----
+Instead:
 
-## Structure
-
-Use `@Nested` classes to group related scenarios. Use descriptive method names in `should_doX_when_Y` format.
-
-Create a `TestFixtures` class in the test source root of the module for shared builder helpers and constants. Keep individual test classes readable — extract repeated construction into fixtures.
+```text
+Explain exactly:
+- what cannot be tested
+- why it cannot be tested
+- what minimal change would be required
+- why that change is safe
+```
 
 ---
 
-## What the Reviewing Developer Must Do
+## First inspect existing tests
 
-- Confirm every assertion is testing the right thing, not just mirroring the implementation.
-- Add edge cases the agent missed.
-- Remove any test that compiles but provides no real value.
-- Verify `@TempDir` tests do not leak state between test methods.
-- Add descriptive failure messages using AssertJ's `.as("explanation")` where the default JUnit message would be cryptic.
+Before adding new tests:
 
-# Hard Rule: Review Only
+1. inspect existing test classes
+2. check correctness
+3. remove/fix weak tests
+4. keep strong tests
+5. add only missing meaningful tests
 
-You are NOT allowed to modify production code.
+---
 
-You may only:
-- create or update unit tests
-- suggest code changes in the review report
-- explain why a production code change is needed
+## Test strategy (MANDATORY DECISION)
 
-You must NOT:
-- edit `src/main/java`
-- refactor production classes
-- rename production methods/classes
-- change public APIs
-- change Maven/module configuration
-- apply formatting-only changes to production code
+You must decide:
 
-If production code needs a change, report it like this:
+```text
+Are integration tests (*IT) required?
+```
 
-## Production Code Change Needed
+### Required if module contains:
 
-### File
-`path/to/File.java`
+* HTTP clients
+* provider integrations
+* serialization/deserialization
+* external boundary logic
+* configuration wiring
 
-### Problem
-Explain the issue.
+### Not required if:
 
-### Recommended Change
-Describe the change, but do not apply it.
+* pure logic/util module
 
-### Why
-Explain the reason/risk.
+If required:
+→ create *IT tests
 
-Then continue with test changes only.
+If not:
+→ explain clearly why not
 
-## Before making changes, classify every planned file edit:
+---
 
-- TEST_CHANGE: allowed
-- DOC_CHANGE: allowed only if requested
-- PRODUCTION_CHANGE: forbidden
+## Test naming rules
 
-If any planned edit is PRODUCTION_CHANGE, do not perform it. Report it instead.
+### Unit tests → *Test
+
+* may use Mockito
+* isolate behaviour
+* fast
+* no external calls
+
+### Integration tests → *IT
+
+* NO mocking
+* use local fake server if needed
+* test real wiring
+* must be deterministic
+* must not require API keys
+
+---
+
+## Provider module rules
+
+For LLM providers:
+
+* NEVER call real providers
+* use fake/local HTTP server
+
+Test:
+
+* request mapping
+* headers/auth
+* response parsing
+* error handling
+* malformed responses
+* timeout behaviour
+
+---
+
+## ❗ If testability is blocked
+
+If you cannot properly test something:
+
+DO NOT modify code.
+
+Instead output:
+
+```text
+TESTABILITY GAP:
+- Problem:
+- Why it matters:
+- Suggested minimal change:
+- Example fix:
+```
+
+---
+
+## Coverage expectations
+
+Test:
+
+* happy path
+* edge cases
+* invalid inputs
+* exception paths
+
+Avoid:
+
+* trivial tests
+* getter-only tests
+
+---
+
+## Style
+
+* JUnit 5
+* AssertJ if present
+* Mockito only in *Test
+* no private method testing
+* readable tests
+
+---
+
+## Build requirements
+
+* tests must pass
+* no external dependencies
+* deterministic
+
+---
+
+## Output
+
+Provide:
+
+* summary of existing tests
+* decision on *IT necessity
+* tests added/changed
+* coverage summary
+* TESTABILITY GAP section (if any)
+
+DO NOT modify production code.
