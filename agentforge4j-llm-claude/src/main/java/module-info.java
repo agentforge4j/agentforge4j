@@ -4,6 +4,7 @@ import com.agentforge4j.llm.claude.ClaudeLlmClientFactory;
 module agentforge4j.llm.claude {
   requires agentforge4j.llm;
   requires agentforge4j.util;
+  requires com.fasterxml.jackson.annotation;
   requires com.fasterxml.jackson.databind;
   requires java.net.http;
   requires static lombok;

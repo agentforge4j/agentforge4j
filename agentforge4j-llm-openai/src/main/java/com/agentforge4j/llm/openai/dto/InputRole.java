@@ -1,10 +1,14 @@
 package com.agentforge4j.llm.openai.dto;
 
+import com.fasterxml.jackson.annotation.JsonValue;
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 
 /**
  * Roles for messages in OpenAI-style chat completions.
+ * <p>
+ * Jackson serializes and deserializes using the API wire strings via {@link JsonValue} on
+ * {@link #toString()}.
  */
 @RequiredArgsConstructor(access = lombok.AccessLevel.PRIVATE)
 @Getter
@@ -20,6 +24,8 @@ public enum InputRole {
 
   private final String value;
 
+  @JsonValue
+  @Override
   public String toString() {
     return value;
   }

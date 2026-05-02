@@ -1,4 +1,4 @@
-# AgentForge4j <WIP>
+# AgentForge4j <WIP> <Needs to change to address the changes in my original idea/vision>
 
 **NOTE:** This project is in active development. The README will evolve as the project progresses. The current content is a comprehensive overview of the vision, architecture, and roadmap, but some details may change as the implementation unfolds.
 

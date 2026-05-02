@@ -22,7 +22,7 @@ class AzureOpenAiLlmClientIT {
         "choices": [
           {
             "message": {
-              "role": "ASSISTANT",
+              "role": "assistant",
               "content": "Hello from Azure"
             }
           }
@@ -166,9 +166,9 @@ class AzureOpenAiLlmClientIT {
 
       assertThat(captured.get())
           .contains("\"model\":\"capture-dep\"")
-          .contains("\"role\":\"SYSTEM\"")
+          .contains("\"role\":\"system\"")
           .contains("\"content\":\"S\"")
-          .contains("\"role\":\"USER\"")
+          .contains("\"role\":\"user\"")
           .contains("\"content\":\"U\"");
     }
   }

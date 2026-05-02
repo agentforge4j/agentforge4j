@@ -155,7 +155,7 @@ class AzureOpenAiLlmClientTest {
           {
             "error": { "message": "   ", "code": null, "type": null },
             "choices": [
-              { "message": { "role": "ASSISTANT", "content": "still ok" } }
+              { "message": { "role": "assistant", "content": "still ok" } }
             ]
           }
           """;
@@ -245,7 +245,7 @@ class AzureOpenAiLlmClientTest {
           {
             "error": null,
             "choices": [
-              { "message": { "role": "ASSISTANT", "content": null } }
+              { "message": { "role": "assistant", "content": null } }
             ]
           }
           """;
@@ -264,7 +264,7 @@ class AzureOpenAiLlmClientTest {
           {
             "error": null,
             "choices": [
-              { "message": { "role": "ASSISTANT", "content": "   " } }
+              { "message": { "role": "assistant", "content": "   " } }
             ]
           }
           """;
@@ -283,7 +283,7 @@ class AzureOpenAiLlmClientTest {
           {
             "error": null,
             "choices": [
-              { "message": { "role": "ASSISTANT", "content": "  trimmed  " } }
+              { "message": { "role": "assistant", "content": "  trimmed  " } }
             ]
           }
           """;
@@ -311,7 +311,7 @@ class AzureOpenAiLlmClientTest {
       ArrayNode choices = root.putArray("choices");
       ObjectNode choice = choices.addObject();
       ObjectNode message = choice.putObject("message");
-      message.put("role", "ASSISTANT");
+      message.put("role", "assistant");
       message.put("content", "```json\n{\"a\":1}\n```");
       String json = mapper.writeValueAsString(root);
 
