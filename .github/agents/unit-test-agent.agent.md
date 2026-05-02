@@ -1,153 +1,179 @@
 Add or improve tests for module: "[MODULE_NAME]".
 
-Goal
+## Goal
 
-Create meaningful test coverage for this module.
+Create **production-ready automated test coverage** for this module.
 
-Focus on:
+The project must be releasable using **only automated tests**.
 
-- public API behaviour
-- all important method scenarios
-- edge cases
-- negative paths
-- validation failures
-- exception handling
-- provider/request mapping if applicable
-
-Do NOT create shallow tests just to increase coverage.
+You are working in **test-first mode**.
 
 ---
 
-First inspect existing tests
+## 🚨 CRITICAL RULE
+
+**DO NOT modify production code.**
+
+You are ONLY allowed to:
+
+* add tests
+* update existing tests
+* remove incorrect tests
+
+If something in production code prevents proper testing:
+
+👉 DO NOT change it
+👉 DO NOT “fix” it
+
+Instead:
+
+```text
+Explain exactly:
+- what cannot be tested
+- why it cannot be tested
+- what minimal change would be required
+- why that change is safe
+```
+
+---
+
+## First inspect existing tests
 
 Before adding new tests:
 
 1. inspect existing test classes
-2. check if they are still correct
-3. remove or fix weak/incorrect tests
-4. add only missing meaningful tests
+2. check correctness
+3. remove/fix weak tests
+4. keep strong tests
+5. add only missing meaningful tests
 
 ---
 
-Test naming rules
+## Test strategy (MANDATORY DECISION)
 
-Unit tests
+You must decide:
 
-Class names ending in:
+```text
+Are integration tests (*IT) required?
+```
 
-Test
+### Required if module contains:
 
-Rules:
+* HTTP clients
+* provider integrations
+* serialization/deserialization
+* external boundary logic
+* configuration wiring
 
-- may use Mockito/mocking
-- should test one class or behaviour in isolation
-- should be fast
-- should not call real external services
+### Not required if:
 
-Example:
+* pure logic/util module
 
-OpenAiLlmClientTest
-ValidateTest
-LlmExecutionRequestTest
+If required:
+→ create *IT tests
 
----
-
-Integration tests
-
-Class names ending in:
-
-IT
-
-Rules:
-
-- should avoid mocking
-- should test real wiring/behaviour where useful
-- should not call real paid/external providers
-- for provider modules, use fake/local HTTP server or fake provider endpoint returning deterministic responses
-- should be runnable in normal Maven lifecycle only if current project convention allows it
-
-Example:
-
-OpenAiLlmClientIT
-LlmProviderConfigurationIT
-
-If integration test infrastructure is not ready, list recommended IT scenarios but do not force complex setup.
+If not:
+→ explain clearly why not
 
 ---
 
-Provider module testing rules
+## Test naming rules
 
-For LLM provider modules:
+### Unit tests → *Test
 
-- do NOT call real OpenAI/Claude/Gemini/etc.
-- use a fake HTTP server or fake provider response
-- verify:
-    - request body mapping
-    - headers/auth if applicable
-    - model/provider config handling
-    - successful response parsing
-    - error response handling
-    - timeout/failure behaviour if supported
-    - invalid/malformed response handling
+* may use Mockito
+* isolate behaviour
+* fast
+* no external calls
+
+### Integration tests → *IT
+
+* NO mocking
+* use local fake server if needed
+* test real wiring
+* must be deterministic
+* must not require API keys
 
 ---
 
-Unit test coverage expectations
+## Provider module rules
 
-For each public class/method:
+For LLM providers:
+
+* NEVER call real providers
+* use fake/local HTTP server
 
 Test:
 
-- happy path
-- null/blank/invalid input
-- boundary values
-- unsupported values
-- exception paths
-- immutability/defensive copying if relevant
-
-For utility classes:
-
-- test all branches
-- test invalid inputs heavily
-- test error messages when useful
-
-For DTOs/records:
-
-- only test validation, defaults, or behaviour
-- do not write pointless getter/constructor tests
+* request mapping
+* headers/auth
+* response parsing
+* error handling
+* malformed responses
+* timeout behaviour
 
 ---
 
-Style requirements
+## ❗ If testability is blocked
 
-- Use JUnit 5
-- Use AssertJ if already used in the project, otherwise use existing assertion style
-- Use Mockito only in "*Test", not "*IT"
-- Follow existing package and naming conventions
-- Keep tests readable
-- Use descriptive test method names
-- Prefer one clear behaviour per test
-- Avoid over-mocking
-- Avoid testing private methods directly
+If you cannot properly test something:
 
----
+DO NOT modify code.
 
-Maven/build requirements
+Instead output:
 
-After adding tests:
-
-1. run the relevant module tests
-2. fix compilation/test failures
-3. ensure no real provider API keys are required
-4. ensure tests are deterministic
+```text
+TESTABILITY GAP:
+- Problem:
+- Why it matters:
+- Suggested minimal change:
+- Example fix:
+```
 
 ---
 
-Output
+## Coverage expectations
+
+Test:
+
+* happy path
+* edge cases
+* invalid inputs
+* exception paths
+
+Avoid:
+
+* trivial tests
+* getter-only tests
+
+---
+
+## Style
+
+* JUnit 5
+* AssertJ if present
+* Mockito only in *Test
+* no private method testing
+* readable tests
+
+---
+
+## Build requirements
+
+* tests must pass
+* no external dependencies
+* deterministic
+
+---
+
+## Output
 
 Provide:
 
-- summary of existing tests reviewed
-- tests added/changed
-- key scenarios covered
-- any scenarios intentionally left for later integration tests
+* summary of existing tests
+* decision on *IT necessity
+* tests added/changed
+* coverage summary
+* TESTABILITY GAP section (if any)
+
+DO NOT modify production code.
