@@ -41,12 +41,13 @@ class DefaultLlmClientResolverTest {
     }
 
     @Test
-    void should_allow_empty_collection_construction() {
+    void should_construct_with_empty_collection_but_resolve_fails_for_any_provider() {
       Collection<LlmClient> clients = new ArrayList<>();
 
       DefaultLlmClientResolver resolver = new DefaultLlmClientResolver(clients);
 
       assertNotNull(resolver);
+      assertThrows(IllegalArgumentException.class, () -> resolver.resolve("openai"));
     }
 
     @Test
@@ -88,7 +89,7 @@ class DefaultLlmClientResolverTest {
           new TestFixtures.TestLlmClient("openai")
       );
 
-      assertThrows(IllegalArgumentException.class, () -> {
+      assertThrows(IllegalStateException.class, () -> {
         new DefaultLlmClientResolver(clients);
       });
     }
@@ -100,7 +101,7 @@ class DefaultLlmClientResolverTest {
           new TestFixtures.TestLlmClient("openai")
       );
 
-      assertThrows(IllegalArgumentException.class, () -> {
+      assertThrows(IllegalStateException.class, () -> {
         new DefaultLlmClientResolver(clients);
       });
     }
@@ -195,6 +196,15 @@ class DefaultLlmClientResolverTest {
     }
 
     @Test
+    void should_throw_on_null_provider() {
+      setup(List.of(new TestFixtures.TestLlmClient("openai")));
+
+      assertThrows(IllegalArgumentException.class, () -> {
+        resolver.resolve(null);
+      });
+    }
+
+    @Test
     void should_include_available_providers_in_error_message() {
       setup(List.of(
           new TestFixtures.TestLlmClient("openai"),
@@ -246,6 +256,50 @@ class DefaultLlmClientResolverTest {
       });
 
       assertTrue(exception.getMessage().contains("No LLM clients could be created"));
+    }
+
+    @Test
+    void should_throw_when_object_mapper_is_null() {
+      Collection<LlmClientConfiguration> configs =
+          List.of(TestFixtures.testConfig("openai", "gpt-4"));
+
+      assertThrows(IllegalArgumentException.class, () -> {
+        DefaultLlmClientResolver.discover(null, configs);
+      });
+    }
+
+    @Test
+    void should_throw_when_configs_collection_is_null() {
+      ObjectMapper mapper = new ObjectMapper();
+
+      assertThrows(IllegalArgumentException.class, () -> {
+        DefaultLlmClientResolver.discover(mapper, null);
+      });
+    }
+
+    @Test
+    void should_throw_when_config_entry_is_null() {
+      ObjectMapper mapper = new ObjectMapper();
+      List<LlmClientConfiguration> configs = new ArrayList<>();
+      configs.add(TestFixtures.testConfig("openai", "gpt-4"));
+      configs.add(null);
+
+      assertThrows(IllegalArgumentException.class, () -> {
+        DefaultLlmClientResolver.discover(mapper, configs);
+      });
+    }
+
+    @Test
+    void should_throw_on_duplicate_provider_configuration_after_normalization() {
+      ObjectMapper mapper = new ObjectMapper();
+      Collection<LlmClientConfiguration> configs = List.of(
+          TestFixtures.testConfig("openai", "gpt-4"),
+          TestFixtures.testConfig("OPENAI", "gpt-4o")
+      );
+
+      assertThrows(IllegalArgumentException.class, () -> {
+        DefaultLlmClientResolver.discover(mapper, configs);
+      });
     }
   }
 }

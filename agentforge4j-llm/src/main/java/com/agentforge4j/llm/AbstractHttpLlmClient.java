@@ -41,9 +41,11 @@ public abstract class AbstractHttpLlmClient implements LlmClient {
    * @throws IllegalArgumentException if the providerName name or default model is blank
    */
   public AbstractHttpLlmClient(LlmClientConfiguration config) {
-    validateProvider(config);
-    this.providerName = config.getProviderName();
-    this.defaultModel = config.getDefaultModel();
+    Validate.notNull(config, "LLM client configuration must not be null");
+    this.providerName = Validate.notBlank(config.getProviderName(),
+        "Provider name must be provided in the configuration");
+    this.defaultModel = Validate.notBlank(config.getDefaultModel(),
+        "%s default model must be provided".formatted(config.getProviderName()));
     this.httpClient = HttpClient.newBuilder()
         .connectTimeout(config.getConnectTimeout())
         .build();
@@ -147,14 +149,6 @@ public abstract class AbstractHttpLlmClient implements LlmClient {
     LOG.log(System.Logger.Level.ERROR, "LLM request IO failure providerName={0}, message={1}",
         providerName, e.getMessage(), e);
     throw new LlmInvocationException("%s request failed".formatted(providerName), e);
-  }
-
-  private void validateProvider(LlmClientConfiguration config) {
-    Validate.notNull(config, "LLM client configuration must not be null");
-    Validate.notBlank(config.getProviderName(),
-        "Provider name must be provided in the configuration");
-    Validate.notBlank(config.getDefaultModel(),
-        "%s default model must be provided".formatted(config.getProviderName()));
   }
 
   private void validateRequest(LlmExecutionRequest request) {

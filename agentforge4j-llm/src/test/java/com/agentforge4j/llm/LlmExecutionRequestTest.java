@@ -1,35 +1,18 @@
 package com.agentforge4j.llm;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
-import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import org.junit.jupiter.api.Test;
 
 class LlmExecutionRequestTest {
 
   @Test
-  void should_construct_with_all_fields() {
-    LlmExecutionRequest request = new LlmExecutionRequest("openai", "gpt-4", "prompt", "input");
-    assertEquals("openai", request.providerName());
-    assertEquals("gpt-4", request.model());
-    assertEquals("prompt", request.systemPrompt());
-    assertEquals("input", request.userInput());
-  }
-
-  @Test
-  void should_construct_with_null_model() {
-    LlmExecutionRequest request = new LlmExecutionRequest("openai", null, "prompt", "input");
-    assertEquals("openai", request.providerName());
-    assertNull(request.model());
-    assertEquals("prompt", request.systemPrompt());
-    assertEquals("input", request.userInput());
-  }
-
-  @Test
-  void should_create_with_default_model_factory() {
+  void withDefaultModel_sets_null_model_and_validates_required_fields() {
     LlmExecutionRequest request = LlmExecutionRequest.withDefaultModel("ollama", "prompt", "input");
+
     assertEquals("ollama", request.providerName());
     assertNull(request.model());
     assertEquals("prompt", request.systemPrompt());
@@ -37,30 +20,50 @@ class LlmExecutionRequestTest {
   }
 
   @Test
-  void should_have_correct_equality() {
-    LlmExecutionRequest r1 = new LlmExecutionRequest("openai", "gpt-4", "p", "i");
-    LlmExecutionRequest r2 = new LlmExecutionRequest("openai", "gpt-4", "p", "i");
-    assertEquals(r1, r2);
+  void allows_explicit_null_model_when_other_fields_are_valid() {
+    LlmExecutionRequest request = new LlmExecutionRequest("openai", null, "prompt", "input");
+
+    assertEquals("openai", request.providerName());
+    assertNull(request.model());
   }
 
   @Test
-  void should_have_correct_inequality_on_different_provider() {
-    LlmExecutionRequest r1 = new LlmExecutionRequest("openai", "gpt-4", "p", "i");
-    LlmExecutionRequest r2 = new LlmExecutionRequest("claude", "gpt-4", "p", "i");
-    assertNotEquals(r1, r2);
+  void rejects_blank_provider_name() {
+    assertThatThrownBy(() -> new LlmExecutionRequest("  ", "m", "p", "i"))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("Provider");
   }
 
   @Test
-  void should_have_equal_hashcode_for_equal_objects() {
-    LlmExecutionRequest r1 = new LlmExecutionRequest("openai", "gpt-4", "p", "i");
-    LlmExecutionRequest r2 = new LlmExecutionRequest("openai", "gpt-4", "p", "i");
-    assertEquals(r1.hashCode(), r2.hashCode());
+  void rejects_null_provider_name() {
+    assertThatThrownBy(() -> new LlmExecutionRequest(null, "m", "p", "i"))
+        .isInstanceOf(IllegalArgumentException.class);
   }
 
   @Test
-  void should_construct_with_empty_strings() {
-    assertThrows(IllegalArgumentException.class, () -> {
-      new LlmExecutionRequest("", "", "", "");
-    });
+  void rejects_blank_system_prompt() {
+    assertThatThrownBy(() -> new LlmExecutionRequest("openai", "m", "\t", "i"))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("System prompt");
+  }
+
+  @Test
+  void rejects_blank_user_input() {
+    assertThatThrownBy(() -> new LlmExecutionRequest("openai", "m", "p", ""))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("User input");
+  }
+
+  @Test
+  void withDefaultModel_rejects_blank_provider() {
+    assertThatThrownBy(() -> LlmExecutionRequest.withDefaultModel("", "p", "i"))
+        .isInstanceOf(IllegalArgumentException.class);
+  }
+
+  @Test
+  void allows_blank_model_string_when_other_fields_are_valid() {
+    LlmExecutionRequest request = new LlmExecutionRequest("openai", "   ", "prompt", "input");
+
+    assertThat(request.model()).isEqualTo("   ");
   }
 }

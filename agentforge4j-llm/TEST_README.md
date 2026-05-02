@@ -147,7 +147,7 @@ void should_construct_with_valid_config() {
 
 ## Coding Standards Applied
 
-✅ Java 26 features with no `var` keyword  
+✅ Java 17 features with no `var` keyword  
 ✅ Explicit types throughout  
 ✅ Braces on all control flow (including single-line bodies)  
 ✅ Records constructed directly (not mocked)  
@@ -171,7 +171,7 @@ Before considering tests complete:
 ## Build Information
 
 - **Maven Module:** `agentforge4j-llm`
-- **Java Version:** Java 26
+- **Java Version:** Java 17
 - **Test Framework:** JUnit 5 (Jupiter)
 - **Build Tool:** Maven 3.x
 - **Status:** ✅ All tests passing

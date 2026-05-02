@@ -4,7 +4,6 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
-import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import java.io.IOException;
 import org.junit.jupiter.api.Test;
@@ -34,13 +33,6 @@ class LlmInvocationExceptionTest {
   void should_be_runtime_exception() {
     LlmInvocationException exception = new LlmInvocationException("test");
     assertInstanceOf(RuntimeException.class, exception);
-  }
-
-  @Test
-  void should_throw_and_catch_as_runtime_exception() {
-    assertThrows(LlmInvocationException.class, () -> {
-      throw new LlmInvocationException("test message");
-    });
   }
 
   @Test

@@ -176,6 +176,16 @@ class AbstractHttpLlmClientTest {
       assertTrue(result.contains("outer"));
       assertTrue(result.contains("inner"));
     }
+
+    @Test
+    void should_return_empty_string_unchanged_when_not_a_fence() {
+      assertEquals("", AbstractHttpLlmClient.stripCodeFence(""));
+    }
+
+    @Test
+    void should_return_opening_fence_unchanged_when_no_newline_follows_opening_ticks() {
+      assertEquals("```json", AbstractHttpLlmClient.stripCodeFence("```json"));
+    }
   }
 
   @Nested
@@ -202,6 +212,20 @@ class AbstractHttpLlmClientTest {
 
       assertThrows(IllegalArgumentException.class, () -> {
         client.execute(request);
+      });
+    }
+
+    @Test
+    void should_throw_on_blank_user_input() {
+      assertThrows(IllegalArgumentException.class, () -> {
+        client.execute(new LlmExecutionRequest("openai", null, "system", "  "));
+      });
+    }
+
+    @Test
+    void should_throw_on_blank_system_prompt() {
+      assertThrows(IllegalArgumentException.class, () -> {
+        client.execute(new LlmExecutionRequest("openai", null, "\t", "user"));
       });
     }
   }

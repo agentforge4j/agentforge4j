@@ -1,0 +1,48 @@
+package com.agentforge4j.llm;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
+import com.fasterxml.jackson.databind.ObjectMapper;
+import java.util.Collection;
+import java.util.List;
+import org.junit.jupiter.api.Test;
+
+/**
+ * Integration tests for {@link DefaultLlmClientResolver#discover} using real
+ * {@link java.util.ServiceLoader} wiring (no mocks). Stub factories are registered under
+ * {@code META-INF/services}.
+ */
+class DefaultLlmClientResolverDiscoverIT {
+
+  @Test
+  void discover_instantiates_configured_spi_factory_and_execute_works() {
+    ObjectMapper mapper = new ObjectMapper();
+    Collection<LlmClientConfiguration> configs = List.of(
+        TestFixtures.testConfig(ServiceLoaderStubLlmClientFactory.PROVIDER, "stub-model"));
+
+    DefaultLlmClientResolver resolver = DefaultLlmClientResolver.discover(mapper, configs);
+
+    LlmClient client = resolver.resolve(ServiceLoaderStubLlmClientFactory.PROVIDER);
+    assertThat(client.getProviderName()).isEqualTo(ServiceLoaderStubLlmClientFactory.PROVIDER);
+
+    String result = client.execute(
+        LlmExecutionRequest.withDefaultModel(ServiceLoaderStubLlmClientFactory.PROVIDER, "sys",
+            "ping"));
+
+    assertThat(result).isEqualTo("stub:ping");
+  }
+
+  @Test
+  void discover_skips_spi_factories_that_have_no_configuration_entry() {
+    ObjectMapper mapper = new ObjectMapper();
+    Collection<LlmClientConfiguration> configs = List.of(
+        TestFixtures.testConfig(ServiceLoaderStubLlmClientFactory.PROVIDER, "stub-model"));
+
+    DefaultLlmClientResolver resolver = DefaultLlmClientResolver.discover(mapper, configs);
+
+    assertThatThrownBy(() -> resolver.resolve(OrphanDiscoverLlmClientFactory.PROVIDER))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("Unknown LLM providerName");
+  }
+}

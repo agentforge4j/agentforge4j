@@ -135,9 +135,9 @@ public final class DefaultLlmClientResolver implements LlmClientResolver {
           "LLM client providerName name must not be blank for client: %s".formatted(
               client.getClass().getName()));
       LlmClient existingClient = map.putIfAbsent(normalizedProvider, client);
-      Validate.isTrue(existingClient == null,
+      Validate.isTrue(existingClient == null, () -> new IllegalStateException(
           "Duplicate LLM providerName name '%s' for clients: %s and %s".formatted(normalizedProvider,
-              existingClient.getClass().getName(), client.getClass().getName()));
+              existingClient.getClass().getName(), client.getClass().getName())));
     }
     return Map.copyOf(map);
   }
