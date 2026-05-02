@@ -3,6 +3,7 @@ package com.agentforge4j.llm.azureopenai;
 import com.agentforge4j.llm.LlmClient;
 import com.agentforge4j.llm.LlmClientConfiguration;
 import com.agentforge4j.llm.LlmClientFactory;
+import com.agentforge4j.util.Validate;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 public final class AzureOpenAiLlmClientFactory implements LlmClientFactory {
@@ -14,6 +15,7 @@ public final class AzureOpenAiLlmClientFactory implements LlmClientFactory {
 
   @Override
   public LlmClient create(ObjectMapper objectMapper, LlmClientConfiguration config) {
+    Validate.notNull(config, "LLM client configuration must not be null");
     if (!(config instanceof AzureOpenAiConfiguration azureConfig)) {
       throw new IllegalArgumentException(
           "AzureOpenAiLlmClientFactory requires AzureOpenAiConfiguration but got: %s"

@@ -48,12 +48,13 @@ class AzureOpenAiLlmClientFactoryTest {
     }
 
     @Test
-    void should_throw_null_pointer_when_configuration_null() {
+    void should_throw_when_configuration_null() {
       AzureOpenAiLlmClientFactory factory = new AzureOpenAiLlmClientFactory();
       ObjectMapper mapper = new ObjectMapper();
 
       assertThatThrownBy(() -> factory.create(mapper, null))
-          .isInstanceOf(NullPointerException.class);
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessageContaining("LLM client configuration must not be null");
     }
 
     @Test
