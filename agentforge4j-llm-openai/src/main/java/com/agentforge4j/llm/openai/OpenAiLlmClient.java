@@ -91,11 +91,12 @@ public final class OpenAiLlmClient extends AbstractHttpLlmClient {
         StringUtils.defaultIfBlank(request.model(), getDefaultModel()),
         List.of(
             new InputItem(SYSTEM, request.systemPrompt()),
-            new InputItem(USER, request.userInput())));
+            new InputItem(USER, request.userInput())),
+        request.maxOutputTokens());
     try {
       return objectMapper.writeValueAsString(body);
     } catch (Exception e) {
-      throw new LlmInvocationException("Failed to serialize OpenAI request for model: %s".formatted(getDefaultModel()), e);
+      throw new LlmInvocationException("Failed to serialize OpenAI request", e);
     }
   }
 

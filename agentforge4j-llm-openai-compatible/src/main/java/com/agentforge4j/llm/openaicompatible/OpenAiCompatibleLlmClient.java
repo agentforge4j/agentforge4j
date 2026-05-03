@@ -115,7 +115,8 @@ public final class OpenAiCompatibleLlmClient extends AbstractHttpLlmClient {
         StringUtils.defaultIfBlank(request.model(), getDefaultModel()),
         List.of(
             new OpenAiCompatibleInputItem(InputRole.SYSTEM, request.systemPrompt()),
-            new OpenAiCompatibleInputItem(InputRole.USER, request.userInput())));
+            new OpenAiCompatibleInputItem(InputRole.USER, request.userInput())),
+        request.maxOutputTokens());
     try {
       return objectMapper.writeValueAsString(body);
     } catch (Exception e) {

@@ -57,7 +57,8 @@ class OpenAiCompatibleLlmClientTest {
 
     @Test
     void should_throw_when_object_mapper_null() {
-      assertThatThrownBy(() -> new OpenAiCompatibleLlmClient(null, FixedOpenAiCompatibleConfiguration.defaults()))
+      assertThatThrownBy(
+          () -> new OpenAiCompatibleLlmClient(null, FixedOpenAiCompatibleConfiguration.defaults()))
           .isInstanceOf(IllegalArgumentException.class)
           .hasMessageContaining("openai-compatible ObjectMapper must not be null");
     }
@@ -239,7 +240,8 @@ class OpenAiCompatibleLlmClientTest {
       OpenAiCompatibleLlmClient client =
           new OpenAiCompatibleLlmClient(mapper, FixedOpenAiCompatibleConfiguration.defaults());
 
-      assertThat(client.validateAndExtractResponse(VALID_RESPONSES_JSON)).isEqualTo("Hello from compatible");
+      assertThat(client.validateAndExtractResponse(VALID_RESPONSES_JSON)).isEqualTo(
+          "Hello from compatible");
     }
   }
 
@@ -279,7 +281,8 @@ class OpenAiCompatibleLlmClientTest {
       HttpRequest httpRequest = client.buildHttpRequest(request);
 
       assertThat(httpRequest.headers().firstValue("Content-Type")).contains("application/json");
-      assertThat(httpRequest.headers().firstValue("Authorization")).contains("Bearer secret-key-123");
+      assertThat(httpRequest.headers().firstValue("Authorization")).contains(
+          "Bearer secret-key-123");
     }
 
     @Test
@@ -297,7 +300,9 @@ class OpenAiCompatibleLlmClientTest {
           "ada-model",
           List.of(
               new OpenAiCompatibleInputItem(InputRole.SYSTEM, "Be brief."),
-              new OpenAiCompatibleInputItem(InputRole.USER, "Ping")));
+              new OpenAiCompatibleInputItem(InputRole.USER, "Ping")),
+          request.maxOutputTokens()
+      );
 
       assertThat(mapper.readTree(body)).isEqualTo(mapper.valueToTree(expected));
     }
