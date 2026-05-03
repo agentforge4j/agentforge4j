@@ -5,10 +5,9 @@ import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 
 /**
- * Message role for Gemini requests. Wire value matches the Messages API ({@code "user"} for the
- * single user turn in this client).
- * <p>
- * Jackson uses {@link #toString()} via {@link JsonValue} for serialization and deserialization.
+ * Message role for Gemini request payloads. Wire value is the string sent on the wire (for example
+ * {@code "user"} for the single user turn in this client). {@link JsonValue} on {@link #toString()}
+ * controls request JSON serialization only; this enum is not used on response DTOs.
  */
 @RequiredArgsConstructor(access = lombok.AccessLevel.PRIVATE)
 @Getter

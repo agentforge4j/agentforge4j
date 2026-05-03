@@ -42,7 +42,8 @@ public final class OllamaLlmClient extends AbstractHttpLlmClient {
    */
   public OllamaLlmClient(ObjectMapper objectMapper, OllamaConfiguration config) {
     super(config);
-    this.requestTimeout = config.getRequestTimeout();
+    this.requestTimeout = Validate.notNull(config.getRequestTimeout(),
+        "Ollama request timeout must be provided");
     this.objectMapper = Validate.notNull(objectMapper, "LLM client configuration must not be null");
     this.chatUri = URI.create(Validate.notBlank(config.getUrl(), "Ollama URL must be provided"));
   }

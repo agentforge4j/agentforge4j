@@ -19,7 +19,9 @@ import java.net.URLEncoder;
 import java.net.http.HttpRequest;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.StringJoiner;
 import lombok.ToString;
 import org.apache.commons.lang3.StringUtils;
 
@@ -83,34 +85,56 @@ public final class GeminiLlmClient extends AbstractHttpLlmClient {
         () -> new LlmInvocationException(
             "Gemini response deserialized to null: %s".formatted(json)));
     Validate.isTrue(dto.error() == null, () ->
-        new LlmInvocationException("gemini error: %s".formatted(formatError(dto.error()))));
+        new LlmInvocationException("gemini error: %s".formatted(formatGeminiError(dto.error()))));
     List<GeminiCandidate> candidates = Validate.notEmpty(dto.candidates(),
         () -> new LlmInvocationException("Gemini response has no candidates: %s".formatted(json)));
-    GeminiCandidate first = Validate.notNull(candidates.get(0),
-        () -> new LlmInvocationException("Gemini first candidate is null: %s".formatted(json)));
-    Validate.isTrue(
-        first.finishReason() == null || !"SAFETY".equalsIgnoreCase(first.finishReason()),
-        () -> new LlmInvocationException("Gemini blocked response for safety: %s".formatted(json)));
-    GeminiContent content = Validate.notNull(first.content(),
-        () -> new LlmInvocationException("Gemini candidate content is null: %s".formatted(json)));
-    List<GeminiPart> parts = Validate.notEmpty(content.parts(),
-        () -> new LlmInvocationException("Gemini candidate parts are empty: %s".formatted(json)));
-    GeminiPart part = Validate.notNull(parts.get(0),
-        () -> new LlmInvocationException("Gemini first part is null: %s".formatted(json)));
-    String text = Validate.notBlank(part.text(),
+    List<String> textSegments = new ArrayList<>();
+    for (GeminiCandidate candidate : candidates) {
+      Validate.notNull(candidate,
+          () -> new LlmInvocationException("Gemini candidate is null: %s".formatted(json)));
+      Validate.isTrue(
+          candidate.finishReason() == null || !"SAFETY".equalsIgnoreCase(candidate.finishReason()),
+          () -> new LlmInvocationException("Gemini blocked response for safety: %s".formatted(json)));
+      GeminiContent content = Validate.notNull(candidate.content(),
+          () -> new LlmInvocationException("Gemini candidate content is null: %s".formatted(json)));
+      List<GeminiPart> parts = Validate.notNull(content.parts(),
+          () -> new LlmInvocationException("Gemini candidate parts are null: %s".formatted(json)));
+      for (GeminiPart part : parts) {
+        if (part == null) {
+          continue;
+        }
+        if (StringUtils.isNotBlank(part.text())) {
+          textSegments.add(part.text().strip());
+        }
+      }
+    }
+    String joined = String.join("\n", textSegments);
+    String text = Validate.notBlank(joined,
         () -> new LlmInvocationException("Gemini response text is blank: %s".formatted(json)));
     return stripCodeFence(text.strip());
   }
 
-  private String formatError(GeminiErrorResponse error) {
+  /**
+   * Formats a Gemini API {@code error} object for exception messages without echoing raw JSON.
+   */
+  private static String formatGeminiError(GeminiErrorResponse error) {
     if (error == null) {
       return "unknown error";
     }
-
-    String message = StringUtils.defaultIfBlank(error.message(), "no message");
-    String status = StringUtils.defaultIfBlank(error.status(), "no status");
-
-    return "status=%s, message=%s".formatted(status, message);
+    StringJoiner joiner = new StringJoiner(", ");
+    if (error.code() != null) {
+      joiner.add("code=" + error.code());
+    }
+    if (StringUtils.isNotBlank(error.status())) {
+      joiner.add("status=" + error.status().strip());
+    }
+    if (StringUtils.isNotBlank(error.message())) {
+      joiner.add("message=" + error.message().strip());
+    }
+    if (joiner.length() == 0) {
+      return "unspecified provider error";
+    }
+    return joiner.toString();
   }
 
   private String generateRequestBody(LlmExecutionRequest request) {

@@ -57,7 +57,7 @@ class GeminiLlmClientTest {
     @Test
     void should_throw_when_api_key_blank() {
       ObjectMapper mapper = new ObjectMapper();
-      var config = FixedGeminiConfiguration.builder()
+      GeminiConfiguration config = FixedGeminiConfiguration.builder()
           .apiKey("  ")
           .build();
 
@@ -69,7 +69,7 @@ class GeminiLlmClientTest {
     @Test
     void should_throw_when_base_url_blank() {
       ObjectMapper mapper = new ObjectMapper();
-      var config = FixedGeminiConfiguration.builder()
+      GeminiConfiguration config = FixedGeminiConfiguration.builder()
           .baseUrl("")
           .build();
 
@@ -117,7 +117,7 @@ class GeminiLlmClientTest {
     }
 
     @Test
-    void should_ignore_error_when_message_is_blank_and_candidates_present() throws IOException {
+    void should_throw_when_error_present_even_if_message_blank_and_candidates_present() {
       ObjectMapper mapper = new ObjectMapper();
       GeminiLlmClient client = new GeminiLlmClient(mapper, FixedGeminiConfiguration.defaults());
       String json = """
@@ -129,7 +129,29 @@ class GeminiLlmClientTest {
           }
           """;
 
-      assertThat(client.validateAndExtractResponse(json)).isEqualTo("ok");
+      assertThatThrownBy(() -> client.validateAndExtractResponse(json))
+          .isInstanceOf(LlmInvocationException.class)
+          .hasMessageContaining("gemini error")
+          .hasMessageContaining("unspecified provider error");
+    }
+
+    @Test
+    void should_throw_when_error_object_has_no_message_code_or_status() {
+      ObjectMapper mapper = new ObjectMapper();
+      GeminiLlmClient client = new GeminiLlmClient(mapper, FixedGeminiConfiguration.defaults());
+      String json = """
+          {
+            "error": {},
+            "candidates": [
+              { "finishReason": "STOP", "content": { "parts": [ { "text": "ignored" } ] } }
+            ]
+          }
+          """;
+
+      assertThatThrownBy(() -> client.validateAndExtractResponse(json))
+          .isInstanceOf(LlmInvocationException.class)
+          .hasMessageContaining("gemini error")
+          .hasMessageContaining("unspecified provider error");
     }
 
     @Test
@@ -221,7 +243,7 @@ class GeminiLlmClientTest {
 
       assertThatThrownBy(() -> client.validateAndExtractResponse(json))
           .isInstanceOf(LlmInvocationException.class)
-          .hasMessageContaining("parts are empty");
+          .hasMessageContaining("text is blank");
     }
 
     @Test
@@ -242,7 +264,7 @@ class GeminiLlmClientTest {
     }
 
     @Test
-    void should_succeed_when_error_present_but_message_null_and_candidates_valid() throws IOException {
+    void should_throw_when_error_present_but_message_null() {
       ObjectMapper mapper = new ObjectMapper();
       GeminiLlmClient client = new GeminiLlmClient(mapper, FixedGeminiConfiguration.defaults());
       String json = """
@@ -254,7 +276,10 @@ class GeminiLlmClientTest {
           }
           """;
 
-      assertThat(client.validateAndExtractResponse(json)).isEqualTo("ok");
+      assertThatThrownBy(() -> client.validateAndExtractResponse(json))
+          .isInstanceOf(LlmInvocationException.class)
+          .hasMessageContaining("gemini error")
+          .hasMessageContaining("code=400");
     }
 
     @Test
@@ -313,6 +338,47 @@ class GeminiLlmClientTest {
           .isInstanceOf(LlmInvocationException.class)
           .hasMessageContaining("text is blank");
     }
+
+    @Test
+    void should_join_non_blank_text_parts_in_order_with_newlines() throws IOException {
+      ObjectMapper mapper = new ObjectMapper();
+      GeminiLlmClient client = new GeminiLlmClient(mapper, FixedGeminiConfiguration.defaults());
+      String json = """
+          {
+            "candidates": [
+              {
+                "finishReason": "STOP",
+                "content": {
+                  "parts": [
+                    { "text": "first" },
+                    { "text": "" },
+                    { "text": null },
+                    { "text": "  second  " }
+                  ]
+                }
+              }
+            ]
+          }
+          """;
+
+      assertThat(client.validateAndExtractResponse(json)).isEqualTo("first\nsecond");
+    }
+
+    @Test
+    void should_collect_text_across_multiple_candidates() throws IOException {
+      ObjectMapper mapper = new ObjectMapper();
+      GeminiLlmClient client = new GeminiLlmClient(mapper, FixedGeminiConfiguration.defaults());
+      String json = """
+          {
+            "candidates": [
+              { "finishReason": "STOP", "content": { "parts": [ { "text": "a" } ] } },
+              { "finishReason": "STOP", "content": { "parts": [ { "text": "b" } ] } }
+            ]
+          }
+          """;
+
+      assertThat(client.validateAndExtractResponse(json)).isEqualTo("a\nb");
+    }
   }
 
   @Nested
@@ -321,7 +387,7 @@ class GeminiLlmClientTest {
     @Test
     void should_target_generate_content_with_model_and_encoded_api_key() {
       ObjectMapper mapper = new ObjectMapper();
-      var config = FixedGeminiConfiguration.builder()
+      GeminiConfiguration config = FixedGeminiConfiguration.builder()
           .baseUrl("https://generativelanguage.googleapis.com/")
           .apiKey("k+1")
           .defaultModel("gemini-pro")
@@ -362,7 +428,7 @@ class GeminiLlmClientTest {
           new LlmExecutionRequest("gemini", "m", "You are helpful.", "Hello.");
 
       String body = collectUtf8RequestBody(client.buildHttpRequest(request));
-      var expected = new GeminiRequest(
+      GeminiRequest expected = new GeminiRequest(
           new GeminiSystemInstruction(List.of(new GeminiPart("You are helpful."))),
           List.of(new GeminiContent(InputRole.USER, List.of(new GeminiPart("Hello.")))));
 
@@ -399,8 +465,8 @@ class GeminiLlmClientTest {
   private static String collectUtf8RequestBody(HttpRequest request) throws Exception {
     assertThat(request.bodyPublisher()).isPresent();
     HttpRequest.BodyPublisher publisher = request.bodyPublisher().orElseThrow();
-    var out = new ByteArrayOutputStream();
-    var latch = new CountDownLatch(1);
+    ByteArrayOutputStream out = new ByteArrayOutputStream();
+    CountDownLatch latch = new CountDownLatch(1);
     publisher.subscribe(new Flow.Subscriber<>() {
       private Flow.Subscription subscription;
 

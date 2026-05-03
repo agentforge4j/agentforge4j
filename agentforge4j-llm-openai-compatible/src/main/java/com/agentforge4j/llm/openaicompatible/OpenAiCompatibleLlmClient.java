@@ -49,7 +49,8 @@ public final class OpenAiCompatibleLlmClient extends AbstractHttpLlmClient {
     super(config);
     this.apiKey = Validate.notBlank(config.getApiKey(),
         "openai-compatible apiKey must be provided");
-    this.requestTimeout = config.getRequestTimeout();
+    this.requestTimeout = Validate.notNull(config.getRequestTimeout(),
+        "openai-compatible request timeout must be provided");
     this.objectMapper = Validate.notNull(objectMapper,
         "openai-compatible ObjectMapper must not be null");
     this.responsesUri = resolveResponsesUri(config);

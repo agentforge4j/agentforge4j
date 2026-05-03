@@ -112,7 +112,7 @@ public abstract class AbstractHttpLlmClient implements LlmClient {
    * @param input the potentially fence-marked string
    * @return the input with fences removed, or the input unchanged
    */
-  protected static String stripCodeFence(String input) {
+  public static String stripCodeFence(String input) {
     if (input == null || !input.startsWith("```")) {
       return input;
     }

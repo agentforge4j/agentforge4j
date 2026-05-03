@@ -46,7 +46,8 @@ public final class OpenAiLlmClient extends AbstractHttpLlmClient {
   public OpenAiLlmClient(ObjectMapper objectMapper, OpenAiConfiguration config) {
     super(config);
     this.apiKey = Validate.notBlank(config.getApiKey(), "OpenAI apiKey must be provided");
-    this.requestTimeout = config.getRequestTimeout();
+    this.requestTimeout = Validate.notNull(config.getRequestTimeout(),
+        "OpenAI request timeout must be provided");
     this.objectMapper = Validate.notNull(objectMapper, "OpenAi ObjectMapper must not be null");
     this.openAiResponsesUri = URI.create(
         Validate.notBlank(config.getUrl(), "OpenAI URL must be provided"));
