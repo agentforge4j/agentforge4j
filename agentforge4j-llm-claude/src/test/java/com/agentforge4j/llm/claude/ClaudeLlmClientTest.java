@@ -348,7 +348,7 @@ class ClaudeLlmClientTest {
       String raw = requestBodyToString(client.buildHttpRequest(request));
       JsonNode root = new ObjectMapper().readTree(raw);
 
-      assertThat(root.path("model").asText()).isEqualTo("claude-3-opus-20240229");
+      assertThat(root.path("model").asText()).isEqualTo("other-model");
     }
 
     @Test

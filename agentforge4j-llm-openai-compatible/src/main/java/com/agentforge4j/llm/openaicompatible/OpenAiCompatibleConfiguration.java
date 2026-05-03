@@ -20,8 +20,18 @@ public interface OpenAiCompatibleConfiguration extends LlmClientConfiguration {
    */
   String getBaseUrl();
 
+  /**
+   * Returns the API key for authentication.
+   *
+   * @return the API key
+   */
   String getApiKey();
 
+  /**
+   * Returns the request timeout for API calls.
+   *
+   * @return the timeout duration
+   */
   Duration getRequestTimeout();
 
   /**

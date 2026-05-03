@@ -333,7 +333,7 @@ class ClaudeLlmClientIT {
 
       client.execute(request);
 
-      assertThat(captured.get()).contains("\"model\":\"default-model\"");
+      assertThat(captured.get()).contains("\"model\":\"explicit-model\"");
     }
   }
 }

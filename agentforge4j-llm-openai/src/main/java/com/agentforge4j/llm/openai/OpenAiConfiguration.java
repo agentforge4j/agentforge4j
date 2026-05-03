@@ -4,10 +4,25 @@ import com.agentforge4j.llm.LlmClientConfiguration;
 
 import java.time.Duration;
 
+/**
+ * Configuration for OpenAI LLM client.
+ * <p>
+ * Provides the API key, request timeout, and other settings needed to connect to OpenAI's API.
+ */
 public interface OpenAiConfiguration extends LlmClientConfiguration {
 
+  /**
+   * Returns the OpenAI API key.
+   *
+   * @return the API key for authentication
+   */
   String getApiKey();
 
+  /**
+   * Returns the request timeout for OpenAI API calls.
+   *
+   * @return the timeout duration
+   */
   Duration getRequestTimeout();
 
   @Override
@@ -15,6 +30,11 @@ public interface OpenAiConfiguration extends LlmClientConfiguration {
     return "openai";
   }
 
+  /**
+   * Returns the OpenAI API URL.
+   *
+   * @return the API endpoint URL, defaults to OpenAI's responses API
+   */
   default String getUrl() {
     return "https://api.openai.com/v1/responses";
   }

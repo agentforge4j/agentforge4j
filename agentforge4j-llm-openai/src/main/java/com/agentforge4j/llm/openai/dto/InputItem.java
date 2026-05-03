@@ -10,8 +10,4 @@ public record InputItem(
     InputRole role,
     String content
 ) {
-
-  public String getRole() {
-    return role.toString();
-  }
 }

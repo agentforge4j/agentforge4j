@@ -2,9 +2,9 @@ package com.agentforge4j.llm.openaicompatible;
 
 import com.agentforge4j.llm.LlmExecutionRequest;
 import com.agentforge4j.llm.LlmInvocationException;
-import com.agentforge4j.llm.openai.dto.InputItem;
-import com.agentforge4j.llm.openai.dto.InputRole;
-import com.agentforge4j.llm.openai.dto.OpenAiResponsesRequestDto;
+import com.agentforge4j.llm.openaicompatible.dto.InputRole;
+import com.agentforge4j.llm.openaicompatible.dto.OpenAiCompatibleInputItem;
+import com.agentforge4j.llm.openaicompatible.dto.OpenAiCompatibleResponsesRequest;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.ByteArrayOutputStream;
@@ -293,11 +293,11 @@ class OpenAiCompatibleLlmClientTest {
           LlmExecutionRequest.withDefaultModel("openai-compatible", "Be brief.", "Ping");
 
       String body = collectUtf8RequestBody(client.buildHttpRequest(request));
-      var expected = new OpenAiResponsesRequestDto(
+      var expected = new OpenAiCompatibleResponsesRequest(
           "ada-model",
           List.of(
-              new InputItem(InputRole.SYSTEM, "Be brief."),
-              new InputItem(InputRole.USER, "Ping")));
+              new OpenAiCompatibleInputItem(InputRole.SYSTEM, "Be brief."),
+              new OpenAiCompatibleInputItem(InputRole.USER, "Ping")));
 
       assertThat(mapper.readTree(body)).isEqualTo(mapper.valueToTree(expected));
     }

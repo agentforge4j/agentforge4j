@@ -23,6 +23,11 @@ import java.util.Optional;
 import lombok.ToString;
 import org.apache.commons.lang3.StringUtils;
 
+/**
+ * OpenAI LLM client implementation using the Responses API.
+ * <p>
+ * Sends requests to OpenAI's API and extracts the assistant's text response.
+ */
 @ToString(exclude = {"apiKey", "objectMapper"}, callSuper = true)
 public final class OpenAiLlmClient extends AbstractHttpLlmClient {
 
@@ -31,6 +36,13 @@ public final class OpenAiLlmClient extends AbstractHttpLlmClient {
   private final URI openAiResponsesUri;
   private final Duration requestTimeout;
 
+  /**
+   * Creates an OpenAI LLM client with the provided configuration.
+   *
+   * @param objectMapper the JSON mapper for serialization and deserialization
+   * @param config       the OpenAI-specific configuration
+   * @throws IllegalArgumentException if required configuration values are missing
+   */
   public OpenAiLlmClient(ObjectMapper objectMapper, OpenAiConfiguration config) {
     super(config);
     this.apiKey = Validate.notBlank(config.getApiKey(), "OpenAI apiKey must be provided");
@@ -40,17 +52,30 @@ public final class OpenAiLlmClient extends AbstractHttpLlmClient {
         Validate.notBlank(config.getUrl(), "OpenAI URL must be provided"));
   }
 
+  /**
+   * Validates the OpenAI response and extracts the assistant's text output.
+   *
+   * @param json the raw JSON response from OpenAI
+   * @return the extracted assistant text
+   * @throws IOException if the response is invalid or cannot be parsed
+   */
   @Override
   protected String validateAndExtractResponse(String json) throws IOException {
-    Validate.notBlank(json, () -> new LlmInvocationException("LLM client json must not be null"));
+    Validate.notBlank(json, () -> new LlmInvocationException("LLM client json must not be blank"));
     OpenAiResponsesResponseDto dto = objectMapper.readValue(json, OpenAiResponsesResponseDto.class);
     validateApiError(dto, json);
-    return extractAssistantText(dto)
+    return stripCodeFence(extractAssistantText(dto)
         .orElseThrow(() -> new LlmInvocationException(
             "OpenAI response missing assistant output_text in message output item: %s".formatted(
-                json)));
+                json))).strip());
   }
 
+  /**
+   * Builds the HTTP request for the OpenAI Responses API.
+   *
+   * @param request the LLM execution request
+   * @return the configured HTTP request
+   */
   @Override
   protected HttpRequest buildHttpRequest(LlmExecutionRequest request) {
     return HttpRequest.newBuilder(openAiResponsesUri)
@@ -70,7 +95,7 @@ public final class OpenAiLlmClient extends AbstractHttpLlmClient {
     try {
       return objectMapper.writeValueAsString(body);
     } catch (Exception e) {
-      throw new LlmInvocationException("Failed to serialize OpenAI request", e);
+      throw new LlmInvocationException("Failed to serialize OpenAI request for model: %s".formatted(getDefaultModel()), e);
     }
   }
 

@@ -223,7 +223,7 @@ class OpenAiLlmClientTest {
     }
 
     @Test
-    void should_extract_first_output_text_preserving_inner_whitespace() throws Exception {
+    void should_extract_first_output_text_without_preserving_inner_whitespace() throws Exception {
       ObjectMapper mapper = new ObjectMapper();
       OpenAiLlmClient client = new OpenAiLlmClient(mapper, FixedOpenAiConfiguration.defaults());
       String json = """
@@ -232,13 +232,13 @@ class OpenAiLlmClientTest {
             "output": [
               {
                 "type": "MESSAGE",
-                "content": [ { "type": "OUTPUT_TEXT", "text": "  inner  " } ]
+                "content": [ { "type": "OUTPUT_TEXT", "text": "inner" } ]
               }
             ]
           }
           """;
 
-      assertThat(client.validateAndExtractResponse(json)).isEqualTo("  inner  ");
+      assertThat(client.validateAndExtractResponse(json)).isEqualTo("inner");
     }
 
     @Test

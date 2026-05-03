@@ -3,12 +3,11 @@ package com.agentforge4j.llm.azureopenai;
 import com.agentforge4j.llm.AbstractHttpLlmClient;
 import com.agentforge4j.llm.LlmExecutionRequest;
 import com.agentforge4j.llm.LlmInvocationException;
-import com.agentforge4j.llm.openai.dto.InputRole;
-import com.agentforge4j.llm.openai.dto.OpenAiChatCompletionChoiceDto;
-import com.agentforge4j.llm.openai.dto.OpenAiChatCompletionMessageDto;
-import com.agentforge4j.llm.openai.dto.OpenAiChatCompletionMessageResponseDto;
-import com.agentforge4j.llm.openai.dto.OpenAiChatCompletionRequestDto;
-import com.agentforge4j.llm.openai.dto.OpenAiChatCompletionResponseDto;
+import com.agentforge4j.llm.azureopenai.dto.AzureChatCompletionChoice;
+import com.agentforge4j.llm.azureopenai.dto.AzureChatCompletionMessage;
+import com.agentforge4j.llm.azureopenai.dto.AzureChatCompletionRequest;
+import com.agentforge4j.llm.azureopenai.dto.AzureChatCompletionResponse;
+import com.agentforge4j.llm.azureopenai.dto.InputRole;
 import com.agentforge4j.util.Validate;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
@@ -21,6 +20,11 @@ import java.util.List;
 import lombok.ToString;
 import org.apache.commons.lang3.StringUtils;
 
+/**
+ * Azure OpenAI LLM client implementation.
+ * <p>
+ * Sends requests to Azure OpenAI using the chat completions API.
+ */
 @ToString(exclude = {"apiKey", "objectMapper"}, callSuper = true)
 public final class AzureOpenAiLlmClient extends AbstractHttpLlmClient {
 
@@ -30,6 +34,13 @@ public final class AzureOpenAiLlmClient extends AbstractHttpLlmClient {
   private final URI chatCompletionsUri;
   private final Duration requestTimeout;
 
+  /**
+   * Creates an Azure OpenAI LLM client with the provided configuration.
+   *
+   * @param objectMapper the JSON mapper for serialization and deserialization
+   * @param config       the Azure OpenAI-specific configuration
+   * @throws IllegalArgumentException if required configuration values are missing
+   */
   public AzureOpenAiLlmClient(ObjectMapper objectMapper, AzureOpenAiConfiguration config) {
     super(config);
     Validate.notBlank(config.getEndpoint(), "Azure OpenAI endpoint must be provided");
@@ -53,6 +64,12 @@ public final class AzureOpenAiLlmClient extends AbstractHttpLlmClient {
     return URI.create(url);
   }
 
+  /**
+   * Builds the HTTP request for the Azure OpenAI chat completions API.
+   *
+   * @param request the LLM execution request
+   * @return the configured HTTP request
+   */
   @Override
   protected HttpRequest buildHttpRequest(LlmExecutionRequest request) {
     return HttpRequest.newBuilder(chatCompletionsUri)
@@ -63,15 +80,22 @@ public final class AzureOpenAiLlmClient extends AbstractHttpLlmClient {
         .build();
   }
 
+  /**
+   * Validates the Azure OpenAI response and extracts the assistant's text output.
+   *
+   * @param json the raw JSON response from Azure OpenAI
+   * @return the extracted assistant text
+   * @throws IOException if the response is invalid or cannot be parsed
+   */
   @Override
   protected String validateAndExtractResponse(String json) throws IOException {
-    Validate.notBlank(json, () -> new LlmInvocationException("LLM client json must not be null"));
-    OpenAiChatCompletionResponseDto dto = objectMapper.readValue(json,
-        OpenAiChatCompletionResponseDto.class);
+    Validate.notBlank(json, () -> new LlmInvocationException("LLM client json must not be blank"));
+    AzureChatCompletionResponse dto = objectMapper.readValue(json,
+        AzureChatCompletionResponse.class);
     validateResponse(json, dto);
 
-    OpenAiChatCompletionChoiceDto firstChoice = retrieveFirstChoice(json, dto);
-    OpenAiChatCompletionMessageResponseDto message = firstChoice.message();
+    AzureChatCompletionChoice firstChoice = retrieveFirstChoice(json, dto);
+    AzureChatCompletionMessage message = firstChoice.message();
     String content = message == null ? null : message.content();
     Validate.notBlank(content, () -> new
         LlmInvocationException(
@@ -80,9 +104,9 @@ public final class AzureOpenAiLlmClient extends AbstractHttpLlmClient {
     return stripCodeFence(content.strip());
   }
 
-  private OpenAiChatCompletionChoiceDto retrieveFirstChoice(String json,
-      OpenAiChatCompletionResponseDto dto) {
-    List<OpenAiChatCompletionChoiceDto> choices = Validate.notEmpty(dto.choices(), () -> new
+  private AzureChatCompletionChoice retrieveFirstChoice(String json,
+      AzureChatCompletionResponse dto) {
+    List<AzureChatCompletionChoice> choices = Validate.notEmpty(dto.choices(), () -> new
         LlmInvocationException(
         "azure-openai response choices are empty for deployment %s: %s".formatted(deploymentName,
             json)));
@@ -91,7 +115,7 @@ public final class AzureOpenAiLlmClient extends AbstractHttpLlmClient {
         "azure-openai first choice is null for deployment %s: %s".formatted(deploymentName, json)));
   }
 
-  private static void validateResponse(String json, OpenAiChatCompletionResponseDto dto) {
+  private static void validateResponse(String json, AzureChatCompletionResponse dto) {
     Validate.notNull(dto,
         () -> new LlmInvocationException(
             "azure-openai response deserialized to null: %s".formatted(json)));
@@ -101,11 +125,11 @@ public final class AzureOpenAiLlmClient extends AbstractHttpLlmClient {
   }
 
   private String generateRequestBody(LlmExecutionRequest request) {
-    OpenAiChatCompletionRequestDto body = new OpenAiChatCompletionRequestDto(
+    AzureChatCompletionRequest body = new AzureChatCompletionRequest(
         deploymentName,
         List.of(
-            new OpenAiChatCompletionMessageDto(InputRole.SYSTEM, request.systemPrompt()),
-            new OpenAiChatCompletionMessageDto(InputRole.USER, request.userInput())));
+            new AzureChatCompletionMessage(InputRole.SYSTEM, request.systemPrompt()),
+            new AzureChatCompletionMessage(InputRole.USER, request.userInput())));
     try {
       return objectMapper.writeValueAsString(body);
     } catch (Exception e) {

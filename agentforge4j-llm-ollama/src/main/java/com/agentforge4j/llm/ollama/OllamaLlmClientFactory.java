@@ -6,6 +6,12 @@ import com.agentforge4j.llm.LlmClientFactory;
 import com.agentforge4j.util.Validate;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
+/**
+ * Factory for creating Ollama {@link LlmClient} instances.
+ * <p>
+ * Requires an {@link OllamaConfiguration} instance; any other configuration type will raise
+ * an {@link IllegalArgumentException}.
+ */
 public final class OllamaLlmClientFactory implements LlmClientFactory {
 
   @Override

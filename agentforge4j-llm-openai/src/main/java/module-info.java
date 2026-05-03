@@ -9,7 +9,8 @@ module agentforge4j.llm.openai {
   requires java.net.http;
   requires static lombok;
   requires org.apache.commons.lang3;
-  exports com.agentforge4j.llm.openai.dto;
+  opens com.agentforge4j.llm.openai.dto to com.fasterxml.jackson.databind;
+  uses LlmClientFactory;
   provides LlmClientFactory
       with OpenAiLlmClientFactory;
 }
