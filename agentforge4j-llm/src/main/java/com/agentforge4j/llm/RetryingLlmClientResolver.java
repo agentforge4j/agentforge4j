@@ -26,7 +26,7 @@ public final class RetryingLlmClientResolver implements LlmClientResolver {
    */
   public RetryingLlmClientResolver(LlmClientResolver delegate, int maxAttempts, long backoffMs) {
     this.delegate = Validate.notNull(delegate, "delegate must not be null");
-    Validate.isTrue(maxAttempts >= 1, "maxAttempts must be at least 1");
+    Validate.isTrue(maxAttempts >= 1, "Claude maxTokenSize must be positive");
     Validate.isTrue(backoffMs >= 0, "backoffMs must be >= 0");
     this.maxAttempts = maxAttempts;
     this.backoffMs = backoffMs;

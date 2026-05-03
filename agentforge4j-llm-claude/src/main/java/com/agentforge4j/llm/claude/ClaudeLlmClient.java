@@ -19,6 +19,11 @@ import java.util.List;
 import lombok.ToString;
 import org.apache.commons.lang3.StringUtils;
 
+/**
+ * Anthropic Claude LLM client implementation.
+ * <p>
+ * Sends requests to Claude's Messages API and extracts the assistant's text response.
+ */
 @ToString(exclude = {"apiKey", "objectMapper"}, callSuper = true)
 public final class ClaudeLlmClient extends AbstractHttpLlmClient {
 
@@ -29,6 +34,13 @@ public final class ClaudeLlmClient extends AbstractHttpLlmClient {
   private final Duration requestTimeout;
   private final int maxTokenSize;
 
+  /**
+   * Creates a Claude LLM client with the provided configuration.
+   *
+   * @param objectMapper the JSON mapper for serialization and deserialization
+   * @param config       the Claude-specific configuration
+   * @throws IllegalArgumentException if required configuration values are missing
+   */
   public ClaudeLlmClient(ObjectMapper objectMapper, ClaudeConfiguration config) {
     super(config);
     this.apiKey = Validate.notBlank(config.getApiKey(), "Claude apiKey must be provided");
@@ -38,10 +50,16 @@ public final class ClaudeLlmClient extends AbstractHttpLlmClient {
     this.objectMapper = Validate.notNull(objectMapper, "Claude ObjectMapper must not be null");
     this.messagesUri = URI.create(
         Validate.notBlank(config.getUrl(), "Claude URL must be provided"));
-    this.maxTokenSize = (int) Validate.isGreaterThanZero(config.getMaxTokenSize(),
-        "Claude maxTokenSize must be positive");
+    this.maxTokenSize = Validate.isGreaterThanZero(config.getMaxTokenSize(),
+        "Claude maxTokenSize must be positive").intValue();
   }
 
+  /**
+   * Builds the HTTP request for the Claude Messages API.
+   *
+   * @param request the LLM execution request
+   * @return the configured HTTP request
+   */
   @Override
   protected HttpRequest buildHttpRequest(LlmExecutionRequest request) {
     return HttpRequest.newBuilder(messagesUri)
@@ -53,6 +71,13 @@ public final class ClaudeLlmClient extends AbstractHttpLlmClient {
         .build();
   }
 
+  /**
+   * Validates the Claude response and extracts the assistant's text output.
+   *
+   * @param json the raw JSON response from Claude
+   * @return the extracted assistant text
+   * @throws IOException if the response is invalid or cannot be parsed
+   */
   @Override
   protected String validateAndExtractResponse(String json) throws IOException {
     Validate.notBlank(json, () -> new LlmInvocationException("LLM client json must not be blank"));

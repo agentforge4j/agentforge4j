@@ -7,9 +7,7 @@ import com.agentforge4j.llm.LlmClient;
 import com.agentforge4j.llm.LlmClientConfiguration;
 import com.agentforge4j.llm.LlmExecutionRequest;
 import com.agentforge4j.llm.LlmInvocationException;
-import com.agentforge4j.llm.openai.dto.InputRole;
-import com.agentforge4j.llm.openai.dto.OpenAiChatCompletionMessageDto;
-import com.agentforge4j.llm.openai.dto.OpenAiChatCompletionRequestDto;
+import com.fasterxml.jackson.databind.JsonMappingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.exc.UnrecognizedPropertyException;
 import com.fasterxml.jackson.databind.node.ArrayNode;
@@ -18,7 +16,6 @@ import java.io.ByteArrayOutputStream;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
-import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Flow;
 import java.util.concurrent.TimeUnit;
@@ -241,6 +238,23 @@ class MistralLlmClientTest {
     }
 
     @Test
+    void should_extract_content_when_usage_block_present() throws Exception {
+      ObjectMapper mapper = new ObjectMapper();
+      MistralLlmClient client = new MistralLlmClient(mapper, FixedMistralConfiguration.defaults());
+      String json = """
+          {
+            "error": null,
+            "choices": [
+              { "message": { "role": "assistant", "content": "with usage" } }
+            ],
+            "usage": { "prompt_tokens": 1, "completion_tokens": 2, "total_tokens": 3 }
+          }
+          """;
+
+      assertThat(client.validateAndExtractResponse(json)).isEqualTo("with usage");
+    }
+
+    @Test
     void should_extract_content_and_strip_surrounding_whitespace() throws Exception {
       ObjectMapper mapper = new ObjectMapper();
       MistralLlmClient client = new MistralLlmClient(mapper, FixedMistralConfiguration.defaults());
@@ -263,6 +277,15 @@ class MistralLlmClientTest {
 
       assertThatThrownBy(() -> client.validateAndExtractResponse("{\"unexpected\":true}"))
           .isInstanceOf(UnrecognizedPropertyException.class);
+    }
+
+    @Test
+    void should_propagate_jackson_failure_when_root_json_is_string() {
+      ObjectMapper mapper = new ObjectMapper();
+      MistralLlmClient client = new MistralLlmClient(mapper, FixedMistralConfiguration.defaults());
+
+      assertThatThrownBy(() -> client.validateAndExtractResponse("\"not-an-object\""))
+          .isInstanceOf(JsonMappingException.class);
     }
 
     @Test
@@ -346,7 +369,7 @@ class MistralLlmClientTest {
     }
 
     @Test
-    void should_serialize_openai_style_body_with_default_model_when_request_model_null()
+    void should_serialize_chat_completion_body_with_default_model_when_request_model_null()
         throws Exception {
       ObjectMapper mapper = new ObjectMapper();
       var config = FixedMistralConfiguration.builder()
@@ -357,13 +380,17 @@ class MistralLlmClientTest {
           LlmExecutionRequest.withDefaultModel("mistral", "Be brief.", "Ping");
 
       String body = collectUtf8RequestBody(client.buildHttpRequest(request));
-      var expected = new OpenAiChatCompletionRequestDto(
-          "mistral-large-latest",
-          List.of(
-              new OpenAiChatCompletionMessageDto(InputRole.SYSTEM, "Be brief."),
-              new OpenAiChatCompletionMessageDto(InputRole.USER, "Ping")));
+      var root = mapper.createObjectNode();
+      root.put("model", "mistral-large-latest");
+      var messages = root.putArray("messages");
+      var sys = messages.addObject();
+      sys.put("role", "system");
+      sys.put("content", "Be brief.");
+      var usr = messages.addObject();
+      usr.put("role", "user");
+      usr.put("content", "Ping");
 
-      assertThat(mapper.readTree(body)).isEqualTo(mapper.valueToTree(expected));
+      assertThat(mapper.readTree(body)).isEqualTo(root);
     }
 
     @Test

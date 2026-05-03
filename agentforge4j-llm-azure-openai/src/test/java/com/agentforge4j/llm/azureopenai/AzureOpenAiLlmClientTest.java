@@ -2,9 +2,6 @@ package com.agentforge4j.llm.azureopenai;
 
 import com.agentforge4j.llm.LlmExecutionRequest;
 import com.agentforge4j.llm.LlmInvocationException;
-import com.agentforge4j.llm.openai.dto.InputRole;
-import com.agentforge4j.llm.openai.dto.OpenAiChatCompletionMessageDto;
-import com.agentforge4j.llm.openai.dto.OpenAiChatCompletionRequestDto;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.exc.UnrecognizedPropertyException;
 import com.fasterxml.jackson.databind.node.ArrayNode;
@@ -15,7 +12,6 @@ import java.net.http.HttpRequest;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
-import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Flow;
 import java.util.concurrent.TimeUnit;
@@ -394,7 +390,7 @@ class AzureOpenAiLlmClientTest {
     }
 
     @Test
-    void should_serialize_openai_style_body_using_deployment_as_model_field() throws Exception {
+    void should_serialize_chat_completion_body_using_deployment_as_model_field() throws Exception {
       ObjectMapper mapper = new ObjectMapper();
       var config = FixedAzureOpenAiConfiguration.builder()
           .deploymentName("ada-deployment")
@@ -404,13 +400,17 @@ class AzureOpenAiLlmClientTest {
           LlmExecutionRequest.withDefaultModel("azure-openai", "Be brief.", "Ping");
 
       String body = collectUtf8RequestBody(client.buildHttpRequest(request));
-      var expected = new OpenAiChatCompletionRequestDto(
-          "ada-deployment",
-          List.of(
-              new OpenAiChatCompletionMessageDto(InputRole.SYSTEM, "Be brief."),
-              new OpenAiChatCompletionMessageDto(InputRole.USER, "Ping")));
+      var root = mapper.createObjectNode();
+      root.put("model", "ada-deployment");
+      var messages = root.putArray("messages");
+      var sys = messages.addObject();
+      sys.put("role", "system");
+      sys.put("content", "Be brief.");
+      var usr = messages.addObject();
+      usr.put("role", "user");
+      usr.put("content", "Ping");
 
-      assertThat(mapper.readTree(body)).isEqualTo(mapper.valueToTree(expected));
+      assertThat(mapper.readTree(body)).isEqualTo(root);
     }
   }
 

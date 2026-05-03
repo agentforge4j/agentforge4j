@@ -126,7 +126,7 @@ class AzureOpenAiLlmClientIT {
 
       assertThatThrownBy(() -> client.execute(request))
           .isInstanceOf(LlmInvocationException.class)
-          .hasMessageContaining("json must not be null");
+          .hasMessageContaining("LLM client json must not be blank");
     }
   }
 

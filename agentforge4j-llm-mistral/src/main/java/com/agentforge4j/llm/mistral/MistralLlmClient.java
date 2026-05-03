@@ -3,12 +3,11 @@ package com.agentforge4j.llm.mistral;
 import com.agentforge4j.llm.AbstractHttpLlmClient;
 import com.agentforge4j.llm.LlmExecutionRequest;
 import com.agentforge4j.llm.LlmInvocationException;
-import com.agentforge4j.llm.openai.dto.InputRole;
-import com.agentforge4j.llm.openai.dto.OpenAiChatCompletionChoiceDto;
-import com.agentforge4j.llm.openai.dto.OpenAiChatCompletionMessageDto;
-import com.agentforge4j.llm.openai.dto.OpenAiChatCompletionMessageResponseDto;
-import com.agentforge4j.llm.openai.dto.OpenAiChatCompletionRequestDto;
-import com.agentforge4j.llm.openai.dto.OpenAiChatCompletionResponseDto;
+import com.agentforge4j.llm.mistral.dto.InputRole;
+import com.agentforge4j.llm.mistral.dto.MistralChatRequest;
+import com.agentforge4j.llm.mistral.dto.MistralChatResponse;
+import com.agentforge4j.llm.mistral.dto.MistralChoice;
+import com.agentforge4j.llm.mistral.dto.MistralMessage;
 import com.agentforge4j.util.Validate;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
@@ -20,10 +19,7 @@ import lombok.ToString;
 import org.apache.commons.lang3.StringUtils;
 
 /**
- * Mistral AI LLM client using the OpenAI-compatible API.
- * <p>
- * Uses the same request/response model as the OpenAI provider via
- * {@link com.agentforge4j.llm.openai.dto} classes.
+ * Mistral AI LLM client using the OpenAI-compatible chat completions API.
  */
 @ToString(exclude = {"apiKey", "objectMapper"}, callSuper = true)
 public final class MistralLlmClient extends AbstractHttpLlmClient {
@@ -52,6 +48,12 @@ public final class MistralLlmClient extends AbstractHttpLlmClient {
     this.chatCompletionsUri = URI.create(root + "/v1/chat/completions");
   }
 
+  /**
+   * Builds the HTTP request for the Mistral chat completions API.
+   *
+   * @param request the LLM execution request
+   * @return the configured HTTP request
+   */
   @Override
   protected HttpRequest buildHttpRequest(LlmExecutionRequest request) {
     return HttpRequest.newBuilder(chatCompletionsUri)
@@ -62,42 +64,47 @@ public final class MistralLlmClient extends AbstractHttpLlmClient {
         .build();
   }
 
+  /**
+   * Validates the Mistral response and extracts the assistant's text output.
+   *
+   * @param json the raw JSON response from Mistral
+   * @return the extracted assistant text
+   * @throws IOException if the response is invalid or cannot be parsed
+   */
   @Override
   protected String validateAndExtractResponse(String json) throws IOException {
     Validate.notBlank(json, () -> new LlmInvocationException("LLM client json must not be blank"));
-    OpenAiChatCompletionResponseDto dto = objectMapper.readValue(json,
-        OpenAiChatCompletionResponseDto.class);
-    OpenAiChatCompletionChoiceDto firstChoice = validateApiError(json, dto);
+    MistralChatResponse dto = objectMapper.readValue(json, MistralChatResponse.class);
+    MistralChoice firstChoice = validateApiError(json, dto);
 
-    OpenAiChatCompletionMessageResponseDto message = firstChoice.message();
+    MistralMessage message = firstChoice.message();
     String content = message == null ? null : message.content();
     Validate.notBlank(content, () -> new LlmInvocationException(
         "mistral response first choice content is blank: %s".formatted(json)));
     return stripCodeFence(content.strip());
   }
 
-  private OpenAiChatCompletionChoiceDto validateApiError(String json,
-      OpenAiChatCompletionResponseDto dto) {
+  private MistralChoice validateApiError(String json, MistralChatResponse dto) {
     Validate.notNull(dto,
         () -> new LlmInvocationException(
             "mistral response deserialized to null: %s".formatted(json)));
     Validate.isTrue(dto.error() == null || StringUtils.isBlank(dto.error().message()),
         () -> new LlmInvocationException("mistral error: " + dto.error().message()));
-    List<OpenAiChatCompletionChoiceDto> choices =
+    List<MistralChoice> choices =
         Validate.notEmpty(dto.choices(), () -> new LlmInvocationException(
             "mistral response choices are empty: %s".formatted(json)));
-    OpenAiChatCompletionChoiceDto firstChoice = choices.get(0);
+    MistralChoice firstChoice = choices.get(0);
     return Validate.notNull(firstChoice, () -> new LlmInvocationException(
         "mistral first choice is null: %s".formatted(json)));
   }
 
   private String generateRequestBody(LlmExecutionRequest request) {
     String model = StringUtils.defaultIfBlank(request.model(), getDefaultModel());
-    OpenAiChatCompletionRequestDto body = new OpenAiChatCompletionRequestDto(
+    MistralChatRequest body = new MistralChatRequest(
         model,
         List.of(
-            new OpenAiChatCompletionMessageDto(InputRole.SYSTEM, request.systemPrompt()),
-            new OpenAiChatCompletionMessageDto(InputRole.USER, request.userInput())));
+            new MistralMessage(InputRole.SYSTEM, request.systemPrompt()),
+            new MistralMessage(InputRole.USER, request.userInput())));
     try {
       return objectMapper.writeValueAsString(body);
     } catch (Exception e) {

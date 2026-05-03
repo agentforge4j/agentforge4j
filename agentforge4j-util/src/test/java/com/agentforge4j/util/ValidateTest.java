@@ -436,19 +436,19 @@ class ValidateTest {
     @Test
     void shouldThrowWhenLowerNull() {
       assertThatThrownBy(() -> Validate.isBetween(null, 10, 5, "message"))
-          .isInstanceOf(NullPointerException.class);
+          .isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test
     void shouldThrowWhenUpperNull() {
       assertThatThrownBy(() -> Validate.isBetween(1, null, 5, "message"))
-          .isInstanceOf(NullPointerException.class);
+          .isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test
     void shouldThrowWhenValueNull() {
       assertThatThrownBy(() -> Validate.isBetween(1, 10, null, "message"))
-          .isInstanceOf(NullPointerException.class);
+          .isInstanceOf(IllegalArgumentException.class);
     }
   }
 
@@ -505,13 +505,13 @@ class ValidateTest {
     @Test
     void shouldThrowWhenValueNull() {
       assertThatThrownBy(() -> Validate.isGreaterThanZero(null, "message"))
-          .isInstanceOf(NullPointerException.class);
+          .isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test
     void shouldThrowWhenValueNullWithSupplier() {
       assertThatThrownBy(() -> Validate.isGreaterThanZero(null, () -> new RuntimeException("custom")))
-          .isInstanceOf(NullPointerException.class);
+          .isInstanceOf(RuntimeException.class);
     }
   }
 }

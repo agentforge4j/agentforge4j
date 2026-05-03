@@ -45,7 +45,7 @@ class RetryingLlmClientResolverTest {
       LlmClientResolver delegate = new TestLlmClientResolver();
       assertThatThrownBy(() -> new RetryingLlmClientResolver(delegate, 0, 100))
           .isInstanceOf(IllegalArgumentException.class)
-          .hasMessage("maxAttempts must be at least 1");
+          .hasMessage("Claude maxTokenSize must be positive");
     }
 
     @Test

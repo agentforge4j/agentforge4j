@@ -18,12 +18,24 @@ import java.time.Duration;
 import java.util.List;
 import org.apache.commons.lang3.StringUtils;
 
+/**
+ * vLLM LLM client implementation.
+ * <p>
+ * Sends requests to a vLLM server using the chat completions API.
+ */
 public final class VllmLlmClient extends AbstractHttpLlmClient {
 
   private final ObjectMapper objectMapper;
   private final URI chatCompletionsUri;
   private final Duration requestTimeout;
 
+  /**
+   * Creates a vLLM LLM client with the provided configuration.
+   *
+   * @param objectMapper the JSON mapper for serialization and deserialization
+   * @param config       the vLLM-specific configuration
+   * @throws IllegalArgumentException if required configuration values are missing
+   */
   public VllmLlmClient(ObjectMapper objectMapper, VllmConfiguration config) {
     super(config);
     this.objectMapper = Validate.notNull(objectMapper, "vLLM ObjectMapper must not be null");
@@ -32,6 +44,12 @@ public final class VllmLlmClient extends AbstractHttpLlmClient {
     this.requestTimeout = config.getRequestTimeout();
   }
 
+  /**
+   * Builds the HTTP request for the vLLM chat completions API.
+   *
+   * @param request the LLM execution request
+   * @return the configured HTTP request
+   */
   @Override
   protected HttpRequest buildHttpRequest(LlmExecutionRequest request) {
     return HttpRequest.newBuilder(chatCompletionsUri)
@@ -41,6 +59,13 @@ public final class VllmLlmClient extends AbstractHttpLlmClient {
         .build();
   }
 
+  /**
+   * Validates the vLLM response and extracts the assistant's text output.
+   *
+   * @param json the raw JSON response from vLLM
+   * @return the extracted assistant text
+   * @throws IOException if the response is invalid or cannot be parsed
+   */
   @Override
   protected String validateAndExtractResponse(String json) throws IOException {
     VllmResponse response = objectMapper.readValue(json, VllmResponse.class);

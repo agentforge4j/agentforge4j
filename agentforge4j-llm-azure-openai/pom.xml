@@ -30,10 +30,6 @@
     </dependency>
     <dependency>
       <groupId>com.agentforge4j</groupId>
-      <artifactId>agentforge4j-llm-openai</artifactId>
-    </dependency>
-    <dependency>
-      <groupId>com.agentforge4j</groupId>
       <artifactId>agentforge4j-util</artifactId>
     </dependency>
 

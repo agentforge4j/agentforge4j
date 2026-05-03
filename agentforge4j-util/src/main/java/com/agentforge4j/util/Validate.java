@@ -208,6 +208,9 @@ public final class Validate {
   public static void isBetween(Number lower, Number upper, Number value,
       Supplier<RuntimeException> exceptionSupplier) {
     notNull(exceptionSupplier, "Exception supplier must not be null");
+    notNull(lower, exceptionSupplier);
+    notNull(upper, exceptionSupplier);
+    notNull(value, exceptionSupplier);
     isTrue(lower.doubleValue() < upper.doubleValue(),
         "Lower value should be less than upper value");
     isTrue(
@@ -237,6 +240,7 @@ public final class Validate {
   public static Number isGreaterThanZero(Number value,
       Supplier<RuntimeException> exceptionSupplier) {
     notNull(exceptionSupplier, "Exception supplier must not be null");
+    notNull(value, exceptionSupplier);
     isTrue(value.doubleValue() > 0, exceptionSupplier);
     return value;
   }
