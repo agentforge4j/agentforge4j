@@ -55,7 +55,7 @@ public final class ClaudeLlmClient extends AbstractHttpLlmClient {
 
   @Override
   protected String validateAndExtractResponse(String json) throws IOException {
-    Validate.notBlank(json, () -> new LlmInvocationException("LLM client json must not be null"));
+    Validate.notBlank(json, () -> new LlmInvocationException("LLM client json must not be blank"));
     ClaudeResponse response = objectMapper.readValue(json, ClaudeResponse.class);
     Validate.notNull(response, () -> new LlmInvocationException(
         "Claude response deserialized to null for model %s: %s".formatted(
@@ -77,7 +77,7 @@ public final class ClaudeLlmClient extends AbstractHttpLlmClient {
   }
 
   private String generateRequestBody(LlmExecutionRequest request) {
-    String model = StringUtils.defaultIfBlank(getDefaultModel(), request.model());
+    String model = StringUtils.defaultIfBlank(request.model(), getDefaultModel());
     ClaudeRequest body = new ClaudeRequest(
         model,
         maxTokenSize,

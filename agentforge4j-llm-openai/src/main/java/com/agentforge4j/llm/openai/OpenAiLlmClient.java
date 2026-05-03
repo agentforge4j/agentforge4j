@@ -42,7 +42,7 @@ public final class OpenAiLlmClient extends AbstractHttpLlmClient {
 
   @Override
   protected String validateAndExtractResponse(String json) throws IOException {
-    Validate.notBlank(json, () -> new LlmInvocationException("LLM client json must not be null"));
+    Validate.notBlank(json, () -> new LlmInvocationException("LLM client json must not be blank"));
     OpenAiResponsesResponseDto dto = objectMapper.readValue(json, OpenAiResponsesResponseDto.class);
     validateApiError(dto, json);
     return extractAssistantText(dto)
@@ -70,7 +70,7 @@ public final class OpenAiLlmClient extends AbstractHttpLlmClient {
     try {
       return objectMapper.writeValueAsString(body);
     } catch (Exception e) {
-      throw new LlmInvocationException("Failed to serialize OpenAI request", e);
+      throw new LlmInvocationException("Failed to serialize OpenAI request for model: %s".formatted(getDefaultModel()), e);
     }
   }
 

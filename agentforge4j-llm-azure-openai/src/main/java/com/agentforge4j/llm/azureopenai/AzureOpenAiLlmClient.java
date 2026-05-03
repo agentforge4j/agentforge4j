@@ -65,7 +65,7 @@ public final class AzureOpenAiLlmClient extends AbstractHttpLlmClient {
 
   @Override
   protected String validateAndExtractResponse(String json) throws IOException {
-    Validate.notBlank(json, () -> new LlmInvocationException("LLM client json must not be null"));
+    Validate.notBlank(json, () -> new LlmInvocationException("LLM client json must not be blank"));
     OpenAiChatCompletionResponseDto dto = objectMapper.readValue(json,
         OpenAiChatCompletionResponseDto.class);
     validateResponse(json, dto);

@@ -45,8 +45,8 @@ public final class OpenAiCompatibleLlmClient extends AbstractHttpLlmClient {
     this.responsesUri = resolveResponsesUri(config);
     this.authHeaderName = Validate.notBlank(config.getAuthHeaderName(),
         "openai-compatible authHeaderName must be provided");
-    this.authHeaderPrefix = Validate.notNull(config.getAuthHeaderPrefix(),
-        "openai-compatible authHeaderPrefix must not be null");
+    this.authHeaderPrefix = Validate.notBlank(config.getAuthHeaderPrefix(),
+        "openai-compatible authHeaderPrefix must not be blank");
   }
 
   private static URI resolveResponsesUri(OpenAiCompatibleConfiguration config) {
@@ -77,9 +77,13 @@ public final class OpenAiCompatibleLlmClient extends AbstractHttpLlmClient {
     validateApiError(dto, json);
     return extractAssistantText(dto)
         .orElseThrow(
-            () -> new LlmInvocationException(
-                "openai-compatible response missing assistant output_text in message output item: "
-                    + json));
+            () -> {
+              String truncated = json.substring(0, Math.min(500, json.length()));
+              return new LlmInvocationException(
+                  "openai-compatible response missing assistant output_text in message output item: %s".formatted(
+                      truncated));
+            }
+        );
   }
 
   private String generateRequestBody(LlmExecutionRequest request) {

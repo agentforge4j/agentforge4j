@@ -31,6 +31,15 @@ public final class OllamaLlmClient extends AbstractHttpLlmClient {
   private final URI chatUri;
   private final Duration requestTimeout;
 
+  /**
+   * Creates a new Ollama client.
+   *
+   * @param objectMapper Jackson {@code ObjectMapper} for JSON serialization and deserialization;
+   *        must not be null
+   * @param config Ollama-specific configuration; must not be null
+   * @throws IllegalArgumentException if {@code objectMapper} or {@code config} is null, or if
+   *         the configured URL is blank
+   */
   public OllamaLlmClient(ObjectMapper objectMapper, OllamaConfiguration config) {
     super(config);
     this.requestTimeout = config.getRequestTimeout();
@@ -40,7 +49,7 @@ public final class OllamaLlmClient extends AbstractHttpLlmClient {
 
   @Override
   protected String validateAndExtractResponse(String json) throws IOException {
-    Validate.notBlank(json, () -> new LlmInvocationException("LLM client json must not be null"));
+    Validate.notBlank(json, () -> new LlmInvocationException("LLM client json must not be blank"));
     OllamaChatResponseDto dto = objectMapper.readValue(json, OllamaChatResponseDto.class);
     validateApiError(dto, json);
     return retrieveResponse(dto, json);

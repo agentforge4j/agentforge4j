@@ -34,10 +34,12 @@
     <module>agentforge4j-util</module>
     <module>agentforge4j-llm</module>
     <module>agentforge4j-llm-claude</module>
+    <module>agentforge4j-llm-mistral</module>
     <module>agentforge4j-llm-ollama</module>
+    <module>agentforge4j-llm-vllm</module>
     <module>agentforge4j-llm-openai</module>
-    <module>agentforge4j-llm-openai-compatible</module>
     <module>agentforge4j-llm-azure-openai</module>
+    <module>agentforge4j-llm-openai-compatible</module>
   </modules>
 
   <dependencyManagement>
@@ -59,7 +61,17 @@
       </dependency>
       <dependency>
         <groupId>com.agentforge4j</groupId>
+        <artifactId>agentforge4j-llm-mistral</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>com.agentforge4j</groupId>
         <artifactId>agentforge4j-llm-ollama</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>com.agentforge4j</groupId>
+        <artifactId>agentforge4j-llm-vllm</artifactId>
         <version>${project.version}</version>
       </dependency>
       <dependency>
