@@ -12,6 +12,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeSet;
+import org.apache.commons.lang3.StringUtils;
 
 /**
  * Builds a {@link CommandResponseSchema} from an agent's {@code supportedCommands}, using Jackson
@@ -26,7 +27,7 @@ public final class CommandSchemaFactory {
    * Builds a command response schema for the given supported commands using Jackson introspection.
    *
    * @param supportedCommands list of command type names to include, or null/empty for all
-   * @param mapper Jackson ObjectMapper for introspection
+   * @param mapper            Jackson ObjectMapper for introspection
    * @return the constructed schema
    */
   public static CommandResponseSchema build(List<String> supportedCommands, ObjectMapper mapper) {
@@ -41,7 +42,8 @@ public final class CommandSchemaFactory {
           impl,
           List.copyOf(requiredJsonPropertyNames(mapper, impl))));
     }
-    String cacheKey = CommandResponseSchema.COMMAND_SCHEMA_VERSION + "|" + String.join(",", effective);
+    String cacheKey =
+        CommandResponseSchema.COMMAND_SCHEMA_VERSION + "|" + String.join(",", effective);
     return new CommandResponseSchema(
         CommandResponseSchema.COMMAND_SCHEMA_VERSION,
         effective,
@@ -49,15 +51,14 @@ public final class CommandSchemaFactory {
         cacheKey);
   }
 
-  private static List<String> resolveSupported(
-      List<String> supportedCommands,
+  private static List<String> resolveSupported(List<String> supportedCommands,
       Map<String, Class<? extends LlmCommand>> registry) {
     if (supportedCommands == null || supportedCommands.isEmpty()) {
       return List.copyOf(registry.keySet());
     }
     LinkedHashSet<String> unique = new LinkedHashSet<>();
     for (String raw : supportedCommands) {
-      if (raw == null || raw.isBlank()) {
+      if (StringUtils.isBlank(raw)) {
         continue;
       }
       String name = raw.strip();
@@ -65,8 +66,8 @@ public final class CommandSchemaFactory {
           "Unknown supportedCommand '%s'. Known types: %s".formatted(name, registry.keySet()));
       unique.add(name);
     }
-    Validate.notEmpty(unique, "supportedCommands must name at least one valid command type");
-    return List.copyOf(unique);
+    return List.copyOf(
+        Validate.notEmpty(unique, "supportedCommands must name at least one valid command type"));
   }
 
   private static List<String> requiredJsonPropertyNames(ObjectMapper mapper, Class<?> commandClass) {

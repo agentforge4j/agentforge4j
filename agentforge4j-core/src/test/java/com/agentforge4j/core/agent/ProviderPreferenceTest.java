@@ -11,6 +11,14 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 class ProviderPreferenceTest {
 
   @Test
+  void accepts_non_blank_provider_and_model() {
+    ProviderPreference pref = new ProviderPreference("openai", "gpt-4o");
+
+    assertThat(pref.provider()).isEqualTo("openai");
+    assertThat(pref.model()).isEqualTo("gpt-4o");
+  }
+
+  @Test
   void accepts_null_model_as_default_model_signal() {
     ProviderPreference pref = new ProviderPreference("openai", null);
 

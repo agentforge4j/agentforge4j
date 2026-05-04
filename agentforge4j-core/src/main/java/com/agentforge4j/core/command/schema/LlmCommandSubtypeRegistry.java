@@ -1,6 +1,7 @@
 package com.agentforge4j.core.command.schema;
 
 import com.agentforge4j.core.command.LlmCommand;
+import com.agentforge4j.util.Validate;
 import com.fasterxml.jackson.annotation.JsonSubTypes;
 
 import java.util.Collections;
@@ -18,9 +19,8 @@ public final class LlmCommandSubtypeRegistry {
 
   static {
     JsonSubTypes subTypes = LlmCommand.class.getAnnotation(JsonSubTypes.class);
-    if (subTypes == null) {
-      throw new IllegalStateException("LlmCommand must declare @JsonSubTypes");
-    }
+    Validate.notNull(subTypes,
+        () -> new IllegalStateException("LlmCommand must declare @JsonSubTypes"));
     LinkedHashMap<String, Class<? extends LlmCommand>> map = new LinkedHashMap<>();
     for (JsonSubTypes.Type t : subTypes.value()) {
       @SuppressWarnings("unchecked")
