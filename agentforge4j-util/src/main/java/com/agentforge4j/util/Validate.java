@@ -239,9 +239,36 @@ public final class Validate {
    */
   public static Number isGreaterThanZero(Number value,
       Supplier<RuntimeException> exceptionSupplier) {
+    return isGreaterThan(value, 0, exceptionSupplier);
+  }
+
+  /**
+   * Validates that the given value is greater than the specified lower bound.
+   *
+   * @param value   the value to validate
+   * @param lower   the lower bound (exclusive)
+   * @param message the exception message if validation fails
+   * @return the validated value
+   * @throws IllegalArgumentException if the value is not greater than the lower bound
+   */
+  public static Number isGreaterThan(Number value, Number lower, String message) {
+    return isGreaterThan(value, lower, () -> new IllegalArgumentException(message));
+  }
+
+  /**
+   * Validates that the given value is greater than the specified lower bound.
+   *
+   * @param value             the value to validate
+   * @param lower             the lower bound (exclusive)
+   * @param exceptionSupplier supplies the exception to throw if validation fails
+   * @return the validated value
+   */
+  public static Number isGreaterThan(Number value, Number lower,
+      Supplier<RuntimeException> exceptionSupplier) {
     notNull(exceptionSupplier, "Exception supplier must not be null");
     notNull(value, exceptionSupplier);
-    isTrue(value.doubleValue() > 0, exceptionSupplier);
+    notNull(lower, exceptionSupplier);
+    isTrue(value.doubleValue() > lower.doubleValue(), exceptionSupplier);
     return value;
   }
 }

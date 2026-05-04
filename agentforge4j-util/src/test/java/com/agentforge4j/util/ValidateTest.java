@@ -85,6 +85,13 @@ class ValidateTest {
     }
 
     @Test
+    void shouldThrowWhenTabAndNewlineOnly() {
+      assertThatThrownBy(() -> Validate.notBlank("\t\n", "message"))
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessage("message");
+    }
+
+    @Test
     void shouldThrowWhenExceptionSupplierNull() {
       assertThatThrownBy(() -> Validate.notBlank("test", (Supplier<RuntimeException>) null))
           .isInstanceOf(IllegalArgumentException.class)
@@ -289,6 +296,16 @@ class ValidateTest {
           .isInstanceOf(IllegalArgumentException.class)
           .hasMessage("Exception supplier must not be null");
     }
+
+    @Test
+    void shouldThrowWhenRelativePathIsAbsoluteOutsideBase() throws Exception {
+      Path siblingOutsideBase = tempDir.resolve("outside-base-sibling.txt");
+      Files.writeString(siblingOutsideBase, "x");
+      assertThatThrownBy(
+          () -> Validate.requireWithinBase(baseDir, siblingOutsideBase.toAbsolutePath().toString(), "escape"))
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessage("escape");
+    }
   }
 
   @Nested
@@ -436,19 +453,22 @@ class ValidateTest {
     @Test
     void shouldThrowWhenLowerNull() {
       assertThatThrownBy(() -> Validate.isBetween(null, 10, 5, "message"))
-          .isInstanceOf(IllegalArgumentException.class);
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessage("message");
     }
 
     @Test
     void shouldThrowWhenUpperNull() {
       assertThatThrownBy(() -> Validate.isBetween(1, null, 5, "message"))
-          .isInstanceOf(IllegalArgumentException.class);
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessage("message");
     }
 
     @Test
     void shouldThrowWhenValueNull() {
       assertThatThrownBy(() -> Validate.isBetween(1, 10, null, "message"))
-          .isInstanceOf(IllegalArgumentException.class);
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessage("message");
     }
   }
 
@@ -505,13 +525,97 @@ class ValidateTest {
     @Test
     void shouldThrowWhenValueNull() {
       assertThatThrownBy(() -> Validate.isGreaterThanZero(null, "message"))
-          .isInstanceOf(IllegalArgumentException.class);
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessage("message");
     }
 
     @Test
     void shouldThrowWhenValueNullWithSupplier() {
       assertThatThrownBy(() -> Validate.isGreaterThanZero(null, () -> new RuntimeException("custom")))
-          .isInstanceOf(RuntimeException.class);
+          .isInstanceOf(RuntimeException.class)
+          .hasMessage("custom");
+    }
+  }
+
+  @Nested
+  class IsGreaterThanTests {
+
+    @Test
+    void shouldReturnValueWhenStrictlyGreaterThanLower() {
+      assertThat(Validate.isGreaterThan(5, 3, "message")).isEqualTo(5);
+    }
+
+    @Test
+    void shouldReturnValueWhenStrictlyGreaterWithDouble() {
+      assertThat(Validate.isGreaterThan(3.1, 3.0, "message")).isEqualTo(3.1);
+    }
+
+    @Test
+    void shouldReturnValueWithSupplierOverload() {
+      assertThat(Validate.isGreaterThan(2, 1, () -> new RuntimeException("custom"))).isEqualTo(2);
+    }
+
+    @Test
+    void shouldThrowWhenEqualToLowerWithStringMessage() {
+      assertThatThrownBy(() -> Validate.isGreaterThan(5, 5, "message"))
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessage("message");
+    }
+
+    @Test
+    void shouldThrowWhenEqualToLowerWithSupplier() {
+      assertThatThrownBy(() -> Validate.isGreaterThan(5, 5, () -> new RuntimeException("custom")))
+          .isInstanceOf(RuntimeException.class)
+          .hasMessage("custom");
+    }
+
+    @Test
+    void shouldThrowWhenLessThanLowerWithStringMessage() {
+      assertThatThrownBy(() -> Validate.isGreaterThan(2, 10, "message"))
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessage("message");
+    }
+
+    @Test
+    void shouldThrowWhenLessThanLowerWithSupplier() {
+      assertThatThrownBy(() -> Validate.isGreaterThan(1.0, 2.0, () -> new RuntimeException("custom")))
+          .isInstanceOf(RuntimeException.class)
+          .hasMessage("custom");
+    }
+
+    @Test
+    void shouldThrowWhenValueNullWithStringMessage() {
+      assertThatThrownBy(() -> Validate.isGreaterThan(null, 0, "message"))
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessage("message");
+    }
+
+    @Test
+    void shouldThrowWhenLowerNullWithStringMessage() {
+      assertThatThrownBy(() -> Validate.isGreaterThan(5, null, "message"))
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessage("message");
+    }
+
+    @Test
+    void shouldThrowWhenValueNullWithSupplier() {
+      assertThatThrownBy(() -> Validate.isGreaterThan(null, 0, () -> new RuntimeException("custom")))
+          .isInstanceOf(RuntimeException.class)
+          .hasMessage("custom");
+    }
+
+    @Test
+    void shouldThrowWhenLowerNullWithSupplier() {
+      assertThatThrownBy(() -> Validate.isGreaterThan(5, null, () -> new RuntimeException("custom")))
+          .isInstanceOf(RuntimeException.class)
+          .hasMessage("custom");
+    }
+
+    @Test
+    void shouldThrowWhenExceptionSupplierNull() {
+      assertThatThrownBy(() -> Validate.isGreaterThan(5, 3, (Supplier<RuntimeException>) null))
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessage("Exception supplier must not be null");
     }
   }
 }
