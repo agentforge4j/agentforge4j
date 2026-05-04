@@ -17,6 +17,7 @@ class LlmExecutionRequestTest {
     assertNull(request.model());
     assertEquals("prompt", request.systemPrompt());
     assertEquals("input", request.userInput());
+    assertNull(request.maxOutputTokens());
   }
 
   @Test
@@ -65,5 +66,18 @@ class LlmExecutionRequestTest {
     LlmExecutionRequest request = new LlmExecutionRequest("openai", "   ", "prompt", "input");
 
     assertThat(request.model()).isEqualTo("   ");
+  }
+
+  @Test
+  void allows_positive_max_output_tokens() {
+    LlmExecutionRequest request =
+        new LlmExecutionRequest("openai", "gpt-4o-mini", "sys", "in", 512);
+    assertThat(request.maxOutputTokens()).isEqualTo(512);
+  }
+
+  @Test
+  void rejects_non_positive_max_output_tokens() {
+    assertThatThrownBy(() -> new LlmExecutionRequest("openai", "m", "s", "u", 0))
+        .isInstanceOf(IllegalArgumentException.class);
   }
 }

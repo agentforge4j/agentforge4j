@@ -46,7 +46,8 @@ public final class OpenAiLlmClient extends AbstractHttpLlmClient {
   public OpenAiLlmClient(ObjectMapper objectMapper, OpenAiConfiguration config) {
     super(config);
     this.apiKey = Validate.notBlank(config.getApiKey(), "OpenAI apiKey must be provided");
-    this.requestTimeout = config.getRequestTimeout();
+    this.requestTimeout = Validate.notNull(config.getRequestTimeout(),
+        "OpenAI request timeout must be provided");
     this.objectMapper = Validate.notNull(objectMapper, "OpenAi ObjectMapper must not be null");
     this.openAiResponsesUri = URI.create(
         Validate.notBlank(config.getUrl(), "OpenAI URL must be provided"));
@@ -91,11 +92,12 @@ public final class OpenAiLlmClient extends AbstractHttpLlmClient {
         StringUtils.defaultIfBlank(request.model(), getDefaultModel()),
         List.of(
             new InputItem(SYSTEM, request.systemPrompt()),
-            new InputItem(USER, request.userInput())));
+            new InputItem(USER, request.userInput())),
+        request.maxOutputTokens());
     try {
       return objectMapper.writeValueAsString(body);
     } catch (Exception e) {
-      throw new LlmInvocationException("Failed to serialize OpenAI request for model: %s".formatted(getDefaultModel()), e);
+      throw new LlmInvocationException("Failed to serialize OpenAI request", e);
     }
   }
 

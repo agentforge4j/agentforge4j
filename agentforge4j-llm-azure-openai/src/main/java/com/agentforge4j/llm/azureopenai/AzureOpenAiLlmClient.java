@@ -50,7 +50,8 @@ public final class AzureOpenAiLlmClient extends AbstractHttpLlmClient {
     this.apiKey = Validate.notBlank(config.getApiKey(), "Azure OpenAI apiKey must be provided");
     this.deploymentName = Validate.notBlank(config.getDeploymentName(),
         "Azure OpenAI deploymentName must be provided");
-    this.requestTimeout = config.getRequestTimeout();
+    this.requestTimeout = Validate.notNull(config.getRequestTimeout(),
+        "Azure openAi request timeout must be provided");
     this.chatCompletionsUri = buildChatUri(config);
   }
 

@@ -41,7 +41,8 @@ public final class VllmLlmClient extends AbstractHttpLlmClient {
     this.objectMapper = Validate.notNull(objectMapper, "vLLM ObjectMapper must not be null");
     this.chatCompletionsUri = URI.create(
         Validate.notBlank(config.getUrl(), "vLLM URL must be provided"));
-    this.requestTimeout = config.getRequestTimeout();
+    this.requestTimeout = Validate.notNull(config.getRequestTimeout(),
+        "vLLM request timeout must be provided");
   }
 
   /**

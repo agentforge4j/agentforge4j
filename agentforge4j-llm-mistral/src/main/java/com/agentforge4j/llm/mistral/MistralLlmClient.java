@@ -42,7 +42,8 @@ public final class MistralLlmClient extends AbstractHttpLlmClient {
     super(config);
     this.objectMapper = Validate.notNull(objectMapper, "Mistral ObjectMapper must not be null");
     this.apiKey = Validate.notBlank(config.getApiKey(), "Mistral apiKey must be provided");
-    this.requestTimeout = config.getRequestTimeout();
+    this.requestTimeout = Validate.notNull(config.getRequestTimeout(),
+        "Mistral request timeout must be provided");
     String root = StringUtils.stripEnd(
         Validate.notBlank(config.getBaseUrl(), "Mistral baseUrl must be provided"), "/");
     this.chatCompletionsUri = URI.create(root + "/v1/chat/completions");

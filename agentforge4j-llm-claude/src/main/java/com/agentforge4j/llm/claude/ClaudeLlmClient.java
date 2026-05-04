@@ -46,7 +46,8 @@ public final class ClaudeLlmClient extends AbstractHttpLlmClient {
     this.apiKey = Validate.notBlank(config.getApiKey(), "Claude apiKey must be provided");
     this.apiVersion = Validate.notBlank(config.getApiVersion(),
         "Claude apiVersion must be provided");
-    this.requestTimeout = config.getRequestTimeout();
+    this.requestTimeout = Validate.notNull(config.getRequestTimeout(),
+        "Claude request timeout must be provided");
     this.objectMapper = Validate.notNull(objectMapper, "Claude ObjectMapper must not be null");
     this.messagesUri = URI.create(
         Validate.notBlank(config.getUrl(), "Claude URL must be provided"));
