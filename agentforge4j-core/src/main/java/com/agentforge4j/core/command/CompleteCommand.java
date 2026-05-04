@@ -7,4 +7,5 @@ package com.agentforge4j.core.command;
  * is in effect. The optional {@code summary} is recorded on the event log.
  */
 public record CompleteCommand(String summary) implements LlmCommand {
+
 }

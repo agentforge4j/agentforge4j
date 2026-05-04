@@ -12,9 +12,12 @@ public record CreateFileCommand(
     @JsonAlias("filePath")
     String path,
     @JsonProperty(required = true)
-    String content) implements LlmCommand {
+    String content
+) implements LlmCommand {
+
   public CreateFileCommand {
     Validate.notBlank(path, "CreateFileCommand path must not be blank");
-    Validate.notNull(content, "CreateFileCommand content must not be null");
+    Validate.notNull(content,
+        "CreateFileCommand content must not be null for path: %s".formatted(path));
   }
 }
