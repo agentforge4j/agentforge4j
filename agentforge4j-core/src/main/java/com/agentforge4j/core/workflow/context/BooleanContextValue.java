@@ -1,3 +1,6 @@
 package com.agentforge4j.core.workflow.context;
 
-public record BooleanContextValue(boolean value) implements ContextValue {}
+/** Boolean payload stored in workflow context. */
+public record BooleanContextValue(boolean value) implements ContextValue {
+
+}

@@ -3,6 +3,10 @@ package com.agentforge4j.core.workflow.context;
 import com.fasterxml.jackson.annotation.JsonSubTypes;
 import com.fasterxml.jackson.annotation.JsonTypeInfo;
 
+/**
+ * Sealed marker interface for typed context values stored in the shared workflow context.
+ * Dispatched by the runtime based on the {@code type} discriminator.
+ */
 @JsonTypeInfo(use = JsonTypeInfo.Id.NAME, property = "type")
 @JsonSubTypes({
     @JsonSubTypes.Type(value = StringContextValue.class, name = "STRING"),
@@ -13,7 +17,9 @@ import com.fasterxml.jackson.annotation.JsonTypeInfo;
 })
 public sealed interface ContextValue
     permits StringContextValue,
-            NumberContextValue,
-            BooleanContextValue,
-            JsonContextValue,
-            ContextValueList {}
+    NumberContextValue,
+    BooleanContextValue,
+    JsonContextValue,
+    ContextValueList {
+
+}
