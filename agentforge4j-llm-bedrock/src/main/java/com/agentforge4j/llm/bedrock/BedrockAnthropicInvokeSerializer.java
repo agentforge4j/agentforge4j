@@ -30,9 +30,7 @@ final class BedrockAnthropicInvokeSerializer {
     ObjectNode root = objectMapper.createObjectNode();
     root.put("anthropic_version", config.getAnthropicVersion());
 
-    int maxTokens = config.getMaxTokens() != null && config.getMaxTokens() > 0
-        ? config.getMaxTokens()
-        : DEFAULT_MAX_TOKENS;
+    int maxTokens = resolveMaxTokens(request, config);
     root.put("max_tokens", maxTokens);
 
     Double temperature = config.getTemperature();
@@ -53,6 +51,20 @@ final class BedrockAnthropicInvokeSerializer {
       throw new LlmInvocationException(
           "Failed to serialize Bedrock Anthropic request for model %s".formatted(modelId), e);
     }
+  }
+
+  /**
+   * Uses {@link LlmExecutionRequest#maxOutputTokens()} when set, otherwise a positive
+   * {@link BedrockConfiguration#getMaxTokens()}, otherwise {@link #DEFAULT_MAX_TOKENS}.
+   */
+  private static int resolveMaxTokens(LlmExecutionRequest request, BedrockConfiguration config) {
+    if (request.maxOutputTokens() != null) {
+      return request.maxOutputTokens();
+    }
+    if (config.getMaxTokens() != null && config.getMaxTokens() > 0) {
+      return config.getMaxTokens();
+    }
+    return DEFAULT_MAX_TOKENS;
   }
 
   static void validateAnthropicModelId(String modelId) {

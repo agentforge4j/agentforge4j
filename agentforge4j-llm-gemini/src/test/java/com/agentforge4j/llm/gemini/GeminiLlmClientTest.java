@@ -8,6 +8,7 @@ import com.agentforge4j.llm.gemini.dto.InputRole;
 import com.agentforge4j.llm.gemini.dto.GeminiRequest;
 import com.agentforge4j.llm.gemini.dto.GeminiSystemInstruction;
 import com.fasterxml.jackson.core.JsonParseException;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -76,6 +77,30 @@ class GeminiLlmClientTest {
       assertThatThrownBy(() -> new GeminiLlmClient(mapper, config))
           .isInstanceOf(IllegalArgumentException.class)
           .hasMessageContaining("baseUrl");
+    }
+
+    @Test
+    void should_throw_when_config_max_output_tokens_non_positive() {
+      ObjectMapper mapper = new ObjectMapper();
+      GeminiConfiguration config = FixedGeminiConfiguration.builder()
+          .maxOutputTokens(0)
+          .build();
+
+      assertThatThrownBy(() -> new GeminiLlmClient(mapper, config))
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessageContaining("maxOutputTokens");
+    }
+
+    @Test
+    void should_throw_when_config_max_output_tokens_negative() {
+      ObjectMapper mapper = new ObjectMapper();
+      GeminiConfiguration config = FixedGeminiConfiguration.builder()
+          .maxOutputTokens(-1)
+          .build();
+
+      assertThatThrownBy(() -> new GeminiLlmClient(mapper, config))
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessageContaining("maxOutputTokens");
     }
   }
 
@@ -430,9 +455,65 @@ class GeminiLlmClientTest {
       String body = collectUtf8RequestBody(client.buildHttpRequest(request));
       GeminiRequest expected = new GeminiRequest(
           new GeminiSystemInstruction(List.of(new GeminiPart("You are helpful."))),
-          List.of(new GeminiContent(InputRole.USER, List.of(new GeminiPart("Hello.")))));
+          List.of(new GeminiContent(InputRole.USER, List.of(new GeminiPart("Hello.")))),
+          null);
 
       assertThat(mapper.readTree(body)).isEqualTo(mapper.valueToTree(expected));
+    }
+
+    @Test
+    void should_include_generation_config_when_request_sets_max_output_tokens() throws Exception {
+      ObjectMapper mapper = new ObjectMapper();
+      GeminiLlmClient client = new GeminiLlmClient(mapper, FixedGeminiConfiguration.defaults());
+      LlmExecutionRequest request =
+          new LlmExecutionRequest("gemini", "m", "s", "u", 2048);
+
+      JsonNode tree = mapper.readTree(collectUtf8RequestBody(client.buildHttpRequest(request)));
+
+      assertThat(tree.path("generationConfig").path("maxOutputTokens").asInt()).isEqualTo(2048);
+    }
+
+    @Test
+    void should_omit_generation_config_when_request_and_config_max_output_tokens_absent()
+        throws Exception {
+      ObjectMapper mapper = new ObjectMapper();
+      GeminiLlmClient client = new GeminiLlmClient(mapper, FixedGeminiConfiguration.defaults());
+      LlmExecutionRequest request =
+          new LlmExecutionRequest("gemini", "m", "s", "u");
+
+      JsonNode tree = mapper.readTree(collectUtf8RequestBody(client.buildHttpRequest(request)));
+
+      assertThat(tree.has("generationConfig")).isFalse();
+    }
+
+    @Test
+    void should_use_config_max_output_tokens_when_request_omits_value() throws Exception {
+      ObjectMapper mapper = new ObjectMapper();
+      GeminiConfiguration config = FixedGeminiConfiguration.builder()
+          .maxOutputTokens(900)
+          .build();
+      GeminiLlmClient client = new GeminiLlmClient(mapper, config);
+      LlmExecutionRequest request =
+          new LlmExecutionRequest("gemini", "m", "s", "u");
+
+      JsonNode tree = mapper.readTree(collectUtf8RequestBody(client.buildHttpRequest(request)));
+
+      assertThat(tree.path("generationConfig").path("maxOutputTokens").asInt()).isEqualTo(900);
+    }
+
+    @Test
+    void should_prefer_request_max_output_tokens_over_configuration() throws Exception {
+      ObjectMapper mapper = new ObjectMapper();
+      GeminiConfiguration config = FixedGeminiConfiguration.builder()
+          .maxOutputTokens(900)
+          .build();
+      GeminiLlmClient client = new GeminiLlmClient(mapper, config);
+      LlmExecutionRequest request =
+          new LlmExecutionRequest("gemini", "m", "s", "u", 1200);
+
+      JsonNode tree = mapper.readTree(collectUtf8RequestBody(client.buildHttpRequest(request)));
+
+      assertThat(tree.path("generationConfig").path("maxOutputTokens").asInt()).isEqualTo(1200);
     }
   }
 
@@ -459,6 +540,17 @@ class GeminiLlmClientTest {
       assertThatThrownBy(() -> client.execute(null))
           .isInstanceOf(IllegalArgumentException.class)
           .hasMessageContaining("Request must not be null");
+    }
+
+    @Test
+    void should_reject_non_positive_max_output_tokens_on_request() {
+      GeminiLlmClient client =
+          new GeminiLlmClient(new ObjectMapper(), FixedGeminiConfiguration.defaults());
+
+      assertThatThrownBy(() -> client.execute(
+          new LlmExecutionRequest("gemini", null, "system", "user", 0)))
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessageContaining("maxOutputTokens");
     }
   }
 

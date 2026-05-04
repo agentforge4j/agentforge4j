@@ -124,4 +124,23 @@ class BedrockAnthropicInvokeSerializerTest {
     assertThat(mapper.readTree(json).path("max_tokens").asInt())
         .isEqualTo(BedrockAnthropicInvokeSerializer.DEFAULT_MAX_TOKENS);
   }
+
+  @Test
+  void prefers_request_max_output_tokens_over_configuration() throws Exception {
+    BedrockAnthropicInvokeSerializer serializer = new BedrockAnthropicInvokeSerializer(mapper);
+    BedrockConfiguration cfg = FixedBedrockConfiguration.builder().maxTokens(512).build();
+    LlmExecutionRequest req =
+        new LlmExecutionRequest("bedrock", null, "s", "u", 2048);
+    String json = serializer.toJson(req, cfg.getDefaultModel(), cfg);
+    assertThat(mapper.readTree(json).path("max_tokens").asInt()).isEqualTo(2048);
+  }
+
+  @Test
+  void falls_back_to_configured_max_tokens_when_request_max_output_tokens_absent() throws Exception {
+    BedrockAnthropicInvokeSerializer serializer = new BedrockAnthropicInvokeSerializer(mapper);
+    BedrockConfiguration cfg = FixedBedrockConfiguration.builder().maxTokens(777).build();
+    LlmExecutionRequest req = new LlmExecutionRequest("bedrock", null, "s", "u");
+    String json = serializer.toJson(req, cfg.getDefaultModel(), cfg);
+    assertThat(mapper.readTree(json).path("max_tokens").asInt()).isEqualTo(777);
+  }
 }

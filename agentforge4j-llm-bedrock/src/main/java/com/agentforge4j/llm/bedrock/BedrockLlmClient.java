@@ -61,6 +61,10 @@ public final class BedrockLlmClient implements LlmClient {
 
   /**
    * Executes an LLM request against Amazon Bedrock.
+   * <p>
+   * Generated length is capped by {@link LlmExecutionRequest#maxOutputTokens()} when set;
+   * otherwise {@link BedrockConfiguration#getMaxTokens()} when positive; otherwise an internal
+   * default applied by the Anthropic request serializer.
    *
    * @param request the execution request containing system prompt, user input, and model details
    * @return the assistant's text response

@@ -6,6 +6,7 @@ import com.agentforge4j.llm.LlmInvocationException;
 import com.agentforge4j.llm.gemini.dto.GeminiCandidate;
 import com.agentforge4j.llm.gemini.dto.GeminiContent;
 import com.agentforge4j.llm.gemini.dto.GeminiErrorResponse;
+import com.agentforge4j.llm.gemini.dto.GeminiGenerationConfig;
 import com.agentforge4j.llm.gemini.dto.GeminiPart;
 import com.agentforge4j.llm.gemini.dto.GeminiRequest;
 import com.agentforge4j.llm.gemini.dto.GeminiResponse;
@@ -31,6 +32,7 @@ import org.apache.commons.lang3.StringUtils;
 @ToString(exclude = {"apiKey", "objectMapper"}, callSuper = true)
 public final class GeminiLlmClient extends AbstractHttpLlmClient {
 
+  private final GeminiConfiguration geminiConfiguration;
   private final String apiKey;
   private final ObjectMapper objectMapper;
   private final String baseUrl;
@@ -44,6 +46,10 @@ public final class GeminiLlmClient extends AbstractHttpLlmClient {
    */
   public GeminiLlmClient(ObjectMapper objectMapper, GeminiConfiguration config) {
     super(config);
+    this.geminiConfiguration = config;
+    Integer configMaxOutputTokens = config.getMaxOutputTokens();
+    Validate.isTrue(configMaxOutputTokens == null || configMaxOutputTokens > 0,
+        "Gemini maxOutputTokens must be positive when set");
     this.objectMapper = Validate.notNull(objectMapper, "Gemini ObjectMapper must not be null");
     this.apiKey = Validate.notBlank(config.getApiKey(), "Gemini apiKey must be provided");
     this.baseUrl = StringUtils.stripEnd(
@@ -138,13 +144,33 @@ public final class GeminiLlmClient extends AbstractHttpLlmClient {
   }
 
   private String generateRequestBody(LlmExecutionRequest request) {
+    Integer resolvedMax = resolveMaxOutputTokens(request, geminiConfiguration);
+    GeminiGenerationConfig generationConfig =
+        resolvedMax == null ? null : new GeminiGenerationConfig(resolvedMax);
     GeminiRequest body = new GeminiRequest(
         new GeminiSystemInstruction(List.of(new GeminiPart(request.systemPrompt()))),
-        List.of(new GeminiContent(InputRole.USER, List.of(new GeminiPart(request.userInput())))));
+        List.of(new GeminiContent(InputRole.USER, List.of(new GeminiPart(request.userInput())))),
+        generationConfig);
     try {
       return objectMapper.writeValueAsString(body);
     } catch (Exception e) {
       throw new LlmInvocationException("Failed to serialize Gemini request", e);
     }
+  }
+
+  /**
+   * Request {@code maxOutputTokens} overrides configuration; otherwise a positive configuration
+   * value is used. When neither applies, {@code null} so the field is omitted from the payload.
+   */
+  private static Integer resolveMaxOutputTokens(
+      LlmExecutionRequest request, GeminiConfiguration config) {
+    if (request.maxOutputTokens() != null) {
+      return request.maxOutputTokens();
+    }
+    Integer fromConfig = config.getMaxOutputTokens();
+    if (fromConfig != null && fromConfig > 0) {
+      return fromConfig;
+    }
+    return null;
   }
 }

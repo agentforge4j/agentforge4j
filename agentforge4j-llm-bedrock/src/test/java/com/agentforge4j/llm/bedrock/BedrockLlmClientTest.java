@@ -339,5 +339,55 @@ class BedrockLlmClientTest {
           .hasMessageContaining("anthropic.");
     }
 
+    @Test
+    void invoke_model_prefers_request_max_output_tokens_over_configuration() throws Exception {
+      BedrockRuntimeClient client = mock(BedrockRuntimeClient.class);
+      when(client.invokeModel(isA(InvokeModelRequest.class))).thenReturn(
+          InvokeModelResponse.builder()
+              .body(SdkBytes.fromString(
+                  "{\"content\":[{\"type\":\"text\",\"text\":\"ok\"}]}", StandardCharsets.UTF_8))
+              .build());
+
+      BedrockConfiguration cfg =
+          FixedBedrockConfiguration.builder().maxTokens(100).build();
+      BedrockLlmClient llm = new BedrockLlmClient(mapper, cfg, client);
+      llm.execute(new LlmExecutionRequest("bedrock", null, "s", "u", 50));
+
+      ArgumentCaptor<InvokeModelRequest> captor = ArgumentCaptor.forClass(InvokeModelRequest.class);
+      verify(client).invokeModel(captor.capture());
+      JsonNode body = mapper.readTree(captor.getValue().body().asUtf8String());
+      assertThat(body.path("max_tokens").asInt()).isEqualTo(50);
+    }
+
+    @Test
+    void invoke_model_uses_config_max_tokens_when_request_max_output_tokens_absent() throws Exception {
+      BedrockRuntimeClient client = mock(BedrockRuntimeClient.class);
+      when(client.invokeModel(isA(InvokeModelRequest.class))).thenReturn(
+          InvokeModelResponse.builder()
+              .body(SdkBytes.fromString(
+                  "{\"content\":[{\"type\":\"text\",\"text\":\"ok\"}]}", StandardCharsets.UTF_8))
+              .build());
+
+      BedrockConfiguration cfg =
+          FixedBedrockConfiguration.builder().maxTokens(333).build();
+      BedrockLlmClient llm = new BedrockLlmClient(mapper, cfg, client);
+      llm.execute(new LlmExecutionRequest("bedrock", null, "s", "u"));
+
+      ArgumentCaptor<InvokeModelRequest> captor = ArgumentCaptor.forClass(InvokeModelRequest.class);
+      verify(client).invokeModel(captor.capture());
+      JsonNode body = mapper.readTree(captor.getValue().body().asUtf8String());
+      assertThat(body.path("max_tokens").asInt()).isEqualTo(333);
+    }
+
+    @Test
+    void rejects_non_positive_max_output_tokens_on_request() {
+      BedrockRuntimeClient client = mock(BedrockRuntimeClient.class);
+      BedrockLlmClient llm = new BedrockLlmClient(mapper, FixedBedrockConfiguration.defaults(), client);
+      assertThatThrownBy(() -> llm.execute(
+          new LlmExecutionRequest("bedrock", null, "s", "u", 0)))
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessageContaining("maxOutputTokens");
+    }
+
   }
 }
