@@ -43,6 +43,7 @@
     <module>agentforge4j-llm-openai</module>
     <module>agentforge4j-llm-openai-compatible</module>
     <module>agentforge4j-llm-vllm</module>
+    <module>agentforge4j-core</module>
   </modules>
 
   <dependencyManagement>
@@ -110,6 +111,11 @@
         <artifactId>agentforge4j-llm-azure-openai</artifactId>
         <version>${project.version}</version>
       </dependency>
+      <dependency>
+        <groupId>com.agentforge4j</groupId>
+        <artifactId>agentforge4j-core</artifactId>
+        <version>${project.version}</version>
+      </dependency>
 
       <dependency>
         <groupId>org.apache.commons</groupId>
@@ -130,13 +136,16 @@
         <groupId>org.assertj</groupId>
         <artifactId>assertj-core</artifactId>
         <version>${assertj-core.version}</version>
-        <scope>test</scope>
       </dependency>
       <dependency>
         <groupId>org.mockito</groupId>
         <artifactId>mockito-core</artifactId>
         <version>${mockito-core.version}</version>
-        <scope>test</scope>
+      </dependency>
+      <dependency>
+        <groupId>org.mockito</groupId>
+        <artifactId>mockito-junit-jupiter</artifactId>
+        <version>${mockito-core.version}</version>
       </dependency>
     </dependencies>
   </dependencyManagement>
