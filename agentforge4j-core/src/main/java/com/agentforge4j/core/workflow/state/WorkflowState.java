@@ -4,8 +4,11 @@ import com.agentforge4j.core.workflow.artifact.ArtifactDefinition;
 import com.agentforge4j.core.workflow.context.ContextValue;
 import com.agentforge4j.util.Validate;
 import java.time.Instant;
+import java.util.Collections;
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.Map;
+import java.util.Optional;
 import lombok.Getter;
 import lombok.Setter;
 
@@ -23,9 +26,7 @@ public final class WorkflowState {
 
   @Setter
   private String currentStepId;
-  @Setter
   private WorkflowStatus status;
-  @Setter
   private Instant lastUpdatedAt;
   @Setter
   private ArtifactDefinition pendingArtifact;
@@ -93,5 +94,103 @@ public final class WorkflowState {
    */
   public String getSupportId() {
     return runFailure == null ? null : runFailure.supportId();
+  }
+
+  public void setStatus(WorkflowStatus status) {
+    this.status = Validate.notNull(status, "WorkflowState status must not be null");
+  }
+
+  public void setLastUpdatedAt(Instant lastUpdatedAt) {
+    this.lastUpdatedAt =
+        Validate.notNull(lastUpdatedAt, "WorkflowState lastUpdatedAt must not be null");
+  }
+
+  public Map<String, String> getStepOutputs() {
+    return Collections.unmodifiableMap(stepOutputs);
+  }
+
+  public Map<String, ContextValue> getContext() {
+    return Collections.unmodifiableMap(context);
+  }
+
+  public Map<String, Integer> getStepExecutionUid() {
+    return Collections.unmodifiableMap(stepExecutionUid);
+  }
+
+  public Map<String, Integer> getContextKeyWrittenAtUid() {
+    return Collections.unmodifiableMap(contextKeyWrittenAtUid);
+  }
+
+  public void putContextValue(String key, ContextValue value) {
+    String validatedKey = Validate.notBlank(key, "WorkflowState context key must not be blank");
+    ContextValue validatedValue =
+        Validate.notNull(value, "WorkflowState context value must not be null");
+    context.put(validatedKey, validatedValue);
+  }
+
+  public void removeContextValue(String key) {
+    String validatedKey = Validate.notBlank(key, "WorkflowState context key must not be blank");
+    context.remove(validatedKey);
+  }
+
+  public void putStepOutput(String stepId, String output) {
+    String validatedStepId =
+        Validate.notBlank(stepId, "WorkflowState stepId must not be blank");
+    String validatedOutput =
+        Validate.notNull(output, "WorkflowState step output must not be null");
+    stepOutputs.put(validatedStepId, validatedOutput);
+  }
+
+  public void putStepExecutionUid(String stepId, int uid) {
+    String validatedStepId =
+        Validate.notBlank(stepId, "WorkflowState stepId must not be blank");
+    stepExecutionUid.put(validatedStepId, uid);
+  }
+
+  public void putContextKeyWrittenAtUid(String key, int uid) {
+    String validatedKey =
+        Validate.notBlank(key, "WorkflowState context key must not be blank");
+    contextKeyWrittenAtUid.put(validatedKey, uid);
+  }
+
+  public Optional<ContextValue> getContextValue(String key) {
+    String validatedKey = Validate.notBlank(key, "WorkflowState context key must not be blank");
+    return Optional.ofNullable(context.get(validatedKey));
+  }
+
+  public Optional<String> getStepOutput(String stepId) {
+    String validatedStepId =
+        Validate.notBlank(stepId, "WorkflowState stepId must not be blank");
+    return Optional.ofNullable(stepOutputs.get(validatedStepId));
+  }
+
+  public Optional<Integer> getStepExecutionUid(String stepId) {
+    String validatedStepId =
+        Validate.notBlank(stepId, "WorkflowState stepId must not be blank");
+    return Optional.ofNullable(stepExecutionUid.get(validatedStepId));
+  }
+
+  public void clearEntriesFromUid(int retryUid, String protectedContextKey) {
+    Iterator<Map.Entry<String, Integer>> stepUidIterator = stepExecutionUid.entrySet().iterator();
+    while (stepUidIterator.hasNext()) {
+      Map.Entry<String, Integer> entry = stepUidIterator.next();
+      if (entry.getValue() >= retryUid) {
+        stepOutputs.remove(entry.getKey());
+        stepUidIterator.remove();
+      }
+    }
+
+    Iterator<Map.Entry<String, Integer>> contextUidIterator =
+        contextKeyWrittenAtUid.entrySet().iterator();
+    while (contextUidIterator.hasNext()) {
+      Map.Entry<String, Integer> entry = contextUidIterator.next();
+      if (entry.getValue() >= retryUid) {
+        if (entry.getKey().equals(protectedContextKey)) {
+          continue;
+        }
+        context.remove(entry.getKey());
+        contextUidIterator.remove();
+      }
+    }
   }
 }
