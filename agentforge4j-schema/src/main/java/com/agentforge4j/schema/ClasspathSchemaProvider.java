@@ -9,11 +9,11 @@ import java.util.function.Function;
 import lombok.Getter;
 import lombok.experimental.Accessors;
 
-@Getter
-@Accessors(fluent = true)
 /**
  * Loads JSON schema documents from classpath resources in {@code /schema}.
  */
+@Getter
+@Accessors(fluent = true)
 public final class ClasspathSchemaProvider implements SchemaProvider {
 
   private final String workflowSchema;
@@ -51,3 +51,4 @@ public final class ClasspathSchemaProvider implements SchemaProvider {
     }
   }
 }
+

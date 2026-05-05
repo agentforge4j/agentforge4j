@@ -58,28 +58,11 @@
     },
     "Executable": {
       "oneOf": [
-        { "$ref": "#/$defs/StepDefinition" },
+        { "$ref": "workflow.schema.json#/$defs/StepDefinition" },
         { "$ref": "#/$defs/BlueprintRef" },
         { "$ref": "#" },
         { "$ref": "workflow.schema.json" }
       ]
-    },
-    "StepDefinition": {
-      "type": "object",
-      "required": ["kind", "stepId", "name", "behaviour"],
-      "properties": {
-        "kind": { "type": "string", "const": "STEP" },
-        "stepId": { "type": "string" },
-        "name": { "type": "string" },
-        "behaviour": {
-          "type": "object",
-          "description": "See workflow.schema.json StepBehaviour for full definition."
-        },
-        "contextMapping": {
-          "type": "object",
-          "description": "See workflow.schema.json ContextMapping for full definition."
-        }
-      }
     },
     "BlueprintRef": {
       "type": "object",

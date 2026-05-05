@@ -22,7 +22,9 @@ public record RetryPolicy(
 ) {
 
   public RetryPolicy {
-    Validate.isGreaterThanZero(maxAttempts, "RetryPolicy maxAttempts must not be negative");
+    if (allowRetry ||  allowRetryFromPrevious ||  allowAgentSwap ||  allowPromptOverride) {
+      Validate.isGreaterThanZero(maxAttempts, "RetryPolicy maxAttempts must not be negative");
+    }
   }
 
   /**
