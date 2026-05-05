@@ -2,6 +2,7 @@ package com.agentforge4j.core.workflow.step.behaviour;
 
 import com.agentforge4j.core.workflow.Executable;
 
+import com.agentforge4j.util.Validate;
 import java.util.Map;
 
 /**
@@ -19,4 +20,10 @@ public record BranchBehaviour(
     Executable defaultBranch
 ) implements StepBehaviour {
 
+  public BranchBehaviour {
+    Validate.notBlank(contextKey, "context key for BranchBehaviour cannot be blank");
+    Validate.notNull(branches, "branches for BranchBehaviour cannot be null");
+    Validate.notEmpty(branches.keySet(), "branches for BranchBehaviour cannot be empty");
+    Validate.notNull(defaultBranch, "default branch for BranchBehaviour cannot be null");
+  }
 }

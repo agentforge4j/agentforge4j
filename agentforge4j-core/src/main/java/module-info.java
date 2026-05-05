@@ -1,6 +1,7 @@
 module agentforge4j.core {
   requires static lombok;
   requires agentforge4j.util;
+  requires agentforge4j.llm;
   requires com.fasterxml.jackson.databind;
   requires com.fasterxml.jackson.annotation;
   requires org.apache.commons.lang3;
