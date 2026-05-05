@@ -1,0 +1,11 @@
+{
+  "id": "application-delivery.architect",
+  "name": "Application Delivery — System Architect",
+  "locality": "CLOUD",
+  "enabled": true,
+  "providerPreferences": [
+    {"provider": "openai", "model": "gpt-4o"},
+    {"provider": "claude", "model": "claude-3-5-sonnet-20241022"}
+  ],
+  "supportedCommands": ["SET_CONTEXT", "COMPLETE"]
+}

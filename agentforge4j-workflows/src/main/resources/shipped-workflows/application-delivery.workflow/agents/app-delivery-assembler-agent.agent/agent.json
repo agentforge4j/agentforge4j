@@ -1,0 +1,11 @@
+{
+  "id": "application-delivery.assembler",
+  "name": "Application Delivery — Delivery Assembler",
+  "locality": "CLOUD",
+  "enabled": true,
+  "providerPreferences": [
+    {"provider": "openai", "model": "gpt-4o-mini"},
+    {"provider": "claude", "model": "claude-3-5-haiku-20241022"}
+  ],
+  "supportedCommands": ["CREATE_FILE", "SET_CONTEXT", "COMPLETE"]
+}

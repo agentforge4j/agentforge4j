@@ -1,0 +1,12 @@
+{
+  "id": "app-creator.architect",
+  "name": "App Creator — Architect",
+  "locality": "CLOUD",
+  "enabled": true,
+  "providerPreferences": [
+    { "provider": "openai", "model": "gpt-4o" },
+    { "provider": "claude", "model": "claude-3-5-sonnet-latest" },
+    { "provider": "ollama", "model": "llama3.2" }
+  ],
+  "supportedCommands": ["USER_PROMPT", "SET_CONTEXT", "COMPLETE"]
+}

@@ -1,0 +1,74 @@
+{
+  "kind": "WORKFLOW",
+  "id": "workflow-cost-estimator",
+  "uuid": "a1c9e8f2-4b3d-4e5f-9a0b-1c2d3e4f5a04",
+  "name": "Workflow Cost Estimator",
+  "description": "Analyses a workflow definition and produces a credit cost estimate (min / expected / max) based on the AgentForge4j pricing model.",
+  "artifacts": {
+    "estimation-input": {
+      "id": "estimation-input",
+      "items": [
+        {
+          "type": "TEXT_AREA",
+          "id": "workflow-json",
+          "label": "Paste your workflow.json content",
+          "required": true,
+          "hint": "Full JSON of the WorkflowDefinition including steps, blueprints, and artifacts."
+        },
+        {
+          "type": "SINGLE_CHOICE",
+          "id": "subscription-tier",
+          "label": "Your subscription tier",
+          "required": true,
+          "options": ["FREE", "PRO", "TEAM", "ENTERPRISE"]
+        },
+        {
+          "type": "NUMBER",
+          "id": "expected-list-size",
+          "label": "For FOR_EACH loops: expected list size (default 5)",
+          "required": false
+        },
+        {
+          "type": "TEXT_AREA",
+          "id": "agent-models",
+          "label": "Agent model mapping (optional)",
+          "required": false,
+          "hint": "e.g. my-agent=gpt-4o, reviewer-agent=gpt-4o-mini. Helps improve estimate accuracy."
+        }
+      ]
+    }
+  },
+  "blueprints": {},
+  "steps": [
+    {
+      "kind": "STEP",
+      "stepId": "collect-input",
+      "name": "Collect Workflow and Tier",
+      "behaviour": {
+        "type": "INPUT",
+        "artifactId": "estimation-input",
+        "transition": "AUTO"
+      }
+    },
+    {
+      "kind": "STEP",
+      "stepId": "estimate-cost",
+      "name": "Estimate Credit Cost",
+      "behaviour": {
+        "type": "AGENT",
+        "agentRef": "workflow-cost-estimator.estimator",
+        "transition": "AUTO",
+        "retryPolicy": {
+          "allowRetry": true,
+          "allowRetryFromPrevious": false,
+          "allowAgentSwap": false,
+          "allowPromptOverride": false,
+          "maxAttempts": 2
+        }
+      },
+      "contextMapping": {
+        "inputKeys": ["workflow-json", "subscription-tier", "expected-list-size", "agent-models"]
+      }
+    }
+  ]
+}

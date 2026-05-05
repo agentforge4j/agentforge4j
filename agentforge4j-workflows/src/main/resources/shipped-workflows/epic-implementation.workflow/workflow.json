@@ -1,0 +1,178 @@
+{
+  "kind": "WORKFLOW",
+  "id": "epic-implementation",
+  "uuid": "a1c9e8f2-4b3d-4e5f-9a0b-1c2d3e4f5a05",
+  "name": "Epic Implementation",
+  "description": "Implements a single epic. Inputs (read from shared context): currentEpic, architectureDesign, generatedFiles. Outputs (written to shared context): generatedFiles, generatedTests, epicStatus (SUCCESS | NEEDS_REWORK | FAILED), epicNotes. Retries developer + tester up to 2 times if validator returns NEEDS_REWORK.",
+  "artifacts": {},
+  "blueprints": {
+    "mark-epic-failed-blueprint": {
+      "kind": "BLUEPRINT",
+      "blueprintId": "mark-epic-failed-blueprint",
+      "name": "Mark Epic Failed (retry exhausted)",
+      "behaviour": {
+        "transition": "AUTO"
+      },
+      "steps": [
+        {
+          "kind": "STEP",
+          "stepId": "mark-epic-failed",
+          "name": "Mark Epic Failed",
+          "behaviour": {
+            "type": "AGENT",
+            "agentRef": "epic-implementation.validator",
+            "transition": "AUTO"
+          },
+          "contextMapping": {
+            "inputKeys": ["currentEpic", "epicNotes"],
+            "outputKeys": ["epicStatus", "epicNotes"]
+          },
+          "stepPrompt": "mark-epic-failed"
+        }
+      ]
+    }
+  },
+  "steps": [
+    {
+      "kind": "STEP",
+      "stepId": "understand-epic",
+      "name": "Understand Epic Scope",
+      "behaviour": {
+        "type": "AGENT",
+        "agentRef": "epic-implementation.developer",
+        "transition": "AUTO",
+        "retryPolicy": {
+          "allowRetry": true,
+          "allowRetryFromPrevious": false,
+          "allowAgentSwap": false,
+          "allowPromptOverride": false,
+          "maxAttempts": 2
+        }
+      },
+      "contextMapping": {
+        "inputKeys": ["currentEpic", "architectureDesign", "generatedFiles"],
+        "outputKeys": ["epicScope"]
+      },
+      "stepPrompt": "understand-epic"
+    },
+    {
+      "kind": "STEP",
+      "stepId": "implement-epic",
+      "name": "Generate Implementation Files",
+      "behaviour": {
+        "type": "AGENT",
+        "agentRef": "epic-implementation.developer",
+        "transition": "AUTO",
+        "retryPolicy": {
+          "allowRetry": true,
+          "allowRetryFromPrevious": true,
+          "allowAgentSwap": false,
+          "allowPromptOverride": true,
+          "maxAttempts": 2
+        }
+      },
+      "contextMapping": {
+        "inputKeys": ["currentEpic", "architectureDesign", "epicScope", "generatedFiles", "epicNotes"],
+        "outputKeys": ["generatedFiles"]
+      },
+      "stepPrompt": "implement-epic"
+    },
+    {
+      "kind": "STEP",
+      "stepId": "generate-tests",
+      "name": "Generate Test Cases",
+      "behaviour": {
+        "type": "AGENT",
+        "agentRef": "epic-implementation.tester",
+        "transition": "AUTO",
+        "retryPolicy": {
+          "allowRetry": true,
+          "allowRetryFromPrevious": false,
+          "allowAgentSwap": false,
+          "allowPromptOverride": false,
+          "maxAttempts": 2
+        }
+      },
+      "contextMapping": {
+        "inputKeys": ["currentEpic", "epicScope", "generatedFiles", "generatedTests"],
+        "outputKeys": ["generatedTests"]
+      },
+      "stepPrompt": "generate-tests"
+    },
+    {
+      "kind": "STEP",
+      "stepId": "validate-epic",
+      "name": "Validate Epic Implementation",
+      "behaviour": {
+        "type": "AGENT",
+        "agentRef": "epic-implementation.validator",
+        "transition": "AUTO",
+        "retryPolicy": {
+          "allowRetry": true,
+          "allowRetryFromPrevious": false,
+          "allowAgentSwap": false,
+          "allowPromptOverride": false,
+          "maxAttempts": 2
+        }
+      },
+      "contextMapping": {
+        "inputKeys": ["currentEpic", "epicScope", "generatedFiles", "generatedTests", "architectureDesign"],
+        "outputKeys": ["epicStatus", "epicNotes"]
+      },
+      "stepPrompt": "validate-epic"
+    },
+    {
+      "kind": "STEP",
+      "stepId": "rework-decision",
+      "name": "Rework Decision",
+      "behaviour": {
+        "type": "BRANCH",
+        "contextKey": "epicStatus",
+        "branches": {
+          "SUCCESS": {
+            "kind": "STEP",
+            "stepId": "epic-success-noop",
+            "name": "Epic Successful",
+            "behaviour": {
+              "type": "RESOURCE",
+              "resourcePath": "/schema/workflow.schema.json",
+              "contextKey": "__epic_success_marker",
+              "transition": "AUTO"
+            },
+            "contextMapping": {
+              "inputKeys": [],
+              "outputKeys": ["__epic_success_marker"]
+            }
+          },
+          "NEEDS_REWORK": {
+            "kind": "STEP",
+            "stepId": "rework-retry",
+            "name": "Retry Implementation",
+            "behaviour": {
+              "type": "RETRY_PREVIOUS",
+              "retryStepId": "implement-epic",
+              "retryMode": "FROM_STEP",
+              "maxAttempts": 2,
+              "fallback": {
+                "kind": "BLUEPRINT_REF",
+                "blueprintId": "mark-epic-failed-blueprint"
+              }
+            },
+            "contextMapping": {
+              "inputKeys": [],
+              "outputKeys": []
+            }
+          }
+        },
+        "defaultBranch": {
+          "kind": "BLUEPRINT_REF",
+          "blueprintId": "mark-epic-failed-blueprint"
+        }
+      },
+      "contextMapping": {
+        "inputKeys": ["epicStatus"],
+        "outputKeys": []
+      }
+    }
+  ]
+}

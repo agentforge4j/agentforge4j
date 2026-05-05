@@ -1,0 +1,57 @@
+{
+  "kind": "BLUEPRINT",
+  "blueprintId": "cv-collection-loop",
+  "name": "CV upload and analysis loop",
+  "behaviour": {
+    "loopConfig": {
+      "terminationStrategy": "AGENT_SIGNAL",
+      "maxIterations": 100,
+      "maxIterationsAction": "AWAIT_USER"
+    },
+    "transition": "AUTO"
+  },
+  "steps": [
+    {
+      "kind": "STEP",
+      "stepId": "cv-upload-prompt",
+      "name": "Collect a CV",
+      "behaviour": {
+        "type": "INPUT",
+        "artifactId": "cv-upload",
+        "transition": "AUTO"
+      },
+      "contextMapping": {
+        "inputKeys": [],
+        "outputKeys": ["cvText", "candidateName", "moreCvs"]
+      }
+    },
+    {
+      "kind": "STEP",
+      "stepId": "cv-analysis",
+      "name": "Analyse and score the CV",
+      "behaviour": {
+        "type": "AGENT",
+        "agentRef": "recruitment.cv-analysis",
+        "transition": "AUTO"
+      },
+      "contextMapping": {
+        "inputKeys": ["recruitmentProfile", "cvText", "candidateName", "candidates"],
+        "outputKeys": ["candidates"]
+      }
+    },
+    {
+      "kind": "STEP",
+      "stepId": "cv-loop-coordinator",
+      "name": "Decide whether to continue collecting CVs",
+      "behaviour": {
+        "type": "AGENT",
+        "agentRef": "recruitment.cv-loop-coordinator",
+        "transition": "AUTO"
+      },
+      "contextMapping": {
+        "inputKeys": ["moreCvs", "candidates"],
+        "outputKeys": []
+      }
+    }
+  ]
+}

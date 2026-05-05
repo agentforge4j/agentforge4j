@@ -1,0 +1,29 @@
+{
+  "kind": "BLUEPRINT",
+  "blueprintId": "po-refinement-loop",
+  "name": "Product Owner Refinement Loop",
+  "behaviour": {
+    "loopConfig": {
+      "terminationStrategy": "AGENT_SIGNAL",
+      "maxIterations": 8,
+      "maxIterationsAction": "AWAIT_USER"
+    },
+    "transition": "AUTO"
+  },
+  "steps": [
+    {
+      "kind": "STEP",
+      "stepId": "po-refine",
+      "name": "PO Refinement Iteration",
+      "behaviour": {
+        "type": "AGENT",
+        "agentRef": "app-creator.po",
+        "transition": "AUTO"
+      },
+      "contextMapping": {
+        "inputKeys": ["appIdea", "productVisionDraft"],
+        "outputKeys": ["productVisionDraft"]
+      }
+    }
+  ]
+}

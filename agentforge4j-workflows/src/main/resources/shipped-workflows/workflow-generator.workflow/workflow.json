@@ -1,0 +1,63 @@
+{
+  "kind": "WORKFLOW",
+  "id": "workflow-generator",
+  "uuid": "a1c9e8f2-4b3d-4e5f-9a0b-1c2d3e4f5a06",
+  "name": "Workflow Generator",
+  "description": "Conversational AI workflow designer that collaborates with the user to discover, refine, and generate a complete workflow.",
+  "steps": [
+    {
+      "kind": "STEP",
+      "stepId": "start-conversation",
+      "name": "Start Conversation",
+      "behaviour": {
+        "type": "INPUT",
+        "artifactId": "workflow-ideas",
+        "transition": "AUTO"
+      }
+    },
+    {
+      "kind": "STEP",
+      "stepId": "interactive-design",
+      "name": "Interactive Workflow Design",
+      "behaviour": {
+        "type": "AGENT",
+        "agentRef": "workflow-generator.conversation",
+        "transition": "AUTO",
+        "retryPolicy": {
+          "allowRetry": true,
+          "allowRetryFromPrevious": true,
+          "allowAgentSwap": false,
+          "allowPromptOverride": true,
+          "maxAttempts": 5
+        }
+      },
+      "contextMapping": {
+        "inputKeys": [
+          "workflow-ideas.workflow-idea",
+          "user.response.interactive-design"
+        ],
+        "outputKeys": ["workflow-design"]
+      }
+    },
+    {
+      "kind": "STEP",
+      "stepId": "generate-workflow",
+      "name": "Generate Workflow Bundle",
+      "behaviour": {
+        "type": "AGENT",
+        "agentRef": "workflow-generator.designer",
+        "transition": "AUTO",
+        "retryPolicy": {
+          "allowRetry": true,
+          "allowRetryFromPrevious": false,
+          "allowAgentSwap": false,
+          "allowPromptOverride": false,
+          "maxAttempts": 2
+        }
+      },
+      "contextMapping": {
+        "inputKeys": ["workflow-design"]
+      }
+    }
+  ]
+}

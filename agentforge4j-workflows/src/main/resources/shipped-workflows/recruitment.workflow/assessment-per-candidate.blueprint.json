@@ -1,0 +1,58 @@
+{
+  "kind": "BLUEPRINT",
+  "blueprintId": "assessment-per-candidate",
+  "name": "Generate and evaluate assessment for one shortlisted candidate",
+  "behaviour": {
+    "loopConfig": {
+      "terminationStrategy": "FOR_EACH",
+      "forEachContextKey": "shortlistedCandidates",
+      "maxIterations": 50,
+      "maxIterationsAction": "FAIL"
+    },
+    "transition": "AUTO"
+  },
+  "steps": [
+    {
+      "kind": "STEP",
+      "stepId": "assessment-generation",
+      "name": "Generate role-specific assessment",
+      "behaviour": {
+        "type": "AGENT",
+        "agentRef": "recruitment.assessment-generator",
+        "transition": "AUTO"
+      },
+      "contextMapping": {
+        "inputKeys": ["recruitmentProfile", "currentCandidate"],
+        "outputKeys": ["currentAssessment"]
+      }
+    },
+    {
+      "kind": "STEP",
+      "stepId": "assessment-submission-input",
+      "name": "Receive candidate submission",
+      "behaviour": {
+        "type": "INPUT",
+        "artifactId": "assessment-submission",
+        "transition": "AUTO"
+      },
+      "contextMapping": {
+        "inputKeys": ["currentCandidate", "currentAssessment"],
+        "outputKeys": ["submission", "submissionReceived"]
+      }
+    },
+    {
+      "kind": "STEP",
+      "stepId": "assessment-evaluation",
+      "name": "Evaluate submission and update candidate score",
+      "behaviour": {
+        "type": "AGENT",
+        "agentRef": "recruitment.assessment-evaluator",
+        "transition": "AUTO"
+      },
+      "contextMapping": {
+        "inputKeys": ["recruitmentProfile", "currentCandidate", "currentAssessment", "submission", "candidates"],
+        "outputKeys": ["candidates"]
+      }
+    }
+  ]
+}

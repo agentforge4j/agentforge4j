@@ -1,0 +1,14 @@
+{
+  "id": "application-delivery.po",
+  "name": "Application Delivery — Product Owner",
+  "author": "AgentForge4J",
+  "contact": "https://github.com/agentforge4j",
+  "version": "1.0.0",
+  "locality": "CLOUD",
+  "enabled": true,
+  "providerPreferences": [
+    {"provider": "openai", "model": "gpt-4o"},
+    {"provider": "claude", "model": "claude-3-5-sonnet-20241022"}
+  ],
+  "supportedCommands": ["SET_CONTEXT", "USER_PROMPT", "COMPLETE"]
+}

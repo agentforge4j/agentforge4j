@@ -1,0 +1,494 @@
+{
+  "kind": "WORKFLOW",
+  "id": "recruitment",
+  "uuid": "a1c9e8f2-4b3d-4e5f-9a0b-1c2d3e4f5a03",
+  "name": "Recruitment Workflow",
+  "description": "End-to-end AI-assisted recruitment: dynamic intake, job post generation, CV evaluation, role-specific assessment, and shortlisting. Deterministic flow, AI-driven content, human-in-the-loop confirmation gates.",
+  "artifacts": {
+    "initial-role-prompt": {
+      "id": "initial-role-prompt",
+      "items": [
+        { "type": "TEXT", "id": "rolePrompt", "label": "What position is this recruitment for?", "required": true }
+      ]
+    },
+    "profile-confirmation": {
+      "id": "profile-confirmation",
+      "items": [
+        { "type": "BOOLEAN", "id": "profileConfirmed", "label": "The recruitment profile above is correct and complete. Proceed to job post generation.", "required": true }
+      ]
+    },
+    "job-post-target": {
+      "id": "job-post-target",
+      "items": [
+        {
+          "type": "SINGLE_CHOICE",
+          "id": "jobPostChannel",
+          "label": "Where will this job post be published?",
+          "required": true,
+          "options": ["LinkedIn", "Internal Careers Page", "Generic Job Board", "Recruitment Agency Brief"]
+        }
+      ]
+    },
+    "job-post-confirmation": {
+      "id": "job-post-confirmation",
+      "items": [
+        { "type": "BOOLEAN", "id": "jobPostApproved", "label": "Approve the generated job post for publication.", "required": true }
+      ]
+    },
+    "cv-upload": {
+      "id": "cv-upload",
+      "items": [
+        { "type": "TEXT_AREA", "id": "cvText", "label": "Paste CV content (or full path/URL to CV file)", "required": true },
+        { "type": "TEXT", "id": "candidateName", "label": "Candidate name", "required": true },
+        { "type": "BOOLEAN", "id": "moreCvs", "label": "I have more CVs to upload after this one.", "required": true }
+      ]
+    },
+    "shortlist-config": {
+      "id": "shortlist-config",
+      "items": [
+        { "type": "NUMBER", "id": "shortlistSize", "label": "How many candidates should be shortlisted? (Leave blank for AI suggestion based on score distribution)", "required": false }
+      ]
+    },
+    "shortlist-confirmation": {
+      "id": "shortlist-confirmation",
+      "items": [
+        { "type": "BOOLEAN", "id": "shortlistConfirmed", "label": "Approve the proposed shortlist and proceed to assessment generation.", "required": true }
+      ]
+    },
+    "assessment-submission": {
+      "id": "assessment-submission",
+      "items": [
+        { "type": "TEXT_AREA", "id": "submission", "label": "Paste the candidate's assessment submission", "required": true },
+        { "type": "BOOLEAN", "id": "submissionReceived", "label": "Submission received and ready to evaluate.", "required": true }
+      ]
+    }
+  },
+  "blueprints": {
+    "intake-loop": {
+      "kind": "BLUEPRINT",
+      "blueprintId": "intake-loop",
+      "name": "AI-driven intake loop",
+      "behaviour": {
+        "loopConfig": {
+          "terminationStrategy": "AGENT_SIGNAL",
+          "maxIterations": 25,
+          "maxIterationsAction": "AWAIT_USER"
+        },
+        "transition": "AUTO"
+      },
+      "steps": [
+        {
+          "kind": "STEP",
+          "stepId": "intake-iteration",
+          "name": "Intake question round",
+          "behaviour": {
+            "type": "AGENT",
+            "agentRef": "recruitment.intake",
+            "transition": "AUTO"
+          },
+          "contextMapping": {
+            "inputKeys": ["rolePrompt", "recruitmentProfileDraft", "intakeUserResponse"],
+            "outputKeys": ["recruitmentProfileDraft", "intakeUserResponse"]
+          }
+        }
+      ]
+    },
+    "cv-collection-loop": {
+      "kind": "BLUEPRINT",
+      "blueprintId": "cv-collection-loop",
+      "name": "CV upload and analysis loop",
+      "behaviour": {
+        "loopConfig": {
+          "terminationStrategy": "AGENT_SIGNAL",
+          "maxIterations": 100,
+          "maxIterationsAction": "AWAIT_USER"
+        },
+        "transition": "AUTO"
+      },
+      "steps": [
+        {
+          "kind": "STEP",
+          "stepId": "cv-upload-prompt",
+          "name": "Collect a CV",
+          "behaviour": {
+            "type": "INPUT",
+            "artifactId": "cv-upload",
+            "transition": "AUTO"
+          },
+          "contextMapping": {
+            "inputKeys": [],
+            "outputKeys": ["cvText", "candidateName", "moreCvs"]
+          }
+        },
+        {
+          "kind": "STEP",
+          "stepId": "cv-analysis",
+          "name": "Analyse and score the CV",
+          "behaviour": {
+            "type": "AGENT",
+            "agentRef": "recruitment.cv-analysis",
+            "transition": "AUTO"
+          },
+          "contextMapping": {
+            "inputKeys": ["recruitmentProfile", "cvText", "candidateName", "candidates"],
+            "outputKeys": ["candidates"]
+          }
+        },
+        {
+          "kind": "STEP",
+          "stepId": "cv-loop-coordinator",
+          "name": "Decide whether to continue collecting CVs",
+          "behaviour": {
+            "type": "AGENT",
+            "agentRef": "recruitment.cv-loop-coordinator",
+            "transition": "AUTO"
+          },
+          "contextMapping": {
+            "inputKeys": ["moreCvs", "candidates"],
+            "outputKeys": []
+          }
+        }
+      ]
+    },
+    "assessment-per-candidate": {
+      "kind": "BLUEPRINT",
+      "blueprintId": "assessment-per-candidate",
+      "name": "Generate and evaluate assessment for one shortlisted candidate",
+      "behaviour": {
+        "loopConfig": {
+          "terminationStrategy": "FOR_EACH",
+          "forEachContextKey": "shortlistedCandidates",
+          "maxIterations": 50,
+          "maxIterationsAction": "FAIL"
+        },
+        "transition": "AUTO"
+      },
+      "steps": [
+        {
+          "kind": "STEP",
+          "stepId": "assessment-generation",
+          "name": "Generate role-specific assessment",
+          "behaviour": {
+            "type": "AGENT",
+            "agentRef": "recruitment.assessment-generator",
+            "transition": "AUTO"
+          },
+          "contextMapping": {
+            "inputKeys": ["recruitmentProfile", "currentCandidate"],
+            "outputKeys": ["currentAssessment"]
+          }
+        },
+        {
+          "kind": "STEP",
+          "stepId": "assessment-submission-input",
+          "name": "Receive candidate submission",
+          "behaviour": {
+            "type": "INPUT",
+            "artifactId": "assessment-submission",
+            "transition": "AUTO"
+          },
+          "contextMapping": {
+            "inputKeys": ["currentCandidate", "currentAssessment"],
+            "outputKeys": ["submission", "submissionReceived"]
+          }
+        },
+        {
+          "kind": "STEP",
+          "stepId": "assessment-evaluation",
+          "name": "Evaluate submission and update candidate score",
+          "behaviour": {
+            "type": "AGENT",
+            "agentRef": "recruitment.assessment-evaluator",
+            "transition": "AUTO"
+          },
+          "contextMapping": {
+            "inputKeys": ["recruitmentProfile", "currentCandidate", "currentAssessment", "submission", "candidates"],
+            "outputKeys": ["candidates"]
+          }
+        }
+      ]
+    }
+  },
+  "steps": [
+    {
+      "kind": "STEP",
+      "stepId": "initial-role-input",
+      "name": "Capture role prompt",
+      "behaviour": {
+        "type": "INPUT",
+        "artifactId": "initial-role-prompt",
+        "transition": "AUTO"
+      },
+      "contextMapping": {
+        "inputKeys": [],
+        "outputKeys": ["rolePrompt"]
+      }
+    },
+    {
+      "kind": "BLUEPRINT_REF",
+      "blueprintId": "intake-loop"
+    },
+    {
+      "kind": "STEP",
+      "stepId": "profile-finalize",
+      "name": "Finalise recruitment profile",
+      "behaviour": {
+        "type": "AGENT",
+        "agentRef": "recruitment.profile-finalizer",
+        "transition": "AUTO"
+      },
+      "contextMapping": {
+        "inputKeys": ["recruitmentProfileDraft"],
+        "outputKeys": ["recruitmentProfile"]
+      }
+    },
+    {
+      "kind": "STEP",
+      "stepId": "profile-confirmation",
+      "name": "User confirms recruitment profile",
+      "behaviour": {
+        "type": "INPUT",
+        "artifactId": "profile-confirmation",
+        "transition": "AUTO"
+      },
+      "contextMapping": {
+        "inputKeys": ["recruitmentProfile"],
+        "outputKeys": ["profileConfirmed"]
+      }
+    },
+    {
+      "kind": "STEP",
+      "stepId": "profile-confirmation-gate",
+      "name": "Branch on profile confirmation",
+      "behaviour": {
+        "type": "BRANCH",
+        "contextKey": "profileConfirmed",
+        "branches": {
+          "false": {
+            "kind": "STEP",
+            "stepId": "profile-rejected",
+            "name": "Profile rejected — restart intake",
+            "behaviour": {
+              "type": "FAIL",
+              "reason": "Recruitment profile was not confirmed by user. Restart the workflow with refined input."
+            }
+          }
+        },
+        "defaultBranch": {
+          "kind": "STEP",
+          "stepId": "profile-confirmed-noop",
+          "name": "Profile confirmed",
+          "behaviour": {
+            "type": "RESOURCE",
+            "resourcePath": "/schema/agent.schema.json",
+            "contextKey": "__profileConfirmedMarker",
+            "transition": "AUTO"
+          }
+        }
+      }
+    },
+    {
+      "kind": "STEP",
+      "stepId": "job-post-channel-input",
+      "name": "Capture job post target channel",
+      "behaviour": {
+        "type": "INPUT",
+        "artifactId": "job-post-target",
+        "transition": "AUTO"
+      },
+      "contextMapping": {
+        "inputKeys": [],
+        "outputKeys": ["jobPostChannel"]
+      }
+    },
+    {
+      "kind": "STEP",
+      "stepId": "job-post-generation",
+      "name": "Generate job post",
+      "behaviour": {
+        "type": "AGENT",
+        "agentRef": "recruitment.job-post",
+        "transition": "AUTO",
+        "retryPolicy": {
+          "allowRetry": true,
+          "allowRetryFromPrevious": false,
+          "allowAgentSwap": false,
+          "allowPromptOverride": true,
+          "maxAttempts": 3
+        }
+      },
+      "contextMapping": {
+        "inputKeys": ["recruitmentProfile", "jobPostChannel"],
+        "outputKeys": ["jobPost"]
+      }
+    },
+    {
+      "kind": "STEP",
+      "stepId": "job-post-approval",
+      "name": "User approves job post",
+      "behaviour": {
+        "type": "INPUT",
+        "artifactId": "job-post-confirmation",
+        "transition": "AUTO"
+      },
+      "contextMapping": {
+        "inputKeys": ["jobPost"],
+        "outputKeys": ["jobPostApproved"]
+      }
+    },
+    {
+      "kind": "STEP",
+      "stepId": "job-post-approval-gate",
+      "name": "Branch on job post approval",
+      "behaviour": {
+        "type": "BRANCH",
+        "contextKey": "jobPostApproved",
+        "branches": {
+          "false": {
+            "kind": "STEP",
+            "stepId": "job-post-regenerate",
+            "name": "Regenerate job post on rejection",
+            "behaviour": {
+              "type": "RETRY_PREVIOUS",
+              "retryStepId": "job-post-generation",
+              "retryMode": "FROM_STEP",
+              "maxAttempts": 3,
+              "fallback": {
+                "kind": "STEP",
+                "stepId": "job-post-fallback-fail",
+                "name": "Job post repeatedly rejected",
+                "behaviour": {
+                  "type": "FAIL",
+                  "reason": "Job post was rejected after 3 regeneration attempts. Review recruitment profile and channel selection."
+                }
+              }
+            }
+          }
+        },
+        "defaultBranch": {
+          "kind": "STEP",
+          "stepId": "job-post-publish-file",
+          "name": "Persist approved job post as file",
+          "behaviour": {
+            "type": "AGENT",
+            "agentRef": "recruitment.job-post-publisher",
+            "transition": "AUTO"
+          },
+          "contextMapping": {
+            "inputKeys": ["jobPost", "jobPostChannel", "recruitmentProfile"],
+            "outputKeys": []
+          }
+        }
+      }
+    },
+    {
+      "kind": "BLUEPRINT_REF",
+      "blueprintId": "cv-collection-loop"
+    },
+    {
+      "kind": "STEP",
+      "stepId": "shortlist-config-input",
+      "name": "Configure shortlist size",
+      "behaviour": {
+        "type": "INPUT",
+        "artifactId": "shortlist-config",
+        "transition": "AUTO"
+      },
+      "contextMapping": {
+        "inputKeys": ["candidates"],
+        "outputKeys": ["shortlistSize"]
+      }
+    },
+    {
+      "kind": "STEP",
+      "stepId": "candidate-ranking",
+      "name": "Rank candidates and propose shortlist",
+      "behaviour": {
+        "type": "AGENT",
+        "agentRef": "recruitment.ranking",
+        "transition": "AUTO"
+      },
+      "contextMapping": {
+        "inputKeys": ["recruitmentProfile", "candidates", "shortlistSize"],
+        "outputKeys": ["candidates", "shortlistedCandidates", "rejectedCandidates", "rankingRationale"]
+      }
+    },
+    {
+      "kind": "STEP",
+      "stepId": "shortlist-confirmation",
+      "name": "User confirms shortlist",
+      "behaviour": {
+        "type": "INPUT",
+        "artifactId": "shortlist-confirmation",
+        "transition": "AUTO"
+      },
+      "contextMapping": {
+        "inputKeys": ["shortlistedCandidates", "rejectedCandidates", "rankingRationale"],
+        "outputKeys": ["shortlistConfirmed"]
+      }
+    },
+    {
+      "kind": "STEP",
+      "stepId": "shortlist-confirmation-gate",
+      "name": "Branch on shortlist confirmation",
+      "behaviour": {
+        "type": "BRANCH",
+        "contextKey": "shortlistConfirmed",
+        "branches": {
+          "false": {
+            "kind": "STEP",
+            "stepId": "shortlist-rejected",
+            "name": "Shortlist rejected — re-rank",
+            "behaviour": {
+              "type": "RETRY_PREVIOUS",
+              "retryStepId": "shortlist-config-input",
+              "retryMode": "FROM_STEP",
+              "maxAttempts": 3,
+              "fallback": {
+                "kind": "STEP",
+                "stepId": "shortlist-fail",
+                "name": "Shortlist could not be agreed",
+                "behaviour": {
+                  "type": "FAIL",
+                  "reason": "Shortlist rejected after 3 ranking attempts. Manual intervention required."
+                }
+              }
+            }
+          }
+        },
+        "defaultBranch": {
+          "kind": "STEP",
+          "stepId": "rejection-letters-generation",
+          "name": "Generate explainable rejection letters",
+          "behaviour": {
+            "type": "AGENT",
+            "agentRef": "recruitment.rejection-letter",
+            "transition": "AUTO"
+          },
+          "contextMapping": {
+            "inputKeys": ["recruitmentProfile", "rejectedCandidates"],
+            "outputKeys": []
+          }
+        }
+      }
+    },
+    {
+      "kind": "BLUEPRINT_REF",
+      "blueprintId": "assessment-per-candidate"
+    },
+    {
+      "kind": "STEP",
+      "stepId": "final-selection",
+      "name": "Produce final ranked selection for interview phase",
+      "behaviour": {
+        "type": "AGENT",
+        "agentRef": "recruitment.final-selection",
+        "transition": "HUMAN_REVIEW"
+      },
+      "contextMapping": {
+        "inputKeys": ["recruitmentProfile", "candidates", "shortlistedCandidates"],
+        "outputKeys": ["finalSelection"]
+      }
+    }
+  ]
+}
