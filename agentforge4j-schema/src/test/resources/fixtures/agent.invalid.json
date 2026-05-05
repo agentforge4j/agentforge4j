@@ -1,0 +1,7 @@
+{
+  "id": "writer-agent",
+  "name": "Writer Agent",
+  "locality": "ON_PREM",
+  "version": "1.0.0",
+  "providerPreferences": []
+}

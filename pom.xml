@@ -44,6 +44,7 @@
     <module>agentforge4j-llm-openai-compatible</module>
     <module>agentforge4j-llm-vllm</module>
     <module>agentforge4j-core</module>
+    <module>agentforge4j-schema</module>
   </modules>
 
   <dependencyManagement>
@@ -114,6 +115,11 @@
       <dependency>
         <groupId>com.agentforge4j</groupId>
         <artifactId>agentforge4j-core</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>com.agentforge4j</groupId>
+        <artifactId>agentforge4j-schema</artifactId>
         <version>${project.version}</version>
       </dependency>
 

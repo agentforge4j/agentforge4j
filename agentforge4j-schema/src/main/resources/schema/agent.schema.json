@@ -1,0 +1,105 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "AgentDefinition",
+  "type": "object",
+  "required": [
+    "id",
+    "name",
+    "locality",
+    "version",
+    "providerPreferences"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "description": "Unique agent identifier. Must match the agent directory name stem."
+    },
+    "name": {
+      "type": "string"
+    },
+    "locality": {
+      "type": "string",
+      "enum": [
+        "LOCAL",
+        "CLOUD"
+      ],
+      "description": "LOCAL runs on operator-controlled infrastructure(i.e. Ollama, vllm). CLOUD calls an external API(i.e. ChatGpt, Claude)."
+    },
+    "enabled": {
+      "type": "boolean",
+      "default": true,
+      "description": "Whether the agent is enabled. Disabled agents are ignored by the system."
+    },
+    "systemPrompt": {
+      "type": "string",
+      "description": "Inline system prompt. If omitted, systemprompt.md in the agent directory is used."
+    },
+    "providerPreferences": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/ProviderPreference"
+      },
+      "description": "Ordered list of provider preferences. First available provider is used."
+    },
+    "supportedCommands": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": [
+          "CREATE_FILE",
+          "SET_CONTEXT",
+          "USER_PROMPT",
+          "RUN_COMMAND",
+          "COMPLETE",
+          "CONTINUE",
+          "GENERATE_QUESTIONS",
+          "ESCALATE",
+          "CALL_ENDPOINT"
+        ]
+      },
+      "description": "Subset of commands this agent may return. Null means all commands."
+    },
+    "author": {
+      "type": "string",
+      "description": "Author of the agent. Optional metadata."
+    },
+    "contact": {
+      "type": "string",
+      "description": "Contact information for the agent author. Optional metadata."
+    },
+    "version": {
+      "type": "string",
+      "description": "Agent version. Can be used for display or to trigger specific logic based on version."
+    }
+  },
+  "$defs": {
+    "ProviderPreference": {
+      "type": "object",
+      "required": [
+        "provider"
+      ],
+      "properties": {
+        "provider": {
+          "type": "string",
+          "enum": [
+            "azure-openai",
+            "bedrock",
+            "claude",
+            "gemini",
+            "mistral",
+            "ollama",
+            "openai",
+            "openai-compatible",
+            "vllm"
+          ],
+          "description": "Lowercase provider name."
+        },
+        "model": {
+          "type": "string",
+          "description": "Optional model override. Null means use provider default."
+        }
+      }
+    }
+  }
+}

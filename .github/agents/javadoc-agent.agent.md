@@ -1,8 +1,6 @@
+Add or improve tests for module: "[MODULE_NAME]".
+
 # AgentForge4j — Javadoc Agent
-
-## Context
-
-Read `.github/copilot-instructions.md` first. It defines the module structure, domain model, dependency rules, and coding standards. Everything in that file applies here.
 
 ---
 
