@@ -4,9 +4,23 @@
   "locality": "CLOUD",
   "enabled": true,
   "providerPreferences": [
-    { "provider": "openai", "model": "gpt-4o-mini" },
-    { "provider": "claude", "model": "claude-haiku-4-5-20251001" },
-    { "provider": "ollama", "model": null }
+    {
+      "provider": "openai",
+      "model": "gpt-4o-mini"
+    },
+    {
+      "provider": "claude",
+      "model": "claude-haiku-4-5-20251001"
+    },
+    {
+      "provider": "ollama",
+      "model": null
+    }
   ],
-  "supportedCommands": ["CREATE_FILE", "USER_PROMPT", "COMPLETE"]
+  "supportedCommands": [
+    "CREATE_FILE",
+    "USER_PROMPT",
+    "COMPLETE"
+  ],
+  "version": "1.0.0"
 }

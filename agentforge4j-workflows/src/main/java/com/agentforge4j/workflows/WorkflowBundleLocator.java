@@ -9,6 +9,9 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 
+/**
+ * Resolves shipped workflow bundle resources from the classpath.
+ */
 public final class WorkflowBundleLocator {
 
   private static final String SHIPPED_WORKFLOWS_PATH = "/shipped-workflows/";
@@ -21,10 +24,22 @@ public final class WorkflowBundleLocator {
   private WorkflowBundleLocator() {
   }
 
+  /**
+   * Returns workflow ids listed in the shipped workflow index.
+   *
+   * @return immutable list of shipped workflow ids
+   */
   public static List<String> shippedWorkflowIds() {
     return SHIPPED_WORKFLOW_IDS;
   }
 
+  /**
+   * Resolves the {@code workflow.json} resource for a shipped workflow id.
+   *
+   * @param workflowId workflow id listed in the shipped workflow index
+   * @return classpath URL of the workflow definition
+   * @throws IllegalStateException when the workflow resource is not present
+   */
   public static URL locateWorkflowJson(String workflowId) {
     String path = workflowPath(workflowId) + "workflow.json";
     return Validate.notNull(WorkflowBundleLocator.class.getResource(path),
@@ -32,6 +47,13 @@ public final class WorkflowBundleLocator {
             "Missing shipped workflow resource: %s".formatted(path)));
   }
 
+  /**
+   * Returns bundle entries listed in a shipped workflow bundle index.
+   *
+   * @param workflowId workflow id listed in the shipped workflow index
+   * @return classpath-relative bundle entry paths, or an empty list when no index is present
+   * @throws IllegalStateException when the bundle index cannot be read
+   */
   public static List<String> retrieveWorkflowBundleFiles(String workflowId) {
     String bundlePath = workflowPath(workflowId);
     String indexPath = bundlePath + "index";
@@ -52,6 +74,14 @@ public final class WorkflowBundleLocator {
     }
   }
 
+  /**
+   * Opens a shipped workflow bundle resource.
+   *
+   * @param classpathPath classpath path to a bundle entry
+   * @return open input stream for the requested resource
+   * @throws IllegalStateException when the resource does not exist
+   * @throws UncheckedIOException when the resource exists but cannot be opened
+   */
   public static InputStream openBundleResource(String classpathPath) {
     URL resource = WorkflowBundleLocator.class.getResource(classpathPath);
     if (resource == null) {

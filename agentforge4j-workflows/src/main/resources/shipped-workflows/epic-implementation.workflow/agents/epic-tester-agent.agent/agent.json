@@ -1,11 +1,22 @@
 {
   "id": "epic-implementation.tester",
-  "name": "Epic Implementation — Tester",
+  "name": "Epic Implementation \u2014 Tester",
   "locality": "CLOUD",
   "enabled": true,
   "providerPreferences": [
-    {"provider": "claude", "model": "claude-3-5-sonnet-20241022"},
-    {"provider": "openai", "model": "gpt-4o"}
+    {
+      "provider": "claude",
+      "model": "claude-3-5-sonnet-20241022"
+    },
+    {
+      "provider": "openai",
+      "model": "gpt-4o"
+    }
   ],
-  "supportedCommands": ["CREATE_FILE", "SET_CONTEXT", "COMPLETE"]
+  "supportedCommands": [
+    "CREATE_FILE",
+    "SET_CONTEXT",
+    "COMPLETE"
+  ],
+  "version": "1.0.0"
 }

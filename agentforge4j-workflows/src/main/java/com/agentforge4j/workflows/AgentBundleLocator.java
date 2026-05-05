@@ -7,6 +7,9 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 
+/**
+ * Resolves shipped agent bundle resources from the classpath.
+ */
 public final class AgentBundleLocator {
 
   private static final String SHIPPED_AGENTS_PATH = "/shipped-agents/";
@@ -19,10 +22,22 @@ public final class AgentBundleLocator {
   private AgentBundleLocator() {
   }
 
+  /**
+   * Returns agent ids listed in the shipped agent index.
+   *
+   * @return immutable list of shipped agent ids
+   */
   public static List<String> shippedAgentIds() {
     return SHIPPED_AGENT_IDS;
   }
 
+  /**
+   * Resolves the {@code agent.json} resource for a shipped agent id.
+   *
+   * @param agentId agent id listed in the shipped agent index
+   * @return classpath URL of the agent definition
+   * @throws IllegalStateException when the resource is not present
+   */
   public static URL locateAgentJson(String agentId) {
     String path = SHIPPED_AGENTS_PATH + agentId + ".agent/agent.json";
     return Validate.notNull(AgentBundleLocator.class.getResource(path),
@@ -30,6 +45,13 @@ public final class AgentBundleLocator {
             "Missing shipped agent resource: %s".formatted(path)));
   }
 
+  /**
+   * Resolves the {@code systemprompt.md} resource for a shipped agent id.
+   *
+   * @param agentId agent id listed in the shipped agent index
+   * @return classpath URL of the system prompt
+   * @throws IllegalStateException when the resource is not present
+   */
   public static URL locateSystemPrompt(String agentId) {
     String path = SHIPPED_AGENTS_PATH + agentId + ".agent/systemprompt.md";
     return Validate.notNull(AgentBundleLocator.class.getResource(path),
@@ -37,6 +59,12 @@ public final class AgentBundleLocator {
             "Missing shipped agent systemprompt: %s".formatted(path)));
   }
 
+  /**
+   * Resolves the optional {@code boundaries.md} resource for a shipped agent id.
+   *
+   * @param agentId agent id listed in the shipped agent index
+   * @return classpath URL of boundaries content, or {@code null} when absent
+   */
   public static URL locateBoundariesPrompt(String agentId) {
     String path = SHIPPED_AGENTS_PATH + agentId + ".agent/boundaries.md";
     return AgentBundleLocator.class.getResource(path);

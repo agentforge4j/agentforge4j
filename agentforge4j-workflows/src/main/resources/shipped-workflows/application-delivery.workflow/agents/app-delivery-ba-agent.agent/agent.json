@@ -1,11 +1,21 @@
 {
   "id": "application-delivery.ba",
-  "name": "Application Delivery — Business Analyst",
+  "name": "Application Delivery \u2014 Business Analyst",
   "locality": "CLOUD",
   "enabled": true,
   "providerPreferences": [
-    {"provider": "openai", "model": "gpt-4o"},
-    {"provider": "claude", "model": "claude-3-5-sonnet-20241022"}
+    {
+      "provider": "openai",
+      "model": "gpt-4o"
+    },
+    {
+      "provider": "claude",
+      "model": "claude-3-5-sonnet-20241022"
+    }
   ],
-  "supportedCommands": ["SET_CONTEXT", "COMPLETE"]
+  "supportedCommands": [
+    "SET_CONTEXT",
+    "COMPLETE"
+  ],
+  "version": "1.0.0"
 }
