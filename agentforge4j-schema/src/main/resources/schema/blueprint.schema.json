@@ -1,0 +1,76 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "BlueprintDefinition",
+  "type": "object",
+  "required": ["kind", "blueprintId", "name", "behaviour", "steps"],
+  "properties": {
+    "kind": { "type": "string", "const": "BLUEPRINT" },
+    "blueprintId": {
+      "type": "string",
+      "description": "Unique blueprint identifier (Unique to the workflow). Must match the filename stem."
+    },
+    "name": { "type": "string" },
+    "behaviour": { "$ref": "#/$defs/BlueprintBehaviour" },
+    "steps": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/Executable" }
+    }
+  },
+  "$defs": {
+    "BlueprintBehaviour": {
+      "type": "object",
+      "required": ["transition"],
+      "properties": {
+        "transition": {
+          "type": "string",
+          "enum": ["AUTO", "HUMAN_REVIEW", "HUMAN_APPROVAL"]
+        },
+        "loopConfig": { "$ref": "#/$defs/LoopConfig" }
+      }
+    },
+    "LoopConfig": {
+      "type": "object",
+      "required": ["terminationStrategy", "maxIterations"],
+      "properties": {
+        "terminationStrategy": {
+          "type": "string",
+          "enum": ["AGENT_SIGNAL", "EVALUATOR", "FIXED_COUNT", "FOR_EACH"]
+        },
+        "forEachContextKey": {
+          "type": "string",
+          "description": "Required when terminationStrategy is FOR_EACH."
+        },
+        "evaluatorAgentId": {
+          "type": "string",
+          "description": "Required when terminationStrategy is EVALUATOR."
+        },
+        "maxIterations": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "maxIterationsAction": {
+          "type": "string",
+          "enum": ["AWAIT_USER", "FAIL"],
+          "default": "AWAIT_USER"
+        }
+      }
+    },
+    "Executable": {
+      "oneOf": [
+        { "$ref": "workflow.schema.json#/$defs/StepDefinition" },
+        { "$ref": "#/$defs/BlueprintRef" },
+        { "$ref": "#" },
+        { "$ref": "workflow.schema.json" }
+      ]
+    },
+    "BlueprintRef": {
+      "type": "object",
+      "required": ["kind", "blueprintId"],
+      "properties": {
+        "kind": { "type": "string", "const": "BLUEPRINT_REF" },
+        "blueprintId": { "type": "string" }
+      }
+    }
+  }
+}

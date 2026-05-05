@@ -1,0 +1,17 @@
+{
+  "kind": "WORKFLOW",
+  "id": "draft-workflow",
+  "name": "Draft Workflow",
+  "steps": [
+    {
+      "kind": "STEP",
+      "stepId": "step-1",
+      "name": "Generate draft",
+      "behaviour": {
+        "type": "AGENT",
+        "agentRef": "writer-agent",
+        "transition": "AUTO"
+      }
+    }
+  ]
+}

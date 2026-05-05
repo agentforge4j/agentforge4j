@@ -34,7 +34,7 @@ public record LoopConfig(
       Validate.notBlank(evaluatorAgentId,
           "LoopConfig evaluatorAgentId is required for EVALUATOR strategy");
     }
-    Validate.isGreaterThan(maxIterations, 1, "LoopConfig maxIterations must be at least 1");
+    Validate.isGreaterThanZero(maxIterations,"LoopConfig maxIterations must be at least 1");
     maxIterationsAction =
         maxIterationsAction != null ? maxIterationsAction : MaxIterationsAction.AWAIT_USER;
   }
