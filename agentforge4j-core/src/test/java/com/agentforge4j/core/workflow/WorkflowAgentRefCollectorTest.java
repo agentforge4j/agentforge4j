@@ -56,6 +56,7 @@ class WorkflowAgentRefCollectorTest {
         "N",
         new AgentBehaviour("agent-a", StepTransition.AUTO, null),
         null,
+        null,
         null);
     var wf = workflow("root", List.of(step), Map.of());
 
@@ -70,6 +71,7 @@ class WorkflowAgentRefCollectorTest {
         "s1",
         "N",
         new SparBehaviour("primary", cfg, StepTransition.AUTO, null),
+        null,
         null,
         null);
     var wf = workflow("root", List.of(step), Map.of());
@@ -86,6 +88,7 @@ class WorkflowAgentRefCollectorTest {
         "in",
         "I",
         new AgentBehaviour("inner-agent", StepTransition.AUTO, null),
+        null,
         null,
         null);
     LoopConfig loop = new LoopConfig(
@@ -122,6 +125,7 @@ class WorkflowAgentRefCollectorTest {
         "I",
         new AgentBehaviour("nested-agent", StepTransition.AUTO, null),
         null,
+        null,
         null);
     WorkflowDefinition nested = new WorkflowDefinition(
         "nested-wf",
@@ -150,12 +154,13 @@ class WorkflowAgentRefCollectorTest {
         "I",
         new AgentBehaviour("leaf", StepTransition.AUTO, null),
         null,
+        null,
         null);
     var branch = new BranchBehaviour(
         "routeKey",
         Map.of("path-a", branchStep),
-        new StepDefinition("def", "D", new FailBehaviour("x"), null, null));
-    var step = new StepDefinition("b1", "Branch step", branch, null, null);
+        new StepDefinition("def", "D", new FailBehaviour("x"), null, null, null));
+    var step = new StepDefinition("b1", "Branch step", branch, null, null, null);
     var wf = workflow("root", List.of(step), Map.of());
 
     assertThat(WorkflowAgentRefCollector.collect(wf))
@@ -169,12 +174,13 @@ class WorkflowAgentRefCollectorTest {
         "D",
         new AgentBehaviour("def-agent", StepTransition.AUTO, null),
         null,
+        null,
         null);
     var branch = new BranchBehaviour(
         "routeKey",
-        Map.of("x", new StepDefinition("x", "X", new FailBehaviour("r"), null, null)),
+        Map.of("x", new StepDefinition("x", "X", new FailBehaviour("r"), null, null, null)),
         defaultStep);
-    var step = new StepDefinition("b1", "Branch step", branch, null, null);
+    var step = new StepDefinition("b1", "Branch step", branch, null, null, null);
     var wf = workflow("root", List.of(step), Map.of());
 
     assertThat(WorkflowAgentRefCollector.collect(wf))
@@ -187,6 +193,7 @@ class WorkflowAgentRefCollectorTest {
         "in",
         "I",
         new AgentBehaviour("a1", StepTransition.AUTO, null),
+        null,
         null,
         null);
     LoopConfig loop = new LoopConfig(LoopTerminationStrategy.AGENT_SIGNAL, null, null, 1, null);

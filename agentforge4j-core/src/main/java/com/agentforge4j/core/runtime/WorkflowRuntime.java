@@ -13,6 +13,9 @@ import java.util.Map;
  * <p>Implementations are responsible for persisting state, appending events,
  * guarding against infinite recursion from nested or circular workflows, and driving each
  * executable to completion or a human-in-the-loop pause state.
+ *
+ * <p>Workflow configuration controls the execution flow; AI/model output provides commands or
+ * content but does not own runtime flow control.
  */
 public interface WorkflowRuntime {
 

@@ -1,0 +1,6 @@
+{
+  "id": "initial-role-prompt",
+  "items": [
+    { "type": "TEXT", "id": "rolePrompt", "label": "What position is this recruitment for?", "required": true }
+  ]
+}

@@ -3,31 +3,29 @@ package com.agentforge4j.llm;
 import java.time.Duration;
 
 /**
- * Configuration for an LLM providerName client.
- * <p>
- * Implementations provide the settings needed to construct and connect an {@link LlmClient}:
- * providerName name, default model, and connection timeout.
+ * Settings used to construct an {@link LlmClient} for one provider: provider id, default model, and
+ * HTTP connect timeout.
  */
 public interface LlmClientConfiguration {
 
   /**
-   * Returns the providerName name for this configuration.
+   * Provider id for this configuration (must align with the matching {@link LlmClientFactory}).
    *
-   * @return providerName name such as {@code "openai"} or {@code "ollama"}
+   * @return non-blank provider id such as {@code "openai"} or {@code "ollama"}
    */
   String getProviderName();
 
   /**
-   * Returns the default model to use if a request does not specify one.
+   * Default model when a request does not set {@link LlmExecutionRequest#model()}.
    *
-   * @return the default model identifier for this providerName
+   * @return non-blank default model id for this provider
    */
   String getDefaultModel();
 
   /**
-   * Returns the HTTP connection timeout for requests to this providerName.
+   * HTTP connect timeout for outbound requests to this provider.
    *
-   * @return the connection timeout duration
+   * @return connect timeout duration
    */
   Duration getConnectTimeout();
 }

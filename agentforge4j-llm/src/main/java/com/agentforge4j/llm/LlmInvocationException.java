@@ -2,7 +2,7 @@ package com.agentforge4j.llm;
 
 /**
  * Thrown when an LLM request fails due to network issues, HTTP errors, invalid responses, or
- * providerName-specific errors.
+ * provider-specific validation failures.
  */
 public class LlmInvocationException extends RuntimeException {
 

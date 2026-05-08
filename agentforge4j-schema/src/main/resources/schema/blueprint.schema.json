@@ -3,6 +3,7 @@
   "title": "BlueprintDefinition",
   "type": "object",
   "required": ["kind", "blueprintId", "name", "behaviour", "steps"],
+  "additionalProperties": false,
   "properties": {
     "kind": { "type": "string", "const": "BLUEPRINT" },
     "blueprintId": {
@@ -21,17 +22,24 @@
     "BlueprintBehaviour": {
       "type": "object",
       "required": ["transition"],
+      "additionalProperties": false,
       "properties": {
         "transition": {
           "type": "string",
           "enum": ["AUTO", "HUMAN_REVIEW", "HUMAN_APPROVAL"]
         },
-        "loopConfig": { "$ref": "#/$defs/LoopConfig" }
+        "loopConfig": {
+          "oneOf": [
+            { "$ref": "#/$defs/LoopConfig" },
+            { "type": "null" }
+          ]
+        }
       }
     },
     "LoopConfig": {
       "type": "object",
       "required": ["terminationStrategy", "maxIterations"],
+      "additionalProperties": false,
       "properties": {
         "terminationStrategy": {
           "type": "string",
@@ -67,6 +75,7 @@
     "BlueprintRef": {
       "type": "object",
       "required": ["kind", "blueprintId"],
+      "additionalProperties": false,
       "properties": {
         "kind": { "type": "string", "const": "BLUEPRINT_REF" },
         "blueprintId": { "type": "string" }

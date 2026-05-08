@@ -1,0 +1,39 @@
+{
+  "kind": "WORKFLOW",
+  "id": "workflow-cost-estimator",
+  "uuid": "a1c9e8f2-4b3d-4e5f-9a0b-1c2d3e4f5a04",
+  "name": "Workflow Cost Estimator",
+  "description": "Analyses a workflow definition and produces a credit cost estimate (min / expected / max) based on the AgentForge4j pricing model.",
+  "steps": [
+    {
+      "kind": "STEP",
+      "stepId": "collect-input",
+      "name": "Collect Workflow and Tier",
+      "behaviour": {
+        "type": "INPUT",
+        "artifactId": "estimation-input",
+        "transition": "AUTO"
+      }
+    },
+    {
+      "kind": "STEP",
+      "stepId": "estimate-cost",
+      "name": "Estimate Credit Cost",
+      "behaviour": {
+        "type": "AGENT",
+        "agentRef": "workflow-cost-estimator-agent",
+        "transition": "AUTO",
+        "retryPolicy": {
+          "allowRetry": true,
+          "allowRetryFromPrevious": false,
+          "allowAgentSwap": false,
+          "allowPromptOverride": false,
+          "maxAttempts": 2
+        }
+      },
+      "contextMapping": {
+        "inputKeys": ["workflow-json", "subscription-tier", "expected-list-size", "agent-models"]
+      }
+    }
+  ]
+}

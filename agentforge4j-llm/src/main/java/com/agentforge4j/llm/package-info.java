@@ -1,18 +1,16 @@
 /**
- * Provides abstractions for LLM providerName integration and client management.
+ * LLM provider integration: client execution, service discovery, and configuration.
  * <p>
- * This package defines the core interfaces and implementations for interacting with
- * Large Language Model providers such as OpenAI, Ollama, Claude, and vLLM. It provides
- * a unified API for executing LLM requests while allowing providerName-specific implementations
- * to handle the details of HTTP communication and response parsing.
+ * Defines a small SPI ({@link com.agentforge4j.llm.LlmClientFactory}) plus HTTP-oriented helpers
+ * so provider modules can plug in without the core runtime depending on vendor SDKs.
  * <p>
- * Key components:
+ * Key types:
  * <ul>
- *   <li>{@link com.agentforge4j.llm.LlmClient} — executes LLM requests against a specific providerName</li>
- *   <li>{@link com.agentforge4j.llm.LlmClientFactory} — creates providerName-specific client instances</li>
- *   <li>{@link com.agentforge4j.llm.LlmClientResolver} — resolves providers by name</li>
- *   <li>{@link com.agentforge4j.llm.LlmExecutionRequest} — immutable request data</li>
- *   <li>{@link com.agentforge4j.llm.LlmInvocationException} — thrown on LLM request failures</li>
+ *   <li>{@link com.agentforge4j.llm.LlmClient} — executes requests for one provider id</li>
+ *   <li>{@link com.agentforge4j.llm.LlmClientFactory} — constructs clients from {@link com.agentforge4j.llm.LlmClientConfiguration}</li>
+ *   <li>{@link com.agentforge4j.llm.LlmClientResolver} — selects a client by provider id</li>
+ *   <li>{@link com.agentforge4j.llm.LlmExecutionRequest} — immutable invocation parameters</li>
+ *   <li>{@link com.agentforge4j.llm.LlmInvocationException} — failures from clients or transport</li>
  * </ul>
  */
 package com.agentforge4j.llm;

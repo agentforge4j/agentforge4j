@@ -1,0 +1,25 @@
+{
+  "id": "recruitment-assessment-evaluator-agent",
+  "name": "Recruitment Assessment Evaluator",
+  "locality": "CLOUD",
+  "enabled": true,
+  "providerPreferences": [
+    {
+      "provider": "openai",
+      "model": "gpt-4o"
+    },
+    {
+      "provider": "claude",
+      "model": "claude-3-5-sonnet-20241022"
+    },
+    {
+      "provider": "ollama",
+      "model": "llama3.1:70b"
+    }
+  ],
+  "supportedCommands": [
+    "SET_CONTEXT",
+    "COMPLETE"
+  ],
+  "version": "1.0.0"
+}

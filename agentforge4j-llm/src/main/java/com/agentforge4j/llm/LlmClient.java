@@ -1,28 +1,28 @@
 package com.agentforge4j.llm;
 
 /**
- * Executes LLM requests against a specific providerName.
+ * Executes LLM requests for a single registered provider (for example OpenAI, Ollama, or Claude).
  * <p>
  * Implementations are instantiated by {@link LlmClientFactory} and managed by
- * {@link LlmClientResolver}. Each implementation provides a single providerName (e.g., OpenAI, Ollama,
- * Claude).
+ * {@link LlmClientResolver}. Each client instance is bound to one provider id returned by
+ * {@link #getProviderName()}.
  */
 public interface LlmClient {
 
   /**
-   * Returns the providerName name this client executes against.
+   * Returns the provider id this client executes against (lowercase, such as {@code "openai"}).
    *
-   * @return providerName name such as {@code "openai"} or {@code "ollama"}
+   * @return non-blank provider id
    */
   String getProviderName();
 
   /**
    * Executes an LLM request and returns the response.
    *
-   * @param request the LLM execution request with providerName, model, system prompt, and user input
-   * @return the response from the LLM providerName, typically a JSON string
+   * @param request provider id, prompts, and optional model override for this call
+   * @return provider response body, typically JSON text for downstream parsing
    * @throws LlmInvocationException if the request fails due to network issues, invalid responses,
-   *                                or providerName-specific errors
+   *                                or provider-specific errors
    */
   String execute(LlmExecutionRequest request);
 }

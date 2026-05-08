@@ -7,6 +7,8 @@ import org.junit.jupiter.params.provider.NullAndEmptySource;
 import org.junit.jupiter.params.provider.ValueSource;
 
 import java.time.Instant;
+import java.util.HashMap;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -93,6 +95,13 @@ class WorkflowStateTest {
         .isInstanceOf(UnsupportedOperationException.class);
     assertThatThrownBy(() -> state.getContextKeyWrittenAtUid().clear())
         .isInstanceOf(UnsupportedOperationException.class);
+
+    assertThatThrownBy(() -> state.getUserPromptPauseCountByStepId().put("a", 1))
+        .isInstanceOf(UnsupportedOperationException.class);
+    assertThatThrownBy(() -> state.getUserPromptPauseCountByStepId().remove("a"))
+        .isInstanceOf(UnsupportedOperationException.class);
+    assertThatThrownBy(() -> state.getUserPromptPauseCountByStepId().clear())
+        .isInstanceOf(UnsupportedOperationException.class);
   }
 
   @Test
@@ -111,6 +120,35 @@ class WorkflowStateTest {
     assertThatThrownBy(() -> state.setLastUpdatedAt(null))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("lastUpdatedAt");
+  }
+
+  @Test
+  void user_prompt_pause_count_increments_resets_and_replace_filters_invalid() {
+    var state = new WorkflowState("run-1", "wf-1", null, t());
+    assertThat(state.getUserPromptPauseCountForStep("s1")).isZero();
+    state.incrementUserPromptPauseCountForStep("s1");
+    state.incrementUserPromptPauseCountForStep("s1");
+    assertThat(state.getUserPromptPauseCountForStep("s1")).isEqualTo(2);
+    assertThat(state.getUserPromptPauseCountByStepId()).containsEntry("s1", 2);
+    state.resetUserPromptPauseCountForStep("s1");
+    assertThat(state.getUserPromptPauseCountForStep("s1")).isZero();
+
+    state.incrementUserPromptPauseCountForStep("s2");
+    Map<String, Integer> replacement = new HashMap<>();
+    replacement.put("", 1);
+    replacement.put("bad", null);
+    replacement.put("x", -1);
+    replacement.put("ok", 3);
+    state.replaceUserPromptPauseCounts(replacement);
+    assertThat(state.getUserPromptPauseCountByStepId()).containsExactly(Map.entry("ok", 3));
+  }
+
+  @Test
+  void replace_user_prompt_pause_counts_null_clears_internal_map() {
+    var state = new WorkflowState("run-1", "wf-1", null, t());
+    state.incrementUserPromptPauseCountForStep("s1");
+    state.replaceUserPromptPauseCounts(null);
+    assertThat(state.getUserPromptPauseCountByStepId()).isEmpty();
   }
 
   @ParameterizedTest

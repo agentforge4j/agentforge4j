@@ -25,7 +25,7 @@ class BlueprintDefinitionTest {
   }
 
   private static StepDefinition oneStep() {
-    return new StepDefinition("s1", "S", new FailBehaviour("r"), null, null);
+    return new StepDefinition("s1", "S", new FailBehaviour("r"), null, null, null);
   }
 
   @ParameterizedTest

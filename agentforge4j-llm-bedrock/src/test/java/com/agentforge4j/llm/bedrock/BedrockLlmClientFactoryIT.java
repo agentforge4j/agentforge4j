@@ -108,7 +108,7 @@ class BedrockLlmClientFactoryIT {
       throws Exception {
     HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
     server.createContext("/", exchange -> {
-      try {
+      try (exchange) {
         if (!"POST".equalsIgnoreCase(exchange.getRequestMethod())) {
           exchange.sendResponseHeaders(405, -1);
           return;
@@ -130,8 +130,6 @@ class BedrockLlmClientFactoryIT {
         try (OutputStream os = exchange.getResponseBody()) {
           os.write(responseBody);
         }
-      } finally {
-        exchange.close();
       }
     });
     server.setExecutor(Executors.newCachedThreadPool());

@@ -3,6 +3,7 @@
   "title": "ArtifactDefinition",
   "type": "object",
   "required": ["id", "items"],
+  "additionalProperties": false,
   "properties": {
     "id": {
       "type": "string",
@@ -29,6 +30,7 @@
     "TextItem": {
       "type": "object",
       "required": ["type", "id", "label"],
+      "additionalProperties": false,
       "properties": {
         "type": { "type": "string", "const": "TEXT" },
         "id": { "type": "string" },
@@ -39,6 +41,7 @@
     "TextAreaItem": {
       "type": "object",
       "required": ["type", "id", "label"],
+      "additionalProperties": false,
       "properties": {
         "type": { "type": "string", "const": "TEXT_AREA" },
         "id": { "type": "string" },
@@ -49,6 +52,7 @@
     "SingleChoiceItem": {
       "type": "object",
       "required": ["type", "id", "label", "options"],
+      "additionalProperties": false,
       "properties": {
         "type": { "type": "string", "const": "SINGLE_CHOICE" },
         "id": { "type": "string" },
@@ -64,6 +68,7 @@
     "MultiChoiceItem": {
       "type": "object",
       "required": ["type", "id", "label", "options"],
+      "additionalProperties": false,
       "properties": {
         "type": { "type": "string", "const": "MULTI_CHOICE" },
         "id": { "type": "string" },
@@ -79,6 +84,7 @@
     "BooleanItem": {
       "type": "object",
       "required": ["type", "id", "label"],
+      "additionalProperties": false,
       "properties": {
         "type": { "type": "string", "const": "BOOLEAN" },
         "id": { "type": "string" },
@@ -89,6 +95,7 @@
     "NumberItem": {
       "type": "object",
       "required": ["type", "id", "label"],
+      "additionalProperties": false,
       "properties": {
         "type": { "type": "string", "const": "NUMBER" },
         "id": { "type": "string" },
@@ -99,6 +106,7 @@
     "DateItem": {
       "type": "object",
       "required": ["type", "id", "label"],
+      "additionalProperties": false,
       "properties": {
         "type": { "type": "string", "const": "DATE" },
         "id": { "type": "string" },

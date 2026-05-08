@@ -9,6 +9,7 @@
     "version",
     "providerPreferences"
   ],
+  "additionalProperties": false,
   "properties": {
     "id": {
       "type": "string",
@@ -43,7 +44,7 @@
       "description": "Ordered list of provider preferences. First available provider is used."
     },
     "supportedCommands": {
-      "type": "array",
+      "type": ["array", "null"],
       "items": {
         "type": "string",
         "enum": [
@@ -79,6 +80,7 @@
       "required": [
         "provider"
       ],
+      "additionalProperties": false,
       "properties": {
         "provider": {
           "type": "string",
@@ -96,7 +98,7 @@
           "description": "Lowercase provider name."
         },
         "model": {
-          "type": "string",
+          "type": ["string", "null"],
           "description": "Optional model override. Null means use provider default."
         }
       }

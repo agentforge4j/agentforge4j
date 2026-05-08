@@ -1,0 +1,18 @@
+{
+  "id": "workflow-designer-agent",
+  "name": "Workflow Designer",
+  "locality": "CLOUD",
+  "enabled": true,
+  "providerPreferences": [
+    {
+      "provider": "openai",
+      "model": "gpt-4o-mini"
+    }
+  ],
+  "supportedCommands": [
+    "CREATE_FILE",
+    "USER_PROMPT",
+    "COMPLETE"
+  ],
+  "version": "1.0.0"
+}

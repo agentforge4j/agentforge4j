@@ -1,0 +1,6 @@
+{
+  "id": "job-post-confirmation",
+  "items": [
+    { "type": "BOOLEAN", "id": "jobPostApproved", "label": "Approve the generated job post for publication.", "required": true }
+  ]
+}

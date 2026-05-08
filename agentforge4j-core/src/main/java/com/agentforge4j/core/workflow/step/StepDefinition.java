@@ -14,20 +14,34 @@ import com.agentforge4j.util.Validate;
  * @param behaviour      discriminated behaviour (agent, spar, nested workflow, and so on)
  * @param contextMapping mapping from context keys; if {@code null} at construction, replaced with
  *                       {@link ContextMapping#none()}
- * @param stepPrompt     optional prompt content for the step; may be blank depending on behaviour
+ * @param stepPrompt           optional prompt content for the step; may be blank depending on behaviour
+ * @param maxUserPromptRounds  optional cap on consecutive blocking {@code USER_PROMPT} pauses; {@code null}
+ *                             uses the runtime default
  */
 public record StepDefinition(
     String stepId,
     String name,
     StepBehaviour behaviour,
     ContextMapping contextMapping,
-    String stepPrompt
+    String stepPrompt,
+    Integer maxUserPromptRounds
 ) implements Executable {
 
   public StepDefinition {
     Validate.notBlank(stepId, "StepDefinition stepId must not be blank");
     Validate.notBlank(name, "StepDefinition name must not be blank for step: %s".formatted(stepId));
-    Validate.notNull(behaviour, "StepDefinition behaviour must not be null for step: %s".formatted(stepId));
+    Validate.notNull(behaviour,
+        "StepDefinition behaviour must not be null for step: %s".formatted(stepId));
     contextMapping = contextMapping != null ? contextMapping : ContextMapping.none();
+  }
+
+  public static StepDefinition duplicate(StepDefinition step, String stepPrompt) {
+    return new StepDefinition(
+        step.stepId(),
+        step.name(),
+        step.behaviour(),
+        step.contextMapping(),
+        stepPrompt,
+        step.maxUserPromptRounds());
   }
 }

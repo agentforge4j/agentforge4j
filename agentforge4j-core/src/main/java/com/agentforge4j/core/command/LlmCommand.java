@@ -6,6 +6,9 @@ import com.fasterxml.jackson.annotation.JsonTypeInfo;
 /**
  * Marker interface for commands that LLMs can return in structured JSON responses. Each command
  * type is a record implementing this interface, dispatched by the runtime to produce side effects.
+ *
+ * <p>Workflow configuration controls the execution flow; AI/model output provides commands or
+ * content but does not own runtime flow control.
  */
 @JsonTypeInfo(use = JsonTypeInfo.Id.NAME, property = "type")
 @JsonSubTypes({
