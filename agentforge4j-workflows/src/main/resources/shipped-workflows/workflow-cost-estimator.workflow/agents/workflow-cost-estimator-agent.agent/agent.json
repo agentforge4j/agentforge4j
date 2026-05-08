@@ -1,5 +1,5 @@
 {
-  "id": "workflow-cost-estimator.estimator",
+  "id": "workflow-cost-estimator-agent",
   "name": "Workflow Cost Estimator Agent",
   "locality": "CLOUD",
   "enabled": true,

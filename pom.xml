@@ -45,6 +45,8 @@
     <module>agentforge4j-llm-vllm</module>
     <module>agentforge4j-core</module>
     <module>agentforge4j-schema</module>
+    <module>agentforge4j-workflows</module>
+    <module>agentforge4j-config-loader</module>
   </modules>
 
   <dependencyManagement>
@@ -120,6 +122,16 @@
       <dependency>
         <groupId>com.agentforge4j</groupId>
         <artifactId>agentforge4j-schema</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>com.agentforge4j</groupId>
+        <artifactId>agentforge4j-config-loader</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>com.agentforge4j</groupId>
+        <artifactId>agentforge4j-workflows</artifactId>
         <version>${project.version}</version>
       </dependency>
 

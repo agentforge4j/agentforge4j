@@ -1,19 +1,19 @@
 package com.agentforge4j.llm;
 
 /**
- * Resolves an LLM providerName by name to its corresponding {@link LlmClient}.
+ * Resolves a provider id string to the configured {@link LlmClient}.
  * <p>
- * The default implementation, {@link DefaultLlmClientResolver}, discovers and manages all available
- * LLM providers discovered via {@link LlmClientFactory}.
+ * {@link DefaultLlmClientResolver} discovers factories via JPMS {@link java.util.ServiceLoader} and
+ * builds clients from {@link LlmClientConfiguration} entries.
  */
 public interface LlmClientResolver {
 
   /**
-   * Resolves an LLM client for the given providerName name.
+   * Returns the client for the given provider id (matched case-insensitively by typical implementations).
    *
-   * @param provider the providerName name such as {@code "openai"} or {@code "ollama"}
-   * @return the LLM client for this providerName
-   * @throws IllegalArgumentException if the providerName is not registered or recognized
+   * @param provider provider id such as {@code "openai"} or {@code "ollama"}
+   * @return client for that provider
+   * @throws IllegalArgumentException if the provider is blank or not registered
    */
   LlmClient resolve(String provider);
 }

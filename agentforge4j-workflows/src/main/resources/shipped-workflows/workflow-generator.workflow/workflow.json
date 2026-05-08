@@ -21,7 +21,7 @@
       "name": "Interactive Workflow Design",
       "behaviour": {
         "type": "AGENT",
-        "agentRef": "workflow-generator.conversation",
+        "agentRef": "workflow-conversation-agent",
         "transition": "AUTO",
         "retryPolicy": {
           "allowRetry": true,
@@ -37,7 +37,8 @@
           "user.response.interactive-design"
         ],
         "outputKeys": ["workflow-design"]
-      }
+      },
+      "maxUserPromptRounds": 6
     },
     {
       "kind": "STEP",
@@ -45,7 +46,7 @@
       "name": "Generate Workflow Bundle",
       "behaviour": {
         "type": "AGENT",
-        "agentRef": "workflow-generator.designer",
+        "agentRef": "workflow-designer-agent",
         "transition": "AUTO",
         "retryPolicy": {
           "allowRetry": true,

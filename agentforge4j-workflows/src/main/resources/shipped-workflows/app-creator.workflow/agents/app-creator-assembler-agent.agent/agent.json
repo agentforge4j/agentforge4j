@@ -1,5 +1,5 @@
 {
-  "id": "app-creator.assembler",
+  "id": "app-creator-assembler-agent",
   "name": "App Creator \u2014 Package Assembler",
   "locality": "CLOUD",
   "enabled": true,

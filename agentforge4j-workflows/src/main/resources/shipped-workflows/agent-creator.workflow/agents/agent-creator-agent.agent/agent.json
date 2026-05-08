@@ -1,5 +1,5 @@
 {
-  "id": "agent-creator.creator",
+  "id": "agent-creator-agent",
   "name": "Agent Creator Agent",
   "locality": "CLOUD",
   "enabled": true,

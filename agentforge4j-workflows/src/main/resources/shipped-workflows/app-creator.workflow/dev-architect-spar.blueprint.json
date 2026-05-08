@@ -13,9 +13,9 @@
       "name": "Dev challenges Architect on design feasibility",
       "behaviour": {
         "type": "SPAR",
-        "agentRef": "app-creator.architect",
+        "agentRef": "app-creator-architect-agent",
         "sparConfig": {
-          "challengerAgentId": "app-creator.developer",
+          "challengerAgentId": "app-creator-developer-agent",
           "maxRounds": 3,
           "resolutionPrompt": "Both agents must converge on an architecture that is implementable. The developer raises concerns about feasibility, complexity, or missing detail. The architect either justifies the design or revises it. Stop early when both agree the design is implementable. Final output must be the agreed architectureDesign JSON."
         },

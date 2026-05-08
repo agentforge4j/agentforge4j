@@ -6,6 +6,7 @@ import java.time.Instant;
 
 /**
  * Immutable audit entry for a workflow run: identity, classification, optional payload, actor, and timestamp.
+ * The compact constructor rejects blank or null required fields with {@link IllegalArgumentException}.
  *
  * @param eventId non-blank unique id for this event
  * @param runId non-blank owning run id
@@ -14,7 +15,6 @@ import java.time.Instant;
  * @param payload optional JSON or text; not validated
  * @param actorId non-blank id of the user or agent that caused the event
  * @param occurredAt non-null event time
- * @throws IllegalArgumentException when a required component violates validation rules
  */
 public record WorkflowEvent(
     String eventId,

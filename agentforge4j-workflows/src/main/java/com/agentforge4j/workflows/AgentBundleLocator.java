@@ -3,6 +3,7 @@ package com.agentforge4j.workflows;
 import com.agentforge4j.util.Validate;
 import java.io.InputStream;
 import java.net.URL;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -28,7 +29,7 @@ public final class AgentBundleLocator {
    * @return immutable list of shipped agent ids
    */
   public static List<String> shippedAgentIds() {
-    return SHIPPED_AGENT_IDS;
+    return List.copyOf(SHIPPED_AGENT_IDS);
   }
 
   /**
@@ -74,7 +75,7 @@ public final class AgentBundleLocator {
     URL resource = AgentBundleLocator.class.getResource(SHIPPED_AGENTS_PATH + "index");
     if (resource != null) {
       try (InputStream stream = resource.openStream()) {
-        String[] agentIds = new String(stream.readAllBytes()).split("\\R");
+        String[] agentIds = new String(stream.readAllBytes(), StandardCharsets.UTF_8).split("\\R");
         SHIPPED_AGENT_IDS.addAll(Arrays.stream(agentIds).toList().stream()
             .filter(id -> !id.isBlank()).toList());
       } catch (Exception e) {

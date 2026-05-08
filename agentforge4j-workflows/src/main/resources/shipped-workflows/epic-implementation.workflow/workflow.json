@@ -4,34 +4,6 @@
   "uuid": "a1c9e8f2-4b3d-4e5f-9a0b-1c2d3e4f5a05",
   "name": "Epic Implementation",
   "description": "Implements a single epic. Inputs (read from shared context): currentEpic, architectureDesign, generatedFiles. Outputs (written to shared context): generatedFiles, generatedTests, epicStatus (SUCCESS | NEEDS_REWORK | FAILED), epicNotes. Retries developer + tester up to 2 times if validator returns NEEDS_REWORK.",
-  "artifacts": {},
-  "blueprints": {
-    "mark-epic-failed-blueprint": {
-      "kind": "BLUEPRINT",
-      "blueprintId": "mark-epic-failed-blueprint",
-      "name": "Mark Epic Failed (retry exhausted)",
-      "behaviour": {
-        "transition": "AUTO"
-      },
-      "steps": [
-        {
-          "kind": "STEP",
-          "stepId": "mark-epic-failed",
-          "name": "Mark Epic Failed",
-          "behaviour": {
-            "type": "AGENT",
-            "agentRef": "epic-implementation.validator",
-            "transition": "AUTO"
-          },
-          "contextMapping": {
-            "inputKeys": ["currentEpic", "epicNotes"],
-            "outputKeys": ["epicStatus", "epicNotes"]
-          },
-          "stepPrompt": "mark-epic-failed"
-        }
-      ]
-    }
-  },
   "steps": [
     {
       "kind": "STEP",
@@ -39,7 +11,7 @@
       "name": "Understand Epic Scope",
       "behaviour": {
         "type": "AGENT",
-        "agentRef": "epic-implementation.developer",
+        "agentRef": "epic-developer-agent",
         "transition": "AUTO",
         "retryPolicy": {
           "allowRetry": true,
@@ -61,7 +33,7 @@
       "name": "Generate Implementation Files",
       "behaviour": {
         "type": "AGENT",
-        "agentRef": "epic-implementation.developer",
+        "agentRef": "epic-developer-agent",
         "transition": "AUTO",
         "retryPolicy": {
           "allowRetry": true,
@@ -83,7 +55,7 @@
       "name": "Generate Test Cases",
       "behaviour": {
         "type": "AGENT",
-        "agentRef": "epic-implementation.tester",
+        "agentRef": "epic-tester-agent",
         "transition": "AUTO",
         "retryPolicy": {
           "allowRetry": true,
@@ -105,7 +77,7 @@
       "name": "Validate Epic Implementation",
       "behaviour": {
         "type": "AGENT",
-        "agentRef": "epic-implementation.validator",
+        "agentRef": "epic-validator-agent",
         "transition": "AUTO",
         "retryPolicy": {
           "allowRetry": true,

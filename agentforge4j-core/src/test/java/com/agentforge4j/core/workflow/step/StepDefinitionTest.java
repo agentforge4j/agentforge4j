@@ -22,6 +22,7 @@ class StepDefinitionTest {
         "Name",
         new FailBehaviour("r"),
         null,
+        null,
         null);
 
     assertThat(step.contextMapping()).isEqualTo(ContextMapping.none());
@@ -36,6 +37,7 @@ class StepDefinitionTest {
         "N",
         new FailBehaviour("r"),
         ContextMapping.none(),
+        null,
         null))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("StepDefinition stepId must not be blank");
@@ -50,6 +52,7 @@ class StepDefinitionTest {
         name,
         new FailBehaviour("r"),
         null,
+        null,
         null))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("StepDefinition name must not be blank for step: s1");
@@ -57,7 +60,7 @@ class StepDefinitionTest {
 
   @Test
   void rejects_null_behaviour() {
-    assertThatThrownBy(() -> new StepDefinition("s1", "N", null, null, null))
+    assertThatThrownBy(() -> new StepDefinition("s1", "N", null, null, null, null))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("StepDefinition behaviour must not be null for step: s1");
   }
@@ -70,6 +73,7 @@ class StepDefinitionTest {
         "N",
         new AgentBehaviour("a", StepTransition.AUTO, null),
         mapping,
+        null,
         null);
 
     assertThat(step.contextMapping()).isEqualTo(mapping);

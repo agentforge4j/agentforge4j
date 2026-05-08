@@ -9,17 +9,15 @@ import java.util.function.Supplier;
 import lombok.Getter;
 
 /**
- * Abstract base class for providerName-specific LLM client implementations.
+ * Base {@link LlmClient} for HTTP JSON APIs: shared validation, transport, logging, and error wrapping.
  * <p>
- * This template method implementation handles HTTP communication, request validation, logging, and
- * exception wrapping. Provider-specific subclasses must implement:
+ * Subclasses implement:
  * <ul>
- *   <li>{@link #buildHttpRequest(LlmExecutionRequest)} — construct the providerName-specific HTTP request</li>
- *   <li>{@link #validateAndExtractResponse(String)} — parse and validate the providerName's response JSON</li>
+ *   <li>{@link #buildHttpRequest(LlmExecutionRequest)} — vendor-specific request shape and headers</li>
+ *   <li>{@link #validateAndExtractResponse(String)} — parse success responses and extract model text or JSON</li>
  * </ul>
  * <p>
- * The {@link #execute(LlmExecutionRequest)} method coordinates these steps, logging at debug
- * and error levels for operational visibility.
+ * {@link #execute(LlmExecutionRequest)} orchestrates build, send, status check, and extraction.
  */
 public abstract class AbstractHttpLlmClient implements LlmClient {
 
@@ -32,13 +30,10 @@ public abstract class AbstractHttpLlmClient implements LlmClient {
   private final HttpClient httpClient;
 
   /**
-   * Constructs an LLM client with the given configuration.
-   * <p>
-   * Validates that the providerName name and default model are non-blank. Creates an HTTP client
-   * configured with the timeout from the configuration.
+   * Constructs an HTTP-backed client from configuration (provider id, default model, connect timeout).
    *
-   * @param config the providerName configuration
-   * @throws IllegalArgumentException if the providerName name or default model is blank
+   * @param config non-null provider configuration
+   * @throws IllegalArgumentException if provider id or default model is blank
    */
   public AbstractHttpLlmClient(LlmClientConfiguration config) {
     Validate.notNull(config, "LLM client configuration must not be null");
@@ -52,29 +47,26 @@ public abstract class AbstractHttpLlmClient implements LlmClient {
   }
 
   /**
-   * Builds a providerName-specific HTTP request from the given execution request.
+   * Builds the outbound HTTP request for one execution.
    *
-   * @param request the LLM execution request
-   * @return the HTTP request ready to send to the providerName
+   * @param request validated execution parameters
+   * @return request ready to send
    */
   protected abstract HttpRequest buildHttpRequest(LlmExecutionRequest request);
 
   /**
-   * Validates and extracts the response body from the providerName's JSON response.
-   * <p>
-   * Implementations should parse the response JSON, verify success, and extract the actual LLM
-   * output.
+   * Parses a successful HTTP body and returns the string passed to higher layers (often JSON).
    *
-   * @param json the raw HTTP response body
-   * @return the extracted response value
-   * @throws IOException if the response is malformed or validation fails
+   * @param json raw HTTP response body
+   * @return extracted model output or structured payload
+   * @throws IOException if the body is malformed or indicates failure
    */
   protected abstract String validateAndExtractResponse(String json) throws IOException;
 
   /**
-   * Executes an LLM request against this providerName.
+   * Sends one LLM request for this client's provider.
    * <p>
-   * Process:
+   * Steps:
    * <ol>
    *   <li>Validates request parameters</li>
    *   <li>Resolves model (uses request model or falls back to default)</li>

@@ -13,12 +13,12 @@ import java.util.stream.Collectors;
 import org.apache.commons.lang3.StringUtils;
 
 /**
- * Default implementation of {@link LlmClientResolver} that discovers and manages LLM providers.
+ * Default {@link LlmClientResolver}: builds an immutable map of provider id to {@link LlmClient}.
  * <p>
- * This resolver discovers providerName factories via JPMS {@link ServiceLoader} and instantiates
- * clients for each configured providerName. Provider names are normalized to lowercase and matched
- * against configuration keys. The resolver maintains an immutable map of available providers and
- * fails fast if no providers are configured or if a requested providerName is not available.
+ * {@link #discover(ObjectMapper, Collection)} loads {@link LlmClientFactory} implementations via
+ * JPMS {@link ServiceLoader}, pairs each with a matching {@link LlmClientConfiguration} by provider
+ * id (case-insensitive), and constructs clients. {@link #resolve(String)} looks up a client or fails
+ * with {@link IllegalArgumentException}.
  */
 public final class DefaultLlmClientResolver implements LlmClientResolver {
 
@@ -27,33 +27,26 @@ public final class DefaultLlmClientResolver implements LlmClientResolver {
       System.getLogger(DefaultLlmClientResolver.class.getName());
 
   /**
-   * Creates a resolver with the provided LLM clients.
+   * Creates a resolver backed by an explicit non-empty client list (typically used in tests).
    *
-   * @param clients the collection of LLM clients to manage; must not be empty or contain nulls
-   * @throws IllegalArgumentException if clients is empty, contains null entries, or contains
-   *                                  duplicate providerName names
+   * @param clients non-empty, no null elements, unique {@link LlmClient#getProviderName()} per entry
+   * @throws IllegalArgumentException if validation fails
    */
   public DefaultLlmClientResolver(Collection<LlmClient> clients) {
     this.providersByName = buildProviderMap(clients);
   }
 
   /**
-   * Discovers LLM providers by loading factories via {@link ServiceLoader} and instantiating
-   * clients for each providerName that has a matching configuration.
+   * Discovers {@link LlmClientFactory} implementations and builds clients for each configuration
+   * that matches a factory's provider id.
    * <p>
-   * Provider discovery process:
-   * <ol>
-   *   <li>Discovers all {@link LlmClientFactory} implementations on the classpath</li>
-   *   <li>For each factory, looks up a matching configuration by normalized providerName name</li>
-   *   <li>Creates a client for each factory with a configuration</li>
-   *   <li>Logs a warning for factories with no configuration</li>
-   * </ol>
+   * Factories without a matching configuration are skipped (warning logged). At least one client
+   * must be created or {@link IllegalStateException} is thrown.
    *
-   * @param objectMapper the JSON mapper for response parsing
-   * @param configs      the collection of providerName configurations
-   * @return a resolver managing all discovered clients
-   * @throws IllegalStateException if no LLM clients can be created; check that providerName JARs are on
-   *                               the classpath and configurations are provided
+   * @param objectMapper passed to each {@link LlmClientFactory#create}
+   * @param configs      one or more {@link LlmClientConfiguration} entries (duplicate provider ids fail)
+   * @return resolver over all constructed clients
+   * @throws IllegalStateException when no client could be built (missing provider modules or configs)
    */
   public static DefaultLlmClientResolver discover(ObjectMapper objectMapper,
       Collection<LlmClientConfiguration> configs) {
@@ -68,11 +61,7 @@ public final class DefaultLlmClientResolver implements LlmClientResolver {
   }
 
   /**
-   * Resolves an LLM client for the given providerName name.
-   *
-   * @param provider the providerName name (case-insensitive)
-   * @return the LLM client for this providerName
-   * @throws IllegalArgumentException if the providerName is not found or the name is blank
+   * {@inheritDoc}
    */
   @Override
   public LlmClient resolve(String provider) {

@@ -65,10 +65,7 @@ public final class OpenAiCompatibleLlmClient extends AbstractHttpLlmClient {
         Validate.notBlank(config.getBaseUrl(), "openai-compatible baseUrl must be provided"), "/");
     String path = config.getResponsesPath();
     Validate.notBlank(path, "openai-compatible responsesPath must be provided");
-    if (!path.startsWith("/")) {
-      path = "/" + path;
-    }
-    return URI.create(base + path);
+    return URI.create(base + (path.startsWith("/") ? "" : "/") + path);
   }
 
   /**

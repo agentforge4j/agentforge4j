@@ -4,6 +4,6 @@ implement-epic.step.prompt.md
 generate-tests.step.prompt.md
 validate-epic.step.prompt.md
 mark-epic-failed.step.prompt.md
-agents/epic-developer-agent.agent/agent.json
-agents/epic-tester-agent.agent/agent.json
-agents/epic-validator-agent.agent/agent.json
+agents/epic-developer-agent.agent
+agents/epic-tester-agent.agent
+agents/epic-validator-agent.agent

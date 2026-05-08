@@ -4,91 +4,6 @@
   "uuid": "a1c9e8f2-4b3d-4e5f-9a0b-1c2d3e4f5a07",
   "name": "Application Delivery",
   "description": "End-to-end AI-driven software delivery pipeline. Collects an application idea, refines requirements via dynamic PO questioning, generates epics, designs architecture, then iterates over each epic invoking the epic-implementation sub-workflow. Assembles a final delivery package with executive summary.",
-  "author": "AgentForge4J",
-  "contact": "https://github.com/agentforge4j",
-  "version": "1.0.0",
-  "artifacts": {
-    "app-idea": {
-      "id": "app-idea",
-      "items": [
-        {
-          "type": "TEXT_AREA",
-          "id": "appIdea",
-          "label": "What application do you want to build?",
-          "required": true
-        }
-      ]
-    }
-  },
-  "blueprints": {
-    "po-refinement-loop": {
-      "kind": "BLUEPRINT",
-      "blueprintId": "po-refinement-loop",
-      "name": "PO Refinement Loop",
-      "behaviour": {
-        "loopConfig": {
-          "terminationStrategy": "AGENT_SIGNAL",
-          "maxIterations": 8,
-          "maxIterationsAction": "AWAIT_USER"
-        },
-        "transition": "AUTO"
-      },
-      "steps": [
-        {
-          "kind": "STEP",
-          "stepId": "po-refinement",
-          "name": "PO Requirements Refinement",
-          "behaviour": {
-            "type": "AGENT",
-            "agentRef": "application-delivery.po",
-            "transition": "AUTO",
-            "retryPolicy": {
-              "allowRetry": true,
-              "allowRetryFromPrevious": false,
-              "allowAgentSwap": false,
-              "allowPromptOverride": true,
-              "maxAttempts": 3
-            }
-          },
-          "contextMapping": {
-            "inputKeys": ["appIdea", "productVision"],
-            "outputKeys": ["productVision"]
-          },
-          "stepPrompt": "po-refinement"
-        }
-      ]
-    },
-    "epic-loop-blueprint": {
-      "kind": "BLUEPRINT",
-      "blueprintId": "epic-loop-blueprint",
-      "name": "Per-Epic Implementation Loop",
-      "behaviour": {
-        "loopConfig": {
-          "terminationStrategy": "FOR_EACH",
-          "forEachContextKey": "epics",
-          "maxIterations": 50,
-          "maxIterationsAction": "FAIL"
-        },
-        "transition": "AUTO"
-      },
-      "steps": [
-        {
-          "kind": "STEP",
-          "stepId": "invoke-epic-implementation",
-          "name": "Implement Current Epic",
-          "behaviour": {
-            "type": "WORKFLOW",
-            "workflowRef": "epic-implementation",
-            "transition": "AUTO"
-          },
-          "contextMapping": {
-            "inputKeys": ["currentEpic", "architectureDesign", "generatedFiles", "generatedTests"],
-            "outputKeys": ["generatedFiles", "generatedTests", "epicStatus", "epicNotes"]
-          }
-        }
-      ]
-    }
-  },
   "steps": [
     {
       "kind": "STEP",
@@ -101,7 +16,9 @@
       },
       "contextMapping": {
         "inputKeys": [],
-        "outputKeys": ["appIdea"]
+        "outputKeys": [
+          "appIdea"
+        ]
       }
     },
     {
@@ -114,7 +31,7 @@
       "name": "Approve Product Vision",
       "behaviour": {
         "type": "AGENT",
-        "agentRef": "application-delivery.po",
+        "agentRef": "app-delivery-po-agent",
         "transition": "HUMAN_APPROVAL",
         "retryPolicy": {
           "allowRetry": true,
@@ -125,7 +42,9 @@
         }
       },
       "contextMapping": {
-        "inputKeys": ["productVision"],
+        "inputKeys": [
+          "productVision"
+        ],
         "outputKeys": []
       },
       "stepPrompt": "approve-product-vision"
@@ -136,7 +55,7 @@
       "name": "Generate Epics and User Stories",
       "behaviour": {
         "type": "AGENT",
-        "agentRef": "application-delivery.ba",
+        "agentRef": "app-delivery-ba-agent",
         "transition": "HUMAN_APPROVAL",
         "retryPolicy": {
           "allowRetry": true,
@@ -147,8 +66,12 @@
         }
       },
       "contextMapping": {
-        "inputKeys": ["productVision"],
-        "outputKeys": ["epics"]
+        "inputKeys": [
+          "productVision"
+        ],
+        "outputKeys": [
+          "epics"
+        ]
       },
       "stepPrompt": "generate-epics"
     },
@@ -158,7 +81,7 @@
       "name": "Design System Architecture",
       "behaviour": {
         "type": "AGENT",
-        "agentRef": "application-delivery.architect",
+        "agentRef": "app-delivery-architect-agent",
         "transition": "HUMAN_APPROVAL",
         "retryPolicy": {
           "allowRetry": true,
@@ -169,8 +92,13 @@
         }
       },
       "contextMapping": {
-        "inputKeys": ["productVision", "epics"],
-        "outputKeys": ["architectureDesign"]
+        "inputKeys": [
+          "productVision",
+          "epics"
+        ],
+        "outputKeys": [
+          "architectureDesign"
+        ]
       },
       "stepPrompt": "design-architecture"
     },
@@ -184,7 +112,7 @@
       "name": "Assemble Delivery Package",
       "behaviour": {
         "type": "AGENT",
-        "agentRef": "application-delivery.assembler",
+        "agentRef": "app-delivery-assembler-agent",
         "transition": "AUTO",
         "retryPolicy": {
           "allowRetry": true,
@@ -195,8 +123,16 @@
         }
       },
       "contextMapping": {
-        "inputKeys": ["productVision", "epics", "architectureDesign", "generatedFiles", "generatedTests"],
-        "outputKeys": ["deliveryPackage"]
+        "inputKeys": [
+          "productVision",
+          "epics",
+          "architectureDesign",
+          "generatedFiles",
+          "generatedTests"
+        ],
+        "outputKeys": [
+          "deliveryPackage"
+        ]
       },
       "stepPrompt": "assemble-delivery"
     },
@@ -206,7 +142,7 @@
       "name": "Generate Executive Summary",
       "behaviour": {
         "type": "AGENT",
-        "agentRef": "application-delivery.summary",
+        "agentRef": "app-delivery-summary-agent",
         "transition": "AUTO",
         "retryPolicy": {
           "allowRetry": true,
@@ -217,8 +153,15 @@
         }
       },
       "contextMapping": {
-        "inputKeys": ["productVision", "epics", "architectureDesign", "deliveryPackage"],
-        "outputKeys": ["executiveSummary"]
+        "inputKeys": [
+          "productVision",
+          "epics",
+          "architectureDesign",
+          "deliveryPackage"
+        ],
+        "outputKeys": [
+          "executiveSummary"
+        ]
       },
       "stepPrompt": "executive-summary"
     }

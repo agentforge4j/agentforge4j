@@ -18,7 +18,7 @@
       "name": "Generate role-specific assessment",
       "behaviour": {
         "type": "AGENT",
-        "agentRef": "recruitment.assessment-generator",
+        "agentRef": "recruitment-assessment-generator-agent",
         "transition": "AUTO"
       },
       "contextMapping": {
@@ -46,7 +46,7 @@
       "name": "Evaluate submission and update candidate score",
       "behaviour": {
         "type": "AGENT",
-        "agentRef": "recruitment.assessment-evaluator",
+        "agentRef": "recruitment-assessment-evaluator-agent",
         "transition": "AUTO"
       },
       "contextMapping": {

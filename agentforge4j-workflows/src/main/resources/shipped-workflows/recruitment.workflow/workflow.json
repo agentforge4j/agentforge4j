@@ -4,211 +4,6 @@
   "uuid": "a1c9e8f2-4b3d-4e5f-9a0b-1c2d3e4f5a03",
   "name": "Recruitment Workflow",
   "description": "End-to-end AI-assisted recruitment: dynamic intake, job post generation, CV evaluation, role-specific assessment, and shortlisting. Deterministic flow, AI-driven content, human-in-the-loop confirmation gates.",
-  "artifacts": {
-    "initial-role-prompt": {
-      "id": "initial-role-prompt",
-      "items": [
-        { "type": "TEXT", "id": "rolePrompt", "label": "What position is this recruitment for?", "required": true }
-      ]
-    },
-    "profile-confirmation": {
-      "id": "profile-confirmation",
-      "items": [
-        { "type": "BOOLEAN", "id": "profileConfirmed", "label": "The recruitment profile above is correct and complete. Proceed to job post generation.", "required": true }
-      ]
-    },
-    "job-post-target": {
-      "id": "job-post-target",
-      "items": [
-        {
-          "type": "SINGLE_CHOICE",
-          "id": "jobPostChannel",
-          "label": "Where will this job post be published?",
-          "required": true,
-          "options": ["LinkedIn", "Internal Careers Page", "Generic Job Board", "Recruitment Agency Brief"]
-        }
-      ]
-    },
-    "job-post-confirmation": {
-      "id": "job-post-confirmation",
-      "items": [
-        { "type": "BOOLEAN", "id": "jobPostApproved", "label": "Approve the generated job post for publication.", "required": true }
-      ]
-    },
-    "cv-upload": {
-      "id": "cv-upload",
-      "items": [
-        { "type": "TEXT_AREA", "id": "cvText", "label": "Paste CV content (or full path/URL to CV file)", "required": true },
-        { "type": "TEXT", "id": "candidateName", "label": "Candidate name", "required": true },
-        { "type": "BOOLEAN", "id": "moreCvs", "label": "I have more CVs to upload after this one.", "required": true }
-      ]
-    },
-    "shortlist-config": {
-      "id": "shortlist-config",
-      "items": [
-        { "type": "NUMBER", "id": "shortlistSize", "label": "How many candidates should be shortlisted? (Leave blank for AI suggestion based on score distribution)", "required": false }
-      ]
-    },
-    "shortlist-confirmation": {
-      "id": "shortlist-confirmation",
-      "items": [
-        { "type": "BOOLEAN", "id": "shortlistConfirmed", "label": "Approve the proposed shortlist and proceed to assessment generation.", "required": true }
-      ]
-    },
-    "assessment-submission": {
-      "id": "assessment-submission",
-      "items": [
-        { "type": "TEXT_AREA", "id": "submission", "label": "Paste the candidate's assessment submission", "required": true },
-        { "type": "BOOLEAN", "id": "submissionReceived", "label": "Submission received and ready to evaluate.", "required": true }
-      ]
-    }
-  },
-  "blueprints": {
-    "intake-loop": {
-      "kind": "BLUEPRINT",
-      "blueprintId": "intake-loop",
-      "name": "AI-driven intake loop",
-      "behaviour": {
-        "loopConfig": {
-          "terminationStrategy": "AGENT_SIGNAL",
-          "maxIterations": 25,
-          "maxIterationsAction": "AWAIT_USER"
-        },
-        "transition": "AUTO"
-      },
-      "steps": [
-        {
-          "kind": "STEP",
-          "stepId": "intake-iteration",
-          "name": "Intake question round",
-          "behaviour": {
-            "type": "AGENT",
-            "agentRef": "recruitment.intake",
-            "transition": "AUTO"
-          },
-          "contextMapping": {
-            "inputKeys": ["rolePrompt", "recruitmentProfileDraft", "intakeUserResponse"],
-            "outputKeys": ["recruitmentProfileDraft", "intakeUserResponse"]
-          }
-        }
-      ]
-    },
-    "cv-collection-loop": {
-      "kind": "BLUEPRINT",
-      "blueprintId": "cv-collection-loop",
-      "name": "CV upload and analysis loop",
-      "behaviour": {
-        "loopConfig": {
-          "terminationStrategy": "AGENT_SIGNAL",
-          "maxIterations": 100,
-          "maxIterationsAction": "AWAIT_USER"
-        },
-        "transition": "AUTO"
-      },
-      "steps": [
-        {
-          "kind": "STEP",
-          "stepId": "cv-upload-prompt",
-          "name": "Collect a CV",
-          "behaviour": {
-            "type": "INPUT",
-            "artifactId": "cv-upload",
-            "transition": "AUTO"
-          },
-          "contextMapping": {
-            "inputKeys": [],
-            "outputKeys": ["cvText", "candidateName", "moreCvs"]
-          }
-        },
-        {
-          "kind": "STEP",
-          "stepId": "cv-analysis",
-          "name": "Analyse and score the CV",
-          "behaviour": {
-            "type": "AGENT",
-            "agentRef": "recruitment.cv-analysis",
-            "transition": "AUTO"
-          },
-          "contextMapping": {
-            "inputKeys": ["recruitmentProfile", "cvText", "candidateName", "candidates"],
-            "outputKeys": ["candidates"]
-          }
-        },
-        {
-          "kind": "STEP",
-          "stepId": "cv-loop-coordinator",
-          "name": "Decide whether to continue collecting CVs",
-          "behaviour": {
-            "type": "AGENT",
-            "agentRef": "recruitment.cv-loop-coordinator",
-            "transition": "AUTO"
-          },
-          "contextMapping": {
-            "inputKeys": ["moreCvs", "candidates"],
-            "outputKeys": []
-          }
-        }
-      ]
-    },
-    "assessment-per-candidate": {
-      "kind": "BLUEPRINT",
-      "blueprintId": "assessment-per-candidate",
-      "name": "Generate and evaluate assessment for one shortlisted candidate",
-      "behaviour": {
-        "loopConfig": {
-          "terminationStrategy": "FOR_EACH",
-          "forEachContextKey": "shortlistedCandidates",
-          "maxIterations": 50,
-          "maxIterationsAction": "FAIL"
-        },
-        "transition": "AUTO"
-      },
-      "steps": [
-        {
-          "kind": "STEP",
-          "stepId": "assessment-generation",
-          "name": "Generate role-specific assessment",
-          "behaviour": {
-            "type": "AGENT",
-            "agentRef": "recruitment.assessment-generator",
-            "transition": "AUTO"
-          },
-          "contextMapping": {
-            "inputKeys": ["recruitmentProfile", "currentCandidate"],
-            "outputKeys": ["currentAssessment"]
-          }
-        },
-        {
-          "kind": "STEP",
-          "stepId": "assessment-submission-input",
-          "name": "Receive candidate submission",
-          "behaviour": {
-            "type": "INPUT",
-            "artifactId": "assessment-submission",
-            "transition": "AUTO"
-          },
-          "contextMapping": {
-            "inputKeys": ["currentCandidate", "currentAssessment"],
-            "outputKeys": ["submission", "submissionReceived"]
-          }
-        },
-        {
-          "kind": "STEP",
-          "stepId": "assessment-evaluation",
-          "name": "Evaluate submission and update candidate score",
-          "behaviour": {
-            "type": "AGENT",
-            "agentRef": "recruitment.assessment-evaluator",
-            "transition": "AUTO"
-          },
-          "contextMapping": {
-            "inputKeys": ["recruitmentProfile", "currentCandidate", "currentAssessment", "submission", "candidates"],
-            "outputKeys": ["candidates"]
-          }
-        }
-      ]
-    }
-  },
   "steps": [
     {
       "kind": "STEP",
@@ -221,7 +16,9 @@
       },
       "contextMapping": {
         "inputKeys": [],
-        "outputKeys": ["rolePrompt"]
+        "outputKeys": [
+          "rolePrompt"
+        ]
       }
     },
     {
@@ -234,12 +31,16 @@
       "name": "Finalise recruitment profile",
       "behaviour": {
         "type": "AGENT",
-        "agentRef": "recruitment.profile-finalizer",
+        "agentRef": "recruitment-profile-finalizer-agent",
         "transition": "AUTO"
       },
       "contextMapping": {
-        "inputKeys": ["recruitmentProfileDraft"],
-        "outputKeys": ["recruitmentProfile"]
+        "inputKeys": [
+          "recruitmentProfileDraft"
+        ],
+        "outputKeys": [
+          "recruitmentProfile"
+        ]
       }
     },
     {
@@ -252,8 +53,12 @@
         "transition": "AUTO"
       },
       "contextMapping": {
-        "inputKeys": ["recruitmentProfile"],
-        "outputKeys": ["profileConfirmed"]
+        "inputKeys": [
+          "recruitmentProfile"
+        ],
+        "outputKeys": [
+          "profileConfirmed"
+        ]
       }
     },
     {
@@ -298,7 +103,9 @@
       },
       "contextMapping": {
         "inputKeys": [],
-        "outputKeys": ["jobPostChannel"]
+        "outputKeys": [
+          "jobPostChannel"
+        ]
       }
     },
     {
@@ -307,7 +114,7 @@
       "name": "Generate job post",
       "behaviour": {
         "type": "AGENT",
-        "agentRef": "recruitment.job-post",
+        "agentRef": "recruitment-job-post-agent",
         "transition": "AUTO",
         "retryPolicy": {
           "allowRetry": true,
@@ -318,8 +125,13 @@
         }
       },
       "contextMapping": {
-        "inputKeys": ["recruitmentProfile", "jobPostChannel"],
-        "outputKeys": ["jobPost"]
+        "inputKeys": [
+          "recruitmentProfile",
+          "jobPostChannel"
+        ],
+        "outputKeys": [
+          "jobPost"
+        ]
       }
     },
     {
@@ -332,8 +144,12 @@
         "transition": "AUTO"
       },
       "contextMapping": {
-        "inputKeys": ["jobPost"],
-        "outputKeys": ["jobPostApproved"]
+        "inputKeys": [
+          "jobPost"
+        ],
+        "outputKeys": [
+          "jobPostApproved"
+        ]
       }
     },
     {
@@ -371,11 +187,15 @@
           "name": "Persist approved job post as file",
           "behaviour": {
             "type": "AGENT",
-            "agentRef": "recruitment.job-post-publisher",
+            "agentRef": "recruitment-job-post-publisher-agent",
             "transition": "AUTO"
           },
           "contextMapping": {
-            "inputKeys": ["jobPost", "jobPostChannel", "recruitmentProfile"],
+            "inputKeys": [
+              "jobPost",
+              "jobPostChannel",
+              "recruitmentProfile"
+            ],
             "outputKeys": []
           }
         }
@@ -395,8 +215,12 @@
         "transition": "AUTO"
       },
       "contextMapping": {
-        "inputKeys": ["candidates"],
-        "outputKeys": ["shortlistSize"]
+        "inputKeys": [
+          "candidates"
+        ],
+        "outputKeys": [
+          "shortlistSize"
+        ]
       }
     },
     {
@@ -405,12 +229,21 @@
       "name": "Rank candidates and propose shortlist",
       "behaviour": {
         "type": "AGENT",
-        "agentRef": "recruitment.ranking",
+        "agentRef": "recruitment-ranking-agent",
         "transition": "AUTO"
       },
       "contextMapping": {
-        "inputKeys": ["recruitmentProfile", "candidates", "shortlistSize"],
-        "outputKeys": ["candidates", "shortlistedCandidates", "rejectedCandidates", "rankingRationale"]
+        "inputKeys": [
+          "recruitmentProfile",
+          "candidates",
+          "shortlistSize"
+        ],
+        "outputKeys": [
+          "candidates",
+          "shortlistedCandidates",
+          "rejectedCandidates",
+          "rankingRationale"
+        ]
       }
     },
     {
@@ -423,8 +256,14 @@
         "transition": "AUTO"
       },
       "contextMapping": {
-        "inputKeys": ["shortlistedCandidates", "rejectedCandidates", "rankingRationale"],
-        "outputKeys": ["shortlistConfirmed"]
+        "inputKeys": [
+          "shortlistedCandidates",
+          "rejectedCandidates",
+          "rankingRationale"
+        ],
+        "outputKeys": [
+          "shortlistConfirmed"
+        ]
       }
     },
     {
@@ -462,11 +301,14 @@
           "name": "Generate explainable rejection letters",
           "behaviour": {
             "type": "AGENT",
-            "agentRef": "recruitment.rejection-letter",
+            "agentRef": "recruitment-rejection-letter-agent",
             "transition": "AUTO"
           },
           "contextMapping": {
-            "inputKeys": ["recruitmentProfile", "rejectedCandidates"],
+            "inputKeys": [
+              "recruitmentProfile",
+              "rejectedCandidates"
+            ],
             "outputKeys": []
           }
         }
@@ -482,12 +324,18 @@
       "name": "Produce final ranked selection for interview phase",
       "behaviour": {
         "type": "AGENT",
-        "agentRef": "recruitment.final-selection",
+        "agentRef": "recruitment-final-selection-agent",
         "transition": "HUMAN_REVIEW"
       },
       "contextMapping": {
-        "inputKeys": ["recruitmentProfile", "candidates", "shortlistedCandidates"],
-        "outputKeys": ["finalSelection"]
+        "inputKeys": [
+          "recruitmentProfile",
+          "candidates",
+          "shortlistedCandidates"
+        ],
+        "outputKeys": [
+          "finalSelection"
+        ]
       }
     }
   ]

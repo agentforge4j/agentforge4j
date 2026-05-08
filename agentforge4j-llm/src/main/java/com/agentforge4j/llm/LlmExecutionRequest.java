@@ -3,14 +3,13 @@ package com.agentforge4j.llm;
 import com.agentforge4j.util.Validate;
 
 /**
- * An immutable request to execute an LLM operation.
+ * Immutable parameters for a single LLM invocation.
  *
- * @param providerName     the providerName name such as {@code "openai"} or {@code "ollama"}
- * @param model        the specific model identifier for this request, or {@code null} to use the
- *                     providerName's default
- * @param systemPrompt the system prompt establishing the LLM's behavior and context
- * @param userInput    the user's query or instruction for the LLM
- * @param maxOutputTokens optional cap on generated tokens (provider-specific; ignored when null)
+ * @param providerName     provider id (for example {@code "openai"}); must match the target {@link LlmClient}
+ * @param model            model id for this call, or {@code null} to use the client's configured default
+ * @param systemPrompt     system instructions for the model
+ * @param userInput        user or tool-facing content for this turn
+ * @param maxOutputTokens optional cap on generated tokens (provider-specific; ignored when {@code null})
  */
 public record LlmExecutionRequest(
     String providerName,
@@ -24,7 +23,7 @@ public record LlmExecutionRequest(
   }
 
   /**
-   *  Validates that required fields are not blank.
+   * Validates that required fields are not blank and optional token cap is positive when set.
    *
    * @throws IllegalArgumentException if any required field is blank
    */
@@ -37,12 +36,12 @@ public record LlmExecutionRequest(
   }
 
   /**
-   * Creates an execution request using the providerName's default model.
+   * Creates a request that omits an explicit model so the client uses its configured default.
    *
-   * @param providerName the providerName
-   * @param systemPrompt the system prompt
-   * @param userInput    the user input
-   * @return a request with no specific model specified
+   * @param providerName target provider id
+   * @param systemPrompt system instructions
+   * @param userInput    user content for this turn
+   * @return request with {@code model == null}
    */
   public static LlmExecutionRequest withDefaultModel(String providerName, String systemPrompt,
       String userInput) {

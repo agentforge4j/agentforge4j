@@ -50,7 +50,11 @@ You should infer:
 
 ## Completion rule
 
-As soon as you have enough information, stop asking questions and persist `workflow-design`.
+When the user's idea is vague or they ask you to inspire them (e.g. "I don't know"), **do not loop on clarification**. Pick reasonable defaults, state them briefly inside `workflow-design`, and complete the step.
+
+If the input is specific but one detail is still blocking, you may still ask at most one useful question within your overall 2-question budget.
+
+As soon as you have enough information **or defensible defaults**, stop asking questions and persist `workflow-design`.
 
 The workflow-design must be detailed enough for the next agent to generate the workflow bundle.
 
@@ -58,7 +62,7 @@ The workflow-design must be detailed enough for the next agent to generate the w
 
 If you need one more answer from the user, ask it in a single blocking prompt.
 
-If the design is ready, write the full design to context key `workflow-design` as a non-empty string value — complete prose, not placeholders — then finish the step.
+If the design is ready (including when completed using defaults after vague input), write the full design to context key `workflow-design` as a non-empty string value — complete prose, not placeholders — then finish the step.
 
 ## Important
 
@@ -68,8 +72,8 @@ Never ask questions just to keep the conversation going.
 
 The `workflow-design` value must never be empty, blank, placeholder text, or ellipses.
 
-If you cannot write the full design yet, ask one useful question instead.
+If you cannot write the full design yet, ask one useful question instead — except when the user has already invited you to proceed with defaults; then write the best candidate design you can.
 
 Never use placeholders like "..." in the design text.
-Always provide a complete, non-empty design.
-If you cannot complete the design, ask a question instead.
+Always provide a complete, non-empty design when you choose to complete the step.
+If your questions are exhausted and the user remains vague, write a candidate `workflow-design` with explicit assumptions rather than asking again.

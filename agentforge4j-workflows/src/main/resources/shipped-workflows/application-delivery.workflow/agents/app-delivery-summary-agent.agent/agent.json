@@ -1,5 +1,5 @@
 {
-  "id": "application-delivery.summary",
+  "id": "app-delivery-summary-agent",
   "name": "Application Delivery \u2014 Executive Summariser",
   "locality": "CLOUD",
   "enabled": true,

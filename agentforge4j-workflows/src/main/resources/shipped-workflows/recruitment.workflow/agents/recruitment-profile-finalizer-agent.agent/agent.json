@@ -1,5 +1,5 @@
 {
-  "id": "recruitment.profile-finalizer",
+  "id": "recruitment-profile-finalizer-agent",
   "name": "Recruitment Profile Finalizer",
   "locality": "CLOUD",
   "enabled": true,

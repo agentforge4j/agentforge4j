@@ -12,7 +12,7 @@
       "name": "Mark Epic Failed",
       "behaviour": {
         "type": "AGENT",
-        "agentRef": "epic-implementation.validator",
+        "agentRef": "epic-validator-agent",
         "transition": "AUTO"
       },
       "contextMapping": {

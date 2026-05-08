@@ -17,7 +17,7 @@
       "name": "PO Requirements Refinement",
       "behaviour": {
         "type": "AGENT",
-        "agentRef": "application-delivery.po",
+        "agentRef": "app-delivery-po-agent",
         "transition": "AUTO",
         "retryPolicy": {
           "allowRetry": true,

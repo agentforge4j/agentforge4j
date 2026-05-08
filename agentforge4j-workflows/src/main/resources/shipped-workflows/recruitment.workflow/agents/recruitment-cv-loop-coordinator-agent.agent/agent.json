@@ -1,5 +1,5 @@
 {
-  "id": "recruitment.cv-loop-coordinator",
+  "id": "recruitment-cv-loop-coordinator-agent",
   "name": "Recruitment CV Loop Coordinator",
   "locality": "CLOUD",
   "enabled": true,

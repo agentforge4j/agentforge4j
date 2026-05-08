@@ -12,6 +12,9 @@ import org.apache.commons.lang3.StringUtils;
 /**
  * Defines a workflow: its steps, blueprints, and artifacts. Instances are immutable and validated
  * at construction time.
+ *
+ * <p>Workflow configuration controls the execution flow; AI/model output provides commands or
+ * content but does not own runtime flow control.
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)
 @JsonIgnoreProperties(ignoreUnknown = true)
@@ -46,5 +49,41 @@ public record WorkflowDefinition(
     Validate.notEmpty(steps,
         "WorkflowDefinition steps must not be empty for workflow: %s".formatted(id));
     steps = List.copyOf(steps);
+  }
+
+  public static WorkflowDefinition duplicate(WorkflowDefinition workflowDefinition,
+      Map<String, BlueprintDefinition> blueprints, List<Executable> loadedStepPrompts) {
+    return new WorkflowDefinition(
+        workflowDefinition.id(),
+        workflowDefinition.name(),
+        workflowDefinition.description(),
+        workflowDefinition.author(),
+        workflowDefinition.contact(),
+        workflowDefinition.version(),
+        workflowDefinition.uuid(),
+        workflowDefinition.source(),
+        workflowDefinition.lifecycle(),
+        workflowDefinition.artifacts(),
+        blueprints,
+        loadedStepPrompts);
+  }
+
+  public static WorkflowDefinition duplicate(WorkflowDefinition workflowDefinition,
+      WorkflowSource source,
+      WorkflowLifecycle lifecycle, Map<String, ArtifactDefinition> artifacts,
+      Map<String, BlueprintDefinition> blueprints, List<Executable> loadedStepPrompts) {
+    return new WorkflowDefinition(
+        workflowDefinition.id(),
+        workflowDefinition.name(),
+        workflowDefinition.description(),
+        workflowDefinition.author(),
+        workflowDefinition.contact(),
+        workflowDefinition.version(),
+        workflowDefinition.uuid(),
+        source,
+        lifecycle,
+        artifacts,
+        blueprints,
+        loadedStepPrompts);
   }
 }

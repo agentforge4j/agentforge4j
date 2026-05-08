@@ -3,6 +3,7 @@
   "title": "WorkflowDefinition",
   "type": "object",
   "required": ["kind", "id", "name", "steps"],
+  "additionalProperties": false,
   "properties": {
     "kind": { "type": "string", "const": "WORKFLOW" },
     "id": {
@@ -40,17 +41,24 @@
     "StepDefinition": {
       "type": "object",
       "required": ["kind", "stepId", "name", "behaviour"],
+      "additionalProperties": false,
       "properties": {
         "kind": { "type": "string", "const": "STEP" },
         "stepId": { "type": "string" },
         "name": { "type": "string" },
         "behaviour": { "$ref": "#/$defs/StepBehaviour" },
-        "contextMapping": { "$ref": "#/$defs/ContextMapping" }
+        "contextMapping": { "$ref": "#/$defs/ContextMapping" },
+        "maxUserPromptRounds": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Maximum blocking USER_PROMPT pauses for this step before the run fails."
+        }
       }
     },
     "BlueprintRef": {
       "type": "object",
       "required": ["kind", "blueprintId"],
+      "additionalProperties": false,
       "properties": {
         "kind": { "type": "string", "const": "BLUEPRINT_REF" },
         "blueprintId": { "type": "string" }
@@ -82,6 +90,7 @@
     "AgentBehaviour": {
       "type": "object",
       "required": ["type", "agentRef", "transition"],
+      "additionalProperties": false,
       "properties": {
         "type": { "type": "string", "const": "AGENT" },
         "agentRef": { "type": "string" },
@@ -92,6 +101,7 @@
     "SparBehaviour": {
       "type": "object",
       "required": ["type", "agentRef", "sparConfig", "transition"],
+      "additionalProperties": false,
       "properties": {
         "type": { "type": "string", "const": "SPAR" },
         "agentRef": { "type": "string" },
@@ -103,6 +113,7 @@
     "WorkflowBehaviour": {
       "type": "object",
       "required": ["type", "workflowRef", "transition"],
+      "additionalProperties": false,
       "properties": {
         "type": { "type": "string", "const": "WORKFLOW" },
         "workflowRef": { "type": "string" },
@@ -112,6 +123,7 @@
     "InputBehaviour": {
       "type": "object",
       "required": ["type", "artifactId", "transition"],
+      "additionalProperties": false,
       "properties": {
         "type": { "type": "string", "const": "INPUT" },
         "artifactId": { "type": "string" },
@@ -121,6 +133,7 @@
     "ResourceBehaviour": {
       "type": "object",
       "required": ["type", "resourcePath", "contextKey", "transition"],
+      "additionalProperties": false,
       "properties": {
         "type": { "type": "string", "const": "RESOURCE" },
         "resourcePath": {
@@ -136,6 +149,7 @@
     },
     "BranchBehaviour": {
       "type": "object",
+      "additionalProperties": false,
       "properties": {
         "type": { "const": "BRANCH" },
         "contextKey": { "type": "string", "minLength": 1 },
@@ -149,6 +163,7 @@
     },
     "FailBehaviour": {
       "type": "object",
+      "additionalProperties": false,
       "properties": {
         "type": { "const": "FAIL" },
         "reason": { "type": "string", "minLength": 1 }
@@ -157,11 +172,12 @@
     },
     "RetryPreviousBehaviour": {
       "type": "object",
+      "additionalProperties": false,
       "properties": {
         "type": { "const": "RETRY_PREVIOUS" },
         "retryStepId": { "type": "string", "minLength": 1 },
         "retryMode": { "enum": ["SINGLE_STEP", "FROM_STEP"] },
-        "maxAttempts": { "type": "integer", "minimum": 0 },
+        "maxAttempts": { "type": "integer", "minimum": 1 },
         "fallback": { "$ref": "#/$defs/Executable" }
       },
       "required": ["type", "retryStepId", "retryMode", "maxAttempts", "fallback"]
@@ -173,6 +189,7 @@
     "SparConfig": {
       "type": "object",
       "required": ["challengerAgentId", "maxRounds", "resolutionPrompt"],
+      "additionalProperties": false,
       "properties": {
         "challengerAgentId": { "type": "string" },
         "maxRounds": { "type": "integer", "minimum": 1 },
@@ -181,16 +198,18 @@
     },
     "RetryPolicy": {
       "type": "object",
+      "additionalProperties": false,
       "properties": {
         "allowRetry": { "type": "boolean" },
         "allowRetryFromPrevious": { "type": "boolean" },
         "allowAgentSwap": { "type": "boolean" },
         "allowPromptOverride": { "type": "boolean" },
-        "maxAttempts": { "type": "integer", "minimum": 0 }
+        "maxAttempts": { "type": "integer", "minimum": 1 }
       }
     },
     "ContextMapping": {
       "type": "object",
+      "additionalProperties": false,
       "properties": {
         "inputKeys": {
           "type": "array",

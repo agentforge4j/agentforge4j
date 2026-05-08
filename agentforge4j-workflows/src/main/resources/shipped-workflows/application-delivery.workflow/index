@@ -7,8 +7,8 @@ generate-epics.step.prompt.md
 design-architecture.step.prompt.md
 assemble-delivery.step.prompt.md
 executive-summary.step.prompt.md
-agents/app-delivery-architect-agent.agent/agent.json
-agents/app-delivery-assembler-agent.agent/agent.json
-agents/app-delivery-ba-agent.agent/agent.json
-agents/app-delivery-po-agent.agent/agent.json
-agents/app-delivery-summary-agent.agent/agent.json
+agents/app-delivery-architect-agent.agent
+agents/app-delivery-assembler-agent.agent
+agents/app-delivery-ba-agent.agent
+agents/app-delivery-po-agent.agent
+agents/app-delivery-summary-agent.agent

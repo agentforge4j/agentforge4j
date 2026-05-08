@@ -1,5 +1,5 @@
 {
-  "id": "workflow-generator.designer",
+  "id": "workflow-designer-agent",
   "name": "Workflow Designer",
   "locality": "CLOUD",
   "enabled": true,

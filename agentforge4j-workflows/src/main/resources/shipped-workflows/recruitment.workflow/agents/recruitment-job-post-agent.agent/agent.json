@@ -1,5 +1,5 @@
 {
-  "id": "recruitment.job-post",
+  "id": "recruitment-job-post-agent",
   "name": "Recruitment Job Post Generator",
   "locality": "CLOUD",
   "enabled": true,

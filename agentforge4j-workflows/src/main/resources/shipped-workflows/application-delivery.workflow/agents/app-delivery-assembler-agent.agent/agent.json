@@ -1,5 +1,5 @@
 {
-  "id": "application-delivery.assembler",
+  "id": "app-delivery-assembler-agent",
   "name": "Application Delivery \u2014 Delivery Assembler",
   "locality": "CLOUD",
   "enabled": true,

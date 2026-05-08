@@ -1,5 +1,5 @@
 {
-  "id": "workflow-generator.conversation",
+  "id": "workflow-conversation-agent",
   "name": "Workflow Conversation Agent",
   "locality": "CLOUD",
   "enabled": true,

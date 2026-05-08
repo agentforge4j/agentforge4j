@@ -31,7 +31,7 @@
       "name": "Analyse and score the CV",
       "behaviour": {
         "type": "AGENT",
-        "agentRef": "recruitment.cv-analysis",
+        "agentRef": "recruitment-cv-analysis-agent",
         "transition": "AUTO"
       },
       "contextMapping": {
@@ -45,7 +45,7 @@
       "name": "Decide whether to continue collecting CVs",
       "behaviour": {
         "type": "AGENT",
-        "agentRef": "recruitment.cv-loop-coordinator",
+        "agentRef": "recruitment-cv-loop-coordinator-agent",
         "transition": "AUTO"
       },
       "contextMapping": {

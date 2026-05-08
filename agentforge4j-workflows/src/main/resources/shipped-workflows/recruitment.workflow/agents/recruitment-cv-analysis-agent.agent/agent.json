@@ -1,5 +1,5 @@
 {
-  "id": "recruitment.cv-analysis",
+  "id": "recruitment-cv-analysis-agent",
   "name": "Recruitment CV Analysis Agent",
   "locality": "CLOUD",
   "enabled": true,

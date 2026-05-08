@@ -4,55 +4,6 @@
   "uuid": "a1c9e8f2-4b3d-4e5f-9a0b-1c2d3e4f5a01",
   "name": "Agent Creator",
   "description": "Collects agent requirements then generates a complete downloadable agent bundle (agent.json, systemprompt.md, boundaries.md).",
-  "artifacts": {
-    "agent-requirements": {
-      "id": "agent-requirements",
-      "items": [
-        {
-          "type": "TEXT",
-          "id": "agent-name",
-          "label": "Agent name",
-          "required": true,
-          "hint": "e.g. Code Reviewer, Legal Summariser"
-        },
-        {
-          "type": "TEXT_AREA",
-          "id": "agent-purpose",
-          "label": "What should this agent do?",
-          "required": true,
-          "hint": "Describe the task, domain, and expected output in plain language."
-        },
-        {
-          "type": "SINGLE_CHOICE",
-          "id": "agent-locality",
-          "label": "Where will this agent run?",
-          "required": true,
-          "options": ["CLOUD", "LOCAL"]
-        },
-        {
-          "type": "SINGLE_CHOICE",
-          "id": "preferred-provider",
-          "label": "Preferred LLM provider",
-          "required": true,
-          "options": ["openai", "claude", "ollama", "vllm"]
-        },
-        {
-          "type": "TEXT",
-          "id": "preferred-model",
-          "label": "Preferred model (leave blank for provider default)",
-          "required": false
-        },
-        {
-          "type": "TEXT_AREA",
-          "id": "constraints",
-          "label": "Constraints and boundaries (optional)",
-          "required": false,
-          "hint": "What must this agent never do? Any compliance or safety constraints?"
-        }
-      ]
-    }
-  },
-  "blueprints": {},
   "steps": [
     {
       "kind": "STEP",
@@ -70,7 +21,7 @@
       "name": "Generate Agent Bundle",
       "behaviour": {
         "type": "AGENT",
-        "agentRef": "agent-creator.creator",
+        "agentRef": "agent-creator-agent",
         "transition": "HUMAN_REVIEW",
         "retryPolicy": {
           "allowRetry": true,

@@ -29,7 +29,7 @@
       "name": "Finalise Product Vision and Request Confirmation",
       "behaviour": {
         "type": "AGENT",
-        "agentRef": "app-creator.po",
+        "agentRef": "app-creator-po-agent",
         "transition": "HUMAN_APPROVAL"
       },
       "stepPrompt": "po-finalise.step.prompt.md",
@@ -44,7 +44,7 @@
       "name": "BA Generates Epics and User Stories",
       "behaviour": {
         "type": "AGENT",
-        "agentRef": "app-creator.ba",
+        "agentRef": "app-creator-ba-agent",
         "transition": "HUMAN_APPROVAL"
       },
       "contextMapping": {
@@ -58,7 +58,7 @@
       "name": "Architect Designs System",
       "behaviour": {
         "type": "AGENT",
-        "agentRef": "app-creator.architect",
+        "agentRef": "app-creator-architect-agent",
         "transition": "AUTO"
       },
       "contextMapping": {
@@ -76,7 +76,7 @@
       "name": "Confirm Final Architecture",
       "behaviour": {
         "type": "AGENT",
-        "agentRef": "app-creator.architect",
+        "agentRef": "app-creator-architect-agent",
         "transition": "HUMAN_APPROVAL"
       },
       "stepPrompt": "architect-confirm.step.prompt.md",
@@ -91,7 +91,7 @@
       "name": "Developer Produces Implementation Plan",
       "behaviour": {
         "type": "AGENT",
-        "agentRef": "app-creator.developer",
+        "agentRef": "app-creator-developer-agent",
         "transition": "AUTO"
       },
       "contextMapping": {
@@ -105,7 +105,7 @@
       "name": "Tester Produces Test Strategy and Cases",
       "behaviour": {
         "type": "AGENT",
-        "agentRef": "app-creator.tester",
+        "agentRef": "app-creator-tester-agent",
         "transition": "AUTO"
       },
       "contextMapping": {
@@ -119,7 +119,7 @@
       "name": "Assemble Final Delivery Package",
       "behaviour": {
         "type": "AGENT",
-        "agentRef": "app-creator.assembler",
+        "agentRef": "app-creator-assembler-agent",
         "transition": "AUTO"
       },
       "stepPrompt": "assemble-package.step.prompt.md",

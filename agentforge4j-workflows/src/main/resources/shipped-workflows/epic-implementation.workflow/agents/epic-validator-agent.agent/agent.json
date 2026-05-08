@@ -1,5 +1,5 @@
 {
-  "id": "epic-implementation.validator",
+  "id": "epic-validator-agent",
   "name": "Epic Implementation \u2014 Validator",
   "locality": "CLOUD",
   "enabled": true,

@@ -11,6 +11,7 @@ import java.util.Map;
 import java.util.Optional;
 import lombok.Getter;
 import lombok.Setter;
+import org.apache.commons.lang3.StringUtils;
 
 /**
  * Mutable execution snapshot for one run: identity, status, pending gates, context maps, and
@@ -45,6 +46,11 @@ public final class WorkflowState {
    * Maps each context key to the uid of the step that last wrote it.
    */
   private final Map<String, Integer> contextKeyWrittenAtUid;
+  /**
+   * Count of blocking {@code USER_PROMPT} pauses already completed for each step id in the current
+   * attempt chain (reset when the step finishes with a non-pause command outcome).
+   */
+  private final Map<String, Integer> userPromptPauseCountByStepId;
 
   /**
    * Creates a new run in {@link WorkflowStatus#RUNNING} with empty context and step output maps.
@@ -70,6 +76,7 @@ public final class WorkflowState {
     this.context = new HashMap<>();
     this.stepExecutionUid = new HashMap<>();
     this.contextKeyWrittenAtUid = new HashMap<>();
+    this.userPromptPauseCountByStepId = new HashMap<>();
     this.lastUpdatedAt = startedAt;
   }
 
@@ -119,6 +126,39 @@ public final class WorkflowState {
 
   public Map<String, Integer> getContextKeyWrittenAtUid() {
     return Collections.unmodifiableMap(contextKeyWrittenAtUid);
+  }
+
+  public Map<String, Integer> getUserPromptPauseCountByStepId() {
+    return Collections.unmodifiableMap(userPromptPauseCountByStepId);
+  }
+
+  public int getUserPromptPauseCountForStep(String stepId) {
+    return userPromptPauseCountByStepId.getOrDefault(
+        Validate.notBlank(stepId, "stepId must not be blank"), 0);
+  }
+
+  public void incrementUserPromptPauseCountForStep(String stepId) {
+    String sid = Validate.notBlank(stepId, "stepId must not be blank");
+    userPromptPauseCountByStepId.merge(sid, 1, Integer::sum);
+  }
+
+  public void resetUserPromptPauseCountForStep(String stepId) {
+    userPromptPauseCountByStepId.remove(Validate.notBlank(stepId, "stepId must not be blank"));
+  }
+
+  /**
+   * Replaces user-prompt pause counters when loading persisted snapshot state.
+   */
+  public void replaceUserPromptPauseCounts(Map<String, Integer> counts) {
+    userPromptPauseCountByStepId.clear();
+    if (counts == null) {
+      return;
+    }
+    counts.entrySet().stream().filter(entry ->
+            StringUtils.isNotBlank(entry.getKey())
+                && entry.getValue() != null
+                && entry.getValue() > 0)
+        .forEach(entry -> userPromptPauseCountByStepId.put(entry.getKey(), entry.getValue()));
   }
 
   public void putContextValue(String key, ContextValue value) {

@@ -1,5 +1,5 @@
 {
-  "id": "epic-implementation.tester",
+  "id": "epic-tester-agent",
   "name": "Epic Implementation \u2014 Tester",
   "locality": "CLOUD",
   "enabled": true,

@@ -31,4 +31,13 @@ public record BlueprintDefinition(
         "BlueprintDefinition steps must not be empty for blueprint: %s".formatted(blueprintId));
     steps = List.copyOf(steps);
   }
+
+  public static BlueprintDefinition duplicate(BlueprintDefinition blueprint,
+      List<Executable> executables) {
+    return new BlueprintDefinition(
+        blueprint.blueprintId(),
+        blueprint.name(),
+        blueprint.behaviour(),
+        executables);
+  }
 }

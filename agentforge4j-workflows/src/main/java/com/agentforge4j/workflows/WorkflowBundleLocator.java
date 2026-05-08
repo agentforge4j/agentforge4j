@@ -5,6 +5,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.UncheckedIOException;
 import java.net.URL;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -30,7 +31,7 @@ public final class WorkflowBundleLocator {
    * @return immutable list of shipped workflow ids
    */
   public static List<String> shippedWorkflowIds() {
-    return SHIPPED_WORKFLOW_IDS;
+    return List.copyOf(SHIPPED_WORKFLOW_IDS);
   }
 
   /**
@@ -62,11 +63,10 @@ public final class WorkflowBundleLocator {
       return List.of();
     }
     try (InputStream stream = resource.openStream()) {
-      String[] lines = new String(stream.readAllBytes()).split("\\R");
+      String[] lines = new String(stream.readAllBytes(), StandardCharsets.UTF_8).split("\\R");
       return Arrays.stream(lines)
           .map(String::trim)
           .filter(line -> !line.isBlank())
-          .map(filename -> bundlePath + filename)
           .toList();
     } catch (Exception e) {
       throw new IllegalStateException(
@@ -80,27 +80,39 @@ public final class WorkflowBundleLocator {
    * @param classpathPath classpath path to a bundle entry
    * @return open input stream for the requested resource
    * @throws IllegalStateException when the resource does not exist
-   * @throws UncheckedIOException when the resource exists but cannot be opened
+   * @throws UncheckedIOException  when the resource exists but cannot be opened
    */
-  public static InputStream openBundleResource(String classpathPath) {
+  public static InputStream openBundleResource(String classpathPath, String workflowId) {
     URL resource = WorkflowBundleLocator.class.getResource(classpathPath);
     if (resource == null) {
       throw new IllegalStateException(
-          "Missing shipped workflow bundle resource: " + classpathPath);
+          "Missing shipped workflow bundle resource: %s in %s".formatted(classpathPath,
+              workflowId));
     }
     try {
       return resource.openStream();
     } catch (IOException e) {
       throw new UncheckedIOException(
-          "Failed to open shipped workflow bundle resource: " + classpathPath, e);
+          "Failed to open shipped workflow bundle resource: %s in %s".formatted(classpathPath,
+              workflowId), e);
     }
+  }
+
+  /**
+   * Classpath prefix for the given shipped workflow id (trailing slash), under {@code /shipped-workflows/}.
+   *
+   * @param workflowId id from {@link #shippedWorkflowIds()}
+   * @return path such as {@code /shipped-workflows/my.workflow/}
+   */
+  public static String workflowPath(String workflowId) {
+    return SHIPPED_WORKFLOWS_PATH + workflowId + ".workflow/";
   }
 
   private static void loadShippedWorkflowIds() {
     URL resource = WorkflowBundleLocator.class.getResource(SHIPPED_WORKFLOWS_PATH + "index");
     if (resource != null) {
       try (InputStream stream = resource.openStream()) {
-        String[] workflowIds = new String(stream.readAllBytes()).split("\\R");
+        String[] workflowIds = new String(stream.readAllBytes(), StandardCharsets.UTF_8).split("\\R");
         SHIPPED_WORKFLOW_IDS.addAll(Arrays.stream(workflowIds).toList().stream()
             .filter(id -> !id.isBlank()).toList());
       } catch (Exception e) {
@@ -108,9 +120,5 @@ public final class WorkflowBundleLocator {
             "Failed to read shipped workflow index resource: %s".formatted(resource), e);
       }
     }
-  }
-
-  private static String workflowPath(String workflowId) {
-    return SHIPPED_WORKFLOWS_PATH + workflowId + ".workflow/";
   }
 }
