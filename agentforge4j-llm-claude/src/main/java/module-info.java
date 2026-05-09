@@ -1,6 +1,12 @@
 import com.agentforge4j.llm.LlmClientFactory;
 import com.agentforge4j.llm.claude.ClaudeLlmClientFactory;
 
+/**
+ * Anthropic Claude Messages API adapter exposed as an {@link LlmClientFactory} provider.
+ *
+ * <p>Encapsulates Claude-specific request/response DTOs and HTTP details while adapting them to the
+ * shared {@code agentforge4j.llm} client abstraction for applications that assemble this provider on the module path.
+ */
 module agentforge4j.llm.claude {
   requires agentforge4j.llm;
   requires agentforge4j.util;

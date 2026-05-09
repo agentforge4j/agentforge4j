@@ -1,6 +1,12 @@
 import com.agentforge4j.llm.LlmClientFactory;
 import com.agentforge4j.llm.openaicompatible.OpenAiCompatibleLlmClientFactory;
 
+/**
+ * Generic OpenAI-compatible HTTP surface (local gateways, proxies, alternate hosts) as {@link LlmClientFactory}.
+ *
+ * <p>Use when the remote speaks OpenAI-style paths and payloads but is not the official OpenAI API;
+ * keeps compatibility shims out of the first-party OpenAI module.
+ */
 module agentforge4j.llm.openaicompatible {
   requires agentforge4j.llm;
   requires agentforge4j.util;

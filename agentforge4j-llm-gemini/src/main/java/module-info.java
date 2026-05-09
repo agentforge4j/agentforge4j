@@ -1,6 +1,12 @@
 import com.agentforge4j.llm.LlmClientFactory;
 import com.agentforge4j.llm.gemini.GeminiLlmClientFactory;
 
+/**
+ * Google Gemini generative-language adapter registered as an {@link LlmClientFactory} implementation.
+ *
+ * <p>Exports Gemini-specific types where callers need direct access; otherwise behaves like other
+ * provider jars by supplying a factory for the shared {@code agentforge4j.llm} abstractions.
+ */
 module agentforge4j.llm.gemini {
   requires agentforge4j.llm;
   requires agentforge4j.util;

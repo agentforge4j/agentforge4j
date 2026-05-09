@@ -1,3 +1,14 @@
+/**
+ * Framework-agnostic domain contracts for workflow-driven orchestration.
+ *
+ * <p>Defines immutable workflow, agent, step, command, and runtime-facing models together with
+ * repository interfaces. Consumers are the runtime, loaders, and providers; nothing here binds
+ * to Spring, persistence, or a specific LLM vendor.
+ *
+ * <p>Architectural boundary: workflow definitions and typed commands describe behaviour; model
+ * output is interpreted as content and commands, not as authority over execution flow (that stays
+ * with the runtime).
+ */
 module agentforge4j.core {
   requires static lombok;
   requires agentforge4j.util;

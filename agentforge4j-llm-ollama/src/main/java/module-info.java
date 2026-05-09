@@ -1,6 +1,12 @@
 import com.agentforge4j.llm.LlmClientFactory;
 import com.agentforge4j.llm.ollama.OllamaLlmClientFactory;
 
+/**
+ * Ollama local-server adapter implementing {@link LlmClientFactory} for on-machine models.
+ *
+ * <p>Targets the Ollama HTTP API; suitable for offline or air-gapped setups where cloud providers
+ * are unavailable. Same abstraction boundary as other {@code agentforge4j.llm.*} modules.
+ */
 module agentforge4j.llm.ollama {
   requires agentforge4j.llm;
   requires agentforge4j.util;

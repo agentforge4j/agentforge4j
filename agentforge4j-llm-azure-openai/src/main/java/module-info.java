@@ -1,6 +1,12 @@
 import com.agentforge4j.llm.LlmClientFactory;
 import com.agentforge4j.llm.azureopenai.AzureOpenAiLlmClientFactory;
 
+/**
+ * Azure OpenAI Service HTTP adapter providing {@link LlmClientFactory} for enterprise deployments.
+ *
+ * <p>Handles Azure-specific URL layout, API versions, and payload quirks while normalizing into the
+ * shared {@code agentforge4j.llm} client API consumed by applications through that abstraction.
+ */
 module agentforge4j.llm.azureopenai {
   requires agentforge4j.llm;
   requires agentforge4j.util;
