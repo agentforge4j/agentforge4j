@@ -1,6 +1,12 @@
 import com.agentforge4j.llm.LlmClientFactory;
 import com.agentforge4j.llm.vllm.VllmLlmClientFactory;
 
+/**
+ * vLLM OpenAI-compatible server adapter exposed via {@link LlmClientFactory}.
+ *
+ * <p>Bridges self-hosted high-throughput inference deployments to the shared LLM client contract
+ * without coupling workflow definitions to a particular hosting topology.
+ */
 module agentforge4j.llm.vllm {
   requires agentforge4j.llm;
   requires agentforge4j.util;

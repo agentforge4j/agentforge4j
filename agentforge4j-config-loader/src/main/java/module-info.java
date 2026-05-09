@@ -1,3 +1,12 @@
+/**
+ * Loads workflow and agent bundles from the filesystem or classpath and maps them into core models.
+ *
+ * <p>Responsibilities include bundle discovery, index parsing, resource wiring, and mapping loaded
+ * resources into {@code agentforge4j.core} domain models. Depends on {@code agentforge4j.workflows} for
+ * shipped bundle locations.
+ *
+ * <p>Intended consumers: embedding applications, tests, and tooling that prepare bundles for execution.
+ */
 module agentforge4j.config.loader {
   requires agentforge4j.util;
   requires agentforge4j.core;

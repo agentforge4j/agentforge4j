@@ -1,4 +1,4 @@
-Add or improve tests for module: "[MODULE_NAME]".
+Add or improve javadocs for module: "[MODULE_NAME]".
 
 # AgentForge4j — Javadoc Agent
 

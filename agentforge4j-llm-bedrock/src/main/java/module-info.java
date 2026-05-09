@@ -1,6 +1,12 @@
 import com.agentforge4j.llm.LlmClientFactory;
 import com.agentforge4j.llm.bedrock.BedrockLlmClientFactory;
 
+/**
+ * AWS Bedrock Runtime client adapter implementing {@link LlmClientFactory} with AWS SDK v2.
+ *
+ * <p>Isolates AWS signing, regional endpoints, and Bedrock model IDs from portable workflow code.
+ * Pulls in AWS modules explicitly so deployments only pay the dependency when this module is present.
+ */
 module agentforge4j.llm.bedrock {
   requires agentforge4j.llm;
   requires agentforge4j.util;
