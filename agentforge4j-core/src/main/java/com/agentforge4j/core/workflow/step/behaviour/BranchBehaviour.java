@@ -24,6 +24,5 @@ public record BranchBehaviour(
     Validate.notBlank(contextKey, "context key for BranchBehaviour cannot be blank");
     Validate.notNull(branches, "branches for BranchBehaviour cannot be null");
     Validate.notEmpty(branches.keySet(), "branches for BranchBehaviour cannot be empty");
-    Validate.notNull(defaultBranch, "default branch for BranchBehaviour cannot be null");
   }
 }

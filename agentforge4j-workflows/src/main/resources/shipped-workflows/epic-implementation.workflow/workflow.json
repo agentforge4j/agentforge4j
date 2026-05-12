@@ -101,21 +101,7 @@
         "type": "BRANCH",
         "contextKey": "epicStatus",
         "branches": {
-          "SUCCESS": {
-            "kind": "STEP",
-            "stepId": "epic-success-noop",
-            "name": "Epic Successful",
-            "behaviour": {
-              "type": "RESOURCE",
-              "resourcePath": "/schema/workflow.schema.json",
-              "contextKey": "__epic_success_marker",
-              "transition": "AUTO"
-            },
-            "contextMapping": {
-              "inputKeys": [],
-              "outputKeys": ["__epic_success_marker"]
-            }
-          },
+          "SUCCESS": null,
           "NEEDS_REWORK": {
             "kind": "STEP",
             "stepId": "rework-retry",

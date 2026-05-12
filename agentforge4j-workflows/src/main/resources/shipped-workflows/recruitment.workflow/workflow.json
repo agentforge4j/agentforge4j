@@ -78,17 +78,6 @@
               "reason": "Recruitment profile was not confirmed by user. Restart the workflow with refined input."
             }
           }
-        },
-        "defaultBranch": {
-          "kind": "STEP",
-          "stepId": "profile-confirmed-noop",
-          "name": "Profile confirmed",
-          "behaviour": {
-            "type": "RESOURCE",
-            "resourcePath": "/schema/agent.schema.json",
-            "contextKey": "__profileConfirmedMarker",
-            "transition": "AUTO"
-          }
         }
       }
     },
