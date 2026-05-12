@@ -233,4 +233,40 @@ public final class WorkflowState {
       }
     }
   }
+
+  /**
+   * Returns a defensive copy for handoff to external callers. The new instance uses its own map
+   * instances; mutating this copy (including {@linkplain #putContextValue}, {@linkplain
+   * #putStepOutput}, and scalar setters) does not affect the original. {@linkplain #getContext()},
+   * {@linkplain #getStepOutputs()}, and related getters still expose unmodifiable views of this
+   * copy's maps.
+   *
+   * <p>Context entries are copied by reference; {@link ContextValue} implementations used in
+   * practice are immutable value types.
+   */
+  public WorkflowState snapshot() {
+    WorkflowState copy =
+        new WorkflowState(runId, workflowId, parentRunId, startedAt);
+    copy.setCurrentStepId(currentStepId);
+    copy.setStatus(status);
+    copy.setLastUpdatedAt(lastUpdatedAt);
+    copy.setPendingArtifact(pendingArtifact);
+    copy.setPendingUserPrompt(pendingUserPrompt);
+    copy.setRunFailure(runFailure);
+    for (Map.Entry<String, String> entry : stepOutputs.entrySet()) {
+      copy.putStepOutput(entry.getKey(), entry.getValue());
+    }
+    for (Map.Entry<String, ContextValue> entry : context.entrySet()) {
+      copy.putContextValue(entry.getKey(), entry.getValue());
+    }
+    for (Map.Entry<String, Integer> entry : stepExecutionUid.entrySet()) {
+      copy.putStepExecutionUid(entry.getKey(), entry.getValue());
+    }
+    for (Map.Entry<String, Integer> entry : contextKeyWrittenAtUid.entrySet()) {
+      copy.putContextKeyWrittenAtUid(entry.getKey(), entry.getValue());
+    }
+    copy.replaceUserPromptPauseCounts(
+        userPromptPauseCountByStepId.isEmpty() ? null : Map.copyOf(userPromptPauseCountByStepId));
+    return copy;
+  }
 }
