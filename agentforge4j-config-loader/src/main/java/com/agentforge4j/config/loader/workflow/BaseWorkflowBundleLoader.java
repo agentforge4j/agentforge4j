@@ -224,9 +224,6 @@ public abstract class BaseWorkflowBundleLoader implements WorkflowLoader {
     Validate.notEmpty(behaviour.branches().keySet(),
         "BranchBehaviour branches must not be empty in step '%s' of workflow '%s'"
             .formatted(step.stepId(), workflowId));
-    Validate.notNull(behaviour.defaultBranch(),
-        "BranchBehaviour defaultBranch must not be null in step '%s' of workflow '%s'"
-            .formatted(step.stepId(), workflowId));
   }
 
   private List<Executable> injectStepPrompts(List<Executable> steps,

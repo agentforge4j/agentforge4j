@@ -29,12 +29,11 @@ public class WorkflowValidator {
    * @param workflows workflows to validate
    * @throws IllegalArgumentException when a workflow reference targets an unknown workflow
    */
-  public void validateWorkflowRefs(
-      Map<String, WorkflowDefinition> workflows) {
+  public void validateWorkflowRefs(Map<String, WorkflowDefinition> workflows) {
     Map<String, List<String>> ignoredCircularWorkflows = new HashMap<>();
-    for (WorkflowDefinition workflow : workflows.values()) {
-      walkForWorkflowRefs(workflow.steps(), workflow, workflows, ignoredCircularWorkflows);
-    }
+    workflows.values()
+        .forEach(workflow -> walkForWorkflowRefs(workflow.steps(), workflow, workflows,
+            ignoredCircularWorkflows));
   }
 
   /**
@@ -43,11 +42,8 @@ public class WorkflowValidator {
    * @param workflows workflows to validate
    * @throws IllegalArgumentException when a blueprint reference targets an unknown blueprint
    */
-  public void validateBlueprintRefs(
-      Map<String, WorkflowDefinition> workflows) {
-    for (WorkflowDefinition workflow : workflows.values()) {
-      walkForBlueprintRefs(workflow.steps(), workflow);
-    }
+  public void validateBlueprintRefs(Map<String, WorkflowDefinition> workflows) {
+    workflows.values().forEach(workflow -> walkForBlueprintRefs(workflow.steps(), workflow));
   }
 
   /**
@@ -56,11 +52,8 @@ public class WorkflowValidator {
    * @param workflows workflows to validate
    * @throws IllegalArgumentException when an artifact reference targets an unknown artifact
    */
-  public void validateArtifactRefs(
-      Map<String, WorkflowDefinition> workflows) {
-    for (WorkflowDefinition workflow : workflows.values()) {
-      walkForArtifactRefs(workflow.steps(), workflow);
-    }
+  public void validateArtifactRefs(Map<String, WorkflowDefinition> workflows) {
+    workflows.values().forEach(workflow -> walkForArtifactRefs(workflow.steps(), workflow));
   }
 
   /**
@@ -69,12 +62,10 @@ public class WorkflowValidator {
    * @param workflows workflows to validate
    * @throws IllegalStateException when a circular workflow reference is detected
    */
-  public void validateCircularRefs(
-      Map<String, WorkflowDefinition> workflows) {
+  public void validateCircularRefs(Map<String, WorkflowDefinition> workflows) {
     Map<String, List<String>> circularWorkflows = new HashMap<>();
-    for (WorkflowDefinition workflow : workflows.values()) {
-      walkForWorkflowRefs(workflow.steps(), workflow, workflows, circularWorkflows);
-    }
+    workflows.values().forEach(workflow ->
+        walkForWorkflowRefs(workflow.steps(), workflow, workflows, circularWorkflows));
     validateCircularDependencies(circularWorkflows);
   }
 
@@ -84,18 +75,18 @@ public class WorkflowValidator {
    * @param workflows workflows to validate
    * @throws IllegalArgumentException when a retry step reference targets an unknown step id
    */
-  public void validateRetryStepRefs(
-      Map<String, WorkflowDefinition> workflows) {
-    for (WorkflowDefinition workflow : workflows.values()) {
+  public void validateRetryStepRefs(Map<String, WorkflowDefinition> workflows) {
+    workflows.values().forEach(workflow -> {
       Set<String> workflowStepIds = new HashSet<>();
       collectStepIds(workflow.steps(), workflowStepIds);
       walkForRetryStepRefs(workflow.steps(), workflow, workflowStepIds);
-    }
+    });
   }
 
   private void walkForWorkflowRefs(
       List<Executable> steps,
-      WorkflowDefinition workflow, Map<String, WorkflowDefinition> workflows,
+      WorkflowDefinition workflow,
+      Map<String, WorkflowDefinition> workflows,
       Map<String, List<String>> circularWorkflows) {
     for (Executable executable : steps) {
       if (executable instanceof StepDefinition step) {
@@ -113,13 +104,14 @@ public class WorkflowValidator {
     }
   }
 
-  private void walkForBlueprintRefs(List<Executable> steps,
-      WorkflowDefinition workflow) {
+  private void walkForBlueprintRefs(List<Executable> steps, WorkflowDefinition workflow) {
     for (Executable executable : steps) {
       if (executable instanceof StepDefinition step) {
         if (step.behaviour() instanceof BranchBehaviour branchBehaviour) {
           walkForBlueprintRefs(branchBehaviour.branches().values().stream().toList(), workflow);
-          walkForBlueprintRefs(List.of(branchBehaviour.defaultBranch()), workflow);
+          if (branchBehaviour.defaultBranch() != null) {
+            walkForBlueprintRefs(List.of(branchBehaviour.defaultBranch()), workflow);
+          }
         }
       } else if (executable instanceof BlueprintRef ref) {
         validateBlueprintExists(ref.blueprintId(), workflow);
@@ -136,8 +128,7 @@ public class WorkflowValidator {
     }
   }
 
-  private void walkForArtifactRefs(List<Executable> steps,
-      WorkflowDefinition workflow) {
+  private void walkForArtifactRefs(List<Executable> steps, WorkflowDefinition workflow) {
     for (Executable executable : steps) {
       if (executable instanceof StepDefinition step) {
         if (step.behaviour() instanceof InputBehaviour ib) {
@@ -165,8 +156,7 @@ public class WorkflowValidator {
         );
   }
 
-  private static void assertWorkflowExists(
-      String workflowRef, String stepId, String workflowId,
+  private static void assertWorkflowExists(String workflowRef, String stepId, String workflowId,
       Map<String, WorkflowDefinition> workflows, Map<String, List<String>> circularWorkflows) {
     Validate.isTrue(workflows.containsKey(workflowRef),
         "Step '%s' in workflow '%s' references unknown workflow '%s'"
@@ -182,23 +172,20 @@ public class WorkflowValidator {
     toUpdate.forEach(refs -> refs.add(workflowRef));
   }
 
-  private static void validateBlueprintExists(
-      String blueprintId, WorkflowDefinition workflow) {
+  private static void validateBlueprintExists(String blueprintId, WorkflowDefinition workflow) {
     Validate.isTrue(workflow.blueprints().containsKey(blueprintId),
         "Workflow '%s' contains BlueprintRef to unknown blueprint '%s'"
             .formatted(workflow.id(), blueprintId));
   }
 
-  private static void assertArtifactExists(
-      String artifactId, String stepId, String workflowId,
+  private static void assertArtifactExists(String artifactId, String stepId, String workflowId,
       WorkflowDefinition workflow) {
     Validate.isTrue(workflow.artifacts().containsKey(artifactId),
         "Step '%s' in workflow '%s' references unknown artifact '%s'"
             .formatted(stepId, workflowId, artifactId));
   }
 
-  private static void collectStepIds(List<Executable> steps,
-      Set<String> stepIds) {
+  private static void collectStepIds(List<Executable> steps, Set<String> stepIds) {
     for (Executable executable : steps) {
       if (executable instanceof StepDefinition step) {
         stepIds.add(step.stepId());
@@ -253,8 +240,6 @@ public class WorkflowValidator {
         }
       }
     }
-    if (!missing.isEmpty()) {
-      throw new UnresolvedAgentReferenceException(missing);
-    }
+    Validate.isTrue(missing.isEmpty(), () -> new UnresolvedAgentReferenceException(missing));
   }
 }

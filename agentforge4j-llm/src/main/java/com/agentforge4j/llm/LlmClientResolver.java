@@ -16,4 +16,6 @@ public interface LlmClientResolver {
    * @throws IllegalArgumentException if the provider is blank or not registered
    */
   LlmClient resolve(String provider);
+
+  boolean isProviderAvailable(String provider);
 }
