@@ -99,7 +99,7 @@ class AbstractHttpLlmClientTest {
     void should_strip_markdown_code_fence() {
       String input = "```json\n{\"key\": \"value\"}\n```";
 
-      String result = AbstractHttpLlmClient.stripCodeFence(input);
+      String result = LlmClient.stripCodeFence(input);
 
       assertEquals("{\"key\": \"value\"}", result);
     }
@@ -108,7 +108,7 @@ class AbstractHttpLlmClientTest {
     void should_strip_code_fence_with_language_spec() {
       String input = "```python\nprint('hello')\n```";
 
-      String result = AbstractHttpLlmClient.stripCodeFence(input);
+      String result = LlmClient.stripCodeFence(input);
 
       assertEquals("print('hello')", result);
     }
@@ -117,14 +117,14 @@ class AbstractHttpLlmClientTest {
     void should_return_input_unchanged_when_no_fence() {
       String input = "{\"key\": \"value\"}";
 
-      String result = AbstractHttpLlmClient.stripCodeFence(input);
+      String result = LlmClient.stripCodeFence(input);
 
       assertEquals(input, result);
     }
 
     @Test
     void should_return_input_unchanged_when_null() {
-      String result = AbstractHttpLlmClient.stripCodeFence(null);
+      String result = LlmClient.stripCodeFence(null);
 
       assertNull(result);
     }
@@ -133,7 +133,7 @@ class AbstractHttpLlmClientTest {
     void should_handle_fence_without_closing_marker() {
       String input = "```json\n{\"key\": \"value\"}";
 
-      String result = AbstractHttpLlmClient.stripCodeFence(input);
+      String result = LlmClient.stripCodeFence(input);
 
       assertEquals("{\"key\": \"value\"}", result);
     }
@@ -142,7 +142,7 @@ class AbstractHttpLlmClientTest {
     void should_handle_fence_without_newline_after_opening() {
       String input = "```\n```";
 
-      String result = AbstractHttpLlmClient.stripCodeFence(input);
+      String result = LlmClient.stripCodeFence(input);
 
       assertEquals("", result);
     }
@@ -151,7 +151,7 @@ class AbstractHttpLlmClientTest {
     void should_strip_leading_trailing_whitespace_from_content() {
       String input = "```\n  content with spaces  \n```";
 
-      String result = AbstractHttpLlmClient.stripCodeFence(input);
+      String result = LlmClient.stripCodeFence(input);
 
       assertEquals("content with spaces", result);
     }
@@ -160,7 +160,7 @@ class AbstractHttpLlmClientTest {
     void should_handle_multiline_content_with_code_fence() {
       String input = "```json\nline1\nline2\nline3\n```";
 
-      String result = AbstractHttpLlmClient.stripCodeFence(input);
+      String result = LlmClient.stripCodeFence(input);
 
       assertTrue(result.contains("line1"));
       assertTrue(result.contains("line2"));
@@ -171,7 +171,7 @@ class AbstractHttpLlmClientTest {
     void should_only_strip_outermost_fence() {
       String input = "```\nouter ``` inner\n```";
 
-      String result = AbstractHttpLlmClient.stripCodeFence(input);
+      String result = LlmClient.stripCodeFence(input);
 
       assertTrue(result.contains("outer"));
       assertTrue(result.contains("inner"));
@@ -179,12 +179,12 @@ class AbstractHttpLlmClientTest {
 
     @Test
     void should_return_empty_string_unchanged_when_not_a_fence() {
-      assertEquals("", AbstractHttpLlmClient.stripCodeFence(""));
+      assertEquals("", LlmClient.stripCodeFence(""));
     }
 
     @Test
     void should_return_opening_fence_unchanged_when_no_newline_follows_opening_ticks() {
-      assertEquals("```json", AbstractHttpLlmClient.stripCodeFence("```json"));
+      assertEquals("```json", LlmClient.stripCodeFence("```json"));
     }
   }
 

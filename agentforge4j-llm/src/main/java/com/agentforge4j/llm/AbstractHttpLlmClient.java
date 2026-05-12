@@ -7,9 +7,11 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.util.function.Supplier;
 import lombok.Getter;
+import org.apache.commons.lang3.StringUtils;
 
 /**
- * Base {@link LlmClient} for HTTP JSON APIs: shared validation, transport, logging, and error wrapping.
+ * Base {@link LlmClient} for HTTP JSON APIs: shared validation, transport, logging, and error
+ * wrapping.
  * <p>
  * Subclasses implement:
  * <ul>
@@ -30,7 +32,8 @@ public abstract class AbstractHttpLlmClient implements LlmClient {
   private final HttpClient httpClient;
 
   /**
-   * Constructs an HTTP-backed client from configuration (provider id, default model, connect timeout).
+   * Constructs an HTTP-backed client from configuration (provider id, default model, connect
+   * timeout).
    *
    * @param config non-null provider configuration
    * @throws IllegalArgumentException if provider id or default model is blank
@@ -95,37 +98,12 @@ public abstract class AbstractHttpLlmClient implements LlmClient {
     return null;
   }
 
-  /**
-   * Removes markdown code fence markers from the input if present.
-   * <p>
-   * Strips leading {@code ```} followed by an optional language identifier, and trailing
-   * {@code ```}. Returns the input unchanged if it does not start with backticks.
-   *
-   * @param input the potentially fence-marked string
-   * @return the input with fences removed, or the input unchanged
-   */
-  public static String stripCodeFence(String input) {
-    if (input == null || !input.startsWith("```")) {
-      return input;
-    }
-    int firstNewline = input.indexOf('\n');
-    if (firstNewline < 0) {
-      return input;
-    }
-    String afterOpeningFence = input.substring(firstNewline + 1);
-    int closingFence = afterOpeningFence.lastIndexOf("```");
-    if (closingFence < 0) {
-      return afterOpeningFence;
-    }
-    return afterOpeningFence.substring(0, closingFence).strip();
-  }
-
   private HttpResponse<String> sendHttpRequest(HttpRequest httpRequest)
       throws IOException, InterruptedException {
     LOG.log(System.Logger.Level.DEBUG, "HTTP request dispatched url={0}", httpRequest.uri());
     HttpResponse<String> response = httpClient.send(httpRequest,
         HttpResponse.BodyHandlers.ofString());
-    String body = response.body() == null ? "" : response.body();
+    String body = StringUtils.defaultString(response.body());
     LOG.log(System.Logger.Level.DEBUG, "HTTP response received status={0}, bodyCharCount={1}",
         response.statusCode(), body.length());
     return response;
@@ -167,7 +145,8 @@ public abstract class AbstractHttpLlmClient implements LlmClient {
   private Supplier<RuntimeException> requireSuccessException(String body, int status,
       String providerName) {
     return () -> {
-      String truncated = body == null ? "" : body.substring(0, Math.min(500, body.length()));
+      String truncated = StringUtils.defaultString(body)
+          .substring(0, Math.min(500, StringUtils.defaultString(body).length()));
       LOG.log(System.Logger.Level.ERROR, "Non-2xx response providerName={0}, status={1}, body={2}",
           providerName, status, truncated);
       return new LlmInvocationException(

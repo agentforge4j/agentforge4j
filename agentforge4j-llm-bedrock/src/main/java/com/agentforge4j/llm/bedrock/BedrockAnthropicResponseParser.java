@@ -1,6 +1,6 @@
 package com.agentforge4j.llm.bedrock;
 
-import com.agentforge4j.llm.AbstractHttpLlmClient;
+import com.agentforge4j.llm.LlmClient;
 import com.agentforge4j.llm.LlmInvocationException;
 import com.agentforge4j.util.Validate;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -36,7 +36,7 @@ final class BedrockAnthropicResponseParser {
       }
       String text = block.path("text").asText(null);
       if (StringUtils.isNotBlank(text)) {
-        return AbstractHttpLlmClient.stripCodeFence(text.strip());
+        return LlmClient.stripCodeFence(text.strip());
       }
     }
 

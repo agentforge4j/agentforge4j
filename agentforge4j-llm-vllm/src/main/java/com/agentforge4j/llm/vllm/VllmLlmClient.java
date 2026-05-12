@@ -1,6 +1,7 @@
 package com.agentforge4j.llm.vllm;
 
 import com.agentforge4j.llm.AbstractHttpLlmClient;
+import com.agentforge4j.llm.LlmClient;
 import com.agentforge4j.llm.LlmExecutionRequest;
 import com.agentforge4j.llm.LlmInvocationException;
 import com.agentforge4j.llm.vllm.dto.InputRole;
@@ -80,7 +81,7 @@ public final class VllmLlmClient extends AbstractHttpLlmClient {
     Validate.notBlank(content, () -> new LlmInvocationException(
         "vLLM response first choice content is blank: %s".formatted(json)));
 
-    return stripCodeFence(content.strip());
+    return LlmClient.stripCodeFence(content.strip());
   }
 
   private String generateRequestBody(LlmExecutionRequest request) {
