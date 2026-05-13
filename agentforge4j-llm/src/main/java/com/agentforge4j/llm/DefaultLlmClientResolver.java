@@ -17,8 +17,8 @@ import org.apache.commons.lang3.StringUtils;
  * <p>
  * {@link #discover(ObjectMapper, Collection)} loads {@link LlmClientFactory} implementations via
  * JPMS {@link ServiceLoader}, pairs each with a matching {@link LlmClientConfiguration} by provider
- * id (case-insensitive), and constructs clients. {@link #resolve(String)} looks up a client or fails
- * with {@link IllegalArgumentException}.
+ * id (case-insensitive), and constructs clients. {@link #resolve(String)} looks up a client or
+ * fails with {@link IllegalArgumentException}.
  */
 public final class DefaultLlmClientResolver implements LlmClientResolver {
 
@@ -29,7 +29,8 @@ public final class DefaultLlmClientResolver implements LlmClientResolver {
   /**
    * Creates a resolver backed by an explicit non-empty client list (typically used in tests).
    *
-   * @param clients non-empty, no null elements, unique {@link LlmClient#getProviderName()} per entry
+   * @param clients non-empty, no null elements, unique {@link LlmClient#getProviderName()} per
+   *                entry
    * @throws IllegalArgumentException if validation fails
    */
   public DefaultLlmClientResolver(Collection<LlmClient> clients) {
@@ -44,9 +45,11 @@ public final class DefaultLlmClientResolver implements LlmClientResolver {
    * must be created or {@link IllegalStateException} is thrown.
    *
    * @param objectMapper passed to each {@link LlmClientFactory#create}
-   * @param configs      one or more {@link LlmClientConfiguration} entries (duplicate provider ids fail)
+   * @param configs      one or more {@link LlmClientConfiguration} entries (duplicate provider ids
+   *                     fail)
    * @return resolver over all constructed clients
-   * @throws IllegalStateException when no client could be built (missing provider modules or configs)
+   * @throws IllegalStateException when no client could be built (missing provider modules or
+   *                               configs)
    */
   public static DefaultLlmClientResolver discover(ObjectMapper objectMapper,
       Collection<LlmClientConfiguration> configs) {
@@ -70,6 +73,13 @@ public final class DefaultLlmClientResolver implements LlmClientResolver {
     return Validate.notNull(providersByName.get(normalizedProvider),
         "Unknown LLM providerName: '%s'. Available providers: %s".formatted(provider,
             providersByName.keySet()));
+  }
+
+  @Override
+  public boolean isProviderAvailable(String provider) {
+    String normalizedProvider = Validate.notBlank(normalizeProvider(provider),
+        "LLM providerName must not be blank");
+    return providersByName.containsKey(normalizedProvider);
   }
 
   private static Map<String, LlmClientConfiguration> determineConfigsByProvider(
@@ -125,7 +135,8 @@ public final class DefaultLlmClientResolver implements LlmClientResolver {
               client.getClass().getName()));
       LlmClient existingClient = map.putIfAbsent(normalizedProvider, client);
       Validate.isTrue(existingClient == null, () -> new IllegalStateException(
-          "Duplicate LLM providerName name '%s' for clients: %s and %s".formatted(normalizedProvider,
+          "Duplicate LLM providerName name '%s' for clients: %s and %s".formatted(
+              normalizedProvider,
               existingClient.getClass().getName(), client.getClass().getName())));
     }
     return Map.copyOf(map);

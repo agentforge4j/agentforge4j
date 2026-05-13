@@ -1,14 +1,15 @@
 package com.agentforge4j.llm;
 
-import org.junit.jupiter.api.Nested;
-import org.junit.jupiter.api.Test;
-
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
+import org.junit.jupiter.api.Nested;
+import org.junit.jupiter.api.Test;
 
 class RetryingLlmClientResolverTest {
 
   static class TestLlmClientResolver implements LlmClientResolver {
+
     private LlmClient client;
 
     void setClient(LlmClient client) {
@@ -18,6 +19,11 @@ class RetryingLlmClientResolverTest {
     @Override
     public LlmClient resolve(String provider) {
       return client;
+    }
+
+    @Override
+    public boolean isProviderAvailable(String provider) {
+      return provider.equals(client.getProviderName());
     }
   }
 
@@ -102,8 +108,16 @@ class RetryingLlmClientResolverTest {
 
     @Test
     void shouldPropagateExceptionsFromDelegateResolve() {
-      LlmClientResolver delegate = provider -> {
-        throw new IllegalArgumentException("missing " + provider);
+      LlmClientResolver delegate = new LlmClientResolver() {
+        @Override
+        public LlmClient resolve(String provider) {
+          throw new IllegalArgumentException("missing " + provider);
+        }
+
+        @Override
+        public boolean isProviderAvailable(String provider) {
+          return false;
+        }
       };
       RetryingLlmClientResolver resolver = new RetryingLlmClientResolver(delegate, 2, 0);
 
@@ -114,6 +128,7 @@ class RetryingLlmClientResolverTest {
   }
 
   static class TestLlmClient implements LlmClient {
+
     private final RuntimeException exceptionToThrow;
     private final String response;
 
