@@ -96,25 +96,11 @@ public final class SparBehaviourHandler implements BehaviourHandler<SparBehaviou
 
     for (int round = 1; round <= config.maxRounds(); round++) {
       ContextMapping roundMapping = buildRoundMapping(step.contextMapping(), round - 1);
-      LOG.log(System.Logger.Level.DEBUG, "SPAR round={0}, responder={1}", round,
-          behaviour.agentRef());
-      AgentInvocationResult primary = agentInvoker.invoke(
-          behaviour.agentRef(),
-          roundMapping,
-          state,
-          sparRoundPrompt);
-      state.putContextValue(SPAR_PRIMARY_PREFIX + round,
-          new StringContextValue(primary.rawResponse()));
 
-      LOG.log(System.Logger.Level.DEBUG, "SPAR round={0}, responder={1}", round,
-          config.challengerAgentId());
-      AgentInvocationResult challenger = agentInvoker.invoke(
-          config.challengerAgentId(),
-          roundMapping,
-          state,
-          sparRoundPrompt);
-      state.putContextValue(SPAR_CHALLENGER_PREFIX + round,
-          new StringContextValue(challenger.rawResponse()));
+      AgentInvocationResult primary = spar(behaviour.agentRef(),
+          round, roundMapping, state, sparRoundPrompt, SPAR_PRIMARY_PREFIX);
+      AgentInvocationResult challenger = spar(config.challengerAgentId(),
+          round, roundMapping, state, sparRoundPrompt, SPAR_CHALLENGER_PREFIX);
 
       executedRounds = round;
 
@@ -124,33 +110,41 @@ public final class SparBehaviourHandler implements BehaviourHandler<SparBehaviou
         boolean challengerContinue =
             SparContinuationEvaluator.hasValidContinuationRequest(challenger.commands());
         if (!primaryContinue && !challengerContinue) {
-          loopTermination = SparContinuationEvaluator.classifyEarlyStop(
-              primary.commands(), challenger.commands());
-          LOG.log(System.Logger.Level.DEBUG,
-              "SPAR early stop after round={0}, reason={1}",
-              round, loopTermination);
+          loopTermination = classifyEarlyStop(primary, challenger, round);
           break;
         }
       }
     }
 
-    // Final resolution round with the primary agent.
+    AgentInvocationResult resolution = finalResolutionRound(step, behaviour, state, config,
+        executedRounds);
+    Integer currentStepUid = state.getStepExecutionUid().get(state.getCurrentStepId());
+    UserPromptPauseGuard.ensureBlockingUserPromptAllowed(eventRecorder, step, state,
+        resolution.commands());
+
+    CommandApplicationResult result = applyCommands(step, behaviour, resolution, state,
+        currentStepUid);
+    LOG.log(System.Logger.Level.INFO,
+        "SPAR completed stepId={0}, executedRounds={1}, maxRounds={2}, loopTermination={3}",
+        step.stepId(), executedRounds, config.maxRounds(), loopTermination);
+    return CommandApplicationResults.toExecutionOutcome(result);
+  }
+
+  private AgentInvocationResult finalResolutionRound(StepDefinition step,
+      SparBehaviour behaviour, WorkflowState state, SparConfig config, int executedRounds) {
     state.putContextValue("spar.resolution.prompt",
         new StringContextValue(config.resolutionPrompt()));
 
-    AgentInvocationResult resolution = agentInvoker.invoke(
+    return agentInvoker.invoke(
         behaviour.agentRef(),
         buildResolutionMapping(step.contextMapping(), executedRounds),
         state,
         step.stepPrompt());
-    Integer currentStepUid = state.getStepExecutionUid().get(state.getCurrentStepId());
+  }
 
-    UserPromptPauseGuard.ensureBlockingUserPromptAllowed(
-        eventRecorder,
-        step,
-        state,
-        resolution.commands());
-
+  private CommandApplicationResult applyCommands(StepDefinition step,
+      SparBehaviour behaviour, AgentInvocationResult resolution, WorkflowState state,
+      Integer currentStepUid) {
     CommandApplicationResult result = commandApplier.apply(
         resolution.commands(),
         state,
@@ -164,10 +158,32 @@ public final class SparBehaviourHandler implements BehaviourHandler<SparBehaviou
         && result != CommandApplicationResult.AWAITING_APPROVAL) {
       state.putStepOutput(step.stepId(), resolution.rawResponse());
     }
-    LOG.log(System.Logger.Level.INFO,
-        "SPAR completed stepId={0}, executedRounds={1}, maxRounds={2}, loopTermination={3}",
-        step.stepId(), executedRounds, config.maxRounds(), loopTermination);
-    return CommandApplicationResults.toExecutionOutcome(result);
+    return result;
+  }
+
+  private static SparLoopTerminationReason classifyEarlyStop(
+      AgentInvocationResult primary, AgentInvocationResult challenger, int round) {
+    SparLoopTerminationReason loopTermination;
+    loopTermination = SparContinuationEvaluator.classifyEarlyStop(
+        primary.commands(), challenger.commands());
+    LOG.log(System.Logger.Level.DEBUG,
+        "SPAR early stop after round={0}, reason={1}",
+        round, loopTermination);
+    return loopTermination;
+  }
+
+  private AgentInvocationResult spar(String agentRef, int round, ContextMapping roundMapping,
+      WorkflowState state, String sparRoundPrompt, String sparPrefix) {
+    LOG.log(System.Logger.Level.DEBUG, "SPAR round={0}, responder={1}", round,
+        agentRef);
+    AgentInvocationResult agent = agentInvoker.invoke(
+        agentRef,
+        roundMapping,
+        state,
+        sparRoundPrompt);
+    state.putContextValue(sparPrefix + round,
+        new StringContextValue(agent.rawResponse()));
+    return agent;
   }
 
   private static String buildSparRoundPrompt(String stepPrompt) {
@@ -185,20 +201,21 @@ public final class SparBehaviourHandler implements BehaviourHandler<SparBehaviou
    * outputs (round {@code N} uses keys for rounds {@code 1 .. N-1}). {@code outputKeys} are
    * unchanged.
    *
-   * @param original        the step's declared context mapping
-   * @param previousRounds  number of completed SPAR rounds already stored in context (0 for round 1)
+   * <p>Always returns a new {@link ContextMapping} instance (never the {@code original} reference)
+   * so callers cannot accidentally share mutable intent across rounds.
+   *
+   * @param original       the step's declared context mapping
+   * @param previousRounds number of completed SPAR rounds already stored in context (0 for round
+   *                       1)
    */
-  static ContextMapping buildRoundMapping(ContextMapping original, int previousRounds) {
+  public static ContextMapping buildRoundMapping(ContextMapping original, int previousRounds) {
     Validate.isTrue(previousRounds >= 0, "previousRounds must be non-negative");
-    if (previousRounds == 0) {
-      return original;
-    }
-    List<String> widenedInputs = new ArrayList<>(original.inputKeys());
+    List<String> inputKeys = new ArrayList<>(original.inputKeys());
     for (int r = 1; r <= previousRounds; r++) {
-      widenedInputs.add(SPAR_PRIMARY_PREFIX + r);
-      widenedInputs.add(SPAR_CHALLENGER_PREFIX + r);
+      inputKeys.add(SPAR_PRIMARY_PREFIX + r);
+      inputKeys.add(SPAR_CHALLENGER_PREFIX + r);
     }
-    return new ContextMapping(widenedInputs, original.outputKeys());
+    return new ContextMapping(inputKeys, original.outputKeys());
   }
 
   private static ContextMapping buildResolutionMapping(ContextMapping original,
