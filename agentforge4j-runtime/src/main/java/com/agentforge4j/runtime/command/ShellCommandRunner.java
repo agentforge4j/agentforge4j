@@ -7,7 +7,10 @@ package com.agentforge4j.runtime.command;
  * want its agents running shell commands simply does not register a {@code ShellCommandRunner} —
  * the runtime then rejects any {@code RUN_COMMAND} command with a clear error.
  */
+@FunctionalInterface
 public interface ShellCommandRunner {
+
+  ShellCommandRunner NO_OP_SHELL_COMMAND_RUNNER = (runId, command) -> "";
 
   /**
    * Execute the given shell command on behalf of the given run.

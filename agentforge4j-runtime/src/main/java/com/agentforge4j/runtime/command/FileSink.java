@@ -7,7 +7,11 @@ package com.agentforge4j.runtime.command;
  * files are written to disk, captured in memory, uploaded to object storage, or rejected entirely.
  * The runtime never assumes a filesystem.
  */
+@FunctionalInterface
 public interface FileSink {
+
+  FileSink NO_OP_FILE_SINK = (runId, stepId, path, content) -> {
+  };
 
   /**
    * Accept a file produced by an agent. Implementations are responsible for their own

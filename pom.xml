@@ -48,6 +48,7 @@
     <module>agentforge4j-workflows</module>
     <module>agentforge4j-config-loader</module>
     <module>agentforge4j-integrations</module>
+    <module>agentforge4j-runtime</module>
   </modules>
 
   <dependencyManagement>
@@ -138,6 +139,11 @@
       <dependency>
         <groupId>com.agentforge4j</groupId>
         <artifactId>agentforge4j-integrations</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>com.agentforge4j</groupId>
+        <artifactId>agentforge4j-runtime</artifactId>
         <version>${project.version}</version>
       </dependency>
 
