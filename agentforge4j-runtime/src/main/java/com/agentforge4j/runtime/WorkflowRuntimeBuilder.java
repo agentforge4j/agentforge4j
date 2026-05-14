@@ -62,10 +62,9 @@ import java.util.List;
  *
  * <p>Required collaborators are repositories, the LLM resolver, {@link FileSink},
  * {@link ShellCommandRunner}, and {@link com.agentforge4j.integrations.IntegrationRegistry}.
- * {@link ObjectMapper}, {@link java.time.Clock},
- * {@link LoopEvaluator}, and {@link RunContextManager}
- * default when omitted. A {@link com.agentforge4j.schema.SchemaProvider} may be configured but is
- * not read by the current {@link #build()} implementation.
+ * {@link ObjectMapper}, {@link java.time.Clock}, {@link LoopEvaluator}, and
+ * {@link RunContextManager} default when omitted. A {@link com.agentforge4j.schema.SchemaProvider}
+ * may be configured but is not read by the current {@link #build()} implementation.
  *
  * <p>Public construction path for {@link com.agentforge4j.core.runtime.WorkflowRuntime};
  * {@link DefaultWorkflowRuntime} constructors stay package-private because they accept non-exported
@@ -254,6 +253,7 @@ public final class WorkflowRuntimeBuilder {
     IntegrationRegistry resolvedRegistry = resolveIntegrationRegistry();
     FileSink resolvedFileSink = getResolvedFileSink();
     ShellCommandRunner resolvedShell = resolveShellCommandRunner();
+    RunContextManager runContextManager = resolveRunContextManager();
     EventRecorder eventRecorder = new EventRecorder(workflowEventLog, resolvedClock);
 
     CommandApplier commandApplier = new CommandApplier(determineCommandHandlers(
@@ -325,18 +325,6 @@ public final class WorkflowRuntimeBuilder {
             stepSequenceExecutor, eventRecorder, maxIterationsHandler, resolvedEvaluator)));
   }
 
-  private ShellCommandRunner resolveShellCommandRunner() {
-    return shellCommandRunner != null ? shellCommandRunner : NO_OP_SHELL_COMMAND_RUNNER;
-  }
-
-  private FileSink getResolvedFileSink() {
-    return fileSink != null ? fileSink : NO_OP_FILE_SINK;
-  }
-
-  private IntegrationRegistry resolveIntegrationRegistry() {
-    return integrationRegistry != null ? integrationRegistry : NoOpIntegrationRegistry.INSTANCE;
-  }
-
   private List<CommandHandler<? extends LlmCommand>> determineCommandHandlers(
       EventRecorder eventRecorder, FileSink resolvedFileSink, ShellCommandRunner resolvedShell,
       Clock resolvedClock, IntegrationRegistry resolvedRegistry) {
@@ -370,6 +358,18 @@ public final class WorkflowRuntimeBuilder {
     return new StepExecutor(handlers, eventRecorder, resolvedClock);
   }
 
+  private ShellCommandRunner resolveShellCommandRunner() {
+    return shellCommandRunner != null ? shellCommandRunner : NO_OP_SHELL_COMMAND_RUNNER;
+  }
+
+  private FileSink getResolvedFileSink() {
+    return fileSink != null ? fileSink : NO_OP_FILE_SINK;
+  }
+
+  private IntegrationRegistry resolveIntegrationRegistry() {
+    return integrationRegistry != null ? integrationRegistry : NoOpIntegrationRegistry.INSTANCE;
+  }
+
   private LoopEvaluator resolveLoopEvaluator(AgentInvoker agentInvoker) {
     return loopEvaluator != null ? loopEvaluator : new DefaultLoopEvaluator(agentInvoker);
   }
@@ -382,15 +382,16 @@ public final class WorkflowRuntimeBuilder {
     return clock != null ? clock : Clock.systemUTC();
   }
 
+  private RunContextManager resolveRunContextManager() {
+    return runContextManager != null ? runContextManager : RunContextManager.NO_OP;
+  }
+
   private void validateRequired() {
     Validate.notNull(workflowRepository, "workflowRepository is required");
     Validate.notNull(agentRepository, "agentRepository is required");
     Validate.notNull(workflowStateRepository, "workflowStateRepository is required");
     Validate.notNull(workflowEventLog, "workflowEventLog is required");
     Validate.notNull(llmClientResolver, "llmClientResolver is required");
-    Validate.notNull(fileSink, "fileSink is required");
-    Validate.notNull(shellCommandRunner, "shellCommandRunner is required");
-    Validate.notNull(integrationRegistry, "integrationRegistry is required");
     Validate.notNull(runContextManager, "runContextManager is required");
   }
 }
