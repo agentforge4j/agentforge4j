@@ -9,12 +9,21 @@ import com.agentforge4j.runtime.event.EventRecorder;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.Validate;
 
+/**
+ * Handles {@link CompleteCommand} by recording loop completion and signalling the enclosing loop.
+ */
 public final class CompleteCommandHandler implements CommandHandler<CompleteCommand> {
 
   private static final System.Logger LOG = System.getLogger(CompleteCommandHandler.class.getName());
 
   private final EventRecorder eventRecorder;
 
+  /**
+   * Creates a handler.
+   *
+   * @param eventRecorder event sink for completion signalling
+   * @throws IllegalArgumentException if {@code eventRecorder} is {@code null}
+   */
   public CompleteCommandHandler(EventRecorder eventRecorder) {
     this.eventRecorder = Validate.notNull(eventRecorder, "eventRecorder can't be null");
   }
@@ -24,6 +33,7 @@ public final class CompleteCommandHandler implements CommandHandler<CompleteComm
     return CompleteCommand.class;
   }
 
+  /** {@inheritDoc} */
   @Override
   public CommandApplicationResult apply(CompleteCommand cmd, CommandApplicationRequest request) {
     LOG.log(System.Logger.Level.DEBUG, "Complete command issued");

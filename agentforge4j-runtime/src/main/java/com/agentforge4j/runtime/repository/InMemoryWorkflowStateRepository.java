@@ -9,9 +9,16 @@ import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 
+/**
+ * In-memory {@link WorkflowStateRepository} backed by a concurrent map keyed by run id.
+ */
 public final class InMemoryWorkflowStateRepository implements WorkflowStateRepository {
 
   private final ConcurrentMap<String, WorkflowState> statesByRunId = new ConcurrentHashMap<>();
+
+  /** Creates an empty repository. */
+  public InMemoryWorkflowStateRepository() {
+  }
 
   @Override
   public void save(WorkflowState state) {

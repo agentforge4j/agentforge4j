@@ -11,6 +11,10 @@ import com.agentforge4j.runtime.command.CommandHandler;
 import com.agentforge4j.runtime.event.EventRecorder;
 import com.agentforge4j.util.Validate;
 
+/**
+ * Handles {@link CallEndpointCommand} by validating integration permissions, executing the operation,
+ * and optionally storing the response in workflow context.
+ */
 public final class CallEndpointCommandHandler implements CommandHandler<CallEndpointCommand> {
 
   private static final System.Logger LOG = System.getLogger(
@@ -19,6 +23,12 @@ public final class CallEndpointCommandHandler implements CommandHandler<CallEndp
   private final EventRecorder eventRecorder;
   private final IntegrationRegistry integrationRegistry;
 
+  /**
+   * Creates a handler.
+   *
+   * @param eventRecorder         event sink for integration side effects
+   * @param integrationRegistry   registry used for permission checks and resolution
+   */
   public CallEndpointCommandHandler(EventRecorder eventRecorder,
       IntegrationRegistry integrationRegistry) {
     this.eventRecorder = Validate.notNull(eventRecorder, "eventRecorder must not be null");
@@ -31,6 +41,15 @@ public final class CallEndpointCommandHandler implements CommandHandler<CallEndp
     return CallEndpointCommand.class;
   }
 
+  /**
+   * {@inheritDoc}
+   *
+   * @throws IllegalArgumentException if the integration is disabled, the operation is not allowed,
+   *                                  or a non-null {@link CallEndpointCommand#contextKey()} fails
+   *                                  {@link CommandHandler#ensureContextOutputKeyAllowed(String, com.agentforge4j.core.workflow.context.ContextMapping, String)}
+   * @throws IllegalStateException    if the registry cannot resolve a permitted integration id
+   * @throws RuntimeException         if integration execution throws
+   */
   @Override
   public CommandApplicationResult apply(CallEndpointCommand cmd,
       CommandApplicationRequest request) {

@@ -3,6 +3,7 @@ package com.agentforge4j.runtime.execution.loop;
 import com.agentforge4j.core.command.CompleteCommand;
 import com.agentforge4j.core.command.LlmCommand;
 import com.agentforge4j.core.workflow.context.ContextMapping;
+import com.agentforge4j.runtime.LoopEvaluator;
 import com.agentforge4j.runtime.execution.ExecutionContext;
 import com.agentforge4j.runtime.llm.AgentInvocationResult;
 import com.agentforge4j.runtime.llm.AgentInvoker;

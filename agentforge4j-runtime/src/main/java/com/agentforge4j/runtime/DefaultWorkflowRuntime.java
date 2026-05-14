@@ -86,6 +86,11 @@ public final class DefaultWorkflowRuntime implements WorkflowRuntime {
         "maxNestingDepth must be at least 1").intValue();
   }
 
+  /**
+   * {@inheritDoc}
+   *
+   * @throws IllegalArgumentException if {@code workflowId} is blank
+   */
   @Override
   public String start(String workflowId) {
     Validate.notBlank(workflowId, "workflowId must not be blank");
@@ -102,6 +107,15 @@ public final class DefaultWorkflowRuntime implements WorkflowRuntime {
     return runId;
   }
 
+  /**
+   * {@inheritDoc}
+   *
+   * @throws com.agentforge4j.core.exception.ExecutionNotFoundException if no state exists for
+   *                                                                   {@code runId}
+   * @throws IllegalArgumentException                                  if the run is cancelled, not
+   *                                                                   {@link com.agentforge4j.core.workflow.state.WorkflowStatus#PAUSED},
+   *                                                                   or {@code runId} is blank
+   */
   @Override
   public void continueRun(String runId) {
     WorkflowState state = loadState(runId);
@@ -119,6 +133,19 @@ public final class DefaultWorkflowRuntime implements WorkflowRuntime {
     }
   }
 
+  /**
+   * {@inheritDoc}
+   *
+   * @throws com.agentforge4j.core.exception.ExecutionNotFoundException if no state exists for
+   *                                                                   {@code runId}
+   * @throws IllegalArgumentException                                  if {@code stepId} is blank,
+   *                                                                   the run is cancelled, status
+   *                                                                   is not {@link com.agentforge4j.core.workflow.state.WorkflowStatus#FAILED}
+   *                                                                   or {@link com.agentforge4j.core.workflow.state.WorkflowStatus#PAUSED},
+   *                                                                   {@code stepId} is not present
+   *                                                                   in the workflow definition, or
+   *                                                                   {@code runId} is blank
+   */
   @Override
   public void retry(String runId, String stepId) {
     Validate.notBlank(stepId, "stepId must not be blank");
@@ -154,6 +181,17 @@ public final class DefaultWorkflowRuntime implements WorkflowRuntime {
     }
   }
 
+  /**
+   * {@inheritDoc}
+   *
+   * @throws com.agentforge4j.core.exception.ExecutionNotFoundException if no state exists for
+   *                                                                   {@code runId}
+   * @throws IllegalArgumentException                                  if {@code stepId} is blank,
+   *                                                                   the run is cancelled, status
+   *                                                                   is not
+   *                                                                   {@link com.agentforge4j.core.workflow.state.WorkflowStatus#AWAITING_APPROVAL},
+   *                                                                   or {@code runId} is blank
+   */
   @Override
   public void approve(String runId, String stepId, String approverNote) {
     Validate.notBlank(stepId, "stepId must not be blank");
@@ -176,6 +214,19 @@ public final class DefaultWorkflowRuntime implements WorkflowRuntime {
     }
   }
 
+  /**
+   * {@inheritDoc}
+   *
+   * @throws com.agentforge4j.core.exception.ExecutionNotFoundException if no state exists for
+   *                                                                   {@code runId}
+   * @throws IllegalArgumentException                                  if {@code answers} is
+   *                                                                   {@code null}, the run is
+   *                                                                   cancelled, status is not
+   *                                                                   {@link com.agentforge4j.core.workflow.state.WorkflowStatus#AWAITING_INPUT},
+   *                                                                   a pending artifact path is
+   *                                                                   inconsistent with state, or
+   *                                                                   {@code runId} is blank
+   */
   @Override
   public void submitInput(String runId, Map<String, String> answers) {
     Validate.notNull(answers, "answers must not be null");
@@ -198,6 +249,13 @@ public final class DefaultWorkflowRuntime implements WorkflowRuntime {
     }
   }
 
+  /**
+   * {@inheritDoc}
+   *
+   * @throws com.agentforge4j.core.exception.ExecutionNotFoundException if no state exists for
+   *                                                                   {@code runId}
+   * @throws IllegalArgumentException                                  if {@code runId} is blank
+   */
   @Override
   public WorkflowState getState(String runId) {
     WorkflowState state = loadState(runId);
@@ -207,6 +265,17 @@ public final class DefaultWorkflowRuntime implements WorkflowRuntime {
     }
   }
 
+  /**
+   * {@inheritDoc}
+   *
+   * @throws com.agentforge4j.core.exception.ExecutionNotFoundException if no state exists for
+   *                                                                   {@code runId}
+   * @throws IllegalArgumentException                                  if status is
+   *                                                                   {@link com.agentforge4j.core.workflow.state.WorkflowStatus#COMPLETED}
+   *                                                                   or
+   *                                                                   {@link com.agentforge4j.core.workflow.state.WorkflowStatus#FAILED},
+   *                                                                   or {@code runId} is blank
+   */
   @Override
   public void cancel(String runId) {
     WorkflowState state = loadState(runId);

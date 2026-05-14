@@ -22,6 +22,10 @@ public final class InMemoryWorkflowEventLog implements WorkflowEventLog {
   private final ConcurrentMap<String, CopyOnWriteArrayList<WorkflowEvent>> eventsByRunId =
       new ConcurrentHashMap<>();
 
+  /** Creates an empty log. */
+  public InMemoryWorkflowEventLog() {
+  }
+
   @Override
   public void append(WorkflowEvent event) {
     Validate.notNull(event, "event must not be null");

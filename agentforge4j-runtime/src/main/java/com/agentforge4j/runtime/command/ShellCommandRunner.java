@@ -10,6 +10,7 @@ package com.agentforge4j.runtime.command;
 @FunctionalInterface
 public interface ShellCommandRunner {
 
+  /** Runs no process and returns an empty string. */
   ShellCommandRunner NO_OP_SHELL_COMMAND_RUNNER = (runId, command) -> "";
 
   /**

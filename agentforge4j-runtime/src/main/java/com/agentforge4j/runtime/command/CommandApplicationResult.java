@@ -1,31 +1,36 @@
 package com.agentforge4j.runtime.command;
 
 /**
- * Outcome of applying a batch of {@link com.agentforge4j.core.command.LlmCommand}s.
+ * Outcome of applying a sequence of {@link com.agentforge4j.core.command.LlmCommand}s in order.
  *
- * <p>Behaviour handlers map this to the internal execution outcome type using
- * {@code CommandApplicationResults.toExecutionOutcome(...)} so this exported API stays decoupled
- * from non-exported execution packages.
+ * <p>Behaviour handlers translate this to execution outcomes via non-exported
+ * {@code CommandApplicationResults} helpers so command handling stays decoupled from the execution
+ * package.
  */
 public enum CommandApplicationResult {
 
   /**
-   * All commands applied, no special control-flow signal.
+   * Batch applied so far with no pause, completion signal, or escalation — execution continues with
+   * the next command or step.
    */
   CONTINUE,
 
   /**
-   * A {@code COMPLETE} command was seen — the enclosing loop iteration is done.
+   * A {@code COMPLETE} command was applied — the enclosing loop should treat the iteration as
+   * finished.
    */
   COMPLETE_SIGNAL,
 
   /**
-   * A {@code USER_PROMPT(responseRequired=true)} or {@code GENERATE_QUESTIONS} was seen.
+   * A {@code USER_PROMPT} with {@code responseRequired=true} or a {@code GENERATE_QUESTIONS}
+   * command was applied — the run waits for
+   * {@link com.agentforge4j.core.runtime.WorkflowRuntime#submitInput(String, java.util.Map)}.
    */
   AWAITING_INPUT,
 
   /**
-   * An {@code ESCALATE} command was seen.
+   * An {@code ESCALATE} command was applied — the run waits for
+   * {@link com.agentforge4j.core.runtime.WorkflowRuntime#approve(String, String, String)}.
    */
   AWAITING_APPROVAL;
 }

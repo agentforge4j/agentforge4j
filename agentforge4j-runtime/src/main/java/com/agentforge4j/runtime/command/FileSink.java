@@ -10,6 +10,7 @@ package com.agentforge4j.runtime.command;
 @FunctionalInterface
 public interface FileSink {
 
+  /** Accepts writes but performs no I/O. */
   FileSink NO_OP_FILE_SINK = (runId, stepId, path, content) -> {
   };
 

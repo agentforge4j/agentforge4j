@@ -8,6 +8,9 @@ import com.agentforge4j.runtime.command.CommandHandler;
 import com.agentforge4j.runtime.event.EventRecorder;
 import com.agentforge4j.util.Validate;
 
+/**
+ * Handles {@link SetContextCommand} by writing a context value when the key passes output-key policy.
+ */
 public final class SetContextCommandHandler implements CommandHandler<SetContextCommand> {
 
   private static final System.Logger LOG = System.getLogger(
@@ -15,6 +18,11 @@ public final class SetContextCommandHandler implements CommandHandler<SetContext
 
   private final EventRecorder eventRecorder;
 
+  /**
+   * Creates a handler.
+   *
+   * @param eventRecorder event sink for context updates
+   */
   public SetContextCommandHandler(EventRecorder eventRecorder) {
     this.eventRecorder = Validate.notNull(eventRecorder, "eventRecorder must not be null");
   }
@@ -24,6 +32,11 @@ public final class SetContextCommandHandler implements CommandHandler<SetContext
     return SetContextCommand.class;
   }
 
+  /**
+   * {@inheritDoc}
+   *
+   * @throws IllegalArgumentException if {@link CommandHandler#ensureContextOutputKeyAllowed(String, com.agentforge4j.core.workflow.context.ContextMapping, String)} rejects the key
+   */
   @Override
   public CommandApplicationResult apply(SetContextCommand cmd, CommandApplicationRequest request) {
     LOG.log(System.Logger.Level.DEBUG, "SetContext command key={0}", cmd.key());

@@ -47,29 +47,29 @@ import com.agentforge4j.runtime.execution.loop.DefaultLoopEvaluator;
 import com.agentforge4j.runtime.execution.loop.EvaluatorLoopStrategy;
 import com.agentforge4j.runtime.execution.loop.FixedCountLoopStrategy;
 import com.agentforge4j.runtime.execution.loop.ForEachLoopStrategy;
-import com.agentforge4j.runtime.execution.loop.LoopEvaluator;
 import com.agentforge4j.runtime.execution.loop.MaxIterationsHandler;
 import com.agentforge4j.runtime.llm.AgentInvoker;
 import com.agentforge4j.runtime.llm.ContextRenderer;
 import com.agentforge4j.runtime.llm.LlmCommandParser;
-import com.agentforge4j.schema.SchemaProvider;
 import com.agentforge4j.util.Validate;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.Clock;
 import java.util.List;
 
 /**
- * Fluent builder that wires up a {@link DefaultWorkflowRuntime} with the canonical internal graph
- * of executors, handlers, loop strategies, and command appliers.
+ * Fluent builder that wires a {@link DefaultWorkflowRuntime} with the canonical executor graph,
+ * behaviour handlers, loop strategies, and command handlers.
  *
- * <p>Only the small number of external collaborators (repositories, LLM
- * resolver, optional file sink / shell runner) need to be supplied. Everything else has a sensible
- * default.
+ * <p>Required collaborators are repositories, the LLM resolver, {@link FileSink},
+ * {@link ShellCommandRunner}, and {@link com.agentforge4j.integrations.IntegrationRegistry}.
+ * {@link ObjectMapper}, {@link java.time.Clock},
+ * {@link LoopEvaluator}, and {@link RunContextManager}
+ * default when omitted. A {@link com.agentforge4j.schema.SchemaProvider} may be configured but is
+ * not read by the current {@link #build()} implementation.
  *
- * <p>This builder is the only public entry point for constructing a
- * {@link com.agentforge4j.core.runtime.WorkflowRuntime}. {@link DefaultWorkflowRuntime}'s
- * constructors are package-private because they take internal execution-package collaborators that
- * are not part of the exported runtime API.
+ * <p>Public construction path for {@link com.agentforge4j.core.runtime.WorkflowRuntime};
+ * {@link DefaultWorkflowRuntime} constructors stay package-private because they accept non-exported
+ * execution types.
  */
 public final class WorkflowRuntimeBuilder {
 
@@ -84,82 +84,169 @@ public final class WorkflowRuntimeBuilder {
   private ShellCommandRunner shellCommandRunner;
   private IntegrationRegistry integrationRegistry;
   private LoopEvaluator loopEvaluator;
-  private SchemaProvider schemaProvider;
   private RunContextManager runContextManager = RunContextManager.NO_OP;
   private int maxNestingDepth = DefaultWorkflowRuntime.DEFAULT_MAX_NESTING_DEPTH;
 
+  /**
+   * Configures the workflow definition source.
+   *
+   * @param value repository instance
+   * @return this builder
+   */
   public WorkflowRuntimeBuilder workflowRepository(WorkflowRepository value) {
     this.workflowRepository = Validate.notNull(value, "workflowRepository must not be null");
     return this;
   }
 
+  /**
+   * Configures the agent definition source used when resolving agents for steps.
+   *
+   * @param value repository instance
+   * @return this builder
+   */
   public WorkflowRuntimeBuilder agentRepository(AgentRepository value) {
     this.agentRepository = Validate.notNull(value, "agentRepository must not be null");
     return this;
   }
 
+  /**
+   * Configures persistence for {@link com.agentforge4j.core.workflow.state.WorkflowState} between
+   * drives.
+   *
+   * @param value repository instance
+   * @return this builder
+   */
   public WorkflowRuntimeBuilder workflowStateRepository(WorkflowStateRepository value) {
     this.workflowStateRepository = Validate.notNull(value,
         "workflowStateRepository must not be null");
     return this;
   }
 
+  /**
+   * Configures the append-only event log receiving
+   * {@link com.agentforge4j.core.workflow.event.WorkflowEvent} instances.
+   *
+   * @param value event log instance
+   * @return this builder
+   */
   public WorkflowRuntimeBuilder workflowEventLog(WorkflowEventLog value) {
     this.workflowEventLog = Validate.notNull(value, "workflowEventLog must not be null");
     return this;
   }
 
+  /**
+   * Configures resolution of LLM clients for agent invocation.
+   *
+   * @param value resolver instance
+   * @return this builder
+   */
   public WorkflowRuntimeBuilder llmClientResolver(LlmClientResolver value) {
     this.llmClientResolver = Validate.notNull(value, "llmClientResolver must not be null");
     return this;
   }
 
+  /**
+   * Configures Jackson serialization used by LLM command parsing and rendering. Defaults to a new
+   * {@link ObjectMapper} when omitted.
+   *
+   * @param value mapper instance
+   * @return this builder
+   */
   public WorkflowRuntimeBuilder objectMapper(ObjectMapper value) {
     this.objectMapper = Validate.notNull(value, "objectMapper must not be null");
     return this;
   }
 
+  /**
+   * Configures the clock used for timestamps on state updates and events. Defaults to
+   * {@link java.time.Clock#systemUTC()} when omitted.
+   *
+   * @param value clock instance
+   * @return this builder
+   */
   public WorkflowRuntimeBuilder clock(Clock value) {
     this.clock = Validate.notNull(value, "clock must not be null");
     return this;
   }
 
+  /**
+   * Configures where {@link com.agentforge4j.core.command.CreateFileCommand} content is written.
+   *
+   * @param value file sink instance
+   * @return this builder
+   */
   public WorkflowRuntimeBuilder fileSink(FileSink value) {
     this.fileSink = Validate.notNull(value, "fileSink must not be null");
     return this;
   }
 
+  /**
+   * Configures execution of {@link com.agentforge4j.core.command.RunCommandCommand} shell strings.
+   *
+   * @param value shell runner instance
+   * @return this builder
+   */
   public WorkflowRuntimeBuilder shellCommandRunner(ShellCommandRunner value) {
     this.shellCommandRunner = Validate.notNull(value, "shellCommandRunner must not be null");
     return this;
   }
 
+  /**
+   * Configures the evaluator loop strategy dependency. Defaults to {@link DefaultLoopEvaluator}
+   * when omitted.
+   *
+   * @param value loop evaluator instance
+   * @return this builder
+   */
   public WorkflowRuntimeBuilder loopEvaluator(LoopEvaluator value) {
     this.loopEvaluator = Validate.notNull(value, "loopEvaluator must not be null");
     return this;
   }
 
-  public WorkflowRuntimeBuilder schemaProvider(SchemaProvider schemaProvider) {
-    this.schemaProvider = Validate.notNull(schemaProvider, "schemaProvider must not be null");
-    return this;
-  }
-
+  /**
+   * Configures {@link com.agentforge4j.core.command.CallEndpointCommand} resolution and permission
+   * checks.
+   *
+   * @param value integration registry instance
+   * @return this builder
+   */
   public WorkflowRuntimeBuilder integrationRegistry(IntegrationRegistry value) {
     this.integrationRegistry = Validate.notNull(value, "integrationRegistry must not be null");
     return this;
   }
 
+  /**
+   * Configures the maximum nested workflow depth passed to
+   * {@link com.agentforge4j.runtime.execution.ExecutionContext}.
+   *
+   * @param value maximum nesting depth (at least 1)
+   * @return this builder
+   */
   public WorkflowRuntimeBuilder maxNestingDepth(int value) {
     this.maxNestingDepth = Validate.isGreaterThanZero(value, "maxNestingDepth must be at least 1")
         .intValue();
     return this;
   }
 
+  /**
+   * Configures correlation scope hooks for each drive. Defaults to {@link RunContextManager#NO_OP}
+   * when omitted.
+   *
+   * @param value run context manager instance
+   * @return this builder
+   */
   public WorkflowRuntimeBuilder runContextManager(RunContextManager value) {
     this.runContextManager = Validate.notNull(value, "runContextManager must not be null");
     return this;
   }
 
+  /**
+   * Validates required dependencies, wires executors and handlers, and returns a runnable
+   * {@link com.agentforge4j.core.runtime.WorkflowRuntime}.
+   *
+   * @return configured runtime instance
+   * @throws IllegalArgumentException if a required dependency is missing or invalid
+   */
   public WorkflowRuntime build() {
     validateRequired();
     ObjectMapper mapper = resolveObjectMapper();

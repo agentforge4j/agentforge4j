@@ -9,6 +9,9 @@ import com.agentforge4j.runtime.command.FileSink;
 import com.agentforge4j.runtime.event.EventRecorder;
 import com.agentforge4j.util.Validate;
 
+/**
+ * Handles {@link CreateFileCommand} by forwarding content to {@link FileSink}.
+ */
 public final class CreateFileCommandHandler implements CommandHandler<CreateFileCommand> {
 
   private final EventRecorder eventRecorder;
@@ -17,6 +20,12 @@ public final class CreateFileCommandHandler implements CommandHandler<CreateFile
   private static final System.Logger LOG = System.getLogger(
       CreateFileCommandHandler.class.getName());
 
+  /**
+   * Creates a handler.
+   *
+   * @param eventRecorder event sink for file creation side effects
+   * @param fileSink      destination for file bytes
+   */
   public CreateFileCommandHandler(EventRecorder eventRecorder, FileSink fileSink) {
     this.eventRecorder = Validate.notNull(eventRecorder, "eventRecorder must not be null");
     this.fileSink = Validate.notNull(fileSink, "fileSink must not be null");
@@ -27,6 +36,7 @@ public final class CreateFileCommandHandler implements CommandHandler<CreateFile
     return CreateFileCommand.class;
   }
 
+  /** {@inheritDoc} */
   @Override
   public CommandApplicationResult apply(CreateFileCommand cmd, CommandApplicationRequest request) {
     LOG.log(System.Logger.Level.DEBUG, "CreateFile command path={0}", cmd.path());

@@ -1,4 +1,4 @@
-package com.agentforge4j.runtime.execution.loop;
+package com.agentforge4j.runtime;
 
 import com.agentforge4j.runtime.execution.ExecutionContext;
 

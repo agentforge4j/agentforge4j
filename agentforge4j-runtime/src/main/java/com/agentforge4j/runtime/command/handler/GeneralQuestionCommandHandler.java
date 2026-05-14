@@ -12,6 +12,10 @@ import com.agentforge4j.util.Validate;
 import java.time.Clock;
 import java.util.UUID;
 
+/**
+ * Handles {@link GenerateQuestionsCommand} by materialising a generated {@link com.agentforge4j.core.workflow.artifact.ArtifactDefinition}
+ * and pausing for structured answers.
+ */
 public final class GeneralQuestionCommandHandler implements
     CommandHandler<GenerateQuestionsCommand> {
 
@@ -22,6 +26,12 @@ public final class GeneralQuestionCommandHandler implements
   private final EventRecorder eventRecorder;
   private final Clock clock;
 
+  /**
+   * Creates a handler.
+   *
+   * @param eventRecorder event sink for generated question flows
+   * @param clock         wall clock for pause timestamps
+   */
   public GeneralQuestionCommandHandler(EventRecorder eventRecorder, Clock clock) {
     this.eventRecorder = Validate.notNull(eventRecorder, "eventRecorder must not be null");
     this.clock = Validate.notNull(clock, "clock must not be null");
@@ -32,6 +42,7 @@ public final class GeneralQuestionCommandHandler implements
     return GenerateQuestionsCommand.class;
   }
 
+  /** {@inheritDoc} */
   @Override
   public CommandApplicationResult apply(GenerateQuestionsCommand cmd,
       CommandApplicationRequest request) {

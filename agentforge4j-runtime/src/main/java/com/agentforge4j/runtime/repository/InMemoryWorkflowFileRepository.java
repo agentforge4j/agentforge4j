@@ -10,9 +10,16 @@ import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 
+/**
+ * In-memory {@link WorkflowFileRepository} keyed by {@link com.agentforge4j.core.workflow.file.WorkflowFile#fileId()}.
+ */
 public final class InMemoryWorkflowFileRepository implements WorkflowFileRepository {
 
   private final ConcurrentMap<String, WorkflowFile> filesById = new ConcurrentHashMap<>();
+
+  /** Creates an empty repository. */
+  public InMemoryWorkflowFileRepository() {
+  }
 
   @Override
   public void save(WorkflowFile file) {

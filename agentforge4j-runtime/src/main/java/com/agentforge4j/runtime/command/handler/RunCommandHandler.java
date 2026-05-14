@@ -10,6 +10,10 @@ import com.agentforge4j.runtime.event.EventRecorder;
 import com.agentforge4j.util.Validate;
 import org.apache.commons.lang3.StringUtils;
 
+/**
+ * Handles {@link RunCommandCommand} by delegating to {@link ShellCommandRunner} and storing captured
+ * stdout on the current step state.
+ */
 public final class RunCommandHandler implements CommandHandler<RunCommandCommand> {
 
   private static final System.Logger LOG = System.getLogger(RunCommandHandler.class.getName());
@@ -17,6 +21,12 @@ public final class RunCommandHandler implements CommandHandler<RunCommandCommand
   private final EventRecorder eventRecorder;
   private final ShellCommandRunner shellCommandRunner;
 
+  /**
+   * Creates a handler.
+   *
+   * @param eventRecorder        event sink for command side effects
+   * @param shellCommandRunner   delegate used for command execution (often non-no-op in production)
+   */
   public RunCommandHandler(EventRecorder eventRecorder, ShellCommandRunner shellCommandRunner) {
     this.eventRecorder = Validate.notNull(eventRecorder, "eventRecorder can't be null");
     this.shellCommandRunner = Validate.notNull(shellCommandRunner,
@@ -28,6 +38,7 @@ public final class RunCommandHandler implements CommandHandler<RunCommandCommand
     return RunCommandCommand.class;
   }
 
+  /** {@inheritDoc} */
   @Override
   public CommandApplicationResult apply(RunCommandCommand cmd, CommandApplicationRequest request) {
     LOG.log(System.Logger.Level.DEBUG, "RunCommand command issued");

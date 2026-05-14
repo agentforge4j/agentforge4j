@@ -12,15 +12,26 @@ import com.agentforge4j.util.Validate;
 import java.time.Clock;
 import java.util.UUID;
 
+/**
+ * Handles {@link UserPromptCommand} either by pausing for input when a response is required, or by
+ * recording a fire-and-forget user-visible message in context.
+ */
 public class UserPromptCommandHandler implements CommandHandler<UserPromptCommand> {
 
   private static final System.Logger LOG = System.getLogger(
       UserPromptCommandHandler.class.getName());
+  /** Prefix for context keys storing non-blocking {@link UserPromptCommand} messages. */
   public static final String USER_MESSAGE_CONTEXT_PREFIX = "user.message.";
 
   private final EventRecorder eventRecorder;
   private final Clock clock;
 
+  /**
+   * Creates a handler.
+   *
+   * @param eventRecorder event sink for input prompts
+   * @param clock         wall clock for pause timestamps
+   */
   public UserPromptCommandHandler(EventRecorder eventRecorder, Clock clock) {
     this.eventRecorder = Validate.notNull(eventRecorder, "eventRecorder is null");
     this.clock = Validate.notNull(clock, "clock must not be null");
@@ -31,6 +42,15 @@ public class UserPromptCommandHandler implements CommandHandler<UserPromptComman
     return UserPromptCommand.class;
   }
 
+  /**
+   * {@inheritDoc}
+   *
+   * <p>When {@link UserPromptCommand#responseRequired()} is {@code true}, sets
+   * {@link com.agentforge4j.core.workflow.state.WorkflowStatus#AWAITING_INPUT} and returns
+   * {@link CommandApplicationResult#AWAITING_INPUT}; otherwise stores the message under a generated
+   * context key prefixed by {@link #USER_MESSAGE_CONTEXT_PREFIX} and returns
+   * {@link CommandApplicationResult#CONTINUE}.
+   */
   @Override
   public CommandApplicationResult apply(UserPromptCommand cmd, CommandApplicationRequest request) {
     LOG.log(System.Logger.Level.DEBUG,

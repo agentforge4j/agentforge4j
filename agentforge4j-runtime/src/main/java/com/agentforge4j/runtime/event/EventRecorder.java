@@ -19,11 +19,28 @@ public final class EventRecorder {
   private final WorkflowEventLog eventLog;
   private final Clock clock;
 
+  /**
+   * Creates a recorder.
+   *
+   * @param eventLog append target for constructed events
+   * @param clock    source of event timestamps
+   */
   public EventRecorder(WorkflowEventLog eventLog, Clock clock) {
     this.eventLog = Validate.notNull(eventLog, "eventLog must not be null");
     this.clock = Validate.notNull(clock, "clock must not be null");
   }
 
+  /**
+   * Appends a new {@link WorkflowEvent} with a generated id and {@code clock} timestamp.
+   *
+   * @param runId     non-blank run scope id
+   * @param stepId    optional step scope; may be {@code null} for run-level events
+   * @param eventType non-null event discriminator
+   * @param payload   optional human-readable payload; may be {@code null}
+   * @param actorId   optional logical actor (for example {@code "runtime"} or {@code "user"});
+   *                  forwarded as-is to the event log
+   * @throws IllegalArgumentException if {@code runId} is blank or {@code eventType} is {@code null}
+   */
   public void record(String runId,
       String stepId,
       WorkflowEventType eventType,

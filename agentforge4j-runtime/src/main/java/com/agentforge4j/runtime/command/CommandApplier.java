@@ -8,17 +8,42 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
+/**
+ * Dispatches each {@link LlmCommand} to its registered {@link CommandHandler} and returns the first
+ * non-{@link CommandApplicationResult#CONTINUE} result, or {@link CommandApplicationResult#CONTINUE}
+ * when every command continues.
+ */
 public final class CommandApplier {
 
   private static final System.Logger LOG = System.getLogger(CommandApplier.class.getName());
 
   private final Map<Class<? extends LlmCommand>, CommandHandler<? extends LlmCommand>> commandAppliers;
 
+  /**
+   * Indexes handlers by {@link CommandHandler#getCommandClass()}; duplicate command classes fail
+   * construction.
+   *
+   * @param commandHandlers one handler per distinct command class, non-empty
+   * @throws IllegalArgumentException if {@code commandHandlers} is empty
+   * @throws IllegalStateException    if two handlers declare the same command class
+   */
   public CommandApplier(List<CommandHandler<? extends LlmCommand>> commandHandlers) {
     commandAppliers = indexCommands(
         Validate.notEmpty(commandHandlers, "commandHandlers must not be empty"));
   }
 
+  /**
+   * Applies commands in list order until one yields a non-continue outcome or the list ends.
+   *
+   * @param commands         parsed commands in application order
+   * @param state            workflow state updated by handlers
+   * @param contextMapping   allowed output keys for {@code agentId}
+   * @param agentId          agent id recorded on events and permission checks
+   * @param currentStepUid   step instance id used when recording context writes
+   * @return aggregated control-flow result for the batch
+   * @throws IllegalArgumentException if any argument is {@code null} or no handler is registered
+   *                                  for a command's concrete class
+   */
   public CommandApplicationResult apply(List<LlmCommand> commands,
       WorkflowState state,
       ContextMapping contextMapping,
