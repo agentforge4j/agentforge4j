@@ -23,6 +23,10 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class RetryingLlmClientTest {
 
+  static LlmRetryPolicy fastRetryPolicy(int maxAttempts) {
+    return new LlmRetryPolicy(maxAttempts, 1L, 5L, 0L);
+  }
+
   /**
    * Fake client: each {@link #execute} pops the next script entry; suppliers may return a value or
    * throw from {@link Supplier#get}.
@@ -72,32 +76,40 @@ class RetryingLlmClientTest {
     @Test
     void shouldCreateWithValidParameters() {
       LlmClient delegate = new ScriptedLlmClient("test");
-      RetryingLlmClient client = new RetryingLlmClient(delegate, 3, 100);
+      RetryingLlmClient client = new RetryingLlmClient(delegate, fastRetryPolicy(3));
 
       assertThat(client.getProviderName()).isEqualTo("test");
     }
 
     @Test
     void shouldRejectNullDelegate() {
-      assertThatThrownBy(() -> new RetryingLlmClient(null, 2, 0))
+      assertThatThrownBy(() -> new RetryingLlmClient(null, fastRetryPolicy(2)))
           .isInstanceOf(IllegalArgumentException.class)
           .hasMessage("delegate must not be null");
     }
 
     @Test
-    void shouldRejectMaxAttemptsBelowOne() {
+    void shouldRejectNullPolicy() {
       LlmClient delegate = new ScriptedLlmClient("r", () -> "x");
-      assertThatThrownBy(() -> new RetryingLlmClient(delegate, 0, 0))
+      assertThatThrownBy(() -> new RetryingLlmClient(delegate, null))
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessage("policy must not be null");
+    }
+
+    @Test
+    void shouldRejectInvalidPolicy_whenMaxAttemptsBelowOne() {
+      LlmClient delegate = new ScriptedLlmClient("r", () -> "x");
+      assertThatThrownBy(() -> new RetryingLlmClient(delegate, new LlmRetryPolicy(0, 1L, 5L, 0L)))
           .isInstanceOf(IllegalArgumentException.class)
           .hasMessage("maxAttempts must be at least 1");
     }
 
     @Test
-    void shouldRejectNegativeBackoff() {
+    void shouldRejectInvalidPolicy_whenBackoffNegative() {
       LlmClient delegate = new ScriptedLlmClient("r", () -> "x");
-      assertThatThrownBy(() -> new RetryingLlmClient(delegate, 2, -1))
+      assertThatThrownBy(() -> new RetryingLlmClient(delegate, new LlmRetryPolicy(2, -1L, 5L, 0L)))
           .isInstanceOf(IllegalArgumentException.class)
-          .hasMessage("backoffMs must be >= 0");
+          .hasMessage("baseBackoffMs must be >= 0");
     }
   }
 
@@ -107,7 +119,7 @@ class RetryingLlmClientTest {
     @Test
     void successFirstAttempt_noRetry() {
       ScriptedLlmClient delegate = new ScriptedLlmClient("prov", () -> "payload");
-      RetryingLlmClient client = new RetryingLlmClient(delegate, 3, 0);
+      RetryingLlmClient client = new RetryingLlmClient(delegate, fastRetryPolicy(3));
 
       assertThat(client.execute(dummyRequest())).isEqualTo("payload");
       assertThat(delegate.getCallCount()).isEqualTo(1);
@@ -121,7 +133,7 @@ class RetryingLlmClientTest {
             throw new LlmInvocationException("wrapped", io);
           },
           () -> "ok");
-      RetryingLlmClient client = new RetryingLlmClient(delegate, 3, 0);
+      RetryingLlmClient client = new RetryingLlmClient(delegate, fastRetryPolicy(3));
 
       assertThat(client.execute(dummyRequest())).isEqualTo("ok");
       assertThat(delegate.getCallCount()).isEqualTo(2);
@@ -130,7 +142,7 @@ class RetryingLlmClientTest {
     @Test
     void allAttemptsFail_exceptionPropagated() {
       LlmInvocationException failure =
-          new LlmInvocationException("HTTP error: 503 Service Unavailable");
+          new LlmInvocationException("HTTP error: 503 Service Unavailable", 503);
       ScriptedLlmClient delegate = new ScriptedLlmClient("prov",
           () -> {
             throw failure;
@@ -141,7 +153,7 @@ class RetryingLlmClientTest {
           () -> {
             throw failure;
           });
-      RetryingLlmClient client = new RetryingLlmClient(delegate, 3, 0);
+      RetryingLlmClient client = new RetryingLlmClient(delegate, fastRetryPolicy(3));
 
       assertThatThrownBy(() -> client.execute(dummyRequest()))
           .isSameAs(failure);
@@ -154,24 +166,26 @@ class RetryingLlmClientTest {
           () -> {
             throw new LlmInvocationException("Invalid model");
           });
-      RetryingLlmClient client = new RetryingLlmClient(delegate, 3, 0);
+      RetryingLlmClient client = new RetryingLlmClient(delegate, fastRetryPolicy(3));
 
       assertThatThrownBy(() -> client.execute(dummyRequest()))
           .isInstanceOf(LlmInvocationException.class)
-          .hasMessage("Invalid model");
+          .hasMessage("Invalid model")
+          .extracting(ex -> ((LlmInvocationException) ex).getHttpStatus())
+          .isNull();
       assertThat(delegate.getCallCount()).isEqualTo(1);
     }
 
     @ParameterizedTest
     @ValueSource(ints = {429, 500, 502, 503, 504})
-    void retryableHttpStatusFromMessage_retried(int status) {
+    void retryableHttpStatus_retried(int status) {
       String message = "HTTP error: " + status + " Service";
       ScriptedLlmClient delegate = new ScriptedLlmClient("prov",
           () -> {
-            throw new LlmInvocationException(message);
+            throw new LlmInvocationException(message, status);
           },
           () -> "recovered");
-      RetryingLlmClient client = new RetryingLlmClient(delegate, 3, 0);
+      RetryingLlmClient client = new RetryingLlmClient(delegate, fastRetryPolicy(3));
 
       assertThat(client.execute(dummyRequest())).isEqualTo("recovered");
       assertThat(delegate.getCallCount()).isEqualTo(2);
@@ -181,13 +195,29 @@ class RetryingLlmClientTest {
     void nonRetryableHttpStatus_notRetried() {
       ScriptedLlmClient delegate = new ScriptedLlmClient("prov",
           () -> {
-            throw new LlmInvocationException("HTTP error: 400 Bad Request");
+            throw new LlmInvocationException("HTTP error: 400 Bad Request", 400);
           });
-      RetryingLlmClient client = new RetryingLlmClient(delegate, 3, 0);
+      RetryingLlmClient client = new RetryingLlmClient(delegate, fastRetryPolicy(3));
 
       assertThatThrownBy(() -> client.execute(dummyRequest()))
           .isInstanceOf(LlmInvocationException.class)
-          .hasMessageContaining("400");
+          .extracting(ex -> ((LlmInvocationException) ex).getHttpStatus())
+          .isEqualTo(400);
+      assertThat(delegate.getCallCount()).isEqualTo(1);
+    }
+
+    @Test
+    void maxElapsedBudgetStopsBeforeNextSleep_whenBackoffWouldExceedBudget() {
+      LlmInvocationException failure = new LlmInvocationException("overload", 503);
+      ScriptedLlmClient delegate = new ScriptedLlmClient("prov",
+          () -> {
+            throw failure;
+          });
+      RetryingLlmClient client = new RetryingLlmClient(delegate,
+          new LlmRetryPolicy(10, 50L, 51L, 10L));
+
+      assertThatThrownBy(() -> client.execute(dummyRequest()))
+          .isSameAs(failure);
       assertThat(delegate.getCallCount()).isEqualTo(1);
     }
 
@@ -197,7 +227,7 @@ class RetryingLlmClientTest {
           () -> {
             throw new LlmInvocationException(null);
           });
-      RetryingLlmClient client = new RetryingLlmClient(delegate, 3, 0);
+      RetryingLlmClient client = new RetryingLlmClient(delegate, fastRetryPolicy(3));
 
       assertThatThrownBy(() -> client.execute(dummyRequest()))
           .isInstanceOf(LlmInvocationException.class);
@@ -205,17 +235,19 @@ class RetryingLlmClientTest {
     }
 
     @Test
-    void malformedHttpStatusMessage_doesNotThrow() {
+    void messageWithStatusDigits_butNoTypedHttpStatus_isNotRetryable() {
       for (String badMessage : List.of("HTTP error: ABC", "HTTP error: 99999")) {
         ScriptedLlmClient delegate = new ScriptedLlmClient("prov",
             () -> {
               throw new LlmInvocationException(badMessage);
             });
-        RetryingLlmClient client = new RetryingLlmClient(delegate, 3, 0);
+        RetryingLlmClient client = new RetryingLlmClient(delegate, fastRetryPolicy(3));
 
         assertThatThrownBy(() -> client.execute(dummyRequest()))
             .isInstanceOf(LlmInvocationException.class)
-            .hasMessage(badMessage);
+            .hasMessage(badMessage)
+            .extracting(ex -> ((LlmInvocationException) ex).getHttpStatus())
+            .isNull();
         assertThat(delegate.getCallCount()).isEqualTo(1);
       }
     }
@@ -229,7 +261,7 @@ class RetryingLlmClientTest {
             throw new RuntimeException("outer", mid);
           },
           () -> "fine");
-      RetryingLlmClient client = new RetryingLlmClient(delegate, 3, 0);
+      RetryingLlmClient client = new RetryingLlmClient(delegate, fastRetryPolicy(3));
 
       assertThat(client.execute(dummyRequest())).isEqualTo("fine");
       assertThat(delegate.getCallCount()).isEqualTo(2);
@@ -249,10 +281,11 @@ class RetryingLlmClientTest {
         @Override
         public String execute(LlmExecutionRequest request) {
           firstFailure.countDown();
-          throw new LlmInvocationException("HTTP error: 503");
+          throw new LlmInvocationException("HTTP error: 503", 503);
         }
       };
-      RetryingLlmClient client = new RetryingLlmClient(delegate, 2, 400);
+      RetryingLlmClient client =
+          new RetryingLlmClient(delegate, new LlmRetryPolicy(2, 400L, 1_205L, 0L));
       LlmExecutionRequest request = dummyRequest();
 
       Thread worker = new Thread(() -> {
@@ -284,7 +317,7 @@ class RetryingLlmClientTest {
             throw new RuntimeException(new HttpTimeoutException("timeout"));
           },
           () -> "success");
-      RetryingLlmClient client = new RetryingLlmClient(delegate, 3, 0);
+      RetryingLlmClient client = new RetryingLlmClient(delegate, fastRetryPolicy(3));
 
       assertThat(client.execute(dummyRequest())).isEqualTo("success");
       assertThat(delegate.getCallCount()).isEqualTo(2);
@@ -297,7 +330,7 @@ class RetryingLlmClientTest {
             throw new RuntimeException(new SocketTimeoutException("socket timeout"));
           },
           () -> "success");
-      RetryingLlmClient client = new RetryingLlmClient(delegate, 3, 0);
+      RetryingLlmClient client = new RetryingLlmClient(delegate, fastRetryPolicy(3));
 
       assertThat(client.execute(dummyRequest())).isEqualTo("success");
       assertThat(delegate.getCallCount()).isEqualTo(2);
@@ -310,7 +343,7 @@ class RetryingLlmClientTest {
             throw new RuntimeException(new ConnectException("connect failed"));
           },
           () -> "success");
-      RetryingLlmClient client = new RetryingLlmClient(delegate, 3, 0);
+      RetryingLlmClient client = new RetryingLlmClient(delegate, fastRetryPolicy(3));
 
       assertThat(client.execute(dummyRequest())).isEqualTo("success");
       assertThat(delegate.getCallCount()).isEqualTo(2);
@@ -322,7 +355,7 @@ class RetryingLlmClientTest {
           () -> {
             throw new IllegalArgumentException("invalid");
           });
-      RetryingLlmClient client = new RetryingLlmClient(delegate, 3, 0);
+      RetryingLlmClient client = new RetryingLlmClient(delegate, fastRetryPolicy(3));
 
       assertThatThrownBy(() -> client.execute(dummyRequest()))
           .isInstanceOf(IllegalArgumentException.class)
@@ -331,24 +364,24 @@ class RetryingLlmClientTest {
     }
 
     @Test
-    void shouldRetryOn502And503_when_message_matches_realistic_format() {
+    void shouldRetryOn502And503_whenMessageMirrorsUpstreamPayload() {
       String msg502 = "openai HTTP error: 502 - <html>bad gateway</html>";
       ScriptedLlmClient delegate502 = new ScriptedLlmClient("prov",
           () -> {
-            throw new LlmInvocationException(msg502);
+            throw new LlmInvocationException(msg502, 502);
           },
           () -> "ok");
-      RetryingLlmClient client502 = new RetryingLlmClient(delegate502, 2, 0);
+      RetryingLlmClient client502 = new RetryingLlmClient(delegate502, fastRetryPolicy(2));
       assertThat(client502.execute(dummyRequest())).isEqualTo("ok");
       assertThat(delegate502.getCallCount()).isEqualTo(2);
 
       String msg503 = "claude HTTP error: 503 - {\"error\":\"overload\"}";
       ScriptedLlmClient delegate503 = new ScriptedLlmClient("prov",
           () -> {
-            throw new LlmInvocationException(msg503);
+            throw new LlmInvocationException(msg503, 503);
           },
           () -> "ok2");
-      RetryingLlmClient client503 = new RetryingLlmClient(delegate503, 2, 0);
+      RetryingLlmClient client503 = new RetryingLlmClient(delegate503, fastRetryPolicy(2));
       assertThat(client503.execute(dummyRequest())).isEqualTo("ok2");
       assertThat(delegate503.getCallCount()).isEqualTo(2);
     }
@@ -357,10 +390,10 @@ class RetryingLlmClientTest {
     void shouldRetryOn504() {
       ScriptedLlmClient delegate = new ScriptedLlmClient("prov",
           () -> {
-            throw new LlmInvocationException("HTTP error: 504");
+            throw new LlmInvocationException("HTTP error: 504", 504);
           },
           () -> "done");
-      RetryingLlmClient client = new RetryingLlmClient(delegate, 2, 0);
+      RetryingLlmClient client = new RetryingLlmClient(delegate, fastRetryPolicy(2));
 
       assertThat(client.execute(dummyRequest())).isEqualTo("done");
       assertThat(delegate.getCallCount()).isEqualTo(2);
@@ -370,13 +403,32 @@ class RetryingLlmClientTest {
     void shouldNotRetry_when_maxAttempts_is_one() {
       ScriptedLlmClient delegate = new ScriptedLlmClient("prov",
           () -> {
-            throw new LlmInvocationException("HTTP error: 503");
+            throw new LlmInvocationException("HTTP error: 503", 503);
           });
-      RetryingLlmClient client = new RetryingLlmClient(delegate, 1, 0);
+      RetryingLlmClient client = new RetryingLlmClient(delegate, fastRetryPolicy(1));
 
       assertThatThrownBy(() -> client.execute(dummyRequest()))
           .isInstanceOf(LlmInvocationException.class);
       assertThat(delegate.getCallCount()).isEqualTo(1);
+    }
+
+    @Test
+    void firstRetrySleep_respectsElapsedLowerBound_evenWithDecorrelatedJitter() {
+      LlmInvocationException failure = new LlmInvocationException("slow", 503);
+      ScriptedLlmClient delegate = new ScriptedLlmClient("prov",
+          () -> {
+            throw failure;
+          },
+          () -> "fine");
+      LlmRetryPolicy policy = fastRetryPolicy(2);
+      RetryingLlmClient client = new RetryingLlmClient(delegate, policy);
+
+      long t0 = System.currentTimeMillis();
+      assertThat(client.execute(dummyRequest())).isEqualTo("fine");
+      long elapsedMs = System.currentTimeMillis() - t0;
+
+      assertThat(delegate.getCallCount()).isEqualTo(2);
+      assertThat(elapsedMs).isGreaterThanOrEqualTo(policy.baseBackoffMs());
     }
   }
 }
