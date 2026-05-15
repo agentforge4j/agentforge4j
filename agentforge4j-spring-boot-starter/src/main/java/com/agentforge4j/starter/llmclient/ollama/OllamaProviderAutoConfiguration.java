@@ -1,0 +1,22 @@
+package com.agentforge4j.starter.llmclient.ollama;
+
+import com.agentforge4j.llm.ollama.OllamaConfiguration;
+import com.agentforge4j.starter.LlmAutoConfiguration;
+import org.springframework.boot.autoconfigure.AutoConfiguration;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.context.annotation.Bean;
+
+@AutoConfiguration(before = LlmAutoConfiguration.class)
+@EnableConfigurationProperties(OllamaLlmClientProperties.class)
+@ConditionalOnClass(OllamaConfiguration.class)
+public class OllamaProviderAutoConfiguration {
+
+  @Bean
+  @ConditionalOnProperty(
+      name = "agentforge4j.llm.ollama.enabled", havingValue = "true")
+  OllamaConfiguration ollamaConfiguration(OllamaLlmClientProperties properties) {
+    return new OllamaConfigurationAdapter(properties);
+  }
+}
