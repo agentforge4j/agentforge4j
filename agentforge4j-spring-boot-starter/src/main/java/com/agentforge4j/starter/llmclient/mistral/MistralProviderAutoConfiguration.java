@@ -8,6 +8,9 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 
+/**
+ * Creates Mistral configuration beans when {@code agentforge4j.llm.mistral.api-key} resolves.
+ */
 @AutoConfiguration(before = LlmAutoConfiguration.class)
 @EnableConfigurationProperties(MistralLlmClientProperties.class)
 @ConditionalOnClass(MistralConfiguration.class)

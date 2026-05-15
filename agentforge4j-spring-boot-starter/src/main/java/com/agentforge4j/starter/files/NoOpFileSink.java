@@ -6,11 +6,11 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Default {@link FileSink} registered by the OSS Spring Boot starter when the application does not
+ * Default {@link FileSink} registered by this Spring Boot starter when the application does not
  * define its own {@code FileSink} bean.
  *
- * <p>Generated file content from workflow steps is intentionally discarded. This keeps the OSS
- * starter storage-agnostic: the starter does not choose a filesystem path, database, or object
+ * <p>Generated file content from workflow steps is intentionally discarded. This keeps this
+ * starter storage-agnostic: it does not choose a filesystem path, database, or object
  * store.
  *
  * <p>Applications that must persist agent-produced files should register a {@code FileSink} bean
@@ -24,6 +24,10 @@ public final class NoOpFileSink implements FileSink {
 
   private final AtomicBoolean discardWarningLogged = new AtomicBoolean(false);
 
+  /**
+   * Drops {@code content} and emits a warning at most once per JVM until a custom
+   * {@link com.agentforge4j.runtime.command.FileSink} bean replaces this implementation.
+   */
   @Override
   public void write(String runId, String stepId, String path, String content) {
     if (discardWarningLogged.compareAndSet(false, true)) {

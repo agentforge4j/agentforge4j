@@ -8,6 +8,10 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 
+/**
+ * Conditionally registers Azure OpenAI settings when {@code agentforge4j.llm.azure-openai.api-key}
+ * is set.
+ */
 @AutoConfiguration(before = LlmAutoConfiguration.class)
 @EnableConfigurationProperties(AzureOpenAiLlmClientProperties.class)
 @ConditionalOnClass(AzureOpenAiConfiguration.class)

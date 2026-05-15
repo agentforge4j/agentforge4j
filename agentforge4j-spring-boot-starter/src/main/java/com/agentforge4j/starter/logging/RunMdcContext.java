@@ -4,6 +4,12 @@ import java.util.HashMap;
 import java.util.Map;
 import org.slf4j.MDC;
 
+/**
+ * Stacks run, workflow, step, and agent identifiers into {@link org.slf4j.MDC}; {@link #close()}
+ * restores values that were present beforehand.
+ *
+ * <p>Keys correspond to fixed field names consumed by downstream logging pipelines.
+ */
 public final class RunMdcContext implements AutoCloseable {
 
   private static final String RUN_ID = "runId";
@@ -20,19 +26,25 @@ public final class RunMdcContext implements AutoCloseable {
     put(AGENT_ID, agentId);
   }
 
+  /** Sets run and workflow identifiers only; step and agent keys remain cleared when blank. */
   public static RunMdcContext of(String runId, String workflowId) {
     return new RunMdcContext(runId, workflowId, null, null);
   }
 
+  /**
+   * Puts identifiers into {@link MDC}, replacing blank strings with removals for the affected key.
+   */
   public static RunMdcContext of(String runId, String workflowId, String stepId, String agentId) {
     return new RunMdcContext(runId, workflowId, stepId, agentId);
   }
 
+  /** Fluent alternative to revisiting {@code stepId} after constructing with only workflow scope. */
   public RunMdcContext withStep(String stepId) {
     put(STEP_ID, stepId);
     return this;
   }
 
+  /** Fluent alternative to revisiting {@code agentId}. */
   public RunMdcContext withAgent(String agentId) {
     put(AGENT_ID, agentId);
     return this;
@@ -49,6 +61,7 @@ public final class RunMdcContext implements AutoCloseable {
     MDC.put(key, value);
   }
 
+  /** Restores earlier {@link MDC} values captured on first write of each key during this context. */
   @Override
   public void close() {
     restore(RUN_ID);

@@ -8,6 +8,9 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 
+/**
+ * Registers Bedrock configuration when {@code agentforge4j.llm.bedrock.enabled=true}.
+ */
 @AutoConfiguration(before = LlmAutoConfiguration.class)
 @EnableConfigurationProperties(BedrockLlmClientProperties.class)
 @ConditionalOnClass(BedrockConfiguration.class)

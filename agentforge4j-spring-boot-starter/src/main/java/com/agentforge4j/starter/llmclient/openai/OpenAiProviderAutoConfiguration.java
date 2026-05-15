@@ -8,6 +8,10 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 
+/**
+ * Enables OpenAI client wiring when LLM adapter classes exist and
+ * {@code agentforge4j.llm.openai.api-key} is set.
+ */
 @AutoConfiguration(before = LlmAutoConfiguration.class)
 @EnableConfigurationProperties(OpenAiLlmClientProperties.class)
 @ConditionalOnClass(OpenAiConfiguration.class)

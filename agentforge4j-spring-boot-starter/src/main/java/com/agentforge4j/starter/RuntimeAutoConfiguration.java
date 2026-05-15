@@ -57,6 +57,13 @@ public class RuntimeAutoConfiguration {
     return new NoOpFileSink();
   }
 
+  /**
+   * Constructs {@link com.agentforge4j.core.runtime.WorkflowRuntime} from injected collaborators,
+   * applies {@link AgentForge4jProperties#maxNestingDepth()} when non-null, and substitutes
+   * {@link com.agentforge4j.integrations.NoOpIntegrationRegistry} when no
+   * {@linkplain com.agentforge4j.integrations.IntegrationRegistry integration registry} bean
+   * exists.
+   */
   @Bean
   @ConditionalOnMissingBean
   public WorkflowRuntime workflowRuntime(WorkflowRepository workflowRepository,

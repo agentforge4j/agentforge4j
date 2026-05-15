@@ -8,6 +8,9 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 
+/**
+ * Enables Claude adapters when {@code agentforge4j.llm.claude.api-key} is populated.
+ */
 @AutoConfiguration(before = LlmAutoConfiguration.class)
 @EnableConfigurationProperties(ClaudeLlmClientProperties.class)
 @ConditionalOnClass(ClaudeConfiguration.class)

@@ -17,13 +17,20 @@ import org.springframework.context.annotation.Bean;
  * Builds the {@link LlmClientResolver} from all {@link LlmClientConfiguration} beans present in the
  * context.
  *
- * <p>Provider starters (openai, ollama, …) contribute their own
- * {@link LlmClientConfiguration} beans; this auto-configuration aggregates them and hands the list
- * to {@link DefaultLlmClientResolver#discover(ObjectMapper, java.util.Collection)}.
+ * <p>Provider-specific auto-configuration under {@code com.agentforge4j.starter.llmclient}
+ * registers {@link LlmClientConfiguration} beans when optional LLM modules are on the classpath and
+ * matching {@code agentforge4j.llm.*} properties apply; this class aggregates those beans and passes
+ * them to {@link DefaultLlmClientResolver#discover(ObjectMapper, java.util.Collection)}.
  */
 @AutoConfiguration(after = JacksonAutoConfiguration.class)
 public class LlmAutoConfiguration {
 
+  /**
+   * Discovers providers from injected {@link LlmClientConfiguration} beans and exposes a single
+   * resolver, optionally wrapped for retries.
+   *
+   * @throws IllegalArgumentException when {@code llmConfigurations} contains no configurations
+   */
   @Bean
   @ConditionalOnMissingBean
   public LlmClientResolver llmClientResolver(ObjectMapper objectMapper,

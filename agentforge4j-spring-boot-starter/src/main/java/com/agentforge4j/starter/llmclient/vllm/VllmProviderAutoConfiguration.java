@@ -8,6 +8,9 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 
+/**
+ * Activates vLLM wiring when {@code agentforge4j.llm.vllm.url} is set.
+ */
 @AutoConfiguration(before = LlmAutoConfiguration.class)
 @EnableConfigurationProperties(VllmLlmClientProperties.class)
 @ConditionalOnClass(VllmConfiguration.class)

@@ -113,6 +113,12 @@ public class ConfigLoaderAutoConfiguration {
     return new ClasspathWorkflowLoader(objectMapper);
   }
 
+  /**
+   * Builds the merged catalog from filesystem paths and optional shipped loaders.
+   *
+   * @throws IllegalArgumentException when every source is absent (no filesystem paths configured
+   *     and both shipped loaders are disabled)
+   */
   @Bean
   @ConditionalOnMissingBean
   public LoadedConfiguration loadedConfiguration(

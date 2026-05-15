@@ -8,6 +8,10 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 
+/**
+ * Enables OpenAI-compatible providers when {@code agentforge4j.llm.openai-compatible.api-key}
+ * resolves.
+ */
 @AutoConfiguration(before = LlmAutoConfiguration.class)
 @EnableConfigurationProperties(OpenAiCompatibleLlmClientProperties.class)
 @ConditionalOnClass(OpenAiCompatibleConfiguration.class)
