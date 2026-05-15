@@ -1,6 +1,7 @@
 package com.agentforge4j.starter.llmclient.claude;
 
 import com.agentforge4j.llm.claude.ClaudeConfiguration;
+import com.agentforge4j.util.Validate;
 import java.time.Duration;
 
 record ClaudeConfigurationAdapter(ClaudeLlmClientProperties properties)
@@ -34,5 +35,12 @@ record ClaudeConfigurationAdapter(ClaudeLlmClientProperties properties)
   @Override
   public Duration getRequestTimeout() {
     return properties.requestTimeout();
+  }
+
+  @Override
+  public int getMaxTokenSize() {
+    return Validate.notNull(
+        properties.maxTokenSize(),
+        "agentforge4j.llm.claude.max-token-size must be set").intValue();
   }
 }

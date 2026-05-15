@@ -212,10 +212,13 @@ class AgentInvokerTest {
         .orElseThrow()
         .payload();
     assertThat(payload).hasSize(
-        AgentInvoker.DEFAULT_LLM_OUTPUT_EVENT_CHAR_CAP + "... [truncated, original length=".length()
-            + String.valueOf(raw.length()).length() + "]".length());
+        AgentInvoker.DEFAULT_LLM_OUTPUT_EVENT_CHAR_CAP
+            + "... [event payload truncated for audit; original length=".length()
+            + String.valueOf(raw.length()).length()
+            + " chars]".length());
     assertThat(payload).startsWith(raw.substring(0, AgentInvoker.DEFAULT_LLM_OUTPUT_EVENT_CHAR_CAP));
-    assertThat(payload).endsWith("... [truncated, original length=" + raw.length() + "]");
+    assertThat(payload).endsWith(
+        "... [event payload truncated for audit; original length=" + raw.length() + " chars]");
   }
 
   @Test
@@ -275,10 +278,11 @@ class AgentInvokerTest {
         .findFirst()
         .orElseThrow()
         .payload();
-    assertThat(payload).hasSize(100 + "... [truncated, original length=".length()
-        + String.valueOf(raw.length()).length() + "]".length());
+    assertThat(payload).hasSize(100 + "... [event payload truncated for audit; original length=".length()
+        + String.valueOf(raw.length()).length() + " chars]".length());
     assertThat(payload).startsWith(raw.substring(0, 100));
-    assertThat(payload).endsWith("... [truncated, original length=" + raw.length() + "]");
+    assertThat(payload).endsWith(
+        "... [event payload truncated for audit; original length=" + raw.length() + " chars]");
   }
 
   @Test

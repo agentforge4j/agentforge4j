@@ -31,11 +31,9 @@ public interface OpenAiConfiguration extends LlmClientConfiguration {
   }
 
   /**
-   * Returns the OpenAI API URL.
+   * Returns the OpenAI API URL (must be supplied by application configuration).
    *
-   * @return the API endpoint URL, defaults to OpenAI's responses API
+   * @return the API endpoint URL
    */
-  default String getUrl() {
-    return "https://api.openai.com/v1/responses";
-  }
+  String getUrl();
 }

@@ -15,8 +15,8 @@ public interface OpenAiCompatibleConfiguration extends LlmClientConfiguration {
   }
 
   /**
-   * Service base URL (scheme + host, optional port), without trailing slash. The client appends
-   * {@code /v1/responses} unless {@link #getResponsesPath()} is set.
+   * Service base URL (scheme + host, optional port), without trailing slash. The client resolves
+   * the full request URI using {@link #getResponsesPath()}.
    */
   String getBaseUrl();
 
@@ -35,21 +35,19 @@ public interface OpenAiCompatibleConfiguration extends LlmClientConfiguration {
   Duration getRequestTimeout();
 
   /**
-   * HTTP header name for credentials (default {@code Authorization}).
+   * HTTP header name for credentials (must be supplied by application configuration).
    */
   String getAuthHeaderName();
 
   /**
-   * Literal prefix placed before the API key in the header value (default {@code Bearer }). Use an
-   * empty string for providers that expect the raw key as the entire value.
+   * Literal prefix placed before the API key in the header value. Use an empty string for
+   * providers that expect the raw key as the entire value.
    */
   String getAuthHeaderPrefix();
 
   /**
    * Path appended to {@link #getBaseUrl()} for the Responses endpoint, starting with {@code /}
-   * (default {@code /v1/responses}).
+   * (must be supplied by application configuration).
    */
-  default String getResponsesPath() {
-    return "/v1/responses";
-  }
+  String getResponsesPath();
 }

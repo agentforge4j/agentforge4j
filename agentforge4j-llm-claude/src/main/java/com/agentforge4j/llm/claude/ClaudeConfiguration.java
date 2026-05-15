@@ -39,13 +39,10 @@ public interface ClaudeConfiguration extends LlmClientConfiguration {
   Duration getRequestTimeout();
 
   /**
-   * Returns the maximum token size for Claude requests.
-   *
-   * @return the maximum token size, defaults to 8096
+   * Returns the maximum token size for Claude requests (must be supplied by application
+   * configuration).
    */
-  default int getMaxTokenSize() {
-    return 8096;
-  }
+  int getMaxTokenSize();
 
   @Override
   default String getProviderName() {

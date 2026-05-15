@@ -52,6 +52,15 @@ class BedrockLlmClientTest {
     }
 
     @Test
+    void rejectsBlankAnthropicVersion() {
+      BedrockRuntimeClient client = mock(BedrockRuntimeClient.class);
+      var cfg = FixedBedrockConfiguration.builder().anthropicVersion("  ").build();
+      assertThatThrownBy(() -> new BedrockLlmClient(mapper, cfg, client))
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessageContaining("anthropicVersion");
+    }
+
+    @Test
     void rejectsBlankProviderNameInConfiguration() {
       BedrockConfiguration cfg = new BedrockConfiguration() {
         @Override
@@ -72,6 +81,11 @@ class BedrockLlmClientTest {
         @Override
         public java.time.Duration getRequestTimeout() {
           return java.time.Duration.ofSeconds(1);
+        }
+
+        @Override
+        public String getAnthropicVersion() {
+          return "bedrock-2023-05-31";
         }
 
         @Override
