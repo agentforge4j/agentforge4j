@@ -38,6 +38,9 @@ public interface LlmClient {
    * @return the input with fences removed, or the input unchanged
    */
   static String stripCodeFence(String input) {
+    if (input == null) {
+      return null;
+    }
     if (!Strings.CS.startsWith(input, "```")) {
       return input;
     }

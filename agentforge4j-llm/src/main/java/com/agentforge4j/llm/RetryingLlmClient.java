@@ -7,8 +7,6 @@ import java.net.ConnectException;
 import java.net.SocketTimeoutException;
 import java.net.http.HttpTimeoutException;
 import java.util.Set;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 /**
  * Wraps an LLM client with retry logic for transient failures.
@@ -20,8 +18,6 @@ public final class RetryingLlmClient implements LlmClient {
 
   private static final System.Logger LOG = System.getLogger(RetryingLlmClient.class.getName());
 
-  private static final Pattern HTTP_STATUS_PATTERN = Pattern.compile(
-      "\\bHTTP error:\\s*(\\d{3})\\b");
   private static final Set<Integer> RETRYABLE_HTTP_STATUS = Set.of(429, 500, 502, 503, 504);
 
   private final LlmClient delegate;
@@ -106,23 +102,8 @@ public final class RetryingLlmClient implements LlmClient {
     if (!(exception instanceof LlmInvocationException invocationException)) {
       return false;
     }
-    String msg = invocationException.getMessage();
-    if (msg == null) {
-      return false;
-    }
-    return isRetryableHttpStatus(msg);
-  }
-
-  private static boolean isRetryableHttpStatus(String message) {
-    try {
-      Matcher matcher = HTTP_STATUS_PATTERN.matcher(message);
-      if (!matcher.find()) {
-        return false;
-      }
-      return RETRYABLE_HTTP_STATUS.contains(Integer.parseInt(matcher.group(1)));
-    } catch (RuntimeException ignored) {
-      return false;
-    }
+    Integer httpStatus = invocationException.getHttpStatus();
+    return httpStatus != null && RETRYABLE_HTTP_STATUS.contains(httpStatus);
   }
 
   private static void sleep(long durationMs) {

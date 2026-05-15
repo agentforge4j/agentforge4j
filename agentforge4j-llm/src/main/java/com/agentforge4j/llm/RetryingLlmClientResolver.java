@@ -3,6 +3,7 @@ package com.agentforge4j.llm;
 import com.agentforge4j.util.Validate;
 
 import java.util.Map;
+import org.apache.commons.lang3.StringUtils;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -43,8 +44,9 @@ public final class RetryingLlmClientResolver implements LlmClientResolver {
    */
   @Override
   public LlmClient resolve(String provider) {
-    return cachedClients.computeIfAbsent(provider, key ->
-        new RetryingLlmClient(delegate.resolve(key), maxAttempts, backoffMs));
+    String key = StringUtils.lowerCase(StringUtils.trimToEmpty(provider));
+    return cachedClients.computeIfAbsent(key, k ->
+        new RetryingLlmClient(delegate.resolve(k), maxAttempts, backoffMs));
   }
 
   @Override
