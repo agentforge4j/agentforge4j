@@ -43,6 +43,8 @@ public final class BedrockLlmClient implements LlmClient {
         "Provider name must be provided");
     this.defaultModel = Validate.notBlank(config.getDefaultModel(),
         "%s default model must be provided".formatted(config.getProviderName()));
+    Validate.notBlank(config.getAnthropicVersion(),
+        "Bedrock anthropicVersion must be provided");
     BedrockAnthropicInvokeSerializer.validateAnthropicModelId(defaultModel);
     Integer maxTokens = config.getMaxTokens();
     Validate.isTrue(maxTokens == null || maxTokens > 0,

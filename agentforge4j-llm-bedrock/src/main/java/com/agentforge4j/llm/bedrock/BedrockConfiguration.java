@@ -43,11 +43,10 @@ public interface BedrockConfiguration extends LlmClientConfiguration {
   }
 
   /**
-   * Bedrock Converse / Messages API version string sent in the request body.
+   * Bedrock Converse / Messages API version string sent in the request body (must be supplied by
+   * application configuration).
    */
-  default String getAnthropicVersion() {
-    return "bedrock-2023-05-31";
-  }
+  String getAnthropicVersion();
 
   /**
    * Upper bound on a single {@code invokeModel} call, including retries inside the SDK.

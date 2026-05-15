@@ -31,8 +31,9 @@ Run `git status` to see the full picture — staged, unstaged, and untracked fil
 Run `git diff` for unstaged changes and `git diff --cached` for already staged changes.
 
 For each changed file, determine:
-- Which module it belongs to
-- Whether it is a production source, test source, configuration, or documentation file
+
+- Which module it belongs to (use the prefix-stripped name as the scope)
+- Whether it is a production source, test source, configuration, documentation, or build file
 - What kind of change it is: new type added, existing type modified, bug fix, refactor, configuration change, documentation update
 
 Do not stage or commit anything yet.
@@ -78,6 +79,7 @@ Follow the Conventional Commits format:
 ```
 
 **Type** — choose one:
+
 - `feat` — new functionality
 - `fix` — bug fix
 - `refactor` — restructuring with no behaviour change
@@ -85,8 +87,16 @@ Follow the Conventional Commits format:
 - `docs` — Javadoc, README, or other documentation only
 - `chore` — build, configuration, or tooling changes
 - `style` — formatting or naming only, no logic change
+- `build` — changes to Maven, JPMS module-info, or POM files
+- `ci` — changes to GitHub Actions or other CI config
 
-**Scope** — the module name without the `agentforge4j-` prefix. Examples: `core`, `util`, `config-loader`, `llm-openai`. If the change spans multiple modules, list them: `core, config-loader`.
+**Scope** — the module name without the `agentforge4j-` prefix. Valid scopes:
+
+- `util`, `core`, `llm`, `config-loader`, `schema`, `workflows`, `integrations`, `runtime`, `spring-boot-starter`
+- LLM providers: `llm-openai`, `llm-ollama`, `llm-claude`, `llm-vllm`, `llm-gemini`, `llm-mistral`, `llm-azure-openai`, `llm-openai-compatible`, `llm-bedrock`
+- Cross-cutting: `repo` for top-level files, `agents` for `.github/agents/*`, `ci` for CI workflows
+
+If the change spans multiple modules, list them comma-separated: `core, config-loader`.
 
 **Short summary** — imperative mood, lowercase, no period, 72 characters max. Describes what the commit does, not what you did. "add RetryPolicy factory methods" not "added" and not "adding".
 
@@ -113,6 +123,14 @@ test(util): add Validate.requireWithinBase path traversal tests
 
 ```
 docs(core): add Javadoc to WorkflowState and WorkflowEvent
+```
+
+```
+feat(llm-gemini): add response parsing for safety-block reasons
+```
+
+```
+build(repo): align all modules to Java 17 release target
 ```
 
 ---

@@ -72,7 +72,7 @@ final class FixedOpenAiCompatibleConfiguration implements OpenAiCompatibleConfig
 
   @Override
   public String getResponsesPath() {
-    return responsesPath != null ? responsesPath : OpenAiCompatibleConfiguration.super.getResponsesPath();
+    return responsesPath;
   }
 
   static final class Builder {
@@ -83,7 +83,7 @@ final class FixedOpenAiCompatibleConfiguration implements OpenAiCompatibleConfig
     private Duration requestTimeout = Duration.ofSeconds(30);
     private String authHeaderName = "Authorization";
     private String authHeaderPrefix = "Bearer ";
-    private String responsesPath;
+    private String responsesPath = "/v1/responses";
 
     Builder baseUrl(String baseUrl) {
       this.baseUrl = baseUrl;
@@ -120,9 +120,6 @@ final class FixedOpenAiCompatibleConfiguration implements OpenAiCompatibleConfig
       return this;
     }
 
-    /**
-     * When {@code null}, {@link OpenAiCompatibleConfiguration#getResponsesPath()} default applies.
-     */
     Builder responsesPath(String responsesPath) {
       this.responsesPath = responsesPath;
       return this;

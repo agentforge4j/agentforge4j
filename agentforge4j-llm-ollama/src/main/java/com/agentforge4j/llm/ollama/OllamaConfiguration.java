@@ -8,7 +8,6 @@ import java.time.Duration;
  * Configuration contract for Ollama LLM clients.
  * <p>
  * Implementations provide the Ollama REST API endpoint URL and request timeout duration.
- * If not overridden, defaults to the standard Ollama listening port on localhost.
  */
 public interface OllamaConfiguration extends LlmClientConfiguration {
 
@@ -18,13 +17,11 @@ public interface OllamaConfiguration extends LlmClientConfiguration {
   }
 
   /**
-   * Returns the Ollama REST API endpoint URL. Defaults to {@code http://localhost:11434/api/chat}.
+   * Returns the Ollama REST API endpoint URL (must be supplied by application configuration).
    *
-   * @return the API endpoint URL; never null or blank
+   * @return the API endpoint URL; never null or blank for a working client
    */
-  default String getUrl() {
-    return "http://localhost:11434/api/chat";
-  }
+  String getUrl();
 
   /**
    * Returns the timeout duration for requests to the Ollama API endpoint.
