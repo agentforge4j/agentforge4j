@@ -44,9 +44,6 @@ public final class StepSequenceExecutor {
     validate(executables, executionContext);
     ExecuteHelper executeHelper = createExecuteHelper(executionContext);
     for (Executable executable : executables) {
-      if (executionContext.getState().getStatus() == WorkflowStatus.CANCELLED) {
-        return ExecutionOutcome.PAUSED;
-      }
       addStepDefinition(executable, executeHelper);
     }
     executionContext.setCurrentSequenceStepIds(executeHelper.orderedStepIds());
@@ -55,6 +52,9 @@ public final class StepSequenceExecutor {
         executeHelper.orderedStepIds().size(), executeHelper.orderedStepIds());
 
     for (Executable executable : executables) {
+      if (executionContext.getState().getStatus() == WorkflowStatus.CANCELLED) {
+        return ExecutionOutcome.PAUSED;
+      }
       logStepDefinitionResumeCheck(executable, executeHelper);
       if (shouldSkip(executable, executeHelper.stepOutputs())) {
         logSkipping(executable);
@@ -78,7 +78,7 @@ public final class StepSequenceExecutor {
   private static void logStepDefinitionResumeCheck(Executable executable,
       ExecuteHelper executeHelper) {
     if (executable instanceof StepDefinition stepDef) {
-      LOG.log(System.Logger.Level.INFO,
+      LOG.log(System.Logger.Level.DEBUG,
           "Resume check stepId={0}, stepOutputs={1}, willSkip={2}",
           stepDef.stepId(),
           executeHelper.stepOutputs().keySet(),

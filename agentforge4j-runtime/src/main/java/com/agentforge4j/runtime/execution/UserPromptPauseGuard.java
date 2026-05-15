@@ -59,7 +59,7 @@ public final class UserPromptPauseGuard {
       StepDefinition step,
       WorkflowState state,
       List<LlmCommand> commands) {
-    if (!wouldApplyBlockingUserPrompt(commands)) {
+    if (!wouldApplyBlockingUserPrompt(commands, step.stepId())) {
       return;
     }
     int max = maxRoundsFor(step);
@@ -87,15 +87,53 @@ public final class UserPromptPauseGuard {
     }
   }
 
-  private static boolean wouldApplyBlockingUserPrompt(List<LlmCommand> commands) {
-    for (LlmCommand command : commands) {
+  /**
+   * Returns whether the batch would apply a blocking user prompt before any terminator.
+   *
+   * <p>Commands after {@link CompleteCommand}, {@link EscalateCommand}, or
+   * {@link GenerateQuestionsCommand} are unreachable. A blocking {@link UserPromptCommand} emitted
+   * <em>after</em> one of these is treated as an agent protocol violation and throws
+   * {@link IllegalStateException} so the run fails loudly rather than silently ignoring the
+   * request.
+   */
+  private static boolean wouldApplyBlockingUserPrompt(List<LlmCommand> commands, String stepId) {
+    for (int i = 0; i < commands.size(); i++) {
+      LlmCommand command = commands.get(i);
       if (command instanceof UserPromptCommand up && up.responseRequired()) {
         return true;
       } else if (stopsBeforeLaterCommands(command)) {
+        assertNoUnreachableBlockingPromptAfter(commands, i + 1, command, stepId);
         return false;
       }
     }
     return false;
+  }
+
+  private static void assertNoUnreachableBlockingPromptAfter(List<LlmCommand> commands,
+      int fromIndex,
+      LlmCommand terminator,
+      String stepId) {
+    for (int j = fromIndex; j < commands.size(); j++) {
+      LlmCommand later = commands.get(j);
+      if (later instanceof UserPromptCommand up && up.responseRequired()) {
+        throw new IllegalStateException(
+            "Agent protocol violation: blocking UserPromptCommand at index %d emitted after terminator %s; prompt is unreachable. stepId=%s"
+                .formatted(j, terminatorName(terminator), stepId));
+      }
+    }
+  }
+
+  private static String terminatorName(LlmCommand terminator) {
+    if (terminator instanceof CompleteCommand) {
+      return "COMPLETE";
+    }
+    if (terminator instanceof EscalateCommand) {
+      return "ESCALATE";
+    }
+    if (terminator instanceof GenerateQuestionsCommand) {
+      return "GENERATE_QUESTIONS";
+    }
+    throw new IllegalStateException("Unhandled terminator: " + terminator.getClass());
   }
 
   private static boolean stopsBeforeLaterCommands(LlmCommand command) {

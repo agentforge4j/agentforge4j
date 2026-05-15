@@ -170,6 +170,131 @@ class AgentInvokerTest {
   }
 
   @Test
+  void llm_output_under_cap_is_recorded_verbatim() {
+    ObjectMapper mapper = new ObjectMapper();
+    InMemoryWorkflowEventLog eventLog = new InMemoryWorkflowEventLog();
+    EventRecorder recorder = recorder(eventLog);
+    String raw = "[{\"type\":\"COMPLETE\"}]";
+    LlmClient client = mock(LlmClient.class);
+    when(client.getProviderName()).thenReturn("openai");
+    when(client.execute(any())).thenReturn(raw);
+
+    AgentInvoker invoker = invokerWithAudit(mapper, client, recorder);
+    WorkflowState state = workflowState("run-cap-short");
+    invoker.invoke("agent-x", ContextMapping.none(), state, null);
+
+    String payload = eventLog.getEvents("run-cap-short").stream()
+        .filter(e -> e.eventType() == WorkflowEventType.LLM_OUTPUT)
+        .findFirst()
+        .orElseThrow()
+        .payload();
+    assertThat(payload).isEqualTo(raw);
+  }
+
+  @Test
+  void llm_output_over_cap_is_truncated_with_marker() {
+    ObjectMapper mapper = new ObjectMapper();
+    InMemoryWorkflowEventLog eventLog = new InMemoryWorkflowEventLog();
+    EventRecorder recorder = recorder(eventLog);
+    String padding = "x".repeat(AgentInvoker.DEFAULT_LLM_OUTPUT_EVENT_CHAR_CAP + 100);
+    String raw = "[{\"type\":\"COMPLETE\",\"summary\":\"" + padding + "\"}]";
+    LlmClient client = mock(LlmClient.class);
+    when(client.getProviderName()).thenReturn("openai");
+    when(client.execute(any())).thenReturn(raw);
+
+    AgentInvoker invoker = invokerWithAudit(mapper, client, recorder);
+    WorkflowState state = workflowState("run-cap-long");
+    invoker.invoke("agent-x", ContextMapping.none(), state, null);
+
+    String payload = eventLog.getEvents("run-cap-long").stream()
+        .filter(e -> e.eventType() == WorkflowEventType.LLM_OUTPUT)
+        .findFirst()
+        .orElseThrow()
+        .payload();
+    assertThat(payload).hasSize(
+        AgentInvoker.DEFAULT_LLM_OUTPUT_EVENT_CHAR_CAP + "... [truncated, original length=".length()
+            + String.valueOf(raw.length()).length() + "]".length());
+    assertThat(payload).startsWith(raw.substring(0, AgentInvoker.DEFAULT_LLM_OUTPUT_EVENT_CHAR_CAP));
+    assertThat(payload).endsWith("... [truncated, original length=" + raw.length() + "]");
+  }
+
+  @Test
+  void cap_of_zero_disables_truncation() {
+    ObjectMapper mapper = new ObjectMapper();
+    InMemoryWorkflowEventLog eventLog = new InMemoryWorkflowEventLog();
+    EventRecorder recorder = recorder(eventLog);
+    String padding = "y".repeat(20_000);
+    String raw = "[{\"type\":\"COMPLETE\",\"summary\":\"" + padding + "\"}]";
+    LlmClient client = mock(LlmClient.class);
+    when(client.getProviderName()).thenReturn("openai");
+    when(client.execute(any())).thenReturn(raw);
+
+    AgentRepository repo = mock(AgentRepository.class);
+    when(repo.get("agent-x")).thenReturn(agentSupportingOnlyComplete());
+    LlmClientResolver resolver = mock(LlmClientResolver.class);
+    when(resolver.resolve("openai")).thenReturn(client);
+    when(resolver.isProviderAvailable("openai")).thenReturn(true);
+
+    AgentInvoker invoker = new AgentInvoker(
+        repo, resolver, new ContextRenderer(mapper), new LlmCommandParser(mapper), mapper, recorder, 0);
+    WorkflowState state = workflowState("run-cap-zero");
+    invoker.invoke("agent-x", ContextMapping.none(), state, null);
+
+    String payload = eventLog.getEvents("run-cap-zero").stream()
+        .filter(e -> e.eventType() == WorkflowEventType.LLM_OUTPUT)
+        .findFirst()
+        .orElseThrow()
+        .payload();
+    assertThat(payload).isEqualTo(raw);
+  }
+
+  @Test
+  void custom_cap_is_honoured() {
+    ObjectMapper mapper = new ObjectMapper();
+    InMemoryWorkflowEventLog eventLog = new InMemoryWorkflowEventLog();
+    EventRecorder recorder = recorder(eventLog);
+    String padding = "z".repeat(200);
+    String raw = "[{\"type\":\"COMPLETE\",\"summary\":\"" + padding + "\"}]";
+    LlmClient client = mock(LlmClient.class);
+    when(client.getProviderName()).thenReturn("openai");
+    when(client.execute(any())).thenReturn(raw);
+
+    AgentRepository repo = mock(AgentRepository.class);
+    when(repo.get("agent-x")).thenReturn(agentSupportingOnlyComplete());
+    LlmClientResolver resolver = mock(LlmClientResolver.class);
+    when(resolver.resolve("openai")).thenReturn(client);
+    when(resolver.isProviderAvailable("openai")).thenReturn(true);
+
+    AgentInvoker invoker = new AgentInvoker(
+        repo, resolver, new ContextRenderer(mapper), new LlmCommandParser(mapper), mapper, recorder, 100);
+    WorkflowState state = workflowState("run-cap-custom");
+    invoker.invoke("agent-x", ContextMapping.none(), state, null);
+
+    String payload = eventLog.getEvents("run-cap-custom").stream()
+        .filter(e -> e.eventType() == WorkflowEventType.LLM_OUTPUT)
+        .findFirst()
+        .orElseThrow()
+        .payload();
+    assertThat(payload).hasSize(100 + "... [truncated, original length=".length()
+        + String.valueOf(raw.length()).length() + "]".length());
+    assertThat(payload).startsWith(raw.substring(0, 100));
+    assertThat(payload).endsWith("... [truncated, original length=" + raw.length() + "]");
+  }
+
+  @Test
+  void constructor_rejects_negative_cap() {
+    assertThatThrownBy(() -> new AgentInvoker(
+        mock(AgentRepository.class),
+        mock(LlmClientResolver.class),
+        new ContextRenderer(new ObjectMapper()),
+        new LlmCommandParser(new ObjectMapper()),
+        new ObjectMapper(),
+        recorder(new InMemoryWorkflowEventLog()),
+        -1))
+        .isInstanceOf(IllegalArgumentException.class);
+  }
+
+  @Test
   void invokeByAgentId_resolvesDefinitionFromAgentRepository() {
     ObjectMapper mapper = new ObjectMapper();
     LlmClient client = mock(LlmClient.class);

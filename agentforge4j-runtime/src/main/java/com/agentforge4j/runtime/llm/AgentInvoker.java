@@ -30,12 +30,18 @@ public final class AgentInvoker {
   private static final System.Logger LOG = System.getLogger(AgentInvoker.class.getName());
   private static final int RETRY_ATTEMPTS = 2;
 
+  /**
+   * Default maximum characters recorded per {@link WorkflowEventType#LLM_OUTPUT} event.
+   */
+  public static final int DEFAULT_LLM_OUTPUT_EVENT_CHAR_CAP = 8000;
+
   private final AgentRepository agentRepository;
   private final LlmClientResolver llmClientResolver;
   private final ContextRenderer contextRenderer;
   private final LlmCommandParser llmCommandParser;
   private final ObjectMapper objectMapper;
   private final EventRecorder eventRecorder;
+  private final int llmOutputEventCharCap;
   private final CommandResponseSchemaRenderer schemaRenderer = new CommandResponseSchemaRenderer();
 
   public AgentInvoker(AgentRepository agentRepository,
@@ -44,6 +50,17 @@ public final class AgentInvoker {
       LlmCommandParser llmCommandParser,
       ObjectMapper objectMapper,
       EventRecorder eventRecorder) {
+    this(agentRepository, llmClientResolver, contextRenderer, llmCommandParser, objectMapper,
+        eventRecorder, DEFAULT_LLM_OUTPUT_EVENT_CHAR_CAP);
+  }
+
+  public AgentInvoker(AgentRepository agentRepository,
+      LlmClientResolver llmClientResolver,
+      ContextRenderer contextRenderer,
+      LlmCommandParser llmCommandParser,
+      ObjectMapper objectMapper,
+      EventRecorder eventRecorder,
+      int llmOutputEventCharCap) {
     this.agentRepository = Validate.notNull(agentRepository, "agentRepository must not be null");
     this.llmClientResolver = Validate.notNull(llmClientResolver,
         "llmClientResolver must not be null");
@@ -51,6 +68,8 @@ public final class AgentInvoker {
     this.llmCommandParser = Validate.notNull(llmCommandParser, "llmCommandParser must not be null");
     this.objectMapper = Validate.notNull(objectMapper, "objectMapper must not be null");
     this.eventRecorder = Validate.notNull(eventRecorder, "eventRecorder must not be null");
+    this.llmOutputEventCharCap = Validate.isNotNegative(llmOutputEventCharCap,
+        "llmOutputEventCharCap must be >= 0").intValue();
   }
 
   public AgentInvocationResult invoke(String agentId,
@@ -100,7 +119,8 @@ public final class AgentInvoker {
 
     LOG.log(System.Logger.Level.DEBUG, "Dispatching LLM call provider={0}, model={1}",
         preference.provider(), preference.model());
-    for (int attempt = 1; true; attempt++) {
+    LlmCommandParseException lastParseFailure = null;
+    for (int attempt = 1; attempt <= RETRY_ATTEMPTS; attempt++) {
       String effectiveUserInput = toCorrectedPrompt(originalUserInput, attempt, correctionBody);
 
       String response = executeLlmCall(agent, preference, client,
@@ -118,16 +138,18 @@ public final class AgentInvoker {
       try {
         return new ParsedInvocation(response, llmCommandParser.parse(response, schema));
       } catch (LlmCommandParseException e) {
-        correctionBody = handleFailedLlmResponseParse(e, attempt);
+        lastParseFailure = e;
+        if (attempt < RETRY_ATTEMPTS) {
+          correctionBody = handleFailedLlmResponseParse(e);
+        } else {
+          LOG.log(System.Logger.Level.ERROR, "LLM command output invalid: {0}", e.getMessage());
+        }
       }
     }
+    throw lastParseFailure;
   }
 
-  private static String handleFailedLlmResponseParse(LlmCommandParseException e, int attempt) {
-    if (attempt >= RETRY_ATTEMPTS) {
-      LOG.log(System.Logger.Level.ERROR, "LLM command output invalid: {0}", e.getMessage());
-      throw e;
-    }
+  private static String handleFailedLlmResponseParse(LlmCommandParseException e) {
     LOG.log(System.Logger.Level.DEBUG,
         "LLM command output failed validation; retrying: " + e.getMessage(), e);
     return "CORRECTION REQUIRED (your prior reply broke the command contract): %s".formatted(
@@ -159,13 +181,25 @@ public final class AgentInvoker {
     }
   }
 
+  /**
+   * Records raw LLM output to the event log, applying {@link #llmOutputEventCharCap} when set.
+   */
   private void recordLlmOutput(WorkflowState state, String actorId, String rawResponse) {
     eventRecorder.record(
         state.getRunId(),
         state.getCurrentStepId(),
         WorkflowEventType.LLM_OUTPUT,
-        rawResponse,
+        cappedLlmOutputPayload(rawResponse),
         actorId);
+  }
+
+  private String cappedLlmOutputPayload(String rawResponse) {
+    if (llmOutputEventCharCap == 0 || rawResponse.length() <= llmOutputEventCharCap) {
+      return rawResponse;
+    }
+    return rawResponse.substring(0, llmOutputEventCharCap)
+        + "... [event payload truncated for audit; original length=%d chars]".formatted(
+        rawResponse.length());
   }
 
   private record ParsedInvocation(String rawResponse, List<LlmCommand> commands) {

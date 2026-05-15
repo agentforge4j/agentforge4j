@@ -15,7 +15,15 @@ import com.agentforge4j.core.workflow.context.ContextMapping;
 import com.agentforge4j.core.workflow.state.WorkflowStatus;
 import com.agentforge4j.core.workflow.step.StepDefinition;
 import com.agentforge4j.core.workflow.step.StepTransition;
+import com.agentforge4j.core.workflow.artifact.ArtifactDefinition;
+import com.agentforge4j.core.workflow.artifact.TextArtifactItem;
 import com.agentforge4j.core.workflow.step.behaviour.AgentBehaviour;
+import com.agentforge4j.core.workflow.step.behaviour.InputBehaviour;
+import com.agentforge4j.core.workflow.step.behaviour.ResourceBehaviour;
+import com.agentforge4j.core.workflow.step.behaviour.WorkflowBehaviour;
+import com.agentforge4j.core.workflow.step.blueprint.BlueprintBehaviour;
+import com.agentforge4j.core.workflow.step.blueprint.BlueprintDefinition;
+import com.agentforge4j.core.workflow.step.blueprint.BlueprintRef;
 import com.agentforge4j.integrations.NoOpIntegrationRegistry;
 import com.agentforge4j.llm.LlmClient;
 import com.agentforge4j.llm.LlmClientResolver;
@@ -91,6 +99,131 @@ class WorkflowRuntimeDriveIT {
 
     String runId = runtime.start(workflow.id());
     assertThat(runtime.getState(runId).getStatus()).isEqualTo(WorkflowStatus.COMPLETED);
+  }
+
+  @Test
+  void nested_workflow_blueprint_shadows_root_same_id_blueprint() {
+    StepDefinition stepA = resourceStep("step-a", "/examples/sample.txt", "root.executed");
+    StepDefinition stepB = resourceStep("step-b", "/workflow-resources/info.txt", "nested.executed");
+    BlueprintDefinition rootBp = blueprint("bp1", List.of(stepA));
+    BlueprintDefinition nestedBp = blueprint("bp1", List.of(stepB));
+
+    WorkflowDefinition nested = workflow(
+        "wf-nested",
+        Map.of("bp1", nestedBp),
+        Map.of(),
+        List.of(new BlueprintRef("bp1")));
+
+    WorkflowDefinition root = workflow(
+        "wf-root",
+        Map.of("bp1", rootBp),
+        Map.of(),
+        List.of(nestedWorkflowStep("wf-nested")));
+
+    WorkflowRuntime runtime = runtime(Map.of(root.id(), root, nested.id(), nested));
+    String runId = runtime.start(root.id());
+
+    assertThat(runtime.getState(runId).getStatus()).isEqualTo(WorkflowStatus.COMPLETED);
+    assertThat(runtime.getState(runId).getContext()).containsKey("nested.executed");
+    assertThat(runtime.getState(runId).getContext()).doesNotContainKey("root.executed");
+  }
+
+  @Test
+  void nested_workflow_input_artifact_resolves_from_nested_map() {
+    ArtifactDefinition rootArtifact = new ArtifactDefinition(
+        "form1", List.of(new TextArtifactItem("rootField", "Root", true, null)));
+    ArtifactDefinition nestedArtifact = new ArtifactDefinition(
+        "form1", List.of(new TextArtifactItem("nestedField", "Nested", true, null)));
+
+    StepDefinition inputStep = new StepDefinition(
+        "input",
+        "input",
+        new InputBehaviour("form1", StepTransition.AUTO),
+        null,
+        null,
+        null);
+
+    WorkflowDefinition nested = workflow(
+        "wf-nested-artifact",
+        Map.of(),
+        Map.of("form1", nestedArtifact),
+        List.of(inputStep));
+
+    WorkflowDefinition root = workflow(
+        "wf-root-artifact",
+        Map.of(),
+        Map.of("form1", rootArtifact),
+        List.of(nestedWorkflowStep("wf-nested-artifact")));
+
+    WorkflowRuntime runtime = runtime(Map.of(root.id(), root, nested.id(), nested));
+    String runId = runtime.start(root.id());
+
+    assertThat(runtime.getState(runId).getStatus()).isEqualTo(WorkflowStatus.AWAITING_INPUT);
+    assertThat(runtime.getState(runId).getPendingArtifact()).isNotNull();
+    assertThat(runtime.getState(runId).getPendingArtifact().items().get(0).id()).isEqualTo("nestedField");
+  }
+
+  private static WorkflowRuntime runtime(Map<String, WorkflowDefinition> workflows) {
+    return new WorkflowRuntimeBuilder()
+        .workflowRepository(new InMemoryWorkflowRepository(workflows))
+        .agentRepository(new MapAgentRepository(Map.of()))
+        .workflowStateRepository(new InMemoryWorkflowStateRepository())
+        .workflowEventLog(new InMemoryWorkflowEventLog())
+        .llmClientResolver(new SingleClientResolver(new ConstantJsonLlmClient("[{\"type\":\"COMPLETE\"}]")))
+        .objectMapper(MAPPER)
+        .clock(Clock.fixed(Instant.parse("2026-05-01T12:00:00Z"), ZoneOffset.UTC))
+        .integrationRegistry(NoOpIntegrationRegistry.INSTANCE)
+        .fileSink(FileSink.NO_OP_FILE_SINK)
+        .shellCommandRunner(ShellCommandRunner.NO_OP_SHELL_COMMAND_RUNNER)
+        .build();
+  }
+
+  private static StepDefinition resourceStep(String stepId, String resourcePath, String contextKey) {
+    return new StepDefinition(
+        stepId,
+        stepId,
+        new ResourceBehaviour(resourcePath, contextKey, StepTransition.AUTO),
+        new ContextMapping(List.of(), List.of()),
+        null,
+        null);
+  }
+
+  private static StepDefinition nestedWorkflowStep(String workflowRef) {
+    return new StepDefinition(
+        "invoke-nested",
+        "invoke-nested",
+        new WorkflowBehaviour(workflowRef, StepTransition.AUTO),
+        null,
+        null,
+        null);
+  }
+
+  private static BlueprintDefinition blueprint(String id,
+      List<com.agentforge4j.core.workflow.Executable> steps) {
+    return new BlueprintDefinition(
+        id,
+        id,
+        new BlueprintBehaviour(null, StepTransition.AUTO),
+        steps);
+  }
+
+  private static WorkflowDefinition workflow(String id,
+      Map<String, BlueprintDefinition> blueprints,
+      Map<String, ArtifactDefinition> artifacts,
+      List<com.agentforge4j.core.workflow.Executable> steps) {
+    return new WorkflowDefinition(
+        id,
+        id,
+        null,
+        null,
+        null,
+        null,
+        null,
+        WorkflowSource.CUSTOM,
+        WorkflowLifecycle.ACTIVE,
+        artifacts,
+        blueprints,
+        steps);
   }
 
   private static final class MapAgentRepository implements AgentRepository {

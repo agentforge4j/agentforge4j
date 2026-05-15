@@ -12,9 +12,6 @@ import com.agentforge4j.core.workflow.repository.WorkflowStateRepository;
 import com.agentforge4j.core.workflow.state.RunFailure;
 import com.agentforge4j.core.workflow.state.WorkflowState;
 import com.agentforge4j.core.workflow.state.WorkflowStatus;
-import com.agentforge4j.core.workflow.step.StepDefinition;
-import com.agentforge4j.core.workflow.step.blueprint.BlueprintDefinition;
-import com.agentforge4j.core.workflow.step.blueprint.BlueprintRef;
 import com.agentforge4j.runtime.event.EventRecorder;
 import com.agentforge4j.runtime.execution.ExecutableExecutor;
 import com.agentforge4j.runtime.execution.ExecutionContext;
@@ -22,7 +19,6 @@ import com.agentforge4j.runtime.execution.ExecutionOutcome;
 import com.agentforge4j.runtime.execution.StepSequenceExecutor;
 import com.agentforge4j.util.Validate;
 import java.time.Clock;
-import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import org.apache.commons.lang3.StringUtils;
@@ -61,6 +57,8 @@ public final class DefaultWorkflowRuntime implements WorkflowRuntime {
   private final Clock clock;
   private final RunContextManager runContextManager;
   private final int maxNestingDepth;
+  private final StepTreeSearcher stepTreeSearcher;
+  private final FailureSanitiser failureSanitiser;
 
   DefaultWorkflowRuntime(WorkflowRepository workflowRepository,
       WorkflowStateRepository workflowStateRepository,
@@ -84,6 +82,8 @@ public final class DefaultWorkflowRuntime implements WorkflowRuntime {
         "runContextManager must not be null");
     this.maxNestingDepth = Validate.isGreaterThan(maxNestingDepth, 1,
         "maxNestingDepth must be at least 1").intValue();
+    this.stepTreeSearcher = new StepTreeSearcher();
+    this.failureSanitiser = new FailureSanitiser();
   }
 
   /**
@@ -110,11 +110,9 @@ public final class DefaultWorkflowRuntime implements WorkflowRuntime {
   /**
    * {@inheritDoc}
    *
-   * @throws com.agentforge4j.core.exception.ExecutionNotFoundException if no state exists for
-   *                                                                   {@code runId}
-   * @throws IllegalArgumentException                                  if the run is cancelled, not
-   *                                                                   {@link com.agentforge4j.core.workflow.state.WorkflowStatus#PAUSED},
-   *                                                                   or {@code runId} is blank
+   * @throws ExecutionNotFoundException if no state exists for {@code runId}
+   * @throws IllegalArgumentException   if the run is cancelled, not {@link WorkflowStatus#PAUSED},
+   *                                    or {@code runId} is blank
    */
   @Override
   public void continueRun(String runId) {
@@ -136,15 +134,11 @@ public final class DefaultWorkflowRuntime implements WorkflowRuntime {
   /**
    * {@inheritDoc}
    *
-   * @throws com.agentforge4j.core.exception.ExecutionNotFoundException if no state exists for
-   *                                                                   {@code runId}
-   * @throws IllegalArgumentException                                  if {@code stepId} is blank,
-   *                                                                   the run is cancelled, status
-   *                                                                   is not {@link com.agentforge4j.core.workflow.state.WorkflowStatus#FAILED}
-   *                                                                   or {@link com.agentforge4j.core.workflow.state.WorkflowStatus#PAUSED},
-   *                                                                   {@code stepId} is not present
-   *                                                                   in the workflow definition, or
-   *                                                                   {@code runId} is blank
+   * @throws ExecutionNotFoundException if no state exists for {@code runId}
+   * @throws IllegalArgumentException   if {@code stepId} is blank, the run is cancelled, status is
+   *                                    not {@link WorkflowStatus#FAILED} or
+   *                                    {@link WorkflowStatus#PAUSED}, {@code stepId} is not present
+   *                                    in the workflow definition, or {@code runId} is blank
    */
   @Override
   public void retry(String runId, String stepId) {
@@ -160,7 +154,7 @@ public final class DefaultWorkflowRuntime implements WorkflowRuntime {
         stepId, null)) {
       LOG.log(System.Logger.Level.INFO, "Retry requested runId={0}, stepId={1}", runId, stepId);
       WorkflowDefinition workflow = workflowRepository.get(state.getWorkflowId());
-      Executable target = findStep(workflow, stepId);
+      Executable target = stepTreeSearcher.findStep(workflow, stepId);
       eventRecorder.record(runId, stepId, WorkflowEventType.STEP_RETRIED, null, "runtime");
 
       state.setStatus(WorkflowStatus.RUNNING);
@@ -184,13 +178,10 @@ public final class DefaultWorkflowRuntime implements WorkflowRuntime {
   /**
    * {@inheritDoc}
    *
-   * @throws com.agentforge4j.core.exception.ExecutionNotFoundException if no state exists for
-   *                                                                   {@code runId}
-   * @throws IllegalArgumentException                                  if {@code stepId} is blank,
-   *                                                                   the run is cancelled, status
-   *                                                                   is not
-   *                                                                   {@link com.agentforge4j.core.workflow.state.WorkflowStatus#AWAITING_APPROVAL},
-   *                                                                   or {@code runId} is blank
+   * @throws ExecutionNotFoundException if no state exists for {@code runId}
+   * @throws IllegalArgumentException   if {@code stepId} is blank, the run is cancelled, status is
+   *                                    not {@link WorkflowStatus#AWAITING_APPROVAL}, or
+   *                                    {@code runId} is blank
    */
   @Override
   public void approve(String runId, String stepId, String approverNote) {
@@ -217,15 +208,11 @@ public final class DefaultWorkflowRuntime implements WorkflowRuntime {
   /**
    * {@inheritDoc}
    *
-   * @throws com.agentforge4j.core.exception.ExecutionNotFoundException if no state exists for
-   *                                                                   {@code runId}
-   * @throws IllegalArgumentException                                  if {@code answers} is
-   *                                                                   {@code null}, the run is
-   *                                                                   cancelled, status is not
-   *                                                                   {@link com.agentforge4j.core.workflow.state.WorkflowStatus#AWAITING_INPUT},
-   *                                                                   a pending artifact path is
-   *                                                                   inconsistent with state, or
-   *                                                                   {@code runId} is blank
+   * @throws ExecutionNotFoundException if no state exists for {@code runId}
+   * @throws IllegalArgumentException   if {@code answers} is {@code null}, the run is cancelled,
+   *                                    status is not {@link WorkflowStatus#AWAITING_INPUT}, a
+   *                                    pending artifact path is inconsistent with state, or
+   *                                    {@code runId} is blank
    */
   @Override
   public void submitInput(String runId, Map<String, String> answers) {
@@ -252,9 +239,8 @@ public final class DefaultWorkflowRuntime implements WorkflowRuntime {
   /**
    * {@inheritDoc}
    *
-   * @throws com.agentforge4j.core.exception.ExecutionNotFoundException if no state exists for
-   *                                                                   {@code runId}
-   * @throws IllegalArgumentException                                  if {@code runId} is blank
+   * @throws ExecutionNotFoundException if no state exists for {@code runId}
+   * @throws IllegalArgumentException   if {@code runId} is blank
    */
   @Override
   public WorkflowState getState(String runId) {
@@ -268,13 +254,9 @@ public final class DefaultWorkflowRuntime implements WorkflowRuntime {
   /**
    * {@inheritDoc}
    *
-   * @throws com.agentforge4j.core.exception.ExecutionNotFoundException if no state exists for
-   *                                                                   {@code runId}
-   * @throws IllegalArgumentException                                  if status is
-   *                                                                   {@link com.agentforge4j.core.workflow.state.WorkflowStatus#COMPLETED}
-   *                                                                   or
-   *                                                                   {@link com.agentforge4j.core.workflow.state.WorkflowStatus#FAILED},
-   *                                                                   or {@code runId} is blank
+   * @throws ExecutionNotFoundException if no state exists for {@code runId}
+   * @throws IllegalArgumentException   if status is {@link WorkflowStatus#COMPLETED} or
+   *                                    {@link WorkflowStatus#FAILED}, or {@code runId} is blank
    */
   @Override
   public void cancel(String runId) {
@@ -411,7 +393,7 @@ public final class DefaultWorkflowRuntime implements WorkflowRuntime {
     String supportId = UUID.randomUUID().toString();
     state.setStatus(WorkflowStatus.FAILED);
     state.setRunFailure(new RunFailure.ExceptionFailure(
-        sanitiseFailureReason(failedStepId, throwable),
+        failureSanitiser.sanitiseFailureReason(failedStepId, throwable),
         failedStepId,
         supportId));
     state.setLastUpdatedAt(clock.instant());
@@ -427,57 +409,15 @@ public final class DefaultWorkflowRuntime implements WorkflowRuntime {
         state.getRunId(),
         failedStepId,
         WorkflowEventType.RUN_FAILED,
-        "Run failed. supportId=%s, reason=%s".formatted(supportId, safeFailureReason(throwable)),
+        "Run failed. supportId=%s, reason=%s".formatted(supportId,
+            failureSanitiser.safeFailureReason(throwable)),
         "runtime");
-  }
-
-  private static String sanitiseFailureReason(String failedStepId, RuntimeException throwable) {
-    String message = throwable == null ? null : throwable.getMessage();
-    String base = StringUtils.isBlank(message) ? "Unexpected runtime error" : message.strip();
-    return StringUtils.isBlank(failedStepId) ? base
-        : "Step '%s' failed: %s".formatted(failedStepId, base);
-  }
-
-  /**
-   * Short failure text for workflow events — no stack trace or type names.
-   */
-  private static String safeFailureReason(Throwable throwable) {
-    if (throwable == null) {
-      return "Unexpected runtime error";
-    }
-    String message = throwable.getMessage();
-    if (StringUtils.isBlank(message)) {
-      return "Unexpected runtime error";
-    }
-    String stripped = message.strip();
-    return stripped.substring(0, Math.min(500, stripped.length()));
   }
 
   private static void ensureNotCancelled(WorkflowState state, String operation) {
     Validate.isTrue(state.getStatus() != WorkflowStatus.CANCELLED,
         "Cannot %s run '%s' because it is CANCELLED"
             .formatted(operation, state.getRunId()));
-  }
-
-  private static Executable findStep(WorkflowDefinition workflow, String stepId) {
-    return Validate.notNull(findInSteps(workflow.steps(), workflow, stepId),
-        "Step '%s' not found in workflow '%s'".formatted(stepId, workflow.id()));
-  }
-
-  private static Executable findInSteps(List<Executable> steps,
-      WorkflowDefinition enclosing,
-      String stepId) {
-    for (Executable executable : steps) {
-      if (executable instanceof StepDefinition step && step.stepId().equals(stepId)) {
-        return step;
-      } else if (executable instanceof BlueprintRef ref) {
-        BlueprintDefinition bp = enclosing.blueprints().get(ref.blueprintId());
-        return bp == null ? null : findInSteps(bp.steps(), enclosing, stepId);
-      } else if (executable instanceof WorkflowDefinition nested) {
-        return findInSteps(nested.steps(), nested, stepId);
-      }
-    }
-    return null;
   }
 
   private static void writeAnswersToContext(WorkflowState state,
