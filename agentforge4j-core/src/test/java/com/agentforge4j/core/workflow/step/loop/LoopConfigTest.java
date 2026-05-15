@@ -9,7 +9,7 @@ class LoopConfigTest {
 
   @Test
   void for_each_requires_context_key() {
-    assertThatThrownBy(() -> new LoopConfig(
+    assertThatThrownBy(() -> LoopConfig.withDefaults(
         LoopTerminationStrategy.FOR_EACH,
         null,
         null,
@@ -21,7 +21,7 @@ class LoopConfigTest {
 
   @Test
   void evaluator_requires_evaluator_agent_id() {
-    assertThatThrownBy(() -> new LoopConfig(
+    assertThatThrownBy(() -> LoopConfig.withDefaults(
         LoopTerminationStrategy.EVALUATOR,
         null,
         null,
@@ -33,7 +33,7 @@ class LoopConfigTest {
 
   @Test
   void max_iterations_must_be_positive() {
-    assertThatThrownBy(() -> new LoopConfig(
+    assertThatThrownBy(() -> LoopConfig.withDefaults(
         LoopTerminationStrategy.AGENT_SIGNAL,
         null,
         null,
@@ -45,13 +45,16 @@ class LoopConfigTest {
 
   @Test
   void max_iterations_action_defaults_to_await_user() {
-    LoopConfig cfg = new LoopConfig(LoopTerminationStrategy.AGENT_SIGNAL, null, null, 1, null);
+    LoopConfig cfg = LoopConfig.withDefaults(
+        LoopTerminationStrategy.AGENT_SIGNAL, null, null, 1, null);
     assertThat(cfg.maxIterationsAction()).isEqualTo(MaxIterationsAction.AWAIT_USER);
+    assertThat(cfg.allowForEachListMutation()).isFalse();
   }
 
   @Test
   void agent_signal_accepts_null_strategy_specific_fields() {
-    LoopConfig cfg = new LoopConfig(LoopTerminationStrategy.AGENT_SIGNAL, null, null, 2, MaxIterationsAction.FAIL);
+    LoopConfig cfg = LoopConfig.withDefaults(
+        LoopTerminationStrategy.AGENT_SIGNAL, null, null, 2, MaxIterationsAction.FAIL);
     assertThat(cfg.forEachContextKey()).isNull();
     assertThat(cfg.evaluatorAgentId()).isNull();
   }

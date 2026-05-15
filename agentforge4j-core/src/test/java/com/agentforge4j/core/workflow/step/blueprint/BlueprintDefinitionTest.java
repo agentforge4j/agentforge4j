@@ -20,7 +20,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 class BlueprintDefinitionTest {
 
   private static BlueprintBehaviour behaviour() {
-    LoopConfig loop = new LoopConfig(LoopTerminationStrategy.AGENT_SIGNAL, null, null, 1, null);
+    LoopConfig loop = LoopConfig.withDefaults(
+        LoopTerminationStrategy.AGENT_SIGNAL, null, null, 1, null);
     return new BlueprintBehaviour(loop, StepTransition.AUTO);
   }
 

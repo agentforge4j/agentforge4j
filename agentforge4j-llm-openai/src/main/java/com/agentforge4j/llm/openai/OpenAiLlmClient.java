@@ -4,6 +4,7 @@ import static com.agentforge4j.llm.openai.dto.InputRole.SYSTEM;
 import static com.agentforge4j.llm.openai.dto.InputRole.USER;
 
 import com.agentforge4j.llm.AbstractHttpLlmClient;
+import com.agentforge4j.llm.LlmClient;
 import com.agentforge4j.llm.LlmExecutionRequest;
 import com.agentforge4j.llm.LlmInvocationException;
 import com.agentforge4j.llm.openai.dto.InputItem;
@@ -65,7 +66,7 @@ public final class OpenAiLlmClient extends AbstractHttpLlmClient {
     Validate.notBlank(json, () -> new LlmInvocationException("LLM client json must not be blank"));
     OpenAiResponsesResponseDto dto = objectMapper.readValue(json, OpenAiResponsesResponseDto.class);
     validateApiError(dto, json);
-    return stripCodeFence(extractAssistantText(dto)
+    return LlmClient.stripCodeFence(extractAssistantText(dto)
         .orElseThrow(() -> new LlmInvocationException(
             "OpenAI response missing assistant output_text in message output item: %s".formatted(
                 json))).strip());

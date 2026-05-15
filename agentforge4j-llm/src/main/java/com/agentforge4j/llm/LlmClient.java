@@ -1,5 +1,7 @@
 package com.agentforge4j.llm;
 
+import org.apache.commons.lang3.Strings;
+
 /**
  * Executes LLM requests for a single registered provider (for example OpenAI, Ollama, or Claude).
  * <p>
@@ -25,4 +27,29 @@ public interface LlmClient {
    *                                or provider-specific errors
    */
   String execute(LlmExecutionRequest request);
+
+  /**
+   * Removes markdown code fence markers from the input if present.
+   * <p>
+   * Strips leading {@code ```} followed by an optional language identifier, and trailing
+   * {@code ```}. Returns the input unchanged if it does not start with backticks.
+   *
+   * @param input the potentially fence-marked string
+   * @return the input with fences removed, or the input unchanged
+   */
+  static String stripCodeFence(String input) {
+    if (!Strings.CS.startsWith(input, "```")) {
+      return input;
+    }
+    int firstNewline = input.indexOf('\n');
+    if (firstNewline < 0) {
+      return input;
+    }
+    String afterOpeningFence = input.substring(firstNewline + 1);
+    int closingFence = afterOpeningFence.lastIndexOf("```");
+    if (closingFence < 0) {
+      return afterOpeningFence;
+    }
+    return afterOpeningFence.substring(0, closingFence).strip();
+  }
 }

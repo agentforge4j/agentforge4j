@@ -5,6 +5,7 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.NullAndEmptySource;
 import org.junit.jupiter.params.provider.ValueSource;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class SparConfigTest {
@@ -16,6 +17,12 @@ class SparConfigTest {
     assertThatThrownBy(() -> new SparConfig(challenger, 1, "prompt"))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("challengerAgentId");
+  }
+
+  @Test
+  void accepts_max_rounds_of_one() {
+    SparConfig config = new SparConfig("c", 1, "prompt");
+    assertThat(config.maxRounds()).isEqualTo(1);
   }
 
   @Test

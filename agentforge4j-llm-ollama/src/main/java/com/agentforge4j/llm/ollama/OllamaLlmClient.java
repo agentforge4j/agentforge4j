@@ -4,6 +4,7 @@ import static com.agentforge4j.llm.ollama.dto.InputRole.SYSTEM;
 import static com.agentforge4j.llm.ollama.dto.InputRole.USER;
 
 import com.agentforge4j.llm.AbstractHttpLlmClient;
+import com.agentforge4j.llm.LlmClient;
 import com.agentforge4j.llm.LlmExecutionRequest;
 import com.agentforge4j.llm.LlmInvocationException;
 import com.agentforge4j.llm.ollama.dto.MessageDto;
@@ -60,7 +61,7 @@ public final class OllamaLlmClient extends AbstractHttpLlmClient {
     Validate.notBlank(json, () -> new LlmInvocationException("LLM client json must not be blank"));
     OllamaChatResponseDto dto = objectMapper.readValue(json, OllamaChatResponseDto.class);
     validateApiError(dto, json);
-    return stripCodeFence(retrieveResponse(dto, json).strip());
+    return LlmClient.stripCodeFence(retrieveResponse(dto, json).strip());
   }
 
   /**

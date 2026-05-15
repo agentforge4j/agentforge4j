@@ -10,8 +10,8 @@ import com.agentforge4j.util.Validate;
  * @param allowRetryFromPrevious whether retry may rewind to a prior step
  * @param allowAgentSwap         whether a different agent may be chosen on retry
  * @param allowPromptOverride    whether the step prompt may be changed on retry
- * @param maxAttempts            non-negative cap on attempts (interpretation of zero is
- *                               runtime-specific)
+ * @param maxAttempts            non-negative cap on attempts when any retry option is allowed
+ *                               (interpretation of zero is runtime-specific)
  */
 public record RetryPolicy(
     boolean allowRetry,
@@ -22,8 +22,9 @@ public record RetryPolicy(
 ) {
 
   public RetryPolicy {
-    if (allowRetry ||  allowRetryFromPrevious ||  allowAgentSwap ||  allowPromptOverride) {
-      Validate.isGreaterThanZero(maxAttempts, "RetryPolicy maxAttempts must not be negative");
+    if (allowRetry || allowRetryFromPrevious || allowAgentSwap || allowPromptOverride) {
+      Validate.isNotNegative(maxAttempts,
+          "RetryPolicy maxAttempts must not be negative if any retry option is allowed");
     }
   }
 

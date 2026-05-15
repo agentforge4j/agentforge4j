@@ -6,7 +6,14 @@ import java.util.List;
 import java.util.Optional;
 
 /**
- * Persistence for {@link WorkflowState} snapshots keyed by run id.
+ * Repository for internal runtime state.
+ *
+ * <p>Implementations may return live mutable WorkflowState instances.
+ * Callers must treat returned state as runtime-owned and must save changes through this repository
+ * after mutation.
+ *
+ * <p>Public API callers should use WorkflowRuntime#getState, which returns
+ * a defensive snapshot.
  */
 public interface WorkflowStateRepository {
 

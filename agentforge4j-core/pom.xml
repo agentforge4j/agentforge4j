@@ -26,11 +26,15 @@
   <dependencies>
     <dependency>
       <groupId>com.agentforge4j</groupId>
-      <artifactId>agentforge4j-llm</artifactId>
+      <artifactId>agentforge4j-util</artifactId>
     </dependency>
     <dependency>
-      <groupId>com.agentforge4j</groupId>
-      <artifactId>agentforge4j-util</artifactId>
+      <groupId>org.apache.commons</groupId>
+      <artifactId>commons-lang3</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>com.fasterxml.jackson.core</groupId>
+      <artifactId>jackson-databind</artifactId>
     </dependency>
 
     <dependency>

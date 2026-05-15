@@ -91,7 +91,7 @@ class WorkflowAgentRefCollectorTest {
         null,
         null,
         null);
-    LoopConfig loop = new LoopConfig(
+    LoopConfig loop = LoopConfig.withDefaults(
         LoopTerminationStrategy.AGENT_SIGNAL,
         null,
         null,
@@ -196,7 +196,8 @@ class WorkflowAgentRefCollectorTest {
         null,
         null,
         null);
-    LoopConfig loop = new LoopConfig(LoopTerminationStrategy.AGENT_SIGNAL, null, null, 1, null);
+    LoopConfig loop = LoopConfig.withDefaults(
+        LoopTerminationStrategy.AGENT_SIGNAL, null, null, 1, null);
     BlueprintDefinition bp = new BlueprintDefinition(
         "bid",
         "BN",

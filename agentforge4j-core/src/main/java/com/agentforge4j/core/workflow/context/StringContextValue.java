@@ -6,7 +6,9 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 /**
  * String-typed context value.
  */
-public record StringContextValue(@JsonProperty(required = true) String value) implements ContextValue {
+public record StringContextValue(@JsonProperty(required = true) String value) implements
+    ContextValue {
+
   public StringContextValue {
     Validate.notBlank(value, "StringContextValue value must not be blank");
   }

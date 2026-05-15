@@ -257,4 +257,36 @@ class WorkflowStateTest {
 
     assertThat(state.getLastUpdatedAt()).isEqualTo(initial);
   }
+
+  @Test
+  void snapshot_copies_maps_and_scalars_without_aliasing_to_original() {
+    WorkflowState original = new WorkflowState("run-1", "wf-1", null, t());
+    original.setStatus(WorkflowStatus.PAUSED);
+    original.setCurrentStepId("s1");
+    original.setLastUpdatedAt(Instant.parse("2026-03-01T01:00:00Z"));
+    original.putContextValue("k", new StringContextValue("v"));
+    original.putStepOutput("s1", "out");
+    original.putStepExecutionUid("s1", 7);
+    original.putContextKeyWrittenAtUid("k", 7);
+    original.incrementUserPromptPauseCountForStep("s1");
+    original.setLoopIterationCursor("bp-a", 2);
+    original.setForEachListFingerprint("bp-a", "abc123");
+
+    WorkflowState copy = original.snapshot();
+    assertThat(copy).isNotSameAs(original);
+    assertThat(copy.getUserPromptPauseCountForStep("s1")).isEqualTo(1);
+    assertThat(copy.getLoopIterationCursor("bp-a")).isEqualTo(2);
+    assertThat(copy.getForEachListFingerprint("bp-a")).contains("abc123");
+
+    copy.setStatus(WorkflowStatus.COMPLETED);
+    copy.putContextValue("extra", new StringContextValue("x"));
+    copy.putStepOutput("s2", "more");
+
+    assertThat(original.getStatus()).isEqualTo(WorkflowStatus.PAUSED);
+    assertThat(original.getContext()).doesNotContainKey("extra");
+    assertThat(original.getStepOutputs()).doesNotContainKey("s2");
+
+    assertThatThrownBy(() -> copy.getContext().put("z", new StringContextValue("nope")))
+        .isInstanceOf(UnsupportedOperationException.class);
+  }
 }

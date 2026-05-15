@@ -1,6 +1,7 @@
 package com.agentforge4j.llm.azureopenai;
 
 import com.agentforge4j.llm.AbstractHttpLlmClient;
+import com.agentforge4j.llm.LlmClient;
 import com.agentforge4j.llm.LlmExecutionRequest;
 import com.agentforge4j.llm.LlmInvocationException;
 import com.agentforge4j.llm.azureopenai.dto.AzureChatCompletionChoice;
@@ -102,7 +103,7 @@ public final class AzureOpenAiLlmClient extends AbstractHttpLlmClient {
         LlmInvocationException(
         "azure-openai response first choice content is blank for deployment %s: %s".formatted(
             deploymentName, json)));
-    return stripCodeFence(content.strip());
+    return LlmClient.stripCodeFence(content.strip());
   }
 
   private AzureChatCompletionChoice retrieveFirstChoice(String json,

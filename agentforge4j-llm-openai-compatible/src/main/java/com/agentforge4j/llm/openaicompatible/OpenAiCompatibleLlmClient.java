@@ -1,6 +1,7 @@
 package com.agentforge4j.llm.openaicompatible;
 
 import com.agentforge4j.llm.AbstractHttpLlmClient;
+import com.agentforge4j.llm.LlmClient;
 import com.agentforge4j.llm.LlmExecutionRequest;
 import com.agentforge4j.llm.LlmInvocationException;
 import com.agentforge4j.llm.openaicompatible.dto.InputRole;
@@ -97,7 +98,7 @@ public final class OpenAiCompatibleLlmClient extends AbstractHttpLlmClient {
     OpenAiCompatibleResponsesResponse dto =
         objectMapper.readValue(json, OpenAiCompatibleResponsesResponse.class);
     validateApiError(dto, json);
-    return stripCodeFence(extractAssistantText(dto)
+    return LlmClient.stripCodeFence(extractAssistantText(dto)
         .orElseThrow(
             () -> {
               String truncated = json.substring(0, Math.min(500, json.length()));

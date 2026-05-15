@@ -71,7 +71,8 @@ public interface WorkflowRuntime {
 
   /**
    * @param runId id of the run
-   * @return the current state
+   * @return a defensive snapshot of the current state — mutating the returned object does not
+   *         alter persisted runtime state
    */
   WorkflowState getState(String runId);
 }

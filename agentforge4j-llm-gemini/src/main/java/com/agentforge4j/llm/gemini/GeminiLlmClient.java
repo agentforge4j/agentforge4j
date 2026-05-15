@@ -1,6 +1,7 @@
 package com.agentforge4j.llm.gemini;
 
 import com.agentforge4j.llm.AbstractHttpLlmClient;
+import com.agentforge4j.llm.LlmClient;
 import com.agentforge4j.llm.LlmExecutionRequest;
 import com.agentforge4j.llm.LlmInvocationException;
 import com.agentforge4j.llm.gemini.dto.GeminiCandidate;
@@ -117,7 +118,7 @@ public final class GeminiLlmClient extends AbstractHttpLlmClient {
     String joined = String.join("\n", textSegments);
     String text = Validate.notBlank(joined,
         () -> new LlmInvocationException("Gemini response text is blank: %s".formatted(json)));
-    return stripCodeFence(text.strip());
+    return LlmClient.stripCodeFence(text.strip());
   }
 
   /**

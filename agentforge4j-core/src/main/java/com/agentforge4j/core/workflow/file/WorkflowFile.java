@@ -35,7 +35,7 @@ public record WorkflowFile(
     Validate.notBlank(fileName, "fileName must not be blank for fileId: %s".formatted(fileName));
     Validate.notBlank(filePath, "filePath must not be blank  for fileId: %s".formatted(filePath));
     Validate.notNull(createdAt, "createdAt must not be null  for fileId: %s".formatted(createdAt));
-    Validate.isGreaterThanZero(sizeBytes,
+    Validate.isNotNegative(sizeBytes,
         "sizeBytes must not be negative for fileId: %s".formatted(sizeBytes));
   }
 }

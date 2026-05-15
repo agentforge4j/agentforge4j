@@ -1,7 +1,6 @@
 package com.agentforge4j.util;
 
-import org.apache.commons.lang3.StringUtils;
-
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Collection;
@@ -36,7 +35,7 @@ public final class Validate {
    */
   public static String notBlank(String value, Supplier<RuntimeException> exceptionSupplier) {
     notNull(exceptionSupplier, "Exception supplier must not be null");
-    if (StringUtils.isBlank(value)) {
+    if (isBlank(value)) {
       throw exceptionSupplier.get();
     }
     return value;
@@ -126,11 +125,11 @@ public final class Validate {
   /**
    * Validates that the resolved path stays within the base directory.
    *
-   * @param base         the base directory path
+   * @param base         the absolute base directory path
    * @param relativePath the relative path to resolve
    * @param message      the exception message if validation fails
    * @return the resolved and validated absolute path
-   * @throws IllegalArgumentException if the resolved path is outside the base
+   * @throws IllegalArgumentException if the base is not absolute, or the resolved path is outside the base
    */
   public static Path requireWithinBase(Path base, String relativePath, String message) {
     return requireWithinBase(base, relativePath, () -> new IllegalArgumentException(message));
@@ -139,7 +138,7 @@ public final class Validate {
   /**
    * Validates that the resolved path stays within the base directory.
    *
-   * @param base              the base directory path
+   * @param base              the absolute base directory path
    * @param relativePath      the relative path to resolve
    * @param exceptionSupplier supplies the exception to throw if validation fails
    * @return the resolved and validated absolute path
@@ -148,11 +147,31 @@ public final class Validate {
       Supplier<RuntimeException> exceptionSupplier) {
     notNull(exceptionSupplier, "Exception supplier must not be null");
     notNull(base, "Base path must not be null");
+    isTrue(base.isAbsolute(), "Base path must be absolute");
     notBlank(relativePath, "Relative path must not be blank");
-    Path normalizedBase = base.toAbsolutePath().normalize();
-    Path resolvedPath = normalizedBase.resolve(relativePath).normalize();
-    if (!resolvedPath.startsWith(normalizedBase)) {
+    final Path realBase;
+    try {
+      realBase = base.normalize().toRealPath();
+    } catch (IOException e) {
+      throw new IllegalArgumentException("Base path could not be resolved: " + base, e);
+    }
+    Path resolvedPath = realBase.resolve(relativePath).normalize();
+    if (!resolvedPath.startsWith(realBase)) {
       throw exceptionSupplier.get();
+    }
+    try {
+      ensureNoSymlinkEscape(realBase, resolvedPath, exceptionSupplier);
+    } catch (IOException e) {
+      throw new IllegalArgumentException(
+          "Resolved path could not be verified: " + relativePath, e);
+    }
+    if (Files.exists(resolvedPath)) {
+      try {
+        return resolvedPath.toRealPath();
+      } catch (IOException e) {
+        throw new IllegalArgumentException(
+            "Resolved path could not be resolved: " + relativePath, e);
+      }
     }
     return resolvedPath;
   }
@@ -243,6 +262,29 @@ public final class Validate {
   }
 
   /**
+   * Validates that the given value is not negative.
+   *
+   * @param value   the value to validate
+   * @param message the exception message if validation fails
+   * @return the validated value
+   * @throws IllegalArgumentException if the value is negative
+   */
+  public static Number isNotNegative(Number value, String message) {
+    return isNotNegative(value, () -> new IllegalArgumentException(message));
+  }
+
+  /**
+   * Validates that the given value is not negative.
+   *
+   * @param value             the value to validate
+   * @param exceptionSupplier supplies the exception to throw if validation fails
+   * @return the validated value
+   */
+  public static Number isNotNegative(Number value, Supplier<RuntimeException> exceptionSupplier) {
+    return isGreaterThan(value, -1, exceptionSupplier);
+  }
+
+  /**
    * Validates that the given value is greater than the specified lower bound.
    *
    * @param value   the value to validate
@@ -270,5 +312,27 @@ public final class Validate {
     notNull(lower, exceptionSupplier);
     isTrue(value.doubleValue() > lower.doubleValue(), exceptionSupplier);
     return value;
+  }
+
+  private static boolean isBlank(String value) {
+    if (value == null || value.isEmpty()) {
+      return true;
+    }
+    return value.codePoints().allMatch(
+        cp -> Character.isWhitespace(cp) || Character.isSpaceChar(cp));
+  }
+
+  private static void ensureNoSymlinkEscape(Path realBase, Path resolvedPath,
+      Supplier<RuntimeException> exceptionSupplier) throws IOException {
+    Path current = realBase;
+    for (int i = realBase.getNameCount(); i < resolvedPath.getNameCount(); i++) {
+      current = current.resolve(resolvedPath.getName(i));
+      if (Files.exists(current) || Files.isSymbolicLink(current)) {
+        current = current.toRealPath();
+        if (!current.startsWith(realBase)) {
+          throw exceptionSupplier.get();
+        }
+      }
+    }
   }
 }

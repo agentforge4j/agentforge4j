@@ -86,7 +86,9 @@ public final class WorkflowAgentRefCollector {
       out.add(new AgentRefSite(sb.sparConfig().challengerAgentId(), workflowId, step.stepId()));
     } else if (behaviour instanceof BranchBehaviour bb) {
       bb.branches().values().forEach(branch -> walkExecutable(branch, scope, out));
-      walkExecutable(bb.defaultBranch(), scope, out);
+      if (bb.defaultBranch() != null) {
+        walkExecutable(bb.defaultBranch(), scope, out);
+      }
     }
   }
 }

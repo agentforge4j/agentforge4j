@@ -138,7 +138,7 @@
         "type": { "type": "string", "const": "RESOURCE" },
         "resourcePath": {
           "type": "string",
-          "description": "Classpath resource path starting with /schema/"
+          "description": "Resource path resolved by the runtime resource resolver under allowed roots."
         },
         "contextKey": {
           "type": "string",
@@ -159,7 +159,7 @@
         },
         "defaultBranch": { "$ref": "#/$defs/Executable" }
       },
-      "required": ["type", "contextKey", "branches", "defaultBranch"]
+      "required": ["type", "contextKey", "branches"]
     },
     "FailBehaviour": {
       "type": "object",

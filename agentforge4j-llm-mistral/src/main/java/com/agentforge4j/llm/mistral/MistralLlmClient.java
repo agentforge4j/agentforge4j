@@ -1,6 +1,7 @@
 package com.agentforge4j.llm.mistral;
 
 import com.agentforge4j.llm.AbstractHttpLlmClient;
+import com.agentforge4j.llm.LlmClient;
 import com.agentforge4j.llm.LlmExecutionRequest;
 import com.agentforge4j.llm.LlmInvocationException;
 import com.agentforge4j.llm.mistral.dto.InputRole;
@@ -82,7 +83,7 @@ public final class MistralLlmClient extends AbstractHttpLlmClient {
     String content = message == null ? null : message.content();
     Validate.notBlank(content, () -> new LlmInvocationException(
         "mistral response first choice content is blank: %s".formatted(json)));
-    return stripCodeFence(content.strip());
+    return LlmClient.stripCodeFence(content.strip());
   }
 
   private MistralChoice validateApiError(String json, MistralChatResponse dto) {

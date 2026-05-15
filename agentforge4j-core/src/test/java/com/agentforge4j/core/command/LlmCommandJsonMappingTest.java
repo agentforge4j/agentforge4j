@@ -69,7 +69,25 @@ class LlmCommandJsonMappingTest {
   @Test
   void deserialize_continue() throws Exception {
     LlmCommand cmd = mapper.readValue("{\"type\":\"CONTINUE\"}", LlmCommand.class);
-    assertThat(cmd).isInstanceOf(ContinueCommand.class);
+    assertThat(cmd).isInstanceOfSatisfying(ContinueCommand.class, c -> {
+      assertThat(c.wantsAnotherRound()).isNull();
+      assertThat(c.reason()).isNull();
+      assertThat(c.unresolvedConcerns()).isNull();
+    });
+  }
+
+  @Test
+  void deserialize_continue_with_spar_continuation_fields() throws Exception {
+    String json = """
+        {"type":"CONTINUE","wantsAnotherRound":true,"reason":"Evidence is missing for the latency claim.",
+        "unresolvedConcerns":["SLO vs measured p99","Retry policy unclear"]}
+        """;
+    LlmCommand cmd = mapper.readValue(json, LlmCommand.class);
+    assertThat(cmd).isInstanceOfSatisfying(ContinueCommand.class, c -> {
+      assertThat(c.wantsAnotherRound()).isTrue();
+      assertThat(c.reason()).contains("latency");
+      assertThat(c.unresolvedConcerns()).containsExactly("SLO vs measured p99", "Retry policy unclear");
+    });
   }
 
   @Test

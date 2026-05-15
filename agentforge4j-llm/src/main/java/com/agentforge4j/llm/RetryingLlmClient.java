@@ -13,10 +13,12 @@ import java.util.regex.Pattern;
 /**
  * Wraps an LLM client with retry logic for transient failures.
  * <p>
- * Retries on network errors, timeouts, and specific HTTP status codes (429, 5xx). Uses exponential
- * backoff with a fixed delay multiplier.
+ * Retries on network errors, timeouts, and specific HTTP status codes (429, 5xx). Uses linear
+ * backoff with a fixed delay multiplier ({@code attempt * backoffMs} between attempts).
  */
 public final class RetryingLlmClient implements LlmClient {
+
+  private static final System.Logger LOG = System.getLogger(RetryingLlmClient.class.getName());
 
   private static final Pattern HTTP_STATUS_PATTERN = Pattern.compile(
       "\\bHTTP error:\\s*(\\d{3})\\b");
@@ -49,7 +51,8 @@ public final class RetryingLlmClient implements LlmClient {
   /**
    * Executes an LLM request with retry logic.
    * <p>
-   * Retries on transient failures up to {@code maxAttempts} times with exponential backoff.
+   * Retries on transient failures up to {@code maxAttempts} times with linear backoff
+   * ({@code attempt * backoffMs} milliseconds before the next attempt).
    *
    * @param request the LLM execution request
    * @return the response from the LLM provider
@@ -63,11 +66,27 @@ public final class RetryingLlmClient implements LlmClient {
         return delegate.execute(request);
       } catch (RuntimeException ex) {
         lastFailure = ex;
-        boolean shouldRetry = attempt < maxAttempts && isTransient(ex);
-        if (!shouldRetry) {
+        String provider = delegate.getProviderName();
+        boolean transientFailure = isTransient(ex);
+        boolean exhausted = attempt >= maxAttempts;
+        boolean shouldRetry = !exhausted && transientFailure;
+        if (shouldRetry) {
+          long sleepMs = attempt * backoffMs;
+          LOG.log(System.Logger.Level.WARNING,
+              "LLM call failed (attempt {0}/{1}) for provider={2}: {3}. Retrying in {4}ms.",
+              attempt, maxAttempts, provider, String.valueOf(ex), sleepMs);
+          sleep(sleepMs);
+        } else if (transientFailure && exhausted) {
+          LOG.log(System.Logger.Level.ERROR,
+              "LLM call failed after {0} attempts for provider={1}: {2}",
+              maxAttempts, provider, String.valueOf(ex), ex);
+          throw ex;
+        } else {
+          LOG.log(System.Logger.Level.DEBUG,
+              "LLM call failed with non-transient error for provider={0}: {1}",
+              provider, String.valueOf(ex));
           throw ex;
         }
-        sleep(attempt * backoffMs);
       }
     }
     throw Validate.notNull(lastFailure, "lastFailure must not be null");
@@ -87,11 +106,23 @@ public final class RetryingLlmClient implements LlmClient {
     if (!(exception instanceof LlmInvocationException invocationException)) {
       return false;
     }
-    Matcher matcher = HTTP_STATUS_PATTERN.matcher(invocationException.getMessage());
-    if (!matcher.find()) {
+    String msg = invocationException.getMessage();
+    if (msg == null) {
       return false;
     }
-    return RETRYABLE_HTTP_STATUS.contains(Integer.parseInt(matcher.group(1)));
+    return isRetryableHttpStatus(msg);
+  }
+
+  private static boolean isRetryableHttpStatus(String message) {
+    try {
+      Matcher matcher = HTTP_STATUS_PATTERN.matcher(message);
+      if (!matcher.find()) {
+        return false;
+      }
+      return RETRYABLE_HTTP_STATUS.contains(Integer.parseInt(matcher.group(1)));
+    } catch (RuntimeException ignored) {
+      return false;
+    }
   }
 
   private static void sleep(long durationMs) {

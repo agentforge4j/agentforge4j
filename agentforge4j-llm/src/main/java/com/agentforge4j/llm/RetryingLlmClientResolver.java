@@ -46,4 +46,9 @@ public final class RetryingLlmClientResolver implements LlmClientResolver {
     return cachedClients.computeIfAbsent(provider, key ->
         new RetryingLlmClient(delegate.resolve(key), maxAttempts, backoffMs));
   }
+
+  @Override
+  public boolean isProviderAvailable(String provider) {
+    return delegate.isProviderAvailable(provider);
+  }
 }

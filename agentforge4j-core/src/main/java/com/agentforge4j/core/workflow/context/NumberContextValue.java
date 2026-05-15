@@ -6,7 +6,9 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 /**
  * Numeric-typed context value.
  */
-public record NumberContextValue(@JsonProperty(required = true) Number value) implements ContextValue {
+public record NumberContextValue(@JsonProperty(required = true) Number value) implements
+    ContextValue {
+
   public NumberContextValue {
     Validate.notNull(value, "NumberContextValue value must not be null");
   }

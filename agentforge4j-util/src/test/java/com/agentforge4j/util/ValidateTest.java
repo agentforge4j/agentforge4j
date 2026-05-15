@@ -1,14 +1,18 @@
 package com.agentforge4j.util;
 
+import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.function.Supplier;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -89,6 +93,19 @@ class ValidateTest {
       assertThatThrownBy(() -> Validate.notBlank("\t\n", "message"))
           .isInstanceOf(IllegalArgumentException.class)
           .hasMessage("message");
+    }
+
+    @Test
+    void shouldThrowWhenNonBreakingSpaceOnly() {
+      assertThatThrownBy(() -> Validate.notBlank("\u00a0", "message"))
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessage("message");
+    }
+
+    @Test
+    void shouldReturnSameInstanceWithSupplierOverload() {
+      String value = "ok";
+      assertThat(Validate.notBlank(value, () -> new RuntimeException("unused"))).isSameAs(value);
     }
 
     @Test
@@ -220,6 +237,12 @@ class ValidateTest {
     }
 
     @Test
+    void shouldReturnNonListCollectionWhenNotEmpty() {
+      Set<String> set = new LinkedHashSet<>(List.of("only"));
+      assertThat(Validate.notEmpty(set, "message")).isSameAs(set);
+    }
+
+    @Test
     void shouldThrowWhenExceptionSupplierNull() {
       assertThatThrownBy(() -> Validate.notEmpty(List.of("item"), (Supplier<RuntimeException>) null))
           .isInstanceOf(IllegalArgumentException.class)
@@ -262,6 +285,13 @@ class ValidateTest {
     }
 
     @Test
+    void shouldThrowWhenNestedPathTraversalEscapesBase() {
+      assertThatThrownBy(() -> Validate.requireWithinBase(baseDir, "sub/../../outside", "nested escape"))
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessage("nested escape");
+    }
+
+    @Test
     void shouldThrowWhenPathTraversalWithSupplier() {
       assertThatThrownBy(() -> Validate.requireWithinBase(baseDir, "../outside",
           () -> new RuntimeException("custom")))
@@ -274,6 +304,28 @@ class ValidateTest {
       assertThatThrownBy(() -> Validate.requireWithinBase(null, "file.txt", "message"))
           .isInstanceOf(IllegalArgumentException.class)
           .hasMessage("Base path must not be null");
+    }
+
+    @Test
+    void shouldThrowWhenBaseNotAbsolute() {
+      assertThatThrownBy(() -> Validate.requireWithinBase(Path.of("relative-base"), "file.txt", "message"))
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessage("Base path must be absolute");
+    }
+
+    @Test
+    void shouldThrowWhenSymlinkPointsOutsideBase() throws Exception {
+      Path outside = tempDir.resolve("outside-symlink-target");
+      Files.createDirectory(outside);
+      Path link = baseDir.resolve("escape-link");
+      try {
+        Files.createSymbolicLink(link, outside);
+      } catch (IOException | UnsupportedOperationException e) {
+        Assumptions.abort("Symlinks not supported in this environment: " + e.getMessage());
+      }
+      assertThatThrownBy(() -> Validate.requireWithinBase(baseDir, "escape-link", "symlink escape"))
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessage("symlink escape");
     }
 
     @Test
@@ -469,6 +521,81 @@ class ValidateTest {
       assertThatThrownBy(() -> Validate.isBetween(1, 10, null, "message"))
           .isInstanceOf(IllegalArgumentException.class)
           .hasMessage("message");
+    }
+
+    @Test
+    void shouldThrowWhenValueIsNaN() {
+      assertThatThrownBy(() -> Validate.isBetween(1, 10, Double.NaN, "not a number"))
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessage("not a number");
+    }
+
+    @Test
+    void shouldWorkWithLongBounds() {
+      Validate.isBetween(1L, 10L, 7L, "message");
+    }
+  }
+
+  @Nested
+  class IsNotNegativeTests {
+
+    @Test
+    void shouldReturnValueWhenZero() {
+      Number result = Validate.isNotNegative(0, "message");
+      assertThat(result).isEqualTo(0);
+    }
+
+    @Test
+    void shouldReturnValueWhenPositive() {
+      Number result = Validate.isNotNegative(42, "message");
+      assertThat(result).isEqualTo(42);
+    }
+
+    @Test
+    void shouldReturnValueWithSupplierOverload() {
+      assertThat(Validate.isNotNegative(0.5, () -> new RuntimeException("custom"))).isEqualTo(0.5);
+    }
+
+    @Test
+    void shouldThrowWhenNegativeOneWithStringMessage() {
+      assertThatThrownBy(() -> Validate.isNotNegative(-1, "message"))
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessage("message");
+    }
+
+    @Test
+    void shouldThrowWhenNegativeWithStringMessage() {
+      assertThatThrownBy(() -> Validate.isNotNegative(-2, "message"))
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessage("message");
+    }
+
+    @Test
+    void shouldThrowWhenNegativeWithSupplier() {
+      assertThatThrownBy(() -> Validate.isNotNegative(-2, () -> new RuntimeException("custom")))
+          .isInstanceOf(RuntimeException.class)
+          .hasMessage("custom");
+    }
+
+    @Test
+    void shouldThrowWhenValueNullWithStringMessage() {
+      assertThatThrownBy(() -> Validate.isNotNegative(null, "message"))
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessage("message");
+    }
+
+    @Test
+    void shouldThrowWhenValueNullWithSupplier() {
+      assertThatThrownBy(() -> Validate.isNotNegative(null, () -> new RuntimeException("custom")))
+          .isInstanceOf(RuntimeException.class)
+          .hasMessage("custom");
+    }
+
+    @Test
+    void shouldThrowWhenExceptionSupplierNull() {
+      assertThatThrownBy(() -> Validate.isNotNegative(0, (Supplier<RuntimeException>) null))
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessage("Exception supplier must not be null");
     }
   }
 
