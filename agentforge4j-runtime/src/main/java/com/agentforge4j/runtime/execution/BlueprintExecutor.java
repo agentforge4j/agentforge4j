@@ -17,8 +17,8 @@ import java.util.Map;
  * {@link BlueprintDefinition} — either as a sequential body, or under the loop strategy selected
  * from the blueprint's {@code LoopConfig}.
  *
- * <p>Resolution uses the top-most workflow on the execution stack. When a nested
- * workflow is in flight its blueprints shadow the parent's for the duration of that nested scope.
+   * <p>Resolution uses the innermost (active) workflow on {@link ExecutionContext#getActiveWorkflowStack()}.
+   * When a nested workflow is in flight its blueprints shadow the parent's for the duration of that nested scope.
  *
  * <p>Loop strategies and the step-sequence executor are installed via setters
  * after construction to break the construction-time cycle with {@link ExecutableExecutor}.
@@ -51,7 +51,9 @@ public final class BlueprintExecutor {
     Validate.notNull(loopStrategies,
         "BlueprintExecutor not wired: call setLoopStrategies first");
 
-    WorkflowDefinition enclosing = executionContext.getRootWorkflow();
+    Validate.isTrue(!executionContext.getActiveWorkflowStack().isEmpty(),
+        "no active workflow on stack");
+    WorkflowDefinition enclosing = executionContext.getActiveWorkflowStack().peek();
     BlueprintDefinition blueprint = Validate.notNull(
         enclosing.blueprints().get(ref.blueprintId()),
         "BlueprintRef '%s' cannot be resolved in workflow '%s'"

@@ -67,13 +67,13 @@ public final class RetryPreviousBehaviourHandler implements
       return executableExecutor.execute(behaviour.fallback(), executionContext);
     }
 
-    attempts++;
-    state.putContextValue(attemptKey, new StringContextValue(String.valueOf(attempts)));
-
     Integer retryUid = state.getStepExecutionUid().get(behaviour.retryStepId());
     Validate.notNull(retryUid, () -> new StepExecutionException(
         "RetryPreviousBehaviour in step '%s' references step '%s' which has not been executed yet"
             .formatted(step.stepId(), behaviour.retryStepId())));
+
+    attempts++;
+    state.putContextValue(attemptKey, new StringContextValue(String.valueOf(attempts)));
 
     state.clearEntriesFromUid(retryUid, attemptKey);
     LOG.log(System.Logger.Level.DEBUG, "Retry clearFromUid retryUid={0}", retryUid);

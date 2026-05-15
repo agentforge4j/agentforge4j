@@ -51,6 +51,16 @@ public final class WorkflowState {
    * attempt chain (reset when the step finishes with a non-pause command outcome).
    */
   private final Map<String, Integer> userPromptPauseCountByStepId;
+  /**
+   * For looped blueprints only: 1-based iteration index persisted before each iteration body runs.
+   * Value {@code 0} means unset when read via {@link #getLoopIterationCursor(String)}.
+   */
+  private final Map<String, Integer> loopIterationCursorByBlueprintId;
+  /**
+   * For {@code FOR_EACH} loops only: stable fingerprint of the list under
+   * {@code forEachContextKey}, keyed by blueprint id.
+   */
+  private final Map<String, String> forEachListFingerprintByBlueprintId;
 
   /**
    * Creates a new run in {@link WorkflowStatus#RUNNING} with empty context and step output maps.
@@ -77,6 +87,8 @@ public final class WorkflowState {
     this.stepExecutionUid = new HashMap<>();
     this.contextKeyWrittenAtUid = new HashMap<>();
     this.userPromptPauseCountByStepId = new HashMap<>();
+    this.loopIterationCursorByBlueprintId = new HashMap<>();
+    this.forEachListFingerprintByBlueprintId = new HashMap<>();
     this.lastUpdatedAt = startedAt;
   }
 
@@ -130,6 +142,84 @@ public final class WorkflowState {
 
   public Map<String, Integer> getUserPromptPauseCountByStepId() {
     return Collections.unmodifiableMap(userPromptPauseCountByStepId);
+  }
+
+  public Map<String, Integer> getLoopIterationCursorByBlueprintId() {
+    return Collections.unmodifiableMap(loopIterationCursorByBlueprintId);
+  }
+
+  public Map<String, String> getForEachListFingerprintByBlueprintId() {
+    return Collections.unmodifiableMap(forEachListFingerprintByBlueprintId);
+  }
+
+  /**
+   * Returns the persisted FOR_EACH list fingerprint for a blueprint, or empty when none is stored.
+   */
+  public Optional<String> getForEachListFingerprint(String blueprintId) {
+    return Optional.ofNullable(forEachListFingerprintByBlueprintId.get(
+        Validate.notBlank(blueprintId, "blueprintId must not be blank")));
+  }
+
+  public void setForEachListFingerprint(String blueprintId, String fingerprint) {
+    String bid = Validate.notBlank(blueprintId, "blueprintId must not be blank");
+    forEachListFingerprintByBlueprintId.put(
+        bid, Validate.notBlank(fingerprint, "fingerprint must not be blank"));
+  }
+
+  public void clearForEachListFingerprint(String blueprintId) {
+    forEachListFingerprintByBlueprintId.remove(
+        Validate.notBlank(blueprintId, "blueprintId must not be blank"));
+  }
+
+  /**
+   * Replaces FOR_EACH list fingerprints when loading persisted snapshot state.
+   */
+  public void replaceForEachListFingerprints(Map<String, String> fingerprints) {
+    forEachListFingerprintByBlueprintId.clear();
+    if (fingerprints == null) {
+      return;
+    }
+    fingerprints.entrySet().stream()
+        .filter(entry ->
+            StringUtils.isNotBlank(entry.getKey()) && StringUtils.isNotBlank(entry.getValue()))
+        .forEach(entry ->
+            forEachListFingerprintByBlueprintId.put(entry.getKey(), entry.getValue()));
+  }
+
+  /**
+   * Returns the persisted loop iteration index for a looped blueprint, or {@code 0} when none
+   * is stored (start at iteration {@code 1}).
+   */
+  public int getLoopIterationCursor(String blueprintId) {
+    return loopIterationCursorByBlueprintId.getOrDefault(
+        Validate.notBlank(blueprintId, "blueprintId must not be blank"), 0);
+  }
+
+  public void setLoopIterationCursor(String blueprintId, int iteration) {
+    String bid = Validate.notBlank(blueprintId, "blueprintId must not be blank");
+    Validate.isTrue(iteration >= 1, "loop iteration must be at least 1");
+    loopIterationCursorByBlueprintId.put(bid, iteration);
+  }
+
+  public void clearLoopIterationCursor(String blueprintId) {
+    loopIterationCursorByBlueprintId.remove(
+        Validate.notBlank(blueprintId, "blueprintId must not be blank"));
+  }
+
+  /**
+   * Replaces loop iteration cursors when loading persisted snapshot state.
+   */
+  public void replaceLoopIterationCursors(Map<String, Integer> cursors) {
+    loopIterationCursorByBlueprintId.clear();
+    if (cursors == null) {
+      return;
+    }
+    cursors.entrySet().stream()
+        .filter(entry ->
+            StringUtils.isNotBlank(entry.getKey())
+                && entry.getValue() != null
+                && entry.getValue() >= 1)
+        .forEach(entry -> loopIterationCursorByBlueprintId.put(entry.getKey(), entry.getValue()));
   }
 
   public int getUserPromptPauseCountForStep(String stepId) {
@@ -267,6 +357,14 @@ public final class WorkflowState {
     }
     copy.replaceUserPromptPauseCounts(
         userPromptPauseCountByStepId.isEmpty() ? null : Map.copyOf(userPromptPauseCountByStepId));
+    copy.replaceLoopIterationCursors(
+        loopIterationCursorByBlueprintId.isEmpty()
+            ? null
+            : Map.copyOf(loopIterationCursorByBlueprintId));
+    copy.replaceForEachListFingerprints(
+        forEachListFingerprintByBlueprintId.isEmpty()
+            ? null
+            : Map.copyOf(forEachListFingerprintByBlueprintId));
     return copy;
   }
 }

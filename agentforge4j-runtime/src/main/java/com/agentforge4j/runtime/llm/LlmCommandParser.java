@@ -38,7 +38,7 @@ public final class LlmCommandParser {
     List<LlmCommand> commands = new ArrayList<>();
     for (int i = 0; i < array.size(); i++) {
       JsonNode node = array.get(i);
-      determineCommandTypeContract typeContract = determineCommandTypeContract(
+      CommandTypeResolution typeContract = resolveCommandTypeContract(
           node, i, allKnown, allowedForAgent, contracts);
 
       typeContract.contract().requiredJsonPropertyNames().forEach(required ->
@@ -59,7 +59,7 @@ public final class LlmCommandParser {
     return commands;
   }
 
-  private static determineCommandTypeContract determineCommandTypeContract(JsonNode node,
+  private static CommandTypeResolution resolveCommandTypeContract(JsonNode node,
       int finalI, Set<String> allKnown, Set<String> allowedForAgent,
       Map<String, CommandTypeContract> contracts) {
     Validate.isTrue(node != null && node.isObject(), () -> new LlmCommandParseException(
@@ -74,10 +74,10 @@ public final class LlmCommandParser {
     Validate.isTrue(allowedForAgent.contains(type), () -> new LlmCommandParseException(
         "Command type '%s' is not enabled for this agent. Allowed for this agent: %s."
             .formatted(type, formatSorted(allowedForAgent))));
-    return new determineCommandTypeContract(type, contracts.get(type));
+    return new CommandTypeResolution(type, contracts.get(type));
   }
 
-  private record determineCommandTypeContract(String type, CommandTypeContract contract) {
+  private record CommandTypeResolution(String type, CommandTypeContract contract) {
 
   }
 

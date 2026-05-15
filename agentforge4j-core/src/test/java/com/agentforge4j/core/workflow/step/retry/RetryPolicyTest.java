@@ -22,6 +22,13 @@ class RetryPolicyTest {
   }
 
   @Test
+  void accepts_zero_max_attempts_when_retry_enabled() {
+    RetryPolicy p = RetryPolicy.simple(0);
+    assertThat(p.allowRetry()).isTrue();
+    assertThat(p.maxAttempts()).isZero();
+  }
+
+  @Test
   void rejects_negative_max_attempts() {
     assertThatThrownBy(() -> new RetryPolicy(true, false, false, false, -1))
         .isInstanceOf(IllegalArgumentException.class)

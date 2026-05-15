@@ -399,6 +399,15 @@ public final class DefaultWorkflowRuntime implements WorkflowRuntime {
   }
 
   private void failRun(WorkflowState state, String failedStepId, RuntimeException throwable) {
+    if (state.getStatus() == WorkflowStatus.CANCELLED) {
+      String supportId = UUID.randomUUID().toString();
+      LOG.log(System.Logger.Level.INFO,
+          "Throwable during cancelled run suppressed runId={0} supportId={1}",
+          state.getRunId(), supportId);
+      LOG.log(System.Logger.Level.DEBUG,
+          "Cancelled run throwable detail supportId=" + supportId, throwable);
+      return;
+    }
     String supportId = UUID.randomUUID().toString();
     state.setStatus(WorkflowStatus.FAILED);
     state.setRunFailure(new RunFailure.ExceptionFailure(
@@ -476,6 +485,8 @@ public final class DefaultWorkflowRuntime implements WorkflowRuntime {
       Map<String, String> answers) {
     for (Map.Entry<String, String> entry : answers.entrySet()) {
       Validate.notBlank(entry.getKey(), "answer key must not be blank");
+    }
+    for (Map.Entry<String, String> entry : answers.entrySet()) {
       String key = "%s.%s".formatted(pending.id(), entry.getKey());
       String value = entry.getValue();
       if (value == null) {

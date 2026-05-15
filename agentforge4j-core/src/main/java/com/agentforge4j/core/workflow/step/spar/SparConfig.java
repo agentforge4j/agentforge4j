@@ -18,7 +18,7 @@ public record SparConfig(
 
   public SparConfig {
     Validate.notBlank(challengerAgentId, "SparConfig challengerAgentId must not be blank");
-    Validate.isGreaterThan(maxRounds, 1, "SparConfig maxRounds must be at least 1");
+    Validate.isGreaterThanZero(maxRounds, "SparConfig maxRounds must be at least 1");
     Validate.notBlank(resolutionPrompt, "SparConfig resolutionPrompt must not be blank");
   }
 }

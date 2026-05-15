@@ -269,10 +269,14 @@ class WorkflowStateTest {
     original.putStepExecutionUid("s1", 7);
     original.putContextKeyWrittenAtUid("k", 7);
     original.incrementUserPromptPauseCountForStep("s1");
+    original.setLoopIterationCursor("bp-a", 2);
+    original.setForEachListFingerprint("bp-a", "abc123");
 
     WorkflowState copy = original.snapshot();
     assertThat(copy).isNotSameAs(original);
     assertThat(copy.getUserPromptPauseCountForStep("s1")).isEqualTo(1);
+    assertThat(copy.getLoopIterationCursor("bp-a")).isEqualTo(2);
+    assertThat(copy.getForEachListFingerprint("bp-a")).contains("abc123");
 
     copy.setStatus(WorkflowStatus.COMPLETED);
     copy.putContextValue("extra", new StringContextValue("x"));

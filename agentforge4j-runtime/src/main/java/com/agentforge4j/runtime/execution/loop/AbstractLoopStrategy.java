@@ -1,6 +1,7 @@
 package com.agentforge4j.runtime.execution.loop;
 
 import com.agentforge4j.core.workflow.event.WorkflowEventType;
+import com.agentforge4j.core.workflow.state.WorkflowState;
 import com.agentforge4j.core.workflow.state.WorkflowStatus;
 import com.agentforge4j.core.workflow.step.blueprint.BlueprintDefinition;
 import com.agentforge4j.runtime.event.EventRecorder;
@@ -27,6 +28,25 @@ abstract class AbstractLoopStrategy implements LoopStrategy {
     this.eventRecorder = Validate.notNull(eventRecorder, "eventRecorder must not be null");
     this.maxIterationsHandler = Validate.notNull(maxIterationsHandler,
         "maxIterationsHandler must not be null");
+  }
+
+  /**
+   * First 1-based iteration index to run for a resumed loop. Stored cursor {@code 0} means start
+   * at iteration {@code 1}; a positive cursor is the in-progress iteration to re-run after a
+   * pause.
+   */
+  protected static int firstLoopIterationToRun(WorkflowState state, String blueprintId) {
+    int cursor = state.getLoopIterationCursor(blueprintId);
+    return Math.max(cursor, 1);
+  }
+
+  protected static void markLoopIterationStart(WorkflowState state, String blueprintId,
+      int iteration) {
+    state.setLoopIterationCursor(blueprintId, iteration);
+  }
+
+  protected static void clearLoopIterationCursor(WorkflowState state, String blueprintId) {
+    state.clearLoopIterationCursor(blueprintId);
   }
 
   /**

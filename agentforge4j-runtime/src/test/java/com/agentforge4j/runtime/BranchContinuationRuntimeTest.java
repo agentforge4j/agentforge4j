@@ -130,7 +130,7 @@ class BranchContinuationRuntimeTest {
     BlueprintDefinition blueprint = new BlueprintDefinition(
         "bp1",
         "branch blueprint",
-        new BlueprintBehaviour(new LoopConfig(
+        new BlueprintBehaviour(LoopConfig.withDefaults(
             LoopTerminationStrategy.FIXED_COUNT,
             null,
             null,

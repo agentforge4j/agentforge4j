@@ -1,5 +1,6 @@
 package com.agentforge4j.runtime.execution.loop;
 
+import com.agentforge4j.core.workflow.state.WorkflowState;
 import com.agentforge4j.core.workflow.state.WorkflowStatus;
 import com.agentforge4j.core.workflow.step.blueprint.BlueprintDefinition;
 import com.agentforge4j.core.workflow.step.loop.LoopConfig;
@@ -36,10 +37,14 @@ public final class AgentSignalLoopStrategy extends AbstractLoopStrategy {
   public ExecutionOutcome iterate(BlueprintDefinition blueprint,
       LoopConfig config,
       ExecutionContext executionContext) {
-    for (int iteration = 1; iteration <= config.maxIterations(); iteration++) {
+    WorkflowState state = executionContext.getState();
+    String blueprintId = blueprint.blueprintId();
+    int start = firstLoopIterationToRun(state, blueprintId);
+    for (int iteration = start; iteration <= config.maxIterations(); iteration++) {
       ExecutionOutcome outcome = execute(blueprint, config, executionContext, iteration);
       switch (outcome) {
         case COMPLETED_SIGNAL -> {
+          clearLoopIterationCursor(state, blueprintId);
           LOG.log(System.Logger.Level.INFO,
               "Loop terminated strategy={0}, iterations={1}, reason=AGENT_SIGNAL",
               strategy(), iteration);
@@ -47,19 +52,29 @@ public final class AgentSignalLoopStrategy extends AbstractLoopStrategy {
         }
         case COMPLETED -> {
           if (executionContext.getState().getStatus() == WorkflowStatus.CANCELLED) {
+            clearLoopIterationCursor(state, blueprintId);
             return ExecutionOutcome.PAUSED;
           }
         }
-        case PAUSED, FAILED -> {
+        case PAUSED -> {
+          return outcome;
+        }
+        case FAILED -> {
+          clearLoopIterationCursor(state, blueprintId);
           return outcome;
         }
       }
     }
-    return maxIterationsHandler.handle(blueprint, config, executionContext);
+    ExecutionOutcome bounded = maxIterationsHandler.handle(blueprint, config, executionContext);
+    if (bounded == ExecutionOutcome.FAILED) {
+      clearLoopIterationCursor(state, blueprintId);
+    }
+    return bounded;
   }
 
   private ExecutionOutcome execute(BlueprintDefinition blueprint, LoopConfig config,
       ExecutionContext executionContext, int iteration) {
+    markLoopIterationStart(executionContext.getState(), blueprint.blueprintId(), iteration);
     LOG.log(System.Logger.Level.DEBUG,
         "Loop iteration start strategy={0}, iteration={1}, maxIterations={2}",
         strategy(), iteration, config.maxIterations());

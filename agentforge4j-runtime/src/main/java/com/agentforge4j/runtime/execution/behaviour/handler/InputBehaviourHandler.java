@@ -47,8 +47,9 @@ public final class InputBehaviourHandler implements BehaviourHandler<InputBehavi
     LOG.log(System.Logger.Level.INFO, "Workflow pausing for user input stepId={0}, artifactId={1}",
         step.stepId(), behaviour.artifactId());
     WorkflowState state = executionContext.getState();
-    WorkflowDefinition enclosing = executionContext.getRootWorkflow();
-    Validate.notNull(enclosing, "enclosing workflow must not be null");
+    Validate.isTrue(!executionContext.getActiveWorkflowStack().isEmpty(),
+        "no active workflow on stack");
+    WorkflowDefinition enclosing = executionContext.getActiveWorkflowStack().peek();
     ArtifactDefinition artifact = Validate.notNull(
         enclosing.artifacts().get(behaviour.artifactId()),
         "InputBehaviour on step '%s' references unknown artifact '%s' in workflow '%s'"

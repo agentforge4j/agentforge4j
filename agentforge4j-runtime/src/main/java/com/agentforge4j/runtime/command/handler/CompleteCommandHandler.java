@@ -6,8 +6,8 @@ import com.agentforge4j.runtime.command.CommandApplicationRequest;
 import com.agentforge4j.runtime.command.CommandApplicationResult;
 import com.agentforge4j.runtime.command.CommandHandler;
 import com.agentforge4j.runtime.event.EventRecorder;
+import com.agentforge4j.util.Validate;
 import org.apache.commons.lang3.StringUtils;
-import org.apache.commons.lang3.Validate;
 
 /**
  * Handles {@link CompleteCommand} by recording loop completion and signalling the enclosing loop.
