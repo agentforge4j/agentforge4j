@@ -3,6 +3,7 @@ package com.agentforge4j.starter;
 import com.agentforge4j.llm.DefaultLlmClientResolver;
 import com.agentforge4j.llm.LlmClientConfiguration;
 import com.agentforge4j.llm.LlmClientResolver;
+import com.agentforge4j.llm.LlmRetryPolicy;
 import com.agentforge4j.llm.RetryingLlmClientResolver;
 import com.agentforge4j.util.Validate;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -36,7 +37,9 @@ public class LlmAutoConfiguration {
   public LlmClientResolver llmClientResolver(ObjectMapper objectMapper,
       List<LlmClientConfiguration> llmConfigurations,
       @Value("${agentforge4j.llm.retry.max-attempts:1}") int retryMaxAttempts,
-      @Value("${agentforge4j.llm.retry.backoff-ms:500}") long retryBackoffMs) {
+      @Value("${agentforge4j.llm.retry.base-backoff-ms:200}") long retryBaseBackoffMs,
+      @Value("${agentforge4j.llm.retry.max-backoff-ms:10000}") long retryMaxBackoffMs,
+      @Value("${agentforge4j.llm.retry.max-elapsed-ms:30000}") long retryMaxElapsedMs) {
     Validate.notEmpty(llmConfigurations,
         "No LlmClientConfiguration beans found — register at least one provider "
             + "(for example by importing an LLM provider starter or declaring a "
@@ -46,6 +49,8 @@ public class LlmAutoConfiguration {
       return resolver;
     }
     // TODO: provider fallback (primary -> secondary provider/model) requires a selection strategy abstraction.
-    return new RetryingLlmClientResolver(resolver, retryMaxAttempts, retryBackoffMs);
+    LlmRetryPolicy retryPolicy =
+        new LlmRetryPolicy(retryMaxAttempts, retryBaseBackoffMs, retryMaxBackoffMs, retryMaxElapsedMs);
+    return new RetryingLlmClientResolver(resolver, retryPolicy);
   }
 }

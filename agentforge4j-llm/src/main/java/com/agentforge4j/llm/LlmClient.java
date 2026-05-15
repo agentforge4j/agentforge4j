@@ -1,5 +1,6 @@
 package com.agentforge4j.llm;
 
+import java.util.Optional;
 import org.apache.commons.lang3.Strings;
 
 /**
@@ -27,6 +28,10 @@ public interface LlmClient {
    *                                or provider-specific errors
    */
   String execute(LlmExecutionRequest request);
+
+  default Optional<LlmRetryPolicy> getRetryPolicy() {
+    return Optional.empty();
+  }
 
   /**
    * Removes markdown code fence markers from the input if present.

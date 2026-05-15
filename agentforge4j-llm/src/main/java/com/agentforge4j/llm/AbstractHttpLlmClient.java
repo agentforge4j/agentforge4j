@@ -5,6 +5,7 @@ import java.io.IOException;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.util.Optional;
 import java.util.function.Supplier;
 import lombok.Getter;
 import org.apache.commons.lang3.StringUtils;
@@ -30,6 +31,7 @@ public abstract class AbstractHttpLlmClient implements LlmClient {
   private final String providerName;
   @Getter
   private final String defaultModel;
+  private final LlmClientConfiguration clientConfiguration;
   private final HttpClient httpClient;
 
   /**
@@ -45,9 +47,15 @@ public abstract class AbstractHttpLlmClient implements LlmClient {
         "Provider name must be provided in the configuration");
     this.defaultModel = Validate.notBlank(config.getDefaultModel(),
         "%s default model must be provided".formatted(config.getProviderName()));
+    this.clientConfiguration = config;
     this.httpClient = HttpClient.newBuilder()
         .connectTimeout(config.getConnectTimeout())
         .build();
+  }
+
+  @Override
+  public Optional<LlmRetryPolicy> getRetryPolicy() {
+    return clientConfiguration.getRetryPolicy();
   }
 
   /**

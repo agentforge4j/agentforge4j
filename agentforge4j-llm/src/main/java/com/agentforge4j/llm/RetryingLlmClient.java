@@ -6,13 +6,12 @@ import java.io.IOException;
 import java.net.ConnectException;
 import java.net.SocketTimeoutException;
 import java.net.http.HttpTimeoutException;
+import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.ThreadLocalRandom;
 
 /**
- * Wraps an LLM client with retry logic for transient failures.
- * <p>
- * Retries on network errors, timeouts, and specific HTTP status codes (429, 5xx). Uses linear
- * backoff with a fixed delay multiplier ({@code attempt * backoffMs} between attempts).
+ * Wraps an LLM client with retry logic for transient failures (decorrelated jitter backoff).
  */
 public final class RetryingLlmClient implements LlmClient {
 
@@ -21,22 +20,11 @@ public final class RetryingLlmClient implements LlmClient {
   private static final Set<Integer> RETRYABLE_HTTP_STATUS = Set.of(429, 500, 502, 503, 504);
 
   private final LlmClient delegate;
-  private final int maxAttempts;
-  private final long backoffMs;
+  private final LlmRetryPolicy policy;
 
-  /**
-   * Creates a retrying client with the specified parameters.
-   *
-   * @param delegate    the underlying LLM client to retry
-   * @param maxAttempts the maximum number of attempts (must be at least 1)
-   * @param backoffMs   the base backoff delay in milliseconds (must be >= 0)
-   */
-  public RetryingLlmClient(LlmClient delegate, int maxAttempts, long backoffMs) {
+  public RetryingLlmClient(LlmClient delegate, LlmRetryPolicy policy) {
     this.delegate = Validate.notNull(delegate, "delegate must not be null");
-    Validate.isTrue(maxAttempts >= 1, "maxAttempts must be at least 1");
-    Validate.isTrue(backoffMs >= 0, "backoffMs must be >= 0");
-    this.maxAttempts = maxAttempts;
-    this.backoffMs = backoffMs;
+    this.policy = Validate.notNull(policy, "policy must not be null");
   }
 
   @Override
@@ -44,38 +32,56 @@ public final class RetryingLlmClient implements LlmClient {
     return delegate.getProviderName();
   }
 
-  /**
-   * Executes an LLM request with retry logic.
-   * <p>
-   * Retries on transient failures up to {@code maxAttempts} times with linear backoff
-   * ({@code attempt * backoffMs} milliseconds before the next attempt).
-   *
-   * @param request the LLM execution request
-   * @return the response from the LLM provider
-   * @throws LlmInvocationException if all attempts fail
-   */
+  @Override
+  public Optional<LlmRetryPolicy> getRetryPolicy() {
+    return delegate.getRetryPolicy();
+  }
+
   @Override
   public String execute(LlmExecutionRequest request) {
+    LOG.log(System.Logger.Level.DEBUG,
+        "LLM retry policy: maxAttempts={0}, baseBackoffMs={1}, maxBackoffMs={2}, maxElapsedMs={3}",
+        policy.maxAttempts(), policy.baseBackoffMs(), policy.maxBackoffMs(), policy.maxElapsedMs());
+
+    long startNanos = System.nanoTime();
+    long lastSleepMs = policy.baseBackoffMs();
     RuntimeException lastFailure = null;
-    for (int attempt = 1; attempt <= maxAttempts; attempt++) {
+
+    for (int attempt = 1; attempt <= policy.maxAttempts(); attempt++) {
       try {
         return delegate.execute(request);
       } catch (RuntimeException ex) {
         lastFailure = ex;
         String provider = delegate.getProviderName();
         boolean transientFailure = isTransient(ex);
-        boolean exhausted = attempt >= maxAttempts;
+        boolean exhausted = attempt >= policy.maxAttempts();
         boolean shouldRetry = !exhausted && transientFailure;
+
         if (shouldRetry) {
-          long sleepMs = attempt * backoffMs;
+          long elapsedMs = elapsedMillisSince(startNanos);
+          if (policy.maxElapsedMs() > 0 && elapsedMs >= policy.maxElapsedMs()) {
+            LOG.log(System.Logger.Level.ERROR,
+                "retry budget exhausted after {0}ms", elapsedMs);
+            throw ex;
+          }
+
+          long sleepMs = nextDecorrelatedSleepMs(policy, lastSleepMs);
+
+          if (policy.maxElapsedMs() > 0 && elapsedMs + sleepMs > policy.maxElapsedMs()) {
+            LOG.log(System.Logger.Level.ERROR,
+                "retry budget exhausted after {0}ms", elapsedMs);
+            throw ex;
+          }
+
           LOG.log(System.Logger.Level.WARNING,
               "LLM call failed (attempt {0}/{1}) for provider={2}: {3}. Retrying in {4}ms.",
-              attempt, maxAttempts, provider, String.valueOf(ex), sleepMs);
+              attempt, policy.maxAttempts(), provider, String.valueOf(ex), sleepMs);
           sleep(sleepMs);
+          lastSleepMs = sleepMs;
         } else if (transientFailure && exhausted) {
           LOG.log(System.Logger.Level.ERROR,
               "LLM call failed after {0} attempts for provider={1}: {2}",
-              maxAttempts, provider, String.valueOf(ex), ex);
+              policy.maxAttempts(), provider, String.valueOf(ex), ex);
           throw ex;
         } else {
           LOG.log(System.Logger.Level.DEBUG,
@@ -86,6 +92,35 @@ public final class RetryingLlmClient implements LlmClient {
       }
     }
     throw Validate.notNull(lastFailure, "lastFailure must not be null");
+  }
+
+  private static long nextDecorrelatedSleepMs(LlmRetryPolicy policy, long lastSleepMs) {
+    long drawn = randomBetweenBaseAndTriple(policy.baseBackoffMs(), lastSleepMs);
+    return Math.min(policy.maxBackoffMs(), drawn);
+  }
+
+  private static long randomBetweenBaseAndTriple(long baseBackoffMs, long lastSleepMs) {
+    long triple = cappedMultiplyByThree(lastSleepMs);
+    long upperInclusive = Math.max(baseBackoffMs, triple);
+    if (upperInclusive == baseBackoffMs) {
+      return baseBackoffMs;
+    }
+    long hiExclusive = upperInclusive + 1;
+    if (hiExclusive <= upperInclusive) {
+      return ThreadLocalRandom.current().nextLong(baseBackoffMs, Long.MAX_VALUE);
+    }
+    return ThreadLocalRandom.current().nextLong(baseBackoffMs, hiExclusive);
+  }
+
+  private static long cappedMultiplyByThree(long value) {
+    if (value > Long.MAX_VALUE / 3) {
+      return Long.MAX_VALUE;
+    }
+    return value * 3;
+  }
+
+  private static long elapsedMillisSince(long startNanos) {
+    return (System.nanoTime() - startNanos) / 1_000_000L;
   }
 
   private static boolean isTransient(RuntimeException exception) {
