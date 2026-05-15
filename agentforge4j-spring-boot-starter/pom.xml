@@ -1,0 +1,138 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <parent>
+    <groupId>com.agentforge4j</groupId>
+    <artifactId>agentforge4j</artifactId>
+    <version>0.0.1-SNAPSHOT</version>
+    <relativePath>../pom.xml</relativePath>
+  </parent>
+
+  <artifactId>agentforge4j-spring-boot-starter</artifactId>
+  <name>AgentForge4J Spring Boot Starter</name>
+  <description>Auto-configures the AgentForge4J runtime for Spring Boot applications</description>
+
+  <dependencies>
+    <dependency>
+      <groupId>com.agentforge4j</groupId>
+      <artifactId>agentforge4j-util</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>com.agentforge4j</groupId>
+      <artifactId>agentforge4j-core</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>com.agentforge4j</groupId>
+      <artifactId>agentforge4j-llm</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>com.agentforge4j</groupId>
+      <artifactId>agentforge4j-config-loader</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>com.agentforge4j</groupId>
+      <artifactId>agentforge4j-runtime</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>com.agentforge4j</groupId>
+      <artifactId>agentforge4j-llm-openai</artifactId>
+      <optional>true</optional>
+    </dependency>
+    <dependency>
+      <groupId>com.agentforge4j</groupId>
+      <artifactId>agentforge4j-llm-ollama</artifactId>
+      <optional>true</optional>
+    </dependency>
+    <dependency>
+      <groupId>com.agentforge4j</groupId>
+      <artifactId>agentforge4j-llm-claude</artifactId>
+      <optional>true</optional>
+    </dependency>
+    <dependency>
+      <groupId>com.agentforge4j</groupId>
+      <artifactId>agentforge4j-llm-vllm</artifactId>
+      <optional>true</optional>
+    </dependency>
+    <dependency>
+      <groupId>com.agentforge4j</groupId>
+      <artifactId>agentforge4j-llm-openai-compatible</artifactId>
+      <optional>true</optional>
+    </dependency>
+    <dependency>
+      <groupId>com.agentforge4j</groupId>
+      <artifactId>agentforge4j-llm-gemini</artifactId>
+      <optional>true</optional>
+    </dependency>
+    <dependency>
+      <groupId>com.agentforge4j</groupId>
+      <artifactId>agentforge4j-llm-azure-openai</artifactId>
+      <optional>true</optional>
+    </dependency>
+    <dependency>
+      <groupId>com.agentforge4j</groupId>
+      <artifactId>agentforge4j-llm-bedrock</artifactId>
+      <optional>true</optional>
+    </dependency>
+    <dependency>
+      <groupId>com.agentforge4j</groupId>
+      <artifactId>agentforge4j-llm-mistral</artifactId>
+      <optional>true</optional>
+    </dependency>
+
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-autoconfigure</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-configuration-processor</artifactId>
+      <optional>true</optional>
+    </dependency>
+
+    <dependency>
+      <groupId>com.fasterxml.jackson.core</groupId>
+      <artifactId>jackson-databind</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.apache.commons</groupId>
+      <artifactId>commons-lang3</artifactId>
+    </dependency>
+
+    <dependency>
+      <groupId>org.projectlombok</groupId>
+      <artifactId>lombok</artifactId>
+      <optional>true</optional>
+    </dependency>
+
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-test</artifactId>
+      <scope>test</scope>
+    </dependency>
+  </dependencies>
+
+  <build>
+    <plugins>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-compiler-plugin</artifactId>
+        <configuration>
+          <annotationProcessorPaths combine.children="append">
+            <path>
+              <groupId>org.springframework.boot</groupId>
+              <artifactId>spring-boot-configuration-processor</artifactId>
+              <version>${spring-boot-dependencies.version}</version>
+            </path>
+          </annotationProcessorPaths>
+        </configuration>
+      </plugin>
+    </plugins>
+  </build>
+</project>
