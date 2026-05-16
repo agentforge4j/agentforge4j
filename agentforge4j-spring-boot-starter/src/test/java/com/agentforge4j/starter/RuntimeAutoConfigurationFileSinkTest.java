@@ -22,6 +22,7 @@ import org.springframework.boot.autoconfigure.AutoConfigurations;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Primary;
 
 class RuntimeAutoConfigurationFileSinkTest {
 
@@ -51,6 +52,15 @@ class RuntimeAutoConfigurationFileSinkTest {
     runner.withUserConfiguration(CustomFileSinkConfiguration.class)
         .run(ctx -> {
           assertThat(ctx.getBean(FileSink.class)).isInstanceOf(CustomFileSink.class);
+          assertThat(ctx).hasSingleBean(WorkflowRuntime.class);
+        });
+  }
+
+  @Test
+  void workflowRuntimeBuildsWhenMaxNestingDepthConfigured() {
+    runner.withUserConfiguration(MaxNestingDepthPropertiesConfiguration.class)
+        .run(ctx -> {
+          assertThat(ctx.getStartupFailure()).isNull();
           assertThat(ctx).hasSingleBean(WorkflowRuntime.class);
         });
   }
@@ -100,6 +110,16 @@ class RuntimeAutoConfigurationFileSinkTest {
     @Bean
     CustomFileSink fileSink() {
       return new CustomFileSink();
+    }
+  }
+
+  @Configuration
+  static class MaxNestingDepthPropertiesConfiguration {
+
+    @Bean
+    @Primary
+    AgentForge4jProperties agentForge4jPropertiesWithMaxNestingDepth() {
+      return new AgentForge4jProperties(null, null, 3, false, false);
     }
   }
 

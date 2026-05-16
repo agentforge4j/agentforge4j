@@ -26,28 +26,11 @@ public final class RunMdcContext implements AutoCloseable {
     put(AGENT_ID, agentId);
   }
 
-  /** Sets run and workflow identifiers only; step and agent keys remain cleared when blank. */
-  public static RunMdcContext of(String runId, String workflowId) {
-    return new RunMdcContext(runId, workflowId, null, null);
-  }
-
   /**
    * Puts identifiers into {@link MDC}, replacing blank strings with removals for the affected key.
    */
   public static RunMdcContext of(String runId, String workflowId, String stepId, String agentId) {
     return new RunMdcContext(runId, workflowId, stepId, agentId);
-  }
-
-  /** Fluent alternative to revisiting {@code stepId} after constructing with only workflow scope. */
-  public RunMdcContext withStep(String stepId) {
-    put(STEP_ID, stepId);
-    return this;
-  }
-
-  /** Fluent alternative to revisiting {@code agentId}. */
-  public RunMdcContext withAgent(String agentId) {
-    put(AGENT_ID, agentId);
-    return this;
   }
 
   private void put(String key, String value) {

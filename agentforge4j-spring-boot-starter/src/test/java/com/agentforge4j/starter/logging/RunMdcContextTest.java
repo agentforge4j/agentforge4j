@@ -14,17 +14,6 @@ class RunMdcContextTest {
   }
 
   @Test
-  void twoArgFactorySetsRunAndWorkflowClearsStepAndAgentKeys() {
-    try (RunMdcContext ignored = RunMdcContext.of("run-1", "wf-1")) {
-      assertThat(MDC.get("runId")).isEqualTo("run-1");
-      assertThat(MDC.get("workflowId")).isEqualTo("wf-1");
-      assertThat(MDC.get("stepId")).isNull();
-      assertThat(MDC.get("agentId")).isNull();
-    }
-    assertThat(MDC.get("runId")).isNull();
-  }
-
-  @Test
   void fourArgFactoryPutsAllIdentifiers() {
     try (RunMdcContext ignored = RunMdcContext.of("r", "w", "s", "a")) {
       assertThat(MDC.get("runId")).isEqualTo("r");
@@ -38,11 +27,18 @@ class RunMdcContextTest {
   void closeRestoresPreviousMdcValues() {
     MDC.put("runId", "before");
     MDC.put("workflowId", "wf-before");
-    try (RunMdcContext ignored = RunMdcContext.of("during", "wf-during")) {
+    MDC.put("stepId", "step-before");
+    MDC.put("agentId", "agent-before");
+    try (RunMdcContext ignored = RunMdcContext.of("during", "wf-during", "step-during", "agent-during")) {
       assertThat(MDC.get("runId")).isEqualTo("during");
+      assertThat(MDC.get("workflowId")).isEqualTo("wf-during");
+      assertThat(MDC.get("stepId")).isEqualTo("step-during");
+      assertThat(MDC.get("agentId")).isEqualTo("agent-during");
     }
     assertThat(MDC.get("runId")).isEqualTo("before");
     assertThat(MDC.get("workflowId")).isEqualTo("wf-before");
+    assertThat(MDC.get("stepId")).isEqualTo("step-before");
+    assertThat(MDC.get("agentId")).isEqualTo("agent-before");
   }
 
   @Test
@@ -50,14 +46,6 @@ class RunMdcContextTest {
     try (RunMdcContext ignored = RunMdcContext.of("r", "w", "  ", "a")) {
       assertThat(MDC.get("stepId")).isNull();
       assertThat(MDC.get("agentId")).isEqualTo("a");
-    }
-  }
-
-  @Test
-  void withStepAndWithAgentAreFluent() {
-    try (RunMdcContext ctx = RunMdcContext.of("r", "w").withStep("s1").withAgent("bot")) {
-      assertThat(MDC.get("stepId")).isEqualTo("s1");
-      assertThat(MDC.get("agentId")).isEqualTo("bot");
     }
   }
 }
