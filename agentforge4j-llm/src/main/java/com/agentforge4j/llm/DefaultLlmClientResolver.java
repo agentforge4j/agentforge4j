@@ -82,6 +82,12 @@ public final class DefaultLlmClientResolver implements LlmClientResolver {
     return providersByName.containsKey(normalizedProvider);
   }
 
+  @Override
+  public List<String> listAvailableClients() {
+    return providersByName.keySet().stream().map(DefaultLlmClientResolver::normalizeProvider)
+        .collect(Collectors.toList());
+  }
+
   private static Map<String, LlmClientConfiguration> determineConfigsByProvider(
       Collection<LlmClientConfiguration> configs) {
     configs.forEach(config ->

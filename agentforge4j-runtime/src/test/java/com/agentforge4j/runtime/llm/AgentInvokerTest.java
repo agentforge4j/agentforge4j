@@ -13,8 +13,6 @@ import com.agentforge4j.core.agent.AgentLocality;
 import com.agentforge4j.core.agent.AgentRepository;
 import com.agentforge4j.core.agent.ProviderPreference;
 import com.agentforge4j.core.command.CompleteCommand;
-import com.agentforge4j.core.command.schema.CommandResponseSchemaRenderer;
-import com.agentforge4j.core.command.schema.CommandSchemaFactory;
 import com.agentforge4j.core.workflow.context.ContextMapping;
 import com.agentforge4j.core.workflow.event.WorkflowEventType;
 import com.agentforge4j.core.workflow.state.WorkflowState;
@@ -216,7 +214,8 @@ class AgentInvokerTest {
             + "... [event payload truncated for audit; original length=".length()
             + String.valueOf(raw.length()).length()
             + " chars]".length());
-    assertThat(payload).startsWith(raw.substring(0, AgentInvoker.DEFAULT_LLM_OUTPUT_EVENT_CHAR_CAP));
+    assertThat(payload).startsWith(
+        raw.substring(0, AgentInvoker.DEFAULT_LLM_OUTPUT_EVENT_CHAR_CAP));
     assertThat(payload).endsWith(
         "... [event payload truncated for audit; original length=" + raw.length() + " chars]");
   }
@@ -239,7 +238,8 @@ class AgentInvokerTest {
     when(resolver.isProviderAvailable("openai")).thenReturn(true);
 
     AgentInvoker invoker = new AgentInvoker(
-        repo, resolver, new ContextRenderer(mapper), new LlmCommandParser(mapper), mapper, recorder, 0);
+        repo, resolver, new ContextRenderer(mapper), new LlmCommandParser(mapper), mapper, recorder,
+        0);
     WorkflowState state = workflowState("run-cap-zero");
     invoker.invoke("agent-x", ContextMapping.none(), state, null);
 
@@ -269,7 +269,8 @@ class AgentInvokerTest {
     when(resolver.isProviderAvailable("openai")).thenReturn(true);
 
     AgentInvoker invoker = new AgentInvoker(
-        repo, resolver, new ContextRenderer(mapper), new LlmCommandParser(mapper), mapper, recorder, 100);
+        repo, resolver, new ContextRenderer(mapper), new LlmCommandParser(mapper), mapper, recorder,
+        100);
     WorkflowState state = workflowState("run-cap-custom");
     invoker.invoke("agent-x", ContextMapping.none(), state, null);
 
@@ -278,8 +279,9 @@ class AgentInvokerTest {
         .findFirst()
         .orElseThrow()
         .payload();
-    assertThat(payload).hasSize(100 + "... [event payload truncated for audit; original length=".length()
-        + String.valueOf(raw.length()).length() + " chars]".length());
+    assertThat(payload).hasSize(
+        100 + "... [event payload truncated for audit; original length=".length()
+            + String.valueOf(raw.length()).length() + " chars]".length());
     assertThat(payload).startsWith(raw.substring(0, 100));
     assertThat(payload).endsWith(
         "... [event payload truncated for audit; original length=" + raw.length() + " chars]");
@@ -296,6 +298,71 @@ class AgentInvokerTest {
         recorder(new InMemoryWorkflowEventLog()),
         -1))
         .isInstanceOf(IllegalArgumentException.class);
+  }
+
+  @Test
+  void invoke_usesInjectedProviderSelectionStrategy() {
+    ObjectMapper mapper = new ObjectMapper();
+    LlmClient client = mock(LlmClient.class);
+    when(client.getProviderName()).thenReturn("ollama");
+    when(client.execute(any())).thenReturn("[{\"type\":\"COMPLETE\"}]");
+
+    AgentRepository repo = mock(AgentRepository.class);
+    AgentDefinition agent = new AgentDefinition(
+        "agent-x",
+        "A",
+        com.agentforge4j.core.agent.AgentLocality.CLOUD,
+        true,
+        "sys",
+        List.of(
+            new ProviderPreference("openai", "gpt-4o"),
+            new ProviderPreference("ollama", "llama3")),
+        List.of("COMPLETE"),
+        null,
+        null,
+        "1.0.0");
+    when(repo.get("agent-x")).thenReturn(agent);
+
+    LlmClientResolver resolver = mock(LlmClientResolver.class);
+    when(resolver.resolve("ollama")).thenReturn(client);
+    when(resolver.listAvailableClients()).thenReturn(List.of(client.getProviderName()));
+
+    ProviderPreference strategyChoice = new ProviderPreference("ollama", "llama3");
+    LlmProviderSelectionStrategy selectionStrategy = mock(LlmProviderSelectionStrategy.class);
+    when(selectionStrategy.selectInitialProvider(agent, List.of("ollama"))).thenReturn(
+        strategyChoice);
+
+    AgentInvoker invoker = new AgentInvoker(
+        repo,
+        resolver,
+        new ContextRenderer(mapper),
+        new LlmCommandParser(mapper),
+        mapper,
+        recorder(new InMemoryWorkflowEventLog()),
+        AgentInvoker.DEFAULT_LLM_OUTPUT_EVENT_CHAR_CAP,
+        selectionStrategy);
+
+    WorkflowState state = workflowState("run-strategy");
+    invoker.invoke("agent-x", ContextMapping.none(), state, null);
+
+    verify(selectionStrategy).selectInitialProvider(agent, List.of("ollama"));
+    verify(resolver).resolve("ollama");
+    verify(client).execute(any());
+  }
+
+  @Test
+  void constructor_rejectsNullProviderSelectionStrategy() {
+    assertThatThrownBy(() -> new AgentInvoker(
+        mock(AgentRepository.class),
+        mock(LlmClientResolver.class),
+        new ContextRenderer(new ObjectMapper()),
+        new LlmCommandParser(new ObjectMapper()),
+        new ObjectMapper(),
+        recorder(new InMemoryWorkflowEventLog()),
+        AgentInvoker.DEFAULT_LLM_OUTPUT_EVENT_CHAR_CAP,
+        null))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("llmProviderSelectionStrategy must not be null");
   }
 
   @Test
