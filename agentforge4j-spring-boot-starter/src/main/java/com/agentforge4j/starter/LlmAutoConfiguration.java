@@ -48,7 +48,7 @@ public class LlmAutoConfiguration {
     if (retryMaxAttempts <= 1) {
       return resolver;
     }
-    // TODO: provider fallback (primary -> secondary provider/model) requires a selection strategy abstraction.
+    // TODO: provider fallback (primary -> secondary provider/model) can build on LlmProviderSelectionStrategy.
     LlmRetryPolicy retryPolicy =
         new LlmRetryPolicy(retryMaxAttempts, retryBaseBackoffMs, retryMaxBackoffMs, retryMaxElapsedMs);
     return new RetryingLlmClientResolver(resolver, retryPolicy);

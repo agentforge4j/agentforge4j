@@ -13,7 +13,6 @@ import com.agentforge4j.core.workflow.state.WorkflowState;
 import com.agentforge4j.llm.LlmClient;
 import com.agentforge4j.llm.LlmClientResolver;
 import com.agentforge4j.llm.LlmExecutionRequest;
-import com.agentforge4j.llm.LlmInvocationException;
 import com.agentforge4j.runtime.event.EventRecorder;
 import com.agentforge4j.util.Validate;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -37,6 +36,7 @@ public final class AgentInvoker {
 
   private final AgentRepository agentRepository;
   private final LlmClientResolver llmClientResolver;
+  private final LlmProviderSelectionStrategy llmProviderSelectionStrategy;
   private final ContextRenderer contextRenderer;
   private final LlmCommandParser llmCommandParser;
   private final ObjectMapper objectMapper;
@@ -61,9 +61,23 @@ public final class AgentInvoker {
       ObjectMapper objectMapper,
       EventRecorder eventRecorder,
       int llmOutputEventCharCap) {
+    this(agentRepository, llmClientResolver, contextRenderer, llmCommandParser, objectMapper,
+        eventRecorder, llmOutputEventCharCap, new FirstAvailableProviderSelectionStrategy());
+  }
+
+  public AgentInvoker(AgentRepository agentRepository,
+      LlmClientResolver llmClientResolver,
+      ContextRenderer contextRenderer,
+      LlmCommandParser llmCommandParser,
+      ObjectMapper objectMapper,
+      EventRecorder eventRecorder,
+      int llmOutputEventCharCap,
+      LlmProviderSelectionStrategy llmProviderSelectionStrategy) {
     this.agentRepository = Validate.notNull(agentRepository, "agentRepository must not be null");
     this.llmClientResolver = Validate.notNull(llmClientResolver,
         "llmClientResolver must not be null");
+    this.llmProviderSelectionStrategy = Validate.notNull(llmProviderSelectionStrategy,
+        "llmProviderSelectionStrategy must not be null");
     this.contextRenderer = Validate.notNull(contextRenderer, "contextRenderer must not be null");
     this.llmCommandParser = Validate.notNull(llmCommandParser, "llmCommandParser must not be null");
     this.objectMapper = Validate.notNull(objectMapper, "objectMapper must not be null");
@@ -93,7 +107,8 @@ public final class AgentInvoker {
       String stepPrompt,
       WorkflowState stateOrNull,
       String actorIdForEvents) {
-    ProviderPreference preference = firstProviderPreference(agent);
+    ProviderPreference preference = llmProviderSelectionStrategy.selectInitialProvider(
+        agent, llmClientResolver.listAvailableClients());
     LOG.log(System.Logger.Level.DEBUG, "Agent invoker entry agentId={0}, provider={1}, model={2}",
         agent.id(), preference.provider(), preference.model());
     LlmClient client = llmClientResolver.resolve(preference.provider());
@@ -220,13 +235,5 @@ public final class AgentInvoker {
         .append(System.lineSeparator())
         .append(frameworkBlock);
     return prompt.toString();
-  }
-
-  private ProviderPreference firstProviderPreference(AgentDefinition agent) {
-    return agent.providerPreferences().stream()
-        .filter(p -> llmClientResolver.isProviderAvailable(p.provider()))
-        .findFirst()
-        .orElseThrow(() -> new LlmInvocationException(
-            "Agent '%s' has no available provider preferences".formatted(agent.id())));
   }
 }

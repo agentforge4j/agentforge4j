@@ -1,5 +1,7 @@
 package com.agentforge4j.llm;
 
+import java.util.List;
+
 /**
  * Resolves a provider id string to the configured {@link LlmClient}.
  * <p>
@@ -18,4 +20,6 @@ public interface LlmClientResolver {
   LlmClient resolve(String provider);
 
   boolean isProviderAvailable(String provider);
+
+  List<String> listAvailableClients();
 }
