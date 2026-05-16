@@ -12,9 +12,10 @@ import java.util.stream.Collectors;
  * {@link IntegrationRegistry} backed by registered {@link AgentIntegration} instances and a
  * parallel map of {@link IntegrationConfig} entries keyed by integration id.
  * <p>
- * {@link #resolve(String)} returns empty when the id is disabled, missing from {@code configs}, or
- * absent from {@code integrations}. {@link #isOperationAllowed(String, String)} requires a
- * non-blank {@code operation} and consults the config allow list when the integration is enabled.
+ * {@link #resolve(String)}, {@link #isEnabled(String)}, and
+ * {@link #isOperationAllowed(String, String)} treat an integration as available only when it is
+ * enabled in {@code configs}, registered in {@code integrations}, and (for operations) listed in
+ * the config allow list.
  */
 public final class DefaultIntegrationRegistry implements IntegrationRegistry {
 
@@ -75,7 +76,10 @@ public final class DefaultIntegrationRegistry implements IntegrationRegistry {
     Validate.notBlank(operation, "operation must not be blank");
     boolean permitted = isEnabled(integrationId)
         && configs.get(integrationId).allowedOperations().contains(operation);
-    LOG.log(System.Logger.Level.WARNING,
+    System.Logger.Level level = permitted
+        ? System.Logger.Level.DEBUG
+        : System.Logger.Level.WARNING;
+    LOG.log(level,
         "Integration operation {0} integrationId={1}, operation={2}",
         permitted ? "allowed" : "blocked",
         integrationId, operation);
@@ -91,6 +95,6 @@ public final class DefaultIntegrationRegistry implements IntegrationRegistry {
   public boolean isEnabled(String integrationId) {
     Validate.notBlank(integrationId, "integrationId must not be blank");
     IntegrationConfig config = configs.get(integrationId);
-    return config != null && config.enabled();
+    return config != null && config.enabled() && integrations.containsKey(integrationId);
   }
 }

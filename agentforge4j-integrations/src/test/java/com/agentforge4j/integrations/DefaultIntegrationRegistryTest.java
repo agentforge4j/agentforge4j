@@ -46,6 +46,7 @@ class DefaultIntegrationRegistryTest {
         Map.of("slack", new StandardIntegrationConfig(true, List.of("post"))));
 
     assertThat(registry.resolve("slack")).isEmpty();
+    assertThat(registry.isEnabled("slack")).isFalse();
   }
 
   @Test
@@ -99,12 +100,13 @@ class DefaultIntegrationRegistryTest {
   }
 
   @Test
-  void isOperationAllowedTrueWhenIntegrationMissingFromListButConfiguredAndEnabled() {
+  void isOperationAllowedFalseWhenConfiguredAndEnabledButNotRegistered() {
     var registry = new DefaultIntegrationRegistry(
         List.of(),
         Map.of("slack", new StandardIntegrationConfig(true, List.of("post"))));
 
-    assertThat(registry.isOperationAllowed("slack", "post")).isTrue();
+    assertThat(registry.isOperationAllowed("slack", "post")).isFalse();
+    assertThat(registry.isEnabled("slack")).isFalse();
   }
 
   @Test

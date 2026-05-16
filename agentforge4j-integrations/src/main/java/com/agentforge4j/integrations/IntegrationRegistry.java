@@ -22,16 +22,16 @@ public interface IntegrationRegistry {
    *
    * @param integrationId stable key from workflow or agent configuration
    * @param operation     logical operation name understood by the integration
-   * @return {@code true} when the integration is enabled and permits {@code operation}
+   * @return {@code true} when the integration is available and permits {@code operation}
    */
   boolean isOperationAllowed(String integrationId, String operation);
 
   /**
-   * Reports whether configuration for the integration id exists and marks it enabled.
+   * Reports whether the integration id is available for use in the current deployment.
    *
    * @param integrationId stable key from workflow or agent configuration
-   * @return {@code true} when configuration is present and {@link IntegrationConfig#enabled()} is
-   * {@code true}
+   * @return {@code true} when configuration is present, {@link IntegrationConfig#enabled()} is
+   * {@code true}, and a matching integration is registered
    */
   boolean isEnabled(String integrationId);
 }

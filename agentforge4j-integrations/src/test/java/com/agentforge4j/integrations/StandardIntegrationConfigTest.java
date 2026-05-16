@@ -6,7 +6,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatCode;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class StandardIntegrationConfigTest {
 
@@ -28,26 +28,37 @@ class StandardIntegrationConfigTest {
   }
 
   @Test
-  void validateIsNoOp() {
-    StandardIntegrationConfig config = new StandardIntegrationConfig(true, List.of("x"));
-
-    assertThatCode(config::validate).doesNotThrowAnyException();
+  void validateRejectsBlankAllowedOperation() {
+    assertThatThrownBy(() -> new StandardIntegrationConfig(true, List.of("x", " ")))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("null or blank");
   }
 
   @Test
-  void disabledWithNullAllowedOperationsRetainsNull() {
+  void validateRejectsNullAllowedOperation() {
+    List<String> withNull = new ArrayList<>();
+    withNull.add("read");
+    withNull.add(null);
+
+    assertThatThrownBy(() -> new StandardIntegrationConfig(true, withNull))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("null or blank");
+  }
+
+  @Test
+  void disabledWithNullAllowedOperationsBecomesEmptyList() {
     StandardIntegrationConfig config = new StandardIntegrationConfig(false, null);
 
     assertThat(config.enabled()).isFalse();
-    assertThat(config.allowedOperations()).isNull();
+    assertThat(config.allowedOperations()).isEmpty();
   }
 
   @Test
-  void disabledDoesNotCopyListReferenceSemantics() {
+  void disabledCopiesAllowedOperations() {
     List<String> original = new ArrayList<>(List.of("read"));
     StandardIntegrationConfig config = new StandardIntegrationConfig(false, original);
     original.add("write");
 
-    assertThat(config.allowedOperations()).containsExactly("read", "write");
+    assertThat(config.allowedOperations()).containsExactly("read");
   }
 }
