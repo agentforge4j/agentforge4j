@@ -17,6 +17,7 @@ import com.agentforge4j.util.Validate;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -30,10 +31,8 @@ public class WorkflowValidator {
    * @throws IllegalArgumentException when a workflow reference targets an unknown workflow
    */
   public void validateWorkflowRefs(Map<String, WorkflowDefinition> workflows) {
-    Map<String, List<String>> ignoredCircularWorkflows = new HashMap<>();
     workflows.values()
-        .forEach(workflow -> walkForWorkflowRefs(workflow.steps(), workflow, workflows,
-            ignoredCircularWorkflows));
+        .forEach(workflow -> walkForWorkflowRefExistence(workflow.steps(), workflow, workflows));
   }
 
   /**
@@ -63,10 +62,8 @@ public class WorkflowValidator {
    * @throws IllegalStateException when a circular workflow reference is detected
    */
   public void validateCircularRefs(Map<String, WorkflowDefinition> workflows) {
-    Map<String, List<String>> circularWorkflows = new HashMap<>();
-    workflows.values().forEach(workflow ->
-        walkForWorkflowRefs(workflow.steps(), workflow, workflows, circularWorkflows));
-    validateCircularDependencies(circularWorkflows);
+    Map<String, List<String>> adjacency = buildWorkflowRefAdjacency(workflows);
+    detectWorkflowRefCycles(adjacency);
   }
 
   /**
@@ -83,25 +80,88 @@ public class WorkflowValidator {
     });
   }
 
-  private void walkForWorkflowRefs(
+  private void walkForWorkflowRefExistence(
       List<Executable> steps,
       WorkflowDefinition workflow,
-      Map<String, WorkflowDefinition> workflows,
-      Map<String, List<String>> circularWorkflows) {
+      Map<String, WorkflowDefinition> workflows) {
     for (Executable executable : steps) {
       if (executable instanceof StepDefinition step) {
         if (step.behaviour() instanceof WorkflowBehaviour wb) {
-          assertWorkflowExists(wb.workflowRef(), step.stepId(), workflow.id(), workflows,
-              circularWorkflows);
+          assertWorkflowExists(wb.workflowRef(), step.stepId(), workflow.id(), workflows);
         }
       } else if (executable instanceof BlueprintRef) {
         // No workflow refs to validate here.
       } else if (executable instanceof BlueprintDefinition blueprint) {
-        walkForWorkflowRefs(blueprint.steps(), workflow, workflows, circularWorkflows);
+        walkForWorkflowRefExistence(blueprint.steps(), workflow, workflows);
       } else if (executable instanceof WorkflowDefinition nested) {
-        walkForWorkflowRefs(nested.steps(), nested, workflows, circularWorkflows);
+        walkForWorkflowRefExistence(nested.steps(), nested, workflows);
       }
     }
+  }
+
+  private Map<String, List<String>> buildWorkflowRefAdjacency(
+      Map<String, WorkflowDefinition> workflows) {
+    Map<String, List<String>> adjacency = new LinkedHashMap<>();
+    for (WorkflowDefinition workflow : workflows.values()) {
+      List<String> refs = new ArrayList<>();
+      collectWorkflowRefs(workflow.steps(), refs);
+      adjacency.put(workflow.id(), List.copyOf(refs));
+    }
+    return Map.copyOf(adjacency);
+  }
+
+  private void collectWorkflowRefs(List<Executable> steps, List<String> refs) {
+    for (Executable executable : steps) {
+      if (executable instanceof StepDefinition step) {
+        if (step.behaviour() instanceof WorkflowBehaviour wb) {
+          refs.add(wb.workflowRef());
+        }
+      } else if (executable instanceof BlueprintRef) {
+        // No workflow refs to collect here.
+      } else if (executable instanceof BlueprintDefinition blueprint) {
+        collectWorkflowRefs(blueprint.steps(), refs);
+      } else if (executable instanceof WorkflowDefinition nested) {
+        collectWorkflowRefs(nested.steps(), refs);
+      }
+    }
+  }
+
+  private void detectWorkflowRefCycles(Map<String, List<String>> adjacency) {
+    Set<String> visited = new HashSet<>();
+    for (String workflowId : adjacency.keySet()) {
+      if (!visited.contains(workflowId)) {
+        dfsForCycle(workflowId, adjacency, visited, new HashSet<>(), new ArrayList<>());
+      }
+    }
+  }
+
+  private void dfsForCycle(
+      String workflowId,
+      Map<String, List<String>> adjacency,
+      Set<String> visited,
+      Set<String> inStack,
+      List<String> path) {
+    if (inStack.contains(workflowId)) {
+      int cycleStart = path.indexOf(workflowId);
+      List<String> cyclePath = new ArrayList<>(path.subList(cycleStart, path.size()));
+      cyclePath.add(workflowId);
+      throw new IllegalStateException(
+          "Workflow '%s' has circular references: %s"
+              .formatted(workflowId, String.join(" -> ", cyclePath)));
+    }
+    if (visited.contains(workflowId)) {
+      return;
+    }
+    visited.add(workflowId);
+    inStack.add(workflowId);
+    path.add(workflowId);
+    for (String ref : adjacency.getOrDefault(workflowId, List.of())) {
+      if (adjacency.containsKey(ref)) {
+        dfsForCycle(ref, adjacency, visited, inStack, path);
+      }
+    }
+    path.remove(path.size() - 1);
+    inStack.remove(workflowId);
   }
 
   private void walkForBlueprintRefs(List<Executable> steps, WorkflowDefinition workflow) {
@@ -144,32 +204,11 @@ public class WorkflowValidator {
     }
   }
 
-  private void validateCircularDependencies(Map<String, List<String>> circularWorkflows) {
-    circularWorkflows.entrySet().stream()
-        .filter(entry -> entry.getValue().contains(entry.getKey()))
-        .findFirst()
-        .ifPresent(entry -> {
-              throw new IllegalStateException(
-                  "Workflow '%s' has circular references with workflows: %s"
-                      .formatted(entry.getKey(), entry.getValue()));
-            }
-        );
-  }
-
   private static void assertWorkflowExists(String workflowRef, String stepId, String workflowId,
-      Map<String, WorkflowDefinition> workflows, Map<String, List<String>> circularWorkflows) {
+      Map<String, WorkflowDefinition> workflows) {
     Validate.isTrue(workflows.containsKey(workflowRef),
         "Step '%s' in workflow '%s' references unknown workflow '%s'"
             .formatted(stepId, workflowId, workflowRef));
-    if (circularWorkflows.containsKey(workflowId)) {
-      circularWorkflows.get(workflowId).add(workflowRef);
-    } else {
-      circularWorkflows.put(workflowId, new ArrayList<>(List.of(workflowRef)));
-    }
-    List<List<String>> toUpdate = circularWorkflows.values().stream()
-        .filter(refs -> refs.contains(workflowId))
-        .toList();
-    toUpdate.forEach(refs -> refs.add(workflowRef));
   }
 
   private static void validateBlueprintExists(String blueprintId, WorkflowDefinition workflow) {

@@ -129,7 +129,7 @@ class AgentForgeLoaderTest {
       capturedPath.set(root);
       return new WorkflowDirectoryLoad(Map.of(), Map.of());
     };
-    AgentForgeLoader loader = new AgentForgeLoader(emptyAgentLoader(), emptyWorkflowLoader(), directoryLoader);
+    AgentForgeLoader loader = new AgentForgeLoader(emptyAgentLoader(), directoryLoader);
 
     Path draftRoot = Path.of("target/drafts");
     loader.loadWorkflowDirectory(draftRoot);
@@ -148,7 +148,7 @@ class AgentForgeLoaderTest {
       capturedPath.set(root);
       return new WorkflowDirectoryLoad(Map.of("wf", workflow), Map.of());
     };
-    AgentForgeLoader loader = new AgentForgeLoader(emptyAgentLoader(), emptyWorkflowLoader(),
+    AgentForgeLoader loader = new AgentForgeLoader(emptyAgentLoader(),
         directoryLoader);
 
     Path customRoot = Path.of("target/workflows");
@@ -167,9 +167,6 @@ class AgentForgeLoaderTest {
     };
     AgentForgeLoader loader = new AgentForgeLoader(
         emptyAgentLoader(),
-        () -> {
-          throw new AssertionError("No-arg workflow loader must not be used for explicit directory");
-        },
         directoryLoader);
     Path workflowsRoot = Path.of("target/explicit-workflows");
 
@@ -186,7 +183,6 @@ class AgentForgeLoaderTest {
     AtomicReference<Path> capturedPath = new AtomicReference<>();
     AgentForgeLoader loader = new AgentForgeLoader(
         emptyAgentLoader(),
-        emptyWorkflowLoader(),
         root -> {
           capturedPath.set(root);
           return new WorkflowDirectoryLoad(Map.of(), Map.of());
@@ -202,7 +198,7 @@ class AgentForgeLoaderTest {
 
   @Test
   void pathScopedLoadMethods_failClearlyWithoutWorkflowDirectoryLoader() {
-    AgentForgeLoader loader = new AgentForgeLoader(emptyAgentLoader(), emptyWorkflowLoader());
+    AgentForgeLoader loader = new AgentForgeLoader(emptyAgentLoader());
 
     assertThatThrownBy(() -> loader.loadWorkflowDirectory(Path.of("target/any")))
         .isInstanceOf(UnsupportedOperationException.class)

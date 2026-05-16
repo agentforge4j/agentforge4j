@@ -37,12 +37,22 @@ public final class ClasspathAgentLoader extends BaseAgentLoader {
   }
 
   private String agentBundleDirectoryPrefix(String entry) {
+    validateBundleEntryId(entry);
     String dirName = entry.endsWith(AGENT_DIR_SUFFIX) ? entry : entry + AGENT_DIR_SUFFIX;
     return rootPath + dirName + "/";
   }
 
+  private static void validateBundleEntryId(String entry) {
+    Validate.notBlank(entry, "Agent bundle entry id must not be blank");
+    Validate.isTrue(!entry.contains(".."),
+        "Agent bundle entry id must not contain path traversal: %s".formatted(entry));
+    Validate.isTrue(!entry.contains("/") && !entry.contains("\\"),
+        "Agent bundle entry id must not contain path separators: %s".formatted(entry));
+  }
+
   @Override
   protected AgentDefinitionFile readAgentFile(String entry) {
+    validateBundleEntryId(entry);
     URL jsonUrl = classpathUrlForAgentJson(agentBundleDirectoryPrefix(entry) + AGENT_FILE_NAME);
     try (InputStream stream = jsonUrl.openStream()) {
       return objectMapper.readValue(stream, AgentDefinitionFile.class);
@@ -64,6 +74,7 @@ public final class ClasspathAgentLoader extends BaseAgentLoader {
   }
 
   private String readFile(String entry, String fileName) {
+    validateBundleEntryId(entry);
     URL jsonUrl = classpathUrlForAgentJson(agentBundleDirectoryPrefix(entry) + fileName);
     if (jsonUrl != null) {
       try (InputStream stream = jsonUrl.openStream()) {

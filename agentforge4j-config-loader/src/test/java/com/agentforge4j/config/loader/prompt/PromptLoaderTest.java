@@ -10,6 +10,8 @@ import java.nio.file.Path;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import java.io.UncheckedIOException;
+
 class PromptLoaderTest {
 
   @TempDir
@@ -50,9 +52,20 @@ class PromptLoaderTest {
   }
 
   @Test
-  void loadPrompt_wrapsIOExceptionAsUnchecked() {
+  void loadPrompt_returnsEmptyForMissingFile() {
     PromptLoader loader = new PromptLoader();
 
-    assertThat(loader.loadPrompt(tempDir, "missing.md")).isNull();
+    assertThat(loader.loadPrompt(tempDir, "missing.md")).isEmpty();
+  }
+
+  @Test
+  void loadPrompt_throwsWhenPathIsDirectory() throws IOException {
+    Path promptDir = tempDir.resolve("prompts");
+    Files.createDirectory(promptDir);
+    PromptLoader loader = new PromptLoader();
+
+    assertThatThrownBy(() -> loader.loadPrompt(tempDir, "prompts"))
+        .isInstanceOf(UncheckedIOException.class)
+        .hasMessageContaining("Failed to read prompt file");
   }
 }

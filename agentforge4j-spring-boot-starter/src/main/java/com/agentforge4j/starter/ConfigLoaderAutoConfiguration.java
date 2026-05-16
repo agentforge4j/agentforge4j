@@ -86,7 +86,7 @@ public class ConfigLoaderAutoConfiguration {
   public AgentForgeLoader agentForgeLoader(@Qualifier("agentLoader") AgentLoader agentLoader,
       @Qualifier("workflowLoader") WorkflowLoader workflowLoader,
       WorkflowDirectoryLoader workflowDirectoryLoader) {
-    return new AgentForgeLoader(agentLoader, workflowLoader, workflowDirectoryLoader);
+    return new AgentForgeLoader(agentLoader, workflowDirectoryLoader);
   }
 
   @Bean
