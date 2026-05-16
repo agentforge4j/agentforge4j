@@ -93,7 +93,6 @@ class ClasspathWorkflowLoaderIT {
     ObjectMapper mapper = new ObjectMapper();
     AgentForgeLoader loader = new AgentForgeLoader(
         new FileSystemAgentLoader(mapper, new FileSystemAgentPromptResolver(new PromptLoader()), agentsRoot),
-        () -> new FileSystemWorkflowLoader(mapper).loadWorkflows(workflowsRoot),
         new FileSystemWorkflowLoader(mapper));
 
     LoadedConfiguration loaded = loader.load(

@@ -2,6 +2,7 @@ package com.agentforge4j.llm.bedrock;
 
 import com.agentforge4j.llm.LlmClient;
 import com.agentforge4j.llm.LlmExecutionRequest;
+import com.agentforge4j.llm.LlmExecutionRequestValidator;
 import com.agentforge4j.llm.LlmInvocationException;
 import com.agentforge4j.util.Validate;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -74,7 +75,7 @@ public final class BedrockLlmClient implements LlmClient {
    */
   @Override
   public String execute(LlmExecutionRequest request) {
-    validateRequest(request);
+    LlmExecutionRequestValidator.validate(request, providerName);
     String modelId = StringUtils.defaultIfBlank(request.model(), defaultModel);
     BedrockAnthropicInvokeSerializer.validateAnthropicModelId(modelId);
     String bodyJson = serializer.toJson(request, modelId, config);
@@ -97,22 +98,13 @@ public final class BedrockLlmClient implements LlmClient {
     }
   }
 
-  private void validateRequest(LlmExecutionRequest request) {
-    Validate.notNull(request, "Request must not be null");
-    Validate.notBlank(request.providerName(), "Request provider must be specified");
-    Validate.isTrue(
-        providerName.equalsIgnoreCase(request.providerName()),
-        "Request provider '%s' does not match client provider '%s'".formatted(
-            request.providerName(), providerName));
-    Validate.notBlank(request.userInput(), "Request user input must be provided");
-    Validate.notBlank(request.systemPrompt(), "Request system prompt must be provided");
-  }
-
   private static LlmInvocationException mapAwsServiceException(AwsServiceException e) {
     String code = e.awsErrorDetails() != null ? e.awsErrorDetails().errorCode() : "";
     String msg = e.awsErrorDetails() != null ? e.awsErrorDetails().errorMessage() : e.getMessage();
     int status = e.statusCode();
     String summary = "bedrock HTTP error: %s - %s %s".formatted(status, code, msg).strip();
-    return new LlmInvocationException(summary, e);
+    LlmInvocationException ex = new LlmInvocationException(summary, status);
+    ex.initCause(e);
+    return ex;
   }
 }

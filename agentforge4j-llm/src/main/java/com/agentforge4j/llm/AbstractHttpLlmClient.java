@@ -5,6 +5,7 @@ import java.io.IOException;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.util.Optional;
 import java.util.function.Supplier;
 import lombok.Getter;
 import org.apache.commons.lang3.StringUtils;
@@ -24,11 +25,13 @@ import org.apache.commons.lang3.StringUtils;
 public abstract class AbstractHttpLlmClient implements LlmClient {
 
   private static final System.Logger LOG = System.getLogger(AbstractHttpLlmClient.class.getName());
+  private static final int MAX_ERROR_BODY_MESSAGE_CHARS = 500;
 
   @Getter
   private final String providerName;
   @Getter
   private final String defaultModel;
+  private final LlmClientConfiguration clientConfiguration;
   private final HttpClient httpClient;
 
   /**
@@ -44,9 +47,15 @@ public abstract class AbstractHttpLlmClient implements LlmClient {
         "Provider name must be provided in the configuration");
     this.defaultModel = Validate.notBlank(config.getDefaultModel(),
         "%s default model must be provided".formatted(config.getProviderName()));
+    this.clientConfiguration = config;
     this.httpClient = HttpClient.newBuilder()
         .connectTimeout(config.getConnectTimeout())
         .build();
+  }
+
+  @Override
+  public Optional<LlmRetryPolicy> getRetryPolicy() {
+    return clientConfiguration.getRetryPolicy();
   }
 
   /**
@@ -86,16 +95,15 @@ public abstract class AbstractHttpLlmClient implements LlmClient {
    * @throws IllegalArgumentException if the request is invalid
    */
   public final String execute(LlmExecutionRequest request) {
-    validateRequest(request);
+    LlmExecutionRequestValidator.validate(request, providerName);
     try {
       HttpResponse<String> response = sendHttpRequest(buildHttpRequest(request));
       return validateAndExtractResponse(requireSuccess(response, providerName));
     } catch (InterruptedException e) {
-      handleInterruptedException(e);
+      throw handleInterruptedException(e);
     } catch (IOException e) {
-      handleIoException(e);
+      throw handleIoException(e);
     }
-    return null;
   }
 
   private HttpResponse<String> sendHttpRequest(HttpRequest httpRequest)
@@ -109,30 +117,16 @@ public abstract class AbstractHttpLlmClient implements LlmClient {
     return response;
   }
 
-  private void handleInterruptedException(InterruptedException e) {
+  private LlmInvocationException handleInterruptedException(InterruptedException e) {
     Thread.currentThread().interrupt();
     LOG.log(System.Logger.Level.ERROR, "LLM request interrupted providerName={0}", providerName, e);
-    throw new LlmInvocationException("%s request interrupted".formatted(providerName), e);
+    return new LlmInvocationException("%s request interrupted".formatted(providerName), e);
   }
 
-  private void handleIoException(IOException e) {
+  private LlmInvocationException handleIoException(IOException e) {
     LOG.log(System.Logger.Level.ERROR, "LLM request IO failure providerName={0}, message={1}",
         providerName, e.getMessage(), e);
-    throw new LlmInvocationException("%s request failed".formatted(providerName), e);
-  }
-
-  private void validateRequest(LlmExecutionRequest request) {
-    Validate.notNull(request, "Request must not be null");
-    Validate.notBlank(request.providerName(), "Request providerName must be specified");
-    Validate.isTrue(
-        providerName.equalsIgnoreCase(request.providerName()),
-        "Request providerName '%s' does not match client providerName '%s'".formatted(
-            request.providerName(),
-            providerName
-        )
-    );
-    Validate.notBlank(request.userInput(), "Request user input must be provided");
-    Validate.notBlank(request.systemPrompt(), "Request system prompt must be provided");
+    return new LlmInvocationException("%s request failed".formatted(providerName), e);
   }
 
   private String requireSuccess(HttpResponse<String> response, String providerName) {
@@ -145,12 +139,15 @@ public abstract class AbstractHttpLlmClient implements LlmClient {
   private Supplier<RuntimeException> requireSuccessException(String body, int status,
       String providerName) {
     return () -> {
-      String truncated = StringUtils.defaultString(body)
-          .substring(0, Math.min(500, StringUtils.defaultString(body).length()));
+      String fullBody = StringUtils.defaultString(body);
+      String truncated = LlmHttpErrorBodyTruncate.truncateForEmbeddedMessage(fullBody,
+          MAX_ERROR_BODY_MESSAGE_CHARS);
       LOG.log(System.Logger.Level.ERROR, "Non-2xx response providerName={0}, status={1}, body={2}",
           providerName, status, truncated);
+      LOG.log(System.Logger.Level.DEBUG, "Non-2xx response full body providerName={0}, status={1}, body={2}",
+          providerName, status, fullBody);
       return new LlmInvocationException(
-          "%s HTTP error: %s - %s".formatted(providerName, status, body));
+          "%s HTTP error: %s - %s".formatted(providerName, status, truncated), status);
     };
   }
 }

@@ -5,14 +5,12 @@ import java.util.List;
 /**
  * Immutable enable flag and allowed-operation list for one integration id.
  * <p>
- * When {@code enabled} is {@code true}, the compact constructor invokes {@link #validate()} and
- * stores an unmodifiable copy of {@code allowedOperations}, or {@link List#of()} when the list is
- * {@code null}. When {@code enabled} is {@code false}, {@link #validate()} is not invoked and
- * {@code allowedOperations} is left as supplied (may be {@code null}).
+ * The compact constructor defaults {@code allowedOperations} to {@link List#of()} when
+ * {@code null}, stores an unmodifiable copy otherwise, and invokes {@link #validate()}.
  *
  * @param enabled whether the integration id is treated as enabled
- * @param allowedOperations operation names permitted when {@code enabled}; ignored for defensive
- * copying when {@code enabled} is {@code false}
+ * @param allowedOperations operation names permitted when enabled; never {@code null} after
+ *                          construction
  */
 public record StandardIntegrationConfig(
     boolean enabled,
@@ -20,18 +18,27 @@ public record StandardIntegrationConfig(
 ) implements IntegrationConfig {
 
   public StandardIntegrationConfig {
-    if (enabled) {
-      validate();
-      allowedOperations = allowedOperations != null
-          ? List.copyOf(allowedOperations)
-          : List.of();
+    List<String> normalized;
+    if (allowedOperations == null) {
+      normalized = List.of();
+    } else {
+      rejectInvalidEntries(allowedOperations);
+      normalized = List.copyOf(allowedOperations);
     }
+    allowedOperations = normalized;
   }
 
-  /**
-   * No-op; permits any state for this record.
-   */
   @Override
   public void validate() {
+    rejectInvalidEntries(allowedOperations);
+  }
+
+  private static void rejectInvalidEntries(List<String> allowedOperations) {
+    for (String operation : allowedOperations) {
+      if (operation == null || operation.isBlank()) {
+        throw new IllegalArgumentException(
+            "allowedOperations must not contain null or blank entries");
+      }
+    }
   }
 }

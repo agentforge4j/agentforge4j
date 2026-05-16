@@ -12,6 +12,7 @@ import com.agentforge4j.core.workflow.context.ContextMapping;
 import com.agentforge4j.core.workflow.step.StepDefinition;
 import com.agentforge4j.core.workflow.step.StepTransition;
 import com.agentforge4j.core.workflow.step.behaviour.AgentBehaviour;
+import com.agentforge4j.core.workflow.step.behaviour.FailBehaviour;
 import com.agentforge4j.core.workflow.step.behaviour.InputBehaviour;
 import com.agentforge4j.core.workflow.step.behaviour.WorkflowBehaviour;
 import com.agentforge4j.core.workflow.step.blueprint.BlueprintRef;
@@ -46,6 +47,49 @@ class WorkflowValidatorTest {
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("unknown workflow")
         .hasMessageContaining("missing-wf");
+  }
+
+  @Test
+  void validateCircularRefs_detectsDirectSelfReference() {
+    StepDefinition selfRef = new StepDefinition(
+        "s1",
+        "S1",
+        new WorkflowBehaviour("wf-a", StepTransition.AUTO),
+        new ContextMapping(List.of(), List.of()),
+        null,
+        null);
+    WorkflowDefinition wfA = wf("wf-a", List.of(selfRef));
+
+    assertThatThrownBy(() -> validator.validateCircularRefs(Map.of("wf-a", wfA)))
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessageContaining("circular references")
+        .hasMessageContaining("wf-a");
+  }
+
+  @Test
+  void validateCircularRefs_detectsThreeNodeCycle() {
+    WorkflowDefinition wfA = wf("wf-a", List.of(workflowRefStep("s1", "wf-b")));
+    WorkflowDefinition wfB = wf("wf-b", List.of(workflowRefStep("s2", "wf-c")));
+    WorkflowDefinition wfC = wf("wf-c", List.of(workflowRefStep("s3", "wf-a")));
+
+    assertThatThrownBy(() -> validator.validateCircularRefs(
+        Map.of("wf-a", wfA, "wf-b", wfB, "wf-c", wfC)))
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessageContaining("circular references");
+  }
+
+  @Test
+  void validateCircularRefs_allowsAcyclicDiamond() {
+    WorkflowDefinition wfA = wf("wf-a", List.of(
+        workflowRefStep("s1", "wf-b"),
+        workflowRefStep("s2", "wf-c")));
+    WorkflowDefinition wfB = wf("wf-b", List.of(workflowRefStep("s3", "wf-d")));
+    WorkflowDefinition wfC = wf("wf-c", List.of(workflowRefStep("s4", "wf-d")));
+    WorkflowDefinition wfD = wf("wf-d", List.of(terminalStep("s5")));
+
+    assertThatCode(() -> validator.validateCircularRefs(
+        Map.of("wf-a", wfA, "wf-b", wfB, "wf-c", wfC, "wf-d", wfD)))
+        .doesNotThrowAnyException();
   }
 
   @Test
@@ -151,6 +195,26 @@ class WorkflowValidatorTest {
 
     assertThatCode(() -> validator.validateAgentRefs(Map.of("wf1", wf), Map.of("ok-agent", agent)))
         .doesNotThrowAnyException();
+  }
+
+  private static StepDefinition terminalStep(String stepId) {
+    return new StepDefinition(
+        stepId,
+        stepId,
+        new FailBehaviour("stop"),
+        new ContextMapping(List.of(), List.of()),
+        null,
+        null);
+  }
+
+  private static StepDefinition workflowRefStep(String stepId, String workflowRef) {
+    return new StepDefinition(
+        stepId,
+        stepId,
+        new WorkflowBehaviour(workflowRef, StepTransition.AUTO),
+        new ContextMapping(List.of(), List.of()),
+        null,
+        null);
   }
 
   private static WorkflowDefinition wf(String id, List<Executable> steps) {

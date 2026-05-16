@@ -3,8 +3,6 @@ package com.agentforge4j.starter;
 import com.agentforge4j.config.loader.AgentForgeLoader;
 import com.agentforge4j.config.loader.AgentLoader;
 import com.agentforge4j.config.loader.LoadedConfiguration;
-import com.agentforge4j.config.loader.WorkflowDirectoryLoad;
-import com.agentforge4j.config.loader.WorkflowLoader;
 import com.agentforge4j.config.loader.agent.ClasspathAgentLoader;
 import com.agentforge4j.config.loader.agent.FileSystemAgentLoader;
 import com.agentforge4j.config.loader.prompt.AgentPromptResolver;
@@ -72,21 +70,9 @@ public class ConfigLoaderAutoConfiguration {
 
   @Bean
   @ConditionalOnMissingBean
-  public WorkflowLoader workflowLoader(WorkflowDirectoryLoader workflowDirectoryLoader,
-      AgentForge4jProperties properties) {
-    if (StringUtils.isBlank(properties.workflowsPath())) {
-      return NoOpWorkflowLoader.INSTANCE;
-    }
-    Path workflowsRoot = Path.of(properties.workflowsPath());
-    return () -> workflowDirectoryLoader.loadWorkflows(workflowsRoot);
-  }
-
-  @Bean
-  @ConditionalOnMissingBean
   public AgentForgeLoader agentForgeLoader(@Qualifier("agentLoader") AgentLoader agentLoader,
-      @Qualifier("workflowLoader") WorkflowLoader workflowLoader,
       WorkflowDirectoryLoader workflowDirectoryLoader) {
-    return new AgentForgeLoader(agentLoader, workflowLoader, workflowDirectoryLoader);
+    return new AgentForgeLoader(agentLoader, workflowDirectoryLoader);
   }
 
   @Bean
@@ -124,7 +110,8 @@ public class ConfigLoaderAutoConfiguration {
   public LoadedConfiguration loadedConfiguration(
       AgentForgeLoader agentForgeLoader,
       AgentForge4jProperties properties,
-      ObjectMapper objectMapper) {
+      ClasspathAgentLoader classpathAgentLoader,
+      ClasspathWorkflowLoader classpathWorkflowLoader) {
 
     Optional<Path> agentsPathOpt = Optional.ofNullable(properties.agentsPath())
         .filter(StringUtils::isNotBlank)
@@ -133,14 +120,13 @@ public class ConfigLoaderAutoConfiguration {
         .filter(StringUtils::isNotBlank)
         .map(Path::of);
     Optional<ClasspathAgentLoader> agentClasspathLoader =
-        Optional.of(properties.loadShippedAgents())
-            .filter(Boolean::booleanValue)
-            .map(ignored -> new ClasspathAgentLoader(objectMapper,
-                ClasspathAgentLoader.SHIPPED_AGENTS_ROOT));
+        properties.loadShippedAgents()
+            ? Optional.of(classpathAgentLoader)
+            : Optional.empty();
     Optional<ClasspathWorkflowLoader> workflowClasspathLoader =
-        Optional.of(properties.loadShippedWorkflows())
-            .filter(Boolean::booleanValue)
-            .map(ignored -> new ClasspathWorkflowLoader(objectMapper));
+        properties.loadShippedWorkflows()
+            ? Optional.of(classpathWorkflowLoader)
+            : Optional.empty();
 
     Validate.isTrue(agentsPathOpt.isPresent() ||
             workflowsPathOpt.isPresent() ||
@@ -173,12 +159,4 @@ public class ConfigLoaderAutoConfiguration {
     }
   }
 
-  private enum NoOpWorkflowLoader implements WorkflowLoader {
-    INSTANCE;
-
-    @Override
-    public WorkflowDirectoryLoad loadWorkflows() {
-      return new WorkflowDirectoryLoad(Map.of(), Map.of());
-    }
-  }
 }

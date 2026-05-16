@@ -24,11 +24,10 @@ public final class AgentForgeLoader {
   private static final System.Logger LOG = System.getLogger(AgentForgeLoader.class.getName());
 
   private final AgentLoader agentLoader;
-  private final WorkflowLoader workflowLoader;
   private final WorkflowDirectoryLoader workflowDirectoryLoader;
 
-  public AgentForgeLoader(AgentLoader agentLoader, WorkflowLoader workflowLoader) {
-    this(agentLoader, workflowLoader,
+  public AgentForgeLoader(AgentLoader agentLoader) {
+    this(agentLoader,
         root -> {
           throw new UnsupportedOperationException(
               "Path-scoped workflow loading is unavailable; construct AgentForgeLoader with "
@@ -36,10 +35,9 @@ public final class AgentForgeLoader {
         });
   }
 
-  public AgentForgeLoader(AgentLoader agentLoader, WorkflowLoader workflowLoader,
+  public AgentForgeLoader(AgentLoader agentLoader,
       WorkflowDirectoryLoader workflowDirectoryLoader) {
     this.agentLoader = Validate.notNull(agentLoader, "agentLoader must not be null");
-    this.workflowLoader = Validate.notNull(workflowLoader, "workflowLoader must not be null");
     this.workflowDirectoryLoader = Validate.notNull(workflowDirectoryLoader,
         "workflowDirectoryLoader must not be null");
   }
@@ -128,7 +126,8 @@ public final class AgentForgeLoader {
    * Loads configured agents and workflows from the provided sources and validates
    * cross-references.
    *
-   * @param agentsDir               optional filesystem directory containing agent bundles
+   * @param agentsDir               presence opts in to filesystem agent loading; the directory is
+   *                                determined by the injected {@link AgentLoader}
    * @param workflowsDir            optional filesystem directory containing workflow bundles
    * @param classpathAgentLoader    optional loader for shipped agents
    * @param classpathWorkflowLoader optional loader for shipped workflows
@@ -165,7 +164,8 @@ public final class AgentForgeLoader {
   }
 
   private void loadAgentDir(Optional<Path> agentsDir, Map<String, AgentDefinition> agents) {
-    agentsDir.ifPresent(ignored -> mergeBundledAgentsStrict(agents, loadAgents(),
+    // agentsDir presence only opts in; the scan root is fixed on the injected AgentLoader.
+    agentsDir.ifPresent(agentsDirPresent -> mergeBundledAgentsStrict(agents, loadAgents(),
         "agents directory"));
   }
 

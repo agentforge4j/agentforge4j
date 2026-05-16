@@ -1,5 +1,6 @@
 package com.agentforge4j.llm;
 
+import java.util.Optional;
 import org.apache.commons.lang3.Strings;
 
 /**
@@ -28,6 +29,10 @@ public interface LlmClient {
    */
   String execute(LlmExecutionRequest request);
 
+  default Optional<LlmRetryPolicy> getRetryPolicy() {
+    return Optional.empty();
+  }
+
   /**
    * Removes markdown code fence markers from the input if present.
    * <p>
@@ -38,6 +43,9 @@ public interface LlmClient {
    * @return the input with fences removed, or the input unchanged
    */
   static String stripCodeFence(String input) {
+    if (input == null) {
+      return null;
+    }
     if (!Strings.CS.startsWith(input, "```")) {
       return input;
     }

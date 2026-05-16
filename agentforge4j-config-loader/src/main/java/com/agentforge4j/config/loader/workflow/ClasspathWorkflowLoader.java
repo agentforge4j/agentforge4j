@@ -1,5 +1,7 @@
 package com.agentforge4j.config.loader.workflow;
 
+import com.agentforge4j.config.loader.WorkflowDirectoryLoad;
+import com.agentforge4j.config.loader.WorkflowLoader;
 import com.agentforge4j.config.loader.agent.ClasspathAgentLoader;
 import com.agentforge4j.core.agent.AgentDefinition;
 import com.agentforge4j.core.workflow.WorkflowDefinition;
@@ -17,13 +19,18 @@ import java.util.Map;
 /**
  * Loads shipped workflow bundles from classpath resources.
  */
-public final class ClasspathWorkflowLoader extends BaseWorkflowBundleLoader {
+public final class ClasspathWorkflowLoader extends BaseWorkflowBundleLoader implements WorkflowLoader {
 
   private static final System.Logger LOG = System.getLogger(
       ClasspathWorkflowLoader.class.getName());
 
   public ClasspathWorkflowLoader(ObjectMapper workflowMapper) {
     super(workflowMapper, "ClasspathWorkflowLoader", WorkflowSource.SHIPPED);
+  }
+
+  @Override
+  public WorkflowDirectoryLoad loadWorkflows() {
+    return loadWorkflows(WorkflowBundleLoadContext.classpath());
   }
 
   @Override

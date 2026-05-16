@@ -1,7 +1,6 @@
 package com.agentforge4j.config.loader.workflow;
 
 import com.agentforge4j.config.loader.WorkflowDirectoryLoad;
-import com.agentforge4j.config.loader.WorkflowLoader;
 import com.agentforge4j.core.agent.AgentDefinition;
 import com.agentforge4j.core.workflow.Executable;
 import com.agentforge4j.core.workflow.WorkflowDefinition;
@@ -27,7 +26,7 @@ import lombok.RequiredArgsConstructor;
  * Loads workflow definitions from a backing source.
  */
 @RequiredArgsConstructor
-public abstract class BaseWorkflowBundleLoader implements WorkflowLoader {
+public abstract class BaseWorkflowBundleLoader {
 
   protected static final String WORKFLOW_DEFINITION_FILE = "workflow.json";
   protected static final String WORKFLOW_DIR_SUFFIX = ".workflow";
@@ -64,21 +63,11 @@ public abstract class BaseWorkflowBundleLoader implements WorkflowLoader {
       WorkflowBundleLoadContext context, String workflowId,
       List<String> bundleFiles);
 
-  /**
-   * Loads workflows from the supplied directory.
-   *
-   * @return loaded workflows with any bundled agents
-   * @throws RuntimeException when the source cannot be read or contains invalid definitions
-   */
-  public WorkflowDirectoryLoad loadWorkflows() {
-    return loadWorkflows(WorkflowBundleLoadContext.classpath());
-  }
-
   public WorkflowDirectoryLoad loadWorkflows(Path root) {
     return loadWorkflows(WorkflowBundleLoadContext.filesystem(root));
   }
 
-  private WorkflowDirectoryLoad loadWorkflows(WorkflowBundleLoadContext context) {
+  protected WorkflowDirectoryLoad loadWorkflows(WorkflowBundleLoadContext context) {
     log(System.Logger.Level.DEBUG, "Loading {0} workflows", loaderName);
 
     Map<String, WorkflowDefinition> loaded = new LinkedHashMap<>();

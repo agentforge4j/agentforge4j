@@ -2,8 +2,6 @@ package com.agentforge4j.starter.files;
 
 import com.agentforge4j.runtime.command.FileSink;
 import java.util.concurrent.atomic.AtomicBoolean;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 /**
  * Default {@link FileSink} registered by this Spring Boot starter when the application does not
@@ -20,7 +18,7 @@ import org.slf4j.LoggerFactory;
  */
 public final class NoOpFileSink implements FileSink {
 
-  private static final Logger log = LoggerFactory.getLogger(NoOpFileSink.class);
+  private static final System.Logger log = System.getLogger(NoOpFileSink.class.getName());
 
   private final AtomicBoolean discardWarningLogged = new AtomicBoolean(false);
 
@@ -31,7 +29,7 @@ public final class NoOpFileSink implements FileSink {
   @Override
   public void write(String runId, String stepId, String path, String content) {
     if (discardWarningLogged.compareAndSet(false, true)) {
-      log.warn(
+      log.log(System.Logger.Level.WARNING,
           "No FileSink bean is configured; generated file outputs will be discarded. "
               + "Provide a FileSink bean to persist workflow files.");
     }

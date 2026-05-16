@@ -1,6 +1,7 @@
 package com.agentforge4j.llm;
 
 import java.time.Duration;
+import java.util.Optional;
 
 /**
  * Settings used to construct an {@link LlmClient} for one provider: provider id, default model, and
@@ -28,4 +29,8 @@ public interface LlmClientConfiguration {
    * @return connect timeout duration
    */
   Duration getConnectTimeout();
+
+  default Optional<LlmRetryPolicy> getRetryPolicy() {
+    return Optional.empty();
+  }
 }
