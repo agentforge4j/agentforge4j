@@ -1,7 +1,7 @@
-package com.agentforge4j.llm.claude;
+﻿package com.agentforge4j.llm.claude;
 
-import com.agentforge4j.llm.LlmExecutionRequest;
-import com.agentforge4j.llm.LlmInvocationException;
+import com.agentforge4j.llm.api.LlmExecutionRequest;
+import com.agentforge4j.llm.api.LlmInvocationException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -18,8 +18,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
- * End-to-end tests for {@link ClaudeLlmClient} using a local loopback HTTP server (no mocks, no
- * API keys, no external network).
+ * End-to-end tests for {@link ClaudeLlmClient} using a local loopback HTTP server (no mocks, no API
+ * keys, no external network).
  */
 class ClaudeLlmClientIT {
 

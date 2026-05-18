@@ -1,13 +1,5 @@
 package com.agentforge4j.runtime.llm;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.times;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
-
 import com.agentforge4j.core.agent.AgentDefinition;
 import com.agentforge4j.core.agent.AgentLocality;
 import com.agentforge4j.core.agent.AgentRepository;
@@ -16,9 +8,9 @@ import com.agentforge4j.core.command.CompleteCommand;
 import com.agentforge4j.core.workflow.context.ContextMapping;
 import com.agentforge4j.core.workflow.event.WorkflowEventType;
 import com.agentforge4j.core.workflow.state.WorkflowState;
-import com.agentforge4j.llm.LlmClient;
 import com.agentforge4j.llm.LlmClientResolver;
-import com.agentforge4j.llm.LlmExecutionRequest;
+import com.agentforge4j.llm.api.LlmClient;
+import com.agentforge4j.llm.api.LlmExecutionRequest;
 import com.agentforge4j.runtime.event.EventRecorder;
 import com.agentforge4j.runtime.repository.InMemoryWorkflowEventLog;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -28,6 +20,14 @@ import java.time.ZoneOffset;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 class AgentInvokerTest {
 
@@ -236,6 +236,7 @@ class AgentInvokerTest {
     LlmClientResolver resolver = mock(LlmClientResolver.class);
     when(resolver.resolve("openai")).thenReturn(client);
     when(resolver.isProviderAvailable("openai")).thenReturn(true);
+    when(resolver.listAvailableClients()).thenReturn(List.of("openai"));
 
     AgentInvoker invoker = new AgentInvoker(
         repo, resolver, new ContextRenderer(mapper), new LlmCommandParser(mapper), mapper, recorder,
@@ -267,6 +268,7 @@ class AgentInvokerTest {
     LlmClientResolver resolver = mock(LlmClientResolver.class);
     when(resolver.resolve("openai")).thenReturn(client);
     when(resolver.isProviderAvailable("openai")).thenReturn(true);
+    when(resolver.listAvailableClients()).thenReturn(List.of("openai"));
 
     AgentInvoker invoker = new AgentInvoker(
         repo, resolver, new ContextRenderer(mapper), new LlmCommandParser(mapper), mapper, recorder,
@@ -325,7 +327,7 @@ class AgentInvokerTest {
 
     LlmClientResolver resolver = mock(LlmClientResolver.class);
     when(resolver.resolve("ollama")).thenReturn(client);
-    when(resolver.listAvailableClients()).thenReturn(List.of(client.getProviderName()));
+    when(resolver.listAvailableClients()).thenReturn(List.of("ollama"));
 
     ProviderPreference strategyChoice = new ProviderPreference("ollama", "llama3");
     LlmProviderSelectionStrategy selectionStrategy = mock(LlmProviderSelectionStrategy.class);
@@ -374,6 +376,7 @@ class AgentInvokerTest {
     LlmClientResolver resolver = mock(LlmClientResolver.class);
     when(resolver.resolve("openai")).thenReturn(client);
     when(resolver.isProviderAvailable("openai")).thenReturn(true);
+    when(resolver.listAvailableClients()).thenReturn(List.of("openai"));
     AgentRepository repo = mock(AgentRepository.class);
     AgentDefinition registered = agentSupportingOnlyCompleteWithBody("body");
     when(repo.get("lookup-id")).thenReturn(registered);
@@ -465,6 +468,7 @@ class AgentInvokerTest {
     LlmClientResolver resolver = mock(LlmClientResolver.class);
     when(resolver.resolve("openai")).thenReturn(client);
     when(resolver.isProviderAvailable("openai")).thenReturn(true);
+    when(resolver.listAvailableClients()).thenReturn(List.of("openai"));
     return new AgentInvoker(
         repo,
         resolver,

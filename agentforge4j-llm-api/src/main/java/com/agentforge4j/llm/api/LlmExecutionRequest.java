@@ -1,15 +1,18 @@
-package com.agentforge4j.llm;
+package com.agentforge4j.llm.api;
 
 import com.agentforge4j.util.Validate;
 
 /**
  * Immutable parameters for a single LLM invocation.
  *
- * @param providerName     provider id (for example {@code "openai"}); must match the target {@link LlmClient}
- * @param model            model id for this call, or {@code null} to use the client's configured default
- * @param systemPrompt     system instructions for the model
- * @param userInput        user or tool-facing content for this turn
- * @param maxOutputTokens optional cap on generated tokens (provider-specific; ignored when {@code null})
+ * @param providerName    provider id (for example {@code "openai"}); must match the target
+ *                        {@link LlmClient}
+ * @param model           model id for this call, or {@code null} to use the client's configured
+ *                        default
+ * @param systemPrompt    system instructions for the model
+ * @param userInput       user or tool-facing content for this turn
+ * @param maxOutputTokens optional cap on generated tokens (provider-specific; ignored when
+ *                        {@code null})
  */
 public record LlmExecutionRequest(
     String providerName,
@@ -18,7 +21,8 @@ public record LlmExecutionRequest(
     String userInput,
     Integer maxOutputTokens) {
 
-  public LlmExecutionRequest(String providerName, String model, String systemPrompt, String userInput) {
+  public LlmExecutionRequest(String providerName, String model, String systemPrompt,
+      String userInput) {
     this(providerName, model, systemPrompt, userInput, null);
   }
 
@@ -32,7 +36,7 @@ public record LlmExecutionRequest(
     systemPrompt = Validate.notBlank(systemPrompt, "System prompt must not be blank");
     userInput = Validate.notBlank(userInput, "User input must not be blank");
     Validate.isTrue(maxOutputTokens == null || maxOutputTokens > 0,
-        "maxOutputTokens must be positive when set");
+        "maxOutputTokens must be greater than 0 when set");
   }
 
   /**

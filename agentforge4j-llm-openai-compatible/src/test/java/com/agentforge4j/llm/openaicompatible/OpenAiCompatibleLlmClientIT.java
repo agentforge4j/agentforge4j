@@ -1,8 +1,8 @@
-package com.agentforge4j.llm.openaicompatible;
+﻿package com.agentforge4j.llm.openaicompatible;
 
 import com.agentforge4j.llm.LlmClientFactory;
-import com.agentforge4j.llm.LlmExecutionRequest;
-import com.agentforge4j.llm.LlmInvocationException;
+import com.agentforge4j.llm.api.LlmExecutionRequest;
+import com.agentforge4j.llm.api.LlmInvocationException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
@@ -70,7 +70,8 @@ class OpenAiCompatibleLlmClientIT {
   @Test
   void should_throw_when_provider_name_mismatched() {
     OpenAiCompatibleLlmClient client =
-        new OpenAiCompatibleLlmClient(new ObjectMapper(), FixedOpenAiCompatibleConfiguration.defaults());
+        new OpenAiCompatibleLlmClient(new ObjectMapper(),
+            FixedOpenAiCompatibleConfiguration.defaults());
     LlmExecutionRequest request =
         LlmExecutionRequest.withDefaultModel("openai", "system", "user");
 
@@ -117,7 +118,8 @@ class OpenAiCompatibleLlmClientIT {
 
   @Test
   void should_throw_when_success_body_is_empty_string() throws Exception {
-    try (OpenAiCompatibleLoopbackHttpServer http = new OpenAiCompatibleLoopbackHttpServer(200, "")) {
+    try (OpenAiCompatibleLoopbackHttpServer http = new OpenAiCompatibleLoopbackHttpServer(200,
+        "")) {
       var config = FixedOpenAiCompatibleConfiguration.builder()
           .baseUrl(http.baseUri().toString())
           .build();
@@ -136,7 +138,8 @@ class OpenAiCompatibleLlmClientIT {
     String errorJson = """
         {"error":{"message":"bad request"},"output":[]}
         """;
-    try (OpenAiCompatibleLoopbackHttpServer http = new OpenAiCompatibleLoopbackHttpServer(200, errorJson)) {
+    try (OpenAiCompatibleLoopbackHttpServer http = new OpenAiCompatibleLoopbackHttpServer(200,
+        errorJson)) {
       var config = FixedOpenAiCompatibleConfiguration.builder()
           .baseUrl(http.baseUri().toString())
           .build();
@@ -156,7 +159,8 @@ class OpenAiCompatibleLlmClientIT {
     String json = """
         { "error": null, "output": [] }
         """;
-    try (OpenAiCompatibleLoopbackHttpServer http = new OpenAiCompatibleLoopbackHttpServer(200, json)) {
+    try (OpenAiCompatibleLoopbackHttpServer http = new OpenAiCompatibleLoopbackHttpServer(200,
+        json)) {
       var config = FixedOpenAiCompatibleConfiguration.builder()
           .baseUrl(http.baseUri().toString())
           .build();
@@ -183,7 +187,8 @@ class OpenAiCompatibleLlmClientIT {
           ]
         }
         """;
-    try (OpenAiCompatibleLoopbackHttpServer http = new OpenAiCompatibleLoopbackHttpServer(200, json)) {
+    try (OpenAiCompatibleLoopbackHttpServer http = new OpenAiCompatibleLoopbackHttpServer(200,
+        json)) {
       var config = FixedOpenAiCompatibleConfiguration.builder()
           .baseUrl(http.baseUri().toString())
           .build();

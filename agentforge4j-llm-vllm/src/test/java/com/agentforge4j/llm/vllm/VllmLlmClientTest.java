@@ -1,7 +1,7 @@
-package com.agentforge4j.llm.vllm;
+﻿package com.agentforge4j.llm.vllm;
 
-import com.agentforge4j.llm.LlmExecutionRequest;
-import com.agentforge4j.llm.LlmInvocationException;
+import com.agentforge4j.llm.api.LlmExecutionRequest;
+import com.agentforge4j.llm.api.LlmInvocationException;
 import com.agentforge4j.llm.vllm.dto.InputRole;
 import com.agentforge4j.llm.vllm.dto.VllmMessage;
 import com.agentforge4j.llm.vllm.dto.VllmRequest;
@@ -246,7 +246,8 @@ class VllmLlmClientTest {
 
       HttpRequest httpRequest = client.buildHttpRequest(request);
 
-      assertThat(httpRequest.uri()).isEqualTo(URI.create("http://localhost:8000/v1/chat/completions"));
+      assertThat(httpRequest.uri()).isEqualTo(
+          URI.create("http://localhost:8000/v1/chat/completions"));
       assertThat(httpRequest.method()).isEqualTo("POST");
       assertThat(httpRequest.timeout()).contains(Duration.ofSeconds(30));
     }

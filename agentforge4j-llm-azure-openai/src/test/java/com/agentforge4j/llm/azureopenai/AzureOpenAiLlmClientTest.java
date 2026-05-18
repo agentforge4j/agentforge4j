@@ -1,7 +1,7 @@
-package com.agentforge4j.llm.azureopenai;
+﻿package com.agentforge4j.llm.azureopenai;
 
-import com.agentforge4j.llm.LlmExecutionRequest;
-import com.agentforge4j.llm.LlmInvocationException;
+import com.agentforge4j.llm.api.LlmExecutionRequest;
+import com.agentforge4j.llm.api.LlmInvocationException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.exc.UnrecognizedPropertyException;
 import com.fasterxml.jackson.databind.node.ArrayNode;
@@ -38,7 +38,8 @@ class AzureOpenAiLlmClientTest {
 
     @Test
     void should_throw_when_object_mapper_null() {
-      assertThatThrownBy(() -> new AzureOpenAiLlmClient(null, FixedAzureOpenAiConfiguration.defaults()))
+      assertThatThrownBy(
+          () -> new AzureOpenAiLlmClient(null, FixedAzureOpenAiConfiguration.defaults()))
           .isInstanceOf(IllegalArgumentException.class)
           .hasMessageContaining("ObjectMapper");
     }

@@ -1,12 +1,12 @@
 package com.agentforge4j.llm.bedrock;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
-
-import com.agentforge4j.llm.LlmExecutionRequest;
+import com.agentforge4j.llm.api.LlmExecutionRequest;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class BedrockAnthropicInvokeSerializerTest {
 
@@ -66,14 +66,16 @@ class BedrockAnthropicInvokeSerializerTest {
 
   @Test
   void rejectsNonAnthropicModelId() {
-    assertThatThrownBy(() -> BedrockAnthropicInvokeSerializer.validateAnthropicModelId("meta.llama3-8b"))
+    assertThatThrownBy(
+        () -> BedrockAnthropicInvokeSerializer.validateAnthropicModelId("meta.llama3-8b"))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("anthropic.");
   }
 
   @Test
   void acceptsModelIdWithCaseInsensitiveAnthropicPrefix() {
-    BedrockAnthropicInvokeSerializer.validateAnthropicModelId("ANTHROPIC.claude-3-haiku-20240307-v1:0");
+    BedrockAnthropicInvokeSerializer.validateAnthropicModelId(
+        "ANTHROPIC.claude-3-haiku-20240307-v1:0");
   }
 
   @Test
@@ -136,7 +138,8 @@ class BedrockAnthropicInvokeSerializerTest {
   }
 
   @Test
-  void falls_back_to_configured_max_tokens_when_request_max_output_tokens_absent() throws Exception {
+  void falls_back_to_configured_max_tokens_when_request_max_output_tokens_absent()
+      throws Exception {
     BedrockAnthropicInvokeSerializer serializer = new BedrockAnthropicInvokeSerializer(mapper);
     BedrockConfiguration cfg = FixedBedrockConfiguration.builder().maxTokens(777).build();
     LlmExecutionRequest req = new LlmExecutionRequest("bedrock", null, "s", "u");

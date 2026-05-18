@@ -1,9 +1,9 @@
 package com.agentforge4j.llm.claude;
 
 import com.agentforge4j.llm.AbstractHttpLlmClient;
-import com.agentforge4j.llm.LlmClient;
-import com.agentforge4j.llm.LlmExecutionRequest;
-import com.agentforge4j.llm.LlmInvocationException;
+import com.agentforge4j.llm.api.LlmClient;
+import com.agentforge4j.llm.api.LlmExecutionRequest;
+import com.agentforge4j.llm.api.LlmInvocationException;
 import com.agentforge4j.llm.claude.dto.ClaudeContentBlock;
 import com.agentforge4j.llm.claude.dto.ClaudeMessage;
 import com.agentforge4j.llm.claude.dto.ClaudeRequest;

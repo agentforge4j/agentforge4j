@@ -1,8 +1,8 @@
-package com.agentforge4j.llm.bedrock;
+﻿package com.agentforge4j.llm.bedrock;
 
-import com.agentforge4j.llm.LlmClient;
 import com.agentforge4j.llm.LlmClientConfiguration;
 import com.agentforge4j.llm.LlmClientFactory;
+import com.agentforge4j.llm.api.LlmClient;
 import com.agentforge4j.util.Validate;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import software.amazon.awssdk.services.bedrockruntime.BedrockRuntimeClient;

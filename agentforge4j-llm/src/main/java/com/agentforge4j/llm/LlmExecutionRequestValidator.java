@@ -1,5 +1,6 @@
 package com.agentforge4j.llm;
 
+import com.agentforge4j.llm.api.LlmExecutionRequest;
 import com.agentforge4j.util.Validate;
 
 /**

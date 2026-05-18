@@ -1,6 +1,4 @@
-package com.agentforge4j.runtime;
-
-import static org.assertj.core.api.Assertions.assertThat;
+﻿package com.agentforge4j.runtime;
 
 import com.agentforge4j.config.loader.repository.InMemoryWorkflowRepository;
 import com.agentforge4j.core.agent.AgentDefinition;
@@ -11,12 +9,12 @@ import com.agentforge4j.core.runtime.WorkflowRuntime;
 import com.agentforge4j.core.workflow.WorkflowDefinition;
 import com.agentforge4j.core.workflow.WorkflowLifecycle;
 import com.agentforge4j.core.workflow.WorkflowSource;
+import com.agentforge4j.core.workflow.artifact.ArtifactDefinition;
+import com.agentforge4j.core.workflow.artifact.TextArtifactItem;
 import com.agentforge4j.core.workflow.context.ContextMapping;
 import com.agentforge4j.core.workflow.state.WorkflowStatus;
 import com.agentforge4j.core.workflow.step.StepDefinition;
 import com.agentforge4j.core.workflow.step.StepTransition;
-import com.agentforge4j.core.workflow.artifact.ArtifactDefinition;
-import com.agentforge4j.core.workflow.artifact.TextArtifactItem;
 import com.agentforge4j.core.workflow.step.behaviour.AgentBehaviour;
 import com.agentforge4j.core.workflow.step.behaviour.InputBehaviour;
 import com.agentforge4j.core.workflow.step.behaviour.ResourceBehaviour;
@@ -25,9 +23,9 @@ import com.agentforge4j.core.workflow.step.blueprint.BlueprintBehaviour;
 import com.agentforge4j.core.workflow.step.blueprint.BlueprintDefinition;
 import com.agentforge4j.core.workflow.step.blueprint.BlueprintRef;
 import com.agentforge4j.integrations.NoOpIntegrationRegistry;
-import com.agentforge4j.llm.LlmClient;
 import com.agentforge4j.llm.LlmClientResolver;
-import com.agentforge4j.llm.LlmExecutionRequest;
+import com.agentforge4j.llm.api.LlmClient;
+import com.agentforge4j.llm.api.LlmExecutionRequest;
 import com.agentforge4j.runtime.command.FileSink;
 import com.agentforge4j.runtime.command.ShellCommandRunner;
 import com.agentforge4j.runtime.repository.InMemoryWorkflowEventLog;
@@ -39,6 +37,8 @@ import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
+
+import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * Integration-style drive over the real {@link WorkflowRuntimeBuilder} graph: no Mockito, no HTTP,
@@ -89,7 +89,8 @@ class WorkflowRuntimeDriveIT {
         .agentRepository(new MapAgentRepository(Map.of(agent.id(), agent)))
         .workflowStateRepository(new InMemoryWorkflowStateRepository())
         .workflowEventLog(new InMemoryWorkflowEventLog())
-        .llmClientResolver(new SingleClientResolver(new ConstantJsonLlmClient("[{\"type\":\"COMPLETE\"}]")))
+        .llmClientResolver(
+            new SingleClientResolver(new ConstantJsonLlmClient("[{\"type\":\"COMPLETE\"}]")))
         .objectMapper(MAPPER)
         .clock(Clock.fixed(Instant.parse("2026-05-01T12:00:00Z"), ZoneOffset.UTC))
         .integrationRegistry(NoOpIntegrationRegistry.INSTANCE)
@@ -104,7 +105,8 @@ class WorkflowRuntimeDriveIT {
   @Test
   void nested_workflow_blueprint_shadows_root_same_id_blueprint() {
     StepDefinition stepA = resourceStep("step-a", "/examples/sample.txt", "root.executed");
-    StepDefinition stepB = resourceStep("step-b", "/workflow-resources/info.txt", "nested.executed");
+    StepDefinition stepB = resourceStep("step-b", "/workflow-resources/info.txt",
+        "nested.executed");
     BlueprintDefinition rootBp = blueprint("bp1", List.of(stepA));
     BlueprintDefinition nestedBp = blueprint("bp1", List.of(stepB));
 
@@ -160,7 +162,8 @@ class WorkflowRuntimeDriveIT {
 
     assertThat(runtime.getState(runId).getStatus()).isEqualTo(WorkflowStatus.AWAITING_INPUT);
     assertThat(runtime.getState(runId).getPendingArtifact()).isNotNull();
-    assertThat(runtime.getState(runId).getPendingArtifact().items().get(0).id()).isEqualTo("nestedField");
+    assertThat(runtime.getState(runId).getPendingArtifact().items().get(0).id()).isEqualTo(
+        "nestedField");
   }
 
   private static WorkflowRuntime runtime(Map<String, WorkflowDefinition> workflows) {
@@ -169,7 +172,8 @@ class WorkflowRuntimeDriveIT {
         .agentRepository(new MapAgentRepository(Map.of()))
         .workflowStateRepository(new InMemoryWorkflowStateRepository())
         .workflowEventLog(new InMemoryWorkflowEventLog())
-        .llmClientResolver(new SingleClientResolver(new ConstantJsonLlmClient("[{\"type\":\"COMPLETE\"}]")))
+        .llmClientResolver(
+            new SingleClientResolver(new ConstantJsonLlmClient("[{\"type\":\"COMPLETE\"}]")))
         .objectMapper(MAPPER)
         .clock(Clock.fixed(Instant.parse("2026-05-01T12:00:00Z"), ZoneOffset.UTC))
         .integrationRegistry(NoOpIntegrationRegistry.INSTANCE)
@@ -178,7 +182,8 @@ class WorkflowRuntimeDriveIT {
         .build();
   }
 
-  private static StepDefinition resourceStep(String stepId, String resourcePath, String contextKey) {
+  private static StepDefinition resourceStep(String stepId, String resourcePath,
+      String contextKey) {
     return new StepDefinition(
         stepId,
         stepId,
@@ -227,6 +232,7 @@ class WorkflowRuntimeDriveIT {
   }
 
   private static final class MapAgentRepository implements AgentRepository {
+
     private final Map<String, AgentDefinition> agents;
 
     MapAgentRepository(Map<String, AgentDefinition> agents) {
@@ -249,6 +255,7 @@ class WorkflowRuntimeDriveIT {
   }
 
   private static final class SingleClientResolver implements LlmClientResolver {
+
     private final LlmClient client;
 
     SingleClientResolver(LlmClient client) {
@@ -264,9 +271,15 @@ class WorkflowRuntimeDriveIT {
     public boolean isProviderAvailable(String provider) {
       return true;
     }
+
+    @Override
+    public List<String> listAvailableClients() {
+      return List.of(client.getProviderName());
+    }
   }
 
   private static final class ConstantJsonLlmClient implements LlmClient {
+
     private final String jsonBody;
 
     ConstantJsonLlmClient(String jsonBody) {

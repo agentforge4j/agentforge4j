@@ -1,7 +1,7 @@
 package com.agentforge4j.llm.bedrock;
 
-import com.agentforge4j.llm.LlmClient;
-import com.agentforge4j.llm.LlmInvocationException;
+import com.agentforge4j.llm.api.LlmClient;
+import com.agentforge4j.llm.api.LlmInvocationException;
 import com.agentforge4j.util.Validate;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;

@@ -1,7 +1,7 @@
-package com.agentforge4j.llm.openai;
+﻿package com.agentforge4j.llm.openai;
 
-import com.agentforge4j.llm.LlmExecutionRequest;
-import com.agentforge4j.llm.LlmInvocationException;
+import com.agentforge4j.llm.api.LlmExecutionRequest;
+import com.agentforge4j.llm.api.LlmInvocationException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -18,8 +18,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
- * End-to-end tests for {@link OpenAiLlmClient} using a local loopback HTTP server (no mocks, no
- * API keys, no external network).
+ * End-to-end tests for {@link OpenAiLlmClient} using a local loopback HTTP server (no mocks, no API
+ * keys, no external network).
  */
 class OpenAiLlmClientIT {
 
@@ -156,7 +156,7 @@ class OpenAiLlmClientIT {
           captured.write(buf, 0, r);
           remaining -= r;
         }
-        return new String(captured.toByteArray(), StandardCharsets.UTF_8);
+        return captured.toString(StandardCharsets.UTF_8);
       }
       return "";
     }
@@ -311,5 +311,4 @@ class OpenAiLlmClientIT {
       assertThat(captured.get()).contains("\"model\":\"explicit-model\"");
     }
   }
-
 }

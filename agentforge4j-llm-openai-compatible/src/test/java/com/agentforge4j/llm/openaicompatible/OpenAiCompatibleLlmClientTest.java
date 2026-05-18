@@ -1,7 +1,7 @@
 package com.agentforge4j.llm.openaicompatible;
 
-import com.agentforge4j.llm.LlmExecutionRequest;
-import com.agentforge4j.llm.LlmInvocationException;
+import com.agentforge4j.llm.api.LlmExecutionRequest;
+import com.agentforge4j.llm.api.LlmInvocationException;
 import com.agentforge4j.llm.openaicompatible.dto.InputRole;
 import com.agentforge4j.llm.openaicompatible.dto.OpenAiCompatibleInputItem;
 import com.agentforge4j.llm.openaicompatible.dto.OpenAiCompatibleResponsesRequest;

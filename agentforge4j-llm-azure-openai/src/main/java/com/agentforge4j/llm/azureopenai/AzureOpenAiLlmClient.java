@@ -1,9 +1,9 @@
 package com.agentforge4j.llm.azureopenai;
 
 import com.agentforge4j.llm.AbstractHttpLlmClient;
-import com.agentforge4j.llm.LlmClient;
-import com.agentforge4j.llm.LlmExecutionRequest;
-import com.agentforge4j.llm.LlmInvocationException;
+import com.agentforge4j.llm.api.LlmClient;
+import com.agentforge4j.llm.api.LlmExecutionRequest;
+import com.agentforge4j.llm.api.LlmInvocationException;
 import com.agentforge4j.llm.azureopenai.dto.AzureChatCompletionChoice;
 import com.agentforge4j.llm.azureopenai.dto.AzureChatCompletionMessage;
 import com.agentforge4j.llm.azureopenai.dto.AzureChatCompletionRequest;

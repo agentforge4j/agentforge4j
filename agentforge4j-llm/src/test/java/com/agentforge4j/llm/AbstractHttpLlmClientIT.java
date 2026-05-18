@@ -1,8 +1,7 @@
-package com.agentforge4j.llm;
+﻿package com.agentforge4j.llm;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
-
+import com.agentforge4j.llm.api.LlmExecutionRequest;
+import com.agentforge4j.llm.api.LlmInvocationException;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -10,10 +9,13 @@ import java.io.OutputStream;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.net.URI;
+import java.net.http.HttpRequest;
 import java.nio.charset.StandardCharsets;
 import java.util.Locale;
-import java.net.http.HttpRequest;
 import org.junit.jupiter.api.Test;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
  * Integration tests for {@link AbstractHttpLlmClient} using a local loopback HTTP server and the

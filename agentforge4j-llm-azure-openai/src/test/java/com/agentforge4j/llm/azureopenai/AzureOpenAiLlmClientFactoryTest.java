@@ -1,13 +1,11 @@
-package com.agentforge4j.llm.azureopenai;
+﻿package com.agentforge4j.llm.azureopenai;
 
+import com.agentforge4j.llm.LlmClientConfiguration;
+import com.agentforge4j.llm.api.LlmClient;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import java.time.Duration;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
-
-import com.agentforge4j.llm.LlmClient;
-import com.agentforge4j.llm.LlmClientConfiguration;
-import com.fasterxml.jackson.databind.ObjectMapper;
-
-import java.time.Duration;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;

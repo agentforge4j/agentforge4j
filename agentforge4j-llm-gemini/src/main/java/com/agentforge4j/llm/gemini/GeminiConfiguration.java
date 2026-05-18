@@ -31,7 +31,7 @@ public interface GeminiConfiguration extends LlmClientConfiguration {
 
   /**
    * Default maximum output tokens for generation when a request does not set
-   * {@link com.agentforge4j.llm.LlmExecutionRequest#maxOutputTokens()}. When {@code null}, the
+   * {@link com.agentforge4j.llm.api.LlmExecutionRequest#maxOutputTokens()}. When {@code null}, the
    * field is omitted from the API payload unless the request supplies a value.
    */
   default Integer getMaxOutputTokens() {

@@ -69,6 +69,7 @@ final class FixedClaudeConfiguration implements ClaudeConfiguration {
   }
 
   static final class Builder {
+
     private String url = "https://api.anthropic.test/v1/messages";
     private String apiKey = "test-api-key";
     private String apiVersion = "2023-06-01";

@@ -1,7 +1,7 @@
-package com.agentforge4j.llm.openai;
+﻿package com.agentforge4j.llm.openai;
 
-import com.agentforge4j.llm.LlmExecutionRequest;
-import com.agentforge4j.llm.LlmInvocationException;
+import com.agentforge4j.llm.api.LlmExecutionRequest;
+import com.agentforge4j.llm.api.LlmInvocationException;
 import com.agentforge4j.llm.openai.dto.InputItem;
 import com.agentforge4j.llm.openai.dto.InputRole;
 import com.agentforge4j.llm.openai.dto.OpenAiResponsesRequestDto;
@@ -344,7 +344,8 @@ class OpenAiLlmClientTest {
       HttpRequest httpRequest = client.buildHttpRequest(request);
 
       assertThat(httpRequest.headers().firstValue("Content-Type")).contains("application/json");
-      assertThat(httpRequest.headers().firstValue("Authorization")).contains("Bearer secret-key-123");
+      assertThat(httpRequest.headers().firstValue("Authorization")).contains(
+          "Bearer secret-key-123");
     }
 
     @Test

@@ -1,5 +1,7 @@
-package com.agentforge4j.llm;
+﻿package com.agentforge4j.llm;
 
+import com.agentforge4j.llm.api.LlmClient;
+import com.agentforge4j.llm.api.LlmExecutionRequest;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.Duration;
 

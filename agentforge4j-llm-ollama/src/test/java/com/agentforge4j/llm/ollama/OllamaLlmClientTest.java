@@ -1,59 +1,29 @@
-package com.agentforge4j.llm.ollama;
+﻿package com.agentforge4j.llm.ollama;
 
-import org.junit.jupiter.api.Nested;
-import org.junit.jupiter.api.Test;
-
-import com.agentforge4j.llm.LlmExecutionRequest;
-import com.agentforge4j.llm.LlmInvocationException;
+import com.agentforge4j.llm.api.LlmExecutionRequest;
+import com.agentforge4j.llm.api.LlmInvocationException;
 import com.fasterxml.jackson.databind.ObjectMapper;
-
 import java.io.IOException;
 import java.net.http.HttpRequest;
 import java.time.Duration;
+import org.junit.jupiter.api.Nested;
+import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class OllamaLlmClientTest {
 
-  static class TestOllamaConfiguration implements OllamaConfiguration {
-    private final String url;
-    private final Duration requestTimeout;
-    private final String defaultModel;
-
-    TestOllamaConfiguration(String url, Duration requestTimeout, String defaultModel) {
-      this.url = url;
-      this.requestTimeout = requestTimeout;
-      this.defaultModel = defaultModel;
-    }
+  record TestOllamaConfiguration(String getUrl, Duration getRequestTimeout,
+                                 String getDefaultModel) implements OllamaConfiguration {
 
     TestOllamaConfiguration() {
       this("http://localhost:11434/api/chat", Duration.ofSeconds(30), "llama2");
     }
 
     @Override
-    public String getProviderName() {
-      return "ollama";
-    }
-
-    @Override
-    public String getDefaultModel() {
-      return defaultModel;
-    }
-
-    @Override
     public Duration getConnectTimeout() {
       return Duration.ofSeconds(10);
-    }
-
-    @Override
-    public Duration getRequestTimeout() {
-      return requestTimeout;
-    }
-
-    @Override
-    public String getUrl() {
-      return url;
     }
   }
 
@@ -89,7 +59,8 @@ class OllamaLlmClientTest {
 
     @Test
     void shouldThrowWhenUrlBlank() {
-      OllamaConfiguration config = new TestOllamaConfiguration("", Duration.ofSeconds(30), "llama2");
+      OllamaConfiguration config = new TestOllamaConfiguration("", Duration.ofSeconds(30),
+          "llama2");
       ObjectMapper mapper = new ObjectMapper();
 
       assertThatThrownBy(() -> new OllamaLlmClient(mapper, config))
@@ -99,7 +70,8 @@ class OllamaLlmClientTest {
 
     @Test
     void shouldThrowWhenDefaultModelBlank() {
-      OllamaConfiguration config = new TestOllamaConfiguration("http://localhost:11434/api/chat", Duration.ofSeconds(30), "");
+      OllamaConfiguration config = new TestOllamaConfiguration("http://localhost:11434/api/chat",
+          Duration.ofSeconds(30), "");
       ObjectMapper mapper = new ObjectMapper();
 
       assertThatThrownBy(() -> new OllamaLlmClient(mapper, config))
@@ -177,7 +149,8 @@ class OllamaLlmClientTest {
       OllamaConfiguration config = new TestOllamaConfiguration();
       ObjectMapper mapper = new ObjectMapper();
       OllamaLlmClient client = new OllamaLlmClient(mapper, config);
-      LlmExecutionRequest request = LlmExecutionRequest.withDefaultModel("ollama", "system prompt", "user input");
+      LlmExecutionRequest request = LlmExecutionRequest.withDefaultModel("ollama", "system prompt",
+          "user input");
 
       HttpRequest httpRequest = client.buildHttpRequest(request);
 
@@ -190,7 +163,8 @@ class OllamaLlmClientTest {
       OllamaConfiguration config = new TestOllamaConfiguration();
       ObjectMapper mapper = new ObjectMapper();
       OllamaLlmClient client = new OllamaLlmClient(mapper, config);
-      LlmExecutionRequest request = LlmExecutionRequest.withDefaultModel("ollama", "system prompt", "user input");
+      LlmExecutionRequest request = LlmExecutionRequest.withDefaultModel("ollama", "system prompt",
+          "user input");
 
       HttpRequest httpRequest = client.buildHttpRequest(request);
 
@@ -205,7 +179,8 @@ class OllamaLlmClientTest {
           new TestOllamaConfiguration("http://localhost:11434/api/chat", shortTimeout, "llama2");
       ObjectMapper mapper = new ObjectMapper();
       OllamaLlmClient client = new OllamaLlmClient(mapper, config);
-      LlmExecutionRequest request = LlmExecutionRequest.withDefaultModel("ollama", "system prompt", "user input");
+      LlmExecutionRequest request = LlmExecutionRequest.withDefaultModel("ollama", "system prompt",
+          "user input");
 
       HttpRequest httpRequest = client.buildHttpRequest(request);
 
@@ -234,7 +209,8 @@ class OllamaLlmClientTest {
       OllamaLlmClient client = new OllamaLlmClient(mapper, config);
 
       assertThatThrownBy(
-          () -> client.execute(LlmExecutionRequest.withDefaultModel("openai", "system prompt", "user input")))
+          () -> client.execute(
+              LlmExecutionRequest.withDefaultModel("openai", "system prompt", "user input")))
           .isInstanceOf(IllegalArgumentException.class)
           .hasMessageContaining("does not match");
     }

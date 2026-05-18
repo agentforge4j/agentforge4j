@@ -1,27 +1,27 @@
-package com.agentforge4j.llm.mistral;
+﻿package com.agentforge4j.llm.mistral;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
-
-import com.agentforge4j.llm.LlmClient;
 import com.agentforge4j.llm.LlmClientConfiguration;
-import com.agentforge4j.llm.LlmExecutionRequest;
-import com.agentforge4j.llm.LlmInvocationException;
+import com.agentforge4j.llm.api.LlmClient;
+import com.agentforge4j.llm.api.LlmExecutionRequest;
+import com.agentforge4j.llm.api.LlmInvocationException;
 import com.fasterxml.jackson.databind.JsonMappingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.exc.UnrecognizedPropertyException;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.io.ByteArrayOutputStream;
+import java.net.http.HttpRequest;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Flow;
 import java.util.concurrent.TimeUnit;
-import java.net.http.HttpRequest;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class MistralLlmClientTest {
 
@@ -320,7 +320,8 @@ class MistralLlmClientTest {
 
       HttpRequest httpRequest = client.buildHttpRequest(request);
 
-      assertThat(httpRequest.uri().toString()).isEqualTo("https://api.mistral.ai/v1/chat/completions");
+      assertThat(httpRequest.uri().toString()).isEqualTo(
+          "https://api.mistral.ai/v1/chat/completions");
       assertThat(httpRequest.method()).isEqualTo("POST");
       assertThat(httpRequest.timeout()).contains(Duration.ofSeconds(30));
     }
@@ -365,7 +366,8 @@ class MistralLlmClientTest {
       HttpRequest httpRequest = client.buildHttpRequest(request);
 
       assertThat(httpRequest.headers().firstValue("Content-Type")).contains("application/json");
-      assertThat(httpRequest.headers().firstValue("Authorization")).contains("Bearer sk-mistral-secret");
+      assertThat(httpRequest.headers().firstValue("Authorization")).contains(
+          "Bearer sk-mistral-secret");
     }
 
     @Test

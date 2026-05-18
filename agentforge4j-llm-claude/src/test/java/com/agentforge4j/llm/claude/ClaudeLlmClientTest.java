@@ -1,14 +1,11 @@
-package com.agentforge4j.llm.claude;
+﻿package com.agentforge4j.llm.claude;
 
-import com.agentforge4j.llm.LlmExecutionRequest;
-import com.agentforge4j.llm.LlmInvocationException;
+import com.agentforge4j.llm.api.LlmExecutionRequest;
+import com.agentforge4j.llm.api.LlmInvocationException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import org.junit.jupiter.api.Nested;
-import org.junit.jupiter.api.Test;
-
 import java.io.IOException;
 import java.net.http.HttpRequest;
 import java.nio.ByteBuffer;
@@ -16,6 +13,8 @@ import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Flow;
+import org.junit.jupiter.api.Nested;
+import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -142,7 +141,8 @@ class ClaudeLlmClientTest {
 
     @Test
     void shouldThrowWhenJsonBlank() {
-      ClaudeLlmClient client = new ClaudeLlmClient(new ObjectMapper(), FixedClaudeConfiguration.defaults());
+      ClaudeLlmClient client = new ClaudeLlmClient(new ObjectMapper(),
+          FixedClaudeConfiguration.defaults());
 
       assertThatThrownBy(() -> client.validateAndExtractResponse(""))
           .isInstanceOf(LlmInvocationException.class)
@@ -151,7 +151,8 @@ class ClaudeLlmClientTest {
 
     @Test
     void shouldThrowWhenJsonNull() {
-      ClaudeLlmClient client = new ClaudeLlmClient(new ObjectMapper(), FixedClaudeConfiguration.defaults());
+      ClaudeLlmClient client = new ClaudeLlmClient(new ObjectMapper(),
+          FixedClaudeConfiguration.defaults());
 
       assertThatThrownBy(() -> client.validateAndExtractResponse(null))
           .isInstanceOf(LlmInvocationException.class);
@@ -159,7 +160,8 @@ class ClaudeLlmClientTest {
 
     @Test
     void shouldThrowWhenJsonMalformed() {
-      ClaudeLlmClient client = new ClaudeLlmClient(new ObjectMapper(), FixedClaudeConfiguration.defaults());
+      ClaudeLlmClient client = new ClaudeLlmClient(new ObjectMapper(),
+          FixedClaudeConfiguration.defaults());
 
       assertThatThrownBy(() -> client.validateAndExtractResponse("not-json"))
           .isInstanceOf(IOException.class);
@@ -167,7 +169,8 @@ class ClaudeLlmClientTest {
 
     @Test
     void shouldThrowWhenContentNull() {
-      ClaudeLlmClient client = new ClaudeLlmClient(new ObjectMapper(), FixedClaudeConfiguration.defaults());
+      ClaudeLlmClient client = new ClaudeLlmClient(new ObjectMapper(),
+          FixedClaudeConfiguration.defaults());
 
       assertThatThrownBy(() -> client.validateAndExtractResponse("{\"content\":null}"))
           .isInstanceOf(LlmInvocationException.class)
@@ -176,7 +179,8 @@ class ClaudeLlmClientTest {
 
     @Test
     void shouldThrowWhenContentEmptyArray() {
-      ClaudeLlmClient client = new ClaudeLlmClient(new ObjectMapper(), FixedClaudeConfiguration.defaults());
+      ClaudeLlmClient client = new ClaudeLlmClient(new ObjectMapper(),
+          FixedClaudeConfiguration.defaults());
 
       assertThatThrownBy(() -> client.validateAndExtractResponse("{\"content\":[]}"))
           .isInstanceOf(LlmInvocationException.class)
@@ -185,7 +189,8 @@ class ClaudeLlmClientTest {
 
     @Test
     void shouldThrowWhenNoTextBlock() {
-      ClaudeLlmClient client = new ClaudeLlmClient(new ObjectMapper(), FixedClaudeConfiguration.defaults());
+      ClaudeLlmClient client = new ClaudeLlmClient(new ObjectMapper(),
+          FixedClaudeConfiguration.defaults());
       String json = "{\"content\":[{\"type\":\"tool_use\"}]}";
 
       assertThatThrownBy(() -> client.validateAndExtractResponse(json))
@@ -195,7 +200,8 @@ class ClaudeLlmClientTest {
 
     @Test
     void shouldIgnoreUnknownPropertiesOnToolUseBlocks() {
-      ClaudeLlmClient client = new ClaudeLlmClient(new ObjectMapper(), FixedClaudeConfiguration.defaults());
+      ClaudeLlmClient client = new ClaudeLlmClient(new ObjectMapper(),
+          FixedClaudeConfiguration.defaults());
       String json = """
           {"content":[{"type":"tool_use","id":"toolu_01","name":"weather"}]}
           """;
@@ -207,7 +213,8 @@ class ClaudeLlmClientTest {
 
     @Test
     void shouldThrowWhenTextBlocksOnlyBlank() {
-      ClaudeLlmClient client = new ClaudeLlmClient(new ObjectMapper(), FixedClaudeConfiguration.defaults());
+      ClaudeLlmClient client = new ClaudeLlmClient(new ObjectMapper(),
+          FixedClaudeConfiguration.defaults());
       String json = """
           {"content":[{"type":"text","text":"  "},{"type":"text","text":""}]}
           """;
@@ -219,7 +226,8 @@ class ClaudeLlmClientTest {
 
     @Test
     void shouldUseFirstTextBlockAfterNonTextBlocks() throws IOException {
-      ClaudeLlmClient client = new ClaudeLlmClient(new ObjectMapper(), FixedClaudeConfiguration.defaults());
+      ClaudeLlmClient client = new ClaudeLlmClient(new ObjectMapper(),
+          FixedClaudeConfiguration.defaults());
       String json = """
           {"content":[{"type":"tool_use"},{"type":"text","text":"from-text"}]}
           """;
@@ -229,7 +237,8 @@ class ClaudeLlmClientTest {
 
     @Test
     void shouldPickFirstNonBlankTextBlock() throws IOException {
-      ClaudeLlmClient client = new ClaudeLlmClient(new ObjectMapper(), FixedClaudeConfiguration.defaults());
+      ClaudeLlmClient client = new ClaudeLlmClient(new ObjectMapper(),
+          FixedClaudeConfiguration.defaults());
       String json = """
           {"content":[{"type":"text","text":""},{"type":"text","text":"second"}]}
           """;
@@ -239,7 +248,8 @@ class ClaudeLlmClientTest {
 
     @Test
     void shouldExtractPlainText() throws IOException {
-      ClaudeLlmClient client = new ClaudeLlmClient(new ObjectMapper(), FixedClaudeConfiguration.defaults());
+      ClaudeLlmClient client = new ClaudeLlmClient(new ObjectMapper(),
+          FixedClaudeConfiguration.defaults());
       String json = """
           {"content":[{"type":"text","text":"  Hello  "}]}
           """;
@@ -249,7 +259,8 @@ class ClaudeLlmClientTest {
 
     @Test
     void shouldStripMarkdownCodeFenceFromText() throws IOException {
-      ClaudeLlmClient client = new ClaudeLlmClient(new ObjectMapper(), FixedClaudeConfiguration.defaults());
+      ClaudeLlmClient client = new ClaudeLlmClient(new ObjectMapper(),
+          FixedClaudeConfiguration.defaults());
       ObjectMapper om = new ObjectMapper();
       ObjectNode root = om.createObjectNode();
       ArrayNode content = root.putArray("content");
@@ -263,7 +274,8 @@ class ClaudeLlmClientTest {
 
     @Test
     void shouldIgnoreNullContentBlocks() throws IOException {
-      ClaudeLlmClient client = new ClaudeLlmClient(new ObjectMapper(), FixedClaudeConfiguration.defaults());
+      ClaudeLlmClient client = new ClaudeLlmClient(new ObjectMapper(),
+          FixedClaudeConfiguration.defaults());
       // Jackson typically deserializes JSON null elements as nulls in list
       String json = "{\"content\":[null,{\"type\":\"text\",\"text\":\"ok\"}]}";
 
@@ -272,7 +284,8 @@ class ClaudeLlmClientTest {
 
     @Test
     void shouldThrowWhenContentFieldMissing() {
-      ClaudeLlmClient client = new ClaudeLlmClient(new ObjectMapper(), FixedClaudeConfiguration.defaults());
+      ClaudeLlmClient client = new ClaudeLlmClient(new ObjectMapper(),
+          FixedClaudeConfiguration.defaults());
 
       assertThatThrownBy(() -> client.validateAndExtractResponse("{}"))
           .isInstanceOf(LlmInvocationException.class)
@@ -281,7 +294,8 @@ class ClaudeLlmClientTest {
 
     @Test
     void shouldThrowWhenTextBlockHasNullTextProperty() {
-      ClaudeLlmClient client = new ClaudeLlmClient(new ObjectMapper(), FixedClaudeConfiguration.defaults());
+      ClaudeLlmClient client = new ClaudeLlmClient(new ObjectMapper(),
+          FixedClaudeConfiguration.defaults());
       String json = "{\"content\":[{\"type\":\"text\"}]}";
 
       assertThatThrownBy(() -> client.validateAndExtractResponse(json))

@@ -1,9 +1,9 @@
-package com.agentforge4j.llm.bedrock;
+﻿package com.agentforge4j.llm.bedrock;
 
-import com.agentforge4j.llm.LlmClient;
-import com.agentforge4j.llm.LlmExecutionRequest;
 import com.agentforge4j.llm.LlmExecutionRequestValidator;
-import com.agentforge4j.llm.LlmInvocationException;
+import com.agentforge4j.llm.api.LlmClient;
+import com.agentforge4j.llm.api.LlmExecutionRequest;
+import com.agentforge4j.llm.api.LlmInvocationException;
 import com.agentforge4j.util.Validate;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
@@ -65,9 +65,9 @@ public final class BedrockLlmClient implements LlmClient {
   /**
    * Executes an LLM request against Amazon Bedrock.
    * <p>
-   * Generated length is capped by {@link LlmExecutionRequest#maxOutputTokens()} when set;
-   * otherwise {@link BedrockConfiguration#getMaxTokens()} when positive; otherwise an internal
-   * default applied by the Anthropic request serializer.
+   * Generated length is capped by {@link LlmExecutionRequest#maxOutputTokens()} when set; otherwise
+   * {@link BedrockConfiguration#getMaxTokens()} when positive; otherwise an internal default
+   * applied by the Anthropic request serializer.
    *
    * @param request the execution request containing system prompt, user input, and model details
    * @return the assistant's text response

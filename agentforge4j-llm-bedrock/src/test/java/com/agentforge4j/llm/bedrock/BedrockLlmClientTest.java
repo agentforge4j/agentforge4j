@@ -1,14 +1,7 @@
-package com.agentforge4j.llm.bedrock;
+﻿package com.agentforge4j.llm.bedrock;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.ArgumentMatchers.isA;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
-
-import com.agentforge4j.llm.LlmExecutionRequest;
-import com.agentforge4j.llm.LlmInvocationException;
+import com.agentforge4j.llm.api.LlmExecutionRequest;
+import com.agentforge4j.llm.api.LlmInvocationException;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -21,6 +14,13 @@ import software.amazon.awssdk.core.SdkBytes;
 import software.amazon.awssdk.services.bedrockruntime.BedrockRuntimeClient;
 import software.amazon.awssdk.services.bedrockruntime.model.InvokeModelRequest;
 import software.amazon.awssdk.services.bedrockruntime.model.InvokeModelResponse;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.isA;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 class BedrockLlmClientTest {
 
@@ -46,7 +46,8 @@ class BedrockLlmClientTest {
 
     @Test
     void rejectsNullBedrockClient() {
-      assertThatThrownBy(() -> new BedrockLlmClient(mapper, FixedBedrockConfiguration.defaults(), null))
+      assertThatThrownBy(
+          () -> new BedrockLlmClient(mapper, FixedBedrockConfiguration.defaults(), null))
           .isInstanceOf(IllegalArgumentException.class)
           .hasMessageContaining("BedrockRuntimeClient");
     }
@@ -128,7 +129,8 @@ class BedrockLlmClientTest {
     @Test
     void rejectsNonAnthropicDefaultModel() {
       BedrockRuntimeClient client = mock(BedrockRuntimeClient.class);
-      var cfg = FixedBedrockConfiguration.builder().defaultModel("amazon.titan-text-express-v1").build();
+      var cfg = FixedBedrockConfiguration.builder().defaultModel("amazon.titan-text-express-v1")
+          .build();
       assertThatThrownBy(() -> new BedrockLlmClient(mapper, cfg, client))
           .isInstanceOf(IllegalArgumentException.class)
           .hasMessageContaining("anthropic.");
@@ -226,7 +228,8 @@ class BedrockLlmClientTest {
               .body(SdkBytes.fromString(
                   "{\"content\":[{\"type\":\"text\",\"text\":\"x\"}]}", StandardCharsets.UTF_8))
               .build());
-      BedrockLlmClient llm = new BedrockLlmClient(mapper, FixedBedrockConfiguration.defaults(), client);
+      BedrockLlmClient llm = new BedrockLlmClient(mapper, FixedBedrockConfiguration.defaults(),
+          client);
       assertThat(llm.execute(new LlmExecutionRequest("BEDROCK", null, "s", "u"))).isEqualTo("x");
     }
 
@@ -251,7 +254,8 @@ class BedrockLlmClientTest {
           InvokeModelResponse.builder()
               .body(SdkBytes.fromString("", StandardCharsets.UTF_8))
               .build());
-      BedrockLlmClient llm = new BedrockLlmClient(mapper, FixedBedrockConfiguration.defaults(), client);
+      BedrockLlmClient llm = new BedrockLlmClient(mapper, FixedBedrockConfiguration.defaults(),
+          client);
       assertThatThrownBy(() -> llm.execute(new LlmExecutionRequest("bedrock", null, "s", "u")))
           .isInstanceOf(LlmInvocationException.class)
           .hasMessageContaining("blank");
@@ -262,7 +266,8 @@ class BedrockLlmClientTest {
       BedrockRuntimeClient client = mock(BedrockRuntimeClient.class);
       when(client.invokeModel(isA(InvokeModelRequest.class))).thenReturn(
           InvokeModelResponse.builder().build());
-      BedrockLlmClient llm = new BedrockLlmClient(mapper, FixedBedrockConfiguration.defaults(), client);
+      BedrockLlmClient llm = new BedrockLlmClient(mapper, FixedBedrockConfiguration.defaults(),
+          client);
       assertThatThrownBy(() -> llm.execute(new LlmExecutionRequest("bedrock", null, "s", "u")))
           .isInstanceOf(LlmInvocationException.class)
           .hasMessageContaining("blank");
@@ -275,7 +280,8 @@ class BedrockLlmClientTest {
           InvokeModelResponse.builder()
               .body(SdkBytes.fromString("{\"content\":[]}", StandardCharsets.UTF_8))
               .build());
-      BedrockLlmClient llm = new BedrockLlmClient(mapper, FixedBedrockConfiguration.defaults(), client);
+      BedrockLlmClient llm = new BedrockLlmClient(mapper, FixedBedrockConfiguration.defaults(),
+          client);
       assertThatThrownBy(() -> llm.execute(new LlmExecutionRequest("bedrock", null, "s", "u")))
           .isInstanceOf(LlmInvocationException.class)
           .hasMessageContaining("content");
@@ -288,7 +294,8 @@ class BedrockLlmClientTest {
           InvokeModelResponse.builder()
               .body(SdkBytes.fromString("not-json", StandardCharsets.UTF_8))
               .build());
-      BedrockLlmClient llm = new BedrockLlmClient(mapper, FixedBedrockConfiguration.defaults(), client);
+      BedrockLlmClient llm = new BedrockLlmClient(mapper, FixedBedrockConfiguration.defaults(),
+          client);
       assertThatThrownBy(() -> llm.execute(new LlmExecutionRequest("bedrock", null, "s", "u")))
           .isInstanceOf(LlmInvocationException.class)
           .hasMessageContaining("could not be parsed")
@@ -337,7 +344,8 @@ class BedrockLlmClientTest {
     @Test
     void rejectsWrongProviderOnRequest() {
       BedrockRuntimeClient client = mock(BedrockRuntimeClient.class);
-      BedrockLlmClient llm = new BedrockLlmClient(mapper, FixedBedrockConfiguration.defaults(), client);
+      BedrockLlmClient llm = new BedrockLlmClient(mapper, FixedBedrockConfiguration.defaults(),
+          client);
       assertThatThrownBy(() -> llm.execute(new LlmExecutionRequest("openai", null, "s", "u")))
           .isInstanceOf(IllegalArgumentException.class)
           .hasMessageContaining("provider");
@@ -346,7 +354,8 @@ class BedrockLlmClientTest {
     @Test
     void rejectsNonAnthropicModelOverride() {
       BedrockRuntimeClient client = mock(BedrockRuntimeClient.class);
-      BedrockLlmClient llm = new BedrockLlmClient(mapper, FixedBedrockConfiguration.defaults(), client);
+      BedrockLlmClient llm = new BedrockLlmClient(mapper, FixedBedrockConfiguration.defaults(),
+          client);
       assertThatThrownBy(() -> llm.execute(
           new LlmExecutionRequest("bedrock", "meta.foo", "s", "u")))
           .isInstanceOf(IllegalArgumentException.class)
@@ -374,7 +383,8 @@ class BedrockLlmClientTest {
     }
 
     @Test
-    void invoke_model_uses_config_max_tokens_when_request_max_output_tokens_absent() throws Exception {
+    void invoke_model_uses_config_max_tokens_when_request_max_output_tokens_absent()
+        throws Exception {
       BedrockRuntimeClient client = mock(BedrockRuntimeClient.class);
       when(client.invokeModel(isA(InvokeModelRequest.class))).thenReturn(
           InvokeModelResponse.builder()
@@ -396,12 +406,12 @@ class BedrockLlmClientTest {
     @Test
     void rejects_non_positive_max_output_tokens_on_request() {
       BedrockRuntimeClient client = mock(BedrockRuntimeClient.class);
-      BedrockLlmClient llm = new BedrockLlmClient(mapper, FixedBedrockConfiguration.defaults(), client);
+      BedrockLlmClient llm = new BedrockLlmClient(mapper, FixedBedrockConfiguration.defaults(),
+          client);
       assertThatThrownBy(() -> llm.execute(
           new LlmExecutionRequest("bedrock", null, "s", "u", 0)))
           .isInstanceOf(IllegalArgumentException.class)
           .hasMessageContaining("maxOutputTokens");
     }
-
   }
 }

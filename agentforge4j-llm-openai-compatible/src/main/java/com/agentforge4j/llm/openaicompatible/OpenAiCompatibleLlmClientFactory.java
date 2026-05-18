@@ -1,8 +1,8 @@
 package com.agentforge4j.llm.openaicompatible;
 
-import com.agentforge4j.llm.LlmClient;
 import com.agentforge4j.llm.LlmClientConfiguration;
 import com.agentforge4j.llm.LlmClientFactory;
+import com.agentforge4j.llm.api.LlmClient;
 import com.agentforge4j.util.Validate;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
@@ -27,7 +27,8 @@ public final class OpenAiCompatibleLlmClientFactory implements LlmClientFactory 
    * Creates an OpenAI-compatible LLM client with the given configuration.
    *
    * @param objectMapper the JSON mapper for response parsing
-   * @param config       the configuration, must be an instance of {@link OpenAiCompatibleConfiguration}
+   * @param config       the configuration, must be an instance of
+   *                     {@link OpenAiCompatibleConfiguration}
    * @return a new OpenAI-compatible LLM client
    * @throws IllegalArgumentException if the config is not an OpenAiCompatibleConfiguration
    */

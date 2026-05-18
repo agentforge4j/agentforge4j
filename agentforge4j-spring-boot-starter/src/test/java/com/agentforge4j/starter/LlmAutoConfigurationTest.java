@@ -1,12 +1,9 @@
-package com.agentforge4j.starter;
-
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
+﻿package com.agentforge4j.starter;
 
 import com.agentforge4j.llm.DefaultLlmClientResolver;
 import com.agentforge4j.llm.LlmClientResolver;
-import com.agentforge4j.llm.LlmRetryPolicy;
 import com.agentforge4j.llm.RetryingLlmClientResolver;
+import com.agentforge4j.llm.api.LlmRetryPolicy;
 import com.agentforge4j.starter.llmclient.openai.OpenAiProviderAutoConfiguration;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.List;
@@ -17,6 +14,9 @@ import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.test.util.ReflectionTestUtils;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class LlmAutoConfigurationTest {
 
@@ -30,10 +30,10 @@ class LlmAutoConfigurationTest {
   @Test
   void llmClientResolverBeanThrowsWhenNoProviderConfigurations() {
     assertThatThrownBy(() -> new LlmAutoConfiguration().llmClientResolver(
-            new ObjectMapper(), List.of(), 1,
-            LlmRetryPolicy.defaults().baseBackoffMs(),
-            LlmRetryPolicy.defaults().maxBackoffMs(),
-            LlmRetryPolicy.defaults().maxElapsedMs()))
+        new ObjectMapper(), List.of(), 1,
+        LlmRetryPolicy.defaults().baseBackoffMs(),
+        LlmRetryPolicy.defaults().maxBackoffMs(),
+        LlmRetryPolicy.defaults().maxElapsedMs()))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("No LlmClientConfiguration");
   }

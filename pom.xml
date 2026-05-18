@@ -36,6 +36,7 @@
 
   <modules>
     <module>agentforge4j-util</module>
+    <module>agentforge4j-llm-api</module>
     <module>agentforge4j-llm</module>
     <module>agentforge4j-llm-azure-openai</module>
     <module>agentforge4j-llm-bedrock</module>
@@ -75,6 +76,11 @@
       <dependency>
         <groupId>com.agentforge4j</groupId>
         <artifactId>agentforge4j-util</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>com.agentforge4j</groupId>
+        <artifactId>agentforge4j-llm-api</artifactId>
         <version>${project.version}</version>
       </dependency>
       <dependency>

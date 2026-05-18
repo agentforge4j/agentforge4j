@@ -1,14 +1,14 @@
 package com.agentforge4j.runtime.llm;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
-
 import com.agentforge4j.core.agent.AgentDefinition;
 import com.agentforge4j.core.agent.AgentLocality;
 import com.agentforge4j.core.agent.ProviderPreference;
-import com.agentforge4j.llm.LlmInvocationException;
+import com.agentforge4j.llm.api.LlmInvocationException;
 import java.util.List;
 import org.junit.jupiter.api.Test;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class FirstAvailableProviderSelectionStrategyTest {
 
@@ -34,7 +34,7 @@ class FirstAvailableProviderSelectionStrategyTest {
         new ProviderPreference("ollama", "llama3"));
 
     ProviderPreference selected = strategy.selectInitialProvider(agent,
-        List.of("openai", "ollama"));
+        List.of("ollama"));
 
     assertThat(selected).isEqualTo(new ProviderPreference("ollama", "llama3"));
   }

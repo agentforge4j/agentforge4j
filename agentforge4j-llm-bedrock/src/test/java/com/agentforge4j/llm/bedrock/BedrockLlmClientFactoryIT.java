@@ -1,11 +1,7 @@
-package com.agentforge4j.llm.bedrock;
+﻿package com.agentforge4j.llm.bedrock;
 
-import static java.nio.charset.StandardCharsets.UTF_8;
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
-
-import com.agentforge4j.llm.LlmClient;
-import com.agentforge4j.llm.LlmExecutionRequest;
+import com.agentforge4j.llm.api.LlmClient;
+import com.agentforge4j.llm.api.LlmExecutionRequest;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sun.net.httpserver.HttpServer;
 import java.io.InputStream;
@@ -22,9 +18,13 @@ import software.amazon.awssdk.core.exception.SdkClientException;
 import software.amazon.awssdk.services.bedrockruntime.BedrockRuntimeClient;
 import software.amazon.awssdk.services.bedrockruntime.model.InvokeModelRequest;
 
+import static java.nio.charset.StandardCharsets.UTF_8;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
 /**
- * Exercises {@link BedrockRuntimeClientFactory} and {@link BedrockLlmClientFactory} against a
- * local HTTP server (no AWS, no API keys).
+ * Exercises {@link BedrockRuntimeClientFactory} and {@link BedrockLlmClientFactory} against a local
+ * HTTP server (no AWS, no API keys).
  */
 class BedrockLlmClientFactoryIT {
 

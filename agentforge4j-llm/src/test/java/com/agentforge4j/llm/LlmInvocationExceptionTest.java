@@ -1,12 +1,13 @@
 package com.agentforge4j.llm;
 
+import com.agentforge4j.llm.api.LlmInvocationException;
+import java.io.IOException;
+import org.junit.jupiter.api.Test;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
-
-import java.io.IOException;
-import org.junit.jupiter.api.Test;
 
 class LlmInvocationExceptionTest {
 

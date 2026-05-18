@@ -1,13 +1,10 @@
-package com.agentforge4j.llm;
-
-import lombok.Getter;
+package com.agentforge4j.llm.api;
 
 /**
  * Thrown when an LLM request fails due to network issues, HTTP errors, invalid responses, or
  * provider-specific validation failures.
  */
-@Getter
-public class LlmInvocationException extends RuntimeException {
+public final class LlmInvocationException extends RuntimeException {
 
   private final Integer httpStatus;
 
@@ -41,5 +38,14 @@ public class LlmInvocationException extends RuntimeException {
   public LlmInvocationException(String message, int httpStatus) {
     super(message);
     this.httpStatus = httpStatus;
+  }
+
+  /**
+   * Returns the HTTP status code associated with this exception, if applicable.
+   *
+   * @return the HTTP status code, or null if not applicable
+   */
+  public Integer getHttpStatus() {
+    return httpStatus;
   }
 }

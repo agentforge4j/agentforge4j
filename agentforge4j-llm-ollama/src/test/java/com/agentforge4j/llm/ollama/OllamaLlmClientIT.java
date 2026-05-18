@@ -1,7 +1,7 @@
-package com.agentforge4j.llm.ollama;
+﻿package com.agentforge4j.llm.ollama;
 
-import com.agentforge4j.llm.LlmExecutionRequest;
-import com.agentforge4j.llm.LlmInvocationException;
+import com.agentforge4j.llm.api.LlmExecutionRequest;
+import com.agentforge4j.llm.api.LlmInvocationException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -149,7 +149,7 @@ class OllamaLlmClientIT {
           captured.write(buf, 0, r);
           remaining -= r;
         }
-        return new String(captured.toByteArray(), StandardCharsets.UTF_8);
+        return captured.toString(StandardCharsets.UTF_8);
       }
       return "";
     }
@@ -164,7 +164,8 @@ class OllamaLlmClientIT {
     }
   }
 
-  private static OllamaConfiguration configForUrl(String chatUrl, java.time.Duration requestTimeout) {
+  private static OllamaConfiguration configForUrl(String chatUrl,
+      java.time.Duration requestTimeout) {
     return new OllamaConfiguration() {
       @Override
       public String getDefaultModel() {
@@ -192,7 +193,8 @@ class OllamaLlmClientIT {
   void should_return_message_content_on_successful_http_response() throws Exception {
     try (LoopbackHttpServer http = new LoopbackHttpServer(200, VALID_CHAT_JSON)) {
       OllamaLlmClient client =
-          new OllamaLlmClient(new ObjectMapper(), configForUrl(http.chatUrl(), java.time.Duration.ofSeconds(30)));
+          new OllamaLlmClient(new ObjectMapper(),
+              configForUrl(http.chatUrl(), java.time.Duration.ofSeconds(30)));
       LlmExecutionRequest request =
           LlmExecutionRequest.withDefaultModel("ollama", "system prompt", "user input");
 
@@ -204,7 +206,8 @@ class OllamaLlmClientIT {
   void should_match_request_provider_case_insensitively() throws Exception {
     try (LoopbackHttpServer http = new LoopbackHttpServer(200, VALID_CHAT_JSON)) {
       OllamaLlmClient client =
-          new OllamaLlmClient(new ObjectMapper(), configForUrl(http.chatUrl(), java.time.Duration.ofSeconds(30)));
+          new OllamaLlmClient(new ObjectMapper(),
+              configForUrl(http.chatUrl(), java.time.Duration.ofSeconds(30)));
       LlmExecutionRequest request =
           new LlmExecutionRequest("OLLAMA", null, "system prompt", "user input");
 
@@ -228,7 +231,8 @@ class OllamaLlmClientIT {
   void should_throw_llm_invocation_exception_on_non_2xx_status() throws Exception {
     try (LoopbackHttpServer http = new LoopbackHttpServer(503, "busy")) {
       OllamaLlmClient client =
-          new OllamaLlmClient(new ObjectMapper(), configForUrl(http.chatUrl(), java.time.Duration.ofSeconds(30)));
+          new OllamaLlmClient(new ObjectMapper(),
+              configForUrl(http.chatUrl(), java.time.Duration.ofSeconds(30)));
       LlmExecutionRequest request =
           LlmExecutionRequest.withDefaultModel("ollama", "system prompt", "user input");
 
@@ -250,7 +254,8 @@ class OllamaLlmClientIT {
         """;
     try (LoopbackHttpServer http = new LoopbackHttpServer(200, errorBody)) {
       OllamaLlmClient client =
-          new OllamaLlmClient(new ObjectMapper(), configForUrl(http.chatUrl(), java.time.Duration.ofSeconds(30)));
+          new OllamaLlmClient(new ObjectMapper(),
+              configForUrl(http.chatUrl(), java.time.Duration.ofSeconds(30)));
       LlmExecutionRequest request =
           LlmExecutionRequest.withDefaultModel("ollama", "system prompt", "user input");
 
@@ -265,7 +270,8 @@ class OllamaLlmClientIT {
   void should_wrap_json_parse_failure_in_llm_invocation_exception() throws Exception {
     try (LoopbackHttpServer http = new LoopbackHttpServer(200, "{ not-json")) {
       OllamaLlmClient client =
-          new OllamaLlmClient(new ObjectMapper(), configForUrl(http.chatUrl(), java.time.Duration.ofSeconds(30)));
+          new OllamaLlmClient(new ObjectMapper(),
+              configForUrl(http.chatUrl(), java.time.Duration.ofSeconds(30)));
       LlmExecutionRequest request =
           LlmExecutionRequest.withDefaultModel("ollama", "system prompt", "user input");
 
@@ -299,9 +305,11 @@ class OllamaLlmClientIT {
   @Test
   void should_send_json_content_type_header() throws Exception {
     AtomicReference<String> fullRequest = new AtomicReference<>();
-    try (LoopbackHttpServer http = new LoopbackHttpServer(200, VALID_CHAT_JSON, null, fullRequest)) {
+    try (LoopbackHttpServer http = new LoopbackHttpServer(200, VALID_CHAT_JSON, null,
+        fullRequest)) {
       OllamaLlmClient client =
-          new OllamaLlmClient(new ObjectMapper(), configForUrl(http.chatUrl(), java.time.Duration.ofSeconds(30)));
+          new OllamaLlmClient(new ObjectMapper(),
+              configForUrl(http.chatUrl(), java.time.Duration.ofSeconds(30)));
       LlmExecutionRequest request =
           LlmExecutionRequest.withDefaultModel("ollama", "sys", "usr");
 
@@ -322,7 +330,8 @@ class OllamaLlmClientIT {
     AtomicReference<String> captured = new AtomicReference<>();
     try (LoopbackHttpServer http = new LoopbackHttpServer(200, VALID_CHAT_JSON, captured)) {
       OllamaLlmClient client =
-          new OllamaLlmClient(new ObjectMapper(), configForUrl(http.chatUrl(), java.time.Duration.ofSeconds(30)));
+          new OllamaLlmClient(new ObjectMapper(),
+              configForUrl(http.chatUrl(), java.time.Duration.ofSeconds(30)));
       LlmExecutionRequest request =
           new LlmExecutionRequest("ollama", "explicit-model", "sys", "usr");
 

@@ -3,8 +3,8 @@ package com.agentforge4j.starter;
 import com.agentforge4j.llm.DefaultLlmClientResolver;
 import com.agentforge4j.llm.LlmClientConfiguration;
 import com.agentforge4j.llm.LlmClientResolver;
-import com.agentforge4j.llm.LlmRetryPolicy;
 import com.agentforge4j.llm.RetryingLlmClientResolver;
+import com.agentforge4j.llm.api.LlmRetryPolicy;
 import com.agentforge4j.util.Validate;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.List;
@@ -20,8 +20,8 @@ import org.springframework.context.annotation.Bean;
  *
  * <p>Provider-specific auto-configuration under {@code com.agentforge4j.starter.llmclient}
  * registers {@link LlmClientConfiguration} beans when optional LLM modules are on the classpath and
- * matching {@code agentforge4j.llm.*} properties apply; this class aggregates those beans and passes
- * them to {@link DefaultLlmClientResolver#discover(ObjectMapper, java.util.Collection)}.
+ * matching {@code agentforge4j.llm.*} properties apply; this class aggregates those beans and
+ * passes them to {@link DefaultLlmClientResolver#discover(ObjectMapper, java.util.Collection)}.
  */
 @AutoConfiguration(after = JacksonAutoConfiguration.class)
 public class LlmAutoConfiguration {
@@ -50,7 +50,8 @@ public class LlmAutoConfiguration {
     }
     // TODO: provider fallback (primary -> secondary provider/model) can build on LlmProviderSelectionStrategy.
     LlmRetryPolicy retryPolicy =
-        new LlmRetryPolicy(retryMaxAttempts, retryBaseBackoffMs, retryMaxBackoffMs, retryMaxElapsedMs);
+        new LlmRetryPolicy(retryMaxAttempts, retryBaseBackoffMs, retryMaxBackoffMs,
+            retryMaxElapsedMs);
     return new RetryingLlmClientResolver(resolver, retryPolicy);
   }
 }

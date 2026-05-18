@@ -1,11 +1,12 @@
-package com.agentforge4j.llm;
+﻿package com.agentforge4j.llm;
+
+import com.agentforge4j.llm.api.LlmExecutionRequest;
+import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
-
-import org.junit.jupiter.api.Test;
 
 class LlmExecutionRequestTest {
 

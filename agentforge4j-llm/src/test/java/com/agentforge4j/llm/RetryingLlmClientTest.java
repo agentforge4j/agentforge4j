@@ -1,10 +1,9 @@
-package com.agentforge4j.llm;
+﻿package com.agentforge4j.llm;
 
-import org.junit.jupiter.api.Nested;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.ValueSource;
-
+import com.agentforge4j.llm.api.LlmClient;
+import com.agentforge4j.llm.api.LlmExecutionRequest;
+import com.agentforge4j.llm.api.LlmInvocationException;
+import com.agentforge4j.llm.api.LlmRetryPolicy;
 import java.io.IOException;
 import java.net.ConnectException;
 import java.net.SocketTimeoutException;
@@ -17,6 +16,10 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Supplier;
+import org.junit.jupiter.api.Nested;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -32,6 +35,7 @@ class RetryingLlmClientTest {
    * throw from {@link Supplier#get}.
    */
   static final class ScriptedLlmClient implements LlmClient {
+
     private final String providerName;
     private final ArrayDeque<Supplier<String>> script = new ArrayDeque<>();
     private final AtomicInteger callCount = new AtomicInteger();

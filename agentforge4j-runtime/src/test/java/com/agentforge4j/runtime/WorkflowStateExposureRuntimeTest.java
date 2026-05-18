@@ -1,11 +1,5 @@
 package com.agentforge4j.runtime;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
-
 import com.agentforge4j.config.loader.repository.InMemoryWorkflowRepository;
 import com.agentforge4j.core.agent.AgentRepository;
 import com.agentforge4j.core.runtime.WorkflowRuntime;
@@ -14,8 +8,8 @@ import com.agentforge4j.core.workflow.repository.WorkflowStateRepository;
 import com.agentforge4j.core.workflow.state.WorkflowState;
 import com.agentforge4j.core.workflow.state.WorkflowStatus;
 import com.agentforge4j.integrations.NoOpIntegrationRegistry;
-import com.agentforge4j.llm.LlmClient;
 import com.agentforge4j.llm.LlmClientResolver;
+import com.agentforge4j.llm.api.LlmClient;
 import com.agentforge4j.runtime.command.FileSink;
 import com.agentforge4j.runtime.command.ShellCommandRunner;
 import com.agentforge4j.runtime.repository.InMemoryWorkflowEventLog;
@@ -24,7 +18,14 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.Collections;
+import java.util.List;
 import org.junit.jupiter.api.Test;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 /**
  * Ensures in-memory repository semantics stay live for internal use while {@link WorkflowRuntime}
@@ -88,7 +89,9 @@ class WorkflowStateExposureRuntimeTest {
   private static WorkflowRuntime minimalRuntime(WorkflowStateRepository stateRepository) {
     LlmClientResolver resolver = mock(LlmClientResolver.class);
     LlmClient client = mock(LlmClient.class);
+    when(client.getProviderName()).thenReturn("openai");
     when(resolver.resolve(any())).thenReturn(client);
+    when(resolver.listAvailableClients()).thenReturn(List.of("openai"));
 
     AgentRepository agentRepository = mock(AgentRepository.class);
 
