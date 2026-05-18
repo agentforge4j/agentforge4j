@@ -1,4 +1,4 @@
-﻿package com.agentforge4j.llm.openai;
+package com.agentforge4j.llm.openai;
 
 import com.agentforge4j.llm.AbstractHttpLlmClient;
 import com.agentforge4j.llm.api.LlmClient;

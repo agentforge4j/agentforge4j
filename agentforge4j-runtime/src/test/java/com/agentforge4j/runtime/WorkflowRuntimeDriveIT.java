@@ -1,4 +1,4 @@
-﻿package com.agentforge4j.runtime;
+package com.agentforge4j.runtime;
 
 import com.agentforge4j.config.loader.repository.InMemoryWorkflowRepository;
 import com.agentforge4j.core.agent.AgentDefinition;

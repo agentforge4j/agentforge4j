@@ -1,4 +1,4 @@
-﻿package com.agentforge4j.starter;
+package com.agentforge4j.starter;
 
 import com.agentforge4j.llm.DefaultLlmClientResolver;
 import com.agentforge4j.llm.LlmClientResolver;

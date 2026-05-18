@@ -1,4 +1,4 @@
-﻿package com.agentforge4j.llm.ollama;
+package com.agentforge4j.llm.ollama;
 
 import com.agentforge4j.llm.api.LlmExecutionRequest;
 import com.agentforge4j.llm.api.LlmInvocationException;

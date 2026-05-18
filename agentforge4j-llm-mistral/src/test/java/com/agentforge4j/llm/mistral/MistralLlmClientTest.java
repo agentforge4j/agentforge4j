@@ -1,4 +1,4 @@
-﻿package com.agentforge4j.llm.mistral;
+package com.agentforge4j.llm.mistral;
 
 import com.agentforge4j.llm.LlmClientConfiguration;
 import com.agentforge4j.llm.api.LlmClient;

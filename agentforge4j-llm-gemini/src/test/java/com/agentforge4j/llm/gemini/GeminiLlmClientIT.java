@@ -1,4 +1,4 @@
-﻿package com.agentforge4j.llm.gemini;
+package com.agentforge4j.llm.gemini;
 
 import com.agentforge4j.llm.LlmClientFactory;
 import com.agentforge4j.llm.api.LlmExecutionRequest;

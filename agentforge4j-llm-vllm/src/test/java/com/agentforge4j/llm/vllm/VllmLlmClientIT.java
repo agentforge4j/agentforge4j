@@ -1,4 +1,4 @@
-﻿package com.agentforge4j.llm.vllm;
+package com.agentforge4j.llm.vllm;
 
 import com.agentforge4j.llm.LlmClientFactory;
 import com.agentforge4j.llm.api.LlmExecutionRequest;

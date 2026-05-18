@@ -1,4 +1,4 @@
-﻿package com.agentforge4j.llm.claude;
+package com.agentforge4j.llm.claude;
 
 import com.agentforge4j.llm.api.LlmExecutionRequest;
 import com.agentforge4j.llm.api.LlmInvocationException;

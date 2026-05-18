@@ -1,4 +1,4 @@
-﻿package com.agentforge4j.llm.bedrock;
+package com.agentforge4j.llm.bedrock;
 
 import com.agentforge4j.llm.LlmClientConfiguration;
 import com.agentforge4j.llm.LlmClientFactory;

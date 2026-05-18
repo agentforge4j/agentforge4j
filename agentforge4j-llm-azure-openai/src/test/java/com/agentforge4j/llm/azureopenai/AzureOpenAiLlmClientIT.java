@@ -1,4 +1,4 @@
-﻿package com.agentforge4j.llm.azureopenai;
+package com.agentforge4j.llm.azureopenai;
 
 import com.agentforge4j.llm.api.LlmExecutionRequest;
 import com.agentforge4j.llm.api.LlmInvocationException;

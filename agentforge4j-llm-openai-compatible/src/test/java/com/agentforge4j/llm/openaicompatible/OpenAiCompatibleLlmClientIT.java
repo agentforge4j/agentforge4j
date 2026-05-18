@@ -1,4 +1,4 @@
-﻿package com.agentforge4j.llm.openaicompatible;
+package com.agentforge4j.llm.openaicompatible;
 
 import com.agentforge4j.llm.LlmClientFactory;
 import com.agentforge4j.llm.api.LlmExecutionRequest;
