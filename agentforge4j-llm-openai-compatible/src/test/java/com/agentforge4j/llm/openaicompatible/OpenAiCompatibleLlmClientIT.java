@@ -48,7 +48,7 @@ class OpenAiCompatibleLlmClientIT {
       LlmExecutionRequest request =
           LlmExecutionRequest.withDefaultModel("openai-compatible", "system", "user");
 
-      assertThat(client.execute(request)).isEqualTo("Hello from compatible");
+      assertThat(client.execute(request).text()).isEqualTo("Hello from compatible");
     }
   }
 
@@ -63,7 +63,7 @@ class OpenAiCompatibleLlmClientIT {
       LlmExecutionRequest request =
           new LlmExecutionRequest("OPENAI-COMPATIBLE", null, "system", "user");
 
-      assertThat(client.execute(request)).isEqualTo("Hello from compatible");
+      assertThat(client.execute(request).text()).isEqualTo("Hello from compatible");
     }
   }
 
@@ -353,7 +353,7 @@ class OpenAiCompatibleLlmClientIT {
       LlmExecutionRequest request =
           LlmExecutionRequest.withDefaultModel("openai-compatible", "system", "user");
 
-      assertThat(client.execute(request)).isEqualTo("Hello from compatible");
+      assertThat(client.execute(request).text()).isEqualTo("Hello from compatible");
     }
   }
 

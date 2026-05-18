@@ -11,6 +11,7 @@ import com.agentforge4j.core.workflow.state.WorkflowState;
 import com.agentforge4j.llm.LlmClientResolver;
 import com.agentforge4j.llm.api.LlmClient;
 import com.agentforge4j.llm.api.LlmExecutionRequest;
+import com.agentforge4j.llm.api.LlmExecutionResponse;
 import com.agentforge4j.runtime.event.EventRecorder;
 import com.agentforge4j.runtime.repository.InMemoryWorkflowEventLog;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -41,7 +42,7 @@ class AgentInvokerTest {
 
     LlmClient client = mock(LlmClient.class);
     when(client.getProviderName()).thenReturn("openai");
-    when(client.execute(any())).thenReturn(raw);
+    when(client.execute(any())).thenReturn(llmResponse(raw));
 
     AgentInvoker invoker = invokerWithAudit(mapper, client, recorder);
     WorkflowState state = workflowState(runId);
@@ -68,7 +69,7 @@ class AgentInvokerTest {
 
     LlmClient client = mock(LlmClient.class);
     when(client.getProviderName()).thenReturn("openai");
-    when(client.execute(any())).thenReturn(firstRaw, secondRaw);
+    when(client.execute(any())).thenReturn(llmResponse(firstRaw), llmResponse(secondRaw));
 
     AgentInvoker invoker = invokerWithAudit(mapper, client, recorder);
     WorkflowState state = workflowState(runId);
@@ -102,7 +103,7 @@ class AgentInvokerTest {
 
     LlmClient client = mock(LlmClient.class);
     when(client.getProviderName()).thenReturn("openai");
-    when(client.execute(any())).thenReturn(bad.strip(), bad.strip());
+    when(client.execute(any())).thenReturn(llmResponse(bad.strip()), llmResponse(bad.strip()));
 
     AgentInvoker invoker = invokerWithAudit(mapper, client, recorder);
     WorkflowState state = workflowState(runId);
@@ -127,7 +128,7 @@ class AgentInvokerTest {
 
     LlmClient client = mock(LlmClient.class);
     when(client.getProviderName()).thenReturn("openai");
-    when(client.execute(any())).thenReturn("{}", "[{\"type\":\"COMPLETE\"}]");
+    when(client.execute(any())).thenReturn(llmResponse("{}"), llmResponse("[{\"type\":\"COMPLETE\"}]"));
 
     ContextRenderer contextRenderer = mock(ContextRenderer.class);
     when(contextRenderer.render(any(), any())).thenReturn(userInput);
@@ -175,7 +176,7 @@ class AgentInvokerTest {
     String raw = "[{\"type\":\"COMPLETE\"}]";
     LlmClient client = mock(LlmClient.class);
     when(client.getProviderName()).thenReturn("openai");
-    when(client.execute(any())).thenReturn(raw);
+    when(client.execute(any())).thenReturn(llmResponse(raw));
 
     AgentInvoker invoker = invokerWithAudit(mapper, client, recorder);
     WorkflowState state = workflowState("run-cap-short");
@@ -198,7 +199,7 @@ class AgentInvokerTest {
     String raw = "[{\"type\":\"COMPLETE\",\"summary\":\"" + padding + "\"}]";
     LlmClient client = mock(LlmClient.class);
     when(client.getProviderName()).thenReturn("openai");
-    when(client.execute(any())).thenReturn(raw);
+    when(client.execute(any())).thenReturn(llmResponse(raw));
 
     AgentInvoker invoker = invokerWithAudit(mapper, client, recorder);
     WorkflowState state = workflowState("run-cap-long");
@@ -229,7 +230,7 @@ class AgentInvokerTest {
     String raw = "[{\"type\":\"COMPLETE\",\"summary\":\"" + padding + "\"}]";
     LlmClient client = mock(LlmClient.class);
     when(client.getProviderName()).thenReturn("openai");
-    when(client.execute(any())).thenReturn(raw);
+    when(client.execute(any())).thenReturn(llmResponse(raw));
 
     AgentRepository repo = mock(AgentRepository.class);
     when(repo.get("agent-x")).thenReturn(agentSupportingOnlyComplete());
@@ -261,7 +262,7 @@ class AgentInvokerTest {
     String raw = "[{\"type\":\"COMPLETE\",\"summary\":\"" + padding + "\"}]";
     LlmClient client = mock(LlmClient.class);
     when(client.getProviderName()).thenReturn("openai");
-    when(client.execute(any())).thenReturn(raw);
+    when(client.execute(any())).thenReturn(llmResponse(raw));
 
     AgentRepository repo = mock(AgentRepository.class);
     when(repo.get("agent-x")).thenReturn(agentSupportingOnlyComplete());
@@ -307,7 +308,7 @@ class AgentInvokerTest {
     ObjectMapper mapper = new ObjectMapper();
     LlmClient client = mock(LlmClient.class);
     when(client.getProviderName()).thenReturn("ollama");
-    when(client.execute(any())).thenReturn("[{\"type\":\"COMPLETE\"}]");
+    when(client.execute(any())).thenReturn(llmResponse("[{\"type\":\"COMPLETE\"}]"));
 
     AgentRepository repo = mock(AgentRepository.class);
     AgentDefinition agent = new AgentDefinition(
@@ -372,7 +373,7 @@ class AgentInvokerTest {
     ObjectMapper mapper = new ObjectMapper();
     LlmClient client = mock(LlmClient.class);
     when(client.getProviderName()).thenReturn("openai");
-    when(client.execute(any())).thenReturn("[{\"type\":\"COMPLETE\"}]");
+    when(client.execute(any())).thenReturn(llmResponse("[{\"type\":\"COMPLETE\"}]"));
     LlmClientResolver resolver = mock(LlmClientResolver.class);
     when(resolver.resolve("openai")).thenReturn(client);
     when(resolver.isProviderAvailable("openai")).thenReturn(true);
@@ -419,9 +420,9 @@ class AgentInvokerTest {
     LlmClient client = mock(LlmClient.class);
     when(client.getProviderName()).thenReturn("openai");
     if (secondRawOrNull == null) {
-      when(client.execute(any())).thenReturn(firstRaw);
+      when(client.execute(any())).thenReturn(llmResponse(firstRaw));
     } else {
-      when(client.execute(any())).thenReturn(firstRaw, secondRawOrNull);
+      when(client.execute(any())).thenReturn(llmResponse(firstRaw), llmResponse(secondRawOrNull));
     }
     AgentInvoker invoker = invokerWithAudit(mapper, client, recorder);
     WorkflowState state = workflowState(runId);
@@ -492,6 +493,10 @@ class AgentInvokerTest {
 
   private static AgentDefinition agentSupportingOnlyComplete() {
     return agentSupportingOnlyCompleteWithBody("sys");
+  }
+
+  private static LlmExecutionResponse llmResponse(String text) {
+    return new LlmExecutionResponse(text, null);
   }
 
   private static AgentDefinition agentSupportingOnlyCompleteWithBody(String systemPrompt) {

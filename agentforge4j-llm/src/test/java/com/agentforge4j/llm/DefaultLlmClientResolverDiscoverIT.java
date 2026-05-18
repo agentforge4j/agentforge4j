@@ -2,6 +2,7 @@ package com.agentforge4j.llm;
 
 import com.agentforge4j.llm.api.LlmClient;
 import com.agentforge4j.llm.api.LlmExecutionRequest;
+import com.agentforge4j.llm.api.LlmExecutionResponse;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.Collection;
 import java.util.List;
@@ -28,11 +29,12 @@ class DefaultLlmClientResolverDiscoverIT {
     LlmClient client = resolver.resolve(ServiceLoaderStubLlmClientFactory.PROVIDER);
     assertThat(client.getProviderName()).isEqualTo(ServiceLoaderStubLlmClientFactory.PROVIDER);
 
-    String result = client.execute(
+    LlmExecutionResponse result = client.execute(
         LlmExecutionRequest.withDefaultModel(ServiceLoaderStubLlmClientFactory.PROVIDER, "sys",
             "ping"));
 
-    assertThat(result).isEqualTo("stub:ping");
+    assertThat(result.text()).isEqualTo("stub:ping");
+    assertThat(result.tokenUsage()).isNull();
   }
 
   @Test

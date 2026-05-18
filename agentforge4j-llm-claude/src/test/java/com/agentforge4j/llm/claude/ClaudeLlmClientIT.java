@@ -168,7 +168,7 @@ class ClaudeLlmClientIT {
       LlmExecutionRequest request =
           LlmExecutionRequest.withDefaultModel("claude", "system", "user");
 
-      assertThat(client.execute(request)).isEqualTo("Hello from Claude");
+      assertThat(client.execute(request).text()).isEqualTo("Hello from Claude");
     }
   }
 
@@ -182,7 +182,7 @@ class ClaudeLlmClientIT {
       LlmExecutionRequest request =
           new LlmExecutionRequest("CLAUDE", null, "system", "user");
 
-      assertThat(client.execute(request)).isEqualTo("Hello from Claude");
+      assertThat(client.execute(request).text()).isEqualTo("Hello from Claude");
     }
   }
 

@@ -2,6 +2,7 @@ package com.agentforge4j.llm;
 
 import com.agentforge4j.llm.api.LlmClient;
 import com.agentforge4j.llm.api.LlmExecutionRequest;
+import com.agentforge4j.llm.api.LlmExecutionResponse;
 import com.agentforge4j.llm.api.LlmInvocationException;
 import com.agentforge4j.llm.api.LlmRetryPolicy;
 import com.agentforge4j.util.Validate;
@@ -93,16 +94,17 @@ public abstract class AbstractHttpLlmClient implements LlmClient {
    * </ol>
    *
    * @param request the LLM execution request
-   * @return the extracted LLM response
+   * @return execution response with extracted model output and no token usage in this phase
    * @throws LlmInvocationException   if the request fails due to network issues, HTTP errors, or
    *                                  invalid responses
    * @throws IllegalArgumentException if the request is invalid
    */
-  public final String execute(LlmExecutionRequest request) {
+  public final LlmExecutionResponse execute(LlmExecutionRequest request) {
     LlmExecutionRequestValidator.validate(request, providerName);
     try {
       HttpResponse<String> response = sendHttpRequest(buildHttpRequest(request));
-      return validateAndExtractResponse(requireSuccess(response, providerName));
+      String text = validateAndExtractResponse(requireSuccess(response, providerName));
+      return new LlmExecutionResponse(text, null);
     } catch (InterruptedException e) {
       throw handleInterruptedException(e);
     } catch (IOException e) {
@@ -148,7 +150,8 @@ public abstract class AbstractHttpLlmClient implements LlmClient {
           MAX_ERROR_BODY_MESSAGE_CHARS);
       LOG.log(System.Logger.Level.ERROR, "Non-2xx response providerName={0}, status={1}, body={2}",
           providerName, status, truncated);
-      LOG.log(System.Logger.Level.DEBUG, "Non-2xx response full body providerName={0}, status={1}, body={2}",
+      LOG.log(System.Logger.Level.DEBUG,
+          "Non-2xx response full body providerName={0}, status={1}, body={2}",
           providerName, status, fullBody);
       return new LlmInvocationException(
           "%s HTTP error: %s - %s".formatted(providerName, status, truncated), status);

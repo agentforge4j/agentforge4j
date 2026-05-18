@@ -42,7 +42,7 @@ class AzureOpenAiLlmClientIT {
       LlmExecutionRequest request =
           LlmExecutionRequest.withDefaultModel("azure-openai", "system", "user");
 
-      assertThat(client.execute(request)).isEqualTo("Hello from Azure");
+      assertThat(client.execute(request).text()).isEqualTo("Hello from Azure");
     }
   }
 
@@ -57,7 +57,7 @@ class AzureOpenAiLlmClientIT {
       LlmExecutionRequest request =
           new LlmExecutionRequest("AZURE-OPENAI", null, "system", "user");
 
-      assertThat(client.execute(request)).isEqualTo("Hello from Azure");
+      assertThat(client.execute(request).text()).isEqualTo("Hello from Azure");
     }
   }
 
@@ -222,7 +222,7 @@ class AzureOpenAiLlmClientIT {
       LlmExecutionRequest request =
           LlmExecutionRequest.withDefaultModel("azure-openai", "system", "user");
 
-      assertThat(client.execute(request)).isEqualTo("Hello from Azure");
+      assertThat(client.execute(request).text()).isEqualTo("Hello from Azure");
     }
   }
 }

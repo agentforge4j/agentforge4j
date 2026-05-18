@@ -1,6 +1,7 @@
 package com.agentforge4j.llm.bedrock;
 
 import com.agentforge4j.llm.api.LlmExecutionRequest;
+import com.agentforge4j.llm.api.LlmExecutionResponse;
 import com.agentforge4j.llm.api.LlmInvocationException;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -182,7 +183,9 @@ class BedrockLlmClientTest {
       BedrockLlmClient llm = new BedrockLlmClient(mapper, cfg, client);
       LlmExecutionRequest req = new LlmExecutionRequest(
           "bedrock", null, "system", "user");
-      assertThat(llm.execute(req)).isEqualTo("OK");
+      LlmExecutionResponse response = llm.execute(req);
+      assertThat(response.text()).isEqualTo("OK");
+      assertThat(response.tokenUsage()).isNull();
     }
 
     @Test
@@ -205,7 +208,7 @@ class BedrockLlmClientTest {
           "bedrock",
           requestedModel,
           "You must reply with JSON only.",
-          "Run workflow"));
+          "Run workflow")).text();
 
       JsonNode parsed = mapper.readTree(out);
       assertThat(parsed.path("commands").isArray()).isTrue();
@@ -230,7 +233,7 @@ class BedrockLlmClientTest {
               .build());
       BedrockLlmClient llm = new BedrockLlmClient(mapper, FixedBedrockConfiguration.defaults(),
           client);
-      assertThat(llm.execute(new LlmExecutionRequest("BEDROCK", null, "s", "u"))).isEqualTo("x");
+      assertThat(llm.execute(new LlmExecutionRequest("BEDROCK", null, "s", "u")).text()).isEqualTo("x");
     }
 
     @Test
@@ -244,7 +247,7 @@ class BedrockLlmClientTest {
       String model = "ANTHROPIC.claude-3-haiku-20240307-v1:0";
       var cfg = FixedBedrockConfiguration.builder().defaultModel(model).build();
       BedrockLlmClient llm = new BedrockLlmClient(mapper, cfg, client);
-      assertThat(llm.execute(new LlmExecutionRequest("bedrock", null, "s", "u"))).isEqualTo("y");
+      assertThat(llm.execute(new LlmExecutionRequest("bedrock", null, "s", "u")).text()).isEqualTo("y");
     }
 
     @Test

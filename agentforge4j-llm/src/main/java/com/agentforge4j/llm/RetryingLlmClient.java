@@ -2,6 +2,7 @@ package com.agentforge4j.llm;
 
 import com.agentforge4j.llm.api.LlmClient;
 import com.agentforge4j.llm.api.LlmExecutionRequest;
+import com.agentforge4j.llm.api.LlmExecutionResponse;
 import com.agentforge4j.llm.api.LlmInvocationException;
 import com.agentforge4j.llm.api.LlmRetryPolicy;
 import com.agentforge4j.util.Validate;
@@ -42,7 +43,7 @@ public final class RetryingLlmClient implements LlmClient {
   }
 
   @Override
-  public String execute(LlmExecutionRequest request) {
+  public LlmExecutionResponse execute(LlmExecutionRequest request) {
     LOG.log(System.Logger.Level.DEBUG,
         "LLM retry policy: maxAttempts={0}, baseBackoffMs={1}, maxBackoffMs={2}, maxElapsedMs={3}",
         policy.maxAttempts(), policy.baseBackoffMs(), policy.maxBackoffMs(), policy.maxElapsedMs());

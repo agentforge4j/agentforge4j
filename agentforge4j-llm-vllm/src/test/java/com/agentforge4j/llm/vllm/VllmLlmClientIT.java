@@ -43,7 +43,7 @@ class VllmLlmClientIT {
       LlmExecutionRequest request =
           LlmExecutionRequest.withDefaultModel("vllm", "system", "user");
 
-      assertThat(client.execute(request)).isEqualTo("Hello from loopback");
+      assertThat(client.execute(request).text()).isEqualTo("Hello from loopback");
     }
   }
 
@@ -58,7 +58,7 @@ class VllmLlmClientIT {
       LlmExecutionRequest request =
           new LlmExecutionRequest("VLLM", null, "system", "user");
 
-      assertThat(client.execute(request)).isEqualTo("Hello from loopback");
+      assertThat(client.execute(request).text()).isEqualTo("Hello from loopback");
     }
   }
 
@@ -277,7 +277,7 @@ class VllmLlmClientIT {
       LlmExecutionRequest request =
           LlmExecutionRequest.withDefaultModel("vllm", "system", "user");
 
-      assertThat(client.execute(request)).isEqualTo("Hello from loopback");
+      assertThat(client.execute(request).text()).isEqualTo("Hello from loopback");
     }
   }
 

@@ -63,7 +63,7 @@ class BedrockLlmClientFactoryIT {
       BedrockLlmClientFactory factory = new BedrockLlmClientFactory();
       LlmClient client = factory.create(new ObjectMapper(), cfg);
       String out = client.execute(new LlmExecutionRequest(
-          "bedrock", null, "You are concise.", "Say hello."));
+          "bedrock", null, "You are concise.", "Say hello.")).text();
       assertThat(out).isEqualTo("from-factory-it");
     } finally {
       server.stop(0);

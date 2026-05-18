@@ -5,6 +5,7 @@
  * <ul>
  *   <li>{@link com.agentforge4j.llm.api.LlmClient} — executes requests for one provider id</li>
  *   <li>{@link com.agentforge4j.llm.api.LlmExecutionRequest} — immutable invocation parameters</li>
+ *   <li>{@link com.agentforge4j.llm.api.LlmExecutionResponse} — model output and optional token usage</li>
  *   <li>{@link com.agentforge4j.llm.api.LlmInvocationException} — failures from clients or transport</li>
  *   <li>{@link com.agentforge4j.llm.api.LlmRetryPolicy} — optional retry settings exposed by clients</li>
  *   <li>{@link com.agentforge4j.llm.api.TokenUsageReport} — provider token usage for an invocation</li>

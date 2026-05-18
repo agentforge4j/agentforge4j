@@ -2,6 +2,7 @@ package com.agentforge4j.llm;
 
 import com.agentforge4j.llm.api.LlmClient;
 import com.agentforge4j.llm.api.LlmExecutionRequest;
+import com.agentforge4j.llm.api.LlmExecutionResponse;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.Duration;
 
@@ -62,8 +63,8 @@ public final class TestFixtures {
     }
 
     @Override
-    public String execute(LlmExecutionRequest request) {
-      return "response from " + providerName;
+    public LlmExecutionResponse execute(LlmExecutionRequest request) {
+      return new LlmExecutionResponse("response from " + providerName, null);
     }
   }
 

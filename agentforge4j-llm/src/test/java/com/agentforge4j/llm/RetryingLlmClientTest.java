@@ -2,8 +2,10 @@ package com.agentforge4j.llm;
 
 import com.agentforge4j.llm.api.LlmClient;
 import com.agentforge4j.llm.api.LlmExecutionRequest;
+import com.agentforge4j.llm.api.LlmExecutionResponse;
 import com.agentforge4j.llm.api.LlmInvocationException;
 import com.agentforge4j.llm.api.LlmRetryPolicy;
+import com.agentforge4j.llm.api.TokenUsageReport;
 import java.io.IOException;
 import java.net.ConnectException;
 import java.net.SocketTimeoutException;
@@ -60,9 +62,9 @@ class RetryingLlmClientTest {
     }
 
     @Override
-    public String execute(LlmExecutionRequest request) {
+    public LlmExecutionResponse execute(LlmExecutionRequest request) {
       callCount.incrementAndGet();
-      return script.removeFirst().get();
+      return new LlmExecutionResponse(script.removeFirst().get(), null);
     }
 
     int getCallCount() {
@@ -121,11 +123,35 @@ class RetryingLlmClientTest {
   class ExecuteTests {
 
     @Test
+    void propagates_execution_response_unchanged() {
+      TokenUsageReport usage = new TokenUsageReport(10, 20, 5, 1);
+      LlmExecutionResponse expected = new LlmExecutionResponse("payload", usage);
+      LlmClient delegate = new LlmClient() {
+        @Override
+        public String getProviderName() {
+          return "prov";
+        }
+
+        @Override
+        public LlmExecutionResponse execute(LlmExecutionRequest request) {
+          return expected;
+        }
+      };
+      RetryingLlmClient client = new RetryingLlmClient(delegate, fastRetryPolicy(3));
+
+      LlmExecutionResponse actual = client.execute(dummyRequest());
+
+      assertThat(actual).isSameAs(expected);
+      assertThat(actual.text()).isEqualTo("payload");
+      assertThat(actual.tokenUsage()).isSameAs(usage);
+    }
+
+    @Test
     void successFirstAttempt_noRetry() {
       ScriptedLlmClient delegate = new ScriptedLlmClient("prov", () -> "payload");
       RetryingLlmClient client = new RetryingLlmClient(delegate, fastRetryPolicy(3));
 
-      assertThat(client.execute(dummyRequest())).isEqualTo("payload");
+      assertThat(client.execute(dummyRequest()).text()).isEqualTo("payload");
       assertThat(delegate.getCallCount()).isEqualTo(1);
     }
 
@@ -139,7 +165,7 @@ class RetryingLlmClientTest {
           () -> "ok");
       RetryingLlmClient client = new RetryingLlmClient(delegate, fastRetryPolicy(3));
 
-      assertThat(client.execute(dummyRequest())).isEqualTo("ok");
+      assertThat(client.execute(dummyRequest()).text()).isEqualTo("ok");
       assertThat(delegate.getCallCount()).isEqualTo(2);
     }
 
@@ -191,7 +217,7 @@ class RetryingLlmClientTest {
           () -> "recovered");
       RetryingLlmClient client = new RetryingLlmClient(delegate, fastRetryPolicy(3));
 
-      assertThat(client.execute(dummyRequest())).isEqualTo("recovered");
+      assertThat(client.execute(dummyRequest()).text()).isEqualTo("recovered");
       assertThat(delegate.getCallCount()).isEqualTo(2);
     }
 
@@ -267,7 +293,7 @@ class RetryingLlmClientTest {
           () -> "fine");
       RetryingLlmClient client = new RetryingLlmClient(delegate, fastRetryPolicy(3));
 
-      assertThat(client.execute(dummyRequest())).isEqualTo("fine");
+      assertThat(client.execute(dummyRequest()).text()).isEqualTo("fine");
       assertThat(delegate.getCallCount()).isEqualTo(2);
     }
 
@@ -283,7 +309,7 @@ class RetryingLlmClientTest {
         }
 
         @Override
-        public String execute(LlmExecutionRequest request) {
+        public LlmExecutionResponse execute(LlmExecutionRequest request) {
           firstFailure.countDown();
           throw new LlmInvocationException("HTTP error: 503", 503);
         }
@@ -323,7 +349,7 @@ class RetryingLlmClientTest {
           () -> "success");
       RetryingLlmClient client = new RetryingLlmClient(delegate, fastRetryPolicy(3));
 
-      assertThat(client.execute(dummyRequest())).isEqualTo("success");
+      assertThat(client.execute(dummyRequest()).text()).isEqualTo("success");
       assertThat(delegate.getCallCount()).isEqualTo(2);
     }
 
@@ -336,7 +362,7 @@ class RetryingLlmClientTest {
           () -> "success");
       RetryingLlmClient client = new RetryingLlmClient(delegate, fastRetryPolicy(3));
 
-      assertThat(client.execute(dummyRequest())).isEqualTo("success");
+      assertThat(client.execute(dummyRequest()).text()).isEqualTo("success");
       assertThat(delegate.getCallCount()).isEqualTo(2);
     }
 
@@ -349,7 +375,7 @@ class RetryingLlmClientTest {
           () -> "success");
       RetryingLlmClient client = new RetryingLlmClient(delegate, fastRetryPolicy(3));
 
-      assertThat(client.execute(dummyRequest())).isEqualTo("success");
+      assertThat(client.execute(dummyRequest()).text()).isEqualTo("success");
       assertThat(delegate.getCallCount()).isEqualTo(2);
     }
 
@@ -376,7 +402,7 @@ class RetryingLlmClientTest {
           },
           () -> "ok");
       RetryingLlmClient client502 = new RetryingLlmClient(delegate502, fastRetryPolicy(2));
-      assertThat(client502.execute(dummyRequest())).isEqualTo("ok");
+      assertThat(client502.execute(dummyRequest()).text()).isEqualTo("ok");
       assertThat(delegate502.getCallCount()).isEqualTo(2);
 
       String msg503 = "claude HTTP error: 503 - {\"error\":\"overload\"}";
@@ -386,7 +412,7 @@ class RetryingLlmClientTest {
           },
           () -> "ok2");
       RetryingLlmClient client503 = new RetryingLlmClient(delegate503, fastRetryPolicy(2));
-      assertThat(client503.execute(dummyRequest())).isEqualTo("ok2");
+      assertThat(client503.execute(dummyRequest()).text()).isEqualTo("ok2");
       assertThat(delegate503.getCallCount()).isEqualTo(2);
     }
 
@@ -399,7 +425,7 @@ class RetryingLlmClientTest {
           () -> "done");
       RetryingLlmClient client = new RetryingLlmClient(delegate, fastRetryPolicy(2));
 
-      assertThat(client.execute(dummyRequest())).isEqualTo("done");
+      assertThat(client.execute(dummyRequest()).text()).isEqualTo("done");
       assertThat(delegate.getCallCount()).isEqualTo(2);
     }
 
@@ -428,7 +454,7 @@ class RetryingLlmClientTest {
       RetryingLlmClient client = new RetryingLlmClient(delegate, policy);
 
       long t0 = System.currentTimeMillis();
-      assertThat(client.execute(dummyRequest())).isEqualTo("fine");
+      assertThat(client.execute(dummyRequest()).text()).isEqualTo("fine");
       long elapsedMs = System.currentTimeMillis() - t0;
 
       assertThat(delegate.getCallCount()).isEqualTo(2);

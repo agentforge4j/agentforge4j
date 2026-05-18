@@ -198,7 +198,7 @@ class OllamaLlmClientIT {
       LlmExecutionRequest request =
           LlmExecutionRequest.withDefaultModel("ollama", "system prompt", "user input");
 
-      assertThat(client.execute(request)).isEqualTo("Hello from loopback");
+      assertThat(client.execute(request).text()).isEqualTo("Hello from loopback");
     }
   }
 
@@ -211,7 +211,7 @@ class OllamaLlmClientIT {
       LlmExecutionRequest request =
           new LlmExecutionRequest("OLLAMA", null, "system prompt", "user input");
 
-      assertThat(client.execute(request)).isEqualTo("Hello from loopback");
+      assertThat(client.execute(request).text()).isEqualTo("Hello from loopback");
     }
   }
 

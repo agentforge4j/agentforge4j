@@ -22,6 +22,7 @@ import com.agentforge4j.core.workflow.step.behaviour.AgentBehaviour;
 import com.agentforge4j.integrations.NoOpIntegrationRegistry;
 import com.agentforge4j.llm.LlmClientResolver;
 import com.agentforge4j.llm.api.LlmClient;
+import com.agentforge4j.llm.api.LlmExecutionResponse;
 import com.agentforge4j.runtime.command.FileSink;
 import com.agentforge4j.runtime.command.ShellCommandRunner;
 import com.agentforge4j.runtime.exception.UserPromptLimitExceededException;
@@ -55,7 +56,7 @@ class AgentStepAuditRuntimeTest {
     LlmClient client = mock(LlmClient.class);
     when(client.getProviderName()).thenReturn("openai");
     when(client.execute(any())).thenReturn(
-        "[{\"type\":\"USER_PROMPT\",\"message\":\"Hello?\",\"responseRequired\":true}]");
+        llmResponse("[{\"type\":\"USER_PROMPT\",\"message\":\"Hello?\",\"responseRequired\":true}]"));
 
     Fixture f = fixture(client, agent("a1", List.of("USER_PROMPT", "SET_CONTEXT", "COMPLETE")), 8);
 
@@ -84,7 +85,7 @@ class AgentStepAuditRuntimeTest {
     String good = "[{\"type\":\"COMPLETE\"}]";
     LlmClient client = mock(LlmClient.class);
     when(client.getProviderName()).thenReturn("openai");
-    when(client.execute(any())).thenReturn(bad.strip(), good);
+    when(client.execute(any())).thenReturn(llmResponse(bad.strip()), llmResponse(good));
 
     Fixture f = fixture(client, agent("a1", List.of("COMPLETE")), 8);
 
@@ -102,8 +103,8 @@ class AgentStepAuditRuntimeTest {
     LlmClient client = mock(LlmClient.class);
     when(client.getProviderName()).thenReturn("openai");
     when(client.execute(any())).thenReturn(
-        "[{\"type\":\"USER_PROMPT\",\"message\":\"Q1\",\"responseRequired\":true}]",
-        "[{\"type\":\"USER_PROMPT\",\"message\":\"Q2\",\"responseRequired\":true}]");
+        llmResponse("[{\"type\":\"USER_PROMPT\",\"message\":\"Q1\",\"responseRequired\":true}]"),
+        llmResponse("[{\"type\":\"USER_PROMPT\",\"message\":\"Q2\",\"responseRequired\":true}]"));
 
     Fixture f = fixture(client, agent("a1", List.of("USER_PROMPT", "COMPLETE")), 2);
 
@@ -128,8 +129,8 @@ class AgentStepAuditRuntimeTest {
     LlmClient client = mock(LlmClient.class);
     when(client.getProviderName()).thenReturn("openai");
     when(client.execute(any())).thenReturn(
-        "[{\"type\":\"USER_PROMPT\",\"message\":\"Q1\",\"responseRequired\":true}]",
-        "[{\"type\":\"USER_PROMPT\",\"message\":\"Q2\",\"responseRequired\":true}]");
+        llmResponse("[{\"type\":\"USER_PROMPT\",\"message\":\"Q1\",\"responseRequired\":true}]"),
+        llmResponse("[{\"type\":\"USER_PROMPT\",\"message\":\"Q2\",\"responseRequired\":true}]"));
 
     Fixture f = fixture(client, agent("a1", List.of("USER_PROMPT", "COMPLETE")), 2);
 
@@ -160,11 +161,11 @@ class AgentStepAuditRuntimeTest {
     LlmClient client = mock(LlmClient.class);
     when(client.getProviderName()).thenReturn("openai");
     when(client.execute(any())).thenReturn(
-        "[{\"type\":\"USER_PROMPT\",\"message\":\"Q\",\"responseRequired\":true}]",
-        """
+        llmResponse("[{\"type\":\"USER_PROMPT\",\"message\":\"Q\",\"responseRequired\":true}]"),
+        llmResponse("""
             [{"type":"SET_CONTEXT","key":"out","value":{"type":"STRING","value":"x"}},
             {"type":"COMPLETE"}]
-            """.strip());
+            """.strip()));
 
     RecordingRunContextManager runContextManager = new RecordingRunContextManager();
     Fixture f = fixture(
@@ -195,11 +196,10 @@ class AgentStepAuditRuntimeTest {
     LlmClient client = mock(LlmClient.class);
     when(client.getProviderName()).thenReturn("openai");
     when(client.execute(any())).thenReturn(
-        "[{\"type\":\"USER_PROMPT\",\"message\":\"Q\",\"responseRequired\":true}]",
-        """
-            [{"type":"SET_CONTEXT","key":"out","value":{"type":"STRING","value":"x"}},
-            {"type":"COMPLETE"}]
-            """.strip());
+        llmResponse("[{\"type\":\"USER_PROMPT\",\"message\":\"Q\",\"responseRequired\":true}]"),
+        llmResponse(
+            "[{\"type\":\"SET_CONTEXT\",\"key\":\"out\",\"value\":{\"type\":\"STRING\",\"value\":\"x\"}},"
+                + "{\"type\":\"COMPLETE\"}]"));
 
     Fixture f = fixture(client, agent("a1", List.of("USER_PROMPT", "SET_CONTEXT", "COMPLETE")), 8);
 
@@ -215,11 +215,11 @@ class AgentStepAuditRuntimeTest {
     LlmClient client = mock(LlmClient.class);
     when(client.getProviderName()).thenReturn("openai");
     when(client.execute(any())).thenReturn(
-        "[{\"type\":\"USER_PROMPT\",\"message\":\"Q\",\"responseRequired\":true}]",
-        """
+        llmResponse("[{\"type\":\"USER_PROMPT\",\"message\":\"Q\",\"responseRequired\":true}]"),
+        llmResponse("""
             [{"type":"SET_CONTEXT","key":"out","value":{"type":"STRING","value":"x"}},
             {"type":"COMPLETE"}]
-            """.strip());
+            """.strip()));
 
     Fixture f = fixture(client, agent("a1", List.of("USER_PROMPT", "SET_CONTEXT", "COMPLETE")), 8);
 
@@ -315,6 +315,10 @@ class AgentStepAuditRuntimeTest {
 
   private record RecordedScope(String runId, String workflowId, String stepId, String agentId) {
 
+  }
+
+  private static LlmExecutionResponse llmResponse(String text) {
+    return new LlmExecutionResponse(text, null);
   }
 
   private static final class RecordingRunContextManager implements RunContextManager {

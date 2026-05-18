@@ -2,6 +2,7 @@ package com.agentforge4j.llm;
 
 import com.agentforge4j.llm.api.LlmClient;
 import com.agentforge4j.llm.api.LlmExecutionRequest;
+import com.agentforge4j.llm.api.LlmExecutionResponse;
 import com.agentforge4j.llm.api.LlmInvocationException;
 import com.agentforge4j.llm.api.LlmRetryPolicy;
 import java.util.List;
@@ -39,7 +40,7 @@ class RetryingLlmClientResolverTest {
     }
 
     @Override
-    public String execute(LlmExecutionRequest request) {
+    public LlmExecutionResponse execute(LlmExecutionRequest request) {
       executeCalls.incrementAndGet();
       throw new LlmInvocationException("down", 503);
     }
@@ -269,11 +270,11 @@ class RetryingLlmClientResolverTest {
     }
 
     @Override
-    public String execute(LlmExecutionRequest request) {
+    public LlmExecutionResponse execute(LlmExecutionRequest request) {
       if (exceptionToThrow != null) {
         throw exceptionToThrow;
       }
-      return response;
+      return new LlmExecutionResponse(response, null);
     }
   }
 }

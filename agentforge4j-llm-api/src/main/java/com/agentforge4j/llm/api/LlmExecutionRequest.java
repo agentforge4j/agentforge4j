@@ -5,25 +5,42 @@ import com.agentforge4j.util.Validate;
 /**
  * Immutable parameters for a single LLM invocation.
  *
- * @param providerName    provider id (for example {@code "openai"}); must match the target
- *                        {@link LlmClient}
- * @param model           model id for this call, or {@code null} to use the client's configured
- *                        default
- * @param systemPrompt    system instructions for the model
- * @param userInput       user or tool-facing content for this turn
- * @param maxOutputTokens optional cap on generated tokens (provider-specific; ignored when
- *                        {@code null})
+ * @param providerName          provider id (for example {@code "openai"}); must match the target
+ *                              {@link LlmClient}
+ * @param model                 model id for this call, or {@code null} to use the client's
+ *                              configured default
+ * @param systemPrompt          system instructions for the model
+ * @param userInput             user or tool-facing content for this turn
+ * @param maxOutputTokens       optional cap on generated tokens (provider-specific; ignored when
+ *                              {@code null})
+ * @param promptLayerBoundaries stable-prefix layer byte boundaries for prompt caching, or
+ *                              {@code null} when caching is disabled or boundaries are unknown
  */
 public record LlmExecutionRequest(
     String providerName,
     String model,
     String systemPrompt,
     String userInput,
-    Integer maxOutputTokens) {
+    Integer maxOutputTokens,
+    PromptLayerBoundaries promptLayerBoundaries) {
 
   public LlmExecutionRequest(String providerName, String model, String systemPrompt,
       String userInput) {
-    this(providerName, model, systemPrompt, userInput, null);
+    this(providerName, model, systemPrompt, userInput, null, null);
+  }
+
+  /**
+   * Creates a request without prompt-layer boundaries.
+   *
+   * @param providerName    target provider id
+   * @param model           model id, or {@code null} for the client default
+   * @param systemPrompt    system instructions
+   * @param userInput       user content for this turn
+   * @param maxOutputTokens optional generated-token cap
+   */
+  public LlmExecutionRequest(String providerName, String model, String systemPrompt,
+      String userInput, Integer maxOutputTokens) {
+    this(providerName, model, systemPrompt, userInput, maxOutputTokens, null);
   }
 
   /**

@@ -81,4 +81,12 @@ class LlmExecutionRequestTest {
     assertThatThrownBy(() -> new LlmExecutionRequest("openai", "m", "s", "u", 0))
         .isInstanceOf(IllegalArgumentException.class);
   }
+
+  @Test
+  void allows_null_prompt_layer_boundaries() {
+    LlmExecutionRequest request = new LlmExecutionRequest("openai", "m", "s", "u", null, null);
+
+    assertNull(request.promptLayerBoundaries());
+    assertEquals("openai", request.providerName());
+  }
 }

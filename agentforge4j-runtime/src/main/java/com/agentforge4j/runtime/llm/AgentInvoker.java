@@ -13,6 +13,7 @@ import com.agentforge4j.core.workflow.state.WorkflowState;
 import com.agentforge4j.llm.LlmClientResolver;
 import com.agentforge4j.llm.api.LlmClient;
 import com.agentforge4j.llm.api.LlmExecutionRequest;
+import com.agentforge4j.llm.api.LlmExecutionResponse;
 import com.agentforge4j.runtime.event.EventRecorder;
 import com.agentforge4j.util.Validate;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -105,7 +106,7 @@ public final class AgentInvoker {
   private AgentInvocationResult invokeWithAudit(AgentDefinition agent,
       String userInput,
       String stepPrompt,
-      WorkflowState stateOrNull,
+      WorkflowState state,
       String actorIdForEvents) {
     ProviderPreference preference = llmProviderSelectionStrategy.selectInitialProvider(
         agent, llmClientResolver.listAvailableClients());
@@ -117,8 +118,8 @@ public final class AgentInvoker {
     String systemPrompt = buildSystemPrompt(agent, stepPrompt, schema);
 
     ParsedInvocation parsed = invokeLlmRecordAndParseWithRetry(
-        agent, preference, client, systemPrompt, userInput, schema, stateOrNull, actorIdForEvents);
-    return new AgentInvocationResult(parsed.rawResponse(), parsed.commands());
+        agent, preference, client, systemPrompt, userInput, schema, state, actorIdForEvents);
+    return new AgentInvocationResult(parsed.llmResponse().text(), parsed.commands());
   }
 
   private ParsedInvocation invokeLlmRecordAndParseWithRetry(
@@ -128,7 +129,7 @@ public final class AgentInvoker {
       String systemPrompt,
       String originalUserInput,
       CommandResponseSchema schema,
-      WorkflowState stateOrNull,
+      WorkflowState state,
       String actorIdForEvents) {
     String correctionBody = "";
 
@@ -138,7 +139,7 @@ public final class AgentInvoker {
     for (int attempt = 1; attempt <= RETRY_ATTEMPTS; attempt++) {
       String effectiveUserInput = toCorrectedPrompt(originalUserInput, attempt, correctionBody);
 
-      String response = executeLlmCall(agent, preference, client,
+      LlmExecutionResponse response = executeLlmCall(agent, preference, client,
           new LlmExecutionRequest(
               preference.provider(),
               preference.model(),
@@ -146,12 +147,13 @@ public final class AgentInvoker {
               effectiveUserInput),
           attempt > 1);
 
+      String responseText = response.text();
       LOG.log(System.Logger.Level.DEBUG, "{0} LLM response received charCount={1}",
-          (attempt == 1) ? "Raw" : "Retry", response.length());
+          (attempt == 1) ? "Raw" : "Retry", responseText.length());
 
-      recordLlmOutput(stateOrNull, actorIdForEvents, response);
+      recordLlmOutput(state, actorIdForEvents, responseText);
       try {
-        return new ParsedInvocation(response, llmCommandParser.parse(response, schema));
+        return new ParsedInvocation(response, llmCommandParser.parse(responseText, schema));
       } catch (LlmCommandParseException e) {
         lastParseFailure = e;
         if (attempt < RETRY_ATTEMPTS) {
@@ -178,7 +180,7 @@ public final class AgentInvoker {
     return prompt + System.lineSeparator() + System.lineSeparator() + correctionBody;
   }
 
-  private String executeLlmCall(
+  private LlmExecutionResponse executeLlmCall(
       AgentDefinition agent,
       ProviderPreference preference,
       LlmClient client,
@@ -199,25 +201,25 @@ public final class AgentInvoker {
   /**
    * Records raw LLM output to the event log, applying {@link #llmOutputEventCharCap} when set.
    */
-  private void recordLlmOutput(WorkflowState state, String actorId, String rawResponse) {
+  private void recordLlmOutput(WorkflowState state, String actorId, String responseText) {
     eventRecorder.record(
         state.getRunId(),
         state.getCurrentStepId(),
         WorkflowEventType.LLM_OUTPUT,
-        cappedLlmOutputPayload(rawResponse),
+        cappedLlmOutputPayload(responseText),
         actorId);
   }
 
-  private String cappedLlmOutputPayload(String rawResponse) {
-    if (llmOutputEventCharCap == 0 || rawResponse.length() <= llmOutputEventCharCap) {
-      return rawResponse;
+  private String cappedLlmOutputPayload(String responseText) {
+    if (llmOutputEventCharCap == 0 || responseText.length() <= llmOutputEventCharCap) {
+      return responseText;
     }
-    return rawResponse.substring(0, llmOutputEventCharCap)
+    return responseText.substring(0, llmOutputEventCharCap)
         + "... [event payload truncated for audit; original length=%d chars]".formatted(
-        rawResponse.length());
+        responseText.length());
   }
 
-  private record ParsedInvocation(String rawResponse, List<LlmCommand> commands) {
+  private record ParsedInvocation(LlmExecutionResponse llmResponse, List<LlmCommand> commands) {
 
   }
 

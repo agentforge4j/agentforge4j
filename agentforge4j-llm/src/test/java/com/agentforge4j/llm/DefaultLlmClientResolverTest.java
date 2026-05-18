@@ -2,6 +2,7 @@ package com.agentforge4j.llm;
 
 import com.agentforge4j.llm.api.LlmClient;
 import com.agentforge4j.llm.api.LlmExecutionRequest;
+import com.agentforge4j.llm.api.LlmExecutionResponse;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -73,8 +74,8 @@ class DefaultLlmClientResolverTest {
         }
 
         @Override
-        public String execute(LlmExecutionRequest request) {
-          return "";
+        public LlmExecutionResponse execute(LlmExecutionRequest request) {
+          return new LlmExecutionResponse("", null);
         }
       };
       Collection<LlmClient> clients = List.of(badClient);

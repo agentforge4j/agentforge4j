@@ -25,6 +25,7 @@ import com.agentforge4j.core.workflow.step.blueprint.BlueprintRef;
 import com.agentforge4j.integrations.NoOpIntegrationRegistry;
 import com.agentforge4j.llm.LlmClientResolver;
 import com.agentforge4j.llm.api.LlmClient;
+import com.agentforge4j.llm.api.LlmExecutionResponse;
 import com.agentforge4j.llm.api.LlmExecutionRequest;
 import com.agentforge4j.runtime.command.FileSink;
 import com.agentforge4j.runtime.command.ShellCommandRunner;
@@ -292,8 +293,8 @@ class WorkflowRuntimeDriveIT {
     }
 
     @Override
-    public String execute(LlmExecutionRequest request) {
-      return jsonBody;
+    public LlmExecutionResponse execute(LlmExecutionRequest request) {
+      return new LlmExecutionResponse(jsonBody, null);
     }
   }
 }

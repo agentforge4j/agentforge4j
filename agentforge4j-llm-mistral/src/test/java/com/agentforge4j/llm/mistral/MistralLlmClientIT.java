@@ -153,7 +153,7 @@ class MistralLlmClientIT {
       LlmExecutionRequest request =
           LlmExecutionRequest.withDefaultModel("mistral", "You are helpful.", "Say hi.");
 
-      String result = client.execute(request);
+      String result = client.execute(request).text();
 
       assertThat(result).isEqualTo("hello from fake mistral");
       String raw = http.capturedRawRequest();
@@ -186,7 +186,7 @@ class MistralLlmClientIT {
       MistralLlmClient client = new MistralLlmClient(mapper, config);
       LlmExecutionRequest request = new LlmExecutionRequest("MISTRAL", null, "system", "user");
 
-      assertThat(client.execute(request)).isEqualTo("pong");
+      assertThat(client.execute(request).text()).isEqualTo("pong");
     }
   }
 

@@ -39,7 +39,7 @@ class GeminiLlmClientIT {
       LlmExecutionRequest request =
           LlmExecutionRequest.withDefaultModel("gemini", "system prompt", "user input");
 
-      assertThat(client.execute(request)).isEqualTo("Hello from gemini IT");
+      assertThat(client.execute(request).text()).isEqualTo("Hello from gemini IT");
     }
   }
 
@@ -54,7 +54,7 @@ class GeminiLlmClientIT {
       LlmExecutionRequest request =
           new LlmExecutionRequest("GEMINI", null, "system", "user");
 
-      assertThat(client.execute(request)).isEqualTo("Hello from gemini IT");
+      assertThat(client.execute(request).text()).isEqualTo("Hello from gemini IT");
     }
   }
 
@@ -304,7 +304,7 @@ class GeminiLlmClientIT {
       LlmExecutionRequest request =
           LlmExecutionRequest.withDefaultModel("gemini", "system", "user");
 
-      assertThat(client.execute(request)).isEqualTo("Hello from gemini IT");
+      assertThat(client.execute(request).text()).isEqualTo("Hello from gemini IT");
     }
   }
 

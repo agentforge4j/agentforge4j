@@ -22,11 +22,11 @@ public interface LlmClient {
    * Executes an LLM request and returns the response.
    *
    * @param request provider id, prompts, and optional model override for this call
-   * @return provider response body, typically JSON text for downstream parsing
+   * @return execution response containing model output and optional token usage
    * @throws LlmInvocationException if the request fails due to network issues, invalid responses,
    *                                or provider-specific errors
    */
-  String execute(LlmExecutionRequest request);
+  LlmExecutionResponse execute(LlmExecutionRequest request);
 
   default Optional<LlmRetryPolicy> getRetryPolicy() {
     return Optional.empty();
@@ -42,7 +42,7 @@ public interface LlmClient {
    * @return the input with fences removed, or the input unchanged
    */
   static String stripCodeFence(String input) {
-    if (input == null || input.isBlank() || input.startsWith("```")) {
+    if (input == null || input.isBlank() || !input.startsWith("```")) {
       return input;
     }
 
@@ -52,8 +52,8 @@ public interface LlmClient {
     }
 
     int end = input.lastIndexOf("```");
-    return (end > start)
+    return ((end > start)
         ? input.substring(start + 1, end)
-        : input.substring(start + 1).strip();
+        : input.substring(start + 1)).strip();
   }
 }

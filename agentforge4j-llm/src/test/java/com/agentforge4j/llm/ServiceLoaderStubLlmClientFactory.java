@@ -2,6 +2,7 @@ package com.agentforge4j.llm;
 
 import com.agentforge4j.llm.api.LlmClient;
 import com.agentforge4j.llm.api.LlmExecutionRequest;
+import com.agentforge4j.llm.api.LlmExecutionResponse;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 /**
@@ -32,8 +33,8 @@ public final class ServiceLoaderStubLlmClientFactory implements LlmClientFactory
       }
 
       @Override
-      public String execute(LlmExecutionRequest request) {
-        return "stub:" + request.userInput();
+      public LlmExecutionResponse execute(LlmExecutionRequest request) {
+        return new LlmExecutionResponse("stub:" + request.userInput(), null);
       }
     };
   }
