@@ -1,6 +1,7 @@
 package com.agentforge4j.llm.claude;
 
 import com.agentforge4j.llm.api.LlmExecutionRequest;
+import com.agentforge4j.llm.api.LlmExecutionResponse;
 import com.agentforge4j.llm.api.LlmInvocationException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.ByteArrayOutputStream;
@@ -168,7 +169,10 @@ class ClaudeLlmClientIT {
       LlmExecutionRequest request =
           LlmExecutionRequest.withDefaultModel("claude", "system", "user");
 
-      assertThat(client.execute(request).text()).isEqualTo("Hello from Claude");
+      LlmExecutionResponse response = client.execute(request);
+
+      assertThat(response.text()).isEqualTo("Hello from Claude");
+      assertThat(response.tokenUsage()).isNull();
     }
   }
 
@@ -283,7 +287,7 @@ class ClaudeLlmClientIT {
       assertThat(captured.get())
           .contains("\"model\":\"capture-model\"")
           .contains("\"max_tokens\":2048")
-          .contains("\"system\":\"S\"")
+          .contains("\"system\":[{\"type\":\"text\",\"text\":\"S\"}]")
           .contains("\"content\":\"U\"")
           .contains("\"role\":");
     }

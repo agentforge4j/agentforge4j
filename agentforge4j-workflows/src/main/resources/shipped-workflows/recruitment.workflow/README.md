@@ -102,7 +102,7 @@ Every step writes its outputs through `SetContextCommand`. Combined with `StepSe
 
 ### Provider preferences
 
-- **Cheap model first** (gpt-4o-mini → claude-3-haiku → ollama/llama3.2): intake, profile finalizer, CV loop coordinator, job post publisher. These are routine, structured tasks where a small model is sufficient.
+- **Cheap model first** (gpt-4o-mini → claude-3-5-haiku → ollama/llama3.2): intake, profile finalizer, CV loop coordinator, job post publisher. These are routine, structured tasks where a small model is sufficient.
 - **Capable model first** (gpt-4o → claude-3-5-sonnet → ollama/llama3.1:70b): job post generation, CV analysis, ranking, rejection letters, assessment generation/evaluation, final selection. These require nuanced reasoning, multi-criteria trade-offs, or high-quality writing.
 
 ### Explainable rejection

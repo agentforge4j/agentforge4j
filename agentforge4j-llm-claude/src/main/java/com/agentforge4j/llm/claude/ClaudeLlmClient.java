@@ -8,6 +8,7 @@ import com.agentforge4j.llm.claude.dto.ClaudeContentBlock;
 import com.agentforge4j.llm.claude.dto.ClaudeMessage;
 import com.agentforge4j.llm.claude.dto.ClaudeRequest;
 import com.agentforge4j.llm.claude.dto.ClaudeResponse;
+import com.agentforge4j.llm.claude.dto.ClaudeSystemContentBlock;
 import com.agentforge4j.llm.claude.dto.InputRole;
 import com.agentforge4j.util.Validate;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -105,10 +106,12 @@ public final class ClaudeLlmClient extends AbstractHttpLlmClient {
 
   private String generateRequestBody(LlmExecutionRequest request) {
     String model = StringUtils.defaultIfBlank(request.model(), getDefaultModel());
+    List<ClaudeSystemContentBlock> systemBlocks = ClaudePromptCacheSupport.buildSystemBlocks(
+        request.systemPrompt(), request.promptLayerBoundaries(), model);
     ClaudeRequest body = new ClaudeRequest(
         model,
         maxTokenSize,
-        request.systemPrompt(),
+        systemBlocks,
         List.of(new ClaudeMessage(InputRole.USER, request.userInput())));
     try {
       return objectMapper.writeValueAsString(body);
