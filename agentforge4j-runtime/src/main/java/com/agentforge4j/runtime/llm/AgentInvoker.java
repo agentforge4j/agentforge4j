@@ -10,12 +10,15 @@ import com.agentforge4j.core.command.schema.CommandSchemaFactory;
 import com.agentforge4j.core.workflow.context.ContextMapping;
 import com.agentforge4j.core.workflow.event.WorkflowEventType;
 import com.agentforge4j.core.workflow.state.WorkflowState;
-import com.agentforge4j.llm.LlmClient;
 import com.agentforge4j.llm.LlmClientResolver;
-import com.agentforge4j.llm.LlmExecutionRequest;
+import com.agentforge4j.llm.api.LlmClient;
+import com.agentforge4j.llm.api.LlmExecutionRequest;
+import com.agentforge4j.llm.api.LlmExecutionResponse;
+import com.agentforge4j.llm.api.PromptLayerBoundaries;
 import com.agentforge4j.runtime.event.EventRecorder;
 import com.agentforge4j.util.Validate;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 import org.apache.commons.lang3.StringUtils;
 
@@ -42,6 +45,7 @@ public final class AgentInvoker {
   private final ObjectMapper objectMapper;
   private final EventRecorder eventRecorder;
   private final int llmOutputEventCharCap;
+  private final boolean promptCacheEnabled;
   private final CommandResponseSchemaRenderer schemaRenderer = new CommandResponseSchemaRenderer();
 
   public AgentInvoker(AgentRepository agentRepository,
@@ -73,6 +77,24 @@ public final class AgentInvoker {
       EventRecorder eventRecorder,
       int llmOutputEventCharCap,
       LlmProviderSelectionStrategy llmProviderSelectionStrategy) {
+    this(agentRepository, llmClientResolver, contextRenderer, llmCommandParser, objectMapper,
+        eventRecorder, llmOutputEventCharCap, llmProviderSelectionStrategy, true);
+  }
+
+  /**
+   * @param promptCacheEnabled when {@code true}, computes UTF-8 layer boundaries on each request;
+   *                           when {@code false}, omits boundaries so the request body matches
+   *                           pre-caching assembly
+   */
+  public AgentInvoker(AgentRepository agentRepository,
+      LlmClientResolver llmClientResolver,
+      ContextRenderer contextRenderer,
+      LlmCommandParser llmCommandParser,
+      ObjectMapper objectMapper,
+      EventRecorder eventRecorder,
+      int llmOutputEventCharCap,
+      LlmProviderSelectionStrategy llmProviderSelectionStrategy,
+      boolean promptCacheEnabled) {
     this.agentRepository = Validate.notNull(agentRepository, "agentRepository must not be null");
     this.llmClientResolver = Validate.notNull(llmClientResolver,
         "llmClientResolver must not be null");
@@ -84,6 +106,7 @@ public final class AgentInvoker {
     this.eventRecorder = Validate.notNull(eventRecorder, "eventRecorder must not be null");
     this.llmOutputEventCharCap = Validate.isNotNegative(llmOutputEventCharCap,
         "llmOutputEventCharCap must be >= 0").intValue();
+    this.promptCacheEnabled = promptCacheEnabled;
   }
 
   public AgentInvocationResult invoke(String agentId,
@@ -105,7 +128,7 @@ public final class AgentInvoker {
   private AgentInvocationResult invokeWithAudit(AgentDefinition agent,
       String userInput,
       String stepPrompt,
-      WorkflowState stateOrNull,
+      WorkflowState state,
       String actorIdForEvents) {
     ProviderPreference preference = llmProviderSelectionStrategy.selectInitialProvider(
         agent, llmClientResolver.listAvailableClients());
@@ -114,21 +137,21 @@ public final class AgentInvoker {
     LlmClient client = llmClientResolver.resolve(preference.provider());
     CommandResponseSchema schema = CommandSchemaFactory.build(agent.supportedCommands(),
         objectMapper);
-    String systemPrompt = buildSystemPrompt(agent, stepPrompt, schema);
+    AssembledSystemPrompt assembled = assembleSystemPrompt(agent, stepPrompt, schema);
 
     ParsedInvocation parsed = invokeLlmRecordAndParseWithRetry(
-        agent, preference, client, systemPrompt, userInput, schema, stateOrNull, actorIdForEvents);
-    return new AgentInvocationResult(parsed.rawResponse(), parsed.commands());
+        agent, preference, client, assembled, userInput, schema, state, actorIdForEvents);
+    return new AgentInvocationResult(parsed.llmResponse().text(), parsed.commands());
   }
 
   private ParsedInvocation invokeLlmRecordAndParseWithRetry(
       AgentDefinition agent,
       ProviderPreference preference,
       LlmClient client,
-      String systemPrompt,
+      AssembledSystemPrompt assembled,
       String originalUserInput,
       CommandResponseSchema schema,
-      WorkflowState stateOrNull,
+      WorkflowState state,
       String actorIdForEvents) {
     String correctionBody = "";
 
@@ -138,20 +161,23 @@ public final class AgentInvoker {
     for (int attempt = 1; attempt <= RETRY_ATTEMPTS; attempt++) {
       String effectiveUserInput = toCorrectedPrompt(originalUserInput, attempt, correctionBody);
 
-      String response = executeLlmCall(agent, preference, client,
+      LlmExecutionResponse response = executeLlmCall(agent, preference, client,
           new LlmExecutionRequest(
               preference.provider(),
               preference.model(),
-              systemPrompt,
-              effectiveUserInput),
+              assembled.text(),
+              effectiveUserInput,
+              null,
+              assembled.promptLayerBoundaries()),
           attempt > 1);
 
+      String responseText = response.text();
       LOG.log(System.Logger.Level.DEBUG, "{0} LLM response received charCount={1}",
-          (attempt == 1) ? "Raw" : "Retry", response.length());
+          (attempt == 1) ? "Raw" : "Retry", responseText.length());
 
-      recordLlmOutput(stateOrNull, actorIdForEvents, response);
+      recordLlmOutput(state, actorIdForEvents, responseText);
       try {
-        return new ParsedInvocation(response, llmCommandParser.parse(response, schema));
+        return new ParsedInvocation(response, llmCommandParser.parse(responseText, schema));
       } catch (LlmCommandParseException e) {
         lastParseFailure = e;
         if (attempt < RETRY_ATTEMPTS) {
@@ -178,7 +204,7 @@ public final class AgentInvoker {
     return prompt + System.lineSeparator() + System.lineSeparator() + correctionBody;
   }
 
-  private String executeLlmCall(
+  private LlmExecutionResponse executeLlmCall(
       AgentDefinition agent,
       ProviderPreference preference,
       LlmClient client,
@@ -199,41 +225,77 @@ public final class AgentInvoker {
   /**
    * Records raw LLM output to the event log, applying {@link #llmOutputEventCharCap} when set.
    */
-  private void recordLlmOutput(WorkflowState state, String actorId, String rawResponse) {
+  private void recordLlmOutput(WorkflowState state, String actorId, String responseText) {
     eventRecorder.record(
         state.getRunId(),
         state.getCurrentStepId(),
         WorkflowEventType.LLM_OUTPUT,
-        cappedLlmOutputPayload(rawResponse),
+        cappedLlmOutputPayload(responseText),
         actorId);
   }
 
-  private String cappedLlmOutputPayload(String rawResponse) {
-    if (llmOutputEventCharCap == 0 || rawResponse.length() <= llmOutputEventCharCap) {
-      return rawResponse;
+  private String cappedLlmOutputPayload(String responseText) {
+    if (llmOutputEventCharCap == 0 || responseText.length() <= llmOutputEventCharCap) {
+      return responseText;
     }
-    return rawResponse.substring(0, llmOutputEventCharCap)
+    return responseText.substring(0, llmOutputEventCharCap)
         + "... [event payload truncated for audit; original length=%d chars]".formatted(
-        rawResponse.length());
+        responseText.length());
   }
 
-  private record ParsedInvocation(String rawResponse, List<LlmCommand> commands) {
+  private record ParsedInvocation(LlmExecutionResponse llmResponse, List<LlmCommand> commands) {
 
   }
 
-  private String buildSystemPrompt(
+  /**
+   * Assembles the system prompt from three layers (most-stable first): framework command contract,
+   * agent system prompt (boundaries already merged at load), then optional static step material.
+   */
+  private AssembledSystemPrompt assembleSystemPrompt(
       AgentDefinition agent, String stepPrompt, CommandResponseSchema schema) {
     String frameworkBlock = schemaRenderer.render(schema);
-    StringBuilder prompt = new StringBuilder();
-    prompt.append(agent.systemPrompt());
-    if (StringUtils.isNotBlank(stepPrompt)) {
-      prompt.append(System.lineSeparator())
-          .append(System.lineSeparator())
-          .append(stepPrompt);
-    }
-    prompt.append(System.lineSeparator())
-        .append(System.lineSeparator())
+    String layerSeparator = System.lineSeparator() + System.lineSeparator();
+    String agentBlock = agent.systemPrompt();
+    StringBuilder promptBuilder = new StringBuilder()
+        .append(agentBlock)
+        .append(layerSeparator)
         .append(frameworkBlock);
-    return prompt.toString();
+    boolean hasStepLayer = appendStepPrompt(stepPrompt, promptBuilder, layerSeparator);
+    String prompt = promptBuilder.toString();
+    PromptLayerBoundaries boundaries = null;
+    if (promptCacheEnabled) {
+      boundaries = computePromptLayerBoundaries(
+          frameworkBlock, layerSeparator, agentBlock, hasStepLayer, prompt);
+    }
+    return new AssembledSystemPrompt(prompt, boundaries);
+  }
+
+  private static boolean appendStepPrompt(String stepPrompt, StringBuilder promptBuilder,
+      String layerSeparator) {
+    boolean hasStepLayer = StringUtils.isNotBlank(stepPrompt);
+    if (hasStepLayer) {
+      promptBuilder.append(layerSeparator).append(stepPrompt);
+    }
+    return hasStepLayer;
+  }
+
+  private static PromptLayerBoundaries computePromptLayerBoundaries(
+      String frameworkBlock,
+      String layerSeparator,
+      String agentBlock,
+      boolean hasStepLayer,
+      String assembledPrompt) {
+    int layer1End = utf8ByteLength(agentBlock);
+    int layer2End = utf8ByteLength(frameworkBlock + layerSeparator + agentBlock);
+    Integer layer3End = hasStepLayer ? utf8ByteLength(assembledPrompt) : null;
+    return new PromptLayerBoundaries(layer1End, layer2End, layer3End);
+  }
+
+  private static int utf8ByteLength(String value) {
+    return value.getBytes(StandardCharsets.UTF_8).length;
+  }
+
+  private record AssembledSystemPrompt(String text, PromptLayerBoundaries promptLayerBoundaries) {
+
   }
 }

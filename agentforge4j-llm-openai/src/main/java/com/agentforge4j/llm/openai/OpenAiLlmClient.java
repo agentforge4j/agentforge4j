@@ -1,12 +1,9 @@
 package com.agentforge4j.llm.openai;
 
-import static com.agentforge4j.llm.openai.dto.InputRole.SYSTEM;
-import static com.agentforge4j.llm.openai.dto.InputRole.USER;
-
 import com.agentforge4j.llm.AbstractHttpLlmClient;
-import com.agentforge4j.llm.LlmClient;
-import com.agentforge4j.llm.LlmExecutionRequest;
-import com.agentforge4j.llm.LlmInvocationException;
+import com.agentforge4j.llm.api.LlmClient;
+import com.agentforge4j.llm.api.LlmExecutionRequest;
+import com.agentforge4j.llm.api.LlmInvocationException;
 import com.agentforge4j.llm.openai.dto.InputItem;
 import com.agentforge4j.llm.openai.dto.OpenAiContentItemDto;
 import com.agentforge4j.llm.openai.dto.OpenAiOutputItemDto;
@@ -23,6 +20,9 @@ import java.util.Objects;
 import java.util.Optional;
 import lombok.ToString;
 import org.apache.commons.lang3.StringUtils;
+
+import static com.agentforge4j.llm.openai.dto.InputRole.SYSTEM;
+import static com.agentforge4j.llm.openai.dto.InputRole.USER;
 
 /**
  * OpenAI LLM client implementation using the Responses API.

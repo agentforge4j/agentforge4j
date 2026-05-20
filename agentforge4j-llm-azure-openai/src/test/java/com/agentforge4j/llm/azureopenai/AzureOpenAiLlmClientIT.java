@@ -1,7 +1,7 @@
 package com.agentforge4j.llm.azureopenai;
 
-import com.agentforge4j.llm.LlmExecutionRequest;
-import com.agentforge4j.llm.LlmInvocationException;
+import com.agentforge4j.llm.api.LlmExecutionRequest;
+import com.agentforge4j.llm.api.LlmInvocationException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.Duration;
 import java.util.concurrent.atomic.AtomicReference;
@@ -32,7 +32,8 @@ class AzureOpenAiLlmClientIT {
 
   @Test
   void should_return_assistant_content_on_successful_http_response() throws Exception {
-    try (AzureOpenAiLoopbackHttpServer http = new AzureOpenAiLoopbackHttpServer(200, VALID_CHAT_COMPLETION_JSON)) {
+    try (AzureOpenAiLoopbackHttpServer http = new AzureOpenAiLoopbackHttpServer(200,
+        VALID_CHAT_COMPLETION_JSON)) {
       var config = FixedAzureOpenAiConfiguration.builder()
           .endpoint(http.baseEndpoint().toString())
           .deploymentName("gpt-4-deployment")
@@ -41,13 +42,16 @@ class AzureOpenAiLlmClientIT {
       LlmExecutionRequest request =
           LlmExecutionRequest.withDefaultModel("azure-openai", "system", "user");
 
-      assertThat(client.execute(request)).isEqualTo("Hello from Azure");
+      var response = client.execute(request);
+      assertThat(response.text()).isEqualTo("Hello from Azure");
+      assertThat(response.tokenUsage()).isNull();
     }
   }
 
   @Test
   void should_match_request_provider_case_insensitively() throws Exception {
-    try (AzureOpenAiLoopbackHttpServer http = new AzureOpenAiLoopbackHttpServer(200, VALID_CHAT_COMPLETION_JSON)) {
+    try (AzureOpenAiLoopbackHttpServer http = new AzureOpenAiLoopbackHttpServer(200,
+        VALID_CHAT_COMPLETION_JSON)) {
       var config = FixedAzureOpenAiConfiguration.builder()
           .endpoint(http.baseEndpoint().toString())
           .build();
@@ -55,7 +59,7 @@ class AzureOpenAiLlmClientIT {
       LlmExecutionRequest request =
           new LlmExecutionRequest("AZURE-OPENAI", null, "system", "user");
 
-      assertThat(client.execute(request)).isEqualTo("Hello from Azure");
+      assertThat(client.execute(request).text()).isEqualTo("Hello from Azure");
     }
   }
 
@@ -100,7 +104,8 @@ class AzureOpenAiLlmClientIT {
 
   @Test
   void should_wrap_json_parse_failure_in_llm_invocation_exception() throws Exception {
-    try (AzureOpenAiLoopbackHttpServer http = new AzureOpenAiLoopbackHttpServer(200, "{ not-json")) {
+    try (AzureOpenAiLoopbackHttpServer http = new AzureOpenAiLoopbackHttpServer(200,
+        "{ not-json")) {
       var config = FixedAzureOpenAiConfiguration.builder()
           .endpoint(http.baseEndpoint().toString())
           .build();
@@ -131,11 +136,13 @@ class AzureOpenAiLlmClientIT {
   }
 
   @Test
-  void should_throw_when_success_body_is_valid_completion_json_but_semantically_empty() throws Exception {
+  void should_throw_when_success_body_is_valid_completion_json_but_semantically_empty()
+      throws Exception {
     String emptyChoices = """
         {"error":null,"choices":[]}
         """;
-    try (AzureOpenAiLoopbackHttpServer http = new AzureOpenAiLoopbackHttpServer(200, emptyChoices)) {
+    try (AzureOpenAiLoopbackHttpServer http = new AzureOpenAiLoopbackHttpServer(200,
+        emptyChoices)) {
       var config = FixedAzureOpenAiConfiguration.builder()
           .endpoint(http.baseEndpoint().toString())
           .build();
@@ -208,7 +215,8 @@ class AzureOpenAiLlmClientIT {
 
   @Test
   void factory_created_client_should_execute_against_loopback() throws Exception {
-    try (AzureOpenAiLoopbackHttpServer http = new AzureOpenAiLoopbackHttpServer(200, VALID_CHAT_COMPLETION_JSON)) {
+    try (AzureOpenAiLoopbackHttpServer http = new AzureOpenAiLoopbackHttpServer(200,
+        VALID_CHAT_COMPLETION_JSON)) {
       var config = FixedAzureOpenAiConfiguration.builder()
           .endpoint(http.baseEndpoint().toString())
           .build();
@@ -216,7 +224,7 @@ class AzureOpenAiLlmClientIT {
       LlmExecutionRequest request =
           LlmExecutionRequest.withDefaultModel("azure-openai", "system", "user");
 
-      assertThat(client.execute(request)).isEqualTo("Hello from Azure");
+      assertThat(client.execute(request).text()).isEqualTo("Hello from Azure");
     }
   }
 }

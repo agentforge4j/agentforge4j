@@ -1,11 +1,13 @@
 package com.agentforge4j.llm.bedrock;
 
-import com.agentforge4j.llm.LlmExecutionRequest;
-import com.agentforge4j.llm.LlmInvocationException;
+import com.agentforge4j.llm.api.LlmExecutionRequest;
+import com.agentforge4j.llm.api.LlmInvocationException;
+import com.agentforge4j.llm.bedrock.dto.BedrockSystemContentBlock;
 import com.agentforge4j.util.Validate;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import java.util.List;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.Strings;
 
@@ -38,7 +40,9 @@ final class BedrockAnthropicInvokeSerializer {
       root.put("temperature", temperature);
     }
 
-    root.put("system", request.systemPrompt());
+    List<BedrockSystemContentBlock> systemBlocks = BedrockPromptCacheSupport.buildSystemBlocks(
+        request.systemPrompt(), request.promptLayerBoundaries(), modelId);
+    root.set("system", objectMapper.valueToTree(systemBlocks));
 
     ArrayNode messages = root.putArray("messages");
     ObjectNode userMessage = messages.addObject();

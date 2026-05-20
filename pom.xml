@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="UTF-8"?>
+<?xml version="1.0" encoding="UTF-8"?>
 <project xmlns="http://maven.apache.org/POM/4.0.0"
   xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
   xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
@@ -36,6 +36,7 @@
 
   <modules>
     <module>agentforge4j-util</module>
+    <module>agentforge4j-llm-api</module>
     <module>agentforge4j-llm</module>
     <module>agentforge4j-llm-azure-openai</module>
     <module>agentforge4j-llm-bedrock</module>
@@ -75,6 +76,11 @@
       <dependency>
         <groupId>com.agentforge4j</groupId>
         <artifactId>agentforge4j-util</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>com.agentforge4j</groupId>
+        <artifactId>agentforge4j-llm-api</artifactId>
         <version>${project.version}</version>
       </dependency>
       <dependency>

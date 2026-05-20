@@ -1,7 +1,7 @@
 package com.agentforge4j.llm.gemini;
 
-import com.agentforge4j.llm.LlmClient;
 import com.agentforge4j.llm.LlmClientConfiguration;
+import com.agentforge4j.llm.api.LlmClient;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.Duration;
 import org.junit.jupiter.api.Nested;
@@ -27,7 +27,8 @@ class GeminiLlmClientFactoryTest {
     @Test
     void shouldCreateGeminiLlmClient() {
       ObjectMapper mapper = new ObjectMapper();
-      LlmClient client = new GeminiLlmClientFactory().create(mapper, FixedGeminiConfiguration.defaults());
+      LlmClient client = new GeminiLlmClientFactory().create(mapper,
+          FixedGeminiConfiguration.defaults());
 
       assertThat(client).isInstanceOf(GeminiLlmClient.class);
       assertThat(client.getProviderName()).isEqualTo("gemini");

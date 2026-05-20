@@ -1,14 +1,12 @@
 package com.agentforge4j.llm.claude;
 
-import com.agentforge4j.llm.LlmExecutionRequest;
-import com.agentforge4j.llm.LlmInvocationException;
+import com.agentforge4j.llm.api.LlmExecutionRequest;
+import com.agentforge4j.llm.api.LlmInvocationException;
+import com.agentforge4j.llm.api.PromptLayerBoundaries;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import org.junit.jupiter.api.Nested;
-import org.junit.jupiter.api.Test;
-
 import java.io.IOException;
 import java.net.http.HttpRequest;
 import java.nio.ByteBuffer;
@@ -16,6 +14,8 @@ import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Flow;
+import org.junit.jupiter.api.Nested;
+import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -142,7 +142,8 @@ class ClaudeLlmClientTest {
 
     @Test
     void shouldThrowWhenJsonBlank() {
-      ClaudeLlmClient client = new ClaudeLlmClient(new ObjectMapper(), FixedClaudeConfiguration.defaults());
+      ClaudeLlmClient client = new ClaudeLlmClient(new ObjectMapper(),
+          FixedClaudeConfiguration.defaults());
 
       assertThatThrownBy(() -> client.validateAndExtractResponse(""))
           .isInstanceOf(LlmInvocationException.class)
@@ -151,7 +152,8 @@ class ClaudeLlmClientTest {
 
     @Test
     void shouldThrowWhenJsonNull() {
-      ClaudeLlmClient client = new ClaudeLlmClient(new ObjectMapper(), FixedClaudeConfiguration.defaults());
+      ClaudeLlmClient client = new ClaudeLlmClient(new ObjectMapper(),
+          FixedClaudeConfiguration.defaults());
 
       assertThatThrownBy(() -> client.validateAndExtractResponse(null))
           .isInstanceOf(LlmInvocationException.class);
@@ -159,7 +161,8 @@ class ClaudeLlmClientTest {
 
     @Test
     void shouldThrowWhenJsonMalformed() {
-      ClaudeLlmClient client = new ClaudeLlmClient(new ObjectMapper(), FixedClaudeConfiguration.defaults());
+      ClaudeLlmClient client = new ClaudeLlmClient(new ObjectMapper(),
+          FixedClaudeConfiguration.defaults());
 
       assertThatThrownBy(() -> client.validateAndExtractResponse("not-json"))
           .isInstanceOf(IOException.class);
@@ -167,7 +170,8 @@ class ClaudeLlmClientTest {
 
     @Test
     void shouldThrowWhenContentNull() {
-      ClaudeLlmClient client = new ClaudeLlmClient(new ObjectMapper(), FixedClaudeConfiguration.defaults());
+      ClaudeLlmClient client = new ClaudeLlmClient(new ObjectMapper(),
+          FixedClaudeConfiguration.defaults());
 
       assertThatThrownBy(() -> client.validateAndExtractResponse("{\"content\":null}"))
           .isInstanceOf(LlmInvocationException.class)
@@ -176,7 +180,8 @@ class ClaudeLlmClientTest {
 
     @Test
     void shouldThrowWhenContentEmptyArray() {
-      ClaudeLlmClient client = new ClaudeLlmClient(new ObjectMapper(), FixedClaudeConfiguration.defaults());
+      ClaudeLlmClient client = new ClaudeLlmClient(new ObjectMapper(),
+          FixedClaudeConfiguration.defaults());
 
       assertThatThrownBy(() -> client.validateAndExtractResponse("{\"content\":[]}"))
           .isInstanceOf(LlmInvocationException.class)
@@ -185,7 +190,8 @@ class ClaudeLlmClientTest {
 
     @Test
     void shouldThrowWhenNoTextBlock() {
-      ClaudeLlmClient client = new ClaudeLlmClient(new ObjectMapper(), FixedClaudeConfiguration.defaults());
+      ClaudeLlmClient client = new ClaudeLlmClient(new ObjectMapper(),
+          FixedClaudeConfiguration.defaults());
       String json = "{\"content\":[{\"type\":\"tool_use\"}]}";
 
       assertThatThrownBy(() -> client.validateAndExtractResponse(json))
@@ -195,7 +201,8 @@ class ClaudeLlmClientTest {
 
     @Test
     void shouldIgnoreUnknownPropertiesOnToolUseBlocks() {
-      ClaudeLlmClient client = new ClaudeLlmClient(new ObjectMapper(), FixedClaudeConfiguration.defaults());
+      ClaudeLlmClient client = new ClaudeLlmClient(new ObjectMapper(),
+          FixedClaudeConfiguration.defaults());
       String json = """
           {"content":[{"type":"tool_use","id":"toolu_01","name":"weather"}]}
           """;
@@ -207,7 +214,8 @@ class ClaudeLlmClientTest {
 
     @Test
     void shouldThrowWhenTextBlocksOnlyBlank() {
-      ClaudeLlmClient client = new ClaudeLlmClient(new ObjectMapper(), FixedClaudeConfiguration.defaults());
+      ClaudeLlmClient client = new ClaudeLlmClient(new ObjectMapper(),
+          FixedClaudeConfiguration.defaults());
       String json = """
           {"content":[{"type":"text","text":"  "},{"type":"text","text":""}]}
           """;
@@ -219,7 +227,8 @@ class ClaudeLlmClientTest {
 
     @Test
     void shouldUseFirstTextBlockAfterNonTextBlocks() throws IOException {
-      ClaudeLlmClient client = new ClaudeLlmClient(new ObjectMapper(), FixedClaudeConfiguration.defaults());
+      ClaudeLlmClient client = new ClaudeLlmClient(new ObjectMapper(),
+          FixedClaudeConfiguration.defaults());
       String json = """
           {"content":[{"type":"tool_use"},{"type":"text","text":"from-text"}]}
           """;
@@ -229,7 +238,8 @@ class ClaudeLlmClientTest {
 
     @Test
     void shouldPickFirstNonBlankTextBlock() throws IOException {
-      ClaudeLlmClient client = new ClaudeLlmClient(new ObjectMapper(), FixedClaudeConfiguration.defaults());
+      ClaudeLlmClient client = new ClaudeLlmClient(new ObjectMapper(),
+          FixedClaudeConfiguration.defaults());
       String json = """
           {"content":[{"type":"text","text":""},{"type":"text","text":"second"}]}
           """;
@@ -239,7 +249,8 @@ class ClaudeLlmClientTest {
 
     @Test
     void shouldExtractPlainText() throws IOException {
-      ClaudeLlmClient client = new ClaudeLlmClient(new ObjectMapper(), FixedClaudeConfiguration.defaults());
+      ClaudeLlmClient client = new ClaudeLlmClient(new ObjectMapper(),
+          FixedClaudeConfiguration.defaults());
       String json = """
           {"content":[{"type":"text","text":"  Hello  "}]}
           """;
@@ -249,7 +260,8 @@ class ClaudeLlmClientTest {
 
     @Test
     void shouldStripMarkdownCodeFenceFromText() throws IOException {
-      ClaudeLlmClient client = new ClaudeLlmClient(new ObjectMapper(), FixedClaudeConfiguration.defaults());
+      ClaudeLlmClient client = new ClaudeLlmClient(new ObjectMapper(),
+          FixedClaudeConfiguration.defaults());
       ObjectMapper om = new ObjectMapper();
       ObjectNode root = om.createObjectNode();
       ArrayNode content = root.putArray("content");
@@ -263,7 +275,8 @@ class ClaudeLlmClientTest {
 
     @Test
     void shouldIgnoreNullContentBlocks() throws IOException {
-      ClaudeLlmClient client = new ClaudeLlmClient(new ObjectMapper(), FixedClaudeConfiguration.defaults());
+      ClaudeLlmClient client = new ClaudeLlmClient(new ObjectMapper(),
+          FixedClaudeConfiguration.defaults());
       // Jackson typically deserializes JSON null elements as nulls in list
       String json = "{\"content\":[null,{\"type\":\"text\",\"text\":\"ok\"}]}";
 
@@ -272,7 +285,8 @@ class ClaudeLlmClientTest {
 
     @Test
     void shouldThrowWhenContentFieldMissing() {
-      ClaudeLlmClient client = new ClaudeLlmClient(new ObjectMapper(), FixedClaudeConfiguration.defaults());
+      ClaudeLlmClient client = new ClaudeLlmClient(new ObjectMapper(),
+          FixedClaudeConfiguration.defaults());
 
       assertThatThrownBy(() -> client.validateAndExtractResponse("{}"))
           .isInstanceOf(LlmInvocationException.class)
@@ -281,7 +295,8 @@ class ClaudeLlmClientTest {
 
     @Test
     void shouldThrowWhenTextBlockHasNullTextProperty() {
-      ClaudeLlmClient client = new ClaudeLlmClient(new ObjectMapper(), FixedClaudeConfiguration.defaults());
+      ClaudeLlmClient client = new ClaudeLlmClient(new ObjectMapper(),
+          FixedClaudeConfiguration.defaults());
       String json = "{\"content\":[{\"type\":\"text\"}]}";
 
       assertThatThrownBy(() -> client.validateAndExtractResponse(json))
@@ -332,7 +347,11 @@ class ClaudeLlmClientTest {
 
       assertThat(root.path("model").asText()).isEqualTo("claude-3-opus-20240229");
       assertThat(root.path("max_tokens").asInt()).isEqualTo(1024);
-      assertThat(root.path("system").asText()).isEqualTo("my system");
+      assertThat(root.path("system").isArray()).isTrue();
+      assertThat(root.path("system")).hasSize(1);
+      assertThat(root.path("system").path(0).path("type").asText()).isEqualTo("text");
+      assertThat(root.path("system").path(0).path("text").asText()).isEqualTo("my system");
+      assertThat(root.path("system").path(0).has("cache_control")).isFalse();
       assertThat(root.path("messages").isArray()).isTrue();
       assertThat(root.path("messages")).hasSize(1);
       assertThat(root.path("messages").path(0).path("content").asText()).isEqualTo("my user");
@@ -367,6 +386,193 @@ class ClaudeLlmClientTest {
       HttpRequest httpRequest = client.buildHttpRequest(request);
 
       assertThat(httpRequest.timeout()).contains(shortTimeout);
+    }
+  }
+
+  @Nested
+  class PromptCacheRequestBodyTests {
+
+    private static String cacheableLayerUtf8(int utf8Bytes) {
+      return "x".repeat(utf8Bytes);
+    }
+
+    private static int utf8Length(String value) {
+      return value.getBytes(StandardCharsets.UTF_8).length;
+    }
+
+    private static PromptLayerBoundaries boundariesFor(
+        String layer1, String separator, String layer2, String layer3) {
+      int layer1End = utf8Length(layer1);
+      int layer2End = utf8Length(layer1 + separator + layer2);
+      Integer layer3End = layer3 == null
+          ? null
+          : utf8Length(layer1 + separator + layer2 + separator + layer3);
+      return new PromptLayerBoundaries(layer1End, layer2End, layer3End);
+    }
+
+    private static JsonNode parseRequestBody(HttpRequest httpRequest) throws Exception {
+      return new ObjectMapper().readTree(requestBodyToString(httpRequest));
+    }
+
+    @Test
+    void shouldPlaceCacheControlOnEachQualifyingLayerBlock() throws Exception {
+      String separator = "\n\n";
+      String layer1 = cacheableLayerUtf8(4096);
+      String layer2 = cacheableLayerUtf8(4096);
+      String layer3 = cacheableLayerUtf8(4096);
+      String systemPrompt = layer1 + separator + layer2 + separator + layer3;
+      PromptLayerBoundaries boundaries = boundariesFor(layer1, separator, layer2, layer3);
+      LlmExecutionRequest request = new LlmExecutionRequest(
+          "claude", "m", systemPrompt, "user", null, boundaries);
+      ClaudeLlmClient client = new ClaudeLlmClient(new ObjectMapper(),
+          FixedClaudeConfiguration.defaults());
+
+      JsonNode system = parseRequestBody(client.buildHttpRequest(request)).path("system");
+
+      assertThat(system).hasSize(3);
+      assertThat(system.path(0).path("cache_control").path("type").asText()).isEqualTo("ephemeral");
+      assertThat(system.path(1).path("cache_control").path("type").asText()).isEqualTo("ephemeral");
+      assertThat(system.path(2).path("cache_control").path("type").asText()).isEqualTo("ephemeral");
+      assertThat(system.path(0).has("ttl")).isFalse();
+      assertThat(system.path(1).has("ttl")).isFalse();
+      assertThat(system.path(2).has("ttl")).isFalse();
+    }
+
+    @Test
+    void shouldOmitCacheControlOnSubThresholdLayer() throws Exception {
+      String separator = "\n\n";
+      String layer1 = cacheableLayerUtf8(100);
+      String layer2 = cacheableLayerUtf8(4096);
+      String layer3 = cacheableLayerUtf8(4096);
+      String systemPrompt = layer1 + separator + layer2 + separator + layer3;
+      PromptLayerBoundaries boundaries = boundariesFor(layer1, separator, layer2, layer3);
+      LlmExecutionRequest request = new LlmExecutionRequest(
+          "claude", "m", systemPrompt, "user", null, boundaries);
+      ClaudeLlmClient client = new ClaudeLlmClient(new ObjectMapper(),
+          FixedClaudeConfiguration.defaults());
+
+      JsonNode system = parseRequestBody(client.buildHttpRequest(request)).path("system");
+
+      assertThat(system).hasSize(3);
+      assertThat(system.path(0).has("cache_control")).isFalse();
+      assertThat(system.path(1).path("cache_control").path("type").asText()).isEqualTo("ephemeral");
+      assertThat(system.path(2).path("cache_control").path("type").asText()).isEqualTo("ephemeral");
+    }
+
+    @Test
+    void shouldCapBreakpointsDeepestFirst() throws Exception {
+      String separator = "\n\n";
+      String layer1 = cacheableLayerUtf8(1023);
+      String layer2 = cacheableLayerUtf8(4096);
+      String layer3 = cacheableLayerUtf8(4096);
+      PromptLayerBoundaries boundaries = boundariesFor(layer1, separator, layer2, layer3);
+      boolean[] marked = ClaudePromptCacheSupport.selectBreakpoints(
+          boundaries, "claude-3-opus-20240229");
+
+      assertThat(marked).containsExactly(false, true, true);
+    }
+
+    @Test
+    void shouldOmitMarkerOnHaiku45WhenLayerBetween1024And4096Tokens() throws Exception {
+      String layer1 = cacheableLayerUtf8(8192);
+      PromptLayerBoundaries boundaries = new PromptLayerBoundaries(
+          utf8Length(layer1), utf8Length(layer1), null);
+      LlmExecutionRequest request = new LlmExecutionRequest(
+          "claude", "claude-haiku-4-5-20251001", layer1, "user", null, boundaries);
+      ClaudeLlmClient client = new ClaudeLlmClient(new ObjectMapper(),
+          FixedClaudeConfiguration.defaults());
+
+      JsonNode system = parseRequestBody(client.buildHttpRequest(request)).path("system");
+
+      assertThat(system.path(0).has("cache_control")).isFalse();
+    }
+
+    @Test
+    void shouldMarkLayerOnSonnetWhenSameSizeClears1024Default() throws Exception {
+      String layer1 = cacheableLayerUtf8(8192);
+      PromptLayerBoundaries boundaries = new PromptLayerBoundaries(
+          utf8Length(layer1), utf8Length(layer1), null);
+      LlmExecutionRequest request = new LlmExecutionRequest(
+          "claude", "claude-sonnet-4-20250514", layer1, "user", null, boundaries);
+      ClaudeLlmClient client = new ClaudeLlmClient(new ObjectMapper(),
+          FixedClaudeConfiguration.defaults());
+
+      JsonNode system = parseRequestBody(client.buildHttpRequest(request)).path("system");
+
+      assertThat(system.path(0).path("cache_control").path("type").asText()).isEqualTo("ephemeral");
+    }
+
+    @Test
+    void shouldEmitNoTtlFieldInRequestBody() throws Exception {
+      String separator = "\n\n";
+      String layer1 = cacheableLayerUtf8(4096);
+      String layer2 = cacheableLayerUtf8(4096);
+      String systemPrompt = layer1 + separator + layer2;
+      PromptLayerBoundaries boundaries = boundariesFor(layer1, separator, layer2, null);
+      LlmExecutionRequest request = new LlmExecutionRequest(
+          "claude", "m", systemPrompt, "user", null, boundaries);
+      ClaudeLlmClient client = new ClaudeLlmClient(new ObjectMapper(),
+          FixedClaudeConfiguration.defaults());
+
+      String raw = requestBodyToString(client.buildHttpRequest(request));
+
+      assertThat(raw).doesNotContain("\"ttl\"");
+    }
+
+    @Test
+    void shouldOmitCacheControlWhenBoundariesNull() throws Exception {
+      LlmExecutionRequest request = LlmExecutionRequest.withDefaultModel(
+          "claude", "my system", "my user");
+      ClaudeLlmClient client = new ClaudeLlmClient(new ObjectMapper(),
+          FixedClaudeConfiguration.defaults());
+
+      JsonNode root = parseRequestBody(client.buildHttpRequest(request));
+
+      assertThat(root.path("system").isArray()).isTrue();
+      assertThat(root.path("system")).hasSize(1);
+      assertThat(root.path("system").path(0).path("text").asText()).isEqualTo("my system");
+      assertThat(root.path("system").path(0).has("cache_control")).isFalse();
+    }
+
+    @Test
+    void shouldConsiderOnlyLayersOneAndTwoWhenLayer3Absent() throws Exception {
+      String separator = "\n\n";
+      String layer1 = cacheableLayerUtf8(4096);
+      String layer2 = cacheableLayerUtf8(4096);
+      String systemPrompt = layer1 + separator + layer2;
+      PromptLayerBoundaries boundaries = boundariesFor(layer1, separator, layer2, null);
+      LlmExecutionRequest request = new LlmExecutionRequest(
+          "claude", "m", systemPrompt, "user", null, boundaries);
+      ClaudeLlmClient client = new ClaudeLlmClient(new ObjectMapper(),
+          FixedClaudeConfiguration.defaults());
+
+      JsonNode system = parseRequestBody(client.buildHttpRequest(request)).path("system");
+
+      assertThat(system).hasSize(2);
+      assertThat(system.path(0).path("cache_control").path("type").asText()).isEqualTo("ephemeral");
+      assertThat(system.path(1).path("cache_control").path("type").asText()).isEqualTo("ephemeral");
+    }
+
+    @Test
+    void slicedSystemBlocksReassembleToOriginalPrompt() throws Exception {
+      String separator = "\n\n";
+      String layer1 = cacheableLayerUtf8(4096);
+      String layer2 = cacheableLayerUtf8(4096);
+      String layer3 = cacheableLayerUtf8(4096);
+      String systemPrompt = layer1 + separator + layer2 + separator + layer3;
+      PromptLayerBoundaries boundaries = boundariesFor(layer1, separator, layer2, layer3);
+      LlmExecutionRequest request = new LlmExecutionRequest(
+          "claude", "m", systemPrompt, "user", null, boundaries);
+      ClaudeLlmClient client = new ClaudeLlmClient(new ObjectMapper(),
+          FixedClaudeConfiguration.defaults());
+
+      JsonNode system = parseRequestBody(client.buildHttpRequest(request)).path("system");
+      StringBuilder joined = new StringBuilder();
+      for (int index = 0; index < system.size(); index++) {
+        joined.append(system.path(index).path("text").asText());
+      }
+
+      assertThat(joined.toString()).isEqualTo(systemPrompt);
     }
   }
 }

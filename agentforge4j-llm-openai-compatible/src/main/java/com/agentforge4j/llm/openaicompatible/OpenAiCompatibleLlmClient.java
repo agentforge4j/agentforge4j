@@ -1,9 +1,9 @@
 package com.agentforge4j.llm.openaicompatible;
 
 import com.agentforge4j.llm.AbstractHttpLlmClient;
-import com.agentforge4j.llm.LlmClient;
-import com.agentforge4j.llm.LlmExecutionRequest;
-import com.agentforge4j.llm.LlmInvocationException;
+import com.agentforge4j.llm.api.LlmClient;
+import com.agentforge4j.llm.api.LlmExecutionRequest;
+import com.agentforge4j.llm.api.LlmInvocationException;
 import com.agentforge4j.llm.openaicompatible.dto.InputRole;
 import com.agentforge4j.llm.openaicompatible.dto.OpenAiCompatibleContentItem;
 import com.agentforge4j.llm.openaicompatible.dto.OpenAiCompatibleInputItem;
@@ -12,9 +12,6 @@ import com.agentforge4j.llm.openaicompatible.dto.OpenAiCompatibleResponsesReques
 import com.agentforge4j.llm.openaicompatible.dto.OpenAiCompatibleResponsesResponse;
 import com.agentforge4j.util.Validate;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import lombok.ToString;
-import org.apache.commons.lang3.StringUtils;
-
 import java.io.IOException;
 import java.net.URI;
 import java.net.http.HttpRequest;
@@ -22,6 +19,8 @@ import java.time.Duration;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
+import lombok.ToString;
+import org.apache.commons.lang3.StringUtils;
 
 /**
  * OpenAI-compatible LLM client implementation.

@@ -8,6 +8,6 @@ import java.util.List;
 public record ClaudeRequest(
     String model,
     @JsonProperty("max_tokens") int maxTokens,
-    String system,
+    List<ClaudeSystemContentBlock> system,
     List<ClaudeMessage> messages
 ) {}

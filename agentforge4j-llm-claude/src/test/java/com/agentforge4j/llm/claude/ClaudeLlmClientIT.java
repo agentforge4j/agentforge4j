@@ -1,7 +1,8 @@
 package com.agentforge4j.llm.claude;
 
-import com.agentforge4j.llm.LlmExecutionRequest;
-import com.agentforge4j.llm.LlmInvocationException;
+import com.agentforge4j.llm.api.LlmExecutionRequest;
+import com.agentforge4j.llm.api.LlmExecutionResponse;
+import com.agentforge4j.llm.api.LlmInvocationException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -18,8 +19,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
- * End-to-end tests for {@link ClaudeLlmClient} using a local loopback HTTP server (no mocks, no
- * API keys, no external network).
+ * End-to-end tests for {@link ClaudeLlmClient} using a local loopback HTTP server (no mocks, no API
+ * keys, no external network).
  */
 class ClaudeLlmClientIT {
 
@@ -168,7 +169,10 @@ class ClaudeLlmClientIT {
       LlmExecutionRequest request =
           LlmExecutionRequest.withDefaultModel("claude", "system", "user");
 
-      assertThat(client.execute(request)).isEqualTo("Hello from Claude");
+      LlmExecutionResponse response = client.execute(request);
+
+      assertThat(response.text()).isEqualTo("Hello from Claude");
+      assertThat(response.tokenUsage()).isNull();
     }
   }
 
@@ -182,7 +186,7 @@ class ClaudeLlmClientIT {
       LlmExecutionRequest request =
           new LlmExecutionRequest("CLAUDE", null, "system", "user");
 
-      assertThat(client.execute(request)).isEqualTo("Hello from Claude");
+      assertThat(client.execute(request).text()).isEqualTo("Hello from Claude");
     }
   }
 
@@ -283,7 +287,7 @@ class ClaudeLlmClientIT {
       assertThat(captured.get())
           .contains("\"model\":\"capture-model\"")
           .contains("\"max_tokens\":2048")
-          .contains("\"system\":\"S\"")
+          .contains("\"system\":[{\"type\":\"text\",\"text\":\"S\"}]")
           .contains("\"content\":\"U\"")
           .contains("\"role\":");
     }

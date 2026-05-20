@@ -1,12 +1,9 @@
 package com.agentforge4j.llm.ollama;
 
-import static com.agentforge4j.llm.ollama.dto.InputRole.SYSTEM;
-import static com.agentforge4j.llm.ollama.dto.InputRole.USER;
-
 import com.agentforge4j.llm.AbstractHttpLlmClient;
-import com.agentforge4j.llm.LlmClient;
-import com.agentforge4j.llm.LlmExecutionRequest;
-import com.agentforge4j.llm.LlmInvocationException;
+import com.agentforge4j.llm.api.LlmClient;
+import com.agentforge4j.llm.api.LlmExecutionRequest;
+import com.agentforge4j.llm.api.LlmInvocationException;
 import com.agentforge4j.llm.ollama.dto.MessageDto;
 import com.agentforge4j.llm.ollama.dto.OllamaChatRequestDto;
 import com.agentforge4j.llm.ollama.dto.OllamaChatResponseDto;
@@ -19,6 +16,9 @@ import java.time.Duration;
 import java.util.List;
 import lombok.ToString;
 import org.apache.commons.lang3.StringUtils;
+
+import static com.agentforge4j.llm.ollama.dto.InputRole.SYSTEM;
+import static com.agentforge4j.llm.ollama.dto.InputRole.USER;
 
 /**
  * Ollama LLM client using the Ollama REST API (not the gRPC API).
@@ -36,10 +36,10 @@ public final class OllamaLlmClient extends AbstractHttpLlmClient {
    * Creates a new Ollama client.
    *
    * @param objectMapper Jackson {@code ObjectMapper} for JSON serialization and deserialization;
-   *        must not be null
-   * @param config Ollama-specific configuration; must not be null
-   * @throws IllegalArgumentException if {@code objectMapper} or {@code config} is null, or if
-   *         the configured URL is blank
+   *                     must not be null
+   * @param config       Ollama-specific configuration; must not be null
+   * @throws IllegalArgumentException if {@code objectMapper} or {@code config} is null, or if the
+   *                                  configured URL is blank
    */
   public OllamaLlmClient(ObjectMapper objectMapper, OllamaConfiguration config) {
     super(config);

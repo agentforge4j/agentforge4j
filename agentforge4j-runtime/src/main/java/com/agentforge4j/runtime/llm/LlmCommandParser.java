@@ -4,7 +4,7 @@ import com.agentforge4j.core.command.LlmCommand;
 import com.agentforge4j.core.command.schema.CommandResponseSchema;
 import com.agentforge4j.core.command.schema.CommandTypeContract;
 import com.agentforge4j.core.command.schema.LlmCommandSubtypeRegistry;
-import com.agentforge4j.llm.LlmClient;
+import com.agentforge4j.llm.api.LlmClient;
 import com.agentforge4j.util.Validate;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;

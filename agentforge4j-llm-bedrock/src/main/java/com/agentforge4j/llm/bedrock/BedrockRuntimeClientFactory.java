@@ -10,6 +10,7 @@ import software.amazon.awssdk.http.SdkHttpClient;
 import software.amazon.awssdk.http.urlconnection.UrlConnectionHttpClient;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.bedrockruntime.BedrockRuntimeClient;
+import software.amazon.awssdk.services.bedrockruntime.BedrockRuntimeClientBuilder;
 
 final class BedrockRuntimeClientFactory {
 
@@ -38,7 +39,7 @@ final class BedrockRuntimeClientFactory {
       credentials = DefaultCredentialsProvider.builder().build();
     }
 
-    var builder = BedrockRuntimeClient.builder()
+    BedrockRuntimeClientBuilder builder = BedrockRuntimeClient.builder()
         .region(Region.of(region))
         .credentialsProvider(credentials)
         .overrideConfiguration(override)

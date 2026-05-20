@@ -1,13 +1,12 @@
-package com.agentforge4j.llm;
+package com.agentforge4j.llm.api;
 
 import java.util.Optional;
-import org.apache.commons.lang3.Strings;
 
 /**
  * Executes LLM requests for a single registered provider (for example OpenAI, Ollama, or Claude).
  * <p>
- * Implementations are instantiated by {@link LlmClientFactory} and managed by
- * {@link LlmClientResolver}. Each client instance is bound to one provider id returned by
+ * Implementations are instantiated by {@code LlmClientFactory} and managed by
+ * {@code LlmClientResolver}. Each client instance is bound to one provider id returned by
  * {@link #getProviderName()}.
  */
 public interface LlmClient {
@@ -23,11 +22,11 @@ public interface LlmClient {
    * Executes an LLM request and returns the response.
    *
    * @param request provider id, prompts, and optional model override for this call
-   * @return provider response body, typically JSON text for downstream parsing
+   * @return execution response containing model output and optional token usage
    * @throws LlmInvocationException if the request fails due to network issues, invalid responses,
    *                                or provider-specific errors
    */
-  String execute(LlmExecutionRequest request);
+  LlmExecutionResponse execute(LlmExecutionRequest request);
 
   default Optional<LlmRetryPolicy> getRetryPolicy() {
     return Optional.empty();
@@ -43,21 +42,18 @@ public interface LlmClient {
    * @return the input with fences removed, or the input unchanged
    */
   static String stripCodeFence(String input) {
-    if (input == null) {
-      return null;
-    }
-    if (!Strings.CS.startsWith(input, "```")) {
+    if (input == null || input.isBlank() || !input.startsWith("```")) {
       return input;
     }
-    int firstNewline = input.indexOf('\n');
-    if (firstNewline < 0) {
+
+    int start = input.indexOf('\n');
+    if (start < 0) {
       return input;
     }
-    String afterOpeningFence = input.substring(firstNewline + 1);
-    int closingFence = afterOpeningFence.lastIndexOf("```");
-    if (closingFence < 0) {
-      return afterOpeningFence;
-    }
-    return afterOpeningFence.substring(0, closingFence).strip();
+
+    int end = input.lastIndexOf("```");
+    return ((end > start)
+        ? input.substring(start + 1, end)
+        : input.substring(start + 1)).strip();
   }
 }

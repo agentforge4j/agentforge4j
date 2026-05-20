@@ -1,9 +1,9 @@
 package com.agentforge4j.llm.gemini;
 
 import com.agentforge4j.llm.AbstractHttpLlmClient;
-import com.agentforge4j.llm.LlmClient;
-import com.agentforge4j.llm.LlmExecutionRequest;
-import com.agentforge4j.llm.LlmInvocationException;
+import com.agentforge4j.llm.api.LlmClient;
+import com.agentforge4j.llm.api.LlmExecutionRequest;
+import com.agentforge4j.llm.api.LlmInvocationException;
 import com.agentforge4j.llm.gemini.dto.GeminiCandidate;
 import com.agentforge4j.llm.gemini.dto.GeminiContent;
 import com.agentforge4j.llm.gemini.dto.GeminiErrorResponse;
@@ -28,7 +28,7 @@ import lombok.ToString;
 import org.apache.commons.lang3.StringUtils;
 
 /**
- * Gemini implementation of {@link com.agentforge4j.llm.LlmClient}.
+ * Gemini implementation of {@link com.agentforge4j.llm.api.LlmClient}.
  */
 @ToString(exclude = {"apiKey", "objectMapper"}, callSuper = true)
 public final class GeminiLlmClient extends AbstractHttpLlmClient {
@@ -101,7 +101,8 @@ public final class GeminiLlmClient extends AbstractHttpLlmClient {
           () -> new LlmInvocationException("Gemini candidate is null: %s".formatted(json)));
       Validate.isTrue(
           candidate.finishReason() == null || !"SAFETY".equalsIgnoreCase(candidate.finishReason()),
-          () -> new LlmInvocationException("Gemini blocked response for safety: %s".formatted(json)));
+          () -> new LlmInvocationException(
+              "Gemini blocked response for safety: %s".formatted(json)));
       GeminiContent content = Validate.notNull(candidate.content(),
           () -> new LlmInvocationException("Gemini candidate content is null: %s".formatted(json)));
       List<GeminiPart> parts = Validate.notNull(content.parts(),

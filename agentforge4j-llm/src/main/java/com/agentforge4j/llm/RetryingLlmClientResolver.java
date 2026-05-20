@@ -1,6 +1,9 @@
 package com.agentforge4j.llm;
 
+import com.agentforge4j.llm.api.LlmClient;
+import com.agentforge4j.llm.api.LlmRetryPolicy;
 import com.agentforge4j.util.Validate;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import org.apache.commons.lang3.StringUtils;
@@ -33,5 +36,10 @@ public final class RetryingLlmClientResolver implements LlmClientResolver {
   @Override
   public boolean isProviderAvailable(String provider) {
     return delegate.isProviderAvailable(provider);
+  }
+
+  @Override
+  public List<String> listAvailableClients() {
+    return delegate.listAvailableClients();
   }
 }

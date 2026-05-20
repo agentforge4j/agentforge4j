@@ -1,5 +1,33 @@
 package com.agentforge4j.runtime.llm;
 
+import com.agentforge4j.core.agent.AgentDefinition;
+import com.agentforge4j.core.agent.AgentLocality;
+import com.agentforge4j.core.agent.AgentRepository;
+import com.agentforge4j.core.agent.ProviderPreference;
+import com.agentforge4j.core.command.CompleteCommand;
+import com.agentforge4j.core.command.schema.CommandResponseSchema;
+import com.agentforge4j.core.command.schema.CommandResponseSchemaRenderer;
+import com.agentforge4j.core.command.schema.CommandSchemaFactory;
+import com.agentforge4j.core.workflow.context.ContextMapping;
+import com.agentforge4j.core.workflow.event.WorkflowEventType;
+import com.agentforge4j.core.workflow.state.WorkflowState;
+import com.agentforge4j.llm.LlmClientResolver;
+import com.agentforge4j.llm.api.LlmClient;
+import com.agentforge4j.llm.api.LlmExecutionRequest;
+import com.agentforge4j.llm.api.LlmExecutionResponse;
+import com.agentforge4j.llm.api.PromptLayerBoundaries;
+import com.agentforge4j.runtime.event.EventRecorder;
+import com.agentforge4j.runtime.repository.InMemoryWorkflowEventLog;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import java.nio.charset.StandardCharsets;
+import java.time.Clock;
+import java.time.Instant;
+import java.time.ZoneOffset;
+import java.util.Arrays;
+import java.util.List;
+import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
@@ -7,27 +35,6 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
-
-import com.agentforge4j.core.agent.AgentDefinition;
-import com.agentforge4j.core.agent.AgentLocality;
-import com.agentforge4j.core.agent.AgentRepository;
-import com.agentforge4j.core.agent.ProviderPreference;
-import com.agentforge4j.core.command.CompleteCommand;
-import com.agentforge4j.core.workflow.context.ContextMapping;
-import com.agentforge4j.core.workflow.event.WorkflowEventType;
-import com.agentforge4j.core.workflow.state.WorkflowState;
-import com.agentforge4j.llm.LlmClient;
-import com.agentforge4j.llm.LlmClientResolver;
-import com.agentforge4j.llm.LlmExecutionRequest;
-import com.agentforge4j.runtime.event.EventRecorder;
-import com.agentforge4j.runtime.repository.InMemoryWorkflowEventLog;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import java.time.Clock;
-import java.time.Instant;
-import java.time.ZoneOffset;
-import java.util.List;
-import org.junit.jupiter.api.Test;
-import org.mockito.ArgumentCaptor;
 
 class AgentInvokerTest {
 
@@ -41,7 +48,7 @@ class AgentInvokerTest {
 
     LlmClient client = mock(LlmClient.class);
     when(client.getProviderName()).thenReturn("openai");
-    when(client.execute(any())).thenReturn(raw);
+    when(client.execute(any())).thenReturn(llmResponse(raw));
 
     AgentInvoker invoker = invokerWithAudit(mapper, client, recorder);
     WorkflowState state = workflowState(runId);
@@ -68,7 +75,7 @@ class AgentInvokerTest {
 
     LlmClient client = mock(LlmClient.class);
     when(client.getProviderName()).thenReturn("openai");
-    when(client.execute(any())).thenReturn(firstRaw, secondRaw);
+    when(client.execute(any())).thenReturn(llmResponse(firstRaw), llmResponse(secondRaw));
 
     AgentInvoker invoker = invokerWithAudit(mapper, client, recorder);
     WorkflowState state = workflowState(runId);
@@ -102,7 +109,7 @@ class AgentInvokerTest {
 
     LlmClient client = mock(LlmClient.class);
     when(client.getProviderName()).thenReturn("openai");
-    when(client.execute(any())).thenReturn(bad.strip(), bad.strip());
+    when(client.execute(any())).thenReturn(llmResponse(bad.strip()), llmResponse(bad.strip()));
 
     AgentInvoker invoker = invokerWithAudit(mapper, client, recorder);
     WorkflowState state = workflowState(runId);
@@ -127,7 +134,8 @@ class AgentInvokerTest {
 
     LlmClient client = mock(LlmClient.class);
     when(client.getProviderName()).thenReturn("openai");
-    when(client.execute(any())).thenReturn("{}", "[{\"type\":\"COMPLETE\"}]");
+    when(client.execute(any())).thenReturn(llmResponse("{}"),
+        llmResponse("[{\"type\":\"COMPLETE\"}]"));
 
     ContextRenderer contextRenderer = mock(ContextRenderer.class);
     when(contextRenderer.render(any(), any())).thenReturn(userInput);
@@ -175,7 +183,7 @@ class AgentInvokerTest {
     String raw = "[{\"type\":\"COMPLETE\"}]";
     LlmClient client = mock(LlmClient.class);
     when(client.getProviderName()).thenReturn("openai");
-    when(client.execute(any())).thenReturn(raw);
+    when(client.execute(any())).thenReturn(llmResponse(raw));
 
     AgentInvoker invoker = invokerWithAudit(mapper, client, recorder);
     WorkflowState state = workflowState("run-cap-short");
@@ -198,7 +206,7 @@ class AgentInvokerTest {
     String raw = "[{\"type\":\"COMPLETE\",\"summary\":\"" + padding + "\"}]";
     LlmClient client = mock(LlmClient.class);
     when(client.getProviderName()).thenReturn("openai");
-    when(client.execute(any())).thenReturn(raw);
+    when(client.execute(any())).thenReturn(llmResponse(raw));
 
     AgentInvoker invoker = invokerWithAudit(mapper, client, recorder);
     WorkflowState state = workflowState("run-cap-long");
@@ -229,13 +237,14 @@ class AgentInvokerTest {
     String raw = "[{\"type\":\"COMPLETE\",\"summary\":\"" + padding + "\"}]";
     LlmClient client = mock(LlmClient.class);
     when(client.getProviderName()).thenReturn("openai");
-    when(client.execute(any())).thenReturn(raw);
+    when(client.execute(any())).thenReturn(llmResponse(raw));
 
     AgentRepository repo = mock(AgentRepository.class);
     when(repo.get("agent-x")).thenReturn(agentSupportingOnlyComplete());
     LlmClientResolver resolver = mock(LlmClientResolver.class);
     when(resolver.resolve("openai")).thenReturn(client);
     when(resolver.isProviderAvailable("openai")).thenReturn(true);
+    when(resolver.listAvailableClients()).thenReturn(List.of("openai"));
 
     AgentInvoker invoker = new AgentInvoker(
         repo, resolver, new ContextRenderer(mapper), new LlmCommandParser(mapper), mapper, recorder,
@@ -260,13 +269,14 @@ class AgentInvokerTest {
     String raw = "[{\"type\":\"COMPLETE\",\"summary\":\"" + padding + "\"}]";
     LlmClient client = mock(LlmClient.class);
     when(client.getProviderName()).thenReturn("openai");
-    when(client.execute(any())).thenReturn(raw);
+    when(client.execute(any())).thenReturn(llmResponse(raw));
 
     AgentRepository repo = mock(AgentRepository.class);
     when(repo.get("agent-x")).thenReturn(agentSupportingOnlyComplete());
     LlmClientResolver resolver = mock(LlmClientResolver.class);
     when(resolver.resolve("openai")).thenReturn(client);
     when(resolver.isProviderAvailable("openai")).thenReturn(true);
+    when(resolver.listAvailableClients()).thenReturn(List.of("openai"));
 
     AgentInvoker invoker = new AgentInvoker(
         repo, resolver, new ContextRenderer(mapper), new LlmCommandParser(mapper), mapper, recorder,
@@ -305,7 +315,7 @@ class AgentInvokerTest {
     ObjectMapper mapper = new ObjectMapper();
     LlmClient client = mock(LlmClient.class);
     when(client.getProviderName()).thenReturn("ollama");
-    when(client.execute(any())).thenReturn("[{\"type\":\"COMPLETE\"}]");
+    when(client.execute(any())).thenReturn(llmResponse("[{\"type\":\"COMPLETE\"}]"));
 
     AgentRepository repo = mock(AgentRepository.class);
     AgentDefinition agent = new AgentDefinition(
@@ -325,7 +335,7 @@ class AgentInvokerTest {
 
     LlmClientResolver resolver = mock(LlmClientResolver.class);
     when(resolver.resolve("ollama")).thenReturn(client);
-    when(resolver.listAvailableClients()).thenReturn(List.of(client.getProviderName()));
+    when(resolver.listAvailableClients()).thenReturn(List.of("ollama"));
 
     ProviderPreference strategyChoice = new ProviderPreference("ollama", "llama3");
     LlmProviderSelectionStrategy selectionStrategy = mock(LlmProviderSelectionStrategy.class);
@@ -365,15 +375,359 @@ class AgentInvokerTest {
         .hasMessageContaining("llmProviderSelectionStrategy must not be null");
   }
 
+  private static final String FRAMEWORK_BLOCK_MARKER =
+      "Framework command contract (authoritative; overrides conflicting agent text):";
+
+  @Test
+  void assembledSystemPrompt_placesFrameworkFirstAgentSecondStepThird() {
+    ObjectMapper mapper = new ObjectMapper();
+    LlmClient client = mock(LlmClient.class);
+    when(client.getProviderName()).thenReturn("openai");
+    when(client.execute(any())).thenReturn(llmResponse("[{\"type\":\"COMPLETE\"}]"));
+
+    String agentBody = "AGENT_LAYER_MARKER";
+    String stepBody = "STEP_LAYER_MARKER";
+    AgentRepository repo = mock(AgentRepository.class);
+    when(repo.get("agent-x")).thenReturn(agentSupportingOnlyCompleteWithBody(agentBody));
+    LlmClientResolver resolver = mock(LlmClientResolver.class);
+    when(resolver.resolve("openai")).thenReturn(client);
+    when(resolver.isProviderAvailable("openai")).thenReturn(true);
+    when(resolver.listAvailableClients()).thenReturn(List.of("openai"));
+
+    AgentInvoker invoker = new AgentInvoker(
+        repo,
+        resolver,
+        new ContextRenderer(mapper),
+        new LlmCommandParser(mapper),
+        mapper,
+        recorder(new InMemoryWorkflowEventLog()));
+    WorkflowState state = workflowState("run-system-prompt-order");
+    invoker.invoke("agent-x", ContextMapping.none(), state, stepBody);
+
+    ArgumentCaptor<LlmExecutionRequest> captor = ArgumentCaptor.forClass(LlmExecutionRequest.class);
+    verify(client).execute(captor.capture());
+    String systemPrompt = captor.getValue().systemPrompt();
+
+    int frameworkIdx = systemPrompt.indexOf(FRAMEWORK_BLOCK_MARKER);
+    int agentIdx = systemPrompt.indexOf(agentBody);
+    int stepIdx = systemPrompt.indexOf(stepBody);
+    assertThat(agentIdx).isGreaterThanOrEqualTo(0);
+    assertThat(frameworkIdx).isGreaterThan(agentIdx);
+    assertThat(stepIdx).isGreaterThan(agentIdx);
+  }
+
+  @Test
+  void assembledSystemPrompt_omitsBlankOrAbsentStepLayer() {
+    ObjectMapper mapper = new ObjectMapper();
+    LlmClient client = mock(LlmClient.class);
+    when(client.getProviderName()).thenReturn("openai");
+    when(client.execute(any())).thenReturn(llmResponse("[{\"type\":\"COMPLETE\"}]"));
+
+    String agentBody = "AGENT_ONLY_LAYER";
+    String stepBody = "STEP_SHOULD_NOT_APPEAR";
+    AgentRepository repo = mock(AgentRepository.class);
+    when(repo.get("agent-x")).thenReturn(agentSupportingOnlyCompleteWithBody(agentBody));
+    LlmClientResolver resolver = mock(LlmClientResolver.class);
+    when(resolver.resolve("openai")).thenReturn(client);
+    when(resolver.isProviderAvailable("openai")).thenReturn(true);
+    when(resolver.listAvailableClients()).thenReturn(List.of("openai"));
+
+    AgentInvoker invoker = new AgentInvoker(
+        repo,
+        resolver,
+        new ContextRenderer(mapper),
+        new LlmCommandParser(mapper),
+        mapper,
+        recorder(new InMemoryWorkflowEventLog()));
+    WorkflowState state = workflowState("run-system-prompt-no-step");
+
+    invoker.invoke("agent-x", ContextMapping.none(), state, null);
+    ArgumentCaptor<LlmExecutionRequest> nullStepCaptor =
+        ArgumentCaptor.forClass(LlmExecutionRequest.class);
+    verify(client, times(1)).execute(nullStepCaptor.capture());
+    String nullStepPrompt = nullStepCaptor.getValue().systemPrompt();
+    assertThat(nullStepPrompt).doesNotContain(stepBody);
+    assertThat(layerSeparatorCount(nullStepPrompt)).isEqualTo(1);
+
+    invoker.invoke("agent-x", ContextMapping.none(), state, "   ");
+    ArgumentCaptor<LlmExecutionRequest> blankStepCaptor =
+        ArgumentCaptor.forClass(LlmExecutionRequest.class);
+    verify(client, times(2)).execute(blankStepCaptor.capture());
+    String blankStepPrompt = blankStepCaptor.getAllValues().get(1).systemPrompt();
+    assertThat(blankStepPrompt).doesNotContain(stepBody);
+    assertThat(layerSeparatorCount(blankStepPrompt)).isEqualTo(1);
+  }
+
+  @Test
+  void assembledSystemPrompt_layerSeparatorUnchanged() {
+    ObjectMapper mapper = new ObjectMapper();
+    LlmClient client = mock(LlmClient.class);
+    when(client.getProviderName()).thenReturn("openai");
+    when(client.execute(any())).thenReturn(llmResponse("[{\"type\":\"COMPLETE\"}]"));
+
+    String agentBody = "AGENT_SEP_MARKER";
+    String stepBody = "STEP_SEP_MARKER";
+    AgentRepository repo = mock(AgentRepository.class);
+    AgentDefinition agent = agentSupportingOnlyCompleteWithBody(agentBody);
+    when(repo.get("agent-x")).thenReturn(agent);
+    LlmClientResolver resolver = mock(LlmClientResolver.class);
+    when(resolver.resolve("openai")).thenReturn(client);
+    when(resolver.isProviderAvailable("openai")).thenReturn(true);
+    when(resolver.listAvailableClients()).thenReturn(List.of("openai"));
+
+    CommandResponseSchema schema =
+        CommandSchemaFactory.build(agent.supportedCommands(), mapper);
+    String frameworkBlock = new CommandResponseSchemaRenderer().render(schema);
+    String layerSeparator = System.lineSeparator() + System.lineSeparator();
+    String expectedWithStep = agentBody
+        + layerSeparator
+        + frameworkBlock
+        + layerSeparator
+        + stepBody;
+
+    AgentInvoker invoker = new AgentInvoker(
+        repo,
+        resolver,
+        new ContextRenderer(mapper),
+        new LlmCommandParser(mapper),
+        mapper,
+        recorder(new InMemoryWorkflowEventLog()));
+    WorkflowState state = workflowState("run-system-prompt-separator");
+    invoker.invoke("agent-x", ContextMapping.none(), state, stepBody);
+
+    ArgumentCaptor<LlmExecutionRequest> captor = ArgumentCaptor.forClass(LlmExecutionRequest.class);
+    verify(client).execute(captor.capture());
+    assertThat(captor.getValue().systemPrompt()).isEqualTo(expectedWithStep);
+  }
+
+  @Test
+  void promptLayerBoundaries_areDeterministicForIdenticalInputs() {
+    ObjectMapper mapper = new ObjectMapper();
+    LlmClient client = mock(LlmClient.class);
+    when(client.getProviderName()).thenReturn("openai");
+    when(client.execute(any())).thenReturn(llmResponse("[{\"type\":\"COMPLETE\"}]"));
+    AgentRepository repo = mock(AgentRepository.class);
+    when(repo.get("agent-x")).thenReturn(agentSupportingOnlyCompleteWithBody("agent-body"));
+    LlmClientResolver resolver = mock(LlmClientResolver.class);
+    when(resolver.resolve("openai")).thenReturn(client);
+    when(resolver.isProviderAvailable("openai")).thenReturn(true);
+    when(resolver.listAvailableClients()).thenReturn(List.of("openai"));
+
+    AgentInvoker invoker = new AgentInvoker(
+        repo,
+        resolver,
+        new ContextRenderer(mapper),
+        new LlmCommandParser(mapper),
+        mapper,
+        recorder(new InMemoryWorkflowEventLog()),
+        AgentInvoker.DEFAULT_LLM_OUTPUT_EVENT_CHAR_CAP,
+        new FirstAvailableProviderSelectionStrategy(),
+        true);
+    WorkflowState state = workflowState("run-boundaries-deterministic");
+    String stepBody = "STEP_BOUNDARY_MARKER";
+
+    invoker.invoke("agent-x", ContextMapping.none(), state, stepBody);
+    invoker.invoke("agent-x", ContextMapping.none(), state, stepBody);
+
+    ArgumentCaptor<LlmExecutionRequest> captor = ArgumentCaptor.forClass(LlmExecutionRequest.class);
+    verify(client, times(2)).execute(captor.capture());
+    PromptLayerBoundaries first = captor.getAllValues().get(0).promptLayerBoundaries();
+    PromptLayerBoundaries second = captor.getAllValues().get(1).promptLayerBoundaries();
+    assertThat(first).isEqualTo(second);
+    assertThat(first.layer1EndOffset()).isNotNull();
+    assertThat(first.layer2EndOffset()).isNotNull();
+    assertThat(first.layer3EndOffset()).isNotNull();
+  }
+
+  @Test
+  void promptLayerBoundaries_layer1StableForSameSupportedCommands() {
+    ObjectMapper mapper = new ObjectMapper();
+    LlmClient client = mock(LlmClient.class);
+    when(client.getProviderName()).thenReturn("openai");
+    when(client.execute(any())).thenReturn(llmResponse("[{\"type\":\"COMPLETE\"}]"));
+    AgentRepository repo = mock(AgentRepository.class);
+    when(repo.get("agent-a")).thenReturn(agentSupportingOnlyCompleteWithBody("agent-a-body"));
+    when(repo.get("agent-b")).thenReturn(new AgentDefinition(
+        "agent-b",
+        "B",
+        AgentLocality.CLOUD,
+        true,
+        "agent-a-body",
+        List.of(new ProviderPreference("openai", "gpt-4o-mini")),
+        List.of("COMPLETE"),
+        null,
+        null,
+        "1.0.0"));
+    LlmClientResolver resolver = mock(LlmClientResolver.class);
+    when(resolver.resolve("openai")).thenReturn(client);
+    when(resolver.isProviderAvailable("openai")).thenReturn(true);
+    when(resolver.listAvailableClients()).thenReturn(List.of("openai"));
+
+    AgentInvoker invoker = new AgentInvoker(
+        repo,
+        resolver,
+        new ContextRenderer(mapper),
+        new LlmCommandParser(mapper),
+        mapper,
+        recorder(new InMemoryWorkflowEventLog()));
+    WorkflowState state = workflowState("run-layer1-stable");
+
+    invoker.invoke("agent-a", ContextMapping.none(), state, null);
+    invoker.invoke("agent-b", ContextMapping.none(), state, null);
+
+    ArgumentCaptor<LlmExecutionRequest> captor = ArgumentCaptor.forClass(LlmExecutionRequest.class);
+    verify(client, times(2)).execute(captor.capture());
+    byte[] layer1AgentA = layerPrefixBytes(
+        captor.getAllValues().get(0).systemPrompt(),
+        captor.getAllValues().get(0).promptLayerBoundaries().layer1EndOffset());
+    byte[] layer1AgentB = layerPrefixBytes(
+        captor.getAllValues().get(1).systemPrompt(),
+        captor.getAllValues().get(1).promptLayerBoundaries().layer1EndOffset());
+    assertThat(layer1AgentA).isEqualTo(layer1AgentB);
+    assertThat(captor.getAllValues().get(0).promptLayerBoundaries().layer1EndOffset())
+        .isEqualTo(captor.getAllValues().get(1).promptLayerBoundaries().layer1EndOffset());
+  }
+
+  @Test
+  void promptLayerBoundaries_slicesMatchLayerContent() {
+    ObjectMapper mapper = new ObjectMapper();
+    LlmClient client = mock(LlmClient.class);
+    when(client.getProviderName()).thenReturn("openai");
+    when(client.execute(any())).thenReturn(llmResponse("[{\"type\":\"COMPLETE\"}]"));
+
+    String agentBody = "AGENT_BOUNDARY_SLICE";
+    String stepBody = "STEP_BOUNDARY_SLICE";
+    AgentRepository repo = mock(AgentRepository.class);
+    AgentDefinition agent = agentSupportingOnlyCompleteWithBody(agentBody);
+    when(repo.get("agent-x")).thenReturn(agent);
+    LlmClientResolver resolver = mock(LlmClientResolver.class);
+    when(resolver.resolve("openai")).thenReturn(client);
+    when(resolver.isProviderAvailable("openai")).thenReturn(true);
+    when(resolver.listAvailableClients()).thenReturn(List.of("openai"));
+
+    CommandResponseSchema schema =
+        CommandSchemaFactory.build(agent.supportedCommands(), mapper);
+    String frameworkBlock = new CommandResponseSchemaRenderer().render(schema);
+    String layerSeparator = System.lineSeparator() + System.lineSeparator();
+
+    ContextRenderer contextRenderer = mock(ContextRenderer.class);
+    when(contextRenderer.render(any(), any())).thenReturn("USER_DYNAMIC_INPUT_MARKER");
+
+    AgentInvoker invoker = new AgentInvoker(
+        repo,
+        resolver,
+        contextRenderer,
+        new LlmCommandParser(mapper),
+        mapper,
+        recorder(new InMemoryWorkflowEventLog()));
+    WorkflowState state = workflowState("run-boundary-slices");
+    invoker.invoke("agent-x", ContextMapping.none(), state, stepBody);
+
+    ArgumentCaptor<LlmExecutionRequest> captor = ArgumentCaptor.forClass(LlmExecutionRequest.class);
+    verify(client).execute(captor.capture());
+    LlmExecutionRequest request = captor.getValue();
+    PromptLayerBoundaries boundaries = request.promptLayerBoundaries();
+    byte[] promptBytes = request.systemPrompt().getBytes(StandardCharsets.UTF_8);
+
+    assertThat(slicePrefix(promptBytes, boundaries.layer1EndOffset()))
+        .isEqualTo(agentBody.getBytes(StandardCharsets.UTF_8));
+    assertThat(slicePrefix(promptBytes, boundaries.layer2EndOffset()))
+        .isEqualTo((agentBody + layerSeparator + frameworkBlock).getBytes(StandardCharsets.UTF_8));
+    assertThat(slicePrefix(promptBytes, boundaries.layer3EndOffset()))
+        .isEqualTo(promptBytes);
+    assertThat(request.userInput()).isEqualTo("USER_DYNAMIC_INPUT_MARKER");
+    assertThat(request.systemPrompt()).doesNotContain("USER_DYNAMIC_INPUT_MARKER");
+  }
+
+  @Test
+  void promptLayerBoundaries_absentWhenCachingDisabled() {
+    ObjectMapper mapper = new ObjectMapper();
+    LlmClient client = mock(LlmClient.class);
+    when(client.getProviderName()).thenReturn("openai");
+    when(client.execute(any())).thenReturn(llmResponse("[{\"type\":\"COMPLETE\"}]"));
+    AgentRepository repo = mock(AgentRepository.class);
+    when(repo.get("agent-x")).thenReturn(agentSupportingOnlyCompleteWithBody("agent-disabled"));
+    LlmClientResolver resolver = mock(LlmClientResolver.class);
+    when(resolver.resolve("openai")).thenReturn(client);
+    when(resolver.isProviderAvailable("openai")).thenReturn(true);
+    when(resolver.listAvailableClients()).thenReturn(List.of("openai"));
+
+    InMemoryWorkflowEventLog eventLog = new InMemoryWorkflowEventLog();
+    EventRecorder recorder = recorder(eventLog);
+    ContextRenderer contextRenderer = new ContextRenderer(mapper);
+    LlmCommandParser commandParser = new LlmCommandParser(mapper);
+    AgentInvoker enabledInvoker = new AgentInvoker(
+        repo, resolver, contextRenderer, commandParser, mapper, recorder);
+    AgentInvoker disabledInvoker = new AgentInvoker(
+        repo,
+        resolver,
+        contextRenderer,
+        commandParser,
+        mapper,
+        recorder,
+        AgentInvoker.DEFAULT_LLM_OUTPUT_EVENT_CHAR_CAP,
+        new FirstAvailableProviderSelectionStrategy(),
+        false);
+    WorkflowState state = workflowState("run-cache-disabled");
+    String stepBody = "STEP_DISABLED_CACHE";
+
+    enabledInvoker.invoke("agent-x", ContextMapping.none(), state, stepBody);
+    disabledInvoker.invoke("agent-x", ContextMapping.none(), state, stepBody);
+
+    ArgumentCaptor<LlmExecutionRequest> captor = ArgumentCaptor.forClass(LlmExecutionRequest.class);
+    verify(client, times(2)).execute(captor.capture());
+    LlmExecutionRequest enabledRequest = captor.getAllValues().get(0);
+    LlmExecutionRequest disabledRequest = captor.getAllValues().get(1);
+    assertThat(enabledRequest.promptLayerBoundaries()).isNotNull();
+    assertThat(disabledRequest.promptLayerBoundaries()).isNull();
+    assertThat(disabledRequest.systemPrompt()).isEqualTo(enabledRequest.systemPrompt());
+    assertThat(disabledRequest.userInput()).isEqualTo(enabledRequest.userInput());
+    assertThat(disabledRequest.providerName()).isEqualTo(enabledRequest.providerName());
+    assertThat(disabledRequest.model()).isEqualTo(enabledRequest.model());
+    assertThat(disabledRequest.maxOutputTokens()).isEqualTo(enabledRequest.maxOutputTokens());
+  }
+
+  @Test
+  void promptLayerBoundaries_layer3NullWhenStepPromptAbsent() {
+    ObjectMapper mapper = new ObjectMapper();
+    LlmClient client = mock(LlmClient.class);
+    when(client.getProviderName()).thenReturn("openai");
+    when(client.execute(any())).thenReturn(llmResponse("[{\"type\":\"COMPLETE\"}]"));
+    AgentRepository repo = mock(AgentRepository.class);
+    when(repo.get("agent-x")).thenReturn(agentSupportingOnlyCompleteWithBody("agent-no-step"));
+    LlmClientResolver resolver = mock(LlmClientResolver.class);
+    when(resolver.resolve("openai")).thenReturn(client);
+    when(resolver.isProviderAvailable("openai")).thenReturn(true);
+    when(resolver.listAvailableClients()).thenReturn(List.of("openai"));
+
+    AgentInvoker invoker = invokerWithAudit(mapper, client,
+        recorder(new InMemoryWorkflowEventLog()));
+    WorkflowState state = workflowState("run-no-layer3");
+
+    invoker.invoke("agent-x", ContextMapping.none(), state, null);
+    invoker.invoke("agent-x", ContextMapping.none(), state, "   ");
+
+    ArgumentCaptor<LlmExecutionRequest> captor = ArgumentCaptor.forClass(LlmExecutionRequest.class);
+    verify(client, times(2)).execute(captor.capture());
+    for (LlmExecutionRequest request : captor.getAllValues()) {
+      PromptLayerBoundaries boundaries = request.promptLayerBoundaries();
+      assertThat(boundaries.layer3EndOffset()).isNull();
+      assertThat(boundaries.layer2EndOffset())
+          .isEqualTo(request.systemPrompt().getBytes(StandardCharsets.UTF_8).length);
+      assertThat(layerSeparatorCount(request.systemPrompt())).isEqualTo(1);
+    }
+  }
+
   @Test
   void invokeByAgentId_resolvesDefinitionFromAgentRepository() {
     ObjectMapper mapper = new ObjectMapper();
     LlmClient client = mock(LlmClient.class);
     when(client.getProviderName()).thenReturn("openai");
-    when(client.execute(any())).thenReturn("[{\"type\":\"COMPLETE\"}]");
+    when(client.execute(any())).thenReturn(llmResponse("[{\"type\":\"COMPLETE\"}]"));
     LlmClientResolver resolver = mock(LlmClientResolver.class);
     when(resolver.resolve("openai")).thenReturn(client);
     when(resolver.isProviderAvailable("openai")).thenReturn(true);
+    when(resolver.listAvailableClients()).thenReturn(List.of("openai"));
     AgentRepository repo = mock(AgentRepository.class);
     AgentDefinition registered = agentSupportingOnlyCompleteWithBody("body");
     when(repo.get("lookup-id")).thenReturn(registered);
@@ -416,9 +770,9 @@ class AgentInvokerTest {
     LlmClient client = mock(LlmClient.class);
     when(client.getProviderName()).thenReturn("openai");
     if (secondRawOrNull == null) {
-      when(client.execute(any())).thenReturn(firstRaw);
+      when(client.execute(any())).thenReturn(llmResponse(firstRaw));
     } else {
-      when(client.execute(any())).thenReturn(firstRaw, secondRawOrNull);
+      when(client.execute(any())).thenReturn(llmResponse(firstRaw), llmResponse(secondRawOrNull));
     }
     AgentInvoker invoker = invokerWithAudit(mapper, client, recorder);
     WorkflowState state = workflowState(runId);
@@ -465,6 +819,7 @@ class AgentInvokerTest {
     LlmClientResolver resolver = mock(LlmClientResolver.class);
     when(resolver.resolve("openai")).thenReturn(client);
     when(resolver.isProviderAvailable("openai")).thenReturn(true);
+    when(resolver.listAvailableClients()).thenReturn(List.of("openai"));
     return new AgentInvoker(
         repo,
         resolver,
@@ -488,6 +843,32 @@ class AgentInvokerTest {
 
   private static AgentDefinition agentSupportingOnlyComplete() {
     return agentSupportingOnlyCompleteWithBody("sys");
+  }
+
+  private static LlmExecutionResponse llmResponse(String text) {
+    return new LlmExecutionResponse(text, null);
+  }
+
+  private static byte[] layerPrefixBytes(String systemPrompt, int endOffset) {
+    return slicePrefix(systemPrompt.getBytes(StandardCharsets.UTF_8), endOffset);
+  }
+
+  private static byte[] slicePrefix(byte[] bytes, int endOffset) {
+    return Arrays.copyOfRange(bytes, 0, endOffset);
+  }
+
+  private static int layerSeparatorCount(String text) {
+    String layerSeparator = System.lineSeparator() + System.lineSeparator();
+    int count = 0;
+    int from = 0;
+    while (true) {
+      int idx = text.indexOf(layerSeparator, from);
+      if (idx < 0) {
+        return count;
+      }
+      count++;
+      from = idx + layerSeparator.length();
+    }
   }
 
   private static AgentDefinition agentSupportingOnlyCompleteWithBody(String systemPrompt) {

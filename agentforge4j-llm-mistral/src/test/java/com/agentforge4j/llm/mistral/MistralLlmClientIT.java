@@ -1,10 +1,7 @@
 package com.agentforge4j.llm.mistral;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
-
-import com.agentforge4j.llm.LlmExecutionRequest;
-import com.agentforge4j.llm.LlmInvocationException;
+import com.agentforge4j.llm.api.LlmExecutionRequest;
+import com.agentforge4j.llm.api.LlmInvocationException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.ByteArrayOutputStream;
@@ -18,9 +15,12 @@ import java.nio.charset.StandardCharsets;
 import java.util.Locale;
 import org.junit.jupiter.api.Test;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
 /**
- * Integration tests for {@link MistralLlmClient} using a local loopback HTTP server and the real JDK
- * {@link java.net.http.HttpClient} stack (no mocks, no external providers).
+ * Integration tests for {@link MistralLlmClient} using a local loopback HTTP server and the real
+ * JDK {@link java.net.http.HttpClient} stack (no mocks, no external providers).
  */
 class MistralLlmClientIT {
 
@@ -113,9 +113,9 @@ class MistralLlmClientIT {
           remaining -= r;
           captured.write(buf, 0, r);
         }
-        return new String(captured.toByteArray(), StandardCharsets.UTF_8);
+        return captured.toString(StandardCharsets.UTF_8);
       }
-      return new String(captured.toByteArray(), StandardCharsets.UTF_8);
+      return captured.toString(StandardCharsets.UTF_8);
     }
 
     @Override
@@ -153,9 +153,10 @@ class MistralLlmClientIT {
       LlmExecutionRequest request =
           LlmExecutionRequest.withDefaultModel("mistral", "You are helpful.", "Say hi.");
 
-      String result = client.execute(request);
+      var response = client.execute(request);
 
-      assertThat(result).isEqualTo("hello from fake mistral");
+      assertThat(response.text()).isEqualTo("hello from fake mistral");
+      assertThat(response.tokenUsage()).isNull();
       String raw = http.capturedRawRequest();
       assertThat(raw).contains("POST /v1/chat/completions ");
       assertThat(raw.toLowerCase(Locale.ROOT)).contains("authorization: bearer it-secret-key");
@@ -168,7 +169,8 @@ class MistralLlmClientIT {
       assertThat(tree.path("model").asText()).isEqualTo("mistral-small-latest");
       assertThat(tree.path("messages")).hasSize(2);
       assertThat(tree.path("messages").path(0).path("role").asText()).isEqualTo("system");
-      assertThat(tree.path("messages").path(0).path("content").asText()).isEqualTo("You are helpful.");
+      assertThat(tree.path("messages").path(0).path("content").asText()).isEqualTo(
+          "You are helpful.");
       assertThat(tree.path("messages").path(1).path("role").asText()).isEqualTo("user");
       assertThat(tree.path("messages").path(1).path("content").asText()).isEqualTo("Say hi.");
     }
@@ -177,21 +179,23 @@ class MistralLlmClientIT {
   @Test
   void execute_matches_request_provider_case_insensitively() throws Exception {
     ObjectMapper mapper = new ObjectMapper();
-    try (CapturingOneShotHttpServer http = new CapturingOneShotHttpServer(200, validCompletionJson("pong"))) {
+    try (CapturingOneShotHttpServer http = new CapturingOneShotHttpServer(200,
+        validCompletionJson("pong"))) {
       var config = FixedMistralConfiguration.builder()
           .baseUrl(http.baseUrl().toString())
           .build();
       MistralLlmClient client = new MistralLlmClient(mapper, config);
       LlmExecutionRequest request = new LlmExecutionRequest("MISTRAL", null, "system", "user");
 
-      assertThat(client.execute(request)).isEqualTo("pong");
+      assertThat(client.execute(request).text()).isEqualTo("pong");
     }
   }
 
   @Test
   void execute_throws_llm_invocation_exception_on_non_2xx_status() throws Exception {
     ObjectMapper mapper = new ObjectMapper();
-    try (CapturingOneShotHttpServer http = new CapturingOneShotHttpServer(503, "upstream unavailable")) {
+    try (CapturingOneShotHttpServer http = new CapturingOneShotHttpServer(503,
+        "upstream unavailable")) {
       var config = FixedMistralConfiguration.builder()
           .baseUrl(http.baseUrl().toString())
           .build();
@@ -230,7 +234,8 @@ class MistralLlmClientIT {
   @Test
   void execute_throws_when_http_200_but_json_is_not_object() throws Exception {
     ObjectMapper mapper = new ObjectMapper();
-    try (CapturingOneShotHttpServer http = new CapturingOneShotHttpServer(200, "\"not-an-object\"")) {
+    try (CapturingOneShotHttpServer http = new CapturingOneShotHttpServer(200,
+        "\"not-an-object\"")) {
       var config = FixedMistralConfiguration.builder()
           .baseUrl(http.baseUrl().toString())
           .build();

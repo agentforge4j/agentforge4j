@@ -1,12 +1,18 @@
 package com.agentforge4j.llm;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
-
+import com.agentforge4j.llm.api.LlmClient;
+import com.agentforge4j.llm.api.LlmExecutionRequest;
+import com.agentforge4j.llm.api.LlmExecutionResponse;
+import com.agentforge4j.llm.api.LlmInvocationException;
+import com.agentforge4j.llm.api.LlmRetryPolicy;
+import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class RetryingLlmClientResolverTest {
 
@@ -34,7 +40,7 @@ class RetryingLlmClientResolverTest {
     }
 
     @Override
-    public String execute(LlmExecutionRequest request) {
+    public LlmExecutionResponse execute(LlmExecutionRequest request) {
       executeCalls.incrementAndGet();
       throw new LlmInvocationException("down", 503);
     }
@@ -63,6 +69,11 @@ class RetryingLlmClientResolverTest {
     public boolean isProviderAvailable(String provider) {
       return true;
     }
+
+    @Override
+    public List<String> listAvailableClients() {
+      return List.of(innerClient.getProviderName());
+    }
   }
 
   static class TestLlmClientResolver implements LlmClientResolver {
@@ -81,6 +92,11 @@ class RetryingLlmClientResolverTest {
     @Override
     public boolean isProviderAvailable(String provider) {
       return provider.equals(client.getProviderName());
+    }
+
+    @Override
+    public List<String> listAvailableClients() {
+      return List.of(client.getProviderName());
     }
   }
 
@@ -223,6 +239,11 @@ class RetryingLlmClientResolverTest {
         public boolean isProviderAvailable(String provider) {
           return false;
         }
+
+        @Override
+        public List<String> listAvailableClients() {
+          return List.of();
+        }
       };
       RetryingLlmClientResolver resolver =
           new RetryingLlmClientResolver(delegate, new LlmRetryPolicy(2, 1L, 6L, 0L));
@@ -249,11 +270,11 @@ class RetryingLlmClientResolverTest {
     }
 
     @Override
-    public String execute(LlmExecutionRequest request) {
+    public LlmExecutionResponse execute(LlmExecutionRequest request) {
       if (exceptionToThrow != null) {
         throw exceptionToThrow;
       }
-      return response;
+      return new LlmExecutionResponse(response, null);
     }
   }
 }

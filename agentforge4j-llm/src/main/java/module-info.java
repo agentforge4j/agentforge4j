@@ -9,6 +9,7 @@ import com.agentforge4j.llm.LlmClientFactory;
  * factories. Model text does not substitute for engine-owned workflow control where that applies.
  */
 module agentforge4j.llm {
+  requires transitive agentforge4j.llm.api;
   requires com.fasterxml.jackson.databind;
   requires org.apache.commons.lang3;
   requires java.net.http;

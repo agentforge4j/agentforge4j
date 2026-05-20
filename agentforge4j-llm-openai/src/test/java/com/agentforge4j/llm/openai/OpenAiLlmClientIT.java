@@ -1,7 +1,7 @@
 package com.agentforge4j.llm.openai;
 
-import com.agentforge4j.llm.LlmExecutionRequest;
-import com.agentforge4j.llm.LlmInvocationException;
+import com.agentforge4j.llm.api.LlmExecutionRequest;
+import com.agentforge4j.llm.api.LlmInvocationException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -18,8 +18,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
- * End-to-end tests for {@link OpenAiLlmClient} using a local loopback HTTP server (no mocks, no
- * API keys, no external network).
+ * End-to-end tests for {@link OpenAiLlmClient} using a local loopback HTTP server (no mocks, no API
+ * keys, no external network).
  */
 class OpenAiLlmClientIT {
 
@@ -156,7 +156,7 @@ class OpenAiLlmClientIT {
           captured.write(buf, 0, r);
           remaining -= r;
         }
-        return new String(captured.toByteArray(), StandardCharsets.UTF_8);
+        return captured.toString(StandardCharsets.UTF_8);
       }
       return "";
     }
@@ -181,7 +181,9 @@ class OpenAiLlmClientIT {
       LlmExecutionRequest request =
           LlmExecutionRequest.withDefaultModel("openai", "system", "user");
 
-      assertThat(client.execute(request)).isEqualTo("Hello from OpenAI");
+      var response = client.execute(request);
+      assertThat(response.text()).isEqualTo("Hello from OpenAI");
+      assertThat(response.tokenUsage()).isNull();
     }
   }
 
@@ -195,7 +197,7 @@ class OpenAiLlmClientIT {
       LlmExecutionRequest request =
           new LlmExecutionRequest("OPENAI", null, "system", "user");
 
-      assertThat(client.execute(request)).isEqualTo("Hello from OpenAI");
+      assertThat(client.execute(request).text()).isEqualTo("Hello from OpenAI");
     }
   }
 
@@ -311,5 +313,4 @@ class OpenAiLlmClientIT {
       assertThat(captured.get()).contains("\"model\":\"explicit-model\"");
     }
   }
-
 }

@@ -1,7 +1,8 @@
 package com.agentforge4j.llm.openaicompatible;
 
-import com.agentforge4j.llm.LlmExecutionRequest;
-import com.agentforge4j.llm.LlmInvocationException;
+import com.agentforge4j.llm.api.LlmExecutionRequest;
+import com.agentforge4j.llm.api.LlmInvocationException;
+import com.agentforge4j.llm.api.PromptLayerBoundaries;
 import com.agentforge4j.llm.openaicompatible.dto.InputRole;
 import com.agentforge4j.llm.openaicompatible.dto.OpenAiCompatibleInputItem;
 import com.agentforge4j.llm.openaicompatible.dto.OpenAiCompatibleResponsesRequest;
@@ -320,6 +321,39 @@ class OpenAiCompatibleLlmClientTest {
       String body = collectUtf8RequestBody(client.buildHttpRequest(request));
 
       assertThat(mapper.readTree(body).path("model").asText()).isEqualTo("explicit-model");
+    }
+  }
+
+  @Nested
+  class PromptCacheConformanceTests {
+
+    @Test
+    void shouldProduceDeterministicRequestBodyForIdenticalInput() throws Exception {
+      ObjectMapper mapper = new ObjectMapper();
+      OpenAiCompatibleLlmClient client =
+          new OpenAiCompatibleLlmClient(mapper, FixedOpenAiCompatibleConfiguration.defaults());
+      LlmExecutionRequest request =
+          LlmExecutionRequest.withDefaultModel("openai-compatible", "sys", "usr");
+
+      String first = collectUtf8RequestBody(client.buildHttpRequest(request));
+      String second = collectUtf8RequestBody(client.buildHttpRequest(request));
+
+      assertThat(first).isEqualTo(second);
+    }
+
+    @Test
+    void shouldOmitExplicitCacheMarkersWhenBoundariesPresent() throws Exception {
+      ObjectMapper mapper = new ObjectMapper();
+      OpenAiCompatibleLlmClient client =
+          new OpenAiCompatibleLlmClient(mapper, FixedOpenAiCompatibleConfiguration.defaults());
+      PromptLayerBoundaries boundaries = new PromptLayerBoundaries(100, 200, null);
+      LlmExecutionRequest request = new LlmExecutionRequest(
+          "openai-compatible", "m", "system prompt", "user", null, boundaries);
+
+      String body = collectUtf8RequestBody(client.buildHttpRequest(request));
+
+      assertThat(body).doesNotContain("cache_control");
+      assertThat(body).doesNotContain("cachePoint");
     }
   }
 

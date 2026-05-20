@@ -1,7 +1,8 @@
 package com.agentforge4j.llm.openai;
 
-import com.agentforge4j.llm.LlmExecutionRequest;
-import com.agentforge4j.llm.LlmInvocationException;
+import com.agentforge4j.llm.api.LlmExecutionRequest;
+import com.agentforge4j.llm.api.LlmInvocationException;
+import com.agentforge4j.llm.api.PromptLayerBoundaries;
 import com.agentforge4j.llm.openai.dto.InputItem;
 import com.agentforge4j.llm.openai.dto.InputRole;
 import com.agentforge4j.llm.openai.dto.OpenAiResponsesRequestDto;
@@ -344,7 +345,8 @@ class OpenAiLlmClientTest {
       HttpRequest httpRequest = client.buildHttpRequest(request);
 
       assertThat(httpRequest.headers().firstValue("Content-Type")).contains("application/json");
-      assertThat(httpRequest.headers().firstValue("Authorization")).contains("Bearer secret-key-123");
+      assertThat(httpRequest.headers().firstValue("Authorization")).contains(
+          "Bearer secret-key-123");
     }
 
     @Test
@@ -380,6 +382,36 @@ class OpenAiLlmClientTest {
       String body = collectUtf8RequestBody(client.buildHttpRequest(request));
 
       assertThat(mapper.readTree(body).path("model").asText()).isEqualTo("explicit-model");
+    }
+  }
+
+  @Nested
+  class PromptCacheConformanceTests {
+
+    @Test
+    void shouldProduceDeterministicRequestBodyForIdenticalInput() throws Exception {
+      ObjectMapper mapper = new ObjectMapper();
+      OpenAiLlmClient client = new OpenAiLlmClient(mapper, FixedOpenAiConfiguration.defaults());
+      LlmExecutionRequest request = LlmExecutionRequest.withDefaultModel("openai", "sys", "usr");
+
+      String first = collectUtf8RequestBody(client.buildHttpRequest(request));
+      String second = collectUtf8RequestBody(client.buildHttpRequest(request));
+
+      assertThat(first).isEqualTo(second);
+    }
+
+    @Test
+    void shouldOmitExplicitCacheMarkersWhenBoundariesPresent() throws Exception {
+      ObjectMapper mapper = new ObjectMapper();
+      OpenAiLlmClient client = new OpenAiLlmClient(mapper, FixedOpenAiConfiguration.defaults());
+      PromptLayerBoundaries boundaries = new PromptLayerBoundaries(100, 200, null);
+      LlmExecutionRequest request = new LlmExecutionRequest(
+          "openai", "m", "system prompt", "user", null, boundaries);
+
+      String body = collectUtf8RequestBody(client.buildHttpRequest(request));
+
+      assertThat(body).doesNotContain("cache_control");
+      assertThat(body).doesNotContain("cachePoint");
     }
   }
 

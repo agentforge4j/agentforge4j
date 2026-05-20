@@ -1,59 +1,36 @@
 package com.agentforge4j.llm.ollama;
 
-import org.junit.jupiter.api.Nested;
-import org.junit.jupiter.api.Test;
-
-import com.agentforge4j.llm.LlmExecutionRequest;
-import com.agentforge4j.llm.LlmInvocationException;
+import com.agentforge4j.llm.api.LlmExecutionRequest;
+import com.agentforge4j.llm.api.LlmInvocationException;
+import com.agentforge4j.llm.api.PromptLayerBoundaries;
 import com.fasterxml.jackson.databind.ObjectMapper;
-
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.net.http.HttpRequest;
+import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Flow;
+import java.util.concurrent.TimeUnit;
+import org.junit.jupiter.api.Nested;
+import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class OllamaLlmClientTest {
 
-  static class TestOllamaConfiguration implements OllamaConfiguration {
-    private final String url;
-    private final Duration requestTimeout;
-    private final String defaultModel;
-
-    TestOllamaConfiguration(String url, Duration requestTimeout, String defaultModel) {
-      this.url = url;
-      this.requestTimeout = requestTimeout;
-      this.defaultModel = defaultModel;
-    }
+  record TestOllamaConfiguration(String getUrl, Duration getRequestTimeout,
+                                 String getDefaultModel) implements OllamaConfiguration {
 
     TestOllamaConfiguration() {
       this("http://localhost:11434/api/chat", Duration.ofSeconds(30), "llama2");
     }
 
     @Override
-    public String getProviderName() {
-      return "ollama";
-    }
-
-    @Override
-    public String getDefaultModel() {
-      return defaultModel;
-    }
-
-    @Override
     public Duration getConnectTimeout() {
       return Duration.ofSeconds(10);
-    }
-
-    @Override
-    public Duration getRequestTimeout() {
-      return requestTimeout;
-    }
-
-    @Override
-    public String getUrl() {
-      return url;
     }
   }
 
@@ -89,7 +66,8 @@ class OllamaLlmClientTest {
 
     @Test
     void shouldThrowWhenUrlBlank() {
-      OllamaConfiguration config = new TestOllamaConfiguration("", Duration.ofSeconds(30), "llama2");
+      OllamaConfiguration config = new TestOllamaConfiguration("", Duration.ofSeconds(30),
+          "llama2");
       ObjectMapper mapper = new ObjectMapper();
 
       assertThatThrownBy(() -> new OllamaLlmClient(mapper, config))
@@ -99,7 +77,8 @@ class OllamaLlmClientTest {
 
     @Test
     void shouldThrowWhenDefaultModelBlank() {
-      OllamaConfiguration config = new TestOllamaConfiguration("http://localhost:11434/api/chat", Duration.ofSeconds(30), "");
+      OllamaConfiguration config = new TestOllamaConfiguration("http://localhost:11434/api/chat",
+          Duration.ofSeconds(30), "");
       ObjectMapper mapper = new ObjectMapper();
 
       assertThatThrownBy(() -> new OllamaLlmClient(mapper, config))
@@ -177,7 +156,8 @@ class OllamaLlmClientTest {
       OllamaConfiguration config = new TestOllamaConfiguration();
       ObjectMapper mapper = new ObjectMapper();
       OllamaLlmClient client = new OllamaLlmClient(mapper, config);
-      LlmExecutionRequest request = LlmExecutionRequest.withDefaultModel("ollama", "system prompt", "user input");
+      LlmExecutionRequest request = LlmExecutionRequest.withDefaultModel("ollama", "system prompt",
+          "user input");
 
       HttpRequest httpRequest = client.buildHttpRequest(request);
 
@@ -190,7 +170,8 @@ class OllamaLlmClientTest {
       OllamaConfiguration config = new TestOllamaConfiguration();
       ObjectMapper mapper = new ObjectMapper();
       OllamaLlmClient client = new OllamaLlmClient(mapper, config);
-      LlmExecutionRequest request = LlmExecutionRequest.withDefaultModel("ollama", "system prompt", "user input");
+      LlmExecutionRequest request = LlmExecutionRequest.withDefaultModel("ollama", "system prompt",
+          "user input");
 
       HttpRequest httpRequest = client.buildHttpRequest(request);
 
@@ -205,7 +186,8 @@ class OllamaLlmClientTest {
           new TestOllamaConfiguration("http://localhost:11434/api/chat", shortTimeout, "llama2");
       ObjectMapper mapper = new ObjectMapper();
       OllamaLlmClient client = new OllamaLlmClient(mapper, config);
-      LlmExecutionRequest request = LlmExecutionRequest.withDefaultModel("ollama", "system prompt", "user input");
+      LlmExecutionRequest request = LlmExecutionRequest.withDefaultModel("ollama", "system prompt",
+          "user input");
 
       HttpRequest httpRequest = client.buildHttpRequest(request);
 
@@ -234,9 +216,44 @@ class OllamaLlmClientTest {
       OllamaLlmClient client = new OllamaLlmClient(mapper, config);
 
       assertThatThrownBy(
-          () -> client.execute(LlmExecutionRequest.withDefaultModel("openai", "system prompt", "user input")))
+          () -> client.execute(
+              LlmExecutionRequest.withDefaultModel("openai", "system prompt", "user input")))
           .isInstanceOf(IllegalArgumentException.class)
           .hasMessageContaining("does not match");
+    }
+  }
+
+  @Nested
+  class PromptCacheConformanceTests {
+
+    @Test
+    void shouldProduceIdenticalRequestBodyRegardlessOfBoundaries() throws Exception {
+      ObjectMapper mapper = new ObjectMapper();
+      OllamaLlmClient client = new OllamaLlmClient(mapper, new TestOllamaConfiguration());
+      LlmExecutionRequest withoutBoundaries =
+          new LlmExecutionRequest("ollama", "llama2", "system", "user");
+      PromptLayerBoundaries boundaries = new PromptLayerBoundaries(50, 100, null);
+      LlmExecutionRequest withBoundaries = new LlmExecutionRequest(
+          "ollama", "llama2", "system", "user", null, boundaries);
+
+      String withoutBody = collectUtf8RequestBody(client.buildHttpRequest(withoutBoundaries));
+      String withBody = collectUtf8RequestBody(client.buildHttpRequest(withBoundaries));
+
+      assertThat(withBody).isEqualTo(withoutBody);
+    }
+
+    @Test
+    void shouldOmitExplicitCacheMarkersWhenBoundariesPresent() throws Exception {
+      ObjectMapper mapper = new ObjectMapper();
+      OllamaLlmClient client = new OllamaLlmClient(mapper, new TestOllamaConfiguration());
+      PromptLayerBoundaries boundaries = new PromptLayerBoundaries(100, 200, null);
+      LlmExecutionRequest request = new LlmExecutionRequest(
+          "ollama", "llama2", "system", "user", null, boundaries);
+
+      String body = collectUtf8RequestBody(client.buildHttpRequest(request));
+
+      assertThat(body).doesNotContain("cache_control");
+      assertThat(body).doesNotContain("cachePoint");
     }
   }
 
@@ -252,6 +269,38 @@ class OllamaLlmClientTest {
       assertThatThrownBy(() -> client.validateAndExtractResponse("{ not valid json"))
           .isInstanceOf(java.io.IOException.class);
     }
+  }
+
+  private static String collectUtf8RequestBody(HttpRequest request) throws Exception {
+    assertThat(request.bodyPublisher()).isPresent();
+    HttpRequest.BodyPublisher publisher = request.bodyPublisher().orElseThrow();
+    var out = new ByteArrayOutputStream();
+    var latch = new CountDownLatch(1);
+    publisher.subscribe(new Flow.Subscriber<ByteBuffer>() {
+      @Override
+      public void onSubscribe(Flow.Subscription s) {
+        s.request(Long.MAX_VALUE);
+      }
+
+      @Override
+      public void onNext(ByteBuffer b) {
+        byte[] chunk = new byte[b.remaining()];
+        b.get(chunk);
+        out.writeBytes(chunk);
+      }
+
+      @Override
+      public void onError(Throwable t) {
+        latch.countDown();
+      }
+
+      @Override
+      public void onComplete() {
+        latch.countDown();
+      }
+    });
+    assertThat(latch.await(5, TimeUnit.SECONDS)).as("body publisher should complete").isTrue();
+    return out.toString(StandardCharsets.UTF_8);
   }
 }
 

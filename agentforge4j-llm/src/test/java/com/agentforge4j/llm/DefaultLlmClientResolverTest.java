@@ -1,16 +1,19 @@
 package com.agentforge4j.llm;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
-
+import com.agentforge4j.llm.api.LlmClient;
+import com.agentforge4j.llm.api.LlmExecutionRequest;
+import com.agentforge4j.llm.api.LlmExecutionResponse;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class DefaultLlmClientResolverTest {
 
@@ -71,8 +74,8 @@ class DefaultLlmClientResolverTest {
         }
 
         @Override
-        public String execute(LlmExecutionRequest request) {
-          return "";
+        public LlmExecutionResponse execute(LlmExecutionRequest request) {
+          return new LlmExecutionResponse("", null);
         }
       };
       Collection<LlmClient> clients = List.of(badClient);

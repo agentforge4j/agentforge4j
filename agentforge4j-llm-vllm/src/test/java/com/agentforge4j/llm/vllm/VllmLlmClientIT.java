@@ -1,8 +1,8 @@
 package com.agentforge4j.llm.vllm;
 
 import com.agentforge4j.llm.LlmClientFactory;
-import com.agentforge4j.llm.LlmExecutionRequest;
-import com.agentforge4j.llm.LlmInvocationException;
+import com.agentforge4j.llm.api.LlmExecutionRequest;
+import com.agentforge4j.llm.api.LlmInvocationException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
@@ -34,7 +34,8 @@ class VllmLlmClientIT {
 
   @Test
   void should_return_assistant_text_on_successful_http_response() throws Exception {
-    try (VllmLoopbackHttpServer http = new VllmLoopbackHttpServer(200, VALID_CHAT_COMPLETIONS_JSON)) {
+    try (VllmLoopbackHttpServer http = new VllmLoopbackHttpServer(200,
+        VALID_CHAT_COMPLETIONS_JSON)) {
       var config = FixedVllmConfiguration.builder()
           .url(http.baseUri().toString())
           .build();
@@ -42,13 +43,16 @@ class VllmLlmClientIT {
       LlmExecutionRequest request =
           LlmExecutionRequest.withDefaultModel("vllm", "system", "user");
 
-      assertThat(client.execute(request)).isEqualTo("Hello from loopback");
+      var response = client.execute(request);
+      assertThat(response.text()).isEqualTo("Hello from loopback");
+      assertThat(response.tokenUsage()).isNull();
     }
   }
 
   @Test
   void should_match_request_provider_case_insensitively() throws Exception {
-    try (VllmLoopbackHttpServer http = new VllmLoopbackHttpServer(200, VALID_CHAT_COMPLETIONS_JSON)) {
+    try (VllmLoopbackHttpServer http = new VllmLoopbackHttpServer(200,
+        VALID_CHAT_COMPLETIONS_JSON)) {
       var config = FixedVllmConfiguration.builder()
           .url(http.baseUri().toString())
           .build();
@@ -56,7 +60,7 @@ class VllmLlmClientIT {
       LlmExecutionRequest request =
           new LlmExecutionRequest("VLLM", null, "system", "user");
 
-      assertThat(client.execute(request)).isEqualTo("Hello from loopback");
+      assertThat(client.execute(request).text()).isEqualTo("Hello from loopback");
     }
   }
 
@@ -266,7 +270,8 @@ class VllmLlmClientIT {
 
   @Test
   void factory_created_client_should_execute_against_loopback() throws Exception {
-    try (VllmLoopbackHttpServer http = new VllmLoopbackHttpServer(200, VALID_CHAT_COMPLETIONS_JSON)) {
+    try (VllmLoopbackHttpServer http = new VllmLoopbackHttpServer(200,
+        VALID_CHAT_COMPLETIONS_JSON)) {
       var config = FixedVllmConfiguration.builder()
           .url(http.baseUri().toString())
           .build();
@@ -274,7 +279,7 @@ class VllmLlmClientIT {
       LlmExecutionRequest request =
           LlmExecutionRequest.withDefaultModel("vllm", "system", "user");
 
-      assertThat(client.execute(request)).isEqualTo("Hello from loopback");
+      assertThat(client.execute(request).text()).isEqualTo("Hello from loopback");
     }
   }
 

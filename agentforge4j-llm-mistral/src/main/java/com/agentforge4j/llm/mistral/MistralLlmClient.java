@@ -1,9 +1,9 @@
 package com.agentforge4j.llm.mistral;
 
 import com.agentforge4j.llm.AbstractHttpLlmClient;
-import com.agentforge4j.llm.LlmClient;
-import com.agentforge4j.llm.LlmExecutionRequest;
-import com.agentforge4j.llm.LlmInvocationException;
+import com.agentforge4j.llm.api.LlmClient;
+import com.agentforge4j.llm.api.LlmExecutionRequest;
+import com.agentforge4j.llm.api.LlmInvocationException;
 import com.agentforge4j.llm.mistral.dto.InputRole;
 import com.agentforge4j.llm.mistral.dto.MistralChatRequest;
 import com.agentforge4j.llm.mistral.dto.MistralChatResponse;
@@ -34,10 +34,10 @@ public final class MistralLlmClient extends AbstractHttpLlmClient {
    * Creates a new Mistral client.
    *
    * @param objectMapper Jackson {@code ObjectMapper} for JSON serialization and deserialization;
-   *        must not be null
-   * @param config Mistral-specific configuration; must not be null
-   * @throws IllegalArgumentException if {@code objectMapper} is null, the API key is blank, or
-   *         the base URL is blank
+   *                     must not be null
+   * @param config       Mistral-specific configuration; must not be null
+   * @throws IllegalArgumentException if {@code objectMapper} is null, the API key is blank, or the
+   *                                  base URL is blank
    */
   public MistralLlmClient(ObjectMapper objectMapper, MistralConfiguration config) {
     super(config);

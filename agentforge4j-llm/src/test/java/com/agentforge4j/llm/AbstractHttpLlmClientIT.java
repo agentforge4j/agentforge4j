@@ -1,8 +1,8 @@
 package com.agentforge4j.llm;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
-
+import com.agentforge4j.llm.api.LlmExecutionRequest;
+import com.agentforge4j.llm.api.LlmExecutionResponse;
+import com.agentforge4j.llm.api.LlmInvocationException;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -10,10 +10,13 @@ import java.io.OutputStream;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.net.URI;
+import java.net.http.HttpRequest;
 import java.nio.charset.StandardCharsets;
 import java.util.Locale;
-import java.net.http.HttpRequest;
 import org.junit.jupiter.api.Test;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
  * Integration tests for {@link AbstractHttpLlmClient} using a local loopback HTTP server and the
@@ -162,9 +165,10 @@ class AbstractHttpLlmClientIT {
       LlmExecutionRequest request =
           LlmExecutionRequest.withDefaultModel("openai", "system", "user");
 
-      String result = client.execute(request);
+      LlmExecutionResponse result = client.execute(request);
 
-      assertThat(result).isEqualTo("{\"reply\":\"ok\"}");
+      assertThat(result.text()).isEqualTo("{\"reply\":\"ok\"}");
+      assertThat(result.tokenUsage()).isNull();
     }
   }
 
@@ -177,7 +181,7 @@ class AbstractHttpLlmClientIT {
       LlmExecutionRequest request =
           new LlmExecutionRequest("OPENAI", null, "system", "user");
 
-      assertThat(client.execute(request)).isEqualTo("pong");
+      assertThat(client.execute(request).text()).isEqualTo("pong");
     }
   }
 
@@ -241,7 +245,7 @@ class AbstractHttpLlmClientIT {
       LlmExecutionRequest request =
           LlmExecutionRequest.withDefaultModel("openai", "system", "user");
 
-      assertThat(client.execute(request)).isEmpty();
+      assertThat(client.execute(request).text()).isEmpty();
     }
   }
 }

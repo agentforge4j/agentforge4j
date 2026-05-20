@@ -1,27 +1,28 @@
 package com.agentforge4j.llm.mistral;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
-
-import com.agentforge4j.llm.LlmClient;
 import com.agentforge4j.llm.LlmClientConfiguration;
-import com.agentforge4j.llm.LlmExecutionRequest;
-import com.agentforge4j.llm.LlmInvocationException;
+import com.agentforge4j.llm.api.LlmClient;
+import com.agentforge4j.llm.api.LlmExecutionRequest;
+import com.agentforge4j.llm.api.LlmInvocationException;
+import com.agentforge4j.llm.api.PromptLayerBoundaries;
 import com.fasterxml.jackson.databind.JsonMappingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.exc.UnrecognizedPropertyException;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.io.ByteArrayOutputStream;
+import java.net.http.HttpRequest;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Flow;
 import java.util.concurrent.TimeUnit;
-import java.net.http.HttpRequest;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class MistralLlmClientTest {
 
@@ -320,7 +321,8 @@ class MistralLlmClientTest {
 
       HttpRequest httpRequest = client.buildHttpRequest(request);
 
-      assertThat(httpRequest.uri().toString()).isEqualTo("https://api.mistral.ai/v1/chat/completions");
+      assertThat(httpRequest.uri().toString()).isEqualTo(
+          "https://api.mistral.ai/v1/chat/completions");
       assertThat(httpRequest.method()).isEqualTo("POST");
       assertThat(httpRequest.timeout()).contains(Duration.ofSeconds(30));
     }
@@ -365,7 +367,8 @@ class MistralLlmClientTest {
       HttpRequest httpRequest = client.buildHttpRequest(request);
 
       assertThat(httpRequest.headers().firstValue("Content-Type")).contains("application/json");
-      assertThat(httpRequest.headers().firstValue("Authorization")).contains("Bearer sk-mistral-secret");
+      assertThat(httpRequest.headers().firstValue("Authorization")).contains(
+          "Bearer sk-mistral-secret");
     }
 
     @Test
@@ -471,6 +474,36 @@ class MistralLlmClientTest {
       assertThatThrownBy(() -> client.execute(null))
           .isInstanceOf(IllegalArgumentException.class)
           .hasMessageContaining("Request must not be null");
+    }
+  }
+
+  @Nested
+  class PromptCacheConformanceTests {
+
+    @Test
+    void shouldProduceDeterministicRequestBodyForIdenticalInput() throws Exception {
+      ObjectMapper mapper = new ObjectMapper();
+      MistralLlmClient client = new MistralLlmClient(mapper, FixedMistralConfiguration.defaults());
+      LlmExecutionRequest request = LlmExecutionRequest.withDefaultModel("mistral", "sys", "usr");
+
+      String first = collectUtf8RequestBody(client.buildHttpRequest(request));
+      String second = collectUtf8RequestBody(client.buildHttpRequest(request));
+
+      assertThat(first).isEqualTo(second);
+    }
+
+    @Test
+    void shouldOmitExplicitCacheMarkersWhenBoundariesPresent() throws Exception {
+      ObjectMapper mapper = new ObjectMapper();
+      MistralLlmClient client = new MistralLlmClient(mapper, FixedMistralConfiguration.defaults());
+      PromptLayerBoundaries boundaries = new PromptLayerBoundaries(100, 200, null);
+      LlmExecutionRequest request = new LlmExecutionRequest(
+          "mistral", "m", "system prompt", "user", null, boundaries);
+
+      String body = collectUtf8RequestBody(client.buildHttpRequest(request));
+
+      assertThat(body).doesNotContain("cache_control");
+      assertThat(body).doesNotContain("cachePoint");
     }
   }
 

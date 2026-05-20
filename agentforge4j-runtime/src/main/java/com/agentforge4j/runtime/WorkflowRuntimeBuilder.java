@@ -1,9 +1,5 @@
 package com.agentforge4j.runtime;
 
-import static com.agentforge4j.runtime.command.FileSink.NO_OP_FILE_SINK;
-import static com.agentforge4j.runtime.command.ShellCommandRunner.NO_OP_SHELL_COMMAND_RUNNER;
-
-import com.agentforge4j.core.agent.AgentRepository;
 import com.agentforge4j.core.command.LlmCommand;
 import com.agentforge4j.core.runtime.WorkflowRuntime;
 import com.agentforge4j.core.workflow.event.WorkflowEventLog;
@@ -12,7 +8,6 @@ import com.agentforge4j.core.workflow.repository.WorkflowStateRepository;
 import com.agentforge4j.core.workflow.step.behaviour.StepBehaviour;
 import com.agentforge4j.integrations.IntegrationRegistry;
 import com.agentforge4j.integrations.NoOpIntegrationRegistry;
-import com.agentforge4j.llm.LlmClientResolver;
 import com.agentforge4j.runtime.command.CommandApplier;
 import com.agentforge4j.runtime.command.CommandHandler;
 import com.agentforge4j.runtime.command.FileSink;
@@ -49,22 +44,22 @@ import com.agentforge4j.runtime.execution.loop.FixedCountLoopStrategy;
 import com.agentforge4j.runtime.execution.loop.ForEachLoopStrategy;
 import com.agentforge4j.runtime.execution.loop.MaxIterationsHandler;
 import com.agentforge4j.runtime.llm.AgentInvoker;
-import com.agentforge4j.runtime.llm.ContextRenderer;
-import com.agentforge4j.runtime.llm.LlmCommandParser;
 import com.agentforge4j.util.Validate;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.Clock;
 import java.util.List;
+
+import static com.agentforge4j.runtime.command.FileSink.NO_OP_FILE_SINK;
+import static com.agentforge4j.runtime.command.ShellCommandRunner.NO_OP_SHELL_COMMAND_RUNNER;
 
 /**
  * Fluent builder that wires a {@link DefaultWorkflowRuntime} with the canonical executor graph,
  * behaviour handlers, loop strategies, and command handlers.
  *
- * <p>Required collaborators are repositories, the LLM resolver, {@link FileSink},
+ * <p>Required collaborators are repositories, a pre-built {@link AgentInvoker}, {@link FileSink},
  * {@link ShellCommandRunner}, and {@link com.agentforge4j.integrations.IntegrationRegistry}.
- * {@link ObjectMapper}, {@link java.time.Clock}, {@link LoopEvaluator}, and
- * {@link RunContextManager} default when omitted. A {@link com.agentforge4j.schema.SchemaProvider}
- * may be configured but is not read by the current {@link #build()} implementation.
+ * {@link java.time.Clock}, {@link LoopEvaluator}, and {@link RunContextManager} default when
+ * omitted. A {@link com.agentforge4j.schema.SchemaProvider} may be configured but is not read by
+ * the current {@link #build()} implementation.
  *
  * <p>Public construction path for {@link com.agentforge4j.core.runtime.WorkflowRuntime};
  * {@link DefaultWorkflowRuntime} constructors stay package-private because they accept non-exported
@@ -73,11 +68,8 @@ import java.util.List;
 public final class WorkflowRuntimeBuilder {
 
   private WorkflowRepository workflowRepository;
-  private AgentRepository agentRepository;
   private WorkflowStateRepository workflowStateRepository;
   private WorkflowEventLog workflowEventLog;
-  private LlmClientResolver llmClientResolver;
-  private ObjectMapper objectMapper;
   private Clock clock;
   private FileSink fileSink;
   private ShellCommandRunner shellCommandRunner;
@@ -85,6 +77,7 @@ public final class WorkflowRuntimeBuilder {
   private LoopEvaluator loopEvaluator;
   private RunContextManager runContextManager = RunContextManager.NO_OP;
   private int maxNestingDepth = DefaultWorkflowRuntime.DEFAULT_MAX_NESTING_DEPTH;
+  private AgentInvoker agentInvoker;
 
   /**
    * Configures the workflow definition source.
@@ -94,17 +87,6 @@ public final class WorkflowRuntimeBuilder {
    */
   public WorkflowRuntimeBuilder workflowRepository(WorkflowRepository value) {
     this.workflowRepository = Validate.notNull(value, "workflowRepository must not be null");
-    return this;
-  }
-
-  /**
-   * Configures the agent definition source used when resolving agents for steps.
-   *
-   * @param value repository instance
-   * @return this builder
-   */
-  public WorkflowRuntimeBuilder agentRepository(AgentRepository value) {
-    this.agentRepository = Validate.notNull(value, "agentRepository must not be null");
     return this;
   }
 
@@ -130,29 +112,6 @@ public final class WorkflowRuntimeBuilder {
    */
   public WorkflowRuntimeBuilder workflowEventLog(WorkflowEventLog value) {
     this.workflowEventLog = Validate.notNull(value, "workflowEventLog must not be null");
-    return this;
-  }
-
-  /**
-   * Configures resolution of LLM clients for agent invocation.
-   *
-   * @param value resolver instance
-   * @return this builder
-   */
-  public WorkflowRuntimeBuilder llmClientResolver(LlmClientResolver value) {
-    this.llmClientResolver = Validate.notNull(value, "llmClientResolver must not be null");
-    return this;
-  }
-
-  /**
-   * Configures Jackson serialization used by LLM command parsing and rendering. Defaults to a new
-   * {@link ObjectMapper} when omitted.
-   *
-   * @param value mapper instance
-   * @return this builder
-   */
-  public WorkflowRuntimeBuilder objectMapper(ObjectMapper value) {
-    this.objectMapper = Validate.notNull(value, "objectMapper must not be null");
     return this;
   }
 
@@ -240,6 +199,18 @@ public final class WorkflowRuntimeBuilder {
   }
 
   /**
+   * Configures the {@link AgentInvoker} used for agent and SPAR steps (for example from Spring
+   * auto-configuration or constructed explicitly by non-Spring callers).
+   *
+   * @param value invoker instance
+   * @return this builder
+   */
+  public WorkflowRuntimeBuilder agentInvoker(AgentInvoker value) {
+    this.agentInvoker = Validate.notNull(value, "agentInvoker must not be null");
+    return this;
+  }
+
+  /**
    * Validates required dependencies, wires executors and handlers, and returns a runnable
    * {@link com.agentforge4j.core.runtime.WorkflowRuntime}.
    *
@@ -248,7 +219,6 @@ public final class WorkflowRuntimeBuilder {
    */
   public WorkflowRuntime build() {
     validateRequired();
-    ObjectMapper mapper = resolveObjectMapper();
     Clock resolvedClock = resolveClock();
     IntegrationRegistry resolvedRegistry = resolveIntegrationRegistry();
     FileSink resolvedFileSink = getResolvedFileSink();
@@ -258,14 +228,6 @@ public final class WorkflowRuntimeBuilder {
 
     CommandApplier commandApplier = new CommandApplier(determineCommandHandlers(
         eventRecorder, resolvedFileSink, resolvedShell, resolvedClock, resolvedRegistry));
-
-    AgentInvoker agentInvoker = new AgentInvoker(
-        agentRepository,
-        llmClientResolver,
-        new ContextRenderer(mapper),
-        new LlmCommandParser(mapper),
-        mapper,
-        eventRecorder);
 
     LoopEvaluator resolvedEvaluator = resolveLoopEvaluator(agentInvoker);
 
@@ -374,10 +336,6 @@ public final class WorkflowRuntimeBuilder {
     return loopEvaluator != null ? loopEvaluator : new DefaultLoopEvaluator(agentInvoker);
   }
 
-  private ObjectMapper resolveObjectMapper() {
-    return objectMapper != null ? objectMapper : new ObjectMapper();
-  }
-
   private Clock resolveClock() {
     return clock != null ? clock : Clock.systemUTC();
   }
@@ -388,10 +346,9 @@ public final class WorkflowRuntimeBuilder {
 
   private void validateRequired() {
     Validate.notNull(workflowRepository, "workflowRepository is required");
-    Validate.notNull(agentRepository, "agentRepository is required");
     Validate.notNull(workflowStateRepository, "workflowStateRepository is required");
     Validate.notNull(workflowEventLog, "workflowEventLog is required");
-    Validate.notNull(llmClientResolver, "llmClientResolver is required");
+    Validate.notNull(agentInvoker, "agentInvoker is required");
     Validate.notNull(runContextManager, "runContextManager is required");
   }
 }

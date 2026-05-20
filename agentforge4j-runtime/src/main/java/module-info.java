@@ -27,5 +27,5 @@ module agentforge4j.runtime {
   exports com.agentforge4j.runtime.event;
   exports com.agentforge4j.runtime.repository;
 
-  opens com.agentforge4j.runtime.llm;
+  exports com.agentforge4j.runtime.llm;
 }

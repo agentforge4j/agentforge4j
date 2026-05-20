@@ -20,16 +20,19 @@ import com.agentforge4j.core.workflow.step.StepDefinition;
 import com.agentforge4j.core.workflow.step.StepTransition;
 import com.agentforge4j.core.workflow.step.behaviour.AgentBehaviour;
 import com.agentforge4j.integrations.NoOpIntegrationRegistry;
-import com.agentforge4j.llm.LlmClient;
 import com.agentforge4j.llm.LlmClientResolver;
+import com.agentforge4j.llm.api.LlmClient;
+import com.agentforge4j.llm.api.LlmExecutionResponse;
 import com.agentforge4j.runtime.command.FileSink;
 import com.agentforge4j.runtime.command.ShellCommandRunner;
+import com.agentforge4j.runtime.event.EventRecorder;
 import com.agentforge4j.runtime.exception.UserPromptLimitExceededException;
+import com.agentforge4j.runtime.llm.AgentInvoker;
+import com.agentforge4j.runtime.llm.ContextRenderer;
+import com.agentforge4j.runtime.llm.LlmCommandParser;
 import com.agentforge4j.runtime.repository.InMemoryWorkflowEventLog;
 import com.agentforge4j.runtime.repository.InMemoryWorkflowStateRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import org.junit.jupiter.api.Test;
-
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
@@ -37,6 +40,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
+import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -44,8 +48,8 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 /**
- * Runtime-level checks for LLM audit events, input vs approval taxonomy, and user-prompt caps.
- * LLM is mocked; this is a fast unit-style suite, not an HTTP integration test.
+ * Runtime-level checks for LLM audit events, input vs approval taxonomy, and user-prompt caps. LLM
+ * is mocked; this is a fast unit-style suite, not an HTTP integration test.
  */
 class AgentStepAuditRuntimeTest {
 
@@ -56,7 +60,8 @@ class AgentStepAuditRuntimeTest {
     LlmClient client = mock(LlmClient.class);
     when(client.getProviderName()).thenReturn("openai");
     when(client.execute(any())).thenReturn(
-      "[{\"type\":\"USER_PROMPT\",\"message\":\"Hello?\",\"responseRequired\":true}]");
+        llmResponse(
+            "[{\"type\":\"USER_PROMPT\",\"message\":\"Hello?\",\"responseRequired\":true}]"));
 
     Fixture f = fixture(client, agent("a1", List.of("USER_PROMPT", "SET_CONTEXT", "COMPLETE")), 8);
 
@@ -65,14 +70,17 @@ class AgentStepAuditRuntimeTest {
     assertThat(state.getStatus()).isEqualTo(WorkflowStatus.AWAITING_INPUT);
 
     List<WorkflowEvent> events = f.eventLog().getEvents(runId);
-    assertThat(events.stream().anyMatch(e -> e.eventType() == WorkflowEventType.LLM_OUTPUT)).isTrue();
-    assertThat(events.stream().anyMatch(e -> e.eventType() == WorkflowEventType.AWAITING_INPUT)).isTrue();
-    assertThat(events.stream().noneMatch(e -> e.eventType() == WorkflowEventType.AWAITING_APPROVAL)).isTrue();
+    assertThat(
+        events.stream().anyMatch(e -> e.eventType() == WorkflowEventType.LLM_OUTPUT)).isTrue();
+    assertThat(
+        events.stream().anyMatch(e -> e.eventType() == WorkflowEventType.AWAITING_INPUT)).isTrue();
+    assertThat(events.stream()
+        .noneMatch(e -> e.eventType() == WorkflowEventType.AWAITING_APPROVAL)).isTrue();
 
     WorkflowEvent llm = events.stream()
-      .filter(e -> e.eventType() == WorkflowEventType.LLM_OUTPUT)
-      .findFirst()
-      .orElseThrow();
+        .filter(e -> e.eventType() == WorkflowEventType.LLM_OUTPUT)
+        .findFirst()
+        .orElseThrow();
     assertThat(llm.payload()).contains("USER_PROMPT");
   }
 
@@ -82,7 +90,7 @@ class AgentStepAuditRuntimeTest {
     String good = "[{\"type\":\"COMPLETE\"}]";
     LlmClient client = mock(LlmClient.class);
     when(client.getProviderName()).thenReturn("openai");
-    when(client.execute(any())).thenReturn(bad.strip(), good);
+    when(client.execute(any())).thenReturn(llmResponse(bad.strip()), llmResponse(good));
 
     Fixture f = fixture(client, agent("a1", List.of("COMPLETE")), 8);
 
@@ -90,8 +98,8 @@ class AgentStepAuditRuntimeTest {
     assertThat(f.runtime().getState(runId).getStatus()).isEqualTo(WorkflowStatus.COMPLETED);
 
     long llmOut = f.eventLog().getEvents(runId).stream()
-      .filter(e -> e.eventType() == WorkflowEventType.LLM_OUTPUT)
-      .count();
+        .filter(e -> e.eventType() == WorkflowEventType.LLM_OUTPUT)
+        .count();
     assertThat(llmOut).isEqualTo(2);
   }
 
@@ -100,8 +108,8 @@ class AgentStepAuditRuntimeTest {
     LlmClient client = mock(LlmClient.class);
     when(client.getProviderName()).thenReturn("openai");
     when(client.execute(any())).thenReturn(
-      "[{\"type\":\"USER_PROMPT\",\"message\":\"Q1\",\"responseRequired\":true}]",
-      "[{\"type\":\"USER_PROMPT\",\"message\":\"Q2\",\"responseRequired\":true}]");
+        llmResponse("[{\"type\":\"USER_PROMPT\",\"message\":\"Q1\",\"responseRequired\":true}]"),
+        llmResponse("[{\"type\":\"USER_PROMPT\",\"message\":\"Q2\",\"responseRequired\":true}]"));
 
     Fixture f = fixture(client, agent("a1", List.of("USER_PROMPT", "COMPLETE")), 2);
 
@@ -117,8 +125,8 @@ class AgentStepAuditRuntimeTest {
     assertThat(state.getStepOutput("s1")).isEmpty();
 
     assertThat(f.eventLog().getEvents(runId).stream()
-                 .anyMatch(e -> e.eventType() == WorkflowEventType.USER_PROMPT_LIMIT_REACHED))
-      .isTrue();
+        .anyMatch(e -> e.eventType() == WorkflowEventType.USER_PROMPT_LIMIT_REACHED))
+        .isTrue();
   }
 
   @Test
@@ -126,8 +134,8 @@ class AgentStepAuditRuntimeTest {
     LlmClient client = mock(LlmClient.class);
     when(client.getProviderName()).thenReturn("openai");
     when(client.execute(any())).thenReturn(
-      "[{\"type\":\"USER_PROMPT\",\"message\":\"Q1\",\"responseRequired\":true}]",
-      "[{\"type\":\"USER_PROMPT\",\"message\":\"Q2\",\"responseRequired\":true}]");
+        llmResponse("[{\"type\":\"USER_PROMPT\",\"message\":\"Q1\",\"responseRequired\":true}]"),
+        llmResponse("[{\"type\":\"USER_PROMPT\",\"message\":\"Q2\",\"responseRequired\":true}]"));
 
     Fixture f = fixture(client, agent("a1", List.of("USER_PROMPT", "COMPLETE")), 2);
 
@@ -158,11 +166,11 @@ class AgentStepAuditRuntimeTest {
     LlmClient client = mock(LlmClient.class);
     when(client.getProviderName()).thenReturn("openai");
     when(client.execute(any())).thenReturn(
-      "[{\"type\":\"USER_PROMPT\",\"message\":\"Q\",\"responseRequired\":true}]",
-      """
-        [{"type":"SET_CONTEXT","key":"out","value":{"type":"STRING","value":"x"}},
-        {"type":"COMPLETE"}]
-        """.strip());
+        llmResponse("[{\"type\":\"USER_PROMPT\",\"message\":\"Q\",\"responseRequired\":true}]"),
+        llmResponse("""
+            [{"type":"SET_CONTEXT","key":"out","value":{"type":"STRING","value":"x"}},
+            {"type":"COMPLETE"}]
+            """.strip()));
 
     RecordingRunContextManager runContextManager = new RecordingRunContextManager();
     Fixture f = fixture(
@@ -193,11 +201,10 @@ class AgentStepAuditRuntimeTest {
     LlmClient client = mock(LlmClient.class);
     when(client.getProviderName()).thenReturn("openai");
     when(client.execute(any())).thenReturn(
-      "[{\"type\":\"USER_PROMPT\",\"message\":\"Q\",\"responseRequired\":true}]",
-      """
-        [{"type":"SET_CONTEXT","key":"out","value":{"type":"STRING","value":"x"}},
-        {"type":"COMPLETE"}]
-        """.strip());
+        llmResponse("[{\"type\":\"USER_PROMPT\",\"message\":\"Q\",\"responseRequired\":true}]"),
+        llmResponse(
+            "[{\"type\":\"SET_CONTEXT\",\"key\":\"out\",\"value\":{\"type\":\"STRING\",\"value\":\"x\"}},"
+                + "{\"type\":\"COMPLETE\"}]"));
 
     Fixture f = fixture(client, agent("a1", List.of("USER_PROMPT", "SET_CONTEXT", "COMPLETE")), 8);
 
@@ -213,11 +220,11 @@ class AgentStepAuditRuntimeTest {
     LlmClient client = mock(LlmClient.class);
     when(client.getProviderName()).thenReturn("openai");
     when(client.execute(any())).thenReturn(
-      "[{\"type\":\"USER_PROMPT\",\"message\":\"Q\",\"responseRequired\":true}]",
-      """
-        [{"type":"SET_CONTEXT","key":"out","value":{"type":"STRING","value":"x"}},
-        {"type":"COMPLETE"}]
-        """.strip());
+        llmResponse("[{\"type\":\"USER_PROMPT\",\"message\":\"Q\",\"responseRequired\":true}]"),
+        llmResponse("""
+            [{"type":"SET_CONTEXT","key":"out","value":{"type":"STRING","value":"x"}},
+            {"type":"COMPLETE"}]
+            """.strip()));
 
     Fixture f = fixture(client, agent("a1", List.of("USER_PROMPT", "SET_CONTEXT", "COMPLETE")), 8);
 
@@ -230,16 +237,16 @@ class AgentStepAuditRuntimeTest {
 
   private static AgentDefinition agent(String id, List<String> commands) {
     return new AgentDefinition(
-      id,
-      "A",
-      AgentLocality.CLOUD,
-      true,
-      "sys",
-      List.of(new ProviderPreference("openai", "gpt-4o-mini")),
-      commands,
-      null,
-      null,
-      "1.0.0");
+        id,
+        "A",
+        AgentLocality.CLOUD,
+        true,
+        "sys",
+        List.of(new ProviderPreference("openai", "gpt-4o-mini")),
+        commands,
+        null,
+        null,
+        "1.0.0");
   }
 
   private static Fixture fixture(LlmClient client, AgentDefinition agentDef, int maxPromptRounds) {
@@ -253,65 +260,86 @@ class AgentStepAuditRuntimeTest {
     LlmClientResolver resolver = mock(LlmClientResolver.class);
     when(resolver.resolve("openai")).thenReturn(client);
     when(resolver.isProviderAvailable("openai")).thenReturn(true);
+    when(resolver.listAvailableClients()).thenReturn(List.of("openai"));
 
     AgentRepository agentRepository = mock(AgentRepository.class);
     when(agentRepository.get(agentDef.id())).thenReturn(agentDef);
 
     StepDefinition step = new StepDefinition(
-      "s1",
-      "S",
-      new AgentBehaviour(agentDef.id(), StepTransition.AUTO, null),
-      new ContextMapping(List.of(), List.of("out")),
-      null,
-      maxPromptRounds);
+        "s1",
+        "S",
+        new AgentBehaviour(agentDef.id(), StepTransition.AUTO, null),
+        new ContextMapping(List.of(), List.of("out")),
+        null,
+        maxPromptRounds);
     WorkflowDefinition wf = new WorkflowDefinition(
-      "wf1",
-      "W",
-      null,
-      null,
-      null,
-      null,
-      null,
-      WorkflowSource.CUSTOM,
-      WorkflowLifecycle.ACTIVE,
-      Map.of(),
-      Map.of(),
-      List.of(step));
+        "wf1",
+        "W",
+        null,
+        null,
+        null,
+        null,
+        null,
+        WorkflowSource.CUSTOM,
+        WorkflowLifecycle.ACTIVE,
+        Map.of(),
+        Map.of(),
+        List.of(step));
 
-    InMemoryWorkflowRepository workflowRepository = new InMemoryWorkflowRepository(Map.of("wf1", wf));
+    InMemoryWorkflowRepository workflowRepository = new InMemoryWorkflowRepository(
+        Map.of("wf1", wf));
     WorkflowStateRepository stateRepository = new InMemoryWorkflowStateRepository();
     WorkflowEventLog eventLog = new InMemoryWorkflowEventLog();
     Clock clock = Clock.fixed(Instant.parse("2026-05-01T12:00:00Z"), ZoneOffset.UTC);
 
+    AgentInvoker agentInvoker = generateAgentInvoker(eventLog, clock, agentRepository, resolver);
+
     WorkflowRuntimeBuilder builder = new WorkflowRuntimeBuilder()
-      .workflowRepository(workflowRepository)
-      .agentRepository(agentRepository)
-      .workflowStateRepository(stateRepository)
-      .workflowEventLog(eventLog)
-      .llmClientResolver(resolver)
-      .objectMapper(MAPPER)
-      .clock(clock)
-      .integrationRegistry(NoOpIntegrationRegistry.INSTANCE)
-      .fileSink(FileSink.NO_OP_FILE_SINK)
-      .shellCommandRunner(ShellCommandRunner.NO_OP_SHELL_COMMAND_RUNNER);
+        .workflowRepository(workflowRepository)
+        .workflowStateRepository(stateRepository)
+        .workflowEventLog(eventLog)
+        .agentInvoker(agentInvoker)
+        .clock(clock)
+        .integrationRegistry(NoOpIntegrationRegistry.INSTANCE)
+        .fileSink(FileSink.NO_OP_FILE_SINK)
+        .shellCommandRunner(ShellCommandRunner.NO_OP_SHELL_COMMAND_RUNNER);
     if (runContextManager != null) {
-      builder = builder.runContextManager(runContextManager);
+      builder.runContextManager(runContextManager);
     }
     WorkflowRuntime runtime = builder.build();
 
     return new Fixture(runtime, eventLog, stateRepository);
   }
 
+  private static AgentInvoker generateAgentInvoker(WorkflowEventLog eventLog, Clock clock,
+      AgentRepository agentRepository, LlmClientResolver resolver) {
+    EventRecorder eventRecorder = new EventRecorder(eventLog, clock);
+    return new AgentInvoker(
+        agentRepository,
+        resolver,
+        new ContextRenderer(MAPPER),
+        new LlmCommandParser(MAPPER),
+        MAPPER,
+        eventRecorder);
+  }
+
   private record Fixture(
-    WorkflowRuntime runtime,
-    WorkflowEventLog eventLog,
-    WorkflowStateRepository stateRepository) {
+      WorkflowRuntime runtime,
+      WorkflowEventLog eventLog,
+      WorkflowStateRepository stateRepository) {
+
   }
 
   private record RecordedScope(String runId, String workflowId, String stepId, String agentId) {
+
+  }
+
+  private static LlmExecutionResponse llmResponse(String text) {
+    return new LlmExecutionResponse(text, null);
   }
 
   private static final class RecordingRunContextManager implements RunContextManager {
+
     final List<RecordedScope> opens = new ArrayList<>();
     final AtomicInteger closeCount = new AtomicInteger();
 

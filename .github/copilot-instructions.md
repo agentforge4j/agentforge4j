@@ -28,7 +28,8 @@ All modules live in a single Maven monorepo. Everything is versioned and release
 |---|---|---|
 | `agentforge4j-util` | Shared `Validate` utility, no framework deps | Built |
 | `agentforge4j-core` | Pure Java domain model, no Spring, no IO, no DB | Built |
-| `agentforge4j-llm` | Shared LLM abstractions, no workflow knowledge | Built |
+| `agentforge4j-llm-api` | Provider-neutral LLM invocation contract (`LlmClient`, requests, errors) | Built |
+| `agentforge4j-llm` | LLM SPI, resolvers, HTTP helpers; no workflow knowledge | Built |
 | `agentforge4j-llm-openai` | OpenAI provider (Responses API + chat DTOs) | Built |
 | `agentforge4j-llm-ollama` | Ollama provider | Built |
 | `agentforge4j-llm-claude` | Anthropic Claude provider | Built |
@@ -55,9 +56,9 @@ Never suggest a dependency that violates this chain:
 ```
 util
   ↑
-core          llm
+core          llm-api
   ↑             ↑
-config-loader   llm-openai / llm-ollama / llm-claude / llm-vllm / llm-gemini /
+config-loader   llm ── llm-openai / llm-ollama / llm-claude / llm-vllm / llm-gemini /
   ↑             llm-mistral / llm-azure-openai / llm-openai-compatible / llm-bedrock
 schema   workflows   integrations
   ↑       ↑           ↑
@@ -68,7 +69,7 @@ spring-boot-starter
 
 - `core` never depends on `config-loader`
 - `config-loader` never depends on `runtime`
-- `llm` has no workflow knowledge — it must not import anything from `core` or `config-loader`
+- `llm-api` and `llm` have no workflow knowledge — they must not import anything from `core` or `config-loader`
 - `util` has no dependencies beyond the JDK and `commons-lang3`
 - `schema` has no dependencies beyond the JDK
 - `workflows` has no dependencies beyond the JDK
@@ -76,7 +77,7 @@ spring-boot-starter
 - `runtime` depends on `core`, `config-loader`, `llm`, `integrations`, `schema`, `util`
 - `spring-boot-starter` depends on `runtime`, `core`, `llm`, `config-loader`, `integrations`, `util`, and Spring Boot autoconfigure (library, not a runnable app)
 - The starter never depends on `api`
-- Spring, databases, and file IO never appear in `util`, `core`, `llm`, `schema`, or `workflows`
+- Spring, databases, and file IO never appear in `util`, `core`, `llm-api`, `llm`, `schema`, or `workflows`
 
 If you are about to add an import that crosses these boundaries, stop and reconsider the design.
 

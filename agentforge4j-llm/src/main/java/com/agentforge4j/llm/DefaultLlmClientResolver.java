@@ -1,5 +1,6 @@
 package com.agentforge4j.llm;
 
+import com.agentforge4j.llm.api.LlmClient;
 import com.agentforge4j.util.Validate;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.ArrayList;

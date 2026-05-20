@@ -1,8 +1,8 @@
 package com.agentforge4j.llm.gemini;
 
 import com.agentforge4j.llm.LlmClientFactory;
-import com.agentforge4j.llm.LlmExecutionRequest;
-import com.agentforge4j.llm.LlmInvocationException;
+import com.agentforge4j.llm.api.LlmExecutionRequest;
+import com.agentforge4j.llm.api.LlmInvocationException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
@@ -30,7 +30,8 @@ class GeminiLlmClientIT {
 
   @Test
   void should_return_model_text_on_successful_http_response() throws Exception {
-    try (GeminiLoopbackHttpServer http = new GeminiLoopbackHttpServer(200, VALID_GENERATE_CONTENT_JSON)) {
+    try (GeminiLoopbackHttpServer http = new GeminiLoopbackHttpServer(200,
+        VALID_GENERATE_CONTENT_JSON)) {
       var config = FixedGeminiConfiguration.builder()
           .baseUrl(http.baseUri().toString())
           .build();
@@ -38,13 +39,16 @@ class GeminiLlmClientIT {
       LlmExecutionRequest request =
           LlmExecutionRequest.withDefaultModel("gemini", "system prompt", "user input");
 
-      assertThat(client.execute(request)).isEqualTo("Hello from gemini IT");
+      var response = client.execute(request);
+      assertThat(response.text()).isEqualTo("Hello from gemini IT");
+      assertThat(response.tokenUsage()).isNull();
     }
   }
 
   @Test
   void should_match_request_provider_case_insensitively() throws Exception {
-    try (GeminiLoopbackHttpServer http = new GeminiLoopbackHttpServer(200, VALID_GENERATE_CONTENT_JSON)) {
+    try (GeminiLoopbackHttpServer http = new GeminiLoopbackHttpServer(200,
+        VALID_GENERATE_CONTENT_JSON)) {
       var config = FixedGeminiConfiguration.builder()
           .baseUrl(http.baseUri().toString())
           .build();
@@ -52,7 +56,7 @@ class GeminiLlmClientIT {
       LlmExecutionRequest request =
           new LlmExecutionRequest("GEMINI", null, "system", "user");
 
-      assertThat(client.execute(request)).isEqualTo("Hello from gemini IT");
+      assertThat(client.execute(request).text()).isEqualTo("Hello from gemini IT");
     }
   }
 
@@ -293,7 +297,8 @@ class GeminiLlmClientIT {
 
   @Test
   void factory_created_client_should_execute_against_loopback() throws Exception {
-    try (GeminiLoopbackHttpServer http = new GeminiLoopbackHttpServer(200, VALID_GENERATE_CONTENT_JSON)) {
+    try (GeminiLoopbackHttpServer http = new GeminiLoopbackHttpServer(200,
+        VALID_GENERATE_CONTENT_JSON)) {
       var config = FixedGeminiConfiguration.builder()
           .baseUrl(http.baseUri().toString())
           .build();
@@ -301,7 +306,7 @@ class GeminiLlmClientIT {
       LlmExecutionRequest request =
           LlmExecutionRequest.withDefaultModel("gemini", "system", "user");
 
-      assertThat(client.execute(request)).isEqualTo("Hello from gemini IT");
+      assertThat(client.execute(request).text()).isEqualTo("Hello from gemini IT");
     }
   }
 

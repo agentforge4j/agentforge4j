@@ -1,12 +1,12 @@
 package com.agentforge4j.llm.bedrock;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
-
-import com.agentforge4j.llm.LlmInvocationException;
+import com.agentforge4j.llm.api.LlmInvocationException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
 import org.junit.jupiter.api.Test;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class BedrockAnthropicResponseParserTest {
 
@@ -97,7 +97,9 @@ class BedrockAnthropicResponseParserTest {
 
   @Test
   void rejectsNullObjectMapper() {
-    assertThatThrownBy(() -> parser.extractAssistantText("{\"content\":[{\"type\":\"text\",\"text\":\"a\"}]}", null))
+    assertThatThrownBy(
+        () -> parser.extractAssistantText("{\"content\":[{\"type\":\"text\",\"text\":\"a\"}]}",
+            null))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("ObjectMapper");
   }
