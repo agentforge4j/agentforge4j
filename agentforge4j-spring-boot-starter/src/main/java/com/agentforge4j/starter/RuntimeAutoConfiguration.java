@@ -11,6 +11,11 @@ import com.agentforge4j.llm.LlmClientResolver;
 import com.agentforge4j.runtime.RunContextManager;
 import com.agentforge4j.runtime.WorkflowRuntimeBuilder;
 import com.agentforge4j.runtime.command.FileSink;
+import com.agentforge4j.runtime.event.EventRecorder;
+import com.agentforge4j.runtime.llm.AgentInvoker;
+import com.agentforge4j.runtime.llm.ContextRenderer;
+import com.agentforge4j.runtime.llm.FirstAvailableProviderSelectionStrategy;
+import com.agentforge4j.runtime.llm.LlmCommandParser;
 import com.agentforge4j.schema.ClasspathSchemaProvider;
 import com.agentforge4j.schema.SchemaProvider;
 import com.agentforge4j.starter.files.NoOpFileSink;
@@ -20,6 +25,7 @@ import java.time.Clock;
 import java.util.Optional;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 
 /**
@@ -31,6 +37,7 @@ import org.springframework.context.annotation.Bean;
     RepositoryAutoConfiguration.class,
     LlmAutoConfiguration.class
 })
+@EnableConfigurationProperties(LlmCacheSettings.class)
 public class RuntimeAutoConfiguration {
 
   @Bean
@@ -58,6 +65,31 @@ public class RuntimeAutoConfiguration {
   }
 
   /**
+   * Builds the runtime {@link AgentInvoker}, forwarding {@link LlmCacheSettings#enabled()} as
+   * {@code promptCacheEnabled}.
+   */
+  @Bean
+  @ConditionalOnMissingBean
+  public AgentInvoker agentInvoker(AgentRepository agentRepository,
+      LlmClientResolver llmClientResolver,
+      ObjectMapper objectMapper,
+      WorkflowEventLog workflowEventLog,
+      Clock clock,
+      LlmCacheSettings cacheSettings) {
+    EventRecorder eventRecorder = new EventRecorder(workflowEventLog, clock);
+    return new AgentInvoker(
+        agentRepository,
+        llmClientResolver,
+        new ContextRenderer(objectMapper),
+        new LlmCommandParser(objectMapper),
+        objectMapper,
+        eventRecorder,
+        AgentInvoker.DEFAULT_LLM_OUTPUT_EVENT_CHAR_CAP,
+        new FirstAvailableProviderSelectionStrategy(),
+        cacheSettings.enabled());
+  }
+
+  /**
    * Constructs {@link com.agentforge4j.core.runtime.WorkflowRuntime} from injected collaborators,
    * applies {@link AgentForge4jProperties#maxNestingDepth()} when non-null, and substitutes
    * {@link com.agentforge4j.integrations.NoOpIntegrationRegistry} when no
@@ -67,26 +99,22 @@ public class RuntimeAutoConfiguration {
   @Bean
   @ConditionalOnMissingBean
   public WorkflowRuntime workflowRuntime(WorkflowRepository workflowRepository,
-      AgentRepository agentRepository,
       WorkflowStateRepository workflowStateRepository,
       WorkflowEventLog workflowEventLog,
-      LlmClientResolver llmClientResolver,
-      ObjectMapper objectMapper,
       Clock clock,
       RunContextManager runContextManager,
       AgentForge4jProperties properties,
       FileSink fileSink,
+      AgentInvoker agentInvoker,
       Optional<IntegrationRegistry> integrationRegistry) {
     WorkflowRuntimeBuilder builder = new WorkflowRuntimeBuilder()
         .workflowRepository(workflowRepository)
-        .agentRepository(agentRepository)
         .workflowStateRepository(workflowStateRepository)
         .workflowEventLog(workflowEventLog)
-        .llmClientResolver(llmClientResolver)
-        .objectMapper(objectMapper)
         .clock(clock)
         .runContextManager(runContextManager)
         .fileSink(fileSink)
+        .agentInvoker(agentInvoker)
         .integrationRegistry(integrationRegistry.orElse(NoOpIntegrationRegistry.INSTANCE));
     if (properties.maxNestingDepth() != null) {
       builder.maxNestingDepth(properties.maxNestingDepth());

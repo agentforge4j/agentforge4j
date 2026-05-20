@@ -25,10 +25,14 @@ import com.agentforge4j.core.workflow.step.blueprint.BlueprintRef;
 import com.agentforge4j.integrations.NoOpIntegrationRegistry;
 import com.agentforge4j.llm.LlmClientResolver;
 import com.agentforge4j.llm.api.LlmClient;
-import com.agentforge4j.llm.api.LlmExecutionResponse;
 import com.agentforge4j.llm.api.LlmExecutionRequest;
+import com.agentforge4j.llm.api.LlmExecutionResponse;
 import com.agentforge4j.runtime.command.FileSink;
 import com.agentforge4j.runtime.command.ShellCommandRunner;
+import com.agentforge4j.runtime.event.EventRecorder;
+import com.agentforge4j.runtime.llm.AgentInvoker;
+import com.agentforge4j.runtime.llm.ContextRenderer;
+import com.agentforge4j.runtime.llm.LlmCommandParser;
 import com.agentforge4j.runtime.repository.InMemoryWorkflowEventLog;
 import com.agentforge4j.runtime.repository.InMemoryWorkflowStateRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -85,15 +89,17 @@ class WorkflowRuntimeDriveIT {
         Map.of(),
         List.of(step));
 
+    Clock clock = Clock.fixed(Instant.parse("2026-05-01T12:00:00Z"), ZoneOffset.UTC);
+    InMemoryWorkflowEventLog eventLog = new InMemoryWorkflowEventLog();
+    AgentInvoker agentInvoker = generateAgentInvoker(eventLog, clock,
+        Map.of(agent.id(), agent));
+
     WorkflowRuntime runtime = new WorkflowRuntimeBuilder()
         .workflowRepository(new InMemoryWorkflowRepository(Map.of(workflow.id(), workflow)))
-        .agentRepository(new MapAgentRepository(Map.of(agent.id(), agent)))
         .workflowStateRepository(new InMemoryWorkflowStateRepository())
-        .workflowEventLog(new InMemoryWorkflowEventLog())
-        .llmClientResolver(
-            new SingleClientResolver(new ConstantJsonLlmClient("[{\"type\":\"COMPLETE\"}]")))
-        .objectMapper(MAPPER)
-        .clock(Clock.fixed(Instant.parse("2026-05-01T12:00:00Z"), ZoneOffset.UTC))
+        .workflowEventLog(eventLog)
+        .agentInvoker(agentInvoker)
+        .clock(clock)
         .integrationRegistry(NoOpIntegrationRegistry.INSTANCE)
         .fileSink(FileSink.NO_OP_FILE_SINK)
         .shellCommandRunner(ShellCommandRunner.NO_OP_SHELL_COMMAND_RUNNER)
@@ -101,6 +107,20 @@ class WorkflowRuntimeDriveIT {
 
     String runId = runtime.start(workflow.id());
     assertThat(runtime.getState(runId).getStatus()).isEqualTo(WorkflowStatus.COMPLETED);
+  }
+
+  private static AgentInvoker generateAgentInvoker(InMemoryWorkflowEventLog eventLog, Clock clock,
+      Map<String, AgentDefinition> agent) {
+    EventRecorder eventRecorder = new EventRecorder(eventLog, clock);
+    LlmClientResolver resolver =
+        new SingleClientResolver(new ConstantJsonLlmClient("[{\"type\":\"COMPLETE\"}]"));
+    return new AgentInvoker(
+        new MapAgentRepository(agent),
+        resolver,
+        new ContextRenderer(MAPPER),
+        new LlmCommandParser(MAPPER),
+        MAPPER,
+        eventRecorder);
   }
 
   @Test
@@ -168,15 +188,17 @@ class WorkflowRuntimeDriveIT {
   }
 
   private static WorkflowRuntime runtime(Map<String, WorkflowDefinition> workflows) {
+    Clock clock = Clock.fixed(Instant.parse("2026-05-01T12:00:00Z"), ZoneOffset.UTC);
+    InMemoryWorkflowEventLog eventLog = new InMemoryWorkflowEventLog();
+    AgentInvoker agentInvoker = generateAgentInvoker(eventLog, clock,
+        Map.of());
+
     return new WorkflowRuntimeBuilder()
         .workflowRepository(new InMemoryWorkflowRepository(workflows))
-        .agentRepository(new MapAgentRepository(Map.of()))
         .workflowStateRepository(new InMemoryWorkflowStateRepository())
-        .workflowEventLog(new InMemoryWorkflowEventLog())
-        .llmClientResolver(
-            new SingleClientResolver(new ConstantJsonLlmClient("[{\"type\":\"COMPLETE\"}]")))
-        .objectMapper(MAPPER)
-        .clock(Clock.fixed(Instant.parse("2026-05-01T12:00:00Z"), ZoneOffset.UTC))
+        .workflowEventLog(eventLog)
+        .agentInvoker(agentInvoker)
+        .clock(clock)
         .integrationRegistry(NoOpIntegrationRegistry.INSTANCE)
         .fileSink(FileSink.NO_OP_FILE_SINK)
         .shellCommandRunner(ShellCommandRunner.NO_OP_SHELL_COMMAND_RUNNER)

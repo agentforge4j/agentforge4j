@@ -25,7 +25,11 @@ import com.agentforge4j.llm.api.LlmClient;
 import com.agentforge4j.llm.api.LlmExecutionResponse;
 import com.agentforge4j.runtime.command.FileSink;
 import com.agentforge4j.runtime.command.ShellCommandRunner;
+import com.agentforge4j.runtime.event.EventRecorder;
 import com.agentforge4j.runtime.exception.UserPromptLimitExceededException;
+import com.agentforge4j.runtime.llm.AgentInvoker;
+import com.agentforge4j.runtime.llm.ContextRenderer;
+import com.agentforge4j.runtime.llm.LlmCommandParser;
 import com.agentforge4j.runtime.repository.InMemoryWorkflowEventLog;
 import com.agentforge4j.runtime.repository.InMemoryWorkflowStateRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -56,7 +60,8 @@ class AgentStepAuditRuntimeTest {
     LlmClient client = mock(LlmClient.class);
     when(client.getProviderName()).thenReturn("openai");
     when(client.execute(any())).thenReturn(
-        llmResponse("[{\"type\":\"USER_PROMPT\",\"message\":\"Hello?\",\"responseRequired\":true}]"));
+        llmResponse(
+            "[{\"type\":\"USER_PROMPT\",\"message\":\"Hello?\",\"responseRequired\":true}]"));
 
     Fixture f = fixture(client, agent("a1", List.of("USER_PROMPT", "SET_CONTEXT", "COMPLETE")), 8);
 
@@ -287,23 +292,35 @@ class AgentStepAuditRuntimeTest {
     WorkflowEventLog eventLog = new InMemoryWorkflowEventLog();
     Clock clock = Clock.fixed(Instant.parse("2026-05-01T12:00:00Z"), ZoneOffset.UTC);
 
+    AgentInvoker agentInvoker = generateAgentInvoker(eventLog, clock, agentRepository, resolver);
+
     WorkflowRuntimeBuilder builder = new WorkflowRuntimeBuilder()
         .workflowRepository(workflowRepository)
-        .agentRepository(agentRepository)
         .workflowStateRepository(stateRepository)
         .workflowEventLog(eventLog)
-        .llmClientResolver(resolver)
-        .objectMapper(MAPPER)
+        .agentInvoker(agentInvoker)
         .clock(clock)
         .integrationRegistry(NoOpIntegrationRegistry.INSTANCE)
         .fileSink(FileSink.NO_OP_FILE_SINK)
         .shellCommandRunner(ShellCommandRunner.NO_OP_SHELL_COMMAND_RUNNER);
     if (runContextManager != null) {
-      builder = builder.runContextManager(runContextManager);
+      builder.runContextManager(runContextManager);
     }
     WorkflowRuntime runtime = builder.build();
 
     return new Fixture(runtime, eventLog, stateRepository);
+  }
+
+  private static AgentInvoker generateAgentInvoker(WorkflowEventLog eventLog, Clock clock,
+      AgentRepository agentRepository, LlmClientResolver resolver) {
+    EventRecorder eventRecorder = new EventRecorder(eventLog, clock);
+    return new AgentInvoker(
+        agentRepository,
+        resolver,
+        new ContextRenderer(MAPPER),
+        new LlmCommandParser(MAPPER),
+        MAPPER,
+        eventRecorder);
   }
 
   private record Fixture(
