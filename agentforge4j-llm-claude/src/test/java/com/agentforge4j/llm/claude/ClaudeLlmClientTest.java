@@ -462,7 +462,7 @@ class ClaudeLlmClientTest {
     @Test
     void shouldCapBreakpointsDeepestFirst() throws Exception {
       String separator = "\n\n";
-      String layer1 = cacheableLayerUtf8(4096);
+      String layer1 = cacheableLayerUtf8(1023);
       String layer2 = cacheableLayerUtf8(4096);
       String layer3 = cacheableLayerUtf8(4096);
       PromptLayerBoundaries boundaries = boundariesFor(layer1, separator, layer2, layer3);

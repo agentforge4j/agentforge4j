@@ -34,7 +34,7 @@ class ClaudePromptCacheSupportTest {
 
     assertThat(ClaudePromptCacheSupport.estimateTokens(2400)).isLessThan(1024);
     assertThat(ClaudePromptCacheSupport.estimateTokens(4800)).isGreaterThanOrEqualTo(1024);
-    assertThat(marked).containsExactly(false, true);
+    assertThat(marked).containsExactly(false, true, false);
   }
 
   @Test
@@ -64,7 +64,7 @@ class ClaudePromptCacheSupportTest {
   @Test
   void selectBreakpoints_prefersDeepestLayersWhenCapExceeded() {
     boolean[] marked = ClaudePromptCacheSupport.selectBreakpoints(
-        new PromptLayerBoundaries(4096, 4096, 4096), "claude-3-opus-20240229");
+        new PromptLayerBoundaries(1023, 4096, 4096), "claude-3-opus-20240229");
 
     assertThat(marked).containsExactly(false, true, true);
   }
@@ -74,7 +74,7 @@ class ClaudePromptCacheSupportTest {
     boolean[] marked = ClaudePromptCacheSupport.selectBreakpoints(
         new PromptLayerBoundaries(8192, 8192, null), "claude-haiku-4-5-20251001");
 
-    assertThat(marked).containsExactly(false);
+    assertThat(marked).containsExactly(false, false, false);
     assertThat(ClaudePromptCacheSupport.estimateTokens(8192)).isEqualTo(2048);
   }
 
@@ -83,7 +83,7 @@ class ClaudePromptCacheSupportTest {
     boolean[] marked = ClaudePromptCacheSupport.selectBreakpoints(
         new PromptLayerBoundaries(8192, 8192, null), "claude-sonnet-4-20250514");
 
-    assertThat(marked).containsExactly(true);
+    assertThat(marked).containsExactly(true, true, false);
   }
 
   @Test
@@ -94,7 +94,7 @@ class ClaudePromptCacheSupportTest {
     boolean[] marked = ClaudePromptCacheSupport.selectBreakpoints(
         new PromptLayerBoundaries(8192, 8192, null), "claude-unknown-99");
 
-    assertThat(marked).containsExactly(true);
+    assertThat(marked).containsExactly(true, true, false);
   }
 
   @Test

@@ -39,7 +39,9 @@ class GeminiLlmClientIT {
       LlmExecutionRequest request =
           LlmExecutionRequest.withDefaultModel("gemini", "system prompt", "user input");
 
-      assertThat(client.execute(request).text()).isEqualTo("Hello from gemini IT");
+      var response = client.execute(request);
+      assertThat(response.text()).isEqualTo("Hello from gemini IT");
+      assertThat(response.tokenUsage()).isNull();
     }
   }
 

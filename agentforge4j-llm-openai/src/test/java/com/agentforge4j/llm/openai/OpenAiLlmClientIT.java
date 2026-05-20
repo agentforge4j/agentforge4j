@@ -181,7 +181,9 @@ class OpenAiLlmClientIT {
       LlmExecutionRequest request =
           LlmExecutionRequest.withDefaultModel("openai", "system", "user");
 
-      assertThat(client.execute(request).text()).isEqualTo("Hello from OpenAI");
+      var response = client.execute(request);
+      assertThat(response.text()).isEqualTo("Hello from OpenAI");
+      assertThat(response.tokenUsage()).isNull();
     }
   }
 

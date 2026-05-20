@@ -2,6 +2,7 @@ package com.agentforge4j.llm.gemini;
 
 import com.agentforge4j.llm.api.LlmExecutionRequest;
 import com.agentforge4j.llm.api.LlmInvocationException;
+import com.agentforge4j.llm.api.PromptLayerBoundaries;
 import com.agentforge4j.llm.gemini.dto.GeminiContent;
 import com.agentforge4j.llm.gemini.dto.GeminiPart;
 import com.agentforge4j.llm.gemini.dto.GeminiRequest;
@@ -551,6 +552,36 @@ class GeminiLlmClientTest {
           new LlmExecutionRequest("gemini", null, "system", "user", 0)))
           .isInstanceOf(IllegalArgumentException.class)
           .hasMessageContaining("maxOutputTokens");
+    }
+  }
+
+  @Nested
+  class PromptCacheConformanceTests {
+
+    @Test
+    void shouldProduceDeterministicRequestBodyForIdenticalInput() throws Exception {
+      ObjectMapper mapper = new ObjectMapper();
+      GeminiLlmClient client = new GeminiLlmClient(mapper, FixedGeminiConfiguration.defaults());
+      LlmExecutionRequest request = LlmExecutionRequest.withDefaultModel("gemini", "sys", "usr");
+
+      String first = collectUtf8RequestBody(client.buildHttpRequest(request));
+      String second = collectUtf8RequestBody(client.buildHttpRequest(request));
+
+      assertThat(first).isEqualTo(second);
+    }
+
+    @Test
+    void shouldOmitExplicitCacheMarkersWhenBoundariesPresent() throws Exception {
+      ObjectMapper mapper = new ObjectMapper();
+      GeminiLlmClient client = new GeminiLlmClient(mapper, FixedGeminiConfiguration.defaults());
+      PromptLayerBoundaries boundaries = new PromptLayerBoundaries(100, 200, null);
+      LlmExecutionRequest request = new LlmExecutionRequest(
+          "gemini", "m", "system prompt", "user", null, boundaries);
+
+      String body = collectUtf8RequestBody(client.buildHttpRequest(request));
+
+      assertThat(body).doesNotContain("cache_control");
+      assertThat(body).doesNotContain("cachePoint");
     }
   }
 

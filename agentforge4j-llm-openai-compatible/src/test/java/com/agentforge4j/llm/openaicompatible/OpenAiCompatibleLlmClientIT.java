@@ -48,7 +48,9 @@ class OpenAiCompatibleLlmClientIT {
       LlmExecutionRequest request =
           LlmExecutionRequest.withDefaultModel("openai-compatible", "system", "user");
 
-      assertThat(client.execute(request).text()).isEqualTo("Hello from compatible");
+      var response = client.execute(request);
+      assertThat(response.text()).isEqualTo("Hello from compatible");
+      assertThat(response.tokenUsage()).isNull();
     }
   }
 

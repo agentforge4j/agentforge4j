@@ -43,7 +43,9 @@ class VllmLlmClientIT {
       LlmExecutionRequest request =
           LlmExecutionRequest.withDefaultModel("vllm", "system", "user");
 
-      assertThat(client.execute(request).text()).isEqualTo("Hello from loopback");
+      var response = client.execute(request);
+      assertThat(response.text()).isEqualTo("Hello from loopback");
+      assertThat(response.tokenUsage()).isNull();
     }
   }
 

@@ -42,7 +42,9 @@ class AzureOpenAiLlmClientIT {
       LlmExecutionRequest request =
           LlmExecutionRequest.withDefaultModel("azure-openai", "system", "user");
 
-      assertThat(client.execute(request).text()).isEqualTo("Hello from Azure");
+      var response = client.execute(request);
+      assertThat(response.text()).isEqualTo("Hello from Azure");
+      assertThat(response.tokenUsage()).isNull();
     }
   }
 

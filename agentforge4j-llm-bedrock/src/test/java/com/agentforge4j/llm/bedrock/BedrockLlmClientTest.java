@@ -219,7 +219,9 @@ class BedrockLlmClientTest {
       assertThat(sent.modelId()).isEqualTo(requestedModel);
       JsonNode body = mapper.readTree(sent.body().asUtf8String());
       assertThat(body.path("anthropic_version").asText()).isEqualTo("bedrock-2023-05-31");
-      assertThat(body.path("system").asText()).isEqualTo("You must reply with JSON only.");
+      assertThat(body.path("system").isArray()).isTrue();
+      assertThat(body.path("system").path(0).path("text").asText())
+          .isEqualTo("You must reply with JSON only.");
       assertThat(body.path("messages").get(0).path("content").asText()).isEqualTo("Run workflow");
     }
 
@@ -233,7 +235,8 @@ class BedrockLlmClientTest {
               .build());
       BedrockLlmClient llm = new BedrockLlmClient(mapper, FixedBedrockConfiguration.defaults(),
           client);
-      assertThat(llm.execute(new LlmExecutionRequest("BEDROCK", null, "s", "u")).text()).isEqualTo("x");
+      assertThat(llm.execute(new LlmExecutionRequest("BEDROCK", null, "s", "u")).text()).isEqualTo(
+          "x");
     }
 
     @Test
@@ -247,7 +250,8 @@ class BedrockLlmClientTest {
       String model = "ANTHROPIC.claude-3-haiku-20240307-v1:0";
       var cfg = FixedBedrockConfiguration.builder().defaultModel(model).build();
       BedrockLlmClient llm = new BedrockLlmClient(mapper, cfg, client);
-      assertThat(llm.execute(new LlmExecutionRequest("bedrock", null, "s", "u")).text()).isEqualTo("y");
+      assertThat(llm.execute(new LlmExecutionRequest("bedrock", null, "s", "u")).text()).isEqualTo(
+          "y");
     }
 
     @Test

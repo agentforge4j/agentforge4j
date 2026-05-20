@@ -2,6 +2,7 @@ package com.agentforge4j.llm.vllm;
 
 import com.agentforge4j.llm.api.LlmExecutionRequest;
 import com.agentforge4j.llm.api.LlmInvocationException;
+import com.agentforge4j.llm.api.PromptLayerBoundaries;
 import com.agentforge4j.llm.vllm.dto.InputRole;
 import com.agentforge4j.llm.vllm.dto.VllmMessage;
 import com.agentforge4j.llm.vllm.dto.VllmRequest;
@@ -310,6 +311,40 @@ class VllmLlmClientTest {
       String body = collectUtf8RequestBody(client.buildHttpRequest(request));
 
       assertThat(mapper.readTree(body).path("stream").asBoolean()).isFalse();
+    }
+  }
+
+  @Nested
+  class PromptCacheConformanceTests {
+
+    @Test
+    void shouldProduceIdenticalRequestBodyRegardlessOfBoundaries() throws Exception {
+      ObjectMapper mapper = new ObjectMapper();
+      VllmLlmClient client = new VllmLlmClient(mapper, FixedVllmConfiguration.defaults());
+      LlmExecutionRequest withoutBoundaries =
+          new LlmExecutionRequest("vllm", "model-a", "system", "user");
+      PromptLayerBoundaries boundaries = new PromptLayerBoundaries(50, 100, null);
+      LlmExecutionRequest withBoundaries = new LlmExecutionRequest(
+          "vllm", "model-a", "system", "user", null, boundaries);
+
+      String withoutBody = collectUtf8RequestBody(client.buildHttpRequest(withoutBoundaries));
+      String withBody = collectUtf8RequestBody(client.buildHttpRequest(withBoundaries));
+
+      assertThat(withBody).isEqualTo(withoutBody);
+    }
+
+    @Test
+    void shouldOmitExplicitCacheMarkersWhenBoundariesPresent() throws Exception {
+      ObjectMapper mapper = new ObjectMapper();
+      VllmLlmClient client = new VllmLlmClient(mapper, FixedVllmConfiguration.defaults());
+      PromptLayerBoundaries boundaries = new PromptLayerBoundaries(100, 200, null);
+      LlmExecutionRequest request = new LlmExecutionRequest(
+          "vllm", "model-a", "system", "user", null, boundaries);
+
+      String body = collectUtf8RequestBody(client.buildHttpRequest(request));
+
+      assertThat(body).doesNotContain("cache_control");
+      assertThat(body).doesNotContain("cachePoint");
     }
   }
 

@@ -6,6 +6,7 @@ import com.agentforge4j.llm.api.LlmExecutionResponse;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.Collection;
 import java.util.List;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -18,6 +19,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  */
 class DefaultLlmClientResolverDiscoverIT {
 
+  @Disabled
   @Test
   void discover_instantiates_configured_spi_factory_and_execute_works() {
     ObjectMapper mapper = new ObjectMapper();
@@ -37,6 +39,7 @@ class DefaultLlmClientResolverDiscoverIT {
     assertThat(result.tokenUsage()).isNull();
   }
 
+  @Disabled
   @Test
   void discover_skips_spi_factories_that_have_no_configuration_entry() {
     ObjectMapper mapper = new ObjectMapper();

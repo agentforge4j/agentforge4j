@@ -198,7 +198,9 @@ class OllamaLlmClientIT {
       LlmExecutionRequest request =
           LlmExecutionRequest.withDefaultModel("ollama", "system prompt", "user input");
 
-      assertThat(client.execute(request).text()).isEqualTo("Hello from loopback");
+      var response = client.execute(request);
+      assertThat(response.text()).isEqualTo("Hello from loopback");
+      assertThat(response.tokenUsage()).isNull();
     }
   }
 
@@ -348,7 +350,7 @@ class OllamaLlmClientIT {
       OllamaConfiguration config = configForUrl(http.chatUrl(), java.time.Duration.ofSeconds(30));
       var client = factory.create(new ObjectMapper(), config);
 
-      assertThat(client.execute(LlmExecutionRequest.withDefaultModel("ollama", "a", "b")))
+      assertThat(client.execute(LlmExecutionRequest.withDefaultModel("ollama", "a", "b")).text())
           .isEqualTo("Hello from loopback");
     }
   }

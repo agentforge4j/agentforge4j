@@ -153,9 +153,10 @@ class MistralLlmClientIT {
       LlmExecutionRequest request =
           LlmExecutionRequest.withDefaultModel("mistral", "You are helpful.", "Say hi.");
 
-      String result = client.execute(request).text();
+      var response = client.execute(request);
 
-      assertThat(result).isEqualTo("hello from fake mistral");
+      assertThat(response.text()).isEqualTo("hello from fake mistral");
+      assertThat(response.tokenUsage()).isNull();
       String raw = http.capturedRawRequest();
       assertThat(raw).contains("POST /v1/chat/completions ");
       assertThat(raw.toLowerCase(Locale.ROOT)).contains("authorization: bearer it-secret-key");

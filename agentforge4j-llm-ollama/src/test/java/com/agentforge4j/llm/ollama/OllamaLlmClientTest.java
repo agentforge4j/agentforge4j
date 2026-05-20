@@ -2,10 +2,17 @@ package com.agentforge4j.llm.ollama;
 
 import com.agentforge4j.llm.api.LlmExecutionRequest;
 import com.agentforge4j.llm.api.LlmInvocationException;
+import com.agentforge4j.llm.api.PromptLayerBoundaries;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.net.http.HttpRequest;
+import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Flow;
+import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
@@ -217,6 +224,40 @@ class OllamaLlmClientTest {
   }
 
   @Nested
+  class PromptCacheConformanceTests {
+
+    @Test
+    void shouldProduceIdenticalRequestBodyRegardlessOfBoundaries() throws Exception {
+      ObjectMapper mapper = new ObjectMapper();
+      OllamaLlmClient client = new OllamaLlmClient(mapper, new TestOllamaConfiguration());
+      LlmExecutionRequest withoutBoundaries =
+          new LlmExecutionRequest("ollama", "llama2", "system", "user");
+      PromptLayerBoundaries boundaries = new PromptLayerBoundaries(50, 100, null);
+      LlmExecutionRequest withBoundaries = new LlmExecutionRequest(
+          "ollama", "llama2", "system", "user", null, boundaries);
+
+      String withoutBody = collectUtf8RequestBody(client.buildHttpRequest(withoutBoundaries));
+      String withBody = collectUtf8RequestBody(client.buildHttpRequest(withBoundaries));
+
+      assertThat(withBody).isEqualTo(withoutBody);
+    }
+
+    @Test
+    void shouldOmitExplicitCacheMarkersWhenBoundariesPresent() throws Exception {
+      ObjectMapper mapper = new ObjectMapper();
+      OllamaLlmClient client = new OllamaLlmClient(mapper, new TestOllamaConfiguration());
+      PromptLayerBoundaries boundaries = new PromptLayerBoundaries(100, 200, null);
+      LlmExecutionRequest request = new LlmExecutionRequest(
+          "ollama", "llama2", "system", "user", null, boundaries);
+
+      String body = collectUtf8RequestBody(client.buildHttpRequest(request));
+
+      assertThat(body).doesNotContain("cache_control");
+      assertThat(body).doesNotContain("cachePoint");
+    }
+  }
+
+  @Nested
   class ValidateAndExtractResponseMalformedJsonTests {
 
     @Test
@@ -228,6 +269,38 @@ class OllamaLlmClientTest {
       assertThatThrownBy(() -> client.validateAndExtractResponse("{ not valid json"))
           .isInstanceOf(java.io.IOException.class);
     }
+  }
+
+  private static String collectUtf8RequestBody(HttpRequest request) throws Exception {
+    assertThat(request.bodyPublisher()).isPresent();
+    HttpRequest.BodyPublisher publisher = request.bodyPublisher().orElseThrow();
+    var out = new ByteArrayOutputStream();
+    var latch = new CountDownLatch(1);
+    publisher.subscribe(new Flow.Subscriber<ByteBuffer>() {
+      @Override
+      public void onSubscribe(Flow.Subscription s) {
+        s.request(Long.MAX_VALUE);
+      }
+
+      @Override
+      public void onNext(ByteBuffer b) {
+        byte[] chunk = new byte[b.remaining()];
+        b.get(chunk);
+        out.writeBytes(chunk);
+      }
+
+      @Override
+      public void onError(Throwable t) {
+        latch.countDown();
+      }
+
+      @Override
+      public void onComplete() {
+        latch.countDown();
+      }
+    });
+    assertThat(latch.await(5, TimeUnit.SECONDS)).as("body publisher should complete").isTrue();
+    return out.toString(StandardCharsets.UTF_8);
   }
 }
 

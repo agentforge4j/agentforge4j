@@ -4,6 +4,7 @@ import com.agentforge4j.llm.LlmClientConfiguration;
 import com.agentforge4j.llm.api.LlmClient;
 import com.agentforge4j.llm.api.LlmExecutionRequest;
 import com.agentforge4j.llm.api.LlmInvocationException;
+import com.agentforge4j.llm.api.PromptLayerBoundaries;
 import com.fasterxml.jackson.databind.JsonMappingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.exc.UnrecognizedPropertyException;
@@ -473,6 +474,36 @@ class MistralLlmClientTest {
       assertThatThrownBy(() -> client.execute(null))
           .isInstanceOf(IllegalArgumentException.class)
           .hasMessageContaining("Request must not be null");
+    }
+  }
+
+  @Nested
+  class PromptCacheConformanceTests {
+
+    @Test
+    void shouldProduceDeterministicRequestBodyForIdenticalInput() throws Exception {
+      ObjectMapper mapper = new ObjectMapper();
+      MistralLlmClient client = new MistralLlmClient(mapper, FixedMistralConfiguration.defaults());
+      LlmExecutionRequest request = LlmExecutionRequest.withDefaultModel("mistral", "sys", "usr");
+
+      String first = collectUtf8RequestBody(client.buildHttpRequest(request));
+      String second = collectUtf8RequestBody(client.buildHttpRequest(request));
+
+      assertThat(first).isEqualTo(second);
+    }
+
+    @Test
+    void shouldOmitExplicitCacheMarkersWhenBoundariesPresent() throws Exception {
+      ObjectMapper mapper = new ObjectMapper();
+      MistralLlmClient client = new MistralLlmClient(mapper, FixedMistralConfiguration.defaults());
+      PromptLayerBoundaries boundaries = new PromptLayerBoundaries(100, 200, null);
+      LlmExecutionRequest request = new LlmExecutionRequest(
+          "mistral", "m", "system prompt", "user", null, boundaries);
+
+      String body = collectUtf8RequestBody(client.buildHttpRequest(request));
+
+      assertThat(body).doesNotContain("cache_control");
+      assertThat(body).doesNotContain("cachePoint");
     }
   }
 

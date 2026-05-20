@@ -2,6 +2,7 @@ package com.agentforge4j.llm.azureopenai;
 
 import com.agentforge4j.llm.api.LlmExecutionRequest;
 import com.agentforge4j.llm.api.LlmInvocationException;
+import com.agentforge4j.llm.api.PromptLayerBoundaries;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.exc.UnrecognizedPropertyException;
 import com.fasterxml.jackson.databind.node.ArrayNode;
@@ -438,6 +439,39 @@ class AzureOpenAiLlmClientTest {
       assertThatThrownBy(() -> client.execute(null))
           .isInstanceOf(IllegalArgumentException.class)
           .hasMessageContaining("Request must not be null");
+    }
+  }
+
+  @Nested
+  class PromptCacheConformanceTests {
+
+    @Test
+    void shouldProduceDeterministicRequestBodyForIdenticalInput() throws Exception {
+      ObjectMapper mapper = new ObjectMapper();
+      AzureOpenAiLlmClient client =
+          new AzureOpenAiLlmClient(mapper, FixedAzureOpenAiConfiguration.defaults());
+      LlmExecutionRequest request =
+          LlmExecutionRequest.withDefaultModel("azure-openai", "sys", "usr");
+
+      String first = collectUtf8RequestBody(client.buildHttpRequest(request));
+      String second = collectUtf8RequestBody(client.buildHttpRequest(request));
+
+      assertThat(first).isEqualTo(second);
+    }
+
+    @Test
+    void shouldOmitExplicitCacheMarkersWhenBoundariesPresent() throws Exception {
+      ObjectMapper mapper = new ObjectMapper();
+      AzureOpenAiLlmClient client =
+          new AzureOpenAiLlmClient(mapper, FixedAzureOpenAiConfiguration.defaults());
+      PromptLayerBoundaries boundaries = new PromptLayerBoundaries(100, 200, null);
+      LlmExecutionRequest request = new LlmExecutionRequest(
+          "azure-openai", "m", "system prompt", "user", null, boundaries);
+
+      String body = collectUtf8RequestBody(client.buildHttpRequest(request));
+
+      assertThat(body).doesNotContain("cache_control");
+      assertThat(body).doesNotContain("cachePoint");
     }
   }
 
