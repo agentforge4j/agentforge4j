@@ -257,9 +257,9 @@ public final class AgentInvoker {
     String layerSeparator = System.lineSeparator() + System.lineSeparator();
     String agentBlock = agent.systemPrompt();
     StringBuilder promptBuilder = new StringBuilder()
-        .append(frameworkBlock)
+        .append(agentBlock)
         .append(layerSeparator)
-        .append(agentBlock);
+        .append(frameworkBlock);
     boolean hasStepLayer = appendStepPrompt(stepPrompt, promptBuilder, layerSeparator);
     String prompt = promptBuilder.toString();
     PromptLayerBoundaries boundaries = null;
@@ -285,7 +285,7 @@ public final class AgentInvoker {
       String agentBlock,
       boolean hasStepLayer,
       String assembledPrompt) {
-    int layer1End = utf8ByteLength(frameworkBlock);
+    int layer1End = utf8ByteLength(agentBlock);
     int layer2End = utf8ByteLength(frameworkBlock + layerSeparator + agentBlock);
     Integer layer3End = hasStepLayer ? utf8ByteLength(assembledPrompt) : null;
     return new PromptLayerBoundaries(layer1End, layer2End, layer3End);

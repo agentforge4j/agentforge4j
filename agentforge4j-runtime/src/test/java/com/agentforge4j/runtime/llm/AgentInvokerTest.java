@@ -134,7 +134,8 @@ class AgentInvokerTest {
 
     LlmClient client = mock(LlmClient.class);
     when(client.getProviderName()).thenReturn("openai");
-    when(client.execute(any())).thenReturn(llmResponse("{}"), llmResponse("[{\"type\":\"COMPLETE\"}]"));
+    when(client.execute(any())).thenReturn(llmResponse("{}"),
+        llmResponse("[{\"type\":\"COMPLETE\"}]"));
 
     ContextRenderer contextRenderer = mock(ContextRenderer.class);
     when(contextRenderer.render(any(), any())).thenReturn(userInput);
@@ -410,8 +411,8 @@ class AgentInvokerTest {
     int frameworkIdx = systemPrompt.indexOf(FRAMEWORK_BLOCK_MARKER);
     int agentIdx = systemPrompt.indexOf(agentBody);
     int stepIdx = systemPrompt.indexOf(stepBody);
-    assertThat(frameworkIdx).isGreaterThanOrEqualTo(0);
-    assertThat(agentIdx).isGreaterThan(frameworkIdx);
+    assertThat(agentIdx).isGreaterThanOrEqualTo(0);
+    assertThat(frameworkIdx).isGreaterThan(agentIdx);
     assertThat(stepIdx).isGreaterThan(agentIdx);
   }
 
@@ -478,9 +479,9 @@ class AgentInvokerTest {
         CommandSchemaFactory.build(agent.supportedCommands(), mapper);
     String frameworkBlock = new CommandResponseSchemaRenderer().render(schema);
     String layerSeparator = System.lineSeparator() + System.lineSeparator();
-    String expectedWithStep = frameworkBlock
+    String expectedWithStep = agentBody
         + layerSeparator
-        + agentBody
+        + frameworkBlock
         + layerSeparator
         + stepBody;
 
@@ -551,7 +552,7 @@ class AgentInvokerTest {
         "B",
         AgentLocality.CLOUD,
         true,
-        "agent-b-body",
+        "agent-a-body",
         List.of(new ProviderPreference("openai", "gpt-4o-mini")),
         List.of("COMPLETE"),
         null,
@@ -629,9 +630,9 @@ class AgentInvokerTest {
     byte[] promptBytes = request.systemPrompt().getBytes(StandardCharsets.UTF_8);
 
     assertThat(slicePrefix(promptBytes, boundaries.layer1EndOffset()))
-        .isEqualTo(frameworkBlock.getBytes(StandardCharsets.UTF_8));
+        .isEqualTo(agentBody.getBytes(StandardCharsets.UTF_8));
     assertThat(slicePrefix(promptBytes, boundaries.layer2EndOffset()))
-        .isEqualTo((frameworkBlock + layerSeparator + agentBody).getBytes(StandardCharsets.UTF_8));
+        .isEqualTo((agentBody + layerSeparator + frameworkBlock).getBytes(StandardCharsets.UTF_8));
     assertThat(slicePrefix(promptBytes, boundaries.layer3EndOffset()))
         .isEqualTo(promptBytes);
     assertThat(request.userInput()).isEqualTo("USER_DYNAMIC_INPUT_MARKER");
@@ -699,7 +700,8 @@ class AgentInvokerTest {
     when(resolver.isProviderAvailable("openai")).thenReturn(true);
     when(resolver.listAvailableClients()).thenReturn(List.of("openai"));
 
-    AgentInvoker invoker = invokerWithAudit(mapper, client, recorder(new InMemoryWorkflowEventLog()));
+    AgentInvoker invoker = invokerWithAudit(mapper, client,
+        recorder(new InMemoryWorkflowEventLog()));
     WorkflowState state = workflowState("run-no-layer3");
 
     invoker.invoke("agent-x", ContextMapping.none(), state, null);
