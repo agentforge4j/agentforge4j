@@ -23,6 +23,7 @@ class OpenAiTokenUsageParsingTest {
     assertThat(response.tokenUsage().outputTokens()).isEqualTo(45);
     assertThat(response.tokenUsage().cachedInputTokens()).isEqualTo(30);
     assertThat(response.tokenUsage().cacheWriteTokens()).isNull();
+    assertThat(response.modelUsed()).isEqualTo("gpt-4o-mini");
   }
 
   @Test
@@ -30,6 +31,7 @@ class OpenAiTokenUsageParsingTest {
     LlmExecutionResponse response =
         client.validateAndExtractResponse(fixture("responses-no-usage.json"));
     assertThat(response.tokenUsage()).isNull();
+    assertThat(response.modelUsed()).isNull();
   }
 
   private static String fixture(String name) throws IOException {

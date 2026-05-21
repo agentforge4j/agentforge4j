@@ -34,7 +34,7 @@ public final class ServiceLoaderStubLlmClientFactory implements LlmClientFactory
 
       @Override
       public LlmExecutionResponse execute(LlmExecutionRequest request) {
-        return new LlmExecutionResponse("stub:" + request.userInput(), null);
+        return new LlmExecutionResponse("stub:" + request.userInput(), null, null);
       }
     };
   }

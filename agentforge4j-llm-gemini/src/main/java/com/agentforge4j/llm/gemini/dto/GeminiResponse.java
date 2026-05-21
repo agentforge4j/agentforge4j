@@ -8,7 +8,8 @@ import java.util.List;
 public record GeminiResponse(
     GeminiErrorResponse error,
     List<GeminiCandidate> candidates,
-    @JsonProperty("usageMetadata") GeminiUsageMetadata usageMetadata
+    @JsonProperty("usageMetadata") GeminiUsageMetadata usageMetadata,
+    @JsonProperty("modelVersion") String modelVersion
 ) {
 
 }

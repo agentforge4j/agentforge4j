@@ -92,7 +92,8 @@ public final class OpenAiCompatibleLlmClient extends AbstractHttpLlmClient {
   /**
    * Validates the OpenAI-compatible Responses API payload and extracts assistant text plus
    * {@code usage} ({@code usage.input_tokens}, {@code usage.output_tokens},
-   * {@code usage.input_tokens_details.cached_tokens} when present).
+   * {@code usage.input_tokens_details.cached_tokens} when present) and root {@code model} for
+   * {@link LlmExecutionResponse#modelUsed()}.
    *
    * @param json the raw JSON response from the provider
    * @return execution response; {@link LlmExecutionResponse#tokenUsage()} is {@code null} when the
@@ -113,7 +114,10 @@ public final class OpenAiCompatibleLlmClient extends AbstractHttpLlmClient {
                       truncated));
             }
         ).strip());
-    return new LlmExecutionResponse(text, toTokenUsageReport(dto.usage()));
+    return new LlmExecutionResponse(
+        text,
+        StringUtils.trimToNull(dto.model()),
+        toTokenUsageReport(dto.usage()));
   }
 
   private static TokenUsageReport toTokenUsageReport(OpenAiCompatibleResponsesUsage usage) {

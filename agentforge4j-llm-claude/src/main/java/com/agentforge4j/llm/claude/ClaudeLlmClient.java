@@ -80,7 +80,7 @@ public final class ClaudeLlmClient extends AbstractHttpLlmClient {
    * Validates the Claude Messages API payload and extracts assistant text plus {@code usage}
    * ({@code usage.input_tokens}, {@code usage.output_tokens},
    * {@code usage.cache_read_input_tokens}, {@code usage.cache_creation_input_tokens} when
-   * present).
+   * present) and root {@code model} for {@link LlmExecutionResponse#modelUsed()}.
    *
    * @param json the raw JSON response from Claude
    * @return execution response; {@link LlmExecutionResponse#tokenUsage()} is {@code null} when the
@@ -109,6 +109,7 @@ public final class ClaudeLlmClient extends AbstractHttpLlmClient {
 
     return new LlmExecutionResponse(
         LlmClient.stripCodeFence(text.strip()),
+        StringUtils.trimToNull(response.model()),
         toTokenUsageReport(response.usage()));
   }
 

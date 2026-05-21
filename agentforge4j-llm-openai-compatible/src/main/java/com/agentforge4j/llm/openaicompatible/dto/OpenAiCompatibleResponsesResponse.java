@@ -8,7 +8,8 @@ import java.util.List;
 public record OpenAiCompatibleResponsesResponse(
     OpenAiCompatibleApiError error,
     List<OpenAiCompatibleOutputItem> output,
-    OpenAiCompatibleResponsesUsage usage
+    OpenAiCompatibleResponsesUsage usage,
+    String model
 ) {
 
 }

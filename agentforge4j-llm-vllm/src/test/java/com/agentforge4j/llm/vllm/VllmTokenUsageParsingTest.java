@@ -23,6 +23,7 @@ class VllmTokenUsageParsingTest {
     assertThat(response.tokenUsage().outputTokens()).isEqualTo(16);
     assertThat(response.tokenUsage().cachedInputTokens()).isEqualTo(10);
     assertThat(response.tokenUsage().cacheWriteTokens()).isNull();
+    assertThat(response.modelUsed()).isEqualTo("meta-llama/Llama-3-8B");
   }
 
   @Test
@@ -30,6 +31,7 @@ class VllmTokenUsageParsingTest {
     LlmExecutionResponse response =
         client.validateAndExtractResponse(fixture("chat-no-usage.json"));
     assertThat(response.tokenUsage()).isNull();
+    assertThat(response.modelUsed()).isNull();
   }
 
   private static String fixture(String name) throws IOException {

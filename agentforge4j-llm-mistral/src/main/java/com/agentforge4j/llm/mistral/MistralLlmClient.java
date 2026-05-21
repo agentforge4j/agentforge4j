@@ -71,11 +71,12 @@ public final class MistralLlmClient extends AbstractHttpLlmClient {
 
   /**
    * Validates the Mistral chat completions payload and extracts assistant text plus {@code usage}
-   * ({@code usage.prompt_tokens}, {@code usage.completion_tokens}).
+   * ({@code usage.prompt_tokens}, {@code usage.completion_tokens}) and root {@code model} for
+   * {@link LlmExecutionResponse#modelUsed()}.
    *
    * @param json the raw JSON response from Mistral
    * @return execution response; {@link LlmExecutionResponse#tokenUsage()} is {@code null} when the
-   *         {@code usage} block is absent
+   * {@code usage} block is absent
    * @throws IOException if the response is invalid or cannot be parsed
    */
   @Override
@@ -90,6 +91,7 @@ public final class MistralLlmClient extends AbstractHttpLlmClient {
         "mistral response first choice content is blank: %s".formatted(json)));
     return new LlmExecutionResponse(
         LlmClient.stripCodeFence(content.strip()),
+        StringUtils.trimToNull(dto.model()),
         toTokenUsageReport(dto.usage()));
   }
 

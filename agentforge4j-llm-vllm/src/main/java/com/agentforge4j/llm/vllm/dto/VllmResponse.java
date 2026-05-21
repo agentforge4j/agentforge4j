@@ -4,6 +4,6 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import java.util.List;
 
 @JsonIgnoreProperties(ignoreUnknown = true)
-public record VllmResponse(List<VllmChoice> choices, VllmUsage usage) {
+public record VllmResponse(List<VllmChoice> choices, VllmUsage usage, String model) {
 
 }

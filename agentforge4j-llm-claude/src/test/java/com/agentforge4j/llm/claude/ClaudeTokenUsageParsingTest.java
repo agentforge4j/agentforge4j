@@ -23,6 +23,7 @@ class ClaudeTokenUsageParsingTest {
     assertThat(response.tokenUsage().outputTokens()).isEqualTo(7);
     assertThat(response.tokenUsage().cachedInputTokens()).isNull();
     assertThat(response.tokenUsage().cacheWriteTokens()).isNull();
+    assertThat(response.modelUsed()).isEqualTo("claude-3-5-sonnet-20241022");
   }
 
   @Test
@@ -30,6 +31,7 @@ class ClaudeTokenUsageParsingTest {
     LlmExecutionResponse response =
         client.validateAndExtractResponse(fixture("messages-no-usage.json"));
     assertThat(response.tokenUsage()).isNull();
+    assertThat(response.modelUsed()).isNull();
   }
 
   @Test

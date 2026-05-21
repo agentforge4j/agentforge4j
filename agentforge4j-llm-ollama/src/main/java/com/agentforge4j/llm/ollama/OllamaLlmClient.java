@@ -53,7 +53,8 @@ public final class OllamaLlmClient extends AbstractHttpLlmClient {
 
   /**
    * Validates the Ollama chat response and extracts assistant text plus eval counts
-   * ({@code prompt_eval_count}, {@code eval_count} when present).
+   * ({@code prompt_eval_count}, {@code eval_count} when present) and root {@code model} for
+   * {@link LlmExecutionResponse#modelUsed()}.
    *
    * @param json the raw JSON response from Ollama
    * @return execution response; {@link LlmExecutionResponse#tokenUsage()} is {@code null} when
@@ -67,6 +68,7 @@ public final class OllamaLlmClient extends AbstractHttpLlmClient {
     validateApiError(dto, json);
     return new LlmExecutionResponse(
         LlmClient.stripCodeFence(retrieveResponse(dto, json).strip()),
+        StringUtils.trimToNull(dto.model()),
         toTokenUsageReport(dto));
   }
 

@@ -1,4 +1,5 @@
 {
+  "model": "gpt-4o",
   "error": null,
   "choices": [{"message": {"role": "assistant", "content": "ok"}}],
   "usage": {

@@ -24,6 +24,7 @@ class OpenAiCompatibleTokenUsageParsingTest {
     assertThat(response.tokenUsage().outputTokens()).isEqualTo(22);
     assertThat(response.tokenUsage().cachedInputTokens()).isEqualTo(7);
     assertThat(response.tokenUsage().cacheWriteTokens()).isNull();
+    assertThat(response.modelUsed()).isEqualTo("provider-model-1");
   }
 
   @Test
@@ -31,6 +32,7 @@ class OpenAiCompatibleTokenUsageParsingTest {
     LlmExecutionResponse response =
         client.validateAndExtractResponse(fixture("responses-no-usage.json"));
     assertThat(response.tokenUsage()).isNull();
+    assertThat(response.modelUsed()).isNull();
   }
 
   private static String fixture(String name) throws IOException {

@@ -67,7 +67,8 @@ public final class VllmLlmClient extends AbstractHttpLlmClient {
   /**
    * Validates the vLLM OpenAI-compatible chat completions payload and extracts assistant text plus
    * {@code usage} ({@code usage.prompt_tokens}, {@code usage.completion_tokens},
-   * {@code usage.prompt_tokens_details.cached_tokens} when present).
+   * {@code usage.prompt_tokens_details.cached_tokens} when present) and root {@code model} for
+   * {@link LlmExecutionResponse#modelUsed()}.
    *
    * @param json the raw JSON response from vLLM
    * @return execution response; {@link LlmExecutionResponse#tokenUsage()} is {@code null} when the
@@ -88,8 +89,10 @@ public final class VllmLlmClient extends AbstractHttpLlmClient {
         "vLLM response first choice content is blank: %s".formatted(json)));
 
     VllmUsage usage = response == null ? null : response.usage();
+    String modelUsed = response == null ? null : response.model();
     return new LlmExecutionResponse(
         LlmClient.stripCodeFence(content.strip()),
+        StringUtils.trimToNull(modelUsed),
         toTokenUsageReport(usage));
   }
 

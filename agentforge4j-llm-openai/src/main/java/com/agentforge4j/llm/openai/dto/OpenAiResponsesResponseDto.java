@@ -11,7 +11,8 @@ import java.util.List;
 public record OpenAiResponsesResponseDto(
     OpenAiErrorDto error,
     List<OpenAiOutputItemDto> output,
-    OpenAiResponsesUsageDto usage
+    OpenAiResponsesUsageDto usage,
+    String model
 ) {
 
 }

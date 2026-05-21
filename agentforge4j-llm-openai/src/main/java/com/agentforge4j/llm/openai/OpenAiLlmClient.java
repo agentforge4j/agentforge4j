@@ -61,7 +61,8 @@ public final class OpenAiLlmClient extends AbstractHttpLlmClient {
   /**
    * Validates the OpenAI Responses API payload and extracts assistant text plus {@code usage}
    * ({@code usage.input_tokens}, {@code usage.output_tokens},
-   * {@code usage.input_tokens_details.cached_tokens} when present).
+   * {@code usage.input_tokens_details.cached_tokens} when present) and root {@code model} for
+   * {@link LlmExecutionResponse#modelUsed()}.
    *
    * @param json the raw JSON response from OpenAI
    * @return execution response; {@link LlmExecutionResponse#tokenUsage()} is {@code null} when the
@@ -77,7 +78,10 @@ public final class OpenAiLlmClient extends AbstractHttpLlmClient {
         .orElseThrow(() -> new LlmInvocationException(
             "OpenAI response missing assistant output_text in message output item: %s".formatted(
                 json))).strip());
-    return new LlmExecutionResponse(text, toTokenUsageReport(dto.usage()));
+    return new LlmExecutionResponse(
+        text,
+        StringUtils.trimToNull(dto.model()),
+        toTokenUsageReport(dto.usage()));
   }
 
   private static TokenUsageReport toTokenUsageReport(OpenAiResponsesUsageDto usage) {

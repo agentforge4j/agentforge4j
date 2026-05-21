@@ -20,13 +20,19 @@ final class BedrockAnthropicResponseParser {
    * ({@code usage.input_tokens}, {@code usage.output_tokens},
    * {@code usage.cache_read_input_tokens}, {@code usage.cache_creation_input_tokens} when
    * present).
+   * <p>
+   * {@link LlmExecutionResponse#modelUsed()} is set from {@code modelId}: the Anthropic InvokeModel
+   * response body does not include a model field, and Bedrock invokes the exact {@code modelId}
+   * supplied on the request.
    *
    * @param json         raw InvokeModel response body
    * @param objectMapper JSON mapper
+   * @param modelId      Bedrock model identifier passed to {@code InvokeModel}
    * @return execution response; {@link LlmExecutionResponse#tokenUsage()} is {@code null} when the
    * {@code usage} object is absent
    */
-  LlmExecutionResponse parse(String json, ObjectMapper objectMapper) throws IOException {
+  LlmExecutionResponse parse(String json, ObjectMapper objectMapper, String modelId)
+      throws IOException {
     Validate.notBlank(json,
         () -> new LlmInvocationException("Bedrock response body must not be blank"));
     Validate.notNull(objectMapper, "ObjectMapper must not be null");
@@ -36,7 +42,10 @@ final class BedrockAnthropicResponseParser {
         new LlmInvocationException("Bedrock response JSON deserialized to null"));
 
     String text = extractAssistantText(root, json);
-    return new LlmExecutionResponse(text, toTokenUsageReport(root.get("usage")));
+    return new LlmExecutionResponse(
+        text,
+        StringUtils.trimToNull(modelId),
+        toTokenUsageReport(root.get("usage")));
   }
 
   private static String extractAssistantText(JsonNode root, String json) {

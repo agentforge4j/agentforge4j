@@ -88,7 +88,7 @@ public final class BedrockLlmClient implements LlmClient {
       LOG.log(System.Logger.Level.DEBUG, "Bedrock invokeModel modelId={0}", modelId);
       InvokeModelResponse response = bedrockClient.invokeModel(invokeRequest);
       String utf8 = response.body() == null ? "" : response.body().asUtf8String();
-      return responseParser.parse(utf8, objectMapper);
+      return responseParser.parse(utf8, objectMapper, modelId);
     } catch (AwsServiceException e) {
       throw mapAwsServiceException(e);
     } catch (IOException e) {

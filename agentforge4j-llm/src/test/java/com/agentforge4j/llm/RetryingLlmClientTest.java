@@ -64,7 +64,7 @@ class RetryingLlmClientTest {
     @Override
     public LlmExecutionResponse execute(LlmExecutionRequest request) {
       callCount.incrementAndGet();
-      return new LlmExecutionResponse(script.removeFirst().get(), null);
+      return new LlmExecutionResponse(script.removeFirst().get(), null, null);
     }
 
     int getCallCount() {
@@ -125,7 +125,7 @@ class RetryingLlmClientTest {
     @Test
     void propagates_execution_response_unchanged() {
       TokenUsageReport usage = new TokenUsageReport(10, 20, 5, 1);
-      LlmExecutionResponse expected = new LlmExecutionResponse("payload", usage);
+      LlmExecutionResponse expected = new LlmExecutionResponse("payload", null, usage);
       LlmClient delegate = new LlmClient() {
         @Override
         public String getProviderName() {

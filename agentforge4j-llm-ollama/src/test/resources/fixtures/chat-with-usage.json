@@ -1,4 +1,5 @@
 {
+  "model": "llama3.2",
   "error": null,
   "message": {"role": "assistant", "content": "Hello"},
   "prompt_eval_count": 50,

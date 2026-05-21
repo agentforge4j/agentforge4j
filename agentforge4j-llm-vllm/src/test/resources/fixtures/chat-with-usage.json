@@ -1,4 +1,5 @@
 {
+  "model": "meta-llama/Llama-3-8B",
   "choices": [{"message": {"content": "Hello from vLLM"}}],
   "usage": {
     "prompt_tokens": 80,

@@ -23,6 +23,7 @@ class OllamaTokenUsageParsingTest {
     assertThat(response.tokenUsage().outputTokens()).isEqualTo(12);
     assertThat(response.tokenUsage().cachedInputTokens()).isNull();
     assertThat(response.tokenUsage().cacheWriteTokens()).isNull();
+    assertThat(response.modelUsed()).isEqualTo("llama3.2");
   }
 
   @Test
@@ -30,6 +31,7 @@ class OllamaTokenUsageParsingTest {
     LlmExecutionResponse response =
         client.validateAndExtractResponse(fixture("chat-no-usage.json"));
     assertThat(response.tokenUsage()).isNull();
+    assertThat(response.modelUsed()).isNull();
   }
 
   private static String fixture(String name) throws IOException {

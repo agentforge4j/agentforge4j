@@ -7,5 +7,6 @@ import java.util.List;
 public record ClaudeResponse(
     List<ClaudeContentBlock> content,
     String error,
-    ClaudeUsage usage
+    ClaudeUsage usage,
+    String model
 ) {}

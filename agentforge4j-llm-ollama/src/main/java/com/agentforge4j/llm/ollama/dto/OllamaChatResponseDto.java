@@ -8,7 +8,8 @@ public record OllamaChatResponseDto(
     MessageDto message,
     String error,
     @JsonProperty("prompt_eval_count") Integer promptEvalCount,
-    @JsonProperty("eval_count") Integer evalCount
+    @JsonProperty("eval_count") Integer evalCount,
+    String model
 ) {
 
 }

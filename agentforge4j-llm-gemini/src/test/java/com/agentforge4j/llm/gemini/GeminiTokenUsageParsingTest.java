@@ -23,6 +23,7 @@ class GeminiTokenUsageParsingTest {
     assertThat(response.tokenUsage().outputTokens()).isEqualTo(25);
     assertThat(response.tokenUsage().cachedInputTokens()).isEqualTo(8);
     assertThat(response.tokenUsage().cacheWriteTokens()).isNull();
+    assertThat(response.modelUsed()).isEqualTo("gemini-2.0-flash-001");
   }
 
   @Test
@@ -30,6 +31,7 @@ class GeminiTokenUsageParsingTest {
     LlmExecutionResponse response =
         client.validateAndExtractResponse(fixture("generate-no-usage.json"));
     assertThat(response.tokenUsage()).isNull();
+    assertThat(response.modelUsed()).isNull();
   }
 
   private static String fixture(String name) throws IOException {

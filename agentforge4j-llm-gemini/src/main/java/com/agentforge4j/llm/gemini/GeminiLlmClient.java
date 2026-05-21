@@ -90,7 +90,8 @@ public final class GeminiLlmClient extends AbstractHttpLlmClient {
   /**
    * Validates the Gemini generateContent payload and extracts text plus {@code usageMetadata}
    * ({@code usageMetadata.promptTokenCount}, {@code usageMetadata.candidatesTokenCount},
-   * {@code usageMetadata.cachedContentTokenCount} when present).
+   * {@code usageMetadata.cachedContentTokenCount} when present) and root {@code modelVersion} for
+   * {@link LlmExecutionResponse#modelUsed()}.
    *
    * @param json the raw JSON response from Gemini
    * @return execution response; {@link LlmExecutionResponse#tokenUsage()} is {@code null} when
@@ -134,6 +135,7 @@ public final class GeminiLlmClient extends AbstractHttpLlmClient {
         () -> new LlmInvocationException("Gemini response text is blank: %s".formatted(json)));
     return new LlmExecutionResponse(
         LlmClient.stripCodeFence(text.strip()),
+        StringUtils.trimToNull(dto.modelVersion()),
         toTokenUsageReport(dto.usageMetadata()));
   }
 

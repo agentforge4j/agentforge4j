@@ -43,7 +43,7 @@ class AbstractHttpLlmClientIT {
 
     @Override
     protected LlmExecutionResponse validateAndExtractResponse(String json) throws IOException {
-      return new LlmExecutionResponse(json, null);
+      return new LlmExecutionResponse(json, null, null);
     }
   }
 

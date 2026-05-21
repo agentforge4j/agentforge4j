@@ -75,7 +75,7 @@ class DefaultLlmClientResolverTest {
 
         @Override
         public LlmExecutionResponse execute(LlmExecutionRequest request) {
-          return new LlmExecutionResponse("", null);
+          return new LlmExecutionResponse("", null, null);
         }
       };
       Collection<LlmClient> clients = List.of(badClient);

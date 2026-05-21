@@ -89,7 +89,8 @@ public final class AzureOpenAiLlmClient extends AbstractHttpLlmClient {
   /**
    * Validates the Azure OpenAI chat completions payload and extracts assistant text plus
    * {@code usage} ({@code usage.prompt_tokens}, {@code usage.completion_tokens},
-   * {@code usage.prompt_tokens_details.cached_tokens} when present).
+   * {@code usage.prompt_tokens_details.cached_tokens} when present) and root {@code model} for
+   * {@link LlmExecutionResponse#modelUsed()}.
    *
    * @param json the raw JSON response from Azure OpenAI
    * @return execution response; {@link LlmExecutionResponse#tokenUsage()} is {@code null} when the
@@ -112,6 +113,7 @@ public final class AzureOpenAiLlmClient extends AbstractHttpLlmClient {
             deploymentName, json)));
     return new LlmExecutionResponse(
         LlmClient.stripCodeFence(content.strip()),
+        StringUtils.trimToNull(dto.model()),
         toTokenUsageReport(dto.usage()));
   }
 

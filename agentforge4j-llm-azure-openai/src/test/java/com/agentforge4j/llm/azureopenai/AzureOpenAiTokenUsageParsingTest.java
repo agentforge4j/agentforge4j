@@ -23,6 +23,7 @@ class AzureOpenAiTokenUsageParsingTest {
     assertThat(response.tokenUsage().outputTokens()).isEqualTo(18);
     assertThat(response.tokenUsage().cachedInputTokens()).isEqualTo(5);
     assertThat(response.tokenUsage().cacheWriteTokens()).isNull();
+    assertThat(response.modelUsed()).isEqualTo("gpt-4o");
   }
 
   @Test
@@ -30,6 +31,7 @@ class AzureOpenAiTokenUsageParsingTest {
     LlmExecutionResponse response =
         client.validateAndExtractResponse(fixture("chat-no-usage.json"));
     assertThat(response.tokenUsage()).isNull();
+    assertThat(response.modelUsed()).isNull();
   }
 
   private static String fixture(String name) throws IOException {
