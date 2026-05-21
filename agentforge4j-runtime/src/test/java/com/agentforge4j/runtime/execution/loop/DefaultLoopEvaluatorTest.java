@@ -14,14 +14,15 @@ import com.agentforge4j.runtime.execution.ExecutionContext;
 import com.agentforge4j.runtime.llm.AgentInvocationResult;
 import com.agentforge4j.runtime.llm.AgentInvoker;
 import com.agentforge4j.runtime.llm.LlmCommandParseException;
+import java.time.Instant;
+import java.util.List;
+import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
-import java.time.Instant;
-import java.util.List;
-import java.util.Map;
-
+import static com.agentforge4j.runtime.llm.AgentInvocationResultTestFixtures.TEST_MODEL;
+import static com.agentforge4j.runtime.llm.AgentInvocationResultTestFixtures.TEST_TOKEN_USAGE;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
@@ -69,7 +70,8 @@ class DefaultLoopEvaluatorTest {
   @Test
   void terminates_when_agent_returns_termination_signal() {
     when(agentInvoker.invoke(eq("eval-agent"), any(), any(), isNull()))
-        .thenReturn(new AgentInvocationResult("raw", List.of(new CompleteCommand(null))));
+        .thenReturn(new AgentInvocationResult(
+            "raw", List.of(new CompleteCommand(null)), TEST_MODEL, TEST_TOKEN_USAGE));
 
     assertThat(evaluator.shouldTerminate("eval-agent", 2, executionContext)).isTrue();
   }
@@ -77,8 +79,9 @@ class DefaultLoopEvaluatorTest {
   @Test
   void continues_when_agent_returns_continue_signal() {
     when(agentInvoker.invoke(eq("eval-agent"), any(), any(), isNull()))
-        .thenReturn(new AgentInvocationResult("raw",
-            List.of(new ContinueCommand(null, null, List.of()))));
+        .thenReturn(new AgentInvocationResult(
+            "raw", List.of(new ContinueCommand(null, null, List.of())), TEST_MODEL,
+            TEST_TOKEN_USAGE));
 
     assertThat(evaluator.shouldTerminate("eval-agent", 2, executionContext)).isFalse();
   }
@@ -96,7 +99,7 @@ class DefaultLoopEvaluatorTest {
   void passes_state_to_evaluator_agent_invocation() {
     when(agentInvoker.invoke(eq("eval-agent"), eq(ContextMapping.none()),
         eq(executionContext.getState()), isNull()))
-        .thenReturn(new AgentInvocationResult("raw", List.of()));
+        .thenReturn(new AgentInvocationResult("raw", List.of(), TEST_MODEL, TEST_TOKEN_USAGE));
 
     evaluator.shouldTerminate("eval-agent", 4, executionContext);
 

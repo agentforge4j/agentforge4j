@@ -16,6 +16,7 @@ import com.agentforge4j.llm.api.LlmClient;
 import com.agentforge4j.llm.api.LlmExecutionRequest;
 import com.agentforge4j.llm.api.LlmExecutionResponse;
 import com.agentforge4j.llm.api.PromptLayerBoundaries;
+import com.agentforge4j.llm.api.TokenUsageReport;
 import com.agentforge4j.runtime.event.EventRecorder;
 import com.agentforge4j.runtime.repository.InMemoryWorkflowEventLog;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -37,6 +38,58 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class AgentInvokerTest {
+
+  @Test
+  void invoke_populates_tokenUsage_on_result() {
+    ObjectMapper mapper = new ObjectMapper();
+    String raw = "[{\"type\":\"COMPLETE\"}]";
+    TokenUsageReport usage = new TokenUsageReport(10, 5, null, null);
+    LlmClient client = mock(LlmClient.class);
+    when(client.getProviderName()).thenReturn("openai");
+    when(client.execute(any())).thenReturn(llmResponse(raw, "gpt-4o-mini", usage));
+
+    AgentInvoker invoker = invokerWithAudit(mapper, client,
+        recorder(new InMemoryWorkflowEventLog()));
+    WorkflowState state = workflowState("run-token-usage");
+
+    AgentInvocationResult result = invoker.invoke("agent-x", ContextMapping.none(), state, null);
+
+    assertThat(result.tokenUsage()).isEqualTo(usage);
+  }
+
+  @Test
+  void invoke_populates_modelUsed_on_result() {
+    ObjectMapper mapper = new ObjectMapper();
+    String raw = "[{\"type\":\"COMPLETE\"}]";
+    LlmClient client = mock(LlmClient.class);
+    when(client.getProviderName()).thenReturn("openai");
+    when(client.execute(any())).thenReturn(llmResponse(raw, "claude-3-5-sonnet", null));
+
+    AgentInvoker invoker = invokerWithAudit(mapper, client,
+        recorder(new InMemoryWorkflowEventLog()));
+    WorkflowState state = workflowState("run-model-used");
+
+    AgentInvocationResult result = invoker.invoke("agent-x", ContextMapping.none(), state, null);
+
+    assertThat(result.modelUsed()).isEqualTo("claude-3-5-sonnet");
+  }
+
+  @Test
+  void invoke_with_null_tokenUsage_propagates_null() {
+    ObjectMapper mapper = new ObjectMapper();
+    String raw = "[{\"type\":\"COMPLETE\"}]";
+    LlmClient client = mock(LlmClient.class);
+    when(client.getProviderName()).thenReturn("openai");
+    when(client.execute(any())).thenReturn(llmResponse(raw, "gpt-4o", null));
+
+    AgentInvoker invoker = invokerWithAudit(mapper, client,
+        recorder(new InMemoryWorkflowEventLog()));
+    WorkflowState state = workflowState("run-null-usage");
+
+    AgentInvocationResult result = invoker.invoke("agent-x", ContextMapping.none(), state, null);
+
+    assertThat(result.tokenUsage()).isNull();
+  }
 
   @Test
   void parseRetryPipeline_successfulFirstParse_oneLlmCall_oneAudit_noDuplicates() {
@@ -846,7 +899,12 @@ class AgentInvokerTest {
   }
 
   private static LlmExecutionResponse llmResponse(String text) {
-    return new LlmExecutionResponse(text, null);
+    return llmResponse(text, null, null);
+  }
+
+  private static LlmExecutionResponse llmResponse(
+      String text, String modelUsed, TokenUsageReport tokenUsage) {
+    return new LlmExecutionResponse(text, modelUsed, tokenUsage);
   }
 
   private static byte[] layerPrefixBytes(String systemPrompt, int endOffset) {

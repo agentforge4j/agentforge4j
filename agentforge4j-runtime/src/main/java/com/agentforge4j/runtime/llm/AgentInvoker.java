@@ -141,7 +141,11 @@ public final class AgentInvoker {
 
     ParsedInvocation parsed = invokeLlmRecordAndParseWithRetry(
         agent, preference, client, assembled, userInput, schema, state, actorIdForEvents);
-    return new AgentInvocationResult(parsed.llmResponse().text(), parsed.commands());
+    return new AgentInvocationResult(
+        parsed.llmResponse().text(),
+        parsed.commands(),
+        parsed.llmResponse().modelUsed(),
+        parsed.llmResponse().tokenUsage());
   }
 
   private ParsedInvocation invokeLlmRecordAndParseWithRetry(
