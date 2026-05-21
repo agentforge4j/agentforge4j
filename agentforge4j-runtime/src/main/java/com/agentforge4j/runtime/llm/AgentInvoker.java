@@ -46,6 +46,7 @@ public final class AgentInvoker {
   private final EventRecorder eventRecorder;
   private final int llmOutputEventCharCap;
   private final boolean promptCacheEnabled;
+  private final LlmCallObserver llmCallObserver;
   private final CommandResponseSchemaRenderer schemaRenderer = new CommandResponseSchemaRenderer();
 
   public AgentInvoker(AgentRepository agentRepository,
@@ -95,6 +96,21 @@ public final class AgentInvoker {
       int llmOutputEventCharCap,
       LlmProviderSelectionStrategy llmProviderSelectionStrategy,
       boolean promptCacheEnabled) {
+    this(agentRepository, llmClientResolver, contextRenderer, llmCommandParser, objectMapper,
+        eventRecorder, llmOutputEventCharCap, llmProviderSelectionStrategy, promptCacheEnabled,
+        new LlmCallObserver(eventRecorder));
+  }
+
+  public AgentInvoker(AgentRepository agentRepository,
+      LlmClientResolver llmClientResolver,
+      ContextRenderer contextRenderer,
+      LlmCommandParser llmCommandParser,
+      ObjectMapper objectMapper,
+      EventRecorder eventRecorder,
+      int llmOutputEventCharCap,
+      LlmProviderSelectionStrategy llmProviderSelectionStrategy,
+      boolean promptCacheEnabled,
+      LlmCallObserver llmCallObserver) {
     this.agentRepository = Validate.notNull(agentRepository, "agentRepository must not be null");
     this.llmClientResolver = Validate.notNull(llmClientResolver,
         "llmClientResolver must not be null");
@@ -107,6 +123,7 @@ public final class AgentInvoker {
     this.llmOutputEventCharCap = Validate.isNotNegative(llmOutputEventCharCap,
         "llmOutputEventCharCap must be >= 0").intValue();
     this.promptCacheEnabled = promptCacheEnabled;
+    this.llmCallObserver = Validate.notNull(llmCallObserver, "llmCallObserver must not be null");
   }
 
   public AgentInvocationResult invoke(String agentId,
@@ -141,6 +158,7 @@ public final class AgentInvoker {
 
     ParsedInvocation parsed = invokeLlmRecordAndParseWithRetry(
         agent, preference, client, assembled, userInput, schema, state, actorIdForEvents);
+    llmCallObserver.observe(actorIdForEvents, preference.provider(), parsed.llmResponse(), state);
     return new AgentInvocationResult(
         parsed.llmResponse().text(),
         parsed.commands(),

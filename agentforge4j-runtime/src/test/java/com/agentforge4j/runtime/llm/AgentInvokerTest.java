@@ -721,11 +721,12 @@ class AgentInvokerTest {
         AgentInvoker.DEFAULT_LLM_OUTPUT_EVENT_CHAR_CAP,
         new FirstAvailableProviderSelectionStrategy(),
         false);
-    WorkflowState state = workflowState("run-cache-disabled");
+    WorkflowState enabledState = workflowState("run-cache-disabled-enabled");
+    WorkflowState disabledState = workflowState("run-cache-disabled-disabled");
     String stepBody = "STEP_DISABLED_CACHE";
 
-    enabledInvoker.invoke("agent-x", ContextMapping.none(), state, stepBody);
-    disabledInvoker.invoke("agent-x", ContextMapping.none(), state, stepBody);
+    enabledInvoker.invoke("agent-x", ContextMapping.none(), enabledState, stepBody);
+    disabledInvoker.invoke("agent-x", ContextMapping.none(), disabledState, stepBody);
 
     ArgumentCaptor<LlmExecutionRequest> captor = ArgumentCaptor.forClass(LlmExecutionRequest.class);
     verify(client, times(2)).execute(captor.capture());

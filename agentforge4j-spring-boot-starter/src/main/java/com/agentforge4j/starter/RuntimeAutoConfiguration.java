@@ -15,6 +15,7 @@ import com.agentforge4j.runtime.event.EventRecorder;
 import com.agentforge4j.runtime.llm.AgentInvoker;
 import com.agentforge4j.runtime.llm.ContextRenderer;
 import com.agentforge4j.runtime.llm.FirstAvailableProviderSelectionStrategy;
+import com.agentforge4j.runtime.llm.LlmCallObserver;
 import com.agentforge4j.runtime.llm.LlmCommandParser;
 import com.agentforge4j.schema.ClasspathSchemaProvider;
 import com.agentforge4j.schema.SchemaProvider;
@@ -64,6 +65,12 @@ public class RuntimeAutoConfiguration {
     return new NoOpFileSink();
   }
 
+  @Bean
+  @ConditionalOnMissingBean
+  public EventRecorder eventRecorder(WorkflowEventLog workflowEventLog, Clock clock) {
+    return new EventRecorder(workflowEventLog, clock);
+  }
+
   /**
    * Builds the runtime {@link AgentInvoker}, forwarding {@link LlmCacheSettings#enabled()} as
    * {@code promptCacheEnabled}.
@@ -73,10 +80,9 @@ public class RuntimeAutoConfiguration {
   public AgentInvoker agentInvoker(AgentRepository agentRepository,
       LlmClientResolver llmClientResolver,
       ObjectMapper objectMapper,
-      WorkflowEventLog workflowEventLog,
-      Clock clock,
+      EventRecorder eventRecorder,
       LlmCacheSettings cacheSettings) {
-    EventRecorder eventRecorder = new EventRecorder(workflowEventLog, clock);
+    LlmCallObserver llmCallObserver = new LlmCallObserver(eventRecorder);
     return new AgentInvoker(
         agentRepository,
         llmClientResolver,
@@ -86,7 +92,8 @@ public class RuntimeAutoConfiguration {
         eventRecorder,
         AgentInvoker.DEFAULT_LLM_OUTPUT_EVENT_CHAR_CAP,
         new FirstAvailableProviderSelectionStrategy(),
-        cacheSettings.enabled());
+        cacheSettings.enabled(),
+        llmCallObserver);
   }
 
   /**
@@ -106,6 +113,7 @@ public class RuntimeAutoConfiguration {
       AgentForge4jProperties properties,
       FileSink fileSink,
       AgentInvoker agentInvoker,
+      EventRecorder eventRecorder,
       Optional<IntegrationRegistry> integrationRegistry) {
     WorkflowRuntimeBuilder builder = new WorkflowRuntimeBuilder()
         .workflowRepository(workflowRepository)
@@ -115,6 +123,7 @@ public class RuntimeAutoConfiguration {
         .runContextManager(runContextManager)
         .fileSink(fileSink)
         .agentInvoker(agentInvoker)
+        .eventRecorder(eventRecorder)
         .integrationRegistry(integrationRegistry.orElse(NoOpIntegrationRegistry.INSTANCE));
     if (properties.maxNestingDepth() != null) {
       builder.maxNestingDepth(properties.maxNestingDepth());
