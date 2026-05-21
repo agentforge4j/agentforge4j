@@ -75,7 +75,7 @@ public final class RetryPreviousBehaviourHandler implements
     attempts++;
     state.putContextValue(attemptKey, new StringContextValue(String.valueOf(attempts)));
 
-    state.clearEntriesFromUid(retryUid, attemptKey);
+    state.clearEntriesFromUid(retryUid);
     LOG.log(System.Logger.Level.DEBUG, "Retry clearFromUid retryUid={0}", retryUid);
     LOG.log(System.Logger.Level.DEBUG, "Retry dispatched retryMode={0}, retryStepId={1}",
         behaviour.retryMode(), behaviour.retryStepId());

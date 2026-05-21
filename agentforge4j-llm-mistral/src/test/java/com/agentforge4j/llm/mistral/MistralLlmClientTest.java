@@ -3,6 +3,7 @@ package com.agentforge4j.llm.mistral;
 import com.agentforge4j.llm.LlmClientConfiguration;
 import com.agentforge4j.llm.api.LlmClient;
 import com.agentforge4j.llm.api.LlmExecutionRequest;
+import com.agentforge4j.llm.api.LlmExecutionResponse;
 import com.agentforge4j.llm.api.LlmInvocationException;
 import com.agentforge4j.llm.api.PromptLayerBoundaries;
 import com.fasterxml.jackson.databind.JsonMappingException;
@@ -131,7 +132,7 @@ class MistralLlmClientTest {
           }
           """;
 
-      assertThat(client.validateAndExtractResponse(json)).isEqualTo("still ok");
+      assertThat(client.validateAndExtractResponse(json).text()).isEqualTo("still ok");
     }
 
     @Test
@@ -252,7 +253,11 @@ class MistralLlmClientTest {
           }
           """;
 
-      assertThat(client.validateAndExtractResponse(json)).isEqualTo("with usage");
+      LlmExecutionResponse response = client.validateAndExtractResponse(json);
+      assertThat(response.text()).isEqualTo("with usage");
+      assertThat(response.tokenUsage()).isNotNull();
+      assertThat(response.tokenUsage().inputTokens()).isEqualTo(1);
+      assertThat(response.tokenUsage().outputTokens()).isEqualTo(2);
     }
 
     @Test
@@ -268,7 +273,7 @@ class MistralLlmClientTest {
           }
           """;
 
-      assertThat(client.validateAndExtractResponse(json)).isEqualTo("trimmed");
+      assertThat(client.validateAndExtractResponse(json).text()).isEqualTo("trimmed");
     }
 
     @Test
@@ -302,7 +307,7 @@ class MistralLlmClientTest {
       message.put("content", "```json\n{\"a\":1}\n```");
       String json = mapper.writeValueAsString(root);
 
-      assertThat(client.validateAndExtractResponse(json)).isEqualTo("{\"a\":1}");
+      assertThat(client.validateAndExtractResponse(json).text()).isEqualTo("{\"a\":1}");
     }
   }
 

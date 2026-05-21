@@ -169,7 +169,7 @@ class VllmLlmClientTest {
           }
           """;
 
-      assertThat(client.validateAndExtractResponse(json)).isEqualTo("padded");
+      assertThat(client.validateAndExtractResponse(json).text()).isEqualTo("padded");
     }
 
     @Test
@@ -188,7 +188,7 @@ class VllmLlmClientTest {
           }
           """;
 
-      assertThat(client.validateAndExtractResponse(json)).isEqualTo("return 1;");
+      assertThat(client.validateAndExtractResponse(json).text()).isEqualTo("return 1;");
     }
 
     @Test
@@ -196,7 +196,7 @@ class VllmLlmClientTest {
       ObjectMapper mapper = new ObjectMapper();
       VllmLlmClient client = new VllmLlmClient(mapper, FixedVllmConfiguration.defaults());
 
-      assertThat(client.validateAndExtractResponse(VALID_CHAT_COMPLETIONS_JSON))
+      assertThat(client.validateAndExtractResponse(VALID_CHAT_COMPLETIONS_JSON).text())
           .isEqualTo("Hello from vLLM");
     }
 
@@ -211,7 +211,7 @@ class VllmLlmClientTest {
       message.put("content", "built");
       String json = mapper.writeValueAsString(root);
 
-      assertThat(client.validateAndExtractResponse(json)).isEqualTo("built");
+      assertThat(client.validateAndExtractResponse(json).text()).isEqualTo("built");
     }
 
     @Test
@@ -228,7 +228,7 @@ class VllmLlmClientTest {
           }
           """;
 
-      assertThat(client.validateAndExtractResponse(json)).isEqualTo("ok");
+      assertThat(client.validateAndExtractResponse(json).text()).isEqualTo("ok");
     }
   }
 

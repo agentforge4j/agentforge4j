@@ -1,5 +1,6 @@
 package com.agentforge4j.llm.bedrock;
 
+import com.agentforge4j.llm.api.LlmExecutionResponse;
 import com.agentforge4j.llm.api.LlmInvocationException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
@@ -10,6 +11,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class BedrockAnthropicResponseParserTest {
 
+  private static final String TEST_MODEL_ID = "anthropic.claude-3-5-sonnet-20241022-v2:0";
+
   private final ObjectMapper mapper = new ObjectMapper();
   private final BedrockAnthropicResponseParser parser = new BedrockAnthropicResponseParser();
 
@@ -18,7 +21,7 @@ class BedrockAnthropicResponseParserTest {
     String json = """
         {"id":"msg","type":"message","role":"assistant","content":[{"type":"text","text":"  hello  "}]}
         """;
-    assertThat(parser.extractAssistantText(json, mapper)).isEqualTo("hello");
+    assertThat(parser.parse(json, mapper, TEST_MODEL_ID).text()).isEqualTo("hello");
   }
 
   @Test
@@ -26,19 +29,19 @@ class BedrockAnthropicResponseParserTest {
     String json = """
         {"content":[{"type":"text","text":"```json\\n{\\"a\\":1}\\n```"}]}
         """;
-    assertThat(parser.extractAssistantText(json, mapper)).isEqualTo("{\"a\":1}");
+    assertThat(parser.parse(json, mapper, TEST_MODEL_ID).text()).isEqualTo("{\"a\":1}");
   }
 
   @Test
   void rejectsMissingContent() {
-    assertThatThrownBy(() -> parser.extractAssistantText("{}", mapper))
+    assertThatThrownBy(() -> parser.parse("{}", mapper, TEST_MODEL_ID))
         .isInstanceOf(LlmInvocationException.class)
         .hasMessageContaining("content");
   }
 
   @Test
   void rejectsMalformedJson() {
-    assertThatThrownBy(() -> parser.extractAssistantText("{", mapper))
+    assertThatThrownBy(() -> parser.parse("{", mapper, TEST_MODEL_ID))
         .isInstanceOf(IOException.class);
   }
 
@@ -47,28 +50,28 @@ class BedrockAnthropicResponseParserTest {
     String json = """
         {"content":[{"type":"text","text":"  "},{"type":"tool_use","name":"x","id":"1","input":{}}]}
         """;
-    assertThatThrownBy(() -> parser.extractAssistantText(json, mapper))
+    assertThatThrownBy(() -> parser.parse(json, mapper, TEST_MODEL_ID))
         .isInstanceOf(LlmInvocationException.class)
         .hasMessageContaining("no text content");
   }
 
   @Test
   void rejectsBlankJson() {
-    assertThatThrownBy(() -> parser.extractAssistantText("   ", mapper))
+    assertThatThrownBy(() -> parser.parse("   ", mapper, TEST_MODEL_ID))
         .isInstanceOf(LlmInvocationException.class)
         .hasMessageContaining("blank");
   }
 
   @Test
   void rejectsJsonNullRoot() {
-    assertThatThrownBy(() -> parser.extractAssistantText("null", mapper))
+    assertThatThrownBy(() -> parser.parse("null", mapper, TEST_MODEL_ID))
         .isInstanceOf(LlmInvocationException.class)
         .hasMessageContaining("null");
   }
 
   @Test
   void rejectsContentThatIsNotAnArray() {
-    assertThatThrownBy(() -> parser.extractAssistantText("{\"content\":\"x\"}", mapper))
+    assertThatThrownBy(() -> parser.parse("{\"content\":\"x\"}", mapper, TEST_MODEL_ID))
         .isInstanceOf(LlmInvocationException.class)
         .hasMessageContaining("content");
   }
@@ -81,7 +84,7 @@ class BedrockAnthropicResponseParserTest {
           {"type":"TEXT","text":"from tool"}
         ]}
         """;
-    assertThat(parser.extractAssistantText(json, mapper)).isEqualTo("from tool");
+    assertThat(parser.parse(json, mapper, TEST_MODEL_ID).text()).isEqualTo("from tool");
   }
 
   @Test
@@ -92,14 +95,38 @@ class BedrockAnthropicResponseParserTest {
           {"type":"text","text":"second"}
         ]}
         """;
-    assertThat(parser.extractAssistantText(json, mapper)).isEqualTo("first");
+    assertThat(parser.parse(json, mapper, TEST_MODEL_ID).text()).isEqualTo("first");
+  }
+
+  @Test
+  void tokenUsageAbsentWhenUsageBlockMissing() throws IOException {
+    String json = """
+        {"content":[{"type":"text","text":"ok"}]}
+        """;
+    LlmExecutionResponse response = parser.parse(json, mapper, TEST_MODEL_ID);
+    assertThat(response.tokenUsage()).isNull();
+  }
+
+  @Test
+  void tokenUsagePresentWithCacheFields() throws IOException {
+    String json = """
+        {"content":[{"type":"text","text":"ok"}],
+         "usage":{"input_tokens":10,"output_tokens":5,
+                  "cache_read_input_tokens":3,"cache_creation_input_tokens":2}}
+        """;
+    LlmExecutionResponse response = parser.parse(json, mapper, TEST_MODEL_ID);
+    assertThat(response.tokenUsage()).isNotNull();
+    assertThat(response.tokenUsage().inputTokens()).isEqualTo(10);
+    assertThat(response.tokenUsage().outputTokens()).isEqualTo(5);
+    assertThat(response.tokenUsage().cachedInputTokens()).isEqualTo(3);
+    assertThat(response.tokenUsage().cacheWriteTokens()).isEqualTo(2);
   }
 
   @Test
   void rejectsNullObjectMapper() {
     assertThatThrownBy(
-        () -> parser.extractAssistantText("{\"content\":[{\"type\":\"text\",\"text\":\"a\"}]}",
-            null))
+        () -> parser.parse("{\"content\":[{\"type\":\"text\",\"text\":\"a\"}]}",
+            null, TEST_MODEL_ID))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("ObjectMapper");
   }

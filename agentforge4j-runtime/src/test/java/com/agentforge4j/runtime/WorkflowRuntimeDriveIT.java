@@ -316,7 +316,7 @@ class WorkflowRuntimeDriveIT {
 
     @Override
     public LlmExecutionResponse execute(LlmExecutionRequest request) {
-      return new LlmExecutionResponse(jsonBody, null);
+      return new LlmExecutionResponse(jsonBody, null, null);
     }
   }
 }

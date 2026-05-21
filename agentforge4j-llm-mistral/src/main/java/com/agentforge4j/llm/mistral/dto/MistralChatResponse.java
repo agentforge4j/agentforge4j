@@ -8,7 +8,8 @@ import java.util.List;
 public record MistralChatResponse(
     MistralErrorResponse error,
     List<MistralChoice> choices,
-    MistralUsage usage
+    MistralUsage usage,
+    String model
 ) {
 
 }

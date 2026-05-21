@@ -216,31 +216,56 @@ class WorkflowStateTest {
   }
 
   @Test
-  void clear_entries_from_uid_removes_expected_entries_and_preserves_protected_context_key() {
-    var state = new WorkflowState("run-1", "wf-1", null, t());
-    var keepValue = new StringContextValue("keep");
-    var removeValue = new StringContextValue("remove");
+  void clearEntriesFromUid_removes_regular_keys_at_or_after_uid() {
+    WorkflowState state = new WorkflowState("run-1", "wf-1", null, t());
+    state.putContextValue("regular_key", new StringContextValue("value"));
+    state.putContextKeyWrittenAtUid("regular_key", 5);
 
-    state.putStepOutput("step-1", "out-1");
-    state.putStepExecutionUid("step-1", 1);
-    state.putStepOutput("step-2", "out-2");
-    state.putStepExecutionUid("step-2", 3);
+    state.clearEntriesFromUid(5);
 
-    state.putContextValue("attemptKey", keepValue);
-    state.putContextKeyWrittenAtUid("attemptKey", 3);
-    state.putContextValue("ctx-2", removeValue);
-    state.putContextKeyWrittenAtUid("ctx-2", 3);
-    state.putContextValue("ctx-1", new StringContextValue("old"));
-    state.putContextKeyWrittenAtUid("ctx-1", 1);
+    assertThat(state.getContext()).doesNotContainKey("regular_key");
+    assertThat(state.getContextKeyWrittenAtUid()).doesNotContainKey("regular_key");
+  }
 
-    state.clearEntriesFromUid(2, "attemptKey");
+  @Test
+  void clearEntriesFromUid_retains_reserved_prefix_keys() {
+    WorkflowState state = new WorkflowState("run-1", "wf-1", null, t());
+    StringContextValue reservedValue = new StringContextValue("reserved");
+    state.putContextValue("__reserved_key", reservedValue);
+    state.putContextKeyWrittenAtUid("__reserved_key", 5);
 
-    assertThat(state.getStepOutputs()).containsOnlyKeys("step-1");
-    assertThat(state.getStepExecutionUid()).containsOnlyKeys("step-1");
-    assertThat(state.getContext()).containsKeys("attemptKey", "ctx-1");
-    assertThat(state.getContext()).doesNotContainKey("ctx-2");
-    assertThat(state.getContextKeyWrittenAtUid()).containsKeys("attemptKey", "ctx-1");
-    assertThat(state.getContextKeyWrittenAtUid()).doesNotContainKey("ctx-2");
+    state.clearEntriesFromUid(5);
+
+    assertThat(state.getContext()).containsEntry("__reserved_key", reservedValue);
+    assertThat(state.getContextKeyWrittenAtUid()).containsEntry("__reserved_key", 5);
+  }
+
+  @Test
+  void clearEntriesFromUid_retains_keys_written_before_uid() {
+    WorkflowState state = new WorkflowState("run-1", "wf-1", null, t());
+    StringContextValue earlyValue = new StringContextValue("early");
+    state.putContextValue("early_key", earlyValue);
+    state.putContextKeyWrittenAtUid("early_key", 3);
+
+    state.clearEntriesFromUid(5);
+
+    assertThat(state.getContext()).containsEntry("early_key", earlyValue);
+    assertThat(state.getContextKeyWrittenAtUid()).containsEntry("early_key", 3);
+  }
+
+  @Test
+  void clearEntriesFromUid_retains_llm_tokens_total() {
+    WorkflowState state = new WorkflowState("run-1", "wf-1", null, t());
+    StringContextValue totalValue = new StringContextValue("42");
+    state.putContextValue(ReservedContextKeys.LLM_TOKENS_TOTAL, totalValue);
+    state.putContextKeyWrittenAtUid(ReservedContextKeys.LLM_TOKENS_TOTAL, 5);
+
+    state.clearEntriesFromUid(5);
+
+    assertThat(ReservedContextKeys.LLM_TOKENS_TOTAL).isEqualTo("__llm_tokens_total");
+    assertThat(state.getContext()).containsEntry(ReservedContextKeys.LLM_TOKENS_TOTAL, totalValue);
+    assertThat(state.getContextKeyWrittenAtUid())
+        .containsEntry(ReservedContextKeys.LLM_TOKENS_TOTAL, 5);
   }
 
   @Test
@@ -253,7 +278,7 @@ class WorkflowStateTest {
     state.putStepExecutionUid("step-1", 1);
     state.putContextKeyWrittenAtUid("k", 1);
     state.removeContextValue("k");
-    state.clearEntriesFromUid(1, "protected");
+    state.clearEntriesFromUid(1);
 
     assertThat(state.getLastUpdatedAt()).isEqualTo(initial);
   }

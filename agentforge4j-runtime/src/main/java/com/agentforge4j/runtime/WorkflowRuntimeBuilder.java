@@ -78,6 +78,7 @@ public final class WorkflowRuntimeBuilder {
   private RunContextManager runContextManager = RunContextManager.NO_OP;
   private int maxNestingDepth = DefaultWorkflowRuntime.DEFAULT_MAX_NESTING_DEPTH;
   private AgentInvoker agentInvoker;
+  private EventRecorder eventRecorder;
 
   /**
    * Configures the workflow definition source.
@@ -211,6 +212,19 @@ public final class WorkflowRuntimeBuilder {
   }
 
   /**
+   * Configures the shared {@link EventRecorder} used by command handlers, loop strategies, and
+   * step executors. When omitted, {@link #build()} constructs one from
+   * {@link #workflowEventLog(WorkflowEventLog)} and {@link #clock(Clock)}.
+   *
+   * @param value event recorder instance
+   * @return this builder
+   */
+  public WorkflowRuntimeBuilder eventRecorder(EventRecorder value) {
+    this.eventRecorder = Validate.notNull(value, "eventRecorder must not be null");
+    return this;
+  }
+
+  /**
    * Validates required dependencies, wires executors and handlers, and returns a runnable
    * {@link com.agentforge4j.core.runtime.WorkflowRuntime}.
    *
@@ -224,14 +238,16 @@ public final class WorkflowRuntimeBuilder {
     FileSink resolvedFileSink = getResolvedFileSink();
     ShellCommandRunner resolvedShell = resolveShellCommandRunner();
     RunContextManager runContextManager = resolveRunContextManager();
-    EventRecorder eventRecorder = new EventRecorder(workflowEventLog, resolvedClock);
+    EventRecorder resolvedEventRecorder = eventRecorder != null
+        ? eventRecorder
+        : new EventRecorder(workflowEventLog, resolvedClock);
 
     CommandApplier commandApplier = new CommandApplier(determineCommandHandlers(
-        eventRecorder, resolvedFileSink, resolvedShell, resolvedClock, resolvedRegistry));
+        resolvedEventRecorder, resolvedFileSink, resolvedShell, resolvedClock, resolvedRegistry));
 
     LoopEvaluator resolvedEvaluator = resolveLoopEvaluator(agentInvoker);
 
-    MaxIterationsHandler maxIterationsHandler = new MaxIterationsHandler(eventRecorder,
+    MaxIterationsHandler maxIterationsHandler = new MaxIterationsHandler(resolvedEventRecorder,
         resolvedClock);
 
     // The executor graph has a cycle: ExecutableExecutor needs BlueprintExecutor
@@ -241,13 +257,13 @@ public final class WorkflowRuntimeBuilder {
     WorkflowExecutor workflowExecutor = new WorkflowExecutor();
     BlueprintExecutor blueprintExecutor = new BlueprintExecutor();
 
-    BranchBehaviourHandler branchBehaviourHandler = new BranchBehaviourHandler(eventRecorder);
+    BranchBehaviourHandler branchBehaviourHandler = new BranchBehaviourHandler(resolvedEventRecorder);
     RetryPreviousBehaviourHandler retryPreviousBehaviourHandler = new RetryPreviousBehaviourHandler(
-        eventRecorder);
+        resolvedEventRecorder);
     StepExecutor stepExecutor = buildStepExecutor(
         agentInvoker,
         commandApplier,
-        eventRecorder,
+        resolvedEventRecorder,
         resolvedClock,
         workflowExecutor,
         branchBehaviourHandler,
@@ -259,7 +275,7 @@ public final class WorkflowRuntimeBuilder {
     retryPreviousBehaviourHandler.setExecutableExecutor(executableExecutor);
     StepSequenceExecutor stepSequenceExecutor = new StepSequenceExecutor(executableExecutor);
 
-    setupBlueprintLoopStrategies(blueprintExecutor, stepSequenceExecutor, eventRecorder,
+    setupBlueprintLoopStrategies(blueprintExecutor, stepSequenceExecutor, resolvedEventRecorder,
         maxIterationsHandler,
         resolvedEvaluator);
     blueprintExecutor.setStepSequenceExecutor(stepSequenceExecutor);
@@ -270,7 +286,7 @@ public final class WorkflowRuntimeBuilder {
         workflowStateRepository,
         stepSequenceExecutor,
         executableExecutor,
-        eventRecorder,
+        resolvedEventRecorder,
         resolvedClock,
         runContextManager,
         maxNestingDepth);

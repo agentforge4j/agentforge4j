@@ -1,6 +1,7 @@
 package com.agentforge4j.llm.mistral;
 
 import com.agentforge4j.llm.api.LlmExecutionRequest;
+import com.agentforge4j.llm.api.LlmExecutionResponse;
 import com.agentforge4j.llm.api.LlmInvocationException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -173,6 +174,36 @@ class MistralLlmClientIT {
           "You are helpful.");
       assertThat(tree.path("messages").path(1).path("role").asText()).isEqualTo("user");
       assertThat(tree.path("messages").path(1).path("content").asText()).isEqualTo("Say hi.");
+    }
+  }
+
+  @Test
+  void execute_returns_token_usage_when_usage_block_present() throws Exception {
+    ObjectMapper mapper = new ObjectMapper();
+    String responseJson = readFixture("chat-with-usage.json");
+    try (CapturingOneShotHttpServer http = new CapturingOneShotHttpServer(200, responseJson)) {
+      var config = FixedMistralConfiguration.builder()
+          .baseUrl(http.baseUrl().toString())
+          .build();
+      MistralLlmClient client = new MistralLlmClient(mapper, config);
+      LlmExecutionRequest request =
+          LlmExecutionRequest.withDefaultModel("mistral", "system", "user");
+
+      LlmExecutionResponse response = client.execute(request);
+      assertThat(response.text()).isEqualTo("with usage");
+      assertThat(response.tokenUsage()).isNotNull();
+      assertThat(response.tokenUsage().inputTokens()).isEqualTo(9);
+      assertThat(response.tokenUsage().outputTokens()).isEqualTo(4);
+    }
+  }
+
+  private static String readFixture(String name) throws IOException {
+    String path = "/fixtures/" + name;
+    try (InputStream in = MistralLlmClientIT.class.getResourceAsStream(path)) {
+      if (in == null) {
+        throw new IllegalStateException("Missing fixture: " + path);
+      }
+      return new String(in.readAllBytes(), StandardCharsets.UTF_8);
     }
   }
 

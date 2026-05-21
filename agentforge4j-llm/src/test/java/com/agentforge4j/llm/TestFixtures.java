@@ -64,7 +64,7 @@ public final class TestFixtures {
 
     @Override
     public LlmExecutionResponse execute(LlmExecutionRequest request) {
-      return new LlmExecutionResponse("response from " + providerName, null);
+      return new LlmExecutionResponse("response from " + providerName, null, null);
     }
   }
 

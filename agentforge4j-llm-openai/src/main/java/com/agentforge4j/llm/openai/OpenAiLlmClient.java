@@ -3,12 +3,16 @@ package com.agentforge4j.llm.openai;
 import com.agentforge4j.llm.AbstractHttpLlmClient;
 import com.agentforge4j.llm.api.LlmClient;
 import com.agentforge4j.llm.api.LlmExecutionRequest;
+import com.agentforge4j.llm.api.LlmExecutionResponse;
 import com.agentforge4j.llm.api.LlmInvocationException;
+import com.agentforge4j.llm.api.TokenUsageReport;
 import com.agentforge4j.llm.openai.dto.InputItem;
 import com.agentforge4j.llm.openai.dto.OpenAiContentItemDto;
 import com.agentforge4j.llm.openai.dto.OpenAiOutputItemDto;
+import com.agentforge4j.llm.openai.dto.OpenAiResponsesInputTokensDetailsDto;
 import com.agentforge4j.llm.openai.dto.OpenAiResponsesRequestDto;
 import com.agentforge4j.llm.openai.dto.OpenAiResponsesResponseDto;
+import com.agentforge4j.llm.openai.dto.OpenAiResponsesUsageDto;
 import com.agentforge4j.util.Validate;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
@@ -55,21 +59,45 @@ public final class OpenAiLlmClient extends AbstractHttpLlmClient {
   }
 
   /**
-   * Validates the OpenAI response and extracts the assistant's text output.
+   * Validates the OpenAI Responses API payload and extracts assistant text plus {@code usage}
+   * ({@code usage.input_tokens}, {@code usage.output_tokens},
+   * {@code usage.input_tokens_details.cached_tokens} when present) and root {@code model} for
+   * {@link LlmExecutionResponse#modelUsed()}.
    *
    * @param json the raw JSON response from OpenAI
-   * @return the extracted assistant text
+   * @return execution response; {@link LlmExecutionResponse#tokenUsage()} is {@code null} when the
+   * {@code usage} block is absent
    * @throws IOException if the response is invalid or cannot be parsed
    */
   @Override
-  protected String validateAndExtractResponse(String json) throws IOException {
+  protected LlmExecutionResponse validateAndExtractResponse(String json) throws IOException {
     Validate.notBlank(json, () -> new LlmInvocationException("LLM client json must not be blank"));
     OpenAiResponsesResponseDto dto = objectMapper.readValue(json, OpenAiResponsesResponseDto.class);
     validateApiError(dto, json);
-    return LlmClient.stripCodeFence(extractAssistantText(dto)
+    String text = LlmClient.stripCodeFence(extractAssistantText(dto)
         .orElseThrow(() -> new LlmInvocationException(
             "OpenAI response missing assistant output_text in message output item: %s".formatted(
                 json))).strip());
+    return new LlmExecutionResponse(
+        text,
+        StringUtils.trimToNull(dto.model()),
+        toTokenUsageReport(dto.usage()));
+  }
+
+  private static TokenUsageReport toTokenUsageReport(OpenAiResponsesUsageDto usage) {
+    if (usage == null) {
+      return null;
+    }
+    Integer cachedInputTokens = null;
+    OpenAiResponsesInputTokensDetailsDto details = usage.inputTokensDetails();
+    if (details != null) {
+      cachedInputTokens = details.cachedTokens();
+    }
+    return new TokenUsageReport(
+        usage.inputTokens(),
+        usage.outputTokens(),
+        cachedInputTokens,
+        null);
   }
 
   /**

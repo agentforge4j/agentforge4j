@@ -335,7 +335,7 @@ class AgentStepAuditRuntimeTest {
   }
 
   private static LlmExecutionResponse llmResponse(String text) {
-    return new LlmExecutionResponse(text, null);
+    return new LlmExecutionResponse(text, null, null);
   }
 
   private static final class RecordingRunContextManager implements RunContextManager {

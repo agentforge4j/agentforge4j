@@ -1,0 +1,10 @@
+{
+  "role": "assistant",
+  "content": [{"type": "text", "text": "OK"}],
+  "usage": {
+    "input_tokens": 14,
+    "output_tokens": 6,
+    "cache_read_input_tokens": 4,
+    "cache_creation_input_tokens": 2
+  }
+}

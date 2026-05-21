@@ -2,8 +2,11 @@ package com.agentforge4j.llm.openaicompatible;
 
 import com.agentforge4j.llm.LlmClientFactory;
 import com.agentforge4j.llm.api.LlmExecutionRequest;
+import com.agentforge4j.llm.api.LlmExecutionResponse;
 import com.agentforge4j.llm.api.LlmInvocationException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.io.IOException;
+import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.Locale;
@@ -51,6 +54,36 @@ class OpenAiCompatibleLlmClientIT {
       var response = client.execute(request);
       assertThat(response.text()).isEqualTo("Hello from compatible");
       assertThat(response.tokenUsage()).isNull();
+    }
+  }
+
+  @Test
+  void should_return_token_usage_when_usage_block_present() throws Exception {
+    String body = readFixture("responses-with-usage.json");
+    try (OpenAiCompatibleLoopbackHttpServer http =
+        new OpenAiCompatibleLoopbackHttpServer(200, body)) {
+      var config = FixedOpenAiCompatibleConfiguration.builder()
+          .baseUrl(http.baseUri().toString())
+          .build();
+      OpenAiCompatibleLlmClient client = new OpenAiCompatibleLlmClient(new ObjectMapper(), config);
+      LlmExecutionRequest request =
+          LlmExecutionRequest.withDefaultModel("openai-compatible", "system", "user");
+
+      LlmExecutionResponse response = client.execute(request);
+      assertThat(response.text()).isEqualTo("Hello from compatible");
+      assertThat(response.tokenUsage()).isNotNull();
+      assertThat(response.tokenUsage().inputTokens()).isEqualTo(55);
+      assertThat(response.tokenUsage().outputTokens()).isEqualTo(22);
+    }
+  }
+
+  private static String readFixture(String name) throws IOException {
+    String path = "/fixtures/" + name;
+    try (InputStream in = OpenAiCompatibleLlmClientIT.class.getResourceAsStream(path)) {
+      if (in == null) {
+        throw new IllegalStateException("Missing fixture: " + path);
+      }
+      return new String(in.readAllBytes(), StandardCharsets.UTF_8);
     }
   }
 

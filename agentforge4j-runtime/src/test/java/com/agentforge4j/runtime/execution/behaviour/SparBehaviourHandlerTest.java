@@ -1,5 +1,32 @@
 package com.agentforge4j.runtime.execution.behaviour;
 
+import com.agentforge4j.core.command.ContinueCommand;
+import com.agentforge4j.core.command.LlmCommand;
+import com.agentforge4j.core.workflow.WorkflowDefinition;
+import com.agentforge4j.core.workflow.context.ContextMapping;
+import com.agentforge4j.core.workflow.state.WorkflowState;
+import com.agentforge4j.core.workflow.step.StepDefinition;
+import com.agentforge4j.core.workflow.step.StepTransition;
+import com.agentforge4j.core.workflow.step.behaviour.SparBehaviour;
+import com.agentforge4j.core.workflow.step.spar.SparConfig;
+import com.agentforge4j.runtime.command.CommandApplicationResult;
+import com.agentforge4j.runtime.command.CommandApplier;
+import com.agentforge4j.runtime.event.EventRecorder;
+import com.agentforge4j.runtime.execution.ExecutionContext;
+import com.agentforge4j.runtime.execution.ExecutionOutcome;
+import com.agentforge4j.runtime.execution.behaviour.handler.SparBehaviourHandler;
+import com.agentforge4j.runtime.llm.AgentInvocationResult;
+import com.agentforge4j.runtime.llm.AgentInvoker;
+import java.time.Instant;
+import java.util.List;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
+import org.mockito.Mock;
+import org.mockito.MockitoAnnotations;
+
+import static com.agentforge4j.runtime.llm.AgentInvocationResultTestFixtures.TEST_MODEL;
+import static com.agentforge4j.runtime.llm.AgentInvocationResultTestFixtures.TEST_TOKEN_USAGE;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
@@ -10,31 +37,6 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
-
-import com.agentforge4j.core.command.ContinueCommand;
-import com.agentforge4j.runtime.command.CommandApplicationResult;
-import com.agentforge4j.core.command.LlmCommand;
-import com.agentforge4j.core.workflow.context.ContextMapping;
-import com.agentforge4j.core.workflow.state.WorkflowState;
-import com.agentforge4j.core.workflow.step.StepDefinition;
-import com.agentforge4j.core.workflow.step.StepTransition;
-import com.agentforge4j.core.workflow.step.behaviour.SparBehaviour;
-import com.agentforge4j.core.workflow.step.spar.SparConfig;
-import com.agentforge4j.runtime.command.CommandApplier;
-import com.agentforge4j.runtime.event.EventRecorder;
-import com.agentforge4j.runtime.execution.ExecutionContext;
-import com.agentforge4j.runtime.execution.ExecutionOutcome;
-import com.agentforge4j.runtime.execution.behaviour.handler.SparBehaviourHandler;
-import com.agentforge4j.runtime.llm.AgentInvocationResult;
-import com.agentforge4j.runtime.llm.AgentInvoker;
-import com.agentforge4j.core.workflow.WorkflowDefinition;
-import java.time.Instant;
-import java.util.List;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
-import org.mockito.ArgumentCaptor;
-import org.mockito.Mock;
-import org.mockito.MockitoAnnotations;
 
 class SparBehaviourHandlerTest {
 
@@ -131,7 +133,8 @@ class SparBehaviourHandlerTest {
   void runs_all_max_rounds_when_valid_concerns_persist() {
     SparConfig config = new SparConfig(CHALLENGER, 2, "Resolve the debate.");
     behaviour = new SparBehaviour(PRIMARY, config, StepTransition.AUTO, null);
-    step = new StepDefinition("spar-step", "Spar step", behaviour, ContextMapping.none(), STEP_PROMPT, null);
+    step = new StepDefinition("spar-step", "Spar step", behaviour, ContextMapping.none(),
+        STEP_PROMPT, null);
 
     when(agentInvoker.invoke(eq(PRIMARY), any(), any(), anyString()))
         .thenReturn(invokeResult(true, GOOD_REASON))
@@ -223,7 +226,8 @@ class SparBehaviourHandlerTest {
     runHandler();
 
     verify(agentInvoker, times(2)).invoke(eq(PRIMARY), mappingCaptor.capture(), any(), anyString());
-    assertThat(mappingCaptor.getAllValues().get(0).inputKeys()).doesNotContain("spar.primary.round.1");
+    assertThat(mappingCaptor.getAllValues().get(0).inputKeys()).doesNotContain(
+        "spar.primary.round.1");
     ContextMapping resolutionMapping = mappingCaptor.getAllValues().get(1);
     assertThat(resolutionMapping.inputKeys())
         .contains("spar.primary.round.1", "spar.challenger.round.1", "spar.resolution.prompt")
@@ -250,7 +254,8 @@ class SparBehaviourHandlerTest {
   }
 
   private void runHandler() {
-    SparBehaviourHandler handler = new SparBehaviourHandler(agentInvoker, commandApplier, eventRecorder);
+    SparBehaviourHandler handler = new SparBehaviourHandler(agentInvoker, commandApplier,
+        eventRecorder);
     WorkflowDefinition root = mock(WorkflowDefinition.class);
     ExecutionContext ctx = new ExecutionContext(state, root, 8);
     ExecutionOutcome outcome = handler.handle(step, behaviour, ctx);
@@ -260,7 +265,9 @@ class SparBehaviourHandlerTest {
   private static AgentInvocationResult bareContinueResult() {
     return new AgentInvocationResult(
         "[{\"type\":\"CONTINUE\"}]",
-        List.of(new ContinueCommand(null, null, null)));
+        List.of(new ContinueCommand(null, null, null)),
+        TEST_MODEL,
+        TEST_TOKEN_USAGE);
   }
 
   private static AgentInvocationResult invokeResult(boolean wantsAnotherRound, String reason) {
@@ -275,6 +282,6 @@ class SparBehaviourHandlerTest {
           + "\"}]";
     }
     List<LlmCommand> cmds = List.of(new ContinueCommand(wantsAnotherRound, reason, null));
-    return new AgentInvocationResult(json, cmds);
+    return new AgentInvocationResult(json, cmds, TEST_MODEL, TEST_TOKEN_USAGE);
   }
 }

@@ -24,6 +24,13 @@ public enum WorkflowEventType {
   REJECTED,
   /** Raw text returned by the LLM for an agent invocation (one event per provider call). */
   LLM_OUTPUT,
+  /**
+   * Recorded once per LLM provider call, carrying token usage and model metadata.
+   * Payload is a JSON object with fields: {@code stepId}, {@code agentId}, {@code provider},
+   * {@code modelUsed}, {@code inputTokens}, {@code outputTokens}, {@code totalTokens}.
+   * Null token fields are emitted as JSON {@code null}, never {@code 0}.
+   */
+  LLM_CALL_COMPLETED,
   /** Recorded when workflow context keys are written or replaced. */
   CONTEXT_UPDATED,
   /** Recorded at the start of a loop iteration inside a blueprint. */

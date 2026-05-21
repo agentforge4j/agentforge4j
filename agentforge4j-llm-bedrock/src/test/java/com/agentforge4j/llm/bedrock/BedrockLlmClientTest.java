@@ -189,6 +189,31 @@ class BedrockLlmClientTest {
     }
 
     @Test
+    void returnsTokenUsageWhenUsageBlockPresent() {
+      BedrockRuntimeClient client = mock(BedrockRuntimeClient.class);
+      String responseJson = """
+          {"role":"assistant","content":[{"type":"text","text":"OK"}],
+           "usage":{"input_tokens":14,"output_tokens":6,
+                    "cache_read_input_tokens":4,"cache_creation_input_tokens":2}}
+          """;
+      when(client.invokeModel(isA(InvokeModelRequest.class))).thenReturn(
+          InvokeModelResponse.builder()
+              .body(SdkBytes.fromString(responseJson, StandardCharsets.UTF_8))
+              .build());
+
+      BedrockLlmClient llm = new BedrockLlmClient(mapper, FixedBedrockConfiguration.defaults(),
+          client);
+      LlmExecutionResponse response = llm.execute(
+          new LlmExecutionRequest("bedrock", null, "system", "user"));
+      assertThat(response.text()).isEqualTo("OK");
+      assertThat(response.tokenUsage()).isNotNull();
+      assertThat(response.tokenUsage().inputTokens()).isEqualTo(14);
+      assertThat(response.tokenUsage().outputTokens()).isEqualTo(6);
+      assertThat(response.tokenUsage().cachedInputTokens()).isEqualTo(4);
+      assertThat(response.tokenUsage().cacheWriteTokens()).isEqualTo(2);
+    }
+
+    @Test
     void invokeModelUsesRequestModelOverrideAndSerializesBody() throws Exception {
       BedrockRuntimeClient client = mock(BedrockRuntimeClient.class);
       String responseJson = """

@@ -1,6 +1,7 @@
 package com.agentforge4j.llm.ollama;
 
 import com.agentforge4j.llm.api.LlmExecutionRequest;
+import com.agentforge4j.llm.api.LlmExecutionResponse;
 import com.agentforge4j.llm.api.LlmInvocationException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.ByteArrayOutputStream;
@@ -201,6 +202,34 @@ class OllamaLlmClientIT {
       var response = client.execute(request);
       assertThat(response.text()).isEqualTo("Hello from loopback");
       assertThat(response.tokenUsage()).isNull();
+    }
+  }
+
+  @Test
+  void should_return_token_usage_when_eval_counts_present() throws Exception {
+    String body = readFixture("chat-with-usage.json");
+    try (LoopbackHttpServer http = new LoopbackHttpServer(200, body)) {
+      OllamaLlmClient client =
+          new OllamaLlmClient(new ObjectMapper(),
+              configForUrl(http.chatUrl(), java.time.Duration.ofSeconds(30)));
+      LlmExecutionRequest request =
+          LlmExecutionRequest.withDefaultModel("ollama", "system prompt", "user input");
+
+      LlmExecutionResponse response = client.execute(request);
+      assertThat(response.text()).isEqualTo("Hello");
+      assertThat(response.tokenUsage()).isNotNull();
+      assertThat(response.tokenUsage().inputTokens()).isEqualTo(50);
+      assertThat(response.tokenUsage().outputTokens()).isEqualTo(12);
+    }
+  }
+
+  private static String readFixture(String name) throws IOException {
+    String path = "/fixtures/" + name;
+    try (InputStream in = OllamaLlmClientIT.class.getResourceAsStream(path)) {
+      if (in == null) {
+        throw new IllegalStateException("Missing fixture: " + path);
+      }
+      return new String(in.readAllBytes(), StandardCharsets.UTF_8);
     }
   }
 

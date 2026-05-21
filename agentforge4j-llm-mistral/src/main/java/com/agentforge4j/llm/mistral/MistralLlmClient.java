@@ -3,12 +3,15 @@ package com.agentforge4j.llm.mistral;
 import com.agentforge4j.llm.AbstractHttpLlmClient;
 import com.agentforge4j.llm.api.LlmClient;
 import com.agentforge4j.llm.api.LlmExecutionRequest;
+import com.agentforge4j.llm.api.LlmExecutionResponse;
 import com.agentforge4j.llm.api.LlmInvocationException;
+import com.agentforge4j.llm.api.TokenUsageReport;
 import com.agentforge4j.llm.mistral.dto.InputRole;
 import com.agentforge4j.llm.mistral.dto.MistralChatRequest;
 import com.agentforge4j.llm.mistral.dto.MistralChatResponse;
 import com.agentforge4j.llm.mistral.dto.MistralChoice;
 import com.agentforge4j.llm.mistral.dto.MistralMessage;
+import com.agentforge4j.llm.mistral.dto.MistralUsage;
 import com.agentforge4j.util.Validate;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
@@ -67,14 +70,17 @@ public final class MistralLlmClient extends AbstractHttpLlmClient {
   }
 
   /**
-   * Validates the Mistral response and extracts the assistant's text output.
+   * Validates the Mistral chat completions payload and extracts assistant text plus {@code usage}
+   * ({@code usage.prompt_tokens}, {@code usage.completion_tokens}) and root {@code model} for
+   * {@link LlmExecutionResponse#modelUsed()}.
    *
    * @param json the raw JSON response from Mistral
-   * @return the extracted assistant text
+   * @return execution response; {@link LlmExecutionResponse#tokenUsage()} is {@code null} when the
+   * {@code usage} block is absent
    * @throws IOException if the response is invalid or cannot be parsed
    */
   @Override
-  protected String validateAndExtractResponse(String json) throws IOException {
+  protected LlmExecutionResponse validateAndExtractResponse(String json) throws IOException {
     Validate.notBlank(json, () -> new LlmInvocationException("LLM client json must not be blank"));
     MistralChatResponse dto = objectMapper.readValue(json, MistralChatResponse.class);
     MistralChoice firstChoice = validateApiError(json, dto);
@@ -83,7 +89,21 @@ public final class MistralLlmClient extends AbstractHttpLlmClient {
     String content = message == null ? null : message.content();
     Validate.notBlank(content, () -> new LlmInvocationException(
         "mistral response first choice content is blank: %s".formatted(json)));
-    return LlmClient.stripCodeFence(content.strip());
+    return new LlmExecutionResponse(
+        LlmClient.stripCodeFence(content.strip()),
+        StringUtils.trimToNull(dto.model()),
+        toTokenUsageReport(dto.usage()));
+  }
+
+  private static TokenUsageReport toTokenUsageReport(MistralUsage usage) {
+    if (usage == null) {
+      return null;
+    }
+    return new TokenUsageReport(
+        usage.promptTokens(),
+        usage.completionTokens(),
+        null,
+        null);
   }
 
   private MistralChoice validateApiError(String json, MistralChatResponse dto) {

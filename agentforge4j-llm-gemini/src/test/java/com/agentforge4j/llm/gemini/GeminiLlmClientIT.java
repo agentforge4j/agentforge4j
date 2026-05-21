@@ -2,8 +2,11 @@ package com.agentforge4j.llm.gemini;
 
 import com.agentforge4j.llm.LlmClientFactory;
 import com.agentforge4j.llm.api.LlmExecutionRequest;
+import com.agentforge4j.llm.api.LlmExecutionResponse;
 import com.agentforge4j.llm.api.LlmInvocationException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.io.IOException;
+import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.Locale;
@@ -42,6 +45,35 @@ class GeminiLlmClientIT {
       var response = client.execute(request);
       assertThat(response.text()).isEqualTo("Hello from gemini IT");
       assertThat(response.tokenUsage()).isNull();
+    }
+  }
+
+  @Test
+  void should_return_token_usage_when_usage_metadata_present() throws Exception {
+    String body = readFixture("generate-with-usage.json");
+    try (GeminiLoopbackHttpServer http = new GeminiLoopbackHttpServer(200, body)) {
+      var config = FixedGeminiConfiguration.builder()
+          .baseUrl(http.baseUri().toString())
+          .build();
+      GeminiLlmClient client = new GeminiLlmClient(new ObjectMapper(), config);
+      LlmExecutionRequest request =
+          LlmExecutionRequest.withDefaultModel("gemini", "system prompt", "user input");
+
+      LlmExecutionResponse response = client.execute(request);
+      assertThat(response.text()).isEqualTo("hello");
+      assertThat(response.tokenUsage()).isNotNull();
+      assertThat(response.tokenUsage().inputTokens()).isEqualTo(60);
+      assertThat(response.tokenUsage().outputTokens()).isEqualTo(25);
+    }
+  }
+
+  private static String readFixture(String name) throws IOException {
+    String path = "/fixtures/" + name;
+    try (InputStream in = GeminiLlmClientIT.class.getResourceAsStream(path)) {
+      if (in == null) {
+        throw new IllegalStateException("Missing fixture: " + path);
+      }
+      return new String(in.readAllBytes(), StandardCharsets.UTF_8);
     }
   }
 

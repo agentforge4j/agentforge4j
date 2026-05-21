@@ -3,7 +3,9 @@ package com.agentforge4j.llm.ollama;
 import com.agentforge4j.llm.AbstractHttpLlmClient;
 import com.agentforge4j.llm.api.LlmClient;
 import com.agentforge4j.llm.api.LlmExecutionRequest;
+import com.agentforge4j.llm.api.LlmExecutionResponse;
 import com.agentforge4j.llm.api.LlmInvocationException;
+import com.agentforge4j.llm.api.TokenUsageReport;
 import com.agentforge4j.llm.ollama.dto.MessageDto;
 import com.agentforge4j.llm.ollama.dto.OllamaChatRequestDto;
 import com.agentforge4j.llm.ollama.dto.OllamaChatResponseDto;
@@ -50,18 +52,31 @@ public final class OllamaLlmClient extends AbstractHttpLlmClient {
   }
 
   /**
-   * Validates the Ollama response and extracts the assistant's text output.
+   * Validates the Ollama chat response and extracts assistant text plus eval counts
+   * ({@code prompt_eval_count}, {@code eval_count} when present) and root {@code model} for
+   * {@link LlmExecutionResponse#modelUsed()}.
    *
    * @param json the raw JSON response from Ollama
-   * @return the extracted assistant text
+   * @return execution response; {@link LlmExecutionResponse#tokenUsage()} is {@code null} when
+   *         neither eval count field is present
    * @throws IOException if the response is invalid or cannot be parsed
    */
   @Override
-  protected String validateAndExtractResponse(String json) throws IOException {
+  protected LlmExecutionResponse validateAndExtractResponse(String json) throws IOException {
     Validate.notBlank(json, () -> new LlmInvocationException("LLM client json must not be blank"));
     OllamaChatResponseDto dto = objectMapper.readValue(json, OllamaChatResponseDto.class);
     validateApiError(dto, json);
-    return LlmClient.stripCodeFence(retrieveResponse(dto, json).strip());
+    return new LlmExecutionResponse(
+        LlmClient.stripCodeFence(retrieveResponse(dto, json).strip()),
+        StringUtils.trimToNull(dto.model()),
+        toTokenUsageReport(dto));
+  }
+
+  private static TokenUsageReport toTokenUsageReport(OllamaChatResponseDto dto) {
+    if (dto.promptEvalCount() == null && dto.evalCount() == null) {
+      return null;
+    }
+    return new TokenUsageReport(dto.promptEvalCount(), dto.evalCount(), null, null);
   }
 
   /**

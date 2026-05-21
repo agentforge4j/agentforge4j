@@ -1,0 +1,9 @@
+{
+  "model": "meta-llama/Llama-3-8B",
+  "choices": [{"message": {"content": "Hello from vLLM"}}],
+  "usage": {
+    "prompt_tokens": 80,
+    "completion_tokens": 16,
+    "prompt_tokens_details": {"cached_tokens": 10}
+  }
+}

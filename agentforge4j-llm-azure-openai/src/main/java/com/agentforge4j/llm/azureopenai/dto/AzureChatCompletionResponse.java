@@ -8,7 +8,8 @@ import java.util.List;
 public record AzureChatCompletionResponse(
     AzureChatCompletionError error,
     List<AzureChatCompletionChoice> choices,
-    AzureChatCompletionUsage usage
+    AzureChatCompletionUsage usage,
+    String model
 ) {
 
 }

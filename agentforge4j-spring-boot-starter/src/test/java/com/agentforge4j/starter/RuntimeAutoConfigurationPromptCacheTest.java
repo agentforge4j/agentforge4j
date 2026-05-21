@@ -80,7 +80,7 @@ class RuntimeAutoConfigurationPromptCacheTest {
     LlmClient client = mock(LlmClient.class);
     when(client.getProviderName()).thenReturn("openai");
     when(client.execute(any())).thenReturn(
-        new LlmExecutionResponse("[{\"type\":\"COMPLETE\"}]", null));
+        new LlmExecutionResponse("[{\"type\":\"COMPLETE\"}]", null, null));
 
     AgentRepository agentRepository = ctx.getBean(AgentRepository.class);
     when(agentRepository.get("agent-x")).thenReturn(testAgent());
@@ -146,7 +146,7 @@ class RuntimeAutoConfigurationPromptCacheTest {
       LlmClient client = mock(LlmClient.class);
       when(client.getProviderName()).thenReturn("openai");
       when(client.execute(any())).thenReturn(
-          new LlmExecutionResponse("[{\"type\":\"COMPLETE\"}]", null));
+          new LlmExecutionResponse("[{\"type\":\"COMPLETE\"}]", null, null));
       when(resolver.resolve("openai")).thenReturn(client);
       when(resolver.isProviderAvailable("openai")).thenReturn(true);
       when(resolver.listAvailableClients()).thenReturn(List.of("openai"));

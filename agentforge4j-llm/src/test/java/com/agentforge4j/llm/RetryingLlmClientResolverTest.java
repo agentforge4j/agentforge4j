@@ -274,7 +274,7 @@ class RetryingLlmClientResolverTest {
       if (exceptionToThrow != null) {
         throw exceptionToThrow;
       }
-      return new LlmExecutionResponse(response, null);
+      return new LlmExecutionResponse(response, null, null);
     }
   }
 }
