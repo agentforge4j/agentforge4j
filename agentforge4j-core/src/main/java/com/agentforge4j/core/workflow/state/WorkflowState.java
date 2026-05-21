@@ -187,8 +187,8 @@ public final class WorkflowState {
   }
 
   /**
-   * Returns the persisted loop iteration index for a looped blueprint, or {@code 0} when none
-   * is stored (start at iteration {@code 1}).
+   * Returns the persisted loop iteration index for a looped blueprint, or {@code 0} when none is
+   * stored (start at iteration {@code 1}).
    */
   public int getLoopIterationCursor(String blueprintId) {
     return loopIterationCursorByBlueprintId.getOrDefault(
@@ -300,7 +300,18 @@ public final class WorkflowState {
     return Optional.ofNullable(stepExecutionUid.get(validatedStepId));
   }
 
-  public void clearEntriesFromUid(int retryUid, String protectedContextKey) {
+  /**
+   * Removes step outputs, step execution uids, context values, and context-key-written-at-uid
+   * entries for all steps that began executing at or after {@code retryUid}.
+   *
+   * <p>Context keys whose names start with {@code __} (the reserved runtime namespace) are
+   * never removed, regardless of the uid at which they were written. This protects running counters
+   * such as {@code __retry_*} attempt keys and {@code __llm_tokens_total} from being wiped by a
+   * retry.
+   *
+   * @param retryUid the uid threshold; entries with uid &gt;= this value are cleared
+   */
+  public void clearEntriesFromUid(int retryUid) {
     Iterator<Map.Entry<String, Integer>> stepUidIterator = stepExecutionUid.entrySet().iterator();
     while (stepUidIterator.hasNext()) {
       Map.Entry<String, Integer> entry = stepUidIterator.next();
@@ -315,7 +326,7 @@ public final class WorkflowState {
     while (contextUidIterator.hasNext()) {
       Map.Entry<String, Integer> entry = contextUidIterator.next();
       if (entry.getValue() >= retryUid) {
-        if (entry.getKey().equals(protectedContextKey)) {
+        if (entry.getKey().startsWith("__")) {
           continue;
         }
         context.remove(entry.getKey());
@@ -326,10 +337,10 @@ public final class WorkflowState {
 
   /**
    * Returns a defensive copy for handoff to external callers. The new instance uses its own map
-   * instances; mutating this copy (including {@linkplain #putContextValue}, {@linkplain
-   * #putStepOutput}, and scalar setters) does not affect the original. {@linkplain #getContext()},
-   * {@linkplain #getStepOutputs()}, and related getters still expose unmodifiable views of this
-   * copy's maps.
+   * instances; mutating this copy (including {@linkplain #putContextValue},
+   * {@linkplain #putStepOutput}, and scalar setters) does not affect the original.
+   * {@linkplain #getContext()}, {@linkplain #getStepOutputs()}, and related getters still expose
+   * unmodifiable views of this copy's maps.
    *
    * <p>Context entries are copied by reference; {@link ContextValue} implementations used in
    * practice are immutable value types.
