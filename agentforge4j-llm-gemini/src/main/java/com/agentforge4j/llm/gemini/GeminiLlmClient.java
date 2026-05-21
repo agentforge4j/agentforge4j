@@ -3,7 +3,9 @@ package com.agentforge4j.llm.gemini;
 import com.agentforge4j.llm.AbstractHttpLlmClient;
 import com.agentforge4j.llm.api.LlmClient;
 import com.agentforge4j.llm.api.LlmExecutionRequest;
+import com.agentforge4j.llm.api.LlmExecutionResponse;
 import com.agentforge4j.llm.api.LlmInvocationException;
+import com.agentforge4j.llm.api.TokenUsageReport;
 import com.agentforge4j.llm.gemini.dto.GeminiCandidate;
 import com.agentforge4j.llm.gemini.dto.GeminiContent;
 import com.agentforge4j.llm.gemini.dto.GeminiErrorResponse;
@@ -12,6 +14,7 @@ import com.agentforge4j.llm.gemini.dto.GeminiPart;
 import com.agentforge4j.llm.gemini.dto.GeminiRequest;
 import com.agentforge4j.llm.gemini.dto.GeminiResponse;
 import com.agentforge4j.llm.gemini.dto.GeminiSystemInstruction;
+import com.agentforge4j.llm.gemini.dto.GeminiUsageMetadata;
 import com.agentforge4j.llm.gemini.dto.InputRole;
 import com.agentforge4j.util.Validate;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -84,8 +87,18 @@ public final class GeminiLlmClient extends AbstractHttpLlmClient {
     ));
   }
 
+  /**
+   * Validates the Gemini generateContent payload and extracts text plus {@code usageMetadata}
+   * ({@code usageMetadata.promptTokenCount}, {@code usageMetadata.candidatesTokenCount},
+   * {@code usageMetadata.cachedContentTokenCount} when present).
+   *
+   * @param json the raw JSON response from Gemini
+   * @return execution response; {@link LlmExecutionResponse#tokenUsage()} is {@code null} when
+   * {@code usageMetadata} is absent
+   * @throws IOException if the response is invalid or cannot be parsed
+   */
   @Override
-  protected String validateAndExtractResponse(String json) throws IOException {
+  protected LlmExecutionResponse validateAndExtractResponse(String json) throws IOException {
     Validate.notBlank(json, () -> new LlmInvocationException("LLM client json must not be null"));
     GeminiResponse dto = objectMapper.readValue(json, GeminiResponse.class);
     Validate.notNull(dto,
@@ -119,7 +132,20 @@ public final class GeminiLlmClient extends AbstractHttpLlmClient {
     String joined = String.join("\n", textSegments);
     String text = Validate.notBlank(joined,
         () -> new LlmInvocationException("Gemini response text is blank: %s".formatted(json)));
-    return LlmClient.stripCodeFence(text.strip());
+    return new LlmExecutionResponse(
+        LlmClient.stripCodeFence(text.strip()),
+        toTokenUsageReport(dto.usageMetadata()));
+  }
+
+  private static TokenUsageReport toTokenUsageReport(GeminiUsageMetadata usageMetadata) {
+    if (usageMetadata == null) {
+      return null;
+    }
+    return new TokenUsageReport(
+        usageMetadata.promptTokenCount(),
+        usageMetadata.candidatesTokenCount(),
+        usageMetadata.cachedContentTokenCount(),
+        null);
   }
 
   /**

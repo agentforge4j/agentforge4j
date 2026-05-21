@@ -142,7 +142,7 @@ class OllamaLlmClientTest {
       OllamaLlmClient client = new OllamaLlmClient(mapper, config);
       String validResponse = "{\"error\": null, \"message\": {\"role\": \"assistant\", \"content\": \"Hello, World!\"}}";
 
-      String result = client.validateAndExtractResponse(validResponse);
+      String result = client.validateAndExtractResponse(validResponse).text();
 
       assertThat(result).isEqualTo("Hello, World!");
     }

@@ -1,8 +1,12 @@
 package com.agentforge4j.llm.azureopenai;
 
 import com.agentforge4j.llm.api.LlmExecutionRequest;
+import com.agentforge4j.llm.api.LlmExecutionResponse;
 import com.agentforge4j.llm.api.LlmInvocationException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.io.IOException;
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
@@ -45,6 +49,36 @@ class AzureOpenAiLlmClientIT {
       var response = client.execute(request);
       assertThat(response.text()).isEqualTo("Hello from Azure");
       assertThat(response.tokenUsage()).isNull();
+    }
+  }
+
+  @Test
+  void should_return_token_usage_when_usage_block_present() throws Exception {
+    String body = readFixture("chat-with-usage.json");
+    try (AzureOpenAiLoopbackHttpServer http = new AzureOpenAiLoopbackHttpServer(200, body)) {
+      var config = FixedAzureOpenAiConfiguration.builder()
+          .endpoint(http.baseEndpoint().toString())
+          .deploymentName("gpt-4-deployment")
+          .build();
+      AzureOpenAiLlmClient client = new AzureOpenAiLlmClient(new ObjectMapper(), config);
+      LlmExecutionRequest request =
+          LlmExecutionRequest.withDefaultModel("azure-openai", "system", "user");
+
+      LlmExecutionResponse response = client.execute(request);
+      assertThat(response.text()).isEqualTo("ok");
+      assertThat(response.tokenUsage()).isNotNull();
+      assertThat(response.tokenUsage().inputTokens()).isEqualTo(70);
+      assertThat(response.tokenUsage().outputTokens()).isEqualTo(18);
+    }
+  }
+
+  private static String readFixture(String name) throws IOException {
+    String path = "/fixtures/" + name;
+    try (InputStream in = AzureOpenAiLlmClientIT.class.getResourceAsStream(path)) {
+      if (in == null) {
+        throw new IllegalStateException("Missing fixture: " + path);
+      }
+      return new String(in.readAllBytes(), StandardCharsets.UTF_8);
     }
   }
 

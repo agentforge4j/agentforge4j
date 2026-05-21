@@ -3,13 +3,17 @@ package com.agentforge4j.llm.openaicompatible;
 import com.agentforge4j.llm.AbstractHttpLlmClient;
 import com.agentforge4j.llm.api.LlmClient;
 import com.agentforge4j.llm.api.LlmExecutionRequest;
+import com.agentforge4j.llm.api.LlmExecutionResponse;
 import com.agentforge4j.llm.api.LlmInvocationException;
+import com.agentforge4j.llm.api.TokenUsageReport;
 import com.agentforge4j.llm.openaicompatible.dto.InputRole;
 import com.agentforge4j.llm.openaicompatible.dto.OpenAiCompatibleContentItem;
 import com.agentforge4j.llm.openaicompatible.dto.OpenAiCompatibleInputItem;
 import com.agentforge4j.llm.openaicompatible.dto.OpenAiCompatibleOutputItem;
+import com.agentforge4j.llm.openaicompatible.dto.OpenAiCompatibleResponsesInputTokensDetails;
 import com.agentforge4j.llm.openaicompatible.dto.OpenAiCompatibleResponsesRequest;
 import com.agentforge4j.llm.openaicompatible.dto.OpenAiCompatibleResponsesResponse;
+import com.agentforge4j.llm.openaicompatible.dto.OpenAiCompatibleResponsesUsage;
 import com.agentforge4j.util.Validate;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
@@ -86,18 +90,21 @@ public final class OpenAiCompatibleLlmClient extends AbstractHttpLlmClient {
   }
 
   /**
-   * Validates the OpenAI-compatible response and extracts the assistant's text output.
+   * Validates the OpenAI-compatible Responses API payload and extracts assistant text plus
+   * {@code usage} ({@code usage.input_tokens}, {@code usage.output_tokens},
+   * {@code usage.input_tokens_details.cached_tokens} when present).
    *
    * @param json the raw JSON response from the provider
-   * @return the extracted assistant text
+   * @return execution response; {@link LlmExecutionResponse#tokenUsage()} is {@code null} when the
+   * {@code usage} block is absent
    * @throws IOException if the response is invalid or cannot be parsed
    */
   @Override
-  protected String validateAndExtractResponse(String json) throws IOException {
+  protected LlmExecutionResponse validateAndExtractResponse(String json) throws IOException {
     OpenAiCompatibleResponsesResponse dto =
         objectMapper.readValue(json, OpenAiCompatibleResponsesResponse.class);
     validateApiError(dto, json);
-    return LlmClient.stripCodeFence(extractAssistantText(dto)
+    String text = LlmClient.stripCodeFence(extractAssistantText(dto)
         .orElseThrow(
             () -> {
               String truncated = json.substring(0, Math.min(500, json.length()));
@@ -106,6 +113,23 @@ public final class OpenAiCompatibleLlmClient extends AbstractHttpLlmClient {
                       truncated));
             }
         ).strip());
+    return new LlmExecutionResponse(text, toTokenUsageReport(dto.usage()));
+  }
+
+  private static TokenUsageReport toTokenUsageReport(OpenAiCompatibleResponsesUsage usage) {
+    if (usage == null) {
+      return null;
+    }
+    Integer cachedInputTokens = null;
+    OpenAiCompatibleResponsesInputTokensDetails details = usage.inputTokensDetails();
+    if (details != null) {
+      cachedInputTokens = details.cachedTokens();
+    }
+    return new TokenUsageReport(
+        usage.inputTokens(),
+        usage.outputTokens(),
+        cachedInputTokens,
+        null);
   }
 
   private String generateRequestBody(LlmExecutionRequest request) {

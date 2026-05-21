@@ -1,0 +1,10 @@
+{
+  "error": null,
+  "choices": [{"message": {"role": "assistant", "content": "ok"}}],
+  "usage": {
+    "prompt_tokens": 70,
+    "completion_tokens": 18,
+    "total_tokens": 88,
+    "prompt_tokens_details": {"cached_tokens": 5}
+  }
+}

@@ -158,7 +158,7 @@ class AzureOpenAiLlmClientTest {
           }
           """;
 
-      assertThat(client.validateAndExtractResponse(json)).isEqualTo("still ok");
+      assertThat(client.validateAndExtractResponse(json).text()).isEqualTo("still ok");
     }
 
     @Test
@@ -286,7 +286,7 @@ class AzureOpenAiLlmClientTest {
           }
           """;
 
-      assertThat(client.validateAndExtractResponse(json)).isEqualTo("trimmed");
+      assertThat(client.validateAndExtractResponse(json).text()).isEqualTo("trimmed");
     }
 
     @Test
@@ -313,7 +313,7 @@ class AzureOpenAiLlmClientTest {
       message.put("content", "```json\n{\"a\":1}\n```");
       String json = mapper.writeValueAsString(root);
 
-      assertThat(client.validateAndExtractResponse(json)).isEqualTo("{\"a\":1}");
+      assertThat(client.validateAndExtractResponse(json).text()).isEqualTo("{\"a\":1}");
     }
   }
 

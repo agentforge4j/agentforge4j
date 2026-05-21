@@ -183,7 +183,7 @@ class OpenAiCompatibleLlmClientTest {
           }
           """;
 
-      assertThat(client.validateAndExtractResponse(json)).isEqualTo("still ok");
+      assertThat(client.validateAndExtractResponse(json).text()).isEqualTo("still ok");
     }
 
     @Test
@@ -241,7 +241,7 @@ class OpenAiCompatibleLlmClientTest {
       OpenAiCompatibleLlmClient client =
           new OpenAiCompatibleLlmClient(mapper, FixedOpenAiCompatibleConfiguration.defaults());
 
-      assertThat(client.validateAndExtractResponse(VALID_RESPONSES_JSON)).isEqualTo(
+      assertThat(client.validateAndExtractResponse(VALID_RESPONSES_JSON).text()).isEqualTo(
           "Hello from compatible");
     }
   }

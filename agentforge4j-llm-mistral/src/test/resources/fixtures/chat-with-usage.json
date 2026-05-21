@@ -1,0 +1,5 @@
+{
+  "error": null,
+  "choices": [{"message": {"role": "assistant", "content": "with usage"}}],
+  "usage": {"prompt_tokens": 9, "completion_tokens": 4, "total_tokens": 13}
+}

@@ -177,6 +177,36 @@ class ClaudeLlmClientIT {
   }
 
   @Test
+  void should_return_token_usage_when_usage_block_present() throws Exception {
+    String body = readFixture("messages-with-usage.json");
+    try (LoopbackHttpServer http = new LoopbackHttpServer(200, body)) {
+      var config = FixedClaudeConfiguration.builder()
+          .url(http.baseUrl())
+          .build();
+      ClaudeLlmClient client = new ClaudeLlmClient(new ObjectMapper(), config);
+      LlmExecutionRequest request =
+          LlmExecutionRequest.withDefaultModel("claude", "system", "user");
+
+      LlmExecutionResponse response = client.execute(request);
+
+      assertThat(response.text()).isEqualTo("Hello");
+      assertThat(response.tokenUsage()).isNotNull();
+      assertThat(response.tokenUsage().inputTokens()).isEqualTo(11);
+      assertThat(response.tokenUsage().outputTokens()).isEqualTo(7);
+    }
+  }
+
+  private static String readFixture(String name) throws IOException {
+    String path = "/fixtures/" + name;
+    try (InputStream in = ClaudeLlmClientIT.class.getResourceAsStream(path)) {
+      if (in == null) {
+        throw new IllegalStateException("Missing fixture: " + path);
+      }
+      return new String(in.readAllBytes(), StandardCharsets.UTF_8);
+    }
+  }
+
+  @Test
   void should_match_request_provider_case_insensitively() throws Exception {
     try (LoopbackHttpServer http = new LoopbackHttpServer(200, VALID_MESSAGES_JSON)) {
       var config = FixedClaudeConfiguration.builder()

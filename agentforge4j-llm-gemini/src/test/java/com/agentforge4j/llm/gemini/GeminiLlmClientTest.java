@@ -320,7 +320,7 @@ class GeminiLlmClientTest {
           }
           """;
 
-      assertThat(client.validateAndExtractResponse(json)).isEqualTo("hello");
+      assertThat(client.validateAndExtractResponse(json).text()).isEqualTo("hello");
     }
 
     @Test
@@ -336,7 +336,7 @@ class GeminiLlmClientTest {
           }
           """;
 
-      assertThat(client.validateAndExtractResponse(json)).isEqualTo("hi");
+      assertThat(client.validateAndExtractResponse(json).text()).isEqualTo("hi");
     }
 
     @Test
@@ -387,7 +387,7 @@ class GeminiLlmClientTest {
           }
           """;
 
-      assertThat(client.validateAndExtractResponse(json)).isEqualTo("first\nsecond");
+      assertThat(client.validateAndExtractResponse(json).text()).isEqualTo("first\nsecond");
     }
 
     @Test
@@ -403,7 +403,7 @@ class GeminiLlmClientTest {
           }
           """;
 
-      assertThat(client.validateAndExtractResponse(json)).isEqualTo("a\nb");
+      assertThat(client.validateAndExtractResponse(json).text()).isEqualTo("a\nb");
     }
   }
 

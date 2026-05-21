@@ -42,8 +42,8 @@ class AbstractHttpLlmClientIT {
     }
 
     @Override
-    protected String validateAndExtractResponse(String json) throws IOException {
-      return json;
+    protected LlmExecutionResponse validateAndExtractResponse(String json) throws IOException {
+      return new LlmExecutionResponse(json, null);
     }
   }
 
@@ -54,7 +54,7 @@ class AbstractHttpLlmClientIT {
     }
 
     @Override
-    protected String validateAndExtractResponse(String json) throws IOException {
+    protected LlmExecutionResponse validateAndExtractResponse(String json) throws IOException {
       throw new IOException("malformed provider payload");
     }
   }

@@ -71,7 +71,7 @@ public final class BedrockLlmClient implements LlmClient {
    * applied by the Anthropic request serializer.
    *
    * @param request the execution request containing system prompt, user input, and model details
-   * @return execution response with assistant text and no token usage in this phase
+   * @return execution response with assistant text and provider token usage when reported
    * @throws LlmInvocationException if the request fails or response cannot be parsed
    */
   @Override
@@ -88,8 +88,7 @@ public final class BedrockLlmClient implements LlmClient {
       LOG.log(System.Logger.Level.DEBUG, "Bedrock invokeModel modelId={0}", modelId);
       InvokeModelResponse response = bedrockClient.invokeModel(invokeRequest);
       String utf8 = response.body() == null ? "" : response.body().asUtf8String();
-      String text = responseParser.extractAssistantText(utf8, objectMapper);
-      return new LlmExecutionResponse(text, null);
+      return responseParser.parse(utf8, objectMapper);
     } catch (AwsServiceException e) {
       throw mapAwsServiceException(e);
     } catch (IOException e) {

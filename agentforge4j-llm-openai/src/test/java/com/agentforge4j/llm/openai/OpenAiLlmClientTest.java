@@ -154,7 +154,7 @@ class OpenAiLlmClientTest {
           }
           """;
 
-      assertThat(client.validateAndExtractResponse(json)).isEqualTo("still ok");
+      assertThat(client.validateAndExtractResponse(json).text()).isEqualTo("still ok");
     }
 
     @Test
@@ -239,7 +239,7 @@ class OpenAiLlmClientTest {
           }
           """;
 
-      assertThat(client.validateAndExtractResponse(json)).isEqualTo("inner");
+      assertThat(client.validateAndExtractResponse(json).text()).isEqualTo("inner");
     }
 
     @Test
@@ -259,7 +259,7 @@ class OpenAiLlmClientTest {
           }
           """;
 
-      assertThat(client.validateAndExtractResponse(json)).isEqualTo("picked");
+      assertThat(client.validateAndExtractResponse(json).text()).isEqualTo("picked");
     }
 
     @Test
@@ -281,7 +281,7 @@ class OpenAiLlmClientTest {
           }
           """;
 
-      assertThat(client.validateAndExtractResponse(json)).isEqualTo("use me");
+      assertThat(client.validateAndExtractResponse(json).text()).isEqualTo("use me");
     }
 
     @Test
@@ -289,7 +289,7 @@ class OpenAiLlmClientTest {
       ObjectMapper mapper = new ObjectMapper();
       OpenAiLlmClient client = new OpenAiLlmClient(mapper, FixedOpenAiConfiguration.defaults());
 
-      assertThat(client.validateAndExtractResponse(VALID_RESPONSES_JSON))
+      assertThat(client.validateAndExtractResponse(VALID_RESPONSES_JSON).text())
           .isEqualTo("Hello from OpenAI");
     }
 
@@ -308,7 +308,7 @@ class OpenAiLlmClientTest {
       textBlock.put("text", "built");
       String json = mapper.writeValueAsString(root);
 
-      assertThat(client.validateAndExtractResponse(json)).isEqualTo("built");
+      assertThat(client.validateAndExtractResponse(json).text()).isEqualTo("built");
     }
   }
 

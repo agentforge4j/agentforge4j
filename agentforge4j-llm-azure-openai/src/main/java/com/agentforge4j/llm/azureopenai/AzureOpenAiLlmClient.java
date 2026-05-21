@@ -3,11 +3,15 @@ package com.agentforge4j.llm.azureopenai;
 import com.agentforge4j.llm.AbstractHttpLlmClient;
 import com.agentforge4j.llm.api.LlmClient;
 import com.agentforge4j.llm.api.LlmExecutionRequest;
+import com.agentforge4j.llm.api.LlmExecutionResponse;
 import com.agentforge4j.llm.api.LlmInvocationException;
+import com.agentforge4j.llm.api.TokenUsageReport;
 import com.agentforge4j.llm.azureopenai.dto.AzureChatCompletionChoice;
 import com.agentforge4j.llm.azureopenai.dto.AzureChatCompletionMessage;
+import com.agentforge4j.llm.azureopenai.dto.AzureChatCompletionPromptTokensDetails;
 import com.agentforge4j.llm.azureopenai.dto.AzureChatCompletionRequest;
 import com.agentforge4j.llm.azureopenai.dto.AzureChatCompletionResponse;
+import com.agentforge4j.llm.azureopenai.dto.AzureChatCompletionUsage;
 import com.agentforge4j.llm.azureopenai.dto.InputRole;
 import com.agentforge4j.util.Validate;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -83,14 +87,17 @@ public final class AzureOpenAiLlmClient extends AbstractHttpLlmClient {
   }
 
   /**
-   * Validates the Azure OpenAI response and extracts the assistant's text output.
+   * Validates the Azure OpenAI chat completions payload and extracts assistant text plus
+   * {@code usage} ({@code usage.prompt_tokens}, {@code usage.completion_tokens},
+   * {@code usage.prompt_tokens_details.cached_tokens} when present).
    *
    * @param json the raw JSON response from Azure OpenAI
-   * @return the extracted assistant text
+   * @return execution response; {@link LlmExecutionResponse#tokenUsage()} is {@code null} when the
+   * {@code usage} block is absent
    * @throws IOException if the response is invalid or cannot be parsed
    */
   @Override
-  protected String validateAndExtractResponse(String json) throws IOException {
+  protected LlmExecutionResponse validateAndExtractResponse(String json) throws IOException {
     Validate.notBlank(json, () -> new LlmInvocationException("LLM client json must not be blank"));
     AzureChatCompletionResponse dto = objectMapper.readValue(json,
         AzureChatCompletionResponse.class);
@@ -103,7 +110,25 @@ public final class AzureOpenAiLlmClient extends AbstractHttpLlmClient {
         LlmInvocationException(
         "azure-openai response first choice content is blank for deployment %s: %s".formatted(
             deploymentName, json)));
-    return LlmClient.stripCodeFence(content.strip());
+    return new LlmExecutionResponse(
+        LlmClient.stripCodeFence(content.strip()),
+        toTokenUsageReport(dto.usage()));
+  }
+
+  private static TokenUsageReport toTokenUsageReport(AzureChatCompletionUsage usage) {
+    if (usage == null) {
+      return null;
+    }
+    Integer cachedInputTokens = null;
+    AzureChatCompletionPromptTokensDetails details = usage.promptTokensDetails();
+    if (details != null) {
+      cachedInputTokens = details.cachedTokens();
+    }
+    return new TokenUsageReport(
+        usage.promptTokens(),
+        usage.completionTokens(),
+        cachedInputTokens,
+        null);
   }
 
   private AzureChatCompletionChoice retrieveFirstChoice(String json,

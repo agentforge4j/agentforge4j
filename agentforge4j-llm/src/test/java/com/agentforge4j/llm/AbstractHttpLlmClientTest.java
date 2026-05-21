@@ -2,6 +2,7 @@ package com.agentforge4j.llm;
 
 import com.agentforge4j.llm.api.LlmClient;
 import com.agentforge4j.llm.api.LlmExecutionRequest;
+import com.agentforge4j.llm.api.LlmExecutionResponse;
 import java.io.IOException;
 import java.net.http.HttpRequest;
 import org.junit.jupiter.api.BeforeEach;
@@ -31,8 +32,8 @@ class AbstractHttpLlmClientTest {
     }
 
     @Override
-    protected String validateAndExtractResponse(String json) throws IOException {
-      return json;
+    protected LlmExecutionResponse validateAndExtractResponse(String json) throws IOException {
+      return new LlmExecutionResponse(json, null);
     }
   }
 

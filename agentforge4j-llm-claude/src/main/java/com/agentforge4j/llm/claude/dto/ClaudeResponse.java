@@ -6,5 +6,6 @@ import java.util.List;
 @JsonIgnoreProperties(ignoreUnknown = true)
 public record ClaudeResponse(
     List<ClaudeContentBlock> content,
-    String error
+    String error,
+    ClaudeUsage usage
 ) {}

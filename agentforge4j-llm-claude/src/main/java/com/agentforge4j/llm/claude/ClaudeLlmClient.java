@@ -3,16 +3,18 @@ package com.agentforge4j.llm.claude;
 import com.agentforge4j.llm.AbstractHttpLlmClient;
 import com.agentforge4j.llm.api.LlmClient;
 import com.agentforge4j.llm.api.LlmExecutionRequest;
+import com.agentforge4j.llm.api.LlmExecutionResponse;
 import com.agentforge4j.llm.api.LlmInvocationException;
+import com.agentforge4j.llm.api.TokenUsageReport;
 import com.agentforge4j.llm.claude.dto.ClaudeContentBlock;
 import com.agentforge4j.llm.claude.dto.ClaudeMessage;
 import com.agentforge4j.llm.claude.dto.ClaudeRequest;
 import com.agentforge4j.llm.claude.dto.ClaudeResponse;
 import com.agentforge4j.llm.claude.dto.ClaudeSystemContentBlock;
+import com.agentforge4j.llm.claude.dto.ClaudeUsage;
 import com.agentforge4j.llm.claude.dto.InputRole;
 import com.agentforge4j.util.Validate;
 import com.fasterxml.jackson.databind.ObjectMapper;
-
 import java.io.IOException;
 import java.net.URI;
 import java.net.http.HttpRequest;
@@ -75,14 +77,18 @@ public final class ClaudeLlmClient extends AbstractHttpLlmClient {
   }
 
   /**
-   * Validates the Claude response and extracts the assistant's text output.
+   * Validates the Claude Messages API payload and extracts assistant text plus {@code usage}
+   * ({@code usage.input_tokens}, {@code usage.output_tokens},
+   * {@code usage.cache_read_input_tokens}, {@code usage.cache_creation_input_tokens} when
+   * present).
    *
    * @param json the raw JSON response from Claude
-   * @return the extracted assistant text
+   * @return execution response; {@link LlmExecutionResponse#tokenUsage()} is {@code null} when the
+   * {@code usage} block is absent
    * @throws IOException if the response is invalid or cannot be parsed
    */
   @Override
-  protected String validateAndExtractResponse(String json) throws IOException {
+  protected LlmExecutionResponse validateAndExtractResponse(String json) throws IOException {
     Validate.notBlank(json, () -> new LlmInvocationException("LLM client json must not be blank"));
     ClaudeResponse response = objectMapper.readValue(json, ClaudeResponse.class);
     Validate.notNull(response, () -> new LlmInvocationException(
@@ -101,7 +107,20 @@ public final class ClaudeLlmClient extends AbstractHttpLlmClient {
         .orElseThrow(() -> new LlmInvocationException(
             "Claude response has no text content block: %s".formatted(json)));
 
-    return LlmClient.stripCodeFence(text.strip());
+    return new LlmExecutionResponse(
+        LlmClient.stripCodeFence(text.strip()),
+        toTokenUsageReport(response.usage()));
+  }
+
+  private static TokenUsageReport toTokenUsageReport(ClaudeUsage usage) {
+    if (usage == null) {
+      return null;
+    }
+    return new TokenUsageReport(
+        usage.inputTokens(),
+        usage.outputTokens(),
+        usage.cacheReadInputTokens(),
+        usage.cacheCreationInputTokens());
   }
 
   private String generateRequestBody(LlmExecutionRequest request) {

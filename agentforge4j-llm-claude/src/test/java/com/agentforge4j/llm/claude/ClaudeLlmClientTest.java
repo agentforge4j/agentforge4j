@@ -233,7 +233,7 @@ class ClaudeLlmClientTest {
           {"content":[{"type":"tool_use"},{"type":"text","text":"from-text"}]}
           """;
 
-      assertThat(client.validateAndExtractResponse(json)).isEqualTo("from-text");
+      assertThat(client.validateAndExtractResponse(json).text()).isEqualTo("from-text");
     }
 
     @Test
@@ -244,7 +244,7 @@ class ClaudeLlmClientTest {
           {"content":[{"type":"text","text":""},{"type":"text","text":"second"}]}
           """;
 
-      assertThat(client.validateAndExtractResponse(json)).isEqualTo("second");
+      assertThat(client.validateAndExtractResponse(json).text()).isEqualTo("second");
     }
 
     @Test
@@ -255,7 +255,7 @@ class ClaudeLlmClientTest {
           {"content":[{"type":"text","text":"  Hello  "}]}
           """;
 
-      assertThat(client.validateAndExtractResponse(json)).isEqualTo("Hello");
+      assertThat(client.validateAndExtractResponse(json).text()).isEqualTo("Hello");
     }
 
     @Test
@@ -270,7 +270,7 @@ class ClaudeLlmClientTest {
       block.put("text", "```java\nline1\nline2\n```");
       String body = om.writeValueAsString(root);
 
-      assertThat(client.validateAndExtractResponse(body)).isEqualTo("line1\nline2");
+      assertThat(client.validateAndExtractResponse(body).text()).isEqualTo("line1\nline2");
     }
 
     @Test
@@ -280,7 +280,7 @@ class ClaudeLlmClientTest {
       // Jackson typically deserializes JSON null elements as nulls in list
       String json = "{\"content\":[null,{\"type\":\"text\",\"text\":\"ok\"}]}";
 
-      assertThat(client.validateAndExtractResponse(json)).isEqualTo("ok");
+      assertThat(client.validateAndExtractResponse(json).text()).isEqualTo("ok");
     }
 
     @Test

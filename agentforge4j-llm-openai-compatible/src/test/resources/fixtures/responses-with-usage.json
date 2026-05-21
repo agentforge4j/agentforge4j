@@ -1,0 +1,14 @@
+{
+  "error": null,
+  "output": [
+    {
+      "type": "message",
+      "content": [{"type": "output_text", "text": "Hello from compatible"}]
+    }
+  ],
+  "usage": {
+    "input_tokens": 55,
+    "output_tokens": 22,
+    "input_tokens_details": {"cached_tokens": 7}
+  }
+}
