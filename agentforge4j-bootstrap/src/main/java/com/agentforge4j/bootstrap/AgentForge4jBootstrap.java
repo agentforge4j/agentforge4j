@@ -24,7 +24,6 @@ import com.agentforge4j.llm.DefaultLlmClientResolver;
 import com.agentforge4j.llm.LlmClientResolver;
 import com.agentforge4j.llm.api.LlmClient;
 import com.agentforge4j.runtime.WorkflowRuntimeBuilder;
-import com.agentforge4j.runtime.command.CommandApplier;
 import com.agentforge4j.runtime.command.FileSink;
 import com.agentforge4j.runtime.event.EventRecorder;
 import com.agentforge4j.runtime.llm.AgentInvoker;
@@ -97,7 +96,6 @@ public final class AgentForge4jBootstrap {
     private LlmClientResolver llmClientResolver;
     private ContextRenderer contextRenderer;
     private LlmCommandParser llmCommandParser;
-    private CommandApplier commandApplier;
     private EventRecorder eventRecorder;
     private FileSink fileSink;
     private LlmProviderSelectionStrategy llmProviderSelectionStrategy;
@@ -232,18 +230,6 @@ public final class AgentForge4jBootstrap {
     public Builder withLlmCommandParser(LlmCommandParser llmCommandParser) {
       this.llmCommandParser = Validate.notNull(llmCommandParser,
           "llmCommandParser must not be null");
-      return this;
-    }
-
-    /**
-     * Overrides the command applier (stored for Phase 7 wiring; not applied to the runtime in Phase
-     * 4).
-     *
-     * @param commandApplier applier instance; must not be {@code null}
-     * @return this builder
-     */
-    public Builder withCommandApplier(CommandApplier commandApplier) {
-      this.commandApplier = Validate.notNull(commandApplier, "commandApplier must not be null");
       return this;
     }
 
@@ -423,9 +409,14 @@ public final class AgentForge4jBootstrap {
 
       FileSink resolvedFileSink = (fileSink != null) ? fileSink: noOpFileSink();
 
+      List<LlmClient> llmClients = List.of();
+      if (llmClientResolver == null) {
+        llmClients = LlmClientWiring.buildLlmClients(resolvedMapper, llmProviders);
+      }
+
       LlmClientResolver resolvedResolver = (llmClientResolver != null)
           ? llmClientResolver
-          : buildDefaultLlmClientResolver();
+          : new DefaultLlmClientResolver(llmClients);
 
       LlmProviderSelectionStrategy resolvedStrategy = (llmProviderSelectionStrategy != null)
           ? llmProviderSelectionStrategy
@@ -467,7 +458,7 @@ public final class AgentForge4jBootstrap {
               cacheEnabled,
               resolvedObserver);
 
-      if (llmProviders.isEmpty()) {
+      if (llmClientResolver == null && llmClients.isEmpty()) {
         LOGGER.log(System.Logger.Level.WARNING,
             """
                 No LLM providers configured. Workflows that invoke agents will fail at runtime. \
@@ -558,11 +549,6 @@ public final class AgentForge4jBootstrap {
     private static InMemoryWorkflowRepository buildDefaultWorkflowRepository(
         LoadedConfiguration loadedConfiguration) {
       return new InMemoryWorkflowRepository(loadedConfiguration.workflows());
-    }
-
-    private static DefaultLlmClientResolver buildDefaultLlmClientResolver() {
-      List<LlmClient> clients = List.of();
-      return new DefaultLlmClientResolver(clients);
     }
 
     private static AgentInvoker buildDefaultAgentInvoker(
