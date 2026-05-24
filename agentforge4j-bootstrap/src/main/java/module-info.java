@@ -12,6 +12,8 @@ module agentforge4j.bootstrap {
   requires agentforge4j.integrations;
   requires agentforge4j.schema;
   requires agentforge4j.workflows;
+  requires com.fasterxml.jackson.databind;
+  requires com.fasterxml.jackson.datatype.jsr310;
 
   exports com.agentforge4j.bootstrap;
 }
