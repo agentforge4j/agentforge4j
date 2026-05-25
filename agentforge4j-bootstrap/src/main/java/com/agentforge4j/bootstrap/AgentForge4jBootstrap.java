@@ -108,7 +108,9 @@ public final class AgentForge4jBootstrap {
     private Integer maxNestingDepth;
 
     private boolean loadShippedAgents = true;
+    private boolean loadShippedAgentsSet = false;
     private boolean loadShippedWorkflows = true;
+    private boolean loadShippedWorkflowsSet = false;
     private Path agentsDir;
     private Path workflowsDir;
     private Path fileSinkPath;
@@ -348,6 +350,7 @@ public final class AgentForge4jBootstrap {
      */
     public Builder withLoadShippedAgents(boolean loadShippedAgents) {
       this.loadShippedAgents = loadShippedAgents;
+      this.loadShippedAgentsSet = true;
       return this;
     }
 
@@ -359,6 +362,7 @@ public final class AgentForge4jBootstrap {
      */
     public Builder withLoadShippedWorkflows(boolean loadShippedWorkflows) {
       this.loadShippedWorkflows = loadShippedWorkflows;
+      this.loadShippedWorkflowsSet = true;
       return this;
     }
 
@@ -395,6 +399,8 @@ public final class AgentForge4jBootstrap {
      * @throws IllegalStateException if assembly fails (e.g. loading throws)
      */
     public AgentForge4j build() {
+      applyEnvConfig(ConfigReader.read());
+
       Clock resolvedClock = (clock != null) ? clock : Clock.systemUTC();
 
       ObjectMapper resolvedMapper =
@@ -497,7 +503,83 @@ public final class AgentForge4jBootstrap {
 
       WorkflowRuntime resolvedRuntime = runtimeBuilder.build();
 
-      return new AgentForge4j(resolvedRuntime, loadedConfiguration);
+      BootstrapComponents components = new BootstrapComponents(
+          resolvedAgentRepo,
+          resolvedWorkflowRepo,
+          resolvedStateRepo,
+          resolvedEventLog,
+          resolvedResolver,
+          resolvedRenderer,
+          resolvedParser,
+          resolvedRecorder,
+          resolvedFileSink,
+          resolvedStrategy,
+          resolvedRegistry,
+          resolvedMapper,
+          resolvedClock,
+          resolvedInvoker,
+          resolvedObserver,
+          loadedConfiguration);
+
+      return new AgentForge4j(resolvedRuntime, loadedConfiguration, components);
+    }
+
+    /**
+     * Applies non-LLM environment / system-property values as defaults for fields not already set
+     * programmatically. Programmatic {@code with*} calls always win.
+     *
+     * @param envConfig merged env/sys-prop map from {@link ConfigReader#read()}
+     */
+    private void applyEnvConfig(Map<String, String> envConfig) {
+      if (agentsDir == null) {
+        String val = envConfig.get("agentforge4j.agents.path");
+        if (val != null) {
+          withAgentsDir(Path.of(val));
+        }
+      }
+      if (workflowsDir == null) {
+        String val = envConfig.get("agentforge4j.workflows.path");
+        if (val != null) {
+          withWorkflowsDir(Path.of(val));
+        }
+      }
+      if (fileSinkPath == null) {
+        String val = envConfig.get("agentforge4j.filesink.path");
+        if (val != null) {
+          withFileSinkPath(Path.of(val));
+        }
+      }
+      if (!cacheEnabledSet) {
+        String val = envConfig.get("agentforge4j.llm.cache.enabled");
+        if (val != null) {
+          withCacheEnabled(Boolean.parseBoolean(val));
+        }
+      }
+      if (maxNestingDepth == null) {
+        String val = envConfig.get("agentforge4j.max-nesting-depth");
+        if (val != null) {
+          try {
+            withMaxNestingDepth(Integer.parseInt(val));
+          } catch (NumberFormatException exception) {
+            throw new IllegalStateException(
+                "Invalid value for agentforge4j.max-nesting-depth: '%s' — expected an integer."
+                    .formatted(val),
+                exception);
+          }
+        }
+      }
+      if (!loadShippedAgentsSet) {
+        String val = envConfig.get("agentforge4j.load-shipped-agents");
+        if (val != null) {
+          withLoadShippedAgents(Boolean.parseBoolean(val));
+        }
+      }
+      if (!loadShippedWorkflowsSet) {
+        String val = envConfig.get("agentforge4j.load-shipped-workflows");
+        if (val != null) {
+          withLoadShippedWorkflows(Boolean.parseBoolean(val));
+        }
+      }
     }
 
     private static ObjectMapper buildDefaultObjectMapper() {

@@ -18,17 +18,20 @@ public final class AgentForge4j {
 
   private final WorkflowRuntime runtime;
   private final LoadedConfiguration loadedConfiguration;
+  private final BootstrapComponents components;
 
   /**
    * Package-private construction from {@link AgentForge4jBootstrap.Builder#build()}.
    *
    * @param runtime             assembled workflow runtime; must not be {@code null}
    * @param loadedConfiguration loaded agent and workflow definitions; must not be {@code null}
+   * @param components          assembled components; must not be {@code null}
    */
-  AgentForge4j(WorkflowRuntime runtime, LoadedConfiguration loadedConfiguration) {
-    this.runtime = Validate.notNull(runtime, "runtime should not be null");
-    this.loadedConfiguration = Validate.notNull(loadedConfiguration,
-        "loadedConfiguration should not be null");
+  AgentForge4j(WorkflowRuntime runtime, LoadedConfiguration loadedConfiguration,
+      BootstrapComponents components) {
+    this.runtime = Validate.notNull(runtime, "runtime");
+    this.loadedConfiguration = Validate.notNull(loadedConfiguration, "loadedConfiguration");
+    this.components = Validate.notNull(components, "components");
   }
 
   /**
@@ -70,5 +73,15 @@ public final class AgentForge4j {
     return runtime;
   }
 
-  // Phase 7: components() accessor added here
+  /**
+   * Returns the individual assembled components for framework integrators.
+   *
+   * <p><strong>Internal — for framework integrators only.</strong>
+   * Not part of the public API.
+   *
+   * @return assembled components; never {@code null}
+   */
+  public BootstrapComponents components() {
+    return components;
+  }
 }

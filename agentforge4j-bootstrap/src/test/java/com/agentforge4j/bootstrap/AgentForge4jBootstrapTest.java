@@ -132,7 +132,8 @@ class AgentForge4jBootstrapTest {
   void startDelegatesToRuntime() {
     when(workflowRuntime.start("wf-id")).thenReturn("run-123");
     LoadedConfiguration configuration = new LoadedConfiguration(Map.of(), Map.of());
-    AgentForge4j af = new AgentForge4j(workflowRuntime, configuration);
+    BootstrapComponents components = AgentForge4jBootstrap.defaults().build().components();
+    AgentForge4j af = new AgentForge4j(workflowRuntime, configuration, components);
     String runId = af.start("wf-id");
     assertThat(runId).isEqualTo("run-123");
     verify(workflowRuntime).start("wf-id");
