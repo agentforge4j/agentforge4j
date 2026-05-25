@@ -97,25 +97,21 @@ AgentForge4j af = AgentForge4jBootstrap.defaults()
 
 ### Opt-in LLM retry
 
-`RetryingLlmClientResolver` is not applied automatically. Pass a wrapped resolver via `withLlmClientResolver` before `build()`:
+When `maxAttempts > 1`, bootstrap automatically wraps the resolved `LlmClientResolver` with `RetryingLlmClientResolver`. When `maxAttempts <= 1`, no wrapping occurs (one attempt means no retry).
 
 ```java
+import com.agentforge4j.bootstrap.AgentForge4j;
 import com.agentforge4j.bootstrap.AgentForge4jBootstrap;
-import com.agentforge4j.llm.LlmClientResolver;
-import com.agentforge4j.llm.RetryingLlmClientResolver;
 import com.agentforge4j.llm.api.LlmRetryPolicy;
 
-// After a first build, or with any LlmClientResolver delegate:
-LlmClientResolver resolver = new RetryingLlmClientResolver(
-    agentForge4j.components().llmClientResolver(),
-    new LlmRetryPolicy(3, 200, 10_000, 30_000));
-
 AgentForge4j af = AgentForge4jBootstrap.defaults()
-    .withLlmClientResolver(resolver)
+    .withLlmRetryPolicy(new LlmRetryPolicy(3, 200, 10_000, 30_000))
     .build();
 ```
 
 `LlmRetryPolicy.defaults()` is equivalent to `new LlmRetryPolicy(3, 200, 10_000, 30_000)`.
+
+For advanced use cases (custom delegate resolver, wrapping an existing instance), pass a wrapped resolver explicitly via `withLlmClientResolver(new RetryingLlmClientResolver(...))` — explicit resolvers are never auto-wrapped.
 
 ---
 
@@ -153,6 +149,7 @@ AgentForge4j af = AgentForge4jBootstrap.defaults()
 | Event log | `withWorkflowEventLog(WorkflowEventLog)` |
 | Integrations | `withIntegrationRegistry(IntegrationRegistry)` |
 | LLM resolver | `withLlmClientResolver(LlmClientResolver)` |
+| LLM retry policy | `withLlmRetryPolicy(LlmRetryPolicy)` |
 | Context renderer | `withContextRenderer(ContextRenderer)` |
 | LLM command parser | `withLlmCommandParser(LlmCommandParser)` |
 | Event recorder | `withEventRecorder(EventRecorder)` |

@@ -22,7 +22,9 @@ import com.agentforge4j.integrations.IntegrationRegistry;
 import com.agentforge4j.integrations.NoOpIntegrationRegistry;
 import com.agentforge4j.llm.DefaultLlmClientResolver;
 import com.agentforge4j.llm.LlmClientResolver;
+import com.agentforge4j.llm.RetryingLlmClientResolver;
 import com.agentforge4j.llm.api.LlmClient;
+import com.agentforge4j.llm.api.LlmRetryPolicy;
 import com.agentforge4j.runtime.WorkflowRuntimeBuilder;
 import com.agentforge4j.runtime.command.FileSink;
 import com.agentforge4j.runtime.command.LocalFileSink;
@@ -95,6 +97,7 @@ public final class AgentForge4jBootstrap {
     private WorkflowEventLog workflowEventLog;
     private IntegrationRegistry integrationRegistry;
     private LlmClientResolver llmClientResolver;
+    private LlmRetryPolicy llmRetryPolicy;
     private ContextRenderer contextRenderer;
     private LlmCommandParser llmCommandParser;
     private EventRecorder eventRecorder;
@@ -211,6 +214,26 @@ public final class AgentForge4jBootstrap {
     public Builder withLlmClientResolver(LlmClientResolver llmClientResolver) {
       this.llmClientResolver = Validate.notNull(llmClientResolver,
           "llmClientResolver must not be null");
+      return this;
+    }
+
+    /**
+     * Configures the LLM retry policy. When {@code maxAttempts > 1}, the assembled
+     * {@link LlmClientResolver} is automatically wrapped with
+     * {@link RetryingLlmClientResolver} using this policy.
+     *
+     * <p>Has no effect if {@link #withLlmClientResolver(LlmClientResolver)} was also
+     * called — an explicit resolver is never wrapped automatically.
+     *
+     * <p>When {@code maxAttempts <= 1} the policy is stored but no wrapping occurs
+     * (one attempt means no retry).
+     *
+     * @param llmRetryPolicy retry policy; must not be {@code null}
+     * @return this builder
+     */
+    public Builder withLlmRetryPolicy(LlmRetryPolicy llmRetryPolicy) {
+      this.llmRetryPolicy = Validate.notNull(llmRetryPolicy,
+          "LLM retry policy must not be null — use LlmRetryPolicy with maxAttempts >= 1");
       return this;
     }
 
@@ -438,6 +461,15 @@ public final class AgentForge4jBootstrap {
       LlmClientResolver resolvedResolver = (llmClientResolver != null)
           ? llmClientResolver
           : new DefaultLlmClientResolver(llmClients);
+
+      if (llmRetryPolicy != null
+          && llmRetryPolicy.maxAttempts() > 1
+          && llmClientResolver == null) {
+        resolvedResolver = new RetryingLlmClientResolver(resolvedResolver, llmRetryPolicy);
+        LOGGER.log(System.Logger.Level.INFO,
+            "LLM resolver wrapped with RetryingLlmClientResolver (maxAttempts={0}).",
+            llmRetryPolicy.maxAttempts());
+      }
 
       LlmProviderSelectionStrategy resolvedStrategy = (llmProviderSelectionStrategy != null)
           ? llmProviderSelectionStrategy
