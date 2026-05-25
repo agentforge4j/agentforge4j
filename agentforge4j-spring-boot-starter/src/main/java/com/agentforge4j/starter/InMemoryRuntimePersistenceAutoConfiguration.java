@@ -19,7 +19,7 @@ import org.springframework.context.annotation.Bean;
  * {@link WorkflowEventLog}, and {@link WorkflowFileRepository} beans come from that module
  * instead.
  */
-@AutoConfiguration(after = {RepositoryAutoConfiguration.class, DataSourceAutoConfiguration.class})
+@AutoConfiguration(after = {BootstrapAutoConfiguration.class, DataSourceAutoConfiguration.class})
 @ConditionalOnMissingBean(DataSource.class)
 public class InMemoryRuntimePersistenceAutoConfiguration {
 

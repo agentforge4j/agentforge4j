@@ -164,6 +164,11 @@
         <artifactId>agentforge4j-runtime</artifactId>
         <version>${project.version}</version>
       </dependency>
+      <dependency>
+        <groupId>com.agentforge4j</groupId>
+        <artifactId>agentforge4j-bootstrap</artifactId>
+        <version>${project.version}</version>
+      </dependency>
 
       <dependency>
         <groupId>org.apache.commons</groupId>
