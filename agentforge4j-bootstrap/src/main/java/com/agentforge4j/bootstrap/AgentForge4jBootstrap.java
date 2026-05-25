@@ -25,6 +25,7 @@ import com.agentforge4j.llm.LlmClientResolver;
 import com.agentforge4j.llm.api.LlmClient;
 import com.agentforge4j.runtime.WorkflowRuntimeBuilder;
 import com.agentforge4j.runtime.command.FileSink;
+import com.agentforge4j.runtime.command.LocalFileSink;
 import com.agentforge4j.runtime.event.EventRecorder;
 import com.agentforge4j.runtime.llm.AgentInvoker;
 import com.agentforge4j.runtime.llm.ContextRenderer;
@@ -110,6 +111,7 @@ public final class AgentForge4jBootstrap {
     private boolean loadShippedWorkflows = true;
     private Path agentsDir;
     private Path workflowsDir;
+    private Path fileSinkPath;
 
     private final Map<String, LlmProviderConfig> llmProviders = new LinkedHashMap<>();
 
@@ -252,6 +254,19 @@ public final class AgentForge4jBootstrap {
      */
     public Builder withFileSink(FileSink fileSink) {
       this.fileSink = Validate.notNull(fileSink, "fileSink must not be null");
+      return this;
+    }
+
+    /**
+     * Overrides where {@link com.agentforge4j.core.command.CreateFileCommand} content is written.
+     *
+     * @param fileSinkPath path used to create a
+     *                     {@link com.agentforge4j.runtime.command.LocalFileSink} instance
+     * @return this builder
+     */
+    public Builder withFileSinkPath(Path fileSinkPath) {
+      this.fileSinkPath = Validate.requireDirectory(fileSinkPath,
+          "fileSinkPath must be a directory");
       return this;
     }
 
@@ -407,7 +422,7 @@ public final class AgentForge4jBootstrap {
           ? integrationRegistry
           : NoOpIntegrationRegistry.INSTANCE;
 
-      FileSink resolvedFileSink = (fileSink != null) ? fileSink: noOpFileSink();
+      FileSink resolvedFileSink = (fileSink != null) ? fileSink : determineFileSink();
 
       List<LlmClient> llmClients = List.of();
       if (llmClientResolver == null) {
@@ -541,6 +556,18 @@ public final class AgentForge4jBootstrap {
       return agentLoader;
     }
 
+
+    private FileSink determineFileSink() {
+      if (fileSinkPath != null) {
+        return new LocalFileSink(fileSinkPath);
+      }
+      LOGGER.log(System.Logger.Level.WARNING,
+          """
+              FileSink is no-op; CreateFileCommand outputs will be discarded. \
+              Override with .withFileSink(new LocalFileSink(Path.of(...))).""");
+      return FileSink.NO_OP_FILE_SINK;
+    }
+
     private static InMemoryAgentRepository buildDefaultAgentRepository(
         LoadedConfiguration loadedConfiguration) {
       return new InMemoryAgentRepository(loadedConfiguration.agents());
@@ -573,13 +600,5 @@ public final class AgentForge4jBootstrap {
           promptCacheEnabled,
           llmCallObserver);
     }
-  }
-
-  private static FileSink noOpFileSink() {
-    LOGGER.log(System.Logger.Level.WARNING,
-        """
-            FileSink is no-op; CreateFileCommand outputs will be discarded. \
-            Override with .withFileSink(FileSink.local().path(...).build()).""");
-    return FileSink.NO_OP_FILE_SINK;
   }
 }
