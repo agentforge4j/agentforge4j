@@ -19,6 +19,20 @@ public interface LlmClientFactory {
   String getProviderName();
 
   /**
+   * Returns {@code true} if this provider requires an API key to function.
+   * Providers that run locally without authentication (e.g. Ollama, vLLM)
+   * should override this to return {@code false}.
+   *
+   * <p>Used by the bootstrap module to determine whether to include a provider
+   * when no explicit API key is configured.
+   *
+   * @return {@code true} if an API key is required; {@code false} otherwise
+   */
+  default boolean requiresApiKey() {
+    return true;
+  }
+
+  /**
    * Creates a new LLM client configured with the provided settings.
    *
    * @param objectMapper the JSON mapper used for response parsing and serialization

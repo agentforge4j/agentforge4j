@@ -20,6 +20,11 @@ public final class OllamaLlmClientFactory implements LlmClientFactory {
   }
 
   @Override
+  public boolean requiresApiKey() {
+    return false;
+  }
+
+  @Override
   public LlmClient create(ObjectMapper objectMapper, LlmClientConfiguration config) {
     Validate.notNull(config, "Ollama configuration must not be null");
     if (!(config instanceof OllamaConfiguration ollamaConfig)) {

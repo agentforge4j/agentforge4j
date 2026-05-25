@@ -36,7 +36,7 @@ public record LlmProviderConfig(
    * Validates {@code provider} is non-blank.
    */
   public LlmProviderConfig {
-    Validate.notBlank(provider, "provider");
+    Validate.notBlank(provider, "provider cannot be blank");
   }
 
   /**

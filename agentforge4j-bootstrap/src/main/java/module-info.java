@@ -15,5 +15,7 @@ module agentforge4j.bootstrap {
   requires com.fasterxml.jackson.databind;
   requires com.fasterxml.jackson.datatype.jsr310;
 
+  uses com.agentforge4j.llm.LlmClientFactory;
+
   exports com.agentforge4j.bootstrap;
 }

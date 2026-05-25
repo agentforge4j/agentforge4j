@@ -2,15 +2,14 @@ package com.agentforge4j.bootstrap;
 
 import com.agentforge4j.llm.DefaultLlmClientResolver;
 import com.agentforge4j.llm.LlmClientConfiguration;
+import com.agentforge4j.llm.LlmClientFactory;
 import com.agentforge4j.llm.api.LlmClient;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.Duration;
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
-import java.util.function.Supplier;
+import java.util.ServiceLoader;
 
 /**
  * Assembles the list of {@link com.agentforge4j.llm.api.LlmClient} instances from programmatic
@@ -23,64 +22,51 @@ final class LlmClientWiring {
   private static final System.Logger LOGGER =
       System.getLogger(LlmClientWiring.class.getName());
 
-  private static final String PROVIDER_OPENAI = "openai";
-  private static final String PROVIDER_CLAUDE = "claude";
-  private static final String PROVIDER_OLLAMA = "ollama";
-  private static final String PROVIDER_VLLM = "vllm";
-  private static final String PROVIDER_GEMINI = "gemini";
-  private static final String PROVIDER_MISTRAL = "mistral";
-  private static final String PROVIDER_AZURE_OPENAI = "azure-openai";
-  private static final String PROVIDER_OPENAI_COMPATIBLE = "openai-compatible";
-  private static final String PROVIDER_BEDROCK = "bedrock";
-
-  private static final List<String> KNOWN_LLM_PROVIDERS = List.of(
-      PROVIDER_OPENAI,
-      PROVIDER_CLAUDE,
-      PROVIDER_OLLAMA,
-      PROVIDER_VLLM,
-      PROVIDER_GEMINI,
-      PROVIDER_MISTRAL,
-      PROVIDER_AZURE_OPENAI,
-      PROVIDER_OPENAI_COMPATIBLE,
-      PROVIDER_BEDROCK);
-
-  private static final Map<String, Supplier<LlmProviderConfig.ProviderBuilder>> PROVIDER_BUILDERS =
-      Map.ofEntries(
-          Map.entry(PROVIDER_OPENAI, LlmProviderConfig::openai),
-          Map.entry(PROVIDER_CLAUDE, LlmProviderConfig::claude),
-          Map.entry(PROVIDER_OLLAMA, LlmProviderConfig::ollama),
-          Map.entry(PROVIDER_VLLM, LlmProviderConfig::vllm),
-          Map.entry(PROVIDER_GEMINI, LlmProviderConfig::gemini),
-          Map.entry(PROVIDER_MISTRAL, LlmProviderConfig::mistral),
-          Map.entry(PROVIDER_AZURE_OPENAI, LlmProviderConfig::azureOpenAi),
-          Map.entry(PROVIDER_OPENAI_COMPATIBLE, LlmProviderConfig::openAiCompatible),
-          Map.entry(PROVIDER_BEDROCK, LlmProviderConfig::bedrock));
-
-  /**
-   * Providers that do not require an API key and are included by default even without explicit
-   * configuration. Callers on a local network can use these providers without any credentials.
-   */
-  private static final Set<String> NO_API_KEY_PROVIDERS =
-      Set.of(PROVIDER_OLLAMA, PROVIDER_VLLM);
-
   private LlmClientWiring() {
     throw new UnsupportedOperationException("static utility");
   }
 
+  /**
+   * Assembles LLM clients from programmatic overrides and environment / system-property
+   * auto-discovery. Providers are discovered dynamically via {@link ServiceLoader} — adding a new
+   * provider module to the classpath is sufficient; no code changes required.
+   *
+   * <p>Precedence per provider (highest to lowest):
+   * <ol>
+   *   <li>Programmatic {@code withLlmProvider(LlmProviderConfig)} override.
+   *   <li>System properties ({@code agentforge4j.llm.<provider>.*}).
+   *   <li>Environment variables ({@code AGENTFORGE4J_LLM_<PROVIDER>_*}, normalised).
+   * </ol>
+   *
+   * @param objectMapper          mapper used by provider factories
+   * @param programmaticProviders providers set via {@code withLlmProvider}
+   * @return list of configured clients; empty if none are available
+   */
   static List<LlmClient> buildLlmClients(
-      ObjectMapper objectMapper, Map<String, LlmProviderConfig> programmaticProviders) {
-    Map<String, LlmProviderConfig> effectiveConfigs =
-        resolveEffectiveLlmProviderConfigs(programmaticProviders);
-    if (effectiveConfigs.isEmpty()) {
+      ObjectMapper objectMapper,
+      Map<String, LlmProviderConfig> programmaticProviders) {
+
+    Map<String, String> envConfig = ConfigReader.read();
+    validateEnvConnectTimeouts(envConfig);
+    List<LlmClientConfiguration> configurations = new ArrayList<>();
+
+    ServiceLoader<LlmClientFactory> factories = ServiceLoader.load(LlmClientFactory.class);
+
+    for (LlmClientFactory factory : factories) {
+      LlmProviderConfig config = resolveProviderConfig(
+          factory.getProviderName(), factory.requiresApiKey(), programmaticProviders, envConfig);
+      if (config != null) {
+        configurations.add(new ProviderConfigAdapter(config));
+      }
+    }
+
+    if (configurations.isEmpty()) {
       return List.of();
     }
-    List<LlmClientConfiguration> configurations = new ArrayList<>();
-    for (LlmProviderConfig providerConfig : effectiveConfigs.values()) {
-      configurations.add(new ProviderConfigAdapter(providerConfig));
-    }
+
     try {
-      DefaultLlmClientResolver resolver =
-          DefaultLlmClientResolver.discover(objectMapper, configurations);
+      DefaultLlmClientResolver resolver = DefaultLlmClientResolver.discover(objectMapper,
+          configurations);
       return resolver.listAvailableClients().stream().map(resolver::resolve).toList();
     } catch (IllegalStateException exception) {
       LOGGER.log(System.Logger.Level.WARNING,
@@ -90,82 +76,109 @@ final class LlmClientWiring {
     }
   }
 
-  static Map<String, LlmProviderConfig> resolveEffectiveLlmProviderConfigs(
-      Map<String, LlmProviderConfig> programmaticProviders) {
-    Map<String, String> config = ConfigReader.read();
-    Map<String, LlmProviderConfig> effectiveConfigs = new LinkedHashMap<>();
-    for (String provider : KNOWN_LLM_PROVIDERS) {
-      if (programmaticProviders.containsKey(provider)) {
-        effectiveConfigs.put(provider, programmaticProviders.get(provider));
-      } else {
-        LlmProviderConfig providerConfig = buildLlmProviderConfigFromConfig(provider, config);
-        if (providerConfig != null) {
-          effectiveConfigs.put(provider, providerConfig);
-        } else if (NO_API_KEY_PROVIDERS.contains(provider)) {
-          effectiveConfigs.put(
-              provider, PROVIDER_BUILDERS.get(provider).get().defaults().build());
-        }
-      }
-    }
-    return effectiveConfigs;
-  }
-
-  private static LlmProviderConfig buildLlmProviderConfigFromConfig(
+  /**
+   * Resolves the effective {@link LlmProviderConfig} for a provider, applying precedence rules:
+   * programmatic > env/sys-prop > default (for no-api-key providers).
+   *
+   * @param provider              provider name from {@link LlmClientFactory#getProviderName()}
+   * @param requiresApiKey        whether this provider requires an API key
+   * @param programmaticProviders providers set via {@code withLlmProvider}
+   * @param configMap             merged env/sys-prop map from {@link ConfigReader#read()}
+   * @return config to use, or {@code null} if provider should be skipped
+   */
+  private static LlmProviderConfig resolveProviderConfig(
       String provider,
-      Map<String, String> config) {
-    String prefix = "agentforge4j.llm." + provider + ".";
-    String apiKey = config.get(prefix + "api-key");
-    String baseUrl = config.get(prefix + "base-url");
-    String defaultModel = config.get(prefix + "default-model");
-    String timeoutStr = config.get(prefix + "connect-timeout-seconds");
-    Duration connectTimeout = determineConnectTimeout(provider, timeoutStr);
-    if (providerRequiresApiKey(provider) && apiKey == null) {
-      return null;
+      boolean requiresApiKey,
+      Map<String, LlmProviderConfig> programmaticProviders,
+      Map<String, String> configMap) {
+
+    // 1. Programmatic override wins entirely
+    if (programmaticProviders.containsKey(provider)) {
+      return programmaticProviders.get(provider);
     }
-    if (!providerRequiresApiKey(provider) &&
-        !hasAnyConfigs(apiKey, baseUrl, defaultModel, timeoutStr)) {
-      return null;
+
+    // 2. Env / sys-prop config
+    LlmProviderConfig config = buildLlmProviderConfigFromEnv(provider, requiresApiKey, configMap);
+    if (config != null) {
+      return config;
     }
-    return createBuilder(provider, apiKey, baseUrl, defaultModel, connectTimeout);
+
+    // 3. No-api-key providers get defaults when nothing is configured
+    if (!requiresApiKey) {
+      return buildDefaultConfig(provider);
+    }
+
+    return null;
   }
 
-  private static boolean hasAnyConfigs(String apiKey, String baseUrl, String defaultModel,
-      String timeoutStr) {
-    return apiKey != null || baseUrl != null || defaultModel != null || timeoutStr != null;
-  }
-
-  private static LlmProviderConfig createBuilder(String provider, String apiKey,
-      String baseUrl, String defaultModel, Duration connectTimeout) {
-    LlmProviderConfig.ProviderBuilder builder = PROVIDER_BUILDERS.get(provider).get().defaults();
-    builder.apiKey(apiKey);
-    if (baseUrl != null) {
-      builder.baseUrl(baseUrl);
-    }
-    if (defaultModel != null) {
-      builder.defaultModel(defaultModel);
-    }
-    if (connectTimeout != null) {
-      builder.connectTimeout(connectTimeout);
-    }
-    return builder.build();
-  }
-
-  private static Duration determineConnectTimeout(String provider, String timeoutStr) {
-    Duration connectTimeout = null;
-    if (timeoutStr != null) {
-      try {
-        connectTimeout = Duration.ofSeconds(Long.parseLong(timeoutStr));
-      } catch (NumberFormatException exception) {
-        throw new IllegalStateException(
-            "Invalid value for agentforge4j.llm.%s.connect-timeout-seconds: '%s' — expected a whole number of seconds."
-                .formatted(provider, timeoutStr),
-            exception);
+  private static void validateEnvConnectTimeouts(Map<String, String> envConfig) {
+    String keyPrefix = "agentforge4j.llm.";
+    String keySuffix = ".connect-timeout-seconds";
+    for (Map.Entry<String, String> entry : envConfig.entrySet()) {
+      String key = entry.getKey();
+      if (!key.startsWith(keyPrefix) || !key.endsWith(keySuffix)) {
+        continue;
       }
+      String provider = key.substring(keyPrefix.length(), key.length() - keySuffix.length());
+      parseConnectTimeoutSeconds(provider, entry.getValue());
     }
-    return connectTimeout;
   }
 
-  private static boolean providerRequiresApiKey(String provider) {
-    return !NO_API_KEY_PROVIDERS.contains(provider);
+  private static Duration parseConnectTimeoutSeconds(String provider, String timeoutStr) {
+    if (timeoutStr == null) {
+      return null;
+    }
+    try {
+      return Duration.ofSeconds(Long.parseLong(timeoutStr));
+    } catch (NumberFormatException exception) {
+      throw new IllegalStateException(
+          "Invalid value for agentforge4j.llm.%s.connect-timeout-seconds: '%s' — expected a whole number of seconds."
+              .formatted(provider, timeoutStr),
+          exception);
+    }
+  }
+
+  private static LlmProviderConfig buildLlmProviderConfigFromEnv(
+      String provider,
+      boolean requiresApiKey,
+      Map<String, String> configMap) {
+
+    String prefix = "agentforge4j.llm." + provider + ".";
+    String apiKey = configMap.get(prefix + "api-key");
+    String baseUrl = configMap.get(prefix + "base-url");
+    String defaultModel = configMap.get(prefix + "default-model");
+    String timeoutStr = configMap.get(prefix + "connect-timeout-seconds");
+
+    Duration connectTimeout = parseConnectTimeoutSeconds(provider, timeoutStr);
+
+    boolean hasAnyConfig = isHasAnyConfig(apiKey, baseUrl, defaultModel, timeoutStr);
+
+    if (requiresApiKey && apiKey == null) {
+      return null;
+    }
+    if (!requiresApiKey && !hasAnyConfig) {
+      // No env config — let resolveProviderConfig fall through to defaults
+      return null;
+    }
+
+    return new LlmProviderConfig(provider, apiKey, baseUrl, defaultModel, connectTimeout);
+  }
+
+  private static boolean isHasAnyConfig(String apiKey, String baseUrl, String defaultModel,
+      String timeoutStr) {
+    return apiKey != null || baseUrl != null
+        || defaultModel != null || timeoutStr != null;
+  }
+
+  /**
+   * Builds a default {@link LlmProviderConfig} for providers that do not require an API key. Uses
+   * the provider name only; callers supply their own defaults via {@link LlmProviderConfig}'s
+   * per-provider builders when needed.
+   *
+   * @param provider provider name
+   * @return minimal config with no credentials
+   */
+  private static LlmProviderConfig buildDefaultConfig(String provider) {
+    return new LlmProviderConfig(provider, null, null, null, null);
   }
 }
