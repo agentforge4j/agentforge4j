@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.agentforge4j.runtime.command.FileSink;
+import com.agentforge4j.runtime.command.LocalFileSink;
 import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.Map;
@@ -86,6 +87,20 @@ class ConfigReaderWiringTest {
         .withAgentsDir(agentsDir)
         .build();
     assertThat(af).isNotNull();
+  }
+
+  @Test
+  void withFileSinkPathProgrammaticAppliesLocalFileSink(@TempDir Path tempDir) {
+    AgentForge4j af = AgentForge4jBootstrap.defaults()
+        .withFileSinkPath(tempDir)
+        .build();
+    assertThat(af.components().fileSink()).isInstanceOf(LocalFileSink.class);
+  }
+
+  @Test
+  void withFileSinkPathNullThrowsImmediately() {
+    assertThatThrownBy(() -> AgentForge4jBootstrap.defaults().withFileSinkPath(null))
+        .isInstanceOf(IllegalArgumentException.class);
   }
 
   private void setProperty(String key, String value) {

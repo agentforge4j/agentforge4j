@@ -151,6 +151,24 @@ class LlmProviderConfigTest {
   }
 
   @Test
+  void nullBaseUrlThrows() {
+    assertThatThrownBy(() -> LlmProviderConfig.openai().defaults().baseUrl(null))
+        .isInstanceOf(IllegalArgumentException.class);
+  }
+
+  @Test
+  void blankDefaultModelThrows() {
+    assertThatThrownBy(() -> LlmProviderConfig.openai().defaults().defaultModel(""))
+        .isInstanceOf(IllegalArgumentException.class);
+  }
+
+  @Test
+  void nullDefaultModelThrows() {
+    assertThatThrownBy(() -> LlmProviderConfig.openai().defaults().defaultModel(null))
+        .isInstanceOf(IllegalArgumentException.class);
+  }
+
+  @Test
   void nullConnectTimeoutThrows() {
     assertThatThrownBy(() -> LlmProviderConfig.openai().defaults().connectTimeout(null).build())
         .isInstanceOf(IllegalArgumentException.class);

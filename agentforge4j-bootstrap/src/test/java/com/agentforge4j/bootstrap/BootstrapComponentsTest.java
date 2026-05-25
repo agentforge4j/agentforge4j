@@ -53,4 +53,58 @@ class BootstrapComponentsTest {
     AgentForge4j af = AgentForge4jBootstrap.defaults().build();
     assertThat(af.components().loadedConfiguration()).isNotNull();
   }
+
+  @Test
+  void componentsWorkflowStateRepositoryIsNotNull() {
+    AgentForge4j af = AgentForge4jBootstrap.defaults().build();
+    assertThat(af.components().workflowStateRepository()).isNotNull();
+  }
+
+  @Test
+  void componentsWorkflowEventLogIsNotNull() {
+    AgentForge4j af = AgentForge4jBootstrap.defaults().build();
+    assertThat(af.components().workflowEventLog()).isNotNull();
+  }
+
+  @Test
+  void componentsContextRendererIsNotNull() {
+    AgentForge4j af = AgentForge4jBootstrap.defaults().build();
+    assertThat(af.components().contextRenderer()).isNotNull();
+  }
+
+  @Test
+  void componentsLlmCommandParserIsNotNull() {
+    AgentForge4j af = AgentForge4jBootstrap.defaults().build();
+    assertThat(af.components().llmCommandParser()).isNotNull();
+  }
+
+  @Test
+  void componentsEventRecorderIsNotNull() {
+    AgentForge4j af = AgentForge4jBootstrap.defaults().build();
+    assertThat(af.components().eventRecorder()).isNotNull();
+  }
+
+  @Test
+  void componentsLlmProviderSelectionStrategyIsNotNull() {
+    AgentForge4j af = AgentForge4jBootstrap.defaults().build();
+    assertThat(af.components().llmProviderSelectionStrategy()).isNotNull();
+  }
+
+  @Test
+  void componentsIntegrationRegistryIsNotNull() {
+    AgentForge4j af = AgentForge4jBootstrap.defaults().build();
+    assertThat(af.components().integrationRegistry()).isNotNull();
+  }
+
+  @Test
+  void componentsAgentInvokerIsNotNull() {
+    AgentForge4j af = AgentForge4jBootstrap.defaults().build();
+    assertThat(af.components().agentInvoker()).isNotNull();
+  }
+
+  @Test
+  void componentsLlmCallObserverIsNotNull() {
+    AgentForge4j af = AgentForge4jBootstrap.defaults().build();
+    assertThat(af.components().llmCallObserver()).isNotNull();
+  }
 }
