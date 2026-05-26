@@ -1,18 +1,6 @@
 package com.agentforge4j.bootstrap;
 
-import com.agentforge4j.config.loader.AgentForgeLoader;
-import com.agentforge4j.config.loader.AgentLoader;
 import com.agentforge4j.config.loader.LoadedConfiguration;
-import com.agentforge4j.config.loader.agent.ClasspathAgentLoader;
-import com.agentforge4j.config.loader.agent.FileSystemAgentLoader;
-import com.agentforge4j.config.loader.prompt.AgentPromptResolver;
-import com.agentforge4j.config.loader.prompt.FileSystemAgentPromptResolver;
-import com.agentforge4j.config.loader.prompt.PromptLoader;
-import com.agentforge4j.config.loader.repository.InMemoryAgentRepository;
-import com.agentforge4j.config.loader.repository.InMemoryWorkflowRepository;
-import com.agentforge4j.config.loader.workflow.ClasspathWorkflowLoader;
-import com.agentforge4j.config.loader.workflow.FileSystemWorkflowLoader;
-import com.agentforge4j.config.loader.workflow.WorkflowDirectoryLoader;
 import com.agentforge4j.core.agent.AgentRepository;
 import com.agentforge4j.core.runtime.WorkflowRuntime;
 import com.agentforge4j.core.workflow.event.WorkflowEventLog;
@@ -22,12 +10,9 @@ import com.agentforge4j.integrations.IntegrationRegistry;
 import com.agentforge4j.integrations.NoOpIntegrationRegistry;
 import com.agentforge4j.llm.DefaultLlmClientResolver;
 import com.agentforge4j.llm.LlmClientResolver;
-import com.agentforge4j.llm.RetryingLlmClientResolver;
 import com.agentforge4j.llm.api.LlmClient;
 import com.agentforge4j.llm.api.LlmRetryPolicy;
-import com.agentforge4j.runtime.WorkflowRuntimeBuilder;
 import com.agentforge4j.runtime.command.FileSink;
-import com.agentforge4j.runtime.command.LocalFileSink;
 import com.agentforge4j.runtime.event.EventRecorder;
 import com.agentforge4j.runtime.llm.AgentInvoker;
 import com.agentforge4j.runtime.llm.ContextRenderer;
@@ -38,16 +23,12 @@ import com.agentforge4j.runtime.llm.LlmProviderSelectionStrategy;
 import com.agentforge4j.runtime.repository.InMemoryWorkflowEventLog;
 import com.agentforge4j.runtime.repository.InMemoryWorkflowStateRepository;
 import com.agentforge4j.util.Validate;
-import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.SerializationFeature;
-import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import java.nio.file.Path;
 import java.time.Clock;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 
 /**
  * Static entry point for assembling an {@link AgentForge4j} facade with framework-agnostic
@@ -58,9 +39,6 @@ import java.util.Optional;
  * }</pre>
  */
 public final class AgentForge4jBootstrap {
-
-  private static final System.Logger LOGGER =
-      System.getLogger(AgentForge4jBootstrap.class.getName());
 
   private AgentForge4jBootstrap() {
     throw new UnsupportedOperationException("static entry point");
@@ -219,8 +197,8 @@ public final class AgentForge4jBootstrap {
 
     /**
      * Configures the LLM retry policy. When {@code maxAttempts > 1}, the assembled
-     * {@link LlmClientResolver} is automatically wrapped with
-     * {@link RetryingLlmClientResolver} using this policy.
+     * {@link LlmClientResolver} is automatically wrapped with {@link RetryingLlmClientResolver}
+     * using this policy.
      *
      * <p>Has no effect if {@link #withLlmClientResolver(LlmClientResolver)} was also
      * called — an explicit resolver is never wrapped automatically.
@@ -422,36 +400,32 @@ public final class AgentForge4jBootstrap {
      * @throws IllegalStateException if assembly fails (e.g. loading throws)
      */
     public AgentForge4j build() {
-      applyEnvConfig(ConfigReader.read());
+      applyConfig(ConfigReader.read());
 
       Clock resolvedClock = (clock != null) ? clock : Clock.systemUTC();
+      ObjectMapper resolvedMapper = (objectMapper != null)
+          ? objectMapper : ConfigurationLoader.defaultObjectMapper();
 
-      ObjectMapper resolvedMapper =
-          (objectMapper != null) ? objectMapper : buildDefaultObjectMapper();
-
-      LoadedConfiguration loadedConfiguration = loadConfiguration(resolvedMapper);
+      LoadedConfiguration loadedConfiguration = ConfigurationLoader.load(
+          resolvedMapper, agentsDir, workflowsDir, loadShippedAgents, loadShippedWorkflows);
 
       AgentRepository resolvedAgentRepo = (agentRepository != null)
-          ? agentRepository
-          : buildDefaultAgentRepository(loadedConfiguration);
+          ? agentRepository : ComponentDefaults.agentRepository(loadedConfiguration);
 
       WorkflowRepository resolvedWorkflowRepo = (workflowRepository != null)
-          ? workflowRepository
-          : buildDefaultWorkflowRepository(loadedConfiguration);
+          ? workflowRepository : ComponentDefaults.workflowRepository(loadedConfiguration);
 
       WorkflowStateRepository resolvedStateRepo = (workflowStateRepository != null)
-          ? workflowStateRepository
-          : new InMemoryWorkflowStateRepository();
+          ? workflowStateRepository : new InMemoryWorkflowStateRepository();
 
       WorkflowEventLog resolvedEventLog = (workflowEventLog != null)
-          ? workflowEventLog
-          : new InMemoryWorkflowEventLog();
+          ? workflowEventLog : new InMemoryWorkflowEventLog();
 
       IntegrationRegistry resolvedRegistry = (integrationRegistry != null)
-          ? integrationRegistry
-          : NoOpIntegrationRegistry.INSTANCE;
+          ? integrationRegistry : NoOpIntegrationRegistry.INSTANCE;
 
-      FileSink resolvedFileSink = (fileSink != null) ? fileSink : determineFileSink();
+      FileSink resolvedFileSink = (fileSink != null)
+          ? fileSink : ComponentDefaults.fileSink(fileSinkPath);
 
       List<LlmClient> llmClients = List.of();
       if (llmClientResolver == null) {
@@ -459,99 +433,43 @@ public final class AgentForge4jBootstrap {
       }
 
       LlmClientResolver resolvedResolver = (llmClientResolver != null)
-          ? llmClientResolver
-          : new DefaultLlmClientResolver(llmClients);
+          ? llmClientResolver : new DefaultLlmClientResolver(llmClients);
 
-      if (llmRetryPolicy != null
-          && llmRetryPolicy.maxAttempts() > 1
-          && llmClientResolver == null) {
-        resolvedResolver = new RetryingLlmClientResolver(resolvedResolver, llmRetryPolicy);
-        LOGGER.log(System.Logger.Level.INFO,
-            "LLM resolver wrapped with RetryingLlmClientResolver (maxAttempts={0}).",
-            llmRetryPolicy.maxAttempts());
-      }
+      resolvedResolver = RuntimeAssembler.applyRetryPolicy(
+          resolvedResolver, llmRetryPolicy, llmClientResolver != null);
+
+      RuntimeAssembler.warnIfNoProviders(llmClients, llmClientResolver != null);
 
       LlmProviderSelectionStrategy resolvedStrategy = (llmProviderSelectionStrategy != null)
-          ? llmProviderSelectionStrategy
-          : new FirstAvailableProviderSelectionStrategy();
+          ? llmProviderSelectionStrategy : new FirstAvailableProviderSelectionStrategy();
 
       ContextRenderer resolvedRenderer = (contextRenderer != null)
-          ? contextRenderer
-          : new ContextRenderer(resolvedMapper);
+          ? contextRenderer : new ContextRenderer(resolvedMapper);
 
       LlmCommandParser resolvedParser = (llmCommandParser != null)
-          ? llmCommandParser
-          : new LlmCommandParser(resolvedMapper);
+          ? llmCommandParser : new LlmCommandParser(resolvedMapper);
 
       EventRecorder resolvedRecorder = (eventRecorder != null)
-          ? eventRecorder
-          : new EventRecorder(resolvedEventLog, resolvedClock);
+          ? eventRecorder : new EventRecorder(resolvedEventLog, resolvedClock);
 
       LlmCallObserver resolvedObserver = (llmCallObserver != null)
-          ? llmCallObserver
-          : new LlmCallObserver(resolvedRecorder);
+          ? llmCallObserver : new LlmCallObserver(resolvedRecorder);
 
-      if (agentInvoker != null && cacheEnabledSet) {
-        LOGGER.log(System.Logger.Level.WARNING,
-            """
-                Both withAgentInvoker and withCacheEnabled were called; \
-                withCacheEnabled ignored because explicit AgentInvoker was provided.""");
-      }
+      AgentInvoker resolvedInvoker = RuntimeAssembler.agentInvoker(
+          resolvedAgentRepo, resolvedResolver, resolvedRenderer, resolvedParser,
+          resolvedMapper, resolvedRecorder, resolvedStrategy, cacheEnabled,
+          resolvedObserver, agentInvoker, cacheEnabledSet);
 
-      AgentInvoker resolvedInvoker = (agentInvoker != null)
-          ? agentInvoker
-          : buildDefaultAgentInvoker(
-              resolvedAgentRepo,
-              resolvedResolver,
-              resolvedRenderer,
-              resolvedParser,
-              resolvedMapper,
-              resolvedRecorder,
-              resolvedStrategy,
-              cacheEnabled,
-              resolvedObserver);
-
-      if (llmClientResolver == null && llmClients.isEmpty()) {
-        LOGGER.log(System.Logger.Level.WARNING,
-            """
-                No LLM providers configured. Workflows that invoke agents will fail at runtime. \
-                Set AGENTFORGE4J_LLM_<PROVIDER>_API_KEY, agentforge4j.llm.<provider>.api-key, \
-                or use withLlmProvider(...).""");
-      }
-
-      WorkflowRuntimeBuilder runtimeBuilder = new WorkflowRuntimeBuilder()
-          .workflowRepository(resolvedWorkflowRepo)
-          .workflowStateRepository(resolvedStateRepo)
-          .workflowEventLog(resolvedEventLog)
-          .clock(resolvedClock)
-          .fileSink(resolvedFileSink)
-          .integrationRegistry(resolvedRegistry)
-          .agentInvoker(resolvedInvoker)
-          .eventRecorder(resolvedRecorder);
-
-      if (maxNestingDepth != null) {
-        runtimeBuilder.maxNestingDepth(maxNestingDepth);
-      }
-
-      WorkflowRuntime resolvedRuntime = runtimeBuilder.build();
+      WorkflowRuntime resolvedRuntime = RuntimeAssembler.runtime(
+          resolvedWorkflowRepo, resolvedStateRepo, resolvedEventLog, resolvedClock,
+          resolvedFileSink, resolvedRegistry, resolvedInvoker, resolvedRecorder,
+          maxNestingDepth);
 
       BootstrapComponents components = new BootstrapComponents(
-          resolvedAgentRepo,
-          resolvedWorkflowRepo,
-          resolvedStateRepo,
-          resolvedEventLog,
-          resolvedResolver,
-          resolvedRenderer,
-          resolvedParser,
-          resolvedRecorder,
-          resolvedFileSink,
-          resolvedStrategy,
-          resolvedRegistry,
-          resolvedMapper,
-          resolvedClock,
-          resolvedInvoker,
-          resolvedObserver,
-          loadedConfiguration);
+          resolvedAgentRepo, resolvedWorkflowRepo, resolvedStateRepo, resolvedEventLog,
+          resolvedResolver, resolvedRenderer, resolvedParser, resolvedRecorder,
+          resolvedFileSink, resolvedStrategy, resolvedRegistry, resolvedMapper,
+          resolvedClock, resolvedInvoker, resolvedObserver, loadedConfiguration);
 
       return new AgentForge4j(resolvedRuntime, loadedConfiguration, components);
     }
@@ -560,35 +478,35 @@ public final class AgentForge4jBootstrap {
      * Applies non-LLM environment / system-property values as defaults for fields not already set
      * programmatically. Programmatic {@code with*} calls always win.
      *
-     * @param envConfig merged env/sys-prop map from {@link ConfigReader#read()}
+     * @param config merged env/sys-prop map from {@link ConfigReader#read()}
      */
-    private void applyEnvConfig(Map<String, String> envConfig) {
+    private void applyConfig(Map<String, String> config) {
       if (agentsDir == null) {
-        String val = envConfig.get("agentforge4j.agents.path");
+        String val = config.get("agentforge4j.agents.path");
         if (val != null) {
           withAgentsDir(Path.of(val));
         }
       }
       if (workflowsDir == null) {
-        String val = envConfig.get("agentforge4j.workflows.path");
+        String val = config.get("agentforge4j.workflows.path");
         if (val != null) {
           withWorkflowsDir(Path.of(val));
         }
       }
       if (fileSinkPath == null) {
-        String val = envConfig.get("agentforge4j.filesink.path");
+        String val = config.get("agentforge4j.filesink.path");
         if (val != null) {
           withFileSinkPath(Path.of(val));
         }
       }
       if (!cacheEnabledSet) {
-        String val = envConfig.get("agentforge4j.llm.cache.enabled");
+        String val = config.get("agentforge4j.llm.cache.enabled");
         if (val != null) {
           withCacheEnabled(Boolean.parseBoolean(val));
         }
       }
       if (maxNestingDepth == null) {
-        String val = envConfig.get("agentforge4j.max-nesting-depth");
+        String val = config.get("agentforge4j.max-nesting-depth");
         if (val != null) {
           try {
             withMaxNestingDepth(Integer.parseInt(val));
@@ -601,118 +519,17 @@ public final class AgentForge4jBootstrap {
         }
       }
       if (!loadShippedAgentsSet) {
-        String val = envConfig.get("agentforge4j.load-shipped-agents");
+        String val = config.get("agentforge4j.load-shipped-agents");
         if (val != null) {
           withLoadShippedAgents(Boolean.parseBoolean(val));
         }
       }
       if (!loadShippedWorkflowsSet) {
-        String val = envConfig.get("agentforge4j.load-shipped-workflows");
+        String val = config.get("agentforge4j.load-shipped-workflows");
         if (val != null) {
           withLoadShippedWorkflows(Boolean.parseBoolean(val));
         }
       }
-    }
-
-    private static ObjectMapper buildDefaultObjectMapper() {
-      ObjectMapper mapper = new ObjectMapper();
-      mapper.registerModule(new JavaTimeModule());
-      mapper.disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
-      mapper.disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES);
-      return mapper;
-    }
-
-    private LoadedConfiguration loadConfiguration(ObjectMapper resolvedMapper) {
-      WorkflowDirectoryLoader workflowDirectoryLoader =
-          new FileSystemWorkflowLoader(resolvedMapper);
-
-      ClasspathAgentLoader shippedClasspathAgentLoader = null;
-      Optional<ClasspathAgentLoader> classpathAgentLoader;
-      if (loadShippedAgents) {
-        shippedClasspathAgentLoader = new ClasspathAgentLoader(
-            resolvedMapper, ClasspathAgentLoader.SHIPPED_AGENTS_ROOT);
-        classpathAgentLoader = Optional.of(shippedClasspathAgentLoader);
-      } else {
-        classpathAgentLoader = Optional.empty();
-      }
-
-      Optional<ClasspathWorkflowLoader> classpathWorkflowLoader = loadShippedWorkflows
-          ? Optional.of(new ClasspathWorkflowLoader(resolvedMapper))
-          : Optional.empty();
-
-      AgentLoader agentLoader = buildAgentLoader(resolvedMapper,
-          shippedClasspathAgentLoader);
-
-      AgentForgeLoader loader = new AgentForgeLoader(agentLoader, workflowDirectoryLoader);
-      try {
-        return loader.load(
-            Optional.ofNullable(agentsDir),
-            Optional.ofNullable(workflowsDir),
-            classpathAgentLoader,
-            classpathWorkflowLoader);
-      } catch (RuntimeException exception) {
-        throw new IllegalStateException("Failed to load AgentForge4j configuration", exception);
-      }
-    }
-
-    private AgentLoader buildAgentLoader(ObjectMapper resolvedMapper,
-        ClasspathAgentLoader shippedClasspathAgentLoader) {
-      AgentLoader agentLoader;
-      if (agentsDir != null) {
-        AgentPromptResolver promptResolver = new FileSystemAgentPromptResolver(new PromptLoader());
-        agentLoader = new FileSystemAgentLoader(resolvedMapper, promptResolver, agentsDir);
-      } else if (shippedClasspathAgentLoader != null) {
-        agentLoader = shippedClasspathAgentLoader;
-      } else {
-        agentLoader = new ClasspathAgentLoader(
-            resolvedMapper, ClasspathAgentLoader.SHIPPED_AGENTS_ROOT);
-      }
-      return agentLoader;
-    }
-
-
-    private FileSink determineFileSink() {
-      if (fileSinkPath != null) {
-        return new LocalFileSink(fileSinkPath);
-      }
-      LOGGER.log(System.Logger.Level.WARNING,
-          """
-              FileSink is no-op; CreateFileCommand outputs will be discarded. \
-              Override with .withFileSink(new LocalFileSink(Path.of(...))).""");
-      return FileSink.NO_OP_FILE_SINK;
-    }
-
-    private static InMemoryAgentRepository buildDefaultAgentRepository(
-        LoadedConfiguration loadedConfiguration) {
-      return new InMemoryAgentRepository(loadedConfiguration.agents());
-    }
-
-    private static InMemoryWorkflowRepository buildDefaultWorkflowRepository(
-        LoadedConfiguration loadedConfiguration) {
-      return new InMemoryWorkflowRepository(loadedConfiguration.workflows());
-    }
-
-    private static AgentInvoker buildDefaultAgentInvoker(
-        AgentRepository agentRepository,
-        LlmClientResolver llmClientResolver,
-        ContextRenderer contextRenderer,
-        LlmCommandParser llmCommandParser,
-        ObjectMapper objectMapper,
-        EventRecorder eventRecorder,
-        LlmProviderSelectionStrategy llmProviderSelectionStrategy,
-        boolean promptCacheEnabled,
-        LlmCallObserver llmCallObserver) {
-      return new AgentInvoker(
-          agentRepository,
-          llmClientResolver,
-          contextRenderer,
-          llmCommandParser,
-          objectMapper,
-          eventRecorder,
-          AgentInvoker.DEFAULT_LLM_OUTPUT_EVENT_CHAR_CAP,
-          llmProviderSelectionStrategy,
-          promptCacheEnabled,
-          llmCallObserver);
     }
   }
 }
