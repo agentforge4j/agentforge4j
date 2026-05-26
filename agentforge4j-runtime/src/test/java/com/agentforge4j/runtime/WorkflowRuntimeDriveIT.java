@@ -32,6 +32,8 @@ import com.agentforge4j.runtime.command.ShellCommandRunner;
 import com.agentforge4j.runtime.event.EventRecorder;
 import com.agentforge4j.runtime.llm.AgentInvoker;
 import com.agentforge4j.runtime.llm.ContextRenderer;
+import com.agentforge4j.runtime.llm.FirstAvailableProviderSelectionStrategy;
+import com.agentforge4j.runtime.llm.LlmCallObserver;
 import com.agentforge4j.runtime.llm.LlmCommandParser;
 import com.agentforge4j.runtime.repository.InMemoryWorkflowEventLog;
 import com.agentforge4j.runtime.repository.InMemoryWorkflowStateRepository;
@@ -114,13 +116,17 @@ class WorkflowRuntimeDriveIT {
     EventRecorder eventRecorder = new EventRecorder(eventLog, clock);
     LlmClientResolver resolver =
         new SingleClientResolver(new ConstantJsonLlmClient("[{\"type\":\"COMPLETE\"}]"));
-    return new AgentInvoker(
-        new MapAgentRepository(agent),
-        resolver,
-        new ContextRenderer(MAPPER),
-        new LlmCommandParser(MAPPER),
-        MAPPER,
-        eventRecorder);
+    return AgentInvoker.builder()
+        .agentRepository(new MapAgentRepository(agent))
+        .llmClientResolver(resolver)
+        .contextRenderer(new ContextRenderer(MAPPER))
+        .llmCommandParser(new LlmCommandParser(MAPPER))
+        .objectMapper(MAPPER)
+        .eventRecorder(eventRecorder)
+        .llmProviderSelectionStrategy(new FirstAvailableProviderSelectionStrategy())
+        .promptCacheEnabled(true)
+        .llmCallObserver(new LlmCallObserver(eventRecorder))
+        .build();
   }
 
   @Test

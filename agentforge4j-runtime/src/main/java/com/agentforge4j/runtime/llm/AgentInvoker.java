@@ -49,81 +49,168 @@ public final class AgentInvoker {
   private final LlmCallObserver llmCallObserver;
   private final CommandResponseSchemaRenderer schemaRenderer = new CommandResponseSchemaRenderer();
 
-  public AgentInvoker(AgentRepository agentRepository,
-      LlmClientResolver llmClientResolver,
-      ContextRenderer contextRenderer,
-      LlmCommandParser llmCommandParser,
-      ObjectMapper objectMapper,
-      EventRecorder eventRecorder) {
-    this(agentRepository, llmClientResolver, contextRenderer, llmCommandParser, objectMapper,
-        eventRecorder, DEFAULT_LLM_OUTPUT_EVENT_CHAR_CAP);
+  /**
+   * Returns a new builder for {@link AgentInvoker}.
+   *
+   * @return new builder; never {@code null}
+   */
+  public static Builder builder() {
+    return new Builder();
   }
 
-  public AgentInvoker(AgentRepository agentRepository,
-      LlmClientResolver llmClientResolver,
-      ContextRenderer contextRenderer,
-      LlmCommandParser llmCommandParser,
-      ObjectMapper objectMapper,
-      EventRecorder eventRecorder,
-      int llmOutputEventCharCap) {
-    this(agentRepository, llmClientResolver, contextRenderer, llmCommandParser, objectMapper,
-        eventRecorder, llmOutputEventCharCap, new FirstAvailableProviderSelectionStrategy());
-  }
-
-  public AgentInvoker(AgentRepository agentRepository,
-      LlmClientResolver llmClientResolver,
-      ContextRenderer contextRenderer,
-      LlmCommandParser llmCommandParser,
-      ObjectMapper objectMapper,
-      EventRecorder eventRecorder,
-      int llmOutputEventCharCap,
-      LlmProviderSelectionStrategy llmProviderSelectionStrategy) {
-    this(agentRepository, llmClientResolver, contextRenderer, llmCommandParser, objectMapper,
-        eventRecorder, llmOutputEventCharCap, llmProviderSelectionStrategy, true);
+  private AgentInvoker(Builder builder) {
+    this.agentRepository = builder.agentRepository;
+    this.llmClientResolver = builder.llmClientResolver;
+    this.llmProviderSelectionStrategy = builder.llmProviderSelectionStrategy;
+    this.contextRenderer = builder.contextRenderer;
+    this.llmCommandParser = builder.llmCommandParser;
+    this.objectMapper = builder.objectMapper;
+    this.eventRecorder = builder.eventRecorder;
+    this.llmOutputEventCharCap = builder.llmOutputEventCharCap;
+    this.promptCacheEnabled = builder.promptCacheEnabled;
+    this.llmCallObserver = builder.llmCallObserver;
   }
 
   /**
-   * @param promptCacheEnabled when {@code true}, computes UTF-8 layer boundaries on each request;
-   *                           when {@code false}, omits boundaries so the request body matches
-   *                           pre-caching assembly
+   * Builder for {@link AgentInvoker}.
    */
-  public AgentInvoker(AgentRepository agentRepository,
-      LlmClientResolver llmClientResolver,
-      ContextRenderer contextRenderer,
-      LlmCommandParser llmCommandParser,
-      ObjectMapper objectMapper,
-      EventRecorder eventRecorder,
-      int llmOutputEventCharCap,
-      LlmProviderSelectionStrategy llmProviderSelectionStrategy,
-      boolean promptCacheEnabled) {
-    this(agentRepository, llmClientResolver, contextRenderer, llmCommandParser, objectMapper,
-        eventRecorder, llmOutputEventCharCap, llmProviderSelectionStrategy, promptCacheEnabled,
-        new LlmCallObserver(eventRecorder));
-  }
+  public static final class Builder {
 
-  public AgentInvoker(AgentRepository agentRepository,
-      LlmClientResolver llmClientResolver,
-      ContextRenderer contextRenderer,
-      LlmCommandParser llmCommandParser,
-      ObjectMapper objectMapper,
-      EventRecorder eventRecorder,
-      int llmOutputEventCharCap,
-      LlmProviderSelectionStrategy llmProviderSelectionStrategy,
-      boolean promptCacheEnabled,
-      LlmCallObserver llmCallObserver) {
-    this.agentRepository = Validate.notNull(agentRepository, "agentRepository must not be null");
-    this.llmClientResolver = Validate.notNull(llmClientResolver,
-        "llmClientResolver must not be null");
-    this.llmProviderSelectionStrategy = Validate.notNull(llmProviderSelectionStrategy,
-        "llmProviderSelectionStrategy must not be null");
-    this.contextRenderer = Validate.notNull(contextRenderer, "contextRenderer must not be null");
-    this.llmCommandParser = Validate.notNull(llmCommandParser, "llmCommandParser must not be null");
-    this.objectMapper = Validate.notNull(objectMapper, "objectMapper must not be null");
-    this.eventRecorder = Validate.notNull(eventRecorder, "eventRecorder must not be null");
-    this.llmOutputEventCharCap = Validate.isNotNegative(llmOutputEventCharCap,
-        "llmOutputEventCharCap must be >= 0").intValue();
-    this.promptCacheEnabled = promptCacheEnabled;
-    this.llmCallObserver = Validate.notNull(llmCallObserver, "llmCallObserver must not be null");
+    private AgentRepository agentRepository;
+    private LlmClientResolver llmClientResolver;
+    private ContextRenderer contextRenderer;
+    private LlmCommandParser llmCommandParser;
+    private ObjectMapper objectMapper;
+    private EventRecorder eventRecorder;
+    private LlmProviderSelectionStrategy llmProviderSelectionStrategy;
+    private LlmCallObserver llmCallObserver;
+    private int llmOutputEventCharCap = DEFAULT_LLM_OUTPUT_EVENT_CHAR_CAP;
+    private boolean promptCacheEnabled = false;
+
+    private Builder() {
+
+    }
+
+    /**
+     * @param agentRepository agent repository dependency
+     * @return this builder; never {@code null}
+     */
+    public Builder agentRepository(AgentRepository agentRepository) {
+      this.agentRepository = Validate.notNull(agentRepository, "Agent repository must not be null");
+      return this;
+    }
+
+    /**
+     * @param llmClientResolver LLM client resolver dependency
+     * @return this builder; never {@code null}
+     */
+    public Builder llmClientResolver(LlmClientResolver llmClientResolver) {
+      this.llmClientResolver = Validate.notNull(llmClientResolver,
+          "LLM client resolver must not be null");
+      return this;
+    }
+
+    /**
+     * @param contextRenderer context renderer dependency
+     * @return this builder; never {@code null}
+     */
+    public Builder contextRenderer(ContextRenderer contextRenderer) {
+      this.contextRenderer = Validate.notNull(contextRenderer, "Context renderer must not be null");
+      return this;
+    }
+
+    /**
+     * @param llmCommandParser LLM command parser dependency
+     * @return this builder; never {@code null}
+     */
+    public Builder llmCommandParser(LlmCommandParser llmCommandParser) {
+      this.llmCommandParser = Validate.notNull(llmCommandParser, "LLM command parser must not be null");
+      return this;
+    }
+
+    /**
+     * @param objectMapper object mapper dependency
+     * @return this builder; never {@code null}
+     */
+    public Builder objectMapper(ObjectMapper objectMapper) {
+      this.objectMapper = Validate.notNull(objectMapper, "Object mapper must not be null");
+      return this;
+    }
+
+    /**
+     * @param eventRecorder event recorder dependency
+     * @return this builder; never {@code null}
+     */
+    public Builder eventRecorder(EventRecorder eventRecorder) {
+      this.eventRecorder = Validate.notNull(eventRecorder, "Event recorder must not be null");
+      return this;
+    }
+
+    /**
+     * @param llmProviderSelectionStrategy provider selection strategy dependency
+     * @return this builder; never {@code null}
+     */
+    public Builder llmProviderSelectionStrategy(
+        LlmProviderSelectionStrategy llmProviderSelectionStrategy) {
+      this.llmProviderSelectionStrategy = Validate.notNull(llmProviderSelectionStrategy,
+          "LLM provider selection strategy must not be null");
+      return this;
+    }
+
+    /**
+     * @param llmCallObserver call observer dependency
+     * @return this builder; never {@code null}
+     */
+    public Builder llmCallObserver(LlmCallObserver llmCallObserver) {
+      this.llmCallObserver = Validate.notNull(llmCallObserver, "LLM call observer must not be null");
+      return this;
+    }
+
+    /**
+     * @param llmOutputEventCharCap maximum output event characters (0 disables truncation)
+     * @return this builder; never {@code null}
+     */
+    public Builder llmOutputEventCharCap(int llmOutputEventCharCap) {
+      this.llmOutputEventCharCap = Validate.isNotNegative(llmOutputEventCharCap,
+          "LLM output event character cap must be zero or greater").intValue();
+      return this;
+    }
+
+    /**
+     * @param promptCacheEnabled whether prompt cache boundaries should be emitted
+     * @return this builder; never {@code null}
+     */
+    public Builder promptCacheEnabled(boolean promptCacheEnabled) {
+      this.promptCacheEnabled = promptCacheEnabled;
+      return this;
+    }
+
+    /**
+     * Builds the {@link AgentInvoker}.
+     *
+     * @return configured invoker; never {@code null}
+     * @throws IllegalArgumentException if any required field was not set
+     */
+    public AgentInvoker build() {
+      Validate.notNull(agentRepository,
+          "Agent repository must be set - call agentRepository(AgentRepository)");
+      Validate.notNull(llmClientResolver,
+          "LLM client resolver must be set - call llmClientResolver(LlmClientResolver)");
+      Validate.notNull(contextRenderer,
+          "Context renderer must be set - call contextRenderer(ContextRenderer)");
+      Validate.notNull(llmCommandParser,
+          "LLM command parser must be set - call llmCommandParser(LlmCommandParser)");
+      Validate.notNull(objectMapper,
+          "Object mapper must be set - call objectMapper(ObjectMapper)");
+      Validate.notNull(eventRecorder,
+          "Event recorder must be set - call eventRecorder(EventRecorder)");
+      Validate.notNull(llmProviderSelectionStrategy,
+          "LLM provider selection strategy must be set - "
+              + "call llmProviderSelectionStrategy(LlmProviderSelectionStrategy)");
+      Validate.notNull(llmCallObserver,
+          "LLM call observer must be set - call llmCallObserver(LlmCallObserver)");
+      return new AgentInvoker(this);
+    }
   }
 
   public AgentInvocationResult invoke(String agentId,

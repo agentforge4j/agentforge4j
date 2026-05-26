@@ -15,6 +15,8 @@ import com.agentforge4j.runtime.command.ShellCommandRunner;
 import com.agentforge4j.runtime.event.EventRecorder;
 import com.agentforge4j.runtime.llm.AgentInvoker;
 import com.agentforge4j.runtime.llm.ContextRenderer;
+import com.agentforge4j.runtime.llm.FirstAvailableProviderSelectionStrategy;
+import com.agentforge4j.runtime.llm.LlmCallObserver;
 import com.agentforge4j.runtime.llm.LlmCommandParser;
 import com.agentforge4j.runtime.repository.InMemoryWorkflowEventLog;
 import com.agentforge4j.runtime.repository.InMemoryWorkflowStateRepository;
@@ -120,12 +122,16 @@ class WorkflowStateExposureRuntimeTest {
       AgentRepository agentRepository, LlmClientResolver resolver) {
     ObjectMapper mapper = new ObjectMapper();
     EventRecorder eventRecorder = new EventRecorder(eventLog, clock);
-    return new AgentInvoker(
-        agentRepository,
-        resolver,
-        new ContextRenderer(mapper),
-        new LlmCommandParser(mapper),
-        mapper,
-        eventRecorder);
+    return AgentInvoker.builder()
+        .agentRepository(agentRepository)
+        .llmClientResolver(resolver)
+        .contextRenderer(new ContextRenderer(mapper))
+        .llmCommandParser(new LlmCommandParser(mapper))
+        .objectMapper(mapper)
+        .eventRecorder(eventRecorder)
+        .llmProviderSelectionStrategy(new FirstAvailableProviderSelectionStrategy())
+        .promptCacheEnabled(true)
+        .llmCallObserver(new LlmCallObserver(eventRecorder))
+        .build();
   }
 }

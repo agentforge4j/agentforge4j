@@ -31,6 +31,8 @@ import com.agentforge4j.runtime.event.EventRecorder;
 import com.agentforge4j.runtime.execution.behaviour.resource.SafeClasspathResourceResolver;
 import com.agentforge4j.runtime.llm.AgentInvoker;
 import com.agentforge4j.runtime.llm.ContextRenderer;
+import com.agentforge4j.runtime.llm.FirstAvailableProviderSelectionStrategy;
+import com.agentforge4j.runtime.llm.LlmCallObserver;
 import com.agentforge4j.runtime.llm.LlmCommandParser;
 import com.agentforge4j.runtime.repository.InMemoryWorkflowEventLog;
 import com.agentforge4j.runtime.repository.InMemoryWorkflowStateRepository;
@@ -273,13 +275,17 @@ class BranchContinuationRuntimeTest {
     Clock clock = Clock.fixed(Instant.parse("2026-05-01T12:00:00Z"), ZoneOffset.UTC);
     ObjectMapper mapper = new ObjectMapper();
     EventRecorder eventRecorder = new EventRecorder(eventLog, clock);
-    AgentInvoker agentInvoker = new AgentInvoker(
-        agentRepository,
-        resolver,
-        new ContextRenderer(mapper),
-        new LlmCommandParser(mapper),
-        mapper,
-        eventRecorder);
+    AgentInvoker agentInvoker = AgentInvoker.builder()
+        .agentRepository(agentRepository)
+        .llmClientResolver(resolver)
+        .contextRenderer(new ContextRenderer(mapper))
+        .llmCommandParser(new LlmCommandParser(mapper))
+        .objectMapper(mapper)
+        .eventRecorder(eventRecorder)
+        .llmProviderSelectionStrategy(new FirstAvailableProviderSelectionStrategy())
+        .promptCacheEnabled(true)
+        .llmCallObserver(new LlmCallObserver(eventRecorder))
+        .build();
 
     WorkflowRuntime runtime = new WorkflowRuntimeBuilder()
         .workflowRepository(new InMemoryWorkflowRepository(Map.of(workflow.id(), workflow)))

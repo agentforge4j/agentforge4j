@@ -113,17 +113,18 @@ final class RuntimeAssembler {
       return explicitInvoker;
     }
 
-    return new AgentInvoker(
-        agentRepository,
-        llmClientResolver,
-        contextRenderer,
-        llmCommandParser,
-        objectMapper,
-        eventRecorder,
-        AgentInvoker.DEFAULT_LLM_OUTPUT_EVENT_CHAR_CAP,
-        llmProviderSelectionStrategy,
-        cacheEnabled,
-        llmCallObserver);
+    return AgentInvoker.builder()
+        .agentRepository(agentRepository)
+        .llmClientResolver(llmClientResolver)
+        .contextRenderer(contextRenderer)
+        .llmCommandParser(llmCommandParser)
+        .objectMapper(objectMapper)
+        .eventRecorder(eventRecorder)
+        .llmOutputEventCharCap(AgentInvoker.DEFAULT_LLM_OUTPUT_EVENT_CHAR_CAP)
+        .llmProviderSelectionStrategy(llmProviderSelectionStrategy)
+        .promptCacheEnabled(cacheEnabled)
+        .llmCallObserver(llmCallObserver)
+        .build();
   }
 
   /**
