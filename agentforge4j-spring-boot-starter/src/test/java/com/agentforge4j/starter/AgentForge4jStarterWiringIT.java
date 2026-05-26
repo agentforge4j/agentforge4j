@@ -2,12 +2,9 @@ package com.agentforge4j.starter;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.agentforge4j.bootstrap.AgentForge4j;
 import com.agentforge4j.config.loader.LoadedConfiguration;
-import com.agentforge4j.config.loader.agent.ClasspathAgentLoader;
-import com.agentforge4j.core.agent.AgentRepository;
 import com.agentforge4j.core.runtime.WorkflowRuntime;
-import com.agentforge4j.core.workflow.repository.WorkflowRepository;
-import com.agentforge4j.llm.LlmClientResolver;
 import com.agentforge4j.starter.llmclient.openai.OpenAiProviderAutoConfiguration;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
@@ -26,14 +23,13 @@ class AgentForge4jStarterWiringIT {
       .withUserConfiguration(ObjectMapperTestConfiguration.class)
       .withConfiguration(AutoConfigurations.of(
           JacksonAutoConfiguration.class,
-          ConfigLoaderAutoConfiguration.class,
-          RepositoryAutoConfiguration.class,
-          InMemoryRuntimePersistenceAutoConfiguration.class,
           OpenAiProviderAutoConfiguration.class,
-          LlmAutoConfiguration.class,
-          RuntimeAutoConfiguration.class))
+          BootstrapAutoConfiguration.class,
+          SpringRuntimeAutoConfiguration.class,
+          InMemoryRuntimePersistenceAutoConfiguration.class))
       .withPropertyValues(
           "agentforge4j.load-shipped-workflows=true",
+          "agentforge4j.load-shipped-agents=true",
           "agentforge4j.llm.openai.api-key=sk-test",
           "agentforge4j.llm.openai.default-model=gpt-4o-mini",
           "agentforge4j.llm.openai.url=https://api.openai.com/v1/responses");
@@ -42,13 +38,15 @@ class AgentForge4jStarterWiringIT {
   void loadsShippedWorkflowsAndWiresRuntime() {
     runner.run(ctx -> {
       assertThat(ctx.getStartupFailure()).isNull();
-      assertThat(ctx).hasSingleBean(LoadedConfiguration.class);
-      assertThat(ctx.getBean(LoadedConfiguration.class).workflows()).isNotEmpty();
-      assertThat(ctx).hasSingleBean(WorkflowRepository.class);
-      assertThat(ctx).hasSingleBean(AgentRepository.class);
-      assertThat(ctx).hasSingleBean(WorkflowRuntime.class);
-      assertThat(ctx).hasSingleBean(LlmClientResolver.class);
-      assertThat(ctx).hasSingleBean(ClasspathAgentLoader.class);
+      assertThat(ctx).hasSingleBean(AgentForge4j.class);
+      AgentForge4j agentForge4j = ctx.getBean(AgentForge4j.class);
+      LoadedConfiguration loadedConfiguration = agentForge4j.components().loadedConfiguration();
+      assertThat(loadedConfiguration.workflows()).isNotEmpty();
+      assertThat(agentForge4j.components().workflowRepository()).isNotNull();
+      assertThat(agentForge4j.components().agentRepository()).isNotNull();
+      WorkflowRuntime runtime = agentForge4j.runtime();
+      assertThat(runtime).isNotNull();
+      assertThat(agentForge4j.components().llmClientResolver()).isNotNull();
     });
   }
 

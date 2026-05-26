@@ -42,6 +42,10 @@
     </dependency>
     <dependency>
       <groupId>com.agentforge4j</groupId>
+      <artifactId>agentforge4j-bootstrap</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>com.agentforge4j</groupId>
       <artifactId>agentforge4j-llm-openai</artifactId>
       <optional>true</optional>
     </dependency>

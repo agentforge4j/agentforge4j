@@ -53,6 +53,7 @@
     <module>agentforge4j-config-loader</module>
     <module>agentforge4j-integrations</module>
     <module>agentforge4j-runtime</module>
+    <module>agentforge4j-bootstrap</module>
     <module>agentforge4j-spring-boot-starter</module>
   </modules>
 
@@ -161,6 +162,11 @@
       <dependency>
         <groupId>com.agentforge4j</groupId>
         <artifactId>agentforge4j-runtime</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>com.agentforge4j</groupId>
+        <artifactId>agentforge4j-bootstrap</artifactId>
         <version>${project.version}</version>
       </dependency>
 

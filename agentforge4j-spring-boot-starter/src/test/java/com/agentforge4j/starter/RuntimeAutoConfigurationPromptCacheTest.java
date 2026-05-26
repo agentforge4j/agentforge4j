@@ -1,21 +1,23 @@
 package com.agentforge4j.starter;
 
+import com.agentforge4j.bootstrap.AgentForge4j;
 import com.agentforge4j.core.agent.AgentDefinition;
 import com.agentforge4j.core.agent.AgentLocality;
 import com.agentforge4j.core.agent.AgentRepository;
 import com.agentforge4j.core.agent.ProviderPreference;
 import com.agentforge4j.core.runtime.WorkflowRuntime;
 import com.agentforge4j.core.workflow.context.ContextMapping;
-import com.agentforge4j.core.workflow.event.WorkflowEventLog;
-import com.agentforge4j.core.workflow.repository.WorkflowRepository;
-import com.agentforge4j.core.workflow.repository.WorkflowStateRepository;
 import com.agentforge4j.core.workflow.state.WorkflowState;
 import com.agentforge4j.llm.LlmClientResolver;
 import com.agentforge4j.llm.api.LlmClient;
 import com.agentforge4j.llm.api.LlmExecutionRequest;
 import com.agentforge4j.llm.api.LlmExecutionResponse;
+import com.agentforge4j.runtime.event.EventRecorder;
 import com.agentforge4j.runtime.llm.AgentInvoker;
-import com.agentforge4j.runtime.repository.InMemoryWorkflowEventLog;
+import com.agentforge4j.runtime.llm.ContextRenderer;
+import com.agentforge4j.runtime.llm.FirstAvailableProviderSelectionStrategy;
+import com.agentforge4j.runtime.llm.LlmCallObserver;
+import com.agentforge4j.runtime.llm.LlmCommandParser;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.Instant;
 import java.util.List;
@@ -37,14 +39,17 @@ class RuntimeAutoConfigurationPromptCacheTest {
 
   private final ApplicationContextRunner runner = new ApplicationContextRunner()
       .withUserConfiguration(PromptCacheCollaboratorsConfiguration.class)
-      .withConfiguration(AutoConfigurations.of(RuntimeAutoConfiguration.class));
+      .withConfiguration(AutoConfigurations.of(BootstrapAutoConfiguration.class))
+      .withPropertyValues(
+          "agentforge4j.load-shipped-agents=false",
+          "agentforge4j.load-shipped-workflows=false");
 
   @Test
   void contextStartsWithDefaultCacheProperties() {
     runner.run(ctx -> {
       assertThat(ctx.getStartupFailure()).isNull();
       assertThat(ctx).hasSingleBean(AgentInvoker.class);
-      assertThat(ctx).hasSingleBean(WorkflowRuntime.class);
+      assertThat(ctx.getBean(AgentForge4j.class).runtime()).isNotNull();
       assertThat(ctx.getBean(LlmCacheSettings.class).enabled()).isFalse();
     });
   }
@@ -121,23 +126,31 @@ class RuntimeAutoConfigurationPromptCacheTest {
   static class PromptCacheCollaboratorsConfiguration {
 
     @Bean
-    WorkflowRepository workflowRepository() {
-      return mock(WorkflowRepository.class);
-    }
-
-    @Bean
     AgentRepository agentRepository() {
       return mock(AgentRepository.class);
     }
 
     @Bean
-    WorkflowStateRepository workflowStateRepository() {
-      return mock(WorkflowStateRepository.class);
-    }
-
-    @Bean
-    WorkflowEventLog workflowEventLog() {
-      return new InMemoryWorkflowEventLog();
+    AgentInvoker agentInvoker(
+        AgentForge4j agentForge4j,
+        AgentRepository agentRepository,
+        LlmClientResolver llmClientResolver,
+        ObjectMapper objectMapper,
+        LlmCacheSettings cacheSettings) {
+      EventRecorder eventRecorder = agentForge4j.components().eventRecorder();
+      LlmCallObserver llmCallObserver = new LlmCallObserver(eventRecorder);
+      return AgentInvoker.builder()
+          .agentRepository(agentRepository)
+          .llmClientResolver(llmClientResolver)
+          .contextRenderer(new ContextRenderer(objectMapper))
+          .llmCommandParser(new LlmCommandParser(objectMapper))
+          .objectMapper(objectMapper)
+          .eventRecorder(eventRecorder)
+          .llmOutputEventCharCap(AgentInvoker.DEFAULT_LLM_OUTPUT_EVENT_CHAR_CAP)
+          .llmProviderSelectionStrategy(new FirstAvailableProviderSelectionStrategy())
+          .promptCacheEnabled(cacheSettings.enabled())
+          .llmCallObserver(llmCallObserver)
+          .build();
     }
 
     @Bean
@@ -156,11 +169,6 @@ class RuntimeAutoConfigurationPromptCacheTest {
     @Bean
     ObjectMapper objectMapper() {
       return new ObjectMapper();
-    }
-
-    @Bean
-    AgentForge4jProperties agentForge4jProperties() {
-      return new AgentForge4jProperties(null, null, null, false, false);
     }
   }
 }

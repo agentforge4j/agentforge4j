@@ -1,7 +1,7 @@
 package com.agentforge4j.starter.llmclient.bedrock;
 
 import com.agentforge4j.llm.bedrock.BedrockConfiguration;
-import com.agentforge4j.starter.LlmAutoConfiguration;
+import com.agentforge4j.starter.BootstrapAutoConfiguration;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -11,7 +11,7 @@ import org.springframework.context.annotation.Bean;
 /**
  * Registers Bedrock configuration when {@code agentforge4j.llm.bedrock.enabled=true}.
  */
-@AutoConfiguration(before = LlmAutoConfiguration.class)
+@AutoConfiguration(before = BootstrapAutoConfiguration.class)
 @EnableConfigurationProperties(BedrockLlmClientProperties.class)
 @ConditionalOnClass(BedrockConfiguration.class)
 public class BedrockProviderAutoConfiguration {

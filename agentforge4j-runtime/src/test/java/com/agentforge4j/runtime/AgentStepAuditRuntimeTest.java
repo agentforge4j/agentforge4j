@@ -29,6 +29,8 @@ import com.agentforge4j.runtime.event.EventRecorder;
 import com.agentforge4j.runtime.exception.UserPromptLimitExceededException;
 import com.agentforge4j.runtime.llm.AgentInvoker;
 import com.agentforge4j.runtime.llm.ContextRenderer;
+import com.agentforge4j.runtime.llm.FirstAvailableProviderSelectionStrategy;
+import com.agentforge4j.runtime.llm.LlmCallObserver;
 import com.agentforge4j.runtime.llm.LlmCommandParser;
 import com.agentforge4j.runtime.repository.InMemoryWorkflowEventLog;
 import com.agentforge4j.runtime.repository.InMemoryWorkflowStateRepository;
@@ -314,13 +316,17 @@ class AgentStepAuditRuntimeTest {
   private static AgentInvoker generateAgentInvoker(WorkflowEventLog eventLog, Clock clock,
       AgentRepository agentRepository, LlmClientResolver resolver) {
     EventRecorder eventRecorder = new EventRecorder(eventLog, clock);
-    return new AgentInvoker(
-        agentRepository,
-        resolver,
-        new ContextRenderer(MAPPER),
-        new LlmCommandParser(MAPPER),
-        MAPPER,
-        eventRecorder);
+    return AgentInvoker.builder()
+        .agentRepository(agentRepository)
+        .llmClientResolver(resolver)
+        .contextRenderer(new ContextRenderer(MAPPER))
+        .llmCommandParser(new LlmCommandParser(MAPPER))
+        .objectMapper(MAPPER)
+        .eventRecorder(eventRecorder)
+        .llmProviderSelectionStrategy(new FirstAvailableProviderSelectionStrategy())
+        .promptCacheEnabled(true)
+        .llmCallObserver(new LlmCallObserver(eventRecorder))
+        .build();
   }
 
   private record Fixture(

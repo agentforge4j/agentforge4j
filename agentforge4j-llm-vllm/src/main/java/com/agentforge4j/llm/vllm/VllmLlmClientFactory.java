@@ -23,6 +23,11 @@ public final class VllmLlmClientFactory implements LlmClientFactory {
     return "vllm";
   }
 
+  @Override
+  public boolean requiresApiKey() {
+    return false;
+  }
+
   /**
    * Creates a vLLM LLM client with the given configuration.
    *

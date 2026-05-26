@@ -10,10 +10,11 @@ class ConfigLoaderAutoConfigurationBillingTest {
   @Test
   void doesNotRegisterBillingTierProperties() {
     EnableConfigurationProperties annotation =
-      ConfigLoaderAutoConfiguration.class.getAnnotation(EnableConfigurationProperties.class);
+        BootstrapAutoConfiguration.class.getAnnotation(EnableConfigurationProperties.class);
 
     assertThat(annotation).isNotNull();
-    assertThat(annotation.value()).containsExactly(AgentForge4jProperties.class);
+    assertThat(annotation.value())
+        .containsExactlyInAnyOrder(AgentForge4jProperties.class, LlmCacheSettings.class);
   }
 
   @Test

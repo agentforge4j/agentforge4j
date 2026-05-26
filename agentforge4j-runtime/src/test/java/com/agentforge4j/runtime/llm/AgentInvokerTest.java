@@ -143,7 +143,8 @@ class AgentInvokerTest {
     verify(client, times(expectedLlmCalls)).execute(any());
     assertThat(llmOutputEventCount(eventLog, runId)).isEqualTo(expectedLlmCalls);
 
-    var llmOutputs = eventLog.getEvents(runId).stream()
+    List<com.agentforge4j.core.workflow.event.WorkflowEvent> llmOutputs = eventLog.getEvents(runId)
+        .stream()
         .filter(e -> e.eventType() == WorkflowEventType.LLM_OUTPUT)
         .toList();
     assertThat(llmOutputs.get(0).payload()).isEqualTo(firstRaw);
@@ -299,9 +300,18 @@ class AgentInvokerTest {
     when(resolver.isProviderAvailable("openai")).thenReturn(true);
     when(resolver.listAvailableClients()).thenReturn(List.of("openai"));
 
-    AgentInvoker invoker = new AgentInvoker(
-        repo, resolver, new ContextRenderer(mapper), new LlmCommandParser(mapper), mapper, recorder,
-        0);
+    AgentInvoker invoker = AgentInvoker.builder()
+        .agentRepository(repo)
+        .llmClientResolver(resolver)
+        .contextRenderer(new ContextRenderer(mapper))
+        .llmCommandParser(new LlmCommandParser(mapper))
+        .objectMapper(mapper)
+        .eventRecorder(recorder)
+        .llmOutputEventCharCap(0)
+        .llmProviderSelectionStrategy(new FirstAvailableProviderSelectionStrategy())
+        .promptCacheEnabled(true)
+        .llmCallObserver(new LlmCallObserver(recorder))
+        .build();
     WorkflowState state = workflowState("run-cap-zero");
     invoker.invoke("agent-x", ContextMapping.none(), state, null);
 
@@ -331,9 +341,18 @@ class AgentInvokerTest {
     when(resolver.isProviderAvailable("openai")).thenReturn(true);
     when(resolver.listAvailableClients()).thenReturn(List.of("openai"));
 
-    AgentInvoker invoker = new AgentInvoker(
-        repo, resolver, new ContextRenderer(mapper), new LlmCommandParser(mapper), mapper, recorder,
-        100);
+    AgentInvoker invoker = AgentInvoker.builder()
+        .agentRepository(repo)
+        .llmClientResolver(resolver)
+        .contextRenderer(new ContextRenderer(mapper))
+        .llmCommandParser(new LlmCommandParser(mapper))
+        .objectMapper(mapper)
+        .eventRecorder(recorder)
+        .llmOutputEventCharCap(100)
+        .llmProviderSelectionStrategy(new FirstAvailableProviderSelectionStrategy())
+        .promptCacheEnabled(true)
+        .llmCallObserver(new LlmCallObserver(recorder))
+        .build();
     WorkflowState state = workflowState("run-cap-custom");
     invoker.invoke("agent-x", ContextMapping.none(), state, null);
 
@@ -351,15 +370,17 @@ class AgentInvokerTest {
   }
 
   @Test
-  void constructor_rejects_negative_cap() {
-    assertThatThrownBy(() -> new AgentInvoker(
-        mock(AgentRepository.class),
-        mock(LlmClientResolver.class),
-        new ContextRenderer(new ObjectMapper()),
-        new LlmCommandParser(new ObjectMapper()),
-        new ObjectMapper(),
-        recorder(new InMemoryWorkflowEventLog()),
-        -1))
+  void builder_rejects_negative_cap() {
+    ObjectMapper mapper = new ObjectMapper();
+    EventRecorder eventRecorder = recorder(new InMemoryWorkflowEventLog());
+    assertThatThrownBy(() -> AgentInvoker.builder()
+        .agentRepository(mock(AgentRepository.class))
+        .llmClientResolver(mock(LlmClientResolver.class))
+        .contextRenderer(new ContextRenderer(mapper))
+        .llmCommandParser(new LlmCommandParser(mapper))
+        .objectMapper(mapper)
+        .eventRecorder(eventRecorder)
+        .llmOutputEventCharCap(-1))
         .isInstanceOf(IllegalArgumentException.class);
   }
 
@@ -395,15 +416,19 @@ class AgentInvokerTest {
     when(selectionStrategy.selectInitialProvider(agent, List.of("ollama"))).thenReturn(
         strategyChoice);
 
-    AgentInvoker invoker = new AgentInvoker(
-        repo,
-        resolver,
-        new ContextRenderer(mapper),
-        new LlmCommandParser(mapper),
-        mapper,
-        recorder(new InMemoryWorkflowEventLog()),
-        AgentInvoker.DEFAULT_LLM_OUTPUT_EVENT_CHAR_CAP,
-        selectionStrategy);
+    EventRecorder eventRecorder = recorder(new InMemoryWorkflowEventLog());
+    AgentInvoker invoker = AgentInvoker.builder()
+        .agentRepository(repo)
+        .llmClientResolver(resolver)
+        .contextRenderer(new ContextRenderer(mapper))
+        .llmCommandParser(new LlmCommandParser(mapper))
+        .objectMapper(mapper)
+        .eventRecorder(eventRecorder)
+        .llmOutputEventCharCap(AgentInvoker.DEFAULT_LLM_OUTPUT_EVENT_CHAR_CAP)
+        .llmProviderSelectionStrategy(selectionStrategy)
+        .promptCacheEnabled(true)
+        .llmCallObserver(new LlmCallObserver(eventRecorder))
+        .build();
 
     WorkflowState state = workflowState("run-strategy");
     invoker.invoke("agent-x", ContextMapping.none(), state, null);
@@ -414,18 +439,19 @@ class AgentInvokerTest {
   }
 
   @Test
-  void constructor_rejectsNullProviderSelectionStrategy() {
-    assertThatThrownBy(() -> new AgentInvoker(
-        mock(AgentRepository.class),
-        mock(LlmClientResolver.class),
-        new ContextRenderer(new ObjectMapper()),
-        new LlmCommandParser(new ObjectMapper()),
-        new ObjectMapper(),
-        recorder(new InMemoryWorkflowEventLog()),
-        AgentInvoker.DEFAULT_LLM_OUTPUT_EVENT_CHAR_CAP,
-        null))
+  void builder_rejectsNullProviderSelectionStrategy() {
+    ObjectMapper mapper = new ObjectMapper();
+    assertThatThrownBy(() -> AgentInvoker.builder()
+        .agentRepository(mock(AgentRepository.class))
+        .llmClientResolver(mock(LlmClientResolver.class))
+        .contextRenderer(new ContextRenderer(mapper))
+        .llmCommandParser(new LlmCommandParser(mapper))
+        .objectMapper(mapper)
+        .eventRecorder(recorder(new InMemoryWorkflowEventLog()))
+        .llmOutputEventCharCap(AgentInvoker.DEFAULT_LLM_OUTPUT_EVENT_CHAR_CAP)
+        .llmProviderSelectionStrategy(null))
         .isInstanceOf(IllegalArgumentException.class)
-        .hasMessageContaining("llmProviderSelectionStrategy must not be null");
+        .hasMessageContaining("LLM provider selection strategy must not be null");
   }
 
   private static final String FRAMEWORK_BLOCK_MARKER =
@@ -447,13 +473,18 @@ class AgentInvokerTest {
     when(resolver.isProviderAvailable("openai")).thenReturn(true);
     when(resolver.listAvailableClients()).thenReturn(List.of("openai"));
 
-    AgentInvoker invoker = new AgentInvoker(
-        repo,
-        resolver,
-        new ContextRenderer(mapper),
-        new LlmCommandParser(mapper),
-        mapper,
-        recorder(new InMemoryWorkflowEventLog()));
+    EventRecorder eventRecorder = recorder(new InMemoryWorkflowEventLog());
+    AgentInvoker invoker = AgentInvoker.builder()
+        .agentRepository(repo)
+        .llmClientResolver(resolver)
+        .contextRenderer(new ContextRenderer(mapper))
+        .llmCommandParser(new LlmCommandParser(mapper))
+        .objectMapper(mapper)
+        .eventRecorder(eventRecorder)
+        .llmProviderSelectionStrategy(new FirstAvailableProviderSelectionStrategy())
+        .promptCacheEnabled(true)
+        .llmCallObserver(new LlmCallObserver(eventRecorder))
+        .build();
     WorkflowState state = workflowState("run-system-prompt-order");
     invoker.invoke("agent-x", ContextMapping.none(), state, stepBody);
 
@@ -485,13 +516,18 @@ class AgentInvokerTest {
     when(resolver.isProviderAvailable("openai")).thenReturn(true);
     when(resolver.listAvailableClients()).thenReturn(List.of("openai"));
 
-    AgentInvoker invoker = new AgentInvoker(
-        repo,
-        resolver,
-        new ContextRenderer(mapper),
-        new LlmCommandParser(mapper),
-        mapper,
-        recorder(new InMemoryWorkflowEventLog()));
+    EventRecorder eventRecorder = recorder(new InMemoryWorkflowEventLog());
+    AgentInvoker invoker = AgentInvoker.builder()
+        .agentRepository(repo)
+        .llmClientResolver(resolver)
+        .contextRenderer(new ContextRenderer(mapper))
+        .llmCommandParser(new LlmCommandParser(mapper))
+        .objectMapper(mapper)
+        .eventRecorder(eventRecorder)
+        .llmProviderSelectionStrategy(new FirstAvailableProviderSelectionStrategy())
+        .promptCacheEnabled(true)
+        .llmCallObserver(new LlmCallObserver(eventRecorder))
+        .build();
     WorkflowState state = workflowState("run-system-prompt-no-step");
 
     invoker.invoke("agent-x", ContextMapping.none(), state, null);
@@ -538,13 +574,18 @@ class AgentInvokerTest {
         + layerSeparator
         + stepBody;
 
-    AgentInvoker invoker = new AgentInvoker(
-        repo,
-        resolver,
-        new ContextRenderer(mapper),
-        new LlmCommandParser(mapper),
-        mapper,
-        recorder(new InMemoryWorkflowEventLog()));
+    EventRecorder eventRecorder = recorder(new InMemoryWorkflowEventLog());
+    AgentInvoker invoker = AgentInvoker.builder()
+        .agentRepository(repo)
+        .llmClientResolver(resolver)
+        .contextRenderer(new ContextRenderer(mapper))
+        .llmCommandParser(new LlmCommandParser(mapper))
+        .objectMapper(mapper)
+        .eventRecorder(eventRecorder)
+        .llmProviderSelectionStrategy(new FirstAvailableProviderSelectionStrategy())
+        .promptCacheEnabled(true)
+        .llmCallObserver(new LlmCallObserver(eventRecorder))
+        .build();
     WorkflowState state = workflowState("run-system-prompt-separator");
     invoker.invoke("agent-x", ContextMapping.none(), state, stepBody);
 
@@ -566,16 +607,19 @@ class AgentInvokerTest {
     when(resolver.isProviderAvailable("openai")).thenReturn(true);
     when(resolver.listAvailableClients()).thenReturn(List.of("openai"));
 
-    AgentInvoker invoker = new AgentInvoker(
-        repo,
-        resolver,
-        new ContextRenderer(mapper),
-        new LlmCommandParser(mapper),
-        mapper,
-        recorder(new InMemoryWorkflowEventLog()),
-        AgentInvoker.DEFAULT_LLM_OUTPUT_EVENT_CHAR_CAP,
-        new FirstAvailableProviderSelectionStrategy(),
-        true);
+    EventRecorder eventRecorder = recorder(new InMemoryWorkflowEventLog());
+    AgentInvoker invoker = AgentInvoker.builder()
+        .agentRepository(repo)
+        .llmClientResolver(resolver)
+        .contextRenderer(new ContextRenderer(mapper))
+        .llmCommandParser(new LlmCommandParser(mapper))
+        .objectMapper(mapper)
+        .eventRecorder(eventRecorder)
+        .llmOutputEventCharCap(AgentInvoker.DEFAULT_LLM_OUTPUT_EVENT_CHAR_CAP)
+        .llmProviderSelectionStrategy(new FirstAvailableProviderSelectionStrategy())
+        .promptCacheEnabled(true)
+        .llmCallObserver(new LlmCallObserver(eventRecorder))
+        .build();
     WorkflowState state = workflowState("run-boundaries-deterministic");
     String stepBody = "STEP_BOUNDARY_MARKER";
 
@@ -616,13 +660,18 @@ class AgentInvokerTest {
     when(resolver.isProviderAvailable("openai")).thenReturn(true);
     when(resolver.listAvailableClients()).thenReturn(List.of("openai"));
 
-    AgentInvoker invoker = new AgentInvoker(
-        repo,
-        resolver,
-        new ContextRenderer(mapper),
-        new LlmCommandParser(mapper),
-        mapper,
-        recorder(new InMemoryWorkflowEventLog()));
+    EventRecorder eventRecorder = recorder(new InMemoryWorkflowEventLog());
+    AgentInvoker invoker = AgentInvoker.builder()
+        .agentRepository(repo)
+        .llmClientResolver(resolver)
+        .contextRenderer(new ContextRenderer(mapper))
+        .llmCommandParser(new LlmCommandParser(mapper))
+        .objectMapper(mapper)
+        .eventRecorder(eventRecorder)
+        .llmProviderSelectionStrategy(new FirstAvailableProviderSelectionStrategy())
+        .promptCacheEnabled(true)
+        .llmCallObserver(new LlmCallObserver(eventRecorder))
+        .build();
     WorkflowState state = workflowState("run-layer1-stable");
 
     invoker.invoke("agent-a", ContextMapping.none(), state, null);
@@ -666,13 +715,18 @@ class AgentInvokerTest {
     ContextRenderer contextRenderer = mock(ContextRenderer.class);
     when(contextRenderer.render(any(), any())).thenReturn("USER_DYNAMIC_INPUT_MARKER");
 
-    AgentInvoker invoker = new AgentInvoker(
-        repo,
-        resolver,
-        contextRenderer,
-        new LlmCommandParser(mapper),
-        mapper,
-        recorder(new InMemoryWorkflowEventLog()));
+    EventRecorder eventRecorder = recorder(new InMemoryWorkflowEventLog());
+    AgentInvoker invoker = AgentInvoker.builder()
+        .agentRepository(repo)
+        .llmClientResolver(resolver)
+        .contextRenderer(contextRenderer)
+        .llmCommandParser(new LlmCommandParser(mapper))
+        .objectMapper(mapper)
+        .eventRecorder(eventRecorder)
+        .llmProviderSelectionStrategy(new FirstAvailableProviderSelectionStrategy())
+        .promptCacheEnabled(true)
+        .llmCallObserver(new LlmCallObserver(eventRecorder))
+        .build();
     WorkflowState state = workflowState("run-boundary-slices");
     invoker.invoke("agent-x", ContextMapping.none(), state, stepBody);
 
@@ -709,18 +763,29 @@ class AgentInvokerTest {
     EventRecorder recorder = recorder(eventLog);
     ContextRenderer contextRenderer = new ContextRenderer(mapper);
     LlmCommandParser commandParser = new LlmCommandParser(mapper);
-    AgentInvoker enabledInvoker = new AgentInvoker(
-        repo, resolver, contextRenderer, commandParser, mapper, recorder);
-    AgentInvoker disabledInvoker = new AgentInvoker(
-        repo,
-        resolver,
-        contextRenderer,
-        commandParser,
-        mapper,
-        recorder,
-        AgentInvoker.DEFAULT_LLM_OUTPUT_EVENT_CHAR_CAP,
-        new FirstAvailableProviderSelectionStrategy(),
-        false);
+    AgentInvoker enabledInvoker = AgentInvoker.builder()
+        .agentRepository(repo)
+        .llmClientResolver(resolver)
+        .contextRenderer(contextRenderer)
+        .llmCommandParser(commandParser)
+        .objectMapper(mapper)
+        .eventRecorder(recorder)
+        .llmProviderSelectionStrategy(new FirstAvailableProviderSelectionStrategy())
+        .promptCacheEnabled(true)
+        .llmCallObserver(new LlmCallObserver(recorder))
+        .build();
+    AgentInvoker disabledInvoker = AgentInvoker.builder()
+        .agentRepository(repo)
+        .llmClientResolver(resolver)
+        .contextRenderer(contextRenderer)
+        .llmCommandParser(commandParser)
+        .objectMapper(mapper)
+        .eventRecorder(recorder)
+        .llmOutputEventCharCap(AgentInvoker.DEFAULT_LLM_OUTPUT_EVENT_CHAR_CAP)
+        .llmProviderSelectionStrategy(new FirstAvailableProviderSelectionStrategy())
+        .promptCacheEnabled(false)
+        .llmCallObserver(new LlmCallObserver(recorder))
+        .build();
     WorkflowState enabledState = workflowState("run-cache-disabled-enabled");
     WorkflowState disabledState = workflowState("run-cache-disabled-disabled");
     String stepBody = "STEP_DISABLED_CACHE";
@@ -785,13 +850,18 @@ class AgentInvokerTest {
     AgentRepository repo = mock(AgentRepository.class);
     AgentDefinition registered = agentSupportingOnlyCompleteWithBody("body");
     when(repo.get("lookup-id")).thenReturn(registered);
-    AgentInvoker invoker = new AgentInvoker(
-        repo,
-        resolver,
-        new ContextRenderer(mapper),
-        new LlmCommandParser(mapper),
-        mapper,
-        recorder(new InMemoryWorkflowEventLog()));
+    EventRecorder eventRecorder = recorder(new InMemoryWorkflowEventLog());
+    AgentInvoker invoker = AgentInvoker.builder()
+        .agentRepository(repo)
+        .llmClientResolver(resolver)
+        .contextRenderer(new ContextRenderer(mapper))
+        .llmCommandParser(new LlmCommandParser(mapper))
+        .objectMapper(mapper)
+        .eventRecorder(eventRecorder)
+        .llmProviderSelectionStrategy(new FirstAvailableProviderSelectionStrategy())
+        .promptCacheEnabled(true)
+        .llmCallObserver(new LlmCallObserver(eventRecorder))
+        .build();
     WorkflowState state = new WorkflowState("run-1", "wf-1", null,
         Instant.parse("2026-01-01T00:00:00Z"));
     invoker.invoke("lookup-id", ContextMapping.none(), state, null);
@@ -874,25 +944,33 @@ class AgentInvokerTest {
     when(resolver.resolve("openai")).thenReturn(client);
     when(resolver.isProviderAvailable("openai")).thenReturn(true);
     when(resolver.listAvailableClients()).thenReturn(List.of("openai"));
-    return new AgentInvoker(
-        repo,
-        resolver,
-        contextRenderer,
-        new LlmCommandParser(mapper),
-        mapper,
-        recorder);
+    return AgentInvoker.builder()
+        .agentRepository(repo)
+        .llmClientResolver(resolver)
+        .contextRenderer(contextRenderer)
+        .llmCommandParser(new LlmCommandParser(mapper))
+        .objectMapper(mapper)
+        .eventRecorder(recorder)
+        .llmProviderSelectionStrategy(new FirstAvailableProviderSelectionStrategy())
+        .promptCacheEnabled(true)
+        .llmCallObserver(new LlmCallObserver(recorder))
+        .build();
   }
 
   private static AgentInvoker invokerWithAudit(ObjectMapper mapper, LlmClientResolver resolver,
       EventRecorder recorder) {
     AgentRepository repo = mock(AgentRepository.class);
-    return new AgentInvoker(
-        repo,
-        resolver,
-        new ContextRenderer(mapper),
-        new LlmCommandParser(mapper),
-        mapper,
-        recorder);
+    return AgentInvoker.builder()
+        .agentRepository(repo)
+        .llmClientResolver(resolver)
+        .contextRenderer(new ContextRenderer(mapper))
+        .llmCommandParser(new LlmCommandParser(mapper))
+        .objectMapper(mapper)
+        .eventRecorder(recorder)
+        .llmProviderSelectionStrategy(new FirstAvailableProviderSelectionStrategy())
+        .promptCacheEnabled(true)
+        .llmCallObserver(new LlmCallObserver(recorder))
+        .build();
   }
 
   private static AgentDefinition agentSupportingOnlyComplete() {
