@@ -247,3 +247,10 @@ $RECYCLE.BIN/
 *.lnk
 
 # End of https://www.toptal.com/developers/gitignore/api/java,maven,git,windows,macos,linux,intellij+all,visualstudiocode,dotenv
+
+### JavaScript / workflow-builder ###
+node_modules/
+dist/
+.turbo/
+agentforge4j-workflow-builder/node_modules/
+agentforge4j-workflow-builder/dist/

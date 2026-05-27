@@ -1,0 +1,91 @@
+.workflow-builder {
+  --builder-color-bg: var(--color-surface, var(--surface-bg));
+  --builder-color-fg: var(--color-text, var(--text-primary));
+  --builder-color-border: var(--color-border, var(--border-default));
+  --builder-color-muted: var(--color-text-muted, var(--text-secondary));
+  --builder-color-accent: var(--color-accent, var(--accent-primary));
+  --builder-color-danger: var(--color-danger, var(--status-error));
+  --builder-space-sm: var(--space-sm);
+  --builder-space-md: var(--space-md);
+  --builder-radius: var(--radius-md);
+
+  display: flex;
+  flex-direction: column;
+  min-height: 12rem;
+  background: var(--builder-color-bg);
+  color: var(--builder-color-fg);
+  border: 1px solid var(--builder-color-border);
+  border-radius: var(--builder-radius);
+  font-family: inherit;
+}
+
+.workflow-builder__header {
+  padding: var(--builder-space-md);
+  border-bottom: 1px solid var(--builder-color-border);
+}
+
+.workflow-builder__title {
+  margin: 0;
+  font-size: 1.125rem;
+  font-weight: 600;
+}
+
+.workflow-builder__subtitle {
+  margin: var(--builder-space-sm) 0 0;
+  color: var(--builder-color-muted);
+  font-size: 0.875rem;
+}
+
+.workflow-builder__canvas {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--builder-space-md);
+  min-height: 8rem;
+  color: var(--builder-color-muted);
+  border-bottom: 1px solid var(--builder-color-border);
+}
+
+.workflow-builder__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--builder-space-sm);
+  padding: var(--builder-space-md);
+}
+
+.workflow-builder__button {
+  padding: var(--builder-space-sm) var(--builder-space-md);
+  border: 1px solid var(--builder-color-border);
+  border-radius: var(--builder-radius);
+  background: var(--builder-color-bg);
+  color: var(--builder-color-fg);
+  cursor: pointer;
+  font: inherit;
+}
+
+.workflow-builder__button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.workflow-builder__button--primary {
+  border-color: var(--builder-color-accent);
+  color: var(--builder-color-accent);
+}
+
+.workflow-builder__status {
+  padding: 0 var(--builder-space-md) var(--builder-space-md);
+  font-size: 0.875rem;
+  color: var(--builder-color-muted);
+}
+
+.workflow-builder__status--error {
+  color: var(--builder-color-danger);
+}
+
+.workflow-builder__ai {
+  padding: 0 var(--builder-space-md) var(--builder-space-md);
+  font-size: 0.875rem;
+  color: var(--builder-color-accent);
+}
