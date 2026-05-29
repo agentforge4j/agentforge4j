@@ -254,3 +254,7 @@ dist/
 .turbo/
 agentforge4j-workflow-builder/node_modules/
 agentforge4j-workflow-builder/dist/
+
+### Local review files
+changes.diff
+CHANGES.md
