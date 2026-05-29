@@ -1,8 +1,8 @@
 {
   "name": "@agentforge4j/workflow-builder-react",
-  "version": "0.1.0",
-  "private": true,
-  "description": "Reusable React workflow builder for AgentForge4j (Phase 1 skeleton)",
+  "version": "0.2.0",
+  "private": false,
+  "description": "Reusable React workflow builder for AgentForge4j",
   "license": "Apache-2.0",
   "type": "module",
   "main": "./dist/index.cjs",
@@ -29,9 +29,16 @@
     "react": "^18.0.0 || ^19.0.0",
     "react-dom": "^18.0.0 || ^19.0.0"
   },
+  "dependencies": {
+    "@xyflow/react": "^12.10.2",
+    "dagre": "^0.8.5",
+    "nanoid": "^5.1.11"
+  },
   "devDependencies": {
     "@testing-library/jest-dom": "^6.6.3",
     "@testing-library/react": "^16.3.0",
+    "@testing-library/user-event": "^14.6.1",
+    "@types/dagre": "^0.7.54",
     "@types/react": "^19.1.2",
     "@types/react-dom": "^19.1.2",
     "@vitejs/plugin-react": "^4.4.1",

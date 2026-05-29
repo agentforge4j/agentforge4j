@@ -10,8 +10,9 @@ describe('workflow JSON io', () => {
   const sample: WorkflowDefinition = {
     id: 'wf-1',
     name: 'Sample',
-    nodes: [{ id: 'n1' }],
-    edges: [],
+    description: 'Demo',
+    steps: [],
+    artifacts: {},
   };
 
   it('round-trips through serialize and parse', () => {

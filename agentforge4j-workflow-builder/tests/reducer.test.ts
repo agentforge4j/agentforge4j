@@ -2,12 +2,13 @@ import { describe, expect, it } from 'vitest';
 import {
   builderReducer,
   createInitialState,
+  emptyWorkflow,
   isDirty,
   type BuilderState,
 } from '../src/state/reducer';
 
 describe('builderReducer', () => {
-  const base = createInitialState({ id: 'wf-1', name: 'Test', nodes: [], edges: [] });
+  const base = createInitialState({ ...emptyWorkflow(), id: 'wf-1', name: 'Test' });
 
   it('SET_DRAFT updates draft and derived dirty when baseline differs', () => {
     const next = builderReducer(base, {

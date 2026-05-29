@@ -1,4 +1,7 @@
+// SPDX-License-Identifier: Apache-2.0
+
 import type { ValidationResult, WorkflowDefinition } from '../api/types';
+import { emptyWorkflow } from '../api/types';
 
 export interface BuilderSelection {
   nodeId: string | null;
@@ -26,15 +29,13 @@ export type BuilderAction =
   | { type: 'SET_VALIDATION'; validation: ValidationResult }
   | { type: 'SET_IMPORT_META'; importMeta: ImportMeta };
 
-export const emptyWorkflow: WorkflowDefinition = { nodes: [], edges: [] };
+export { emptyWorkflow };
 
 export const initialValidation: ValidationResult = { valid: true, issues: [] };
 
 export const initialImportMeta: ImportMeta = { source: null, importedAt: null };
 
-export function createInitialState(
-  workflow: WorkflowDefinition = emptyWorkflow,
-): BuilderState {
+export function createInitialState(workflow: WorkflowDefinition = emptyWorkflow()): BuilderState {
   return {
     draft: workflow,
     baseline: workflow,
