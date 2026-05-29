@@ -1,6 +1,6 @@
 {
   "name": "@agentforge4j/workflow-builder-react",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "private": false,
   "description": "Reusable React workflow builder for AgentForge4j",
   "license": "Apache-2.0",
@@ -13,7 +13,8 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
       "require": "./dist/index.cjs"
-    }
+    },
+    "./styles/tokens.css": "./dist/index.css"
   },
   "files": [
     "dist",
