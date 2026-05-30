@@ -1,0 +1,17 @@
+/* SPDX-License-Identifier: Apache-2.0 */
+:root {
+  --color-bg:          #ffffff;
+  --color-bg-elevated: #f8f9fb;
+  --color-fg:          #0f1117;
+  --color-fg-muted:    #6b7280;
+  --color-border:      #e5e7eb;
+  --color-brand:       #0066ff;
+  --color-brand-ink:   #ffffff;
+  --color-accent:      #7c3aed;
+  --color-success:     #16a34a;
+  --color-warning:     #d97706;
+  --color-danger:      #dc2626;
+  --max-content-width: 1200px;
+  --radius-md:         0.5rem;
+  --radius-lg:         0.75rem;
+}
