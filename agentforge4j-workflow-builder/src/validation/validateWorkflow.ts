@@ -1,13 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
-import type {
-  BranchConfig,
-  EditableArtifactItem,
-  RetryPreviousConfig,
-  ValidationIssue,
-  ValidationResult,
-  WorkflowDefinition,
-} from '../api/types';
+import type { AgentRef, ValidationIssue, ValidationResult, WorkflowDefinition } from '../api/types';
+import { validateCrossReferences } from './crossRefValidator';
+import { validateAgainstSchema } from './schemaValidator';
 
 const ID_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
@@ -18,7 +13,7 @@ type EditorValidation = {
   global: string[];
 };
 
-function hasOptions(item: EditableArtifactItem): boolean {
+function hasOptions(item: { type: string; options?: string[] }): boolean {
   if (item.type !== 'SINGLE_CHOICE' && item.type !== 'MULTI_CHOICE') {
     return true;
   }
@@ -29,7 +24,7 @@ function collectNestedOnlyStepIds(workflow: WorkflowDefinition): Set<string> {
   const nested = new Set<string>();
   for (const step of workflow.steps) {
     if (step.behaviourType === 'BRANCH') {
-      const c = step.config as BranchConfig;
+      const c = step.config as { branches: Record<string, string>; defaultBranch: string };
       Object.values(c.branches).forEach((id) => {
         if (id.trim()) {
           nested.add(id.trim());
@@ -40,7 +35,7 @@ function collectNestedOnlyStepIds(workflow: WorkflowDefinition): Set<string> {
       }
     }
     if (step.behaviourType === 'RETRY_PREVIOUS') {
-      const c = step.config as RetryPreviousConfig;
+      const c = step.config as { fallback: string };
       if (c.fallback.trim()) {
         nested.add(c.fallback.trim());
       }
@@ -170,7 +165,7 @@ function validateEditableWorkflow(workflow: WorkflowDefinition): EditorValidatio
     }
 
     if (step.behaviourType === 'BRANCH') {
-      const config = step.config as BranchConfig;
+      const config = step.config as import('../api/types').BranchConfig;
       if (!config.contextKey.trim()) {
         stepErrors.contextKey = 'Branch context key is required.';
       }
@@ -190,7 +185,7 @@ function validateEditableWorkflow(workflow: WorkflowDefinition): EditorValidatio
     }
 
     if (step.behaviourType === 'RETRY_PREVIOUS') {
-      const config = step.config as RetryPreviousConfig;
+      const config = step.config as import('../api/types').RetryPreviousConfig;
       if (!config.retryStepId.trim()) {
         stepErrors.retryStepId = 'retryStepId is required.';
       }
@@ -234,40 +229,48 @@ function validateEditableWorkflow(workflow: WorkflowDefinition): EditorValidatio
   return errors;
 }
 
-function toValidationResult(errors: EditorValidation): ValidationResult {
-  const issues: ValidationIssue[] = [];
+function mapSchemaAndCrossRefIssues(
+  schemaErrors: Array<{ path: string; message: string }>,
+  crossRefIssues: Array<{ path: string; message: string; severity: 'error' | 'warning' | 'info' }>,
+): ValidationIssue[] {
+  const issues: ValidationIssue[] = schemaErrors.map((error) => ({
+    path: error.path,
+    message: error.message,
+    severity: 'error' as const,
+  }));
 
-  for (const [field, message] of Object.entries(errors.workflow)) {
-    if (message) {
-      issues.push({ path: `workflow.${field}`, message, severity: 'error' });
+  for (const issue of crossRefIssues) {
+    if (issue.severity === 'info') {
+      continue;
     }
+    issues.push({
+      path: issue.path,
+      message: issue.message,
+      severity: issue.severity,
+    });
   }
 
-  for (const [index, stepErrors] of Object.entries(errors.steps)) {
-    for (const [field, message] of Object.entries(stepErrors)) {
-      if (message) {
-        issues.push({ path: `steps[${index}].${field}`, message, severity: 'error' });
-      }
-    }
-  }
-
-  for (const [artifactId, artifactErrors] of Object.entries(errors.artifacts)) {
-    for (const [field, message] of Object.entries(artifactErrors)) {
-      if (message) {
-        issues.push({ path: `artifacts.${artifactId}.${field}`, message, severity: 'error' });
-      }
-    }
-  }
-
-  for (const message of errors.global) {
-    issues.push({ path: 'global', message, severity: 'error' });
-  }
-
-  return { valid: issues.length === 0, issues };
+  return issues;
 }
 
-export function validateWorkflow(draft: WorkflowDefinition): ValidationResult {
-  return toValidationResult(validateEditableWorkflow(draft));
+export function validateWorkflow(
+  workflow: WorkflowDefinition,
+  agentCatalog?: AgentRef[],
+): ValidationResult {
+  const schemaResult = validateAgainstSchema(workflow);
+  if (!schemaResult.valid) {
+    return {
+      valid: false,
+      issues: mapSchemaAndCrossRefIssues(schemaResult.errors, []),
+    };
+  }
+
+  const crossRefResult = validateCrossReferences(workflow, agentCatalog);
+  const issues = mapSchemaAndCrossRefIssues([], crossRefResult.issues);
+  return {
+    valid: issues.every((issue) => issue.severity !== 'error'),
+    issues,
+  };
 }
 
 /** Raw editor validation shape for UI grouping (client-side only). */

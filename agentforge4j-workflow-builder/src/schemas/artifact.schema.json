@@ -1,0 +1,118 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ArtifactDefinition",
+  "type": "object",
+  "required": ["id", "items"],
+  "additionalProperties": false,
+  "properties": {
+    "id": {
+      "type": "string",
+      "description": "Unique artifact identifier. Must match the filename stem."
+    },
+    "items": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/ArtifactItem" }
+    }
+  },
+  "$defs": {
+    "ArtifactItem": {
+      "oneOf": [
+        { "$ref": "#/$defs/TextItem" },
+        { "$ref": "#/$defs/TextAreaItem" },
+        { "$ref": "#/$defs/SingleChoiceItem" },
+        { "$ref": "#/$defs/MultiChoiceItem" },
+        { "$ref": "#/$defs/BooleanItem" },
+        { "$ref": "#/$defs/NumberItem" },
+        { "$ref": "#/$defs/DateItem" }
+      ]
+    },
+    "TextItem": {
+      "type": "object",
+      "required": ["type", "id", "label"],
+      "additionalProperties": false,
+      "properties": {
+        "type": { "type": "string", "const": "TEXT" },
+        "id": { "type": "string" },
+        "label": { "type": "string" },
+        "required": { "type": "boolean", "default": false }
+      }
+    },
+    "TextAreaItem": {
+      "type": "object",
+      "required": ["type", "id", "label"],
+      "additionalProperties": false,
+      "properties": {
+        "type": { "type": "string", "const": "TEXT_AREA" },
+        "id": { "type": "string" },
+        "label": { "type": "string" },
+        "required": { "type": "boolean", "default": false }
+      }
+    },
+    "SingleChoiceItem": {
+      "type": "object",
+      "required": ["type", "id", "label", "options"],
+      "additionalProperties": false,
+      "properties": {
+        "type": { "type": "string", "const": "SINGLE_CHOICE" },
+        "id": { "type": "string" },
+        "label": { "type": "string" },
+        "required": { "type": "boolean", "default": false },
+        "options": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string" }
+        }
+      }
+    },
+    "MultiChoiceItem": {
+      "type": "object",
+      "required": ["type", "id", "label", "options"],
+      "additionalProperties": false,
+      "properties": {
+        "type": { "type": "string", "const": "MULTI_CHOICE" },
+        "id": { "type": "string" },
+        "label": { "type": "string" },
+        "required": { "type": "boolean", "default": false },
+        "options": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string" }
+        }
+      }
+    },
+    "BooleanItem": {
+      "type": "object",
+      "required": ["type", "id", "label"],
+      "additionalProperties": false,
+      "properties": {
+        "type": { "type": "string", "const": "BOOLEAN" },
+        "id": { "type": "string" },
+        "label": { "type": "string" },
+        "required": { "type": "boolean", "default": false }
+      }
+    },
+    "NumberItem": {
+      "type": "object",
+      "required": ["type", "id", "label"],
+      "additionalProperties": false,
+      "properties": {
+        "type": { "type": "string", "const": "NUMBER" },
+        "id": { "type": "string" },
+        "label": { "type": "string" },
+        "required": { "type": "boolean", "default": false }
+      }
+    },
+    "DateItem": {
+      "type": "object",
+      "required": ["type", "id", "label"],
+      "additionalProperties": false,
+      "properties": {
+        "type": { "type": "string", "const": "DATE" },
+        "id": { "type": "string" },
+        "label": { "type": "string" },
+        "required": { "type": "boolean", "default": false }
+      }
+    }
+  }
+}

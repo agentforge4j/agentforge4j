@@ -99,7 +99,7 @@ export interface WorkflowDefinition {
   topLevelSchedule?: TopLevelScheduleEntry[];
 }
 
-export type ExportFormat = 'json';
+export type ExportFormat = 'json' | 'zip';
 
 export interface ValidationIssue {
   path: string;

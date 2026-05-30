@@ -19,8 +19,10 @@ export async function exportWorkflowBundle(
   draft: WorkflowDefinition,
   format: ExportFormat,
 ): Promise<void> {
-  if (format !== 'json') {
-    throw new Error(`Unsupported export format: ${format}`);
+  if (format === 'zip') {
+    const { exportWorkflowZip } = await import('./zip');
+    await exportWorkflowZip(draft);
+    return;
   }
   const name =
     typeof draft.name === 'string' && draft.name.length > 0 ? `${draft.name}.json` : 'workflow.json';

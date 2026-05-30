@@ -1,4 +1,4 @@
-import type { WorkflowDefinition } from '../api/types';
+import type { ExportFormat, WorkflowDefinition } from '../api/types';
 
 const STRIP_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
 
@@ -7,6 +7,25 @@ export class WorkflowParseError extends Error {
     super(message);
     this.name = 'WorkflowParseError';
   }
+}
+
+export function sanitizeObject<T>(value: T): T {
+  if (value === null || typeof value !== 'object') {
+    return value;
+  }
+
+  if (Array.isArray(value)) {
+    return value.map((item) => sanitizeObject(item)) as T;
+  }
+
+  const result: Record<string, unknown> = {};
+  for (const [key, child] of Object.entries(value as Record<string, unknown>)) {
+    if (STRIP_KEYS.has(key)) {
+      continue;
+    }
+    result[key] = sanitizeObject(child);
+  }
+  return result as T;
 }
 
 /** Rejects prototype-pollution payloads; `constructor` / `prototype` are stripped instead. */
@@ -28,25 +47,6 @@ function assertNoProtoKey(value: unknown, path = 'root'): void {
   }
 }
 
-function stripDangerousKeys(value: unknown): unknown {
-  if (value === null || typeof value !== 'object') {
-    return value;
-  }
-
-  if (Array.isArray(value)) {
-    return value.map(stripDangerousKeys);
-  }
-
-  const result: Record<string, unknown> = {};
-  for (const [key, child] of Object.entries(value as Record<string, unknown>)) {
-    if (STRIP_KEYS.has(key)) {
-      continue;
-    }
-    result[key] = stripDangerousKeys(child);
-  }
-  return result;
-}
-
 export function serializeWorkflowJson(workflow: WorkflowDefinition): string {
   return JSON.stringify(workflow, null, 2);
 }
@@ -64,5 +64,29 @@ export function parseWorkflowJson(text: string): WorkflowDefinition {
   }
 
   assertNoProtoKey(parsed);
-  return stripDangerousKeys(parsed) as WorkflowDefinition;
+  return sanitizeObject(parsed as WorkflowDefinition);
+}
+
+export async function exportBundle(
+  workflow: WorkflowDefinition,
+  format: ExportFormat,
+): Promise<void> {
+  if (format === 'zip') {
+    const { exportWorkflowZip } = await import('./browser/zip');
+    await exportWorkflowZip(workflow);
+    return;
+  }
+  const { downloadWorkflowJson } = await import('./browser/download');
+  const name =
+    typeof workflow.name === 'string' && workflow.name.length > 0 ? `${workflow.name}.json` : 'workflow.json';
+  downloadWorkflowJson(workflow, name);
+}
+
+export async function importBundle(file: File): Promise<WorkflowDefinition> {
+  if (file.name.endsWith('.zip')) {
+    const { importWorkflowZip } = await import('./browser/zip');
+    return importWorkflowZip(file);
+  }
+  const text = await file.text();
+  return parseWorkflowJson(text);
 }

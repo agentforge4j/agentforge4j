@@ -1,3 +1,12 @@
+## 0.2.2-B
+
+- Two-layer validation: JSON Schema (ajv) + cross-reference (agentRef, artifactId, branch targets, retry ordering, loop config, duplicate stepIds).
+- ZIP bundle export matching ClasspathWorkflowLoader layout.
+- ZIP bundle import with security hardening (5 MB cap, 200-step cap, entry name sanitization, prototype-pollution stripping, schema validation on import).
+- JSON import hardened with prototype-pollution stripping.
+- WorkflowParseError exported from public API.
+- validateWorkflow signature extended with optional agentCatalog parameter (backward-compatible).
+
 ## 0.2.2
 
 - Export `NodeKind`, `NODE_KIND_META`, and `CanvasModel` from the public API surface.

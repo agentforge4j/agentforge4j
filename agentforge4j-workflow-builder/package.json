@@ -1,6 +1,6 @@
 {
   "name": "@agentforge4j/workflow-builder-react",
-  "version": "0.2.2",
+  "version": "0.1.0",
   "private": false,
   "description": "Reusable React workflow builder for AgentForge4j",
   "license": "Apache-2.0",
@@ -32,7 +32,10 @@
   },
   "dependencies": {
     "@xyflow/react": "^12.10.2",
+    "ajv": "^8.17.0",
+    "ajv-formats": "^3.0.1",
     "dagre": "^0.8.5",
+    "jszip": "^3.10.1",
     "nanoid": "^5.1.11"
   },
   "devDependencies": {
