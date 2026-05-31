@@ -1,6 +1,9 @@
 ## [Unreleased]
 
 ### Added
+- Newcomer-friendly first encounter: restyled seeded-step empty state with "Start here" and
+  host-delegated "Use a template" shortcut; responsive palette sheet and full-width inspector on
+  small screens.
 - Human-in-the-loop edge markers: amber dashed gate pill for "Human approval" and slate dotted eye
   marker for "Human review".
 - Full `--afb-*` design-token contract in `styles/tokens.css` (brand, canvas, node-surface, chrome,
@@ -13,6 +16,8 @@
   `accentVar` and `Icon`).
 
 ### Changed
+- Restyled the guided stepper and empty-state surfaces onto the `--afb-*` design tokens (completing
+  the token migration across all builder components).
 - Default edges restyled to a blue gradient bezier with a refined arrowhead (now on `--afb-*` tokens).
 - Edge labels reworded to "Human approval" / "Human review".
 - Canvas background/grid now read the new `--afb-canvas-*` tokens.

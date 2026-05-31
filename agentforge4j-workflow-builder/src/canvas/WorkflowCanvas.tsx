@@ -336,15 +336,10 @@ function WorkflowCanvasInner({
                 label: ACTION_LABELS.selectStartStep,
                 onClick: () => onSelectNode(startNode.id),
               }}
-              secondaryAction={{
-                label: BUILDER_COPY.useTemplate,
-                onClick: () => {},
-              }}
             />
             <p className="wf-canvas__starter-hint">
-              <button type="button" className="wf-link-button" onClick={() => {}}>
-                {BUILDER_COPY.templateHint}
-              </button>
+              <strong>{BUILDER_COPY.useTemplate}</strong>
+              {BUILDER_COPY.templateHint}
             </p>
           </div>
         </div>
