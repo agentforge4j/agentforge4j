@@ -7,9 +7,14 @@
   Controls / MiniMap skinning.
 - `dev/` Vite playground (`npm run dev`) mounting a sample multi-node workflow; excluded from the
   published package.
+- Per-kind accent tokens + lucide-react icons on every node kind (`NODE_KIND_META` extended with
+  `accentVar` and `Icon`).
 
 ### Changed
 - Canvas background/grid now read the new `--afb-canvas-*` tokens.
+- Rebuilt node cards (StepNode / DecisionNode / LoopNode via shared NodeChrome) to the redesign
+  card language: left accent rail, filled accent icon square, `Ready` / `Needs attention` state
+  chip, refreshed handles — now driven by `--afb-node-*` / `--afb-kind-*` tokens.
 
 - Two-layer validation: JSON Schema (ajv) + cross-reference (agentRef, artifactId, branch targets, retry ordering, loop config, duplicate stepIds).
 - ZIP bundle export matching ClasspathWorkflowLoader layout.

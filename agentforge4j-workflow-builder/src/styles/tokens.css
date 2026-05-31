@@ -85,4 +85,7 @@
   /* geometry */
   --afb-radius: 14px;
   --afb-radius-sm: 10px;
+
+  /* node handles */
+  --afb-handle-hover-ring: color-mix(in srgb, var(--afb-accent) 18%, transparent);
 }

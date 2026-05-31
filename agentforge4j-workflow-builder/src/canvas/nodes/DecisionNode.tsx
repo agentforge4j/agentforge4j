@@ -43,7 +43,9 @@ export function DecisionNode({ data }: DecisionNodeProps) {
             </div>
           ))}
           <div className="wf-node__branch">
-            <span className="wf-node__branch-label">{ACTION_LABELS.otherwiseBranch}</span>
+            <span className="wf-node__branch-label wf-node__branch-label--otherwise">
+              {ACTION_LABELS.otherwiseBranch}
+            </span>
             <Handle type="source" position={Position.Right} id="default" className={handleClass} />
           </div>
         </div>

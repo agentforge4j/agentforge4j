@@ -37,6 +37,7 @@
     "ajv-formats": "^3.0.1",
     "dagre": "^0.8.5",
     "jszip": "^3.10.1",
+    "lucide-react": "^1.17.0",
     "nanoid": "^5.1.11"
   },
   "devDependencies": {
