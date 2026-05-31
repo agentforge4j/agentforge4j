@@ -156,8 +156,8 @@ export const BUILDER_COPY = {
 };
 
 export const EDGE_LABELS = {
-  approvalGate: 'Approval',
-  reviewGate: 'Review',
+  approvalGate: 'Human approval',
+  reviewGate: 'Human review',
 };
 
 export const NODE_STATUS_LABELS = {

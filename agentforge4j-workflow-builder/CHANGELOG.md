@@ -1,6 +1,8 @@
 ## [Unreleased]
 
 ### Added
+- Human-in-the-loop edge markers: amber dashed gate pill for "Human approval" and slate dotted eye
+  marker for "Human review".
 - Full `--afb-*` design-token contract in `styles/tokens.css` (brand, canvas, node-surface, chrome,
   semantic-state, per-kind, type, and geometry tokens); host apps may override any variable.
 - Dark navy canvas surface: dotted grid, soft blue top-glow, and dark-chrome React Flow
@@ -11,10 +13,15 @@
   `accentVar` and `Icon`).
 
 ### Changed
+- Default edges restyled to a blue gradient bezier with a refined arrowhead (now on `--afb-*` tokens).
+- Edge labels reworded to "Human approval" / "Human review".
 - Canvas background/grid now read the new `--afb-canvas-*` tokens.
 - Rebuilt node cards (StepNode / DecisionNode / LoopNode via shared NodeChrome) to the redesign
   card language: left accent rail, filled accent icon square, `Ready` / `Needs attention` state
   chip, refreshed handles — now driven by `--afb-node-*` / `--afb-kind-*` tokens.
+
+### Fixed
+- Removed the raw transition-enum tag that leaked into node footers (introduced in the node redesign).
 
 - Two-layer validation: JSON Schema (ajv) + cross-reference (agentRef, artifactId, branch targets, retry ordering, loop config, duplicate stepIds).
 - ZIP bundle export matching ClasspathWorkflowLoader layout.

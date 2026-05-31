@@ -426,19 +426,10 @@
 .wf-node__footer {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-start;
   gap: 0.375rem;
   padding: 0.375rem 0.75rem 0.5rem;
   border-top: 1px solid var(--afb-node-border);
-}
-
-.wf-node__wire-tag {
-  flex-shrink: 0;
-  font-family: var(--afb-font-mono);
-  font-size: 0.5625rem;
-  font-weight: 500;
-  letter-spacing: 0.02em;
-  color: var(--afb-node-muted);
 }
 
 .wf-node-badge {
@@ -547,17 +538,48 @@
   font-style: italic;
 }
 
+.wf-edge-defs {
+  position: absolute;
+  width: 0;
+  height: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
 .wf-edge-label {
   position: absolute;
   pointer-events: none;
-  padding: 0.125rem 0.5rem;
-  border-radius: 999px;
-  border: 1px solid var(--builder-color-border);
-  background: var(--builder-color-card);
+  font-family: var(--afb-font-sans);
   font-size: 0.625rem;
   font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
+  line-height: 1.2;
+}
+
+.wf-edge-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.1875rem 0.5rem;
+  border-radius: 999px;
+  border: 1px solid var(--afb-node-border);
+  background: var(--afb-node-surface);
+  white-space: nowrap;
+}
+
+.wf-edge-pill__icon {
+  flex-shrink: 0;
+}
+
+.wf-edge-pill--approval {
+  border-color: color-mix(in srgb, var(--afb-human) 35%, var(--afb-node-border));
+  background: color-mix(in srgb, var(--afb-human) 14%, var(--afb-node-surface));
+  color: var(--afb-human);
+}
+
+.wf-edge-pill--review {
+  border-color: color-mix(in srgb, var(--afb-chrome-muted) 35%, var(--afb-node-border));
+  background: color-mix(in srgb, var(--afb-chrome-muted) 12%, var(--afb-node-surface));
+  color: color-mix(in srgb, var(--afb-chrome-muted) 88%, var(--afb-node-text));
 }
 
 /* Palette */

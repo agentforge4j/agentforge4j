@@ -3,26 +3,48 @@
 import { EDGE_LABELS } from '../../copy/workflow-terminology';
 import type { StepTransition } from '../../api/types';
 import { BaseEdge, EdgeLabelRenderer, getBezierPath, type EdgeProps } from '@xyflow/react';
+import { Eye, UserCheck } from 'lucide-react';
 
 type FlowEdgeData = {
   transition?: StepTransition | null;
 };
 
-function edgeStroke(transition: StepTransition | null | undefined): string {
-  if (transition === 'HUMAN_APPROVAL') {
-    return 'var(--builder-color-edge-approval)';
-  }
-  if (transition === 'HUMAN_REVIEW') {
-    return 'var(--builder-color-edge-review)';
-  }
-  return 'var(--builder-color-edge)';
-}
+export type EdgeVisualVariant = 'default' | 'approval' | 'review';
 
-function edgeDash(transition: StepTransition | null | undefined): string | undefined {
-  if (transition === 'HUMAN_REVIEW') {
-    return '6 4';
+export type EdgeVisual = {
+  variant: EdgeVisualVariant;
+  stroke: string;
+  strokeDasharray: string | undefined;
+  label: string | null;
+  markerColor: string;
+};
+
+export function edgeVisual(transition: StepTransition | null | undefined): EdgeVisual {
+  if (transition === 'HUMAN_APPROVAL') {
+    return {
+      variant: 'approval',
+      stroke: 'var(--afb-human)',
+      strokeDasharray: '7 5',
+      label: EDGE_LABELS.approvalGate,
+      markerColor: 'var(--afb-human)',
+    };
   }
-  return undefined;
+  if (transition === 'HUMAN_REVIEW') {
+    return {
+      variant: 'review',
+      stroke: 'var(--afb-chrome-muted)',
+      strokeDasharray: '2 5',
+      label: EDGE_LABELS.reviewGate,
+      markerColor: 'var(--afb-chrome-muted)',
+    };
+  }
+  return {
+    variant: 'default',
+    stroke: 'url(#afb-edge-gradient)',
+    strokeDasharray: undefined,
+    label: null,
+    markerColor: 'var(--afb-blue-500)',
+  };
 }
 
 export function FlowEdge({
@@ -38,6 +60,7 @@ export function FlowEdge({
   data,
 }: EdgeProps) {
   const transition = (data as FlowEdgeData | undefined)?.transition ?? null;
+  const visual = edgeVisual(transition);
   const [path, labelX, labelY] = getBezierPath({
     sourceX,
     sourceY,
@@ -46,13 +69,6 @@ export function FlowEdge({
     targetY,
     targetPosition,
   });
-  const stroke = edgeStroke(transition);
-  const label =
-    transition === 'HUMAN_APPROVAL'
-      ? EDGE_LABELS.approvalGate
-      : transition === 'HUMAN_REVIEW'
-        ? EDGE_LABELS.reviewGate
-        : null;
 
   return (
     <>
@@ -60,21 +76,35 @@ export function FlowEdge({
         id={id}
         path={path}
         style={{
-          strokeWidth: selected ? 2.75 : 2,
-          stroke,
-          strokeDasharray: edgeDash(transition),
+          strokeWidth: selected ? 3 : 2.4,
+          stroke: visual.stroke,
+          strokeDasharray: visual.strokeDasharray,
         }}
         markerEnd={markerEnd}
       />
-      {label ? (
+      {visual.variant === 'approval' && visual.label ? (
         <EdgeLabelRenderer>
           <div
-            className="wf-edge-label nodrag nopan"
+            className="wf-edge-label wf-edge-pill wf-edge-pill--approval nodrag nopan"
             style={{
               transform: `translate(-50%, -50%) translate(${labelX}px,${labelY}px)`,
             }}
           >
-            {label}
+            <UserCheck className="wf-edge-pill__icon" aria-hidden size={12} strokeWidth={2.25} />
+            <span>{visual.label}</span>
+          </div>
+        </EdgeLabelRenderer>
+      ) : null}
+      {visual.variant === 'review' ? (
+        <EdgeLabelRenderer>
+          <div
+            className="wf-edge-label wf-edge-pill wf-edge-pill--review nodrag nopan"
+            style={{
+              transform: `translate(-50%, -50%) translate(${labelX}px,${labelY}px)`,
+            }}
+          >
+            <Eye className="wf-edge-pill__icon" aria-hidden size={12} strokeWidth={2.25} />
+            {visual.label ? <span>{visual.label}</span> : null}
           </div>
         </EdgeLabelRenderer>
       ) : null}

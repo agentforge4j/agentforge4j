@@ -35,10 +35,12 @@ export function createGalleryModel(): CanvasModel {
       name: 'Summarize',
       agentRef: 'agent-demo',
       instructions: 'Summarize the user input.',
+      transition: 'HUMAN_APPROVAL',
     }),
     stepNode('c-ai-debate', 'AI_DEBATE', COL * 2, 0, {
       name: 'Tool debate',
       primaryAgentRef: 'agent-demo',
+      transition: 'HUMAN_REVIEW',
     }),
     stepNode('c-save-result', 'SAVE_RESULT', COL * 3, 0, {
       name: 'Persist output',
@@ -105,7 +107,11 @@ export function createGalleryModel(): CanvasModel {
     description: 'All node kinds for Phase B visual review',
     startNodeId: 'c-ask-user',
     nodes,
-    edges: [],
+    edges: [
+      { id: 'e-ask-ai', source: 'c-ask-user', target: 'c-ai-step', sourceHandle: null, label: null },
+      { id: 'e-ai-save', source: 'c-ai-step', target: 'c-save-result', sourceHandle: null, label: null },
+      { id: 'e-debate-reuse', source: 'c-ai-debate', target: 'c-reuse-wf', sourceHandle: null, label: null },
+    ],
     artifacts: {},
     blueprints: {},
   };

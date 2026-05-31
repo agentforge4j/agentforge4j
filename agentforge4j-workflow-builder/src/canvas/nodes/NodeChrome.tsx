@@ -16,7 +16,6 @@ export type NodeChromeProps = {
   selected?: boolean;
   issueCount?: number;
   needsApproval?: boolean;
-  wireTag?: string;
   children?: ReactNode;
   className?: string;
 };
@@ -54,7 +53,6 @@ export function NodeChrome({
   selected,
   issueCount = 0,
   needsApproval = false,
-  wireTag,
   children,
   className,
 }: NodeChromeProps) {
@@ -90,7 +88,6 @@ export function NodeChrome({
       </div>
       <div className="wf-node__footer">
         <StatusBadge issueCount={issueCount} needsApproval={needsApproval && issueCount === 0} />
-        {wireTag ? <span className="wf-node__wire-tag">{wireTag}</span> : null}
       </div>
       {children}
     </div>

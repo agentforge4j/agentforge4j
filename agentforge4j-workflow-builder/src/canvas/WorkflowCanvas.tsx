@@ -2,7 +2,8 @@
 
 import '@xyflow/react/dist/style.css';
 
-import { FlowEdge } from './edges/FlowEdge';
+import { EdgeDefs } from './edges/EdgeDefs';
+import { edgeVisual, FlowEdge } from './edges/FlowEdge';
 import { EmptyState } from './empty/EmptyState';
 import { DecisionNode } from './nodes/DecisionNode';
 import { LoopNode } from './nodes/LoopNode';
@@ -90,18 +91,20 @@ function toFlowEdges(model: CanvasModel): Edge[] {
   const byId = new Map(model.nodes.map((n) => [n.id, n] as const));
   return model.edges.map((e) => {
     const source = byId.get(e.source);
+    const transition = source ? nodeTransition(source) : null;
+    const { markerColor } = edgeVisual(transition);
     return {
       id: e.id,
       source: e.source,
       target: e.target,
       sourceHandle: e.sourceHandle ?? undefined,
       type: 'flow',
-      data: { transition: source ? nodeTransition(source) : null },
+      data: { transition },
       markerEnd: {
         type: MarkerType.ArrowClosed,
-        width: 16,
-        height: 16,
-        color: 'var(--builder-color-edge)',
+        width: 12,
+        height: 12,
+        color: markerColor,
       },
     };
   });
@@ -282,6 +285,7 @@ function WorkflowCanvasInner({
 
   return (
     <div className="wf-canvas" onDragOver={onDragOver} onDrop={onDrop}>
+      <EdgeDefs />
       <ReactFlow
         className="wf-canvas__flow"
         nodes={flowNodes}

@@ -3,7 +3,6 @@
 import { NodeChrome } from './NodeChrome';
 import type { CanvasNode } from '../../model/canvasModel';
 import { NODE_KIND_META } from '../../model/nodeKinds';
-import type { StepTransition } from '../../api/types';
 import { Handle, Position } from '@xyflow/react';
 
 export type StepNodeProps = {
@@ -44,11 +43,6 @@ function subtitle(node: CanvasNode): string {
   }
 }
 
-function wireTag(node: CanvasNode): string | undefined {
-  const data = node.data as { transition?: StepTransition };
-  return data.transition;
-}
-
 export function StepNode({ data }: StepNodeProps) {
   const { canvasNode: node, selected, issueCount = 0, needsApproval = false } = data;
   const meta = NODE_KIND_META[node.kind];
@@ -65,7 +59,6 @@ export function StepNode({ data }: StepNodeProps) {
         selected={selected}
         issueCount={issueCount}
         needsApproval={needsApproval}
-        wireTag={wireTag(node)}
       />
       <Handle type="source" position={Position.Bottom} className={['wf-handle', selected ? 'wf-handle--selected' : ''].filter(Boolean).join(' ')} />
     </div>
