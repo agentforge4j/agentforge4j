@@ -400,21 +400,29 @@ export function WorkflowBuilder({
 
   return (
     <div className={rootClass} data-testid="workflow-builder" {...rootStyle}>
-      <header className="workflow-builder__header">
-        <input
-          className="workflow-builder__name-input"
-          value={model.workflowName}
-          placeholder={ACTION_LABELS.workflowNamePlaceholder}
-          aria-label={ACTION_LABELS.workflowNameLabel}
-          onChange={(e) => setModel((m) => ({ ...m, workflowName: e.target.value }))}
-        />
-        <input
-          className="workflow-builder__id-input"
-          value={model.workflowId}
-          placeholder={ACTION_LABELS.workflowIdPlaceholder}
-          aria-label={ACTION_LABELS.workflowIdLabel}
-          onChange={(e) => setModel((m) => ({ ...m, workflowId: e.target.value }))}
-        />
+      <header className="workflow-builder__header workflow-builder__toolbar">
+        <div className="workflow-builder__title-group">
+          <span
+            className={['workflow-builder__dirty-dot', dirty ? 'workflow-builder__dirty-dot--active' : ''].join(' ')}
+            aria-hidden
+            title={dirty ? ACTION_LABELS.unsavedChanges : ACTION_LABELS.upToDate}
+          />
+          <input
+            className="workflow-builder__name-input"
+            value={model.workflowName}
+            placeholder={ACTION_LABELS.workflowNamePlaceholder}
+            aria-label={ACTION_LABELS.workflowNameLabel}
+            onChange={(e) => setModel((m) => ({ ...m, workflowName: e.target.value }))}
+          />
+          <input
+            className="workflow-builder__id-input"
+            value={model.workflowId}
+            placeholder={ACTION_LABELS.workflowIdPlaceholder}
+            aria-label={ACTION_LABELS.workflowIdLabel}
+            onChange={(e) => setModel((m) => ({ ...m, workflowId: e.target.value }))}
+          />
+        </div>
+        <div className="workflow-builder__toolbar-actions">
         <div className="workflow-builder__mode-toggle" role="group" aria-label="Builder mode">
           <button
             type="button"
@@ -431,6 +439,17 @@ export function WorkflowBuilder({
             {ACTION_LABELS.advancedMode}
           </button>
         </div>
+        {capabilities.import ? (
+          <button
+            type="button"
+            className="wf-button wf-button--ghost"
+            data-testid="workflow-builder-import"
+            disabled={pending.import}
+            onClick={() => void handleImport()}
+          >
+            {pending.import ? ACTION_LABELS.importing : ACTION_LABELS.import}
+          </button>
+        ) : null}
         <ValidationPill model={model} clientIssues={clientIssues} onFix={focusIssue} />
         {capabilities.export ? (
           <button
@@ -486,6 +505,7 @@ export function WorkflowBuilder({
             {ACTION_LABELS.aiAssist}
           </button>
         ) : null}
+        </div>
         <p className="workflow-builder__subtitle">{subtitle}</p>
       </header>
 
@@ -538,20 +558,6 @@ export function WorkflowBuilder({
           onUpdateNodeData={updateNodeData}
           agentCatalog={agentCatalog}
         />
-      </div>
-
-      <div className="workflow-builder__actions">
-        {capabilities.import ? (
-          <button
-            type="button"
-            className="workflow-builder__button"
-            data-testid="workflow-builder-import"
-            disabled={pending.import}
-            onClick={() => void handleImport()}
-          >
-            {pending.import ? ACTION_LABELS.importing : ACTION_LABELS.import}
-          </button>
-        ) : null}
       </div>
 
       {activeError ? (

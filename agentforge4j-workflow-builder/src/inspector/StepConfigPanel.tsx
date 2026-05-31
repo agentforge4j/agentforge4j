@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { ACTION_LABELS } from '../copy/workflow-terminology';
+import { wireBehaviourTypeForCanvasNode } from '../model/mapper';
 import type { AgentRef, StepTransition } from '../api/types';
 import type { BuilderMode } from '../hooks/useBuilderMode';
 import type {
@@ -12,7 +13,7 @@ import type {
 } from '../model/canvasModel';
 import { NODE_KIND_META } from '../model/nodeKinds';
 import type { ReactNode } from 'react';
-import { useMemo } from 'react';
+import { useEffect, useMemo } from 'react';
 
 export type StepConfigPanelProps = {
   model: CanvasModel;
@@ -72,6 +73,19 @@ export function StepConfigPanel({
     [model.nodes, node],
   );
 
+  useEffect(() => {
+    if (!node || !selectedId) {
+      return;
+    }
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [node, selectedId, onClose]);
+
   if (!node || !selectedId) {
     return null;
   }
@@ -80,10 +94,18 @@ export function StepConfigPanel({
   const insideLoopBody =
     Boolean(node.parentNode) && model.nodes.some((p) => p.id === node.parentNode && p.kind === 'REPEAT');
   const behaviorOpen = mode === 'advanced';
-  const advancedOpen = mode === 'advanced';
+  const wireBehaviourType = wireBehaviourTypeForCanvasNode(node);
+  const wireBehaviourNote =
+    node.kind === 'SAVE_RESULT'
+      ? ACTION_LABELS.behaviourTypeSaveResultNote
+      : node.kind === 'REPEAT'
+        ? ACTION_LABELS.behaviourTypeRepeatNote
+        : null;
 
   return (
-    <aside className="wf-panel wf-inspector" role="dialog" aria-label={title}>
+    <>
+      <div className="wf-inspector__backdrop" role="presentation" onClick={onClose} />
+      <aside className="wf-panel wf-inspector wf-inspector--open" role="dialog" aria-label={title}>
       <header className="wf-panel__header wf-inspector__header">
         <h2 className="wf-panel__title">{title}</h2>
         <button
@@ -344,9 +366,22 @@ export function StepConfigPanel({
             </div>
           </details>
 
-          <details className="wf-inspector__details" open={advancedOpen}>
+          <details className="wf-inspector__details">
             <summary className="wf-inspector__details-summary">{ACTION_LABELS.advancedSection}</summary>
             <div className="wf-inspector__details-body">
+              <label className="wf-field">
+                <span className="wf-field__label">{ACTION_LABELS.behaviourTypeField}</span>
+                {wireBehaviourType ? (
+                  <input
+                    className="wf-input wf-input--mono"
+                    value={wireBehaviourType}
+                    readOnly
+                    aria-readonly="true"
+                  />
+                ) : (
+                  <p className="wf-field__hint">{wireBehaviourNote}</p>
+                )}
+              </label>
               {node.kind === 'AI_STEP' ? (
                 <label className="wf-field">
                   <span className="wf-field__label">{ACTION_LABELS.maxRetriesField}</span>
@@ -380,6 +415,7 @@ export function StepConfigPanel({
         </fieldset>
       </div>
     </aside>
+    </>
   );
 }
 

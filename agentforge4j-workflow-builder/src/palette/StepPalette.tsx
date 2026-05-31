@@ -1,8 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 
-import { ACTION_LABELS, BUILDER_COPY } from '../copy/workflow-terminology';
+import { ACTION_LABELS, BUILDER_COPY, PALETTE_GROUP_LABELS } from '../copy/workflow-terminology';
 import type { BuilderMode } from '../hooks/useBuilderMode';
-import { LIBRARY_ADVANCED_KINDS, LIBRARY_COMMON_KINDS, NODE_KIND_META, type NodeKind } from '../model/nodeKinds';
+import {
+  LIBRARY_ADVANCED_KINDS,
+  LIBRARY_COMMON_KINDS,
+  LIBRARY_FLOW_KINDS,
+  NODE_KIND_META,
+  type NodeKind,
+} from '../model/nodeKinds';
 import { useEffect, useState } from 'react';
 
 type StepPaletteProps = {
@@ -10,6 +16,8 @@ type StepPaletteProps = {
   onAddStep: (kind: NodeKind) => void;
   defaultCollapsed?: boolean;
 };
+
+const COLLAPSED_RAIL_KINDS: NodeKind[] = [...LIBRARY_COMMON_KINDS, ...LIBRARY_FLOW_KINDS];
 
 export function StepPalette({ mode, onAddStep, defaultCollapsed = true }: StepPaletteProps) {
   const [expanded, setExpanded] = useState(!defaultCollapsed);
@@ -66,6 +74,13 @@ export function StepPalette({ mode, onAddStep, defaultCollapsed = true }: StepPa
     );
   };
 
+  const renderGroup = (label: string, kinds: NodeKind[], compact?: boolean) => (
+    <>
+      <p className="wf-palette__section-label">{label}</p>
+      <div className="wf-palette__list">{kinds.map((kind) => renderKind(kind, compact))}</div>
+    </>
+  );
+
   const panelContent = (
     <>
       <div className="wf-palette__header">
@@ -82,8 +97,8 @@ export function StepPalette({ mode, onAddStep, defaultCollapsed = true }: StepPa
         ) : null}
       </div>
       <div className="wf-palette__body">
-        <p className="wf-palette__section-label">Common</p>
-        <div className="wf-palette__list">{LIBRARY_COMMON_KINDS.map((kind) => renderKind(kind, !expanded && !isMobile))}</div>
+        {renderGroup(PALETTE_GROUP_LABELS.common, LIBRARY_COMMON_KINDS, !expanded && !isMobile)}
+        {expanded || isMobile ? renderGroup(PALETTE_GROUP_LABELS.flow, LIBRARY_FLOW_KINDS, false) : null}
         {expanded || isMobile ? (
           <>
             <button
@@ -92,7 +107,7 @@ export function StepPalette({ mode, onAddStep, defaultCollapsed = true }: StepPa
               onClick={() => setAdvancedOpen((o) => !o)}
             >
               <span aria-hidden>{advancedOpen ? '▾' : '▸'}</span>
-              {mode === 'guided' ? ACTION_LABELS.advancedStepsGuided : ACTION_LABELS.advancedSteps}
+              {mode === 'guided' ? ACTION_LABELS.advancedStepsGuided : PALETTE_GROUP_LABELS.advanced}
             </button>
             {advancedOpen ? (
               <div className="wf-palette__list">{LIBRARY_ADVANCED_KINDS.map((kind) => renderKind(kind, false))}</div>
@@ -155,7 +170,7 @@ export function StepPalette({ mode, onAddStep, defaultCollapsed = true }: StepPa
         {panelContent}
       </div>
       {!expanded ? (
-        <div className="wf-palette__collapsed-list">{LIBRARY_COMMON_KINDS.map((kind) => renderKind(kind, true))}</div>
+        <div className="wf-palette__collapsed-list">{COLLAPSED_RAIL_KINDS.map((kind) => renderKind(kind, true))}</div>
       ) : null}
     </aside>
   );

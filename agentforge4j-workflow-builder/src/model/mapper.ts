@@ -18,6 +18,7 @@ import type {
 } from './canvasModel';
 import type { NodeKind } from './nodeKinds';
 import type {
+  BehaviourType,
   BlueprintJsonObject,
   BranchConfig,
   EditableArtifact,
@@ -515,6 +516,17 @@ function canvasNodeToStep(
     default:
       return base('Step');
   }
+}
+
+/** Read-only wire behaviour type for inspector display (uses `canvasNodeToStep` mapping). */
+export function wireBehaviourTypeForCanvasNode(node: CanvasNode): BehaviourType | null {
+  if (node.kind === 'SAVE_RESULT' || node.kind === 'REPEAT') {
+    return null;
+  }
+  return canvasNodeToStep(node, {
+    stepId: node.backendStepId ?? node.id,
+    artifactIdForAsk: node.id,
+  }).behaviourType;
 }
 
 /** Map canvas node id → backend step id (stable for session). */

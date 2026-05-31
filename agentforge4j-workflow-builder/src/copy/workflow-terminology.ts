@@ -137,7 +137,16 @@ export const ACTION_LABELS = {
   failAction: 'Stop with error',
   okShort: 'OK',
   checkmarkOk: '✓ OK',
+  behaviourTypeField: 'Behaviour type (wire)',
+  behaviourTypeSaveResultNote: 'SAVE_RESULT is a canvas-only step; export maps it via workflow result handling.',
+  behaviourTypeRepeatNote: 'REPEAT is a canvas-only loop container; inner steps map to wire behaviours individually.',
 };
+
+export const PALETTE_GROUP_LABELS = {
+  common: 'Common',
+  flow: 'Flow',
+  advanced: 'Advanced',
+} as const;
 
 export const BUILDER_COPY = {
   startHere: 'Start here — this step collects input from whoever runs the workflow.',

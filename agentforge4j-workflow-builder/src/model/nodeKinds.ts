@@ -113,13 +113,8 @@ export const NODE_KIND_META: Record<NodeKind, NodeKindMeta> = {
   },
 };
 
-export const LIBRARY_COMMON_KINDS: NodeKind[] = [
-  'ASK_USER',
-  'AI_STEP',
-  'DECISION',
-  'REPEAT',
-  'SAVE_RESULT',
-  'REUSE_WORKFLOW',
-];
+export const LIBRARY_COMMON_KINDS: NodeKind[] = ['ASK_USER', 'AI_STEP', 'SAVE_RESULT'];
+
+export const LIBRARY_FLOW_KINDS: NodeKind[] = ['DECISION', 'REPEAT', 'REUSE_WORKFLOW'];
 
 export const LIBRARY_ADVANCED_KINDS: NodeKind[] = ['AI_DEBATE', 'LOAD_RESOURCE', 'STOP', 'RETRY'];
