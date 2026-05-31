@@ -27,4 +27,62 @@
   --builder-font-size-xs: 0.75rem;
   --builder-shadow: 0 1px 2px rgb(0 0 0 / 0.06);
   --builder-shadow-lg: 0 4px 12px rgb(0 0 0 / 0.12);
+
+  /* ── Redesign token contract (--afb-*) — added Phase A; host apps may override any of these ── */
+
+  /* brand (logo-derived) */
+  --afb-blue-500: #2f6bff;
+  --afb-blue-400: #5b8bff;
+  --afb-blue-600: #1f4fd6;
+  --afb-navy-900: #0b1220;
+  --afb-navy-800: #10192c;
+  --afb-navy-700: #16223b;
+  --afb-navy-600: #1e2d4d;
+
+  /* canvas */
+  --afb-canvas-bg: #0c1322;
+  --afb-canvas-dot: #22304d;
+  --afb-canvas-glow: rgba(47, 107, 255, 0.1);
+
+  /* node surfaces (light cards) */
+  --afb-node-surface: #f7f9fc;
+  --afb-node-surface-2: #eef2f9;
+  --afb-node-border: #d6deec;
+  --afb-node-text: #0f1a2e;
+  --afb-node-muted: #5d6b86;
+  --afb-node-shadow: 0 8px 24px -10px rgba(0, 0, 0, 0.55), 0 2px 6px -2px rgba(0, 0, 0, 0.4);
+  --afb-node-shadow-sel: 0 0 0 2px var(--afb-blue-500), 0 14px 40px -12px rgba(47, 107, 255, 0.55);
+
+  /* chrome (dark toolbar / panels / drawer / sheet) */
+  --afb-chrome-bg: #0e1626;
+  --afb-chrome-border: #1d2a44;
+  --afb-chrome-text: #e7edf8;
+  --afb-chrome-muted: #8a99b8;
+
+  /* semantic state */
+  --afb-accent: var(--afb-blue-500);
+  --afb-ok: #22b07d;
+  --afb-warn: #e0a23a;
+  --afb-err: #e2604b;
+  --afb-human: #c98a2b;
+
+  /* per-kind accent */
+  --afb-kind-input: #3aa0c9;
+  --afb-kind-ai: #2f6bff;
+  --afb-kind-tools: #7c5cff;
+  --afb-kind-decision: #e0a23a;
+  --afb-kind-loop: #22b07d;
+  --afb-kind-reuse: #5b8bff;
+  --afb-kind-resource: #48b08c;
+  --afb-kind-save: #3aa0c9;
+  --afb-kind-stop: #e2604b;
+  --afb-kind-retry: #c98a2b;
+
+  /* type — names + fallbacks only; the library must NOT load these fonts */
+  --afb-font-sans: 'Manrope', system-ui, sans-serif;
+  --afb-font-mono: 'IBM Plex Mono', ui-monospace, monospace;
+
+  /* geometry */
+  --afb-radius: 14px;
+  --afb-radius-sm: 10px;
 }

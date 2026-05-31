@@ -1,4 +1,15 @@
-## 0.2.2-B
+## [Unreleased]
+
+### Added
+- Full `--afb-*` design-token contract in `styles/tokens.css` (brand, canvas, node-surface, chrome,
+  semantic-state, per-kind, type, and geometry tokens); host apps may override any variable.
+- Dark navy canvas surface: dotted grid, soft blue top-glow, and dark-chrome React Flow
+  Controls / MiniMap skinning.
+- `dev/` Vite playground (`npm run dev`) mounting a sample multi-node workflow; excluded from the
+  published package.
+
+### Changed
+- Canvas background/grid now read the new `--afb-canvas-*` tokens.
 
 - Two-layer validation: JSON Schema (ajv) + cross-reference (agentRef, artifactId, branch targets, retry ordering, loop config, duplicate stepIds).
 - ZIP bundle export matching ClasspathWorkflowLoader layout.

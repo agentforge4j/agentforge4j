@@ -36,6 +36,7 @@ import {
 import { useCallback, useEffect, useMemo } from 'react';
 
 const SNAP = 16;
+const DOT_GAP = 22;
 
 function nodeTransition(node: CanvasNode): StepTransition | null {
   const data = node.data as { transition?: StepTransition };
@@ -316,7 +317,7 @@ function WorkflowCanvasInner({
             </button>
           </NodeToolbar>
         ) : null}
-        <Background variant={BackgroundVariant.Dots} gap={SNAP} size={1} color="var(--builder-color-canvas-dot)" />
+        <Background variant={BackgroundVariant.Dots} gap={DOT_GAP} size={1} color="var(--afb-canvas-dot)" />
         <Controls className="wf-canvas__controls" />
         <MiniMap pannable zoomable className="wf-canvas__minimap" />
       </ReactFlow>

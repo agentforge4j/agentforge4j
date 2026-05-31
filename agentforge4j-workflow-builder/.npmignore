@@ -1,5 +1,8 @@
 src/
 tests/
+dev/
+dev-dist/
+vite.config.ts
 tsup.config.ts
 vitest.config.ts
 CHANGES.md
