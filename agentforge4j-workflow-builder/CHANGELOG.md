@@ -1,4 +1,4 @@
-## [Unreleased]
+## [0.3.0] - 2026-06-02
 
 ### Added
 - A "Delete step" button in the step inspector (steps could previously only be removed via the
