@@ -1,6 +1,8 @@
 ## [Unreleased]
 
 ### Added
+- A "Delete step" button in the step inspector (steps could previously only be removed via the
+  on-canvas toolbar or the Delete key).
 - Newcomer-friendly first encounter: restyled seeded-step empty state with "Start here" and
   host-delegated "Use a template" shortcut; responsive palette sheet and full-width inspector on
   small screens.
@@ -16,6 +18,7 @@
   `accentVar` and `Icon`).
 
 ### Changed
+- Removed the redundant on-canvas delete button; steps are deleted from the step inspector.
 - Restyled the guided stepper and empty-state surfaces onto the `--afb-*` design tokens (completing
   the token migration across all builder components).
 - Default edges restyled to a blue gradient bezier with a refined arrowhead (now on `--afb-*` tokens).
@@ -26,6 +29,18 @@
   chip, refreshed handles — now driven by `--afb-node-*` / `--afb-kind-*` tokens.
 
 ### Fixed
+- Canvas nodes now render. React Flow node measurements were being discarded each render, leaving
+  every node permanently hidden (canvas and minimap appeared empty); node state now preserves
+  measured dimensions.
+- Added steps now reliably appear on the canvas and minimap (a node-change handler could drop a
+  newly added step).
+- Builder buttons and form controls now render correctly without a host theme (previously relied on
+  host CSS variables and could appear unstyled).
+- The Behaviour section is hidden for steps that have no behaviour settings (e.g. Ask a Question).
+- Form fields and decision cases can now be removed, not just added.
+- Minimap nodes are clearly visible on the dark canvas.
+- Newly added or selected steps are no longer hidden behind the inspector panel — the canvas now
+  pans the selected node into the visible area beside it.
 - Removed the raw transition-enum tag that leaked into node footers (introduced in the node redesign).
 
 - Two-layer validation: JSON Schema (ajv) + cross-reference (agentRef, artifactId, branch targets, retry ordering, loop config, duplicate stepIds).

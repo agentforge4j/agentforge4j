@@ -34,7 +34,7 @@ describe('Phase E responsive shell', () => {
     const model = createInitialCanvasModel();
     const id = model.nodes[0]!.id;
     render(
-      <StepConfigPanel model={model} selectedId={id} mode="guided" onClose={() => {}} onUpdateNodeData={() => {}} />,
+      <StepConfigPanel model={model} selectedId={id} mode="guided" onClose={() => {}} onDelete={() => {}} onUpdateNodeData={() => {}} />,
     );
     const inspector = document.querySelector('.wf-inspector');
     expect(inspector).toBeTruthy();

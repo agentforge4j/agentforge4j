@@ -6,6 +6,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:local": "cross-env AFB_LOCAL_BUILDER=1 vite --force",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
     "lint": "eslint src --max-warnings 0",
@@ -25,6 +26,7 @@
     "@types/react-dom": "^19.0.0",
     "@vitejs/plugin-react": "^4.3.0",
     "autoprefixer": "^10.4.0",
+    "cross-env": "^7.0.3",
     "eslint": "^9.0.0",
     "eslint-plugin-react-hooks": "^5.0.0",
     "eslint-plugin-react-refresh": "^0.4.0",

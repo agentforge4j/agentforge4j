@@ -24,7 +24,7 @@ describe('Phase D layout shell', () => {
     const model = createInitialCanvasModel();
     const id = model.nodes[0]!.id;
     render(
-      <StepConfigPanel model={model} selectedId={id} mode="guided" onClose={() => {}} onUpdateNodeData={() => {}} />,
+      <StepConfigPanel model={model} selectedId={id} mode="guided" onClose={() => {}} onDelete={() => {}} onUpdateNodeData={() => {}} />,
     );
     expect(document.querySelector('.wf-inspector--open')).toBeTruthy();
   });
@@ -32,7 +32,7 @@ describe('Phase D layout shell', () => {
   it('inspector is absent when selection is cleared', () => {
     const model = createInitialCanvasModel();
     render(
-      <StepConfigPanel model={model} selectedId={null} mode="guided" onClose={() => {}} onUpdateNodeData={() => {}} />,
+      <StepConfigPanel model={model} selectedId={null} mode="guided" onClose={() => {}} onDelete={() => {}} onUpdateNodeData={() => {}} />,
     );
     expect(document.querySelector('.wf-inspector--open')).toBeNull();
   });
@@ -42,7 +42,7 @@ describe('Phase D layout shell', () => {
     const id = model.nodes[0]!.id;
     const onClose = vi.fn();
     render(
-      <StepConfigPanel model={model} selectedId={id} mode="guided" onClose={onClose} onUpdateNodeData={() => {}} />,
+      <StepConfigPanel model={model} selectedId={id} mode="guided" onClose={onClose} onDelete={() => {}} onUpdateNodeData={() => {}} />,
     );
     fireEvent.click(screen.getAllByRole('button', { name: /Configure this step/i })[0]!);
     expect(onClose).toHaveBeenCalled();

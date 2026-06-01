@@ -11,15 +11,27 @@ import type {
   MaxIterationsActionUi,
   NodeData,
 } from '../model/canvasModel';
+import type { NodeKind } from '../model/nodeKinds';
 import { NODE_KIND_META } from '../model/nodeKinds';
 import type { ReactNode } from 'react';
 import { useEffect, useMemo } from 'react';
+
+const KINDS_WITH_BEHAVIOR = new Set<NodeKind>([
+  'AI_STEP',
+  'AI_DEBATE',
+  'DECISION',
+  'REPEAT',
+  'REUSE_WORKFLOW',
+  'STOP',
+  'RETRY',
+]);
 
 export type StepConfigPanelProps = {
   model: CanvasModel;
   selectedId: string | null;
   mode: BuilderMode;
   onClose: () => void;
+  onDelete: (id: string) => void;
   onUpdateNodeData: (id: string, partial: Partial<NodeData>) => void;
   agentCatalog?: AgentRef[];
 };
@@ -59,6 +71,7 @@ export function StepConfigPanel({
   selectedId,
   mode,
   onClose,
+  onDelete,
   onUpdateNodeData,
   agentCatalog,
 }: StepConfigPanelProps) {
@@ -101,6 +114,7 @@ export function StepConfigPanel({
       : node.kind === 'REPEAT'
         ? ACTION_LABELS.behaviourTypeRepeatNote
         : null;
+  const showBehaviorSection = KINDS_WITH_BEHAVIOR.has(node.kind);
 
   return (
     <>
@@ -157,6 +171,21 @@ export function StepConfigPanel({
                 <p className="wf-field__hint">{ACTION_LABELS.formFieldsHint}</p>
                 {node.data.artifactItems.map((item, idx) => (
                   <div key={item.id} className="wf-inspector__card">
+                    <div className="wf-inspector__card-header">
+                      <button
+                        type="button"
+                        className="wf-button wf-button--icon wf-button--ghost wf-inspector__card-remove"
+                        aria-label={ACTION_LABELS.removeField}
+                        title={ACTION_LABELS.removeField}
+                        onClick={() =>
+                          onUpdateNodeData(node.id, {
+                            artifactItems: node.data.artifactItems.filter((_, i) => i !== idx),
+                          } as Partial<NodeData>)
+                        }
+                      >
+                        ×
+                      </button>
+                    </div>
                     <select
                       className="wf-input wf-select"
                       value={item.type}
@@ -250,6 +279,7 @@ export function StepConfigPanel({
             ) : null}
           </Section>
 
+          {showBehaviorSection ? (
           <details className="wf-inspector__details" open={behaviorOpen}>
             <summary className="wf-inspector__details-summary">{ACTION_LABELS.behaviorSection}</summary>
             <div className="wf-inspector__details-body">
@@ -365,6 +395,7 @@ export function StepConfigPanel({
               ) : null}
             </div>
           </details>
+          ) : null}
 
           <details className="wf-inspector__details">
             <summary className="wf-inspector__details-summary">{ACTION_LABELS.advancedSection}</summary>
@@ -414,6 +445,16 @@ export function StepConfigPanel({
           </details>
         </fieldset>
       </div>
+      <footer className="wf-inspector__footer">
+        <button
+          type="button"
+          className="wf-button wf-button--destructive"
+          disabled={insideLoopBody}
+          onClick={() => onDelete(node.id)}
+        >
+          {ACTION_LABELS.deleteStep}
+        </button>
+      </footer>
     </aside>
     </>
   );
@@ -515,6 +556,19 @@ function DecisionForm({
       </label>
       {d.cases.map((c, idx) => (
         <div key={`${c.value}-${idx}`} className="wf-inspector__card">
+          <div className="wf-inspector__card-header">
+            <button
+              type="button"
+              className="wf-button wf-button--icon wf-button--ghost wf-inspector__card-remove"
+              aria-label={ACTION_LABELS.removeCase}
+              title={ACTION_LABELS.removeCase}
+              onClick={() =>
+                onUpdate(node.id, { cases: d.cases.filter((_, i) => i !== idx) } as Partial<NodeData>)
+              }
+            >
+              ×
+            </button>
+          </div>
           <input
             className="wf-input"
             placeholder={ACTION_LABELS.caseLabelPlaceholder}

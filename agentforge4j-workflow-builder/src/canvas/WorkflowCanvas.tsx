@@ -23,18 +23,17 @@ import {
   MarkerType,
   type Node as FlowNode,
   MiniMap,
-  NodeToolbar,
   type Node,
   type NodeChange,
-  Position,
   ReactFlow,
   ReactFlowProvider,
   applyEdgeChanges,
   applyNodeChanges,
   useNodesInitialized,
+  useNodesState,
   useReactFlow,
 } from '@xyflow/react';
-import { useCallback, useEffect, useMemo } from 'react';
+import { useCallback, useEffect, useMemo, useRef } from 'react';
 
 const SNAP = 16;
 const DOT_GAP = 22;
@@ -54,6 +53,33 @@ function isStarterCanvas(model: CanvasModel): boolean {
   }
   const only = model.nodes[0];
   return only?.kind === 'ASK_USER';
+}
+
+/** Merge domain-derived nodes onto existing RF nodes, keeping measured dimensions. */
+export function mergeModelIntoFlowNodes(existing: Node[], derived: Node[]): Node[] {
+  const existingById = new Map(existing.map((node) => [node.id, node] as const));
+  return derived.map((derivedNode) => {
+    const prior = existingById.get(derivedNode.id);
+    if (!prior) {
+      return derivedNode;
+    }
+    return {
+      ...derivedNode,
+      measured: prior.measured,
+      width: prior.width,
+      height: prior.height,
+    };
+  });
+}
+
+function nodeChangeUpdatesModel(change: NodeChange): boolean {
+  if (change.type === 'dimensions') {
+    return false;
+  }
+  if (change.type === 'select') {
+    return false;
+  }
+  return true;
 }
 
 function toFlowNodes(
@@ -134,10 +160,18 @@ function WorkflowCanvasInner({
   const nodesInitialized = useNodesInitialized();
   const showStarterHint = isStarterCanvas(model);
 
-  const flowNodes = useMemo(
+  const derivedFlowNodes = useMemo(
     () => toFlowNodes(model, selectedId, issueCountByBackendStepId),
     [issueCountByBackendStepId, model, selectedId],
   );
+  const [flowNodes, setFlowNodes, onFlowNodesChange] = useNodesState(derivedFlowNodes);
+  const flowNodesRef = useRef(flowNodes);
+  flowNodesRef.current = flowNodes;
+
+  useEffect(() => {
+    setFlowNodes((current) => mergeModelIntoFlowNodes(current, derivedFlowNodes));
+  }, [derivedFlowNodes, setFlowNodes]);
+
   const flowEdges = useMemo(() => toFlowEdges(model), [model]);
 
   useEffect(() => {
@@ -148,28 +182,34 @@ function WorkflowCanvasInner({
     if (!node) {
       return;
     }
-    const x = node.position.x + 120;
+    const INSPECTOR_WIDTH = 380;
+    const CENTER_ZOOM = 1.05;
+    const isDesktop =
+      typeof window !== 'undefined' &&
+      window.matchMedia('(min-width: 48rem)').matches;
+    const offsetX = isDesktop ? INSPECTOR_WIDTH / 2 / CENTER_ZOOM : 0;
+    const x = node.position.x + 120 + offsetX;
     const y = node.position.y + 60;
-    void setCenter(x, y, { zoom: 1.05, duration: 250 });
+    void setCenter(x, y, { zoom: CENTER_ZOOM, duration: 250 });
   }, [flowNodes, nodesInitialized, selectedId, setCenter]);
 
   const onNodesChange = useCallback(
     (changes: NodeChange[]) => {
-      const nextFlow = applyNodeChanges(changes, flowNodes);
-      const ids = new Set(nextFlow.map((flowNode: Node) => flowNode.id));
-      const nextNodes = model.nodes
-        .filter((n) => ids.has(n.id))
-        .map((n) => {
-          const fn = nextFlow.find((flowNode: Node) => flowNode.id === n.id)!;
-          return {
-            ...n,
-            position: fn.position,
-            parentNode: fn.parentId,
-          };
-        });
+      onFlowNodesChange(changes);
+
+      if (!changes.some(nodeChangeUpdatesModel)) {
+        return;
+      }
+
+      const nextFlow = applyNodeChanges(changes, flowNodesRef.current);
+      const byId = new Map(nextFlow.map((fn: Node) => [fn.id, fn] as const));
+      const nextNodes = model.nodes.map((n) => {
+        const fn = byId.get(n.id);
+        return fn ? { ...n, position: fn.position, parentNode: fn.parentId } : n;
+      });
       onModelChange({ ...model, nodes: nextNodes });
     },
-    [flowNodes, model, onModelChange],
+    [model, onFlowNodesChange, onModelChange],
   );
 
   const onEdgesChange = useCallback(
@@ -220,18 +260,6 @@ function WorkflowCanvasInner({
     },
     [model, onModelChange],
   );
-
-  const deleteSelectedNode = useCallback(() => {
-    if (!selectedId) {
-      return;
-    }
-    onModelChange({
-      ...model,
-      nodes: model.nodes.filter((node) => node.id !== selectedId),
-      edges: model.edges.filter((edge) => edge.source !== selectedId && edge.target !== selectedId),
-    });
-    onSelectNode(null);
-  }, [model, onModelChange, onSelectNode, selectedId]);
 
   const onConnect = useCallback(
     (conn: Connection) => {
@@ -308,19 +336,6 @@ function WorkflowCanvasInner({
         zoomOnDoubleClick
         proOptions={{ hideAttribution: true }}
       >
-        {selectedId ? (
-          <NodeToolbar nodeId={selectedId} isVisible position={Position.Top} align="end" offset={10}>
-            <button
-              type="button"
-              className="wf-button wf-button--icon wf-button--secondary"
-              aria-label={ACTION_LABELS.deleteNode}
-              title={ACTION_LABELS.deleteNode}
-              onClick={deleteSelectedNode}
-            >
-              ×
-            </button>
-          </NodeToolbar>
-        ) : null}
         <Background variant={BackgroundVariant.Dots} gap={DOT_GAP} size={1} color="var(--afb-canvas-dot)" />
         <Controls className="wf-canvas__controls" />
         <MiniMap pannable zoomable className="wf-canvas__minimap" />

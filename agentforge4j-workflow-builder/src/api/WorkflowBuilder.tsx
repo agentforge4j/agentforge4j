@@ -312,6 +312,18 @@ export function WorkflowBuilder({
     [model, selectedId, setModel, setSelectedId],
   );
 
+  const handleDeleteNode = useCallback(
+    (id: string) => {
+      setModel((m) => ({
+        ...m,
+        nodes: m.nodes.filter((node) => node.id !== id),
+        edges: m.edges.filter((edge) => edge.source !== id && edge.target !== id),
+      }));
+      setSelectedId(null);
+    },
+    [setModel, setSelectedId],
+  );
+
   const focusIssue = useCallback(
     (stepId?: string) => {
       if (!stepId) {
@@ -555,6 +567,7 @@ export function WorkflowBuilder({
           selectedId={selectedId}
           mode={mode}
           onClose={() => setSelectedId(null)}
+          onDelete={handleDeleteNode}
           onUpdateNodeData={updateNodeData}
           agentCatalog={agentCatalog}
         />

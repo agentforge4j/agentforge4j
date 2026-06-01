@@ -2,21 +2,21 @@
 
 :root,
 .workflow-builder {
-  --builder-color-bg: var(--color-surface, var(--surface-bg));
-  --builder-color-fg: var(--color-text, var(--text-primary));
-  --builder-color-border: var(--color-border, var(--border-default));
-  --builder-color-muted: var(--color-text-muted, var(--text-secondary));
-  --builder-color-accent: var(--color-accent, var(--accent-primary));
-  --builder-color-accent-fg: var(--color-accent-fg, var(--text-on-accent));
-  --builder-color-danger: var(--color-danger, var(--status-error));
-  --builder-color-success: var(--color-success, var(--status-success));
-  --builder-color-warning: var(--color-warning, var(--status-warning));
-  --builder-color-card: var(--color-card, var(--surface-raised));
-  --builder-color-canvas: var(--color-canvas, var(--canvas-surface));
-  --builder-color-canvas-dot: var(--canvas-dot);
-  --builder-color-edge: var(--canvas-edge);
-  --builder-color-edge-approval: var(--canvas-edge-approval);
-  --builder-color-edge-review: var(--canvas-edge-review);
+  --builder-color-bg: var(--color-surface, var(--surface-bg, var(--afb-node-surface)));
+  --builder-color-fg: var(--color-text, var(--text-primary, var(--afb-node-text)));
+  --builder-color-border: var(--color-border, var(--border-default, var(--afb-node-border)));
+  --builder-color-muted: var(--color-text-muted, var(--text-secondary, var(--afb-node-muted)));
+  --builder-color-accent: var(--color-accent, var(--accent-primary, var(--afb-accent)));
+  --builder-color-accent-fg: var(--color-accent-fg, var(--text-on-accent, var(--afb-node-surface)));
+  --builder-color-danger: var(--color-danger, var(--status-error, var(--afb-err)));
+  --builder-color-success: var(--color-success, var(--status-success, var(--afb-ok)));
+  --builder-color-warning: var(--color-warning, var(--status-warning, var(--afb-warn)));
+  --builder-color-card: var(--color-card, var(--surface-raised, var(--afb-node-surface)));
+  --builder-color-canvas: var(--color-canvas, var(--canvas-surface, var(--afb-canvas-bg)));
+  --builder-color-canvas-dot: var(--canvas-dot, var(--afb-canvas-dot));
+  --builder-color-edge: var(--canvas-edge, var(--afb-blue-400));
+  --builder-color-edge-approval: var(--canvas-edge-approval, var(--afb-human));
+  --builder-color-edge-review: var(--canvas-edge-review, var(--afb-chrome-muted));
   --builder-space-xs: var(--space-xs, 0.25rem);
   --builder-space-sm: var(--space-sm, 0.5rem);
   --builder-space-md: var(--space-md, 1rem);
