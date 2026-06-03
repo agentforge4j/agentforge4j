@@ -7,9 +7,9 @@ import NotFoundPage from '@/pages/NotFoundPage';
 
 export default function App() {
   return (
-    <div className="flex flex-col min-h-screen bg-bg text-fg">
+    <div className="flex flex-col h-dvh bg-bg text-fg overflow-hidden">
       <SiteHeader />
-      <main id="main-content" className="flex-1">
+      <main id="main-content" className="flex-1 min-h-0">
         <Routes>
           <Route path="/" element={<BuilderPage />} />
           <Route path="*" element={<NotFoundPage />} />
