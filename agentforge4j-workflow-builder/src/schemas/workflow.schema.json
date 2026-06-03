@@ -1,0 +1,225 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "WorkflowDefinition",
+  "type": "object",
+  "required": ["kind", "id", "name", "steps"],
+  "additionalProperties": false,
+  "properties": {
+    "kind": { "type": "string", "const": "WORKFLOW" },
+    "id": {
+      "type": "string",
+      "description": "Unique workflow identifier. Must match the workflow directory name stem."
+    },
+    "name": {
+      "type": "string",
+      "description": "Human-readable workflow name."
+    },
+    "description": {
+      "type": "string",
+      "description": "Optional workflow description."
+    },
+    "uuid": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Optional stable workflow identity for server-side cost estimates (independent of directory id)."
+    },
+    "steps": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/Executable" }
+    }
+  },
+  "$defs": {
+    "Executable": {
+      "oneOf": [
+        { "$ref": "#/$defs/StepDefinition" },
+        { "$ref": "#/$defs/BlueprintRef" },
+        { "$ref": "#" },
+        { "$ref": "blueprint.schema.json" }
+      ]
+    },
+    "StepDefinition": {
+      "type": "object",
+      "required": ["kind", "stepId", "name", "behaviour"],
+      "additionalProperties": false,
+      "properties": {
+        "kind": { "type": "string", "const": "STEP" },
+        "stepId": { "type": "string" },
+        "name": { "type": "string" },
+        "behaviour": { "$ref": "#/$defs/StepBehaviour" },
+        "contextMapping": { "$ref": "#/$defs/ContextMapping" },
+        "maxUserPromptRounds": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Maximum blocking USER_PROMPT pauses for this step before the run fails."
+        }
+      }
+    },
+    "BlueprintRef": {
+      "type": "object",
+      "required": ["kind", "blueprintId"],
+      "additionalProperties": false,
+      "properties": {
+        "kind": { "type": "string", "const": "BLUEPRINT_REF" },
+        "blueprintId": { "type": "string" }
+      }
+    },
+    "StepBehaviour": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": ["AGENT", "SPAR", "WORKFLOW", "INPUT", "RESOURCE", "BRANCH", "FAIL", "RETRY_PREVIOUS"]
+        }
+      },
+      "required": ["type"],
+      "discriminator": {
+        "propertyName": "type"
+      },
+      "oneOf": [
+        { "$ref": "#/$defs/AgentBehaviour" },
+        { "$ref": "#/$defs/SparBehaviour" },
+        { "$ref": "#/$defs/WorkflowBehaviour" },
+        { "$ref": "#/$defs/InputBehaviour" },
+        { "$ref": "#/$defs/ResourceBehaviour" },
+        { "$ref": "#/$defs/BranchBehaviour" },
+        { "$ref": "#/$defs/FailBehaviour" },
+        { "$ref": "#/$defs/RetryPreviousBehaviour" }
+      ]
+    },
+    "AgentBehaviour": {
+      "type": "object",
+      "required": ["type", "agentRef", "transition"],
+      "additionalProperties": false,
+      "properties": {
+        "type": { "type": "string", "const": "AGENT" },
+        "agentRef": { "type": "string" },
+        "transition": { "$ref": "#/$defs/StepTransition" },
+        "retryPolicy": { "$ref": "#/$defs/RetryPolicy" }
+      }
+    },
+    "SparBehaviour": {
+      "type": "object",
+      "required": ["type", "agentRef", "sparConfig", "transition"],
+      "additionalProperties": false,
+      "properties": {
+        "type": { "type": "string", "const": "SPAR" },
+        "agentRef": { "type": "string" },
+        "sparConfig": { "$ref": "#/$defs/SparConfig" },
+        "transition": { "$ref": "#/$defs/StepTransition" },
+        "retryPolicy": { "$ref": "#/$defs/RetryPolicy" }
+      }
+    },
+    "WorkflowBehaviour": {
+      "type": "object",
+      "required": ["type", "workflowRef", "transition"],
+      "additionalProperties": false,
+      "properties": {
+        "type": { "type": "string", "const": "WORKFLOW" },
+        "workflowRef": { "type": "string" },
+        "transition": { "$ref": "#/$defs/StepTransition" }
+      }
+    },
+    "InputBehaviour": {
+      "type": "object",
+      "required": ["type", "artifactId", "transition"],
+      "additionalProperties": false,
+      "properties": {
+        "type": { "type": "string", "const": "INPUT" },
+        "artifactId": { "type": "string" },
+        "transition": { "$ref": "#/$defs/StepTransition" }
+      }
+    },
+    "ResourceBehaviour": {
+      "type": "object",
+      "required": ["type", "resourcePath", "contextKey", "transition"],
+      "additionalProperties": false,
+      "properties": {
+        "type": { "type": "string", "const": "RESOURCE" },
+        "resourcePath": {
+          "type": "string",
+          "description": "Resource path resolved by the runtime resource resolver under allowed roots."
+        },
+        "contextKey": {
+          "type": "string",
+          "description": "Context key under which the resource content is stored."
+        },
+        "transition": { "$ref": "#/$defs/StepTransition" }
+      }
+    },
+    "BranchBehaviour": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "type": { "const": "BRANCH" },
+        "contextKey": { "type": "string", "minLength": 1 },
+        "branches": {
+          "type": "object",
+          "additionalProperties": { "$ref": "#/$defs/Executable" }
+        },
+        "defaultBranch": { "$ref": "#/$defs/Executable" }
+      },
+      "required": ["type", "contextKey", "branches"]
+    },
+    "FailBehaviour": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "type": { "const": "FAIL" },
+        "reason": { "type": "string", "minLength": 1 }
+      },
+      "required": ["type", "reason"]
+    },
+    "RetryPreviousBehaviour": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "type": { "const": "RETRY_PREVIOUS" },
+        "retryStepId": { "type": "string", "minLength": 1 },
+        "retryMode": { "enum": ["SINGLE_STEP", "FROM_STEP"] },
+        "maxAttempts": { "type": "integer", "minimum": 1 },
+        "fallback": { "$ref": "#/$defs/Executable" }
+      },
+      "required": ["type", "retryStepId", "retryMode", "maxAttempts", "fallback"]
+    },
+    "StepTransition": {
+      "type": "string",
+      "enum": ["AUTO", "HUMAN_REVIEW", "HUMAN_APPROVAL"]
+    },
+    "SparConfig": {
+      "type": "object",
+      "required": ["challengerAgentId", "maxRounds", "resolutionPrompt"],
+      "additionalProperties": false,
+      "properties": {
+        "challengerAgentId": { "type": "string" },
+        "maxRounds": { "type": "integer", "minimum": 1 },
+        "resolutionPrompt": { "type": "string" }
+      }
+    },
+    "RetryPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "allowRetry": { "type": "boolean" },
+        "allowRetryFromPrevious": { "type": "boolean" },
+        "allowAgentSwap": { "type": "boolean" },
+        "allowPromptOverride": { "type": "boolean" },
+        "maxAttempts": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "ContextMapping": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "inputKeys": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "outputKeys": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,117 @@
+// @vitest-environment jsdom
+import JSZip from 'jszip';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { WorkflowDefinition } from '../src/api/types';
+import { WorkflowParseError } from '../src/io/core';
+import {
+  buildWorkflowZipBlob,
+  exportWorkflowZip,
+  importWorkflowZip,
+  sanitizeObject,
+} from '../src/io/browser/zip';
+
+function sampleWorkflow(): WorkflowDefinition {
+  return {
+    id: 'zip-demo',
+    name: 'ZIP Demo',
+    description: 'Demo workflow',
+    steps: [
+      {
+        stepId: 'ask-user-1',
+        name: 'Ask',
+        behaviourType: 'INPUT',
+        config: { artifactId: 'artifact-ask-user-1', transition: 'AUTO' },
+      },
+      {
+        stepId: 'ai-step-1',
+        name: 'Think',
+        behaviourType: 'AGENT',
+        config: { agentRef: 'agent-a', transition: 'AUTO', maxRetries: 0 },
+        stepPrompt: 'Do the work',
+      },
+    ],
+    artifacts: {
+      'artifact-ask-user-1': {
+        id: 'artifact-ask-user-1',
+        items: [{ id: 'value', type: 'TEXT', label: 'Value', required: true }],
+      },
+    },
+  };
+}
+
+describe('workflow zip io', () => {
+  beforeEach(() => {
+    vi.stubGlobal('URL', {
+      createObjectURL: vi.fn(() => 'blob:mock'),
+      revokeObjectURL: vi.fn(),
+    });
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('buildWorkflowZipBlob produces an application/zip blob', async () => {
+    const blob = await buildWorkflowZipBlob(sampleWorkflow());
+    expect(blob.type).toBe('application/zip');
+  });
+
+  it('exportWorkflowZip triggers a download with a zip blob', async () => {
+    const click = vi.fn();
+    vi.spyOn(document, 'createElement').mockReturnValue({
+      click,
+      href: '',
+      download: '',
+    } as unknown as HTMLAnchorElement);
+
+    await exportWorkflowZip(sampleWorkflow());
+
+    expect(URL.createObjectURL).toHaveBeenCalled();
+    expect(click).toHaveBeenCalled();
+    expect(URL.revokeObjectURL).toHaveBeenCalled();
+  });
+
+  it('imports a valid zip and returns the workflow id', async () => {
+    const blob = await buildWorkflowZipBlob(sampleWorkflow());
+    const file = new File([blob], 'zip-demo.workflow.zip', { type: 'application/zip' });
+    const imported = await importWorkflowZip(file);
+    expect(imported.id).toBe('zip-demo');
+    expect(imported.steps).toHaveLength(2);
+    expect(imported.steps[1]?.stepPrompt).toBe('Do the work');
+  });
+
+  it('rejects zip files over 5 MB', async () => {
+    const file = { size: 6 * 1024 * 1024, name: 'big.zip' } as File;
+    await expect(importWorkflowZip(file)).rejects.toThrow(WorkflowParseError);
+  });
+
+  it('rejects zip entries containing path traversal', async () => {
+    const zip = new JSZip();
+    zip.file('demo.workflow/../escape', 'bad');
+    zip.file('demo.workflow/workflow.json', JSON.stringify({ kind: 'WORKFLOW', id: 'demo', name: 'Demo', steps: [] }));
+    const blob = await zip.generateAsync({ type: 'blob' });
+    const file = new File([blob], 'bad.zip', { type: 'application/zip' });
+    await expect(importWorkflowZip(file)).rejects.toThrow(WorkflowParseError);
+  });
+
+  it('rejects zip files missing workflow.json', async () => {
+    const zip = new JSZip();
+    zip.file('demo.workflow/readme.txt', 'missing workflow json');
+    const blob = await zip.generateAsync({ type: 'blob' });
+    const file = new File([blob], 'missing.json.zip', { type: 'application/zip' });
+    await expect(importWorkflowZip(file)).rejects.toThrow(/workflow\.json not found/);
+  });
+
+  it('sanitizeObject strips dangerous keys', () => {
+    const cleaned = sanitizeObject({
+      id: 'safe',
+      __proto__: { polluted: true },
+      nested: {
+        constructor: { bad: true },
+        prototype: { bad: true },
+        ok: 1,
+      },
+    });
+    expect(cleaned).toEqual({ id: 'safe', nested: { ok: 1 } });
+  });
+});
