@@ -63,4 +63,20 @@ class WorkflowExecutableSchemaContractTest {
         .isNotEmpty()
         .anyMatch(v -> v.getMessage() != null && v.getMessage().contains("blueprints"));
   }
+
+  @Test
+  void workflowSchema_acceptsStepPrompt() throws Exception {
+    JsonNode schemaNode = MAPPER.readTree(Files.readString(SCHEMA_PATH));
+    JsonSchema schema = SCHEMA_FACTORY.getSchema(SCHEMA_PATH.toUri(), schemaNode);
+    JsonNode instance = MAPPER.readTree("""
+        {
+          "kind": "WORKFLOW",
+          "id": "x",
+          "name": "X",
+          "steps": [{"kind": "STEP", "stepId": "s1", "name": "S", "stepPrompt": "do the thing", "behaviour": {"type": "FAIL", "reason": "r"}}]
+        }
+        """);
+    Set<ValidationMessage> violations = schema.validate(instance);
+    assertThat(violations).isEmpty();
+  }
 }

@@ -48,6 +48,10 @@
         "name": { "type": "string" },
         "behaviour": { "$ref": "#/$defs/StepBehaviour" },
         "contextMapping": { "$ref": "#/$defs/ContextMapping" },
+        "stepPrompt": {
+          "type": "string",
+          "description": "Optional prompt content for the step; may be blank depending on behaviour."
+        },
         "maxUserPromptRounds": {
           "type": "integer",
           "minimum": 1,

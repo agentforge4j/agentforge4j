@@ -64,6 +64,7 @@ public final class LlmCallObserver {
       String modelUsed,
       TokenUsageReport tokenUsage,
       int callTotal) {
+    // totalTokens = inputTokens + outputTokens; TokenUsageReport has no totalTokens field by design
     Integer totalTokens = (tokenUsage == null
         || (tokenUsage.inputTokens() == null && tokenUsage.outputTokens() == null))
         ? null : callTotal;
