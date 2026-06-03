@@ -4,7 +4,7 @@
   xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
   <modelVersion>4.0.0</modelVersion>
 
-  <groupId>com.agentforge4j</groupId>
+  <groupId>org.agentforge4j</groupId>
   <artifactId>agentforge4j</artifactId>
   <version>0.0.1-SNAPSHOT</version>
 
@@ -75,97 +75,97 @@
       </dependency>
 
       <dependency>
-        <groupId>com.agentforge4j</groupId>
+        <groupId>org.agentforge4j</groupId>
         <artifactId>agentforge4j-util</artifactId>
         <version>${project.version}</version>
       </dependency>
       <dependency>
-        <groupId>com.agentforge4j</groupId>
+        <groupId>org.agentforge4j</groupId>
         <artifactId>agentforge4j-llm-api</artifactId>
         <version>${project.version}</version>
       </dependency>
       <dependency>
-        <groupId>com.agentforge4j</groupId>
+        <groupId>org.agentforge4j</groupId>
         <artifactId>agentforge4j-llm</artifactId>
         <version>${project.version}</version>
       </dependency>
       <dependency>
-        <groupId>com.agentforge4j</groupId>
+        <groupId>org.agentforge4j</groupId>
         <artifactId>agentforge4j-llm-bedrock</artifactId>
         <version>${project.version}</version>
       </dependency>
       <dependency>
-        <groupId>com.agentforge4j</groupId>
+        <groupId>org.agentforge4j</groupId>
         <artifactId>agentforge4j-llm-claude</artifactId>
         <version>${project.version}</version>
       </dependency>
       <dependency>
-        <groupId>com.agentforge4j</groupId>
+        <groupId>org.agentforge4j</groupId>
         <artifactId>agentforge4j-llm-gemini</artifactId>
         <version>${project.version}</version>
       </dependency>
       <dependency>
-        <groupId>com.agentforge4j</groupId>
+        <groupId>org.agentforge4j</groupId>
         <artifactId>agentforge4j-llm-mistral</artifactId>
         <version>${project.version}</version>
       </dependency>
       <dependency>
-        <groupId>com.agentforge4j</groupId>
+        <groupId>org.agentforge4j</groupId>
         <artifactId>agentforge4j-llm-ollama</artifactId>
         <version>${project.version}</version>
       </dependency>
       <dependency>
-        <groupId>com.agentforge4j</groupId>
+        <groupId>org.agentforge4j</groupId>
         <artifactId>agentforge4j-llm-vllm</artifactId>
         <version>${project.version}</version>
       </dependency>
       <dependency>
-        <groupId>com.agentforge4j</groupId>
+        <groupId>org.agentforge4j</groupId>
         <artifactId>agentforge4j-llm-openai</artifactId>
         <version>${project.version}</version>
       </dependency>
       <dependency>
-        <groupId>com.agentforge4j</groupId>
+        <groupId>org.agentforge4j</groupId>
         <artifactId>agentforge4j-llm-openai-compatible</artifactId>
         <version>${project.version}</version>
       </dependency>
       <dependency>
-        <groupId>com.agentforge4j</groupId>
+        <groupId>org.agentforge4j</groupId>
         <artifactId>agentforge4j-llm-azure-openai</artifactId>
         <version>${project.version}</version>
       </dependency>
       <dependency>
-        <groupId>com.agentforge4j</groupId>
+        <groupId>org.agentforge4j</groupId>
         <artifactId>agentforge4j-core</artifactId>
         <version>${project.version}</version>
       </dependency>
       <dependency>
-        <groupId>com.agentforge4j</groupId>
+        <groupId>org.agentforge4j</groupId>
         <artifactId>agentforge4j-schema</artifactId>
         <version>${project.version}</version>
       </dependency>
       <dependency>
-        <groupId>com.agentforge4j</groupId>
+        <groupId>org.agentforge4j</groupId>
         <artifactId>agentforge4j-config-loader</artifactId>
         <version>${project.version}</version>
       </dependency>
       <dependency>
-        <groupId>com.agentforge4j</groupId>
+        <groupId>org.agentforge4j</groupId>
         <artifactId>agentforge4j-workflows</artifactId>
         <version>${project.version}</version>
       </dependency>
       <dependency>
-        <groupId>com.agentforge4j</groupId>
+        <groupId>org.agentforge4j</groupId>
         <artifactId>agentforge4j-integrations</artifactId>
         <version>${project.version}</version>
       </dependency>
       <dependency>
-        <groupId>com.agentforge4j</groupId>
+        <groupId>org.agentforge4j</groupId>
         <artifactId>agentforge4j-runtime</artifactId>
         <version>${project.version}</version>
       </dependency>
       <dependency>
-        <groupId>com.agentforge4j</groupId>
+        <groupId>org.agentforge4j</groupId>
         <artifactId>agentforge4j-bootstrap</artifactId>
         <version>${project.version}</version>
       </dependency>

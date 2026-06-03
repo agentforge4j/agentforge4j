@@ -5,7 +5,7 @@
   <modelVersion>4.0.0</modelVersion>
 
   <parent>
-    <groupId>com.agentforge4j</groupId>
+    <groupId>org.agentforge4j</groupId>
     <artifactId>agentforge4j</artifactId>
     <version>0.0.1-SNAPSHOT</version>
     <relativePath>../pom.xml</relativePath>
@@ -15,77 +15,85 @@
   <name>AgentForge4J Spring Boot Starter</name>
   <description>Auto-configures the AgentForge4J runtime for Spring Boot applications</description>
 
+  <licenses>
+    <license>
+      <name>Apache License, Version 2.0</name>
+      <url>https://www.apache.org/licenses/LICENSE-2.0</url>
+      <distribution>repo</distribution>
+    </license>
+  </licenses>
+
   <dependencies>
     <dependency>
-      <groupId>com.agentforge4j</groupId>
+      <groupId>org.agentforge4j</groupId>
       <artifactId>agentforge4j-util</artifactId>
     </dependency>
     <dependency>
-      <groupId>com.agentforge4j</groupId>
+      <groupId>org.agentforge4j</groupId>
       <artifactId>agentforge4j-core</artifactId>
     </dependency>
     <dependency>
-      <groupId>com.agentforge4j</groupId>
+      <groupId>org.agentforge4j</groupId>
       <artifactId>agentforge4j-llm-api</artifactId>
     </dependency>
     <dependency>
-      <groupId>com.agentforge4j</groupId>
+      <groupId>org.agentforge4j</groupId>
       <artifactId>agentforge4j-llm</artifactId>
     </dependency>
     <dependency>
-      <groupId>com.agentforge4j</groupId>
+      <groupId>org.agentforge4j</groupId>
       <artifactId>agentforge4j-config-loader</artifactId>
     </dependency>
     <dependency>
-      <groupId>com.agentforge4j</groupId>
+      <groupId>org.agentforge4j</groupId>
       <artifactId>agentforge4j-runtime</artifactId>
     </dependency>
     <dependency>
-      <groupId>com.agentforge4j</groupId>
+      <groupId>org.agentforge4j</groupId>
       <artifactId>agentforge4j-bootstrap</artifactId>
     </dependency>
     <dependency>
-      <groupId>com.agentforge4j</groupId>
+      <groupId>org.agentforge4j</groupId>
       <artifactId>agentforge4j-llm-openai</artifactId>
       <optional>true</optional>
     </dependency>
     <dependency>
-      <groupId>com.agentforge4j</groupId>
+      <groupId>org.agentforge4j</groupId>
       <artifactId>agentforge4j-llm-ollama</artifactId>
       <optional>true</optional>
     </dependency>
     <dependency>
-      <groupId>com.agentforge4j</groupId>
+      <groupId>org.agentforge4j</groupId>
       <artifactId>agentforge4j-llm-claude</artifactId>
       <optional>true</optional>
     </dependency>
     <dependency>
-      <groupId>com.agentforge4j</groupId>
+      <groupId>org.agentforge4j</groupId>
       <artifactId>agentforge4j-llm-vllm</artifactId>
       <optional>true</optional>
     </dependency>
     <dependency>
-      <groupId>com.agentforge4j</groupId>
+      <groupId>org.agentforge4j</groupId>
       <artifactId>agentforge4j-llm-openai-compatible</artifactId>
       <optional>true</optional>
     </dependency>
     <dependency>
-      <groupId>com.agentforge4j</groupId>
+      <groupId>org.agentforge4j</groupId>
       <artifactId>agentforge4j-llm-gemini</artifactId>
       <optional>true</optional>
     </dependency>
     <dependency>
-      <groupId>com.agentforge4j</groupId>
+      <groupId>org.agentforge4j</groupId>
       <artifactId>agentforge4j-llm-azure-openai</artifactId>
       <optional>true</optional>
     </dependency>
     <dependency>
-      <groupId>com.agentforge4j</groupId>
+      <groupId>org.agentforge4j</groupId>
       <artifactId>agentforge4j-llm-bedrock</artifactId>
       <optional>true</optional>
     </dependency>
     <dependency>
-      <groupId>com.agentforge4j</groupId>
+      <groupId>org.agentforge4j</groupId>
       <artifactId>agentforge4j-llm-mistral</artifactId>
       <optional>true</optional>
     </dependency>
