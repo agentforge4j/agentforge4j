@@ -274,11 +274,12 @@ class SparBehaviourHandlerTest {
   }
 
   private static AgentInvocationResult bareContinueResult() {
-    return new AgentInvocationResult(
-        "[{\"type\":\"CONTINUE\"}]",
-        List.of(new ContinueCommand(null, null, null)),
-        TEST_MODEL,
-        TEST_TOKEN_USAGE);
+    return AgentInvocationResult.builder()
+        .withRawResponse("[{\"type\":\"CONTINUE\"}]")
+        .withCommands(List.of(new ContinueCommand(null, null, null)))
+        .withModelUsed(TEST_MODEL)
+        .withTokenUsage(TEST_TOKEN_USAGE)
+        .build();
   }
 
   private static AgentInvocationResult invokeResult(boolean wantsAnotherRound, String reason) {
@@ -293,6 +294,11 @@ class SparBehaviourHandlerTest {
           + "\"}]";
     }
     List<LlmCommand> cmds = List.of(new ContinueCommand(wantsAnotherRound, reason, null));
-    return new AgentInvocationResult(json, cmds, TEST_MODEL, TEST_TOKEN_USAGE);
+    return AgentInvocationResult.builder()
+        .withRawResponse(json)
+        .withCommands(cmds)
+        .withModelUsed(TEST_MODEL)
+        .withTokenUsage(TEST_TOKEN_USAGE)
+        .build();
   }
 }

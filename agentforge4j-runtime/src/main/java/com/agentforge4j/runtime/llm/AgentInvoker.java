@@ -314,14 +314,15 @@ public final class AgentInvoker {
     llmCallObserver.observe(actorIdForEvents, preference.provider(), parsed.llmResponse(),
         resolution.resolvedModel(), resolution.modelSource(), resolution.requestedModelTier(),
         state);
-    return new AgentInvocationResult(
-        parsed.llmResponse().text(),
-        parsed.commands(),
-        parsed.llmResponse().modelUsed(),
-        parsed.llmResponse().tokenUsage(),
-        resolution.resolvedModel(),
-        resolution.modelSource(),
-        resolution.requestedModelTier());
+    return AgentInvocationResult.builder()
+        .withRawResponse(parsed.llmResponse().text())
+        .withCommands(parsed.commands())
+        .withModelUsed(parsed.llmResponse().modelUsed())
+        .withTokenUsage(parsed.llmResponse().tokenUsage())
+        .withResolvedModel(resolution.resolvedModel())
+        .withModelSource(resolution.modelSource())
+        .withRequestedModelTier(resolution.requestedModelTier())
+        .build();
   }
 
   /**

@@ -48,21 +48,131 @@ public record AgentInvocationResult(
   }
 
   /**
-   * Backward-compatible constructor for callers (chiefly tests and non-LLM paths) that do not carry
-   * tier-resolution metadata; delegates to the canonical constructor with
-   * {@link ModelSource#PROVIDER_DEFAULT}, a {@code null} {@code resolvedModel}, and a {@code null}
-   * {@code requestedModelTier}.
+   * Returns a new {@link Builder} for assembling an {@link AgentInvocationResult} without positional
+   * arguments. The tier-resolution metadata is optional: {@code modelSource} defaults to
+   * {@link ModelSource#PROVIDER_DEFAULT} and both {@code resolvedModel} and
+   * {@code requestedModelTier} default to {@code null}, so callers on non-LLM paths (chiefly tests)
+   * only set the four core components. Required fields are validated when {@link Builder#build()} is
+   * called.
    *
-   * @param rawResponse raw model output text before command parsing
-   * @param commands    parsed commands from the response
-   * @param modelUsed   the concrete model the provider ran; nullable
-   * @param tokenUsage  token counts for this invocation; nullable
+   * @return new builder; never {@code null}
    */
-  public AgentInvocationResult(
-      String rawResponse,
-      List<LlmCommand> commands,
-      String modelUsed,
-      TokenUsageReport tokenUsage) {
-    this(rawResponse, commands, modelUsed, tokenUsage, null, ModelSource.PROVIDER_DEFAULT, null);
+  public static Builder builder() {
+    return new Builder();
+  }
+
+  /**
+   * Fluent builder for {@link AgentInvocationResult}. Lets callers omit the tier-resolution metadata
+   * without passing trailing arguments to the canonical constructor. Validation is deferred to
+   * {@link #build()}, which delegates to the canonical constructor.
+   */
+  public static final class Builder {
+
+    private String rawResponse;
+    private List<LlmCommand> commands;
+    private String modelUsed;
+    private TokenUsageReport tokenUsage;
+    private String resolvedModel;
+    private ModelSource modelSource = ModelSource.PROVIDER_DEFAULT;
+    private ModelTier requestedModelTier;
+
+    private Builder() {
+      // obtain via AgentInvocationResult.builder()
+    }
+
+    /**
+     * Sets the raw model output text before command parsing.
+     *
+     * @param rawResponse non-blank raw response text
+     *
+     * @return this builder
+     */
+    public Builder withRawResponse(String rawResponse) {
+      this.rawResponse = rawResponse;
+      return this;
+    }
+
+    /**
+     * Sets the parsed commands from the response.
+     *
+     * @param commands parsed commands; must not be {@code null}
+     *
+     * @return this builder
+     */
+    public Builder withCommands(List<LlmCommand> commands) {
+      this.commands = commands;
+      return this;
+    }
+
+    /**
+     * Sets the concrete model the provider ran.
+     *
+     * @param modelUsed model the provider reported; nullable
+     *
+     * @return this builder
+     */
+    public Builder withModelUsed(String modelUsed) {
+      this.modelUsed = modelUsed;
+      return this;
+    }
+
+    /**
+     * Sets the token counts for this invocation.
+     *
+     * @param tokenUsage token usage; nullable
+     *
+     * @return this builder
+     */
+    public Builder withTokenUsage(TokenUsageReport tokenUsage) {
+      this.tokenUsage = tokenUsage;
+      return this;
+    }
+
+    /**
+     * Sets the model string the runtime resolved and sent on the request.
+     *
+     * @param resolvedModel resolved model; {@code null} for {@link ModelSource#PROVIDER_DEFAULT}
+     *
+     * @return this builder
+     */
+    public Builder withResolvedModel(String resolvedModel) {
+      this.resolvedModel = resolvedModel;
+      return this;
+    }
+
+    /**
+     * Sets how {@code resolvedModel} was determined. Defaults to
+     * {@link ModelSource#PROVIDER_DEFAULT} when not set.
+     *
+     * @param modelSource model source; must not be {@code null}
+     *
+     * @return this builder
+     */
+    public Builder withModelSource(ModelSource modelSource) {
+      this.modelSource = modelSource;
+      return this;
+    }
+
+    /**
+     * Sets the capability tier requested for this call.
+     *
+     * @param requestedModelTier requested tier, or {@code null} when no tier applied
+     *
+     * @return this builder
+     */
+    public Builder withRequestedModelTier(ModelTier requestedModelTier) {
+      this.requestedModelTier = requestedModelTier;
+      return this;
+    }
+
+    /**
+     * Builds the validated {@link AgentInvocationResult}.
+     *
+     * @return immutable invocation result; never {@code null}
+     */
+    public AgentInvocationResult build() {
+      return new AgentInvocationResult(rawResponse, commands, modelUsed, tokenUsage, resolvedModel,
+          modelSource, requestedModelTier);
+    }
   }
 }

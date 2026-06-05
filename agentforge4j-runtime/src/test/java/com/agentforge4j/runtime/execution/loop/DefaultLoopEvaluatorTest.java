@@ -69,8 +69,12 @@ class DefaultLoopEvaluatorTest {
   @Test
   void terminates_when_agent_returns_termination_signal() {
     when(agentInvoker.invoke(eq("eval-agent"), any(), any(), isNull()))
-        .thenReturn(new AgentInvocationResult(
-            "raw", List.of(new CompleteCommand(null)), TEST_MODEL, TEST_TOKEN_USAGE));
+        .thenReturn(AgentInvocationResult.builder()
+            .withRawResponse("raw")
+            .withCommands(List.of(new CompleteCommand(null)))
+            .withModelUsed(TEST_MODEL)
+            .withTokenUsage(TEST_TOKEN_USAGE)
+            .build());
 
     assertThat(evaluator.shouldTerminate("eval-agent", 2, executionContext)).isTrue();
   }
@@ -78,9 +82,12 @@ class DefaultLoopEvaluatorTest {
   @Test
   void continues_when_agent_returns_continue_signal() {
     when(agentInvoker.invoke(eq("eval-agent"), any(), any(), isNull()))
-        .thenReturn(new AgentInvocationResult(
-            "raw", List.of(new ContinueCommand(null, null, List.of())), TEST_MODEL,
-            TEST_TOKEN_USAGE));
+        .thenReturn(AgentInvocationResult.builder()
+            .withRawResponse("raw")
+            .withCommands(List.of(new ContinueCommand(null, null, List.of())))
+            .withModelUsed(TEST_MODEL)
+            .withTokenUsage(TEST_TOKEN_USAGE)
+            .build());
 
     assertThat(evaluator.shouldTerminate("eval-agent", 2, executionContext)).isFalse();
   }
@@ -98,7 +105,12 @@ class DefaultLoopEvaluatorTest {
   void passes_state_to_evaluator_agent_invocation() {
     when(agentInvoker.invoke(eq("eval-agent"), eq(ContextMapping.none()),
         eq(executionContext.getState()), isNull()))
-        .thenReturn(new AgentInvocationResult("raw", List.of(), TEST_MODEL, TEST_TOKEN_USAGE));
+        .thenReturn(AgentInvocationResult.builder()
+            .withRawResponse("raw")
+            .withCommands(List.of())
+            .withModelUsed(TEST_MODEL)
+            .withTokenUsage(TEST_TOKEN_USAGE)
+            .build());
 
     evaluator.shouldTerminate("eval-agent", 4, executionContext);
 
