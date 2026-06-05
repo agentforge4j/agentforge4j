@@ -136,7 +136,7 @@ class RuntimeAutoConfigurationPromptCacheTest {
         ObjectMapper objectMapper,
         LlmCacheSettings cacheSettings) {
       EventRecorder eventRecorder = agentForge4j.components().eventRecorder();
-      LlmCallObserver llmCallObserver = new LlmCallObserver(eventRecorder);
+      LlmCallObserver llmCallObserver = new LlmCallObserver(eventRecorder, objectMapper);
       return AgentInvoker.builder()
           .agentRepository(agentRepository)
           .llmClientResolver(llmClientResolver)

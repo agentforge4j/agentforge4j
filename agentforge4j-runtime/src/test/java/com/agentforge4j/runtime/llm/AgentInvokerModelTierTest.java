@@ -160,7 +160,7 @@ class AgentInvokerModelTierTest {
         .eventRecorder(recorder)
         .llmProviderSelectionStrategy(new FirstAvailableProviderSelectionStrategy())
         .promptCacheEnabled(false)
-        .llmCallObserver(new LlmCallObserver(recorder))
+        .llmCallObserver(new LlmCallObserver(recorder, mapper))
         .modelTierResolver(resolver)
         .build();
   }

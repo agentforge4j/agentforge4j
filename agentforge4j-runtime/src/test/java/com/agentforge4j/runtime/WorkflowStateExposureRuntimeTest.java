@@ -131,7 +131,7 @@ class WorkflowStateExposureRuntimeTest {
         .eventRecorder(eventRecorder)
         .llmProviderSelectionStrategy(new FirstAvailableProviderSelectionStrategy())
         .promptCacheEnabled(true)
-        .llmCallObserver(new LlmCallObserver(eventRecorder))
+        .llmCallObserver(new LlmCallObserver(eventRecorder, mapper))
         .modelTierResolver((provider, tier) -> null)
         .build();
   }

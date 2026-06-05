@@ -10,6 +10,7 @@ import com.agentforge4j.llm.api.ModelTier;
 import com.agentforge4j.llm.api.TokenUsageReport;
 import com.agentforge4j.runtime.event.EventRecorder;
 import com.agentforge4j.runtime.repository.InMemoryWorkflowEventLog;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
@@ -20,11 +21,13 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 class LlmCallObserverTest {
 
+  private final ObjectMapper objectMapper = new ObjectMapper();
+
   @Test
   void observe_emits_LLM_CALL_COMPLETED_event() {
     InMemoryWorkflowEventLog eventLog = new InMemoryWorkflowEventLog();
     EventRecorder recorder = recorder(eventLog);
-    LlmCallObserver observer = new LlmCallObserver(recorder);
+    LlmCallObserver observer = new LlmCallObserver(recorder, objectMapper);
     WorkflowState state = workflowState("run-llm-call-completed");
 
     observer.observe(
@@ -55,7 +58,7 @@ class LlmCallObserverTest {
 
   @Test
   void observe_writes_llm_tokens_total_to_context() {
-    LlmCallObserver observer = new LlmCallObserver(recorder(new InMemoryWorkflowEventLog()));
+    LlmCallObserver observer = new LlmCallObserver(recorder(new InMemoryWorkflowEventLog()), objectMapper);
     WorkflowState state = workflowState("run-llm-tokens-total");
 
     observer.observe(
@@ -72,7 +75,7 @@ class LlmCallObserverTest {
 
   @Test
   void observe_accumulates_across_multiple_calls() {
-    LlmCallObserver observer = new LlmCallObserver(recorder(new InMemoryWorkflowEventLog()));
+    LlmCallObserver observer = new LlmCallObserver(recorder(new InMemoryWorkflowEventLog()), objectMapper);
     WorkflowState state = workflowState("run-llm-tokens-accumulate");
     TokenUsageReport firstUsage = new TokenUsageReport(10, 5, null, null);
     TokenUsageReport secondUsage = new TokenUsageReport(20, 8, null, null);
@@ -89,7 +92,7 @@ class LlmCallObserverTest {
   void observe_with_null_tokenUsage_writes_zero_contribution() {
     InMemoryWorkflowEventLog eventLog = new InMemoryWorkflowEventLog();
     EventRecorder recorder = recorder(eventLog);
-    LlmCallObserver observer = new LlmCallObserver(recorder);
+    LlmCallObserver observer = new LlmCallObserver(recorder, objectMapper);
     WorkflowState state = workflowState("run-null-usage-contribution");
 
     observer.observe("agent-x", "openai", llmResponse("gpt-4o", null),
@@ -105,7 +108,7 @@ class LlmCallObserverTest {
   void observe_payload_emits_null_for_absent_tokens() {
     InMemoryWorkflowEventLog eventLog = new InMemoryWorkflowEventLog();
     EventRecorder recorder = recorder(eventLog);
-    LlmCallObserver observer = new LlmCallObserver(recorder);
+    LlmCallObserver observer = new LlmCallObserver(recorder, objectMapper);
     WorkflowState state = workflowState("run-null-token-payload");
 
     observer.observe("agent-x", "openai", llmResponse("gpt-4o", null),

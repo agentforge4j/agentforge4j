@@ -504,7 +504,7 @@ public final class AgentForge4jBootstrap {
           ? eventRecorder : new EventRecorder(resolvedEventLog, resolvedClock);
 
       LlmCallObserver resolvedObserver = (llmCallObserver != null)
-          ? llmCallObserver : new LlmCallObserver(resolvedRecorder);
+          ? llmCallObserver : new LlmCallObserver(resolvedRecorder, resolvedMapper);
 
       ModelTierResolver resolvedTierResolver = (modelTierResolver != null)
           ? modelTierResolver

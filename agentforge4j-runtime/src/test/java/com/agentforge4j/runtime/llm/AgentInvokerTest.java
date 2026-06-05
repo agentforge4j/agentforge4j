@@ -310,7 +310,7 @@ class AgentInvokerTest {
         .llmOutputEventCharCap(0)
         .llmProviderSelectionStrategy(new FirstAvailableProviderSelectionStrategy())
         .promptCacheEnabled(true)
-        .llmCallObserver(new LlmCallObserver(recorder))
+        .llmCallObserver(new LlmCallObserver(recorder, mapper))
         .modelTierResolver((provider, tier) -> null)
         .build();
     WorkflowState state = workflowState("run-cap-zero");
@@ -352,7 +352,7 @@ class AgentInvokerTest {
         .llmOutputEventCharCap(100)
         .llmProviderSelectionStrategy(new FirstAvailableProviderSelectionStrategy())
         .promptCacheEnabled(true)
-        .llmCallObserver(new LlmCallObserver(recorder))
+        .llmCallObserver(new LlmCallObserver(recorder, mapper))
         .modelTierResolver((provider, tier) -> null)
         .build();
     WorkflowState state = workflowState("run-cap-custom");
@@ -428,7 +428,7 @@ class AgentInvokerTest {
         .llmOutputEventCharCap(AgentInvoker.DEFAULT_LLM_OUTPUT_EVENT_CHAR_CAP)
         .llmProviderSelectionStrategy(selectionStrategy)
         .promptCacheEnabled(true)
-        .llmCallObserver(new LlmCallObserver(eventRecorder))
+        .llmCallObserver(new LlmCallObserver(eventRecorder, mapper))
         .modelTierResolver((provider, tier) -> null)
         .build();
 
@@ -485,7 +485,7 @@ class AgentInvokerTest {
         .eventRecorder(eventRecorder)
         .llmProviderSelectionStrategy(new FirstAvailableProviderSelectionStrategy())
         .promptCacheEnabled(true)
-        .llmCallObserver(new LlmCallObserver(eventRecorder))
+        .llmCallObserver(new LlmCallObserver(eventRecorder, mapper))
         .modelTierResolver((provider, tier) -> null)
         .build();
     WorkflowState state = workflowState("run-system-prompt-order");
@@ -529,7 +529,7 @@ class AgentInvokerTest {
         .eventRecorder(eventRecorder)
         .llmProviderSelectionStrategy(new FirstAvailableProviderSelectionStrategy())
         .promptCacheEnabled(true)
-        .llmCallObserver(new LlmCallObserver(eventRecorder))
+        .llmCallObserver(new LlmCallObserver(eventRecorder, mapper))
         .modelTierResolver((provider, tier) -> null)
         .build();
     WorkflowState state = workflowState("run-system-prompt-no-step");
@@ -588,7 +588,7 @@ class AgentInvokerTest {
         .eventRecorder(eventRecorder)
         .llmProviderSelectionStrategy(new FirstAvailableProviderSelectionStrategy())
         .promptCacheEnabled(true)
-        .llmCallObserver(new LlmCallObserver(eventRecorder))
+        .llmCallObserver(new LlmCallObserver(eventRecorder, mapper))
         .modelTierResolver((provider, tier) -> null)
         .build();
     WorkflowState state = workflowState("run-system-prompt-separator");
@@ -623,7 +623,7 @@ class AgentInvokerTest {
         .llmOutputEventCharCap(AgentInvoker.DEFAULT_LLM_OUTPUT_EVENT_CHAR_CAP)
         .llmProviderSelectionStrategy(new FirstAvailableProviderSelectionStrategy())
         .promptCacheEnabled(true)
-        .llmCallObserver(new LlmCallObserver(eventRecorder))
+        .llmCallObserver(new LlmCallObserver(eventRecorder, mapper))
         .modelTierResolver((provider, tier) -> null)
         .build();
     WorkflowState state = workflowState("run-boundaries-deterministic");
@@ -675,7 +675,7 @@ class AgentInvokerTest {
         .eventRecorder(eventRecorder)
         .llmProviderSelectionStrategy(new FirstAvailableProviderSelectionStrategy())
         .promptCacheEnabled(true)
-        .llmCallObserver(new LlmCallObserver(eventRecorder))
+        .llmCallObserver(new LlmCallObserver(eventRecorder, mapper))
         .modelTierResolver((provider, tier) -> null)
         .build();
     WorkflowState state = workflowState("run-layer1-stable");
@@ -731,7 +731,7 @@ class AgentInvokerTest {
         .eventRecorder(eventRecorder)
         .llmProviderSelectionStrategy(new FirstAvailableProviderSelectionStrategy())
         .promptCacheEnabled(true)
-        .llmCallObserver(new LlmCallObserver(eventRecorder))
+        .llmCallObserver(new LlmCallObserver(eventRecorder, mapper))
         .modelTierResolver((provider, tier) -> null)
         .build();
     WorkflowState state = workflowState("run-boundary-slices");
@@ -779,7 +779,7 @@ class AgentInvokerTest {
         .eventRecorder(recorder)
         .llmProviderSelectionStrategy(new FirstAvailableProviderSelectionStrategy())
         .promptCacheEnabled(true)
-        .llmCallObserver(new LlmCallObserver(recorder))
+        .llmCallObserver(new LlmCallObserver(recorder, mapper))
         .modelTierResolver((provider, tier) -> null)
         .build();
     AgentInvoker disabledInvoker = AgentInvoker.builder()
@@ -792,7 +792,7 @@ class AgentInvokerTest {
         .llmOutputEventCharCap(AgentInvoker.DEFAULT_LLM_OUTPUT_EVENT_CHAR_CAP)
         .llmProviderSelectionStrategy(new FirstAvailableProviderSelectionStrategy())
         .promptCacheEnabled(false)
-        .llmCallObserver(new LlmCallObserver(recorder))
+        .llmCallObserver(new LlmCallObserver(recorder, mapper))
         .modelTierResolver((provider, tier) -> null)
         .build();
     WorkflowState enabledState = workflowState("run-cache-disabled-enabled");
@@ -869,7 +869,7 @@ class AgentInvokerTest {
         .eventRecorder(eventRecorder)
         .llmProviderSelectionStrategy(new FirstAvailableProviderSelectionStrategy())
         .promptCacheEnabled(true)
-        .llmCallObserver(new LlmCallObserver(eventRecorder))
+        .llmCallObserver(new LlmCallObserver(eventRecorder, mapper))
         .modelTierResolver((provider, tier) -> null)
         .build();
     WorkflowState state = new WorkflowState("run-1", "wf-1", null,
@@ -963,7 +963,7 @@ class AgentInvokerTest {
         .eventRecorder(recorder)
         .llmProviderSelectionStrategy(new FirstAvailableProviderSelectionStrategy())
         .promptCacheEnabled(true)
-        .llmCallObserver(new LlmCallObserver(recorder))
+        .llmCallObserver(new LlmCallObserver(recorder, mapper))
         .modelTierResolver((provider, tier) -> null)
         .build();
   }
@@ -980,7 +980,7 @@ class AgentInvokerTest {
         .eventRecorder(recorder)
         .llmProviderSelectionStrategy(new FirstAvailableProviderSelectionStrategy())
         .promptCacheEnabled(true)
-        .llmCallObserver(new LlmCallObserver(recorder))
+        .llmCallObserver(new LlmCallObserver(recorder, mapper))
         .modelTierResolver((provider, tier) -> null)
         .build();
   }
