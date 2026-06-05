@@ -14,6 +14,9 @@ import com.agentforge4j.llm.LlmClientResolver;
 import com.agentforge4j.llm.api.LlmClient;
 import com.agentforge4j.llm.api.LlmExecutionRequest;
 import com.agentforge4j.llm.api.LlmExecutionResponse;
+import com.agentforge4j.llm.api.ModelTier;
+import com.agentforge4j.llm.api.ModelTierResolutionException;
+import com.agentforge4j.llm.api.ModelTierResolver;
 import com.agentforge4j.llm.api.PromptLayerBoundaries;
 import com.agentforge4j.runtime.event.EventRecorder;
 import com.agentforge4j.util.Validate;
@@ -47,6 +50,7 @@ public final class AgentInvoker {
   private final int llmOutputEventCharCap;
   private final boolean promptCacheEnabled;
   private final LlmCallObserver llmCallObserver;
+  private final ModelTierResolver modelTierResolver;
   private final CommandResponseSchemaRenderer schemaRenderer = new CommandResponseSchemaRenderer();
 
   /**
@@ -69,6 +73,7 @@ public final class AgentInvoker {
     this.llmOutputEventCharCap = builder.llmOutputEventCharCap;
     this.promptCacheEnabled = builder.promptCacheEnabled;
     this.llmCallObserver = builder.llmCallObserver;
+    this.modelTierResolver = builder.modelTierResolver;
   }
 
   /**
@@ -84,6 +89,7 @@ public final class AgentInvoker {
     private EventRecorder eventRecorder;
     private LlmProviderSelectionStrategy llmProviderSelectionStrategy;
     private LlmCallObserver llmCallObserver;
+    private ModelTierResolver modelTierResolver;
     private int llmOutputEventCharCap = DEFAULT_LLM_OUTPUT_EVENT_CHAR_CAP;
     private boolean promptCacheEnabled = false;
 
@@ -93,6 +99,7 @@ public final class AgentInvoker {
 
     /**
      * @param agentRepository agent repository dependency
+     *
      * @return this builder; never {@code null}
      */
     public Builder agentRepository(AgentRepository agentRepository) {
@@ -102,6 +109,7 @@ public final class AgentInvoker {
 
     /**
      * @param llmClientResolver LLM client resolver dependency
+     *
      * @return this builder; never {@code null}
      */
     public Builder llmClientResolver(LlmClientResolver llmClientResolver) {
@@ -112,6 +120,7 @@ public final class AgentInvoker {
 
     /**
      * @param contextRenderer context renderer dependency
+     *
      * @return this builder; never {@code null}
      */
     public Builder contextRenderer(ContextRenderer contextRenderer) {
@@ -121,15 +130,18 @@ public final class AgentInvoker {
 
     /**
      * @param llmCommandParser LLM command parser dependency
+     *
      * @return this builder; never {@code null}
      */
     public Builder llmCommandParser(LlmCommandParser llmCommandParser) {
-      this.llmCommandParser = Validate.notNull(llmCommandParser, "LLM command parser must not be null");
+      this.llmCommandParser = Validate.notNull(llmCommandParser,
+          "LLM command parser must not be null");
       return this;
     }
 
     /**
      * @param objectMapper object mapper dependency
+     *
      * @return this builder; never {@code null}
      */
     public Builder objectMapper(ObjectMapper objectMapper) {
@@ -139,6 +151,7 @@ public final class AgentInvoker {
 
     /**
      * @param eventRecorder event recorder dependency
+     *
      * @return this builder; never {@code null}
      */
     public Builder eventRecorder(EventRecorder eventRecorder) {
@@ -148,6 +161,7 @@ public final class AgentInvoker {
 
     /**
      * @param llmProviderSelectionStrategy provider selection strategy dependency
+     *
      * @return this builder; never {@code null}
      */
     public Builder llmProviderSelectionStrategy(
@@ -159,15 +173,29 @@ public final class AgentInvoker {
 
     /**
      * @param llmCallObserver call observer dependency
+     *
      * @return this builder; never {@code null}
      */
     public Builder llmCallObserver(LlmCallObserver llmCallObserver) {
-      this.llmCallObserver = Validate.notNull(llmCallObserver, "LLM call observer must not be null");
+      this.llmCallObserver = Validate.notNull(llmCallObserver,
+          "LLM call observer must not be null");
+      return this;
+    }
+
+    /**
+     * @param modelTierResolver capability-tier to concrete-model resolver dependency
+     *
+     * @return this builder; never {@code null}
+     */
+    public Builder modelTierResolver(ModelTierResolver modelTierResolver) {
+      this.modelTierResolver = Validate.notNull(modelTierResolver,
+          "Model tier resolver must not be null");
       return this;
     }
 
     /**
      * @param llmOutputEventCharCap maximum output event characters (0 disables truncation)
+     *
      * @return this builder; never {@code null}
      */
     public Builder llmOutputEventCharCap(int llmOutputEventCharCap) {
@@ -178,6 +206,7 @@ public final class AgentInvoker {
 
     /**
      * @param promptCacheEnabled whether prompt cache boundaries should be emitted
+     *
      * @return this builder; never {@code null}
      */
     public Builder promptCacheEnabled(boolean promptCacheEnabled) {
@@ -189,6 +218,7 @@ public final class AgentInvoker {
      * Builds the {@link AgentInvoker}.
      *
      * @return configured invoker; never {@code null}
+     *
      * @throws IllegalArgumentException if any required field was not set
      */
     public AgentInvoker build() {
@@ -209,14 +239,46 @@ public final class AgentInvoker {
               + "call llmProviderSelectionStrategy(LlmProviderSelectionStrategy)");
       Validate.notNull(llmCallObserver,
           "LLM call observer must be set - call llmCallObserver(LlmCallObserver)");
+      Validate.notNull(modelTierResolver,
+          "Model tier resolver must be set - call modelTierResolver(ModelTierResolver)");
       return new AgentInvoker(this);
     }
   }
 
+  /**
+   * Invokes an agent without a step-level tier override (equivalent to passing {@code null}).
+   *
+   * @param agentId        the agent to invoke; must not be blank
+   * @param contextMapping context mapping for input rendering; must not be {@code null}
+   * @param state          mutable run state; must not be {@code null}
+   * @param stepPrompt     optional static step prompt material; may be blank
+   *
+   * @return the parsed invocation result; never {@code null}
+   */
   public AgentInvocationResult invoke(String agentId,
       ContextMapping contextMapping,
       WorkflowState state,
       String stepPrompt) {
+    return invoke(agentId, contextMapping, state, stepPrompt, null);
+  }
+
+  /**
+   * Invokes an agent, optionally overriding the agent's capability tier for this step.
+   *
+   * @param agentId        the agent to invoke; must not be blank
+   * @param contextMapping context mapping for input rendering; must not be {@code null}
+   * @param state          mutable run state; must not be {@code null}
+   * @param stepPrompt     optional static step prompt material; may be blank
+   * @param stepModelTier  optional step-level tier name overriding the agent tier; {@code null} or
+   *                       blank inherits the agent tier
+   *
+   * @return the parsed invocation result; never {@code null}
+   */
+  public AgentInvocationResult invoke(String agentId,
+      ContextMapping contextMapping,
+      WorkflowState state,
+      String stepPrompt,
+      String stepModelTier) {
     Validate.notBlank(agentId, "agentId must not be blank");
     Validate.notNull(contextMapping, "contextMapping must not be null");
     Validate.notNull(state, "state must not be null");
@@ -226,36 +288,87 @@ public final class AgentInvoker {
         "Agent '%s' is disabled and cannot be invoked".formatted(agent.id()));
 
     String userInput = contextRenderer.render(state.getContext(), contextMapping);
-    return invokeWithAudit(agent, userInput, stepPrompt, state, agentId);
+    return invokeWithAudit(agent, userInput, stepPrompt, stepModelTier, state, agentId);
   }
 
   private AgentInvocationResult invokeWithAudit(AgentDefinition agent,
       String userInput,
       String stepPrompt,
+      String stepModelTier,
       WorkflowState state,
       String actorIdForEvents) {
     ProviderPreference preference = llmProviderSelectionStrategy.selectInitialProvider(
         agent, llmClientResolver.listAvailableClients());
-    LOG.log(System.Logger.Level.DEBUG, "Agent invoker entry agentId={0}, provider={1}, model={2}",
-        agent.id(), preference.provider(), preference.model());
+    ModelResolution resolution = resolveModel(agent, preference, stepModelTier);
+    LOG.log(System.Logger.Level.DEBUG,
+        "Agent invoker entry agentId={0}, provider={1}, model={2}, modelSource={3}",
+        agent.id(), preference.provider(), resolution.resolvedModel(), resolution.modelSource());
     LlmClient client = llmClientResolver.resolve(preference.provider());
     CommandResponseSchema schema = CommandSchemaFactory.build(agent.supportedCommands(),
         objectMapper);
     AssembledSystemPrompt assembled = assembleSystemPrompt(agent, stepPrompt, schema);
 
     ParsedInvocation parsed = invokeLlmRecordAndParseWithRetry(
-        agent, preference, client, assembled, userInput, schema, state, actorIdForEvents);
-    llmCallObserver.observe(actorIdForEvents, preference.provider(), parsed.llmResponse(), state);
-    return new AgentInvocationResult(
-        parsed.llmResponse().text(),
-        parsed.commands(),
-        parsed.llmResponse().modelUsed(),
-        parsed.llmResponse().tokenUsage());
+        agent, preference, resolution.resolvedModel(), client, assembled, userInput, schema, state,
+        actorIdForEvents);
+    llmCallObserver.observe(actorIdForEvents, preference.provider(), parsed.llmResponse(),
+        resolution.resolvedModel(), resolution.modelSource(), resolution.requestedModelTier(),
+        state);
+    return AgentInvocationResult.builder()
+        .withRawResponse(parsed.llmResponse().text())
+        .withCommands(parsed.commands())
+        .withModelUsed(parsed.llmResponse().modelUsed())
+        .withTokenUsage(parsed.llmResponse().tokenUsage())
+        .withResolvedModel(resolution.resolvedModel())
+        .withModelSource(resolution.modelSource())
+        .withRequestedModelTier(resolution.requestedModelTier())
+        .build();
+  }
+
+  /**
+   * Resolves the concrete model and its source for this call, applying precedence: a raw model pin
+   * on the selected provider preference wins; otherwise an effective tier (step tier overriding
+   * agent tier) is resolved via the {@link ModelTierResolver}; otherwise no model is sent and the
+   * provider default is used. A declared tier that cannot be resolved throws
+   * {@link ModelTierResolutionException} rather than silently downgrading.
+   */
+  private ModelResolution resolveModel(AgentDefinition agent,
+      ProviderPreference preference,
+      String stepModelTier) {
+    if (StringUtils.isNotBlank(preference.model())) {
+      return new ModelResolution(preference.model(), ModelSource.PIN, null);
+    }
+    String effectiveTierName = StringUtils.defaultIfBlank(stepModelTier, agent.modelTier());
+    if (StringUtils.isNotBlank(effectiveTierName)) {
+      ModelTier tier = parseTier(effectiveTierName, agent.id());
+      String resolved = modelTierResolver.resolve(preference.provider(), tier);
+      Validate.notNull(resolved, () -> new ModelTierResolutionException(
+          "No model mapping for provider '%s' and tier %s (agent '%s')".formatted(
+              preference.provider(), tier, agent.id())));
+      return new ModelResolution(resolved, ModelSource.TIER, tier);
+    }
+    return new ModelResolution(null, ModelSource.PROVIDER_DEFAULT, null);
+  }
+
+  private static ModelTier parseTier(String tierName, String agentId) {
+    try {
+      return ModelTier.valueOf(tierName.trim());
+    } catch (IllegalArgumentException e) {
+      throw new ModelTierResolutionException(
+          "Invalid model tier '%s' for agent '%s'; valid tiers: LITE, STANDARD, POWERFUL".formatted(
+              tierName, agentId));
+    }
+  }
+
+  private record ModelResolution(String resolvedModel, ModelSource modelSource,
+                                 ModelTier requestedModelTier) {
+
   }
 
   private ParsedInvocation invokeLlmRecordAndParseWithRetry(
       AgentDefinition agent,
       ProviderPreference preference,
+      String effectiveModel,
       LlmClient client,
       AssembledSystemPrompt assembled,
       String originalUserInput,
@@ -265,15 +378,15 @@ public final class AgentInvoker {
     String correctionBody = "";
 
     LOG.log(System.Logger.Level.DEBUG, "Dispatching LLM call provider={0}, model={1}",
-        preference.provider(), preference.model());
+        preference.provider(), effectiveModel);
     LlmCommandParseException lastParseFailure = null;
     for (int attempt = 1; attempt <= RETRY_ATTEMPTS; attempt++) {
       String effectiveUserInput = toCorrectedPrompt(originalUserInput, attempt, correctionBody);
 
-      LlmExecutionResponse response = executeLlmCall(agent, preference, client,
+      LlmExecutionResponse response = executeLlmCall(agent, preference, effectiveModel, client,
           new LlmExecutionRequest(
               preference.provider(),
-              preference.model(),
+              effectiveModel,
               assembled.text(),
               effectiveUserInput,
               null,
@@ -316,6 +429,7 @@ public final class AgentInvoker {
   private LlmExecutionResponse executeLlmCall(
       AgentDefinition agent,
       ProviderPreference preference,
+      String effectiveModel,
       LlmClient client,
       LlmExecutionRequest request,
       boolean retryAttempt) {
@@ -326,7 +440,7 @@ public final class AgentInvoker {
           ? "LLM retry call failed agentId={0}, provider={1}, model={2}, message={3}"
           : "LLM call failed agentId={0}, provider={1}, model={2}, message={3}";
       LOG.log(System.Logger.Level.ERROR, template,
-          agent.id(), preference.provider(), preference.model(), e.getMessage());
+          agent.id(), preference.provider(), effectiveModel, e.getMessage());
       throw e;
     }
   }

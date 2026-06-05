@@ -20,7 +20,11 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 class WorkflowDefinitionTest {
 
   private static StepDefinition failStep(String stepId) {
-    return new StepDefinition(stepId, "Step " + stepId, new FailBehaviour("r"), null, null, null);
+    return StepDefinition.builder()
+        .withStepId(stepId)
+        .withName("Step " + stepId)
+        .withBehaviour(new FailBehaviour("r"))
+        .build();
   }
 
   private static WorkflowDefinition workflow(

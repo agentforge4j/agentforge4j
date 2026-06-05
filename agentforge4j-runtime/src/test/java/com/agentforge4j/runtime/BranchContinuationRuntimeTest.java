@@ -174,13 +174,11 @@ class BranchContinuationRuntimeTest {
         "route",
         selectorMap("go", resourceStep("never", "/examples/sample.txt", "never")),
         null);
-    StepDefinition terminalFail = new StepDefinition(
-        "fail",
-        "fail",
-        new FailBehaviour("expected"),
-        null,
-        null,
-        null);
+    StepDefinition terminalFail = StepDefinition.builder()
+        .withStepId("fail")
+        .withName("fail")
+        .withBehaviour(new FailBehaviour("expected"))
+        .build();
     WorkflowDefinition workflow = workflow("wf-branch-retry", Map.of(),
         List.of(selector, branch, terminalFail));
 
@@ -223,26 +221,22 @@ class BranchContinuationRuntimeTest {
 
   private static StepDefinition resourceStep(String stepId, String resourcePath,
       String contextKey) {
-    return new StepDefinition(
-        stepId,
-        stepId,
-        new ResourceBehaviour(resourcePath, contextKey, StepTransition.AUTO),
-        null,
-        null,
-        null);
+    return StepDefinition.builder()
+        .withStepId(stepId)
+        .withName(stepId)
+        .withBehaviour(new ResourceBehaviour(resourcePath, contextKey, StepTransition.AUTO))
+        .build();
   }
 
   private static StepDefinition branchStep(String stepId,
       String contextKey,
       Map<String, Executable> branches,
       Executable defaultBranch) {
-    return new StepDefinition(
-        stepId,
-        stepId,
-        new BranchBehaviour(contextKey, branches, defaultBranch),
-        null,
-        null,
-        null);
+    return StepDefinition.builder()
+        .withStepId(stepId)
+        .withName(stepId)
+        .withBehaviour(new BranchBehaviour(contextKey, branches, defaultBranch))
+        .build();
   }
 
   private static WorkflowDefinition workflow(String id,
@@ -284,7 +278,8 @@ class BranchContinuationRuntimeTest {
         .eventRecorder(eventRecorder)
         .llmProviderSelectionStrategy(new FirstAvailableProviderSelectionStrategy())
         .promptCacheEnabled(true)
-        .llmCallObserver(new LlmCallObserver(eventRecorder))
+        .llmCallObserver(new LlmCallObserver(eventRecorder, mapper))
+        .modelTierResolver((provider, tier) -> null)
         .build();
 
     WorkflowRuntime runtime = new WorkflowRuntimeBuilder()

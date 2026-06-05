@@ -37,9 +37,12 @@ class WorkflowDraftValidatorTest {
   void validate_collectsAgentRefFailuresWithoutThrowing() {
     WorkflowDraftValidator draftValidator =
         new WorkflowDraftValidator(new WorkflowValidator());
-    StepDefinition step = new StepDefinition("s1", "S1",
-        new AgentBehaviour("missing-agent", StepTransition.AUTO, null),
-        new ContextMapping(List.of(), List.of()), null, null);
+    StepDefinition step = StepDefinition.builder()
+        .withStepId("s1")
+        .withName("S1")
+        .withBehaviour(new AgentBehaviour("missing-agent", StepTransition.AUTO, null))
+        .withContextMapping(new ContextMapping(List.of(), List.of()))
+        .build();
     WorkflowDefinition wf = new WorkflowDefinition(
         "wf1", "W", "d", null, null, null, null, WorkflowSource.CUSTOM, WorkflowLifecycle.ACTIVE,
         Map.of(), Map.of(), List.of(step));
@@ -57,15 +60,25 @@ class WorkflowDraftValidatorTest {
   void validate_validWorkflowAndAgents_isValid() {
     WorkflowDraftValidator draftValidator =
         new WorkflowDraftValidator(new WorkflowValidator());
-    StepDefinition step = new StepDefinition("s1", "S1",
-        new AgentBehaviour("ok", StepTransition.AUTO, null),
-        new ContextMapping(List.of(), List.of()), null, null);
+    StepDefinition step = StepDefinition.builder()
+        .withStepId("s1")
+        .withName("S1")
+        .withBehaviour(new AgentBehaviour("ok", StepTransition.AUTO, null))
+        .withContextMapping(new ContextMapping(List.of(), List.of()))
+        .build();
     WorkflowDefinition wf = new WorkflowDefinition(
         "wf1", "W", "d", null, null, null, null, WorkflowSource.CUSTOM, WorkflowLifecycle.ACTIVE,
         Map.of(), Map.of(), List.of(step));
-    AgentDefinition agent = new AgentDefinition("ok", "Ok", AgentLocality.CLOUD, true, "sys",
-        List.of(new ProviderPreference("openai", "gpt-4o-mini")), List.of("COMPLETE"), null, null,
-        "1.0.0");
+    AgentDefinition agent = AgentDefinition.builder()
+        .withId("ok")
+        .withName("Ok")
+        .withLocality(AgentLocality.CLOUD)
+        .withEnabled(true)
+        .withSystemPrompt("sys")
+        .withProviderPreferences(List.of(new ProviderPreference("openai", "gpt-4o-mini")))
+        .withSupportedCommands(List.of("COMPLETE"))
+        .withVersion("1.0.0")
+        .build();
 
     ValidationReport report =
         draftValidator.validate(Map.of("wf1", wf), Map.of("ok", agent));
@@ -77,12 +90,18 @@ class WorkflowDraftValidatorTest {
   void validate_accumulatesMultipleCheckFailures() {
     WorkflowDraftValidator draftValidator =
         new WorkflowDraftValidator(new WorkflowValidator());
-    StepDefinition badAgent = new StepDefinition("s1", "S1",
-        new AgentBehaviour("missing", StepTransition.AUTO, null),
-        new ContextMapping(List.of(), List.of()), null, null);
-    StepDefinition badRetry = new StepDefinition("s2", "S2",
-        new RetryPreviousBehaviour("nope", RetryMode.FROM_STEP, 2, new BlueprintRef("bp")),
-        new ContextMapping(List.of(), List.of()), null, null);
+    StepDefinition badAgent = StepDefinition.builder()
+        .withStepId("s1")
+        .withName("S1")
+        .withBehaviour(new AgentBehaviour("missing", StepTransition.AUTO, null))
+        .withContextMapping(new ContextMapping(List.of(), List.of()))
+        .build();
+    StepDefinition badRetry = StepDefinition.builder()
+        .withStepId("s2")
+        .withName("S2")
+        .withBehaviour(new RetryPreviousBehaviour("nope", RetryMode.FROM_STEP, 2, new BlueprintRef("bp")))
+        .withContextMapping(new ContextMapping(List.of(), List.of()))
+        .build();
     WorkflowDefinition wf = new WorkflowDefinition(
         "wf1", "W", "d", null, null, null, null, WorkflowSource.CUSTOM, WorkflowLifecycle.ACTIVE,
         Map.of(), Map.of(), List.of(badAgent, badRetry));

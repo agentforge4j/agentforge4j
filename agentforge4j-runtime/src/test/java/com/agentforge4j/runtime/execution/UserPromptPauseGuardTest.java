@@ -26,23 +26,23 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class UserPromptPauseGuardTest {
 
-  private static final StepDefinition STEP = new StepDefinition(
-      "s1",
-      "Step 1",
-      new AgentBehaviour("agent-1", StepTransition.AUTO, null),
-      ContextMapping.none(),
-      null,
-      8);
+  private static final StepDefinition STEP = StepDefinition.builder()
+      .withStepId("s1")
+      .withName("Step 1")
+      .withBehaviour(new AgentBehaviour("agent-1", StepTransition.AUTO, null))
+      .withContextMapping(ContextMapping.none())
+      .withMaxUserPromptRounds(8)
+      .build();
 
   @Test
   void throwsRuntimeUserPromptLimitExceptionWhenPauseBudgetIsExhausted() {
-    StepDefinition limitedStep = new StepDefinition(
-        "s1",
-        "Step 1",
-        new AgentBehaviour("agent-1", StepTransition.AUTO, null),
-        ContextMapping.none(),
-        null,
-        2);
+    StepDefinition limitedStep = StepDefinition.builder()
+        .withStepId("s1")
+        .withName("Step 1")
+        .withBehaviour(new AgentBehaviour("agent-1", StepTransition.AUTO, null))
+        .withContextMapping(ContextMapping.none())
+        .withMaxUserPromptRounds(2)
+        .build();
     WorkflowState state = new WorkflowState("run-1", "wf-1", null, Instant.parse("2026-05-01T00:00:00Z"));
     state.incrementUserPromptPauseCountForStep("s1");
     state.incrementUserPromptPauseCountForStep("s1");

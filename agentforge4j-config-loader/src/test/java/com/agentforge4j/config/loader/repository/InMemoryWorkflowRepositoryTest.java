@@ -73,7 +73,11 @@ class InMemoryWorkflowRepositoryTest {
     return new WorkflowDefinition(
         id, name, "d", null, null, null, null, WorkflowSource.CUSTOM, WorkflowLifecycle.ACTIVE,
         Map.of(), Map.of(),
-        List.of(new StepDefinition("s1", "S1", new FailBehaviour("stop"),
-            new ContextMapping(List.of(), List.of()), null, null)));
+        List.of(StepDefinition.builder()
+            .withStepId("s1")
+            .withName("S1")
+            .withBehaviour(new FailBehaviour("stop"))
+            .withContextMapping(new ContextMapping(List.of(), List.of()))
+            .build()));
   }
 }

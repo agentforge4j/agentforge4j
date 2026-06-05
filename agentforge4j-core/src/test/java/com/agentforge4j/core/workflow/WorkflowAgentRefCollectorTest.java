@@ -51,13 +51,11 @@ class WorkflowAgentRefCollectorTest {
 
   @Test
   void collects_agent_behaviour_ref() {
-    var step = new StepDefinition(
-        "s1",
-        "N",
-        new AgentBehaviour("agent-a", StepTransition.AUTO, null),
-        null,
-        null,
-        null);
+    var step = StepDefinition.builder()
+        .withStepId("s1")
+        .withName("N")
+        .withBehaviour(new AgentBehaviour("agent-a", StepTransition.AUTO, null))
+        .build();
     var wf = workflow("root", List.of(step), Map.of());
 
     assertThat(WorkflowAgentRefCollector.collect(wf))
@@ -67,13 +65,11 @@ class WorkflowAgentRefCollectorTest {
   @Test
   void collects_both_agents_for_spar_behaviour() {
     SparConfig cfg = new SparConfig("challenger", 2, "Resolve the debate.");
-    var step = new StepDefinition(
-        "s1",
-        "N",
-        new SparBehaviour("primary", cfg, StepTransition.AUTO, null),
-        null,
-        null,
-        null);
+    var step = StepDefinition.builder()
+        .withStepId("s1")
+        .withName("N")
+        .withBehaviour(new SparBehaviour("primary", cfg, StepTransition.AUTO, null))
+        .build();
     var wf = workflow("root", List.of(step), Map.of());
 
     assertThat(WorkflowAgentRefCollector.collect(wf))
@@ -84,13 +80,11 @@ class WorkflowAgentRefCollectorTest {
 
   @Test
   void follows_blueprint_ref_and_collects_inner_agent() {
-    var innerStep = new StepDefinition(
-        "in",
-        "I",
-        new AgentBehaviour("inner-agent", StepTransition.AUTO, null),
-        null,
-        null,
-        null);
+    var innerStep = StepDefinition.builder()
+        .withStepId("in")
+        .withName("I")
+        .withBehaviour(new AgentBehaviour("inner-agent", StepTransition.AUTO, null))
+        .build();
     LoopConfig loop = LoopConfig.withDefaults(
         LoopTerminationStrategy.AGENT_SIGNAL,
         null,
@@ -120,13 +114,11 @@ class WorkflowAgentRefCollectorTest {
 
   @Test
   void nested_workflow_uses_inner_workflow_id_in_sites() {
-    var innerAgent = new StepDefinition(
-        "inner",
-        "I",
-        new AgentBehaviour("nested-agent", StepTransition.AUTO, null),
-        null,
-        null,
-        null);
+    var innerAgent = StepDefinition.builder()
+        .withStepId("inner")
+        .withName("I")
+        .withBehaviour(new AgentBehaviour("nested-agent", StepTransition.AUTO, null))
+        .build();
     WorkflowDefinition nested = new WorkflowDefinition(
         "nested-wf",
         "Nested",
@@ -149,18 +141,16 @@ class WorkflowAgentRefCollectorTest {
 
   @Test
   void collects_agent_inside_named_branch_without_visiting_default() {
-    var branchStep = new StepDefinition(
-        "inner",
-        "I",
-        new AgentBehaviour("leaf", StepTransition.AUTO, null),
-        null,
-        null,
-        null);
+    var branchStep = StepDefinition.builder()
+        .withStepId("inner")
+        .withName("I")
+        .withBehaviour(new AgentBehaviour("leaf", StepTransition.AUTO, null))
+        .build();
     var branch = new BranchBehaviour(
         "routeKey",
         Map.of("path-a", branchStep),
-        new StepDefinition("def", "D", new FailBehaviour("x"), null, null, null));
-    var step = new StepDefinition("b1", "Branch step", branch, null, null, null);
+        StepDefinition.builder().withStepId("def").withName("D").withBehaviour(new FailBehaviour("x")).build());
+    var step = StepDefinition.builder().withStepId("b1").withName("Branch step").withBehaviour(branch).build();
     var wf = workflow("root", List.of(step), Map.of());
 
     assertThat(WorkflowAgentRefCollector.collect(wf))
@@ -169,18 +159,16 @@ class WorkflowAgentRefCollectorTest {
 
   @Test
   void collects_agent_on_branch_default_path() {
-    var defaultStep = new StepDefinition(
-        "def",
-        "D",
-        new AgentBehaviour("def-agent", StepTransition.AUTO, null),
-        null,
-        null,
-        null);
+    var defaultStep = StepDefinition.builder()
+        .withStepId("def")
+        .withName("D")
+        .withBehaviour(new AgentBehaviour("def-agent", StepTransition.AUTO, null))
+        .build();
     var branch = new BranchBehaviour(
         "routeKey",
-        Map.of("x", new StepDefinition("x", "X", new FailBehaviour("r"), null, null, null)),
+        Map.of("x", StepDefinition.builder().withStepId("x").withName("X").withBehaviour(new FailBehaviour("r")).build()),
         defaultStep);
-    var step = new StepDefinition("b1", "Branch step", branch, null, null, null);
+    var step = StepDefinition.builder().withStepId("b1").withName("Branch step").withBehaviour(branch).build();
     var wf = workflow("root", List.of(step), Map.of());
 
     assertThat(WorkflowAgentRefCollector.collect(wf))
@@ -189,13 +177,11 @@ class WorkflowAgentRefCollectorTest {
 
   @Test
   void inline_blueprint_definition_uses_enclosing_workflow_scope() {
-    var inner = new StepDefinition(
-        "in",
-        "I",
-        new AgentBehaviour("a1", StepTransition.AUTO, null),
-        null,
-        null,
-        null);
+    var inner = StepDefinition.builder()
+        .withStepId("in")
+        .withName("I")
+        .withBehaviour(new AgentBehaviour("a1", StepTransition.AUTO, null))
+        .build();
     LoopConfig loop = LoopConfig.withDefaults(
         LoopTerminationStrategy.AGENT_SIGNAL, null, null, 1, null);
     BlueprintDefinition bp = new BlueprintDefinition(

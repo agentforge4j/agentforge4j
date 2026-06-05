@@ -199,13 +199,12 @@ class BlueprintExecutorTest {
   }
 
   private static StepDefinition resourceStep(String stepId, String contextKey) {
-    return new StepDefinition(
-        stepId,
-        stepId,
-        new ResourceBehaviour("/examples/sample.txt", contextKey, StepTransition.AUTO),
-        ContextMapping.none(),
-        null,
-        null);
+    return StepDefinition.builder()
+        .withStepId(stepId)
+        .withName(stepId)
+        .withBehaviour(new ResourceBehaviour("/examples/sample.txt", contextKey, StepTransition.AUTO))
+        .withContextMapping(ContextMapping.none())
+        .build();
   }
 
   private static WorkflowDefinition workflow(String id,

@@ -14,11 +14,15 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 class AgentInvocationResultTest {
 
   @Test
-  void canonical_constructor_with_test_constants_round_trips_correctly() {
+  void builder_with_test_constants_round_trips_correctly() {
     List<LlmCommand> commands = List.of(new CompleteCommand(null));
 
-    AgentInvocationResult result = new AgentInvocationResult(
-        "raw", commands, TEST_MODEL, TEST_TOKEN_USAGE);
+    AgentInvocationResult result = AgentInvocationResult.builder()
+        .withRawResponse("raw")
+        .withCommands(commands)
+        .withModelUsed(TEST_MODEL)
+        .withTokenUsage(TEST_TOKEN_USAGE)
+        .build();
 
     assertThat(result.rawResponse()).isEqualTo("raw");
     assertThat(result.commands()).hasSize(1);
@@ -27,17 +31,22 @@ class AgentInvocationResultTest {
   }
 
   @Test
-  void canonical_constructor_preserves_all_four_components() {
-    TokenUsageReport usage = new TokenUsageReport(1, 2, 3, 4);
+  void builder_defaults_tier_metadata_when_only_core_components_set() {
     List<LlmCommand> commands = List.of(new CompleteCommand("done"));
 
-    AgentInvocationResult result = new AgentInvocationResult(
-        "response-text", commands, "model-x", usage);
+    AgentInvocationResult result = AgentInvocationResult.builder()
+        .withRawResponse("response-text")
+        .withCommands(commands)
+        .withModelUsed("model-x")
+        .withTokenUsage(new TokenUsageReport(1, 2, 3, 4))
+        .build();
 
     assertThat(result.rawResponse()).isEqualTo("response-text");
     assertThat(result.commands()).containsExactlyElementsOf(commands);
     assertThat(result.modelUsed()).isEqualTo("model-x");
-    assertThat(result.tokenUsage()).isEqualTo(usage);
+    assertThat(result.resolvedModel()).isNull();
+    assertThat(result.modelSource()).isEqualTo(ModelSource.PROVIDER_DEFAULT);
+    assertThat(result.requestedModelTier()).isNull();
   }
 
   @Test
@@ -45,16 +54,19 @@ class AgentInvocationResultTest {
     TokenUsageReport usage = new TokenUsageReport(1, 2, null, null);
     List<LlmCommand> commands = List.of(new CompleteCommand(null));
 
-    assertThatThrownBy(() -> new AgentInvocationResult("  ", commands, null, usage))
+    assertThatThrownBy(() -> AgentInvocationResult.builder()
+        .withRawResponse("  ").withCommands(commands).withTokenUsage(usage).build())
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("rawResponse must not be blank");
 
-    assertThatThrownBy(() -> new AgentInvocationResult("ok", null, "model", usage))
+    assertThatThrownBy(() -> AgentInvocationResult.builder()
+        .withRawResponse("ok").withCommands(null).withModelUsed("model").withTokenUsage(usage)
+        .build())
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("commands must not be null");
 
-    AgentInvocationResult withNullUsageFields = new AgentInvocationResult(
-        "ok", commands, null, null);
+    AgentInvocationResult withNullUsageFields = AgentInvocationResult.builder()
+        .withRawResponse("ok").withCommands(commands).build();
     assertThat(withNullUsageFields.modelUsed()).isNull();
     assertThat(withNullUsageFields.tokenUsage()).isNull();
   }

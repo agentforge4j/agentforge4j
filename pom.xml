@@ -29,6 +29,7 @@
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     <aws.sdk.version>2.29.51</aws.sdk.version>
     <mockito-core.version>5.23.0</mockito-core.version>
+    <archunit.version>1.4.2</archunit.version>
     <spring-boot-dependencies.version>3.5.13</spring-boot-dependencies.version>
     <maven-surefire-plugin.version>3.5.2</maven-surefire-plugin.version>
     <maven-failsafe-plugin.version>3.5.2</maven-failsafe-plugin.version>
@@ -199,6 +200,11 @@
         <groupId>org.mockito</groupId>
         <artifactId>mockito-junit-jupiter</artifactId>
         <version>${mockito-core.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>com.tngtech.archunit</groupId>
+        <artifactId>archunit-junit5</artifactId>
+        <version>${archunit.version}</version>
       </dependency>
     </dependencies>
   </dependencyManagement>

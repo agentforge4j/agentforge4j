@@ -1,10 +1,10 @@
 /**
  * Workflow execution engine: owns state transitions, events, and command handling for runs.
  *
- * <p>Consumes validated definitions from {@code agentforge4j.core} and {@code agentforge4j.schema},
- * drives deterministic steps with auditable events, and invokes integrations and LLM clients only
- * through controlled abstractions. Human-in-the-loop transitions (approvals, signals) are enforced
- * here, not by provider responses.
+ * <p>Consumes validated definitions from {@code agentforge4j.core} and
+ * {@code agentforge4j.schema}, drives deterministic steps with auditable events, and invokes
+ * integrations and LLM clients only through controlled abstractions. Human-in-the-loop transitions
+ * (approvals, signals) are enforced here, not by provider responses.
  *
  * <p>Runtime-owned flow control: orchestration follows the workflow graph; model output supplies
  * structured commands and content, not arbitrary control of the graph.
@@ -28,4 +28,6 @@ module agentforge4j.runtime {
   exports com.agentforge4j.runtime.repository;
 
   exports com.agentforge4j.runtime.llm;
+
+  opens com.agentforge4j.runtime.llm to com.fasterxml.jackson.databind;
 }

@@ -54,13 +54,12 @@ class DefaultLoopEvaluatorTest {
         WorkflowLifecycle.ACTIVE,
         Map.of(),
         Map.of(),
-        List.of(new StepDefinition(
-            "s1",
-            "s1",
-            new ResourceBehaviour("/examples/sample.txt", "out", StepTransition.AUTO),
-            ContextMapping.none(),
-            null,
-            null)));
+        List.of(StepDefinition.builder()
+            .withStepId("s1")
+            .withName("s1")
+            .withBehaviour(new ResourceBehaviour("/examples/sample.txt", "out", StepTransition.AUTO))
+            .withContextMapping(ContextMapping.none())
+            .build()));
     WorkflowState state = new WorkflowState("run-1", workflow.id(), null,
         Instant.parse("2026-05-01T00:00:00Z"));
     executionContext = new ExecutionContext(state, workflow, 32);
@@ -70,8 +69,12 @@ class DefaultLoopEvaluatorTest {
   @Test
   void terminates_when_agent_returns_termination_signal() {
     when(agentInvoker.invoke(eq("eval-agent"), any(), any(), isNull()))
-        .thenReturn(new AgentInvocationResult(
-            "raw", List.of(new CompleteCommand(null)), TEST_MODEL, TEST_TOKEN_USAGE));
+        .thenReturn(AgentInvocationResult.builder()
+            .withRawResponse("raw")
+            .withCommands(List.of(new CompleteCommand(null)))
+            .withModelUsed(TEST_MODEL)
+            .withTokenUsage(TEST_TOKEN_USAGE)
+            .build());
 
     assertThat(evaluator.shouldTerminate("eval-agent", 2, executionContext)).isTrue();
   }
@@ -79,9 +82,12 @@ class DefaultLoopEvaluatorTest {
   @Test
   void continues_when_agent_returns_continue_signal() {
     when(agentInvoker.invoke(eq("eval-agent"), any(), any(), isNull()))
-        .thenReturn(new AgentInvocationResult(
-            "raw", List.of(new ContinueCommand(null, null, List.of())), TEST_MODEL,
-            TEST_TOKEN_USAGE));
+        .thenReturn(AgentInvocationResult.builder()
+            .withRawResponse("raw")
+            .withCommands(List.of(new ContinueCommand(null, null, List.of())))
+            .withModelUsed(TEST_MODEL)
+            .withTokenUsage(TEST_TOKEN_USAGE)
+            .build());
 
     assertThat(evaluator.shouldTerminate("eval-agent", 2, executionContext)).isFalse();
   }
@@ -99,7 +105,12 @@ class DefaultLoopEvaluatorTest {
   void passes_state_to_evaluator_agent_invocation() {
     when(agentInvoker.invoke(eq("eval-agent"), eq(ContextMapping.none()),
         eq(executionContext.getState()), isNull()))
-        .thenReturn(new AgentInvocationResult("raw", List.of(), TEST_MODEL, TEST_TOKEN_USAGE));
+        .thenReturn(AgentInvocationResult.builder()
+            .withRawResponse("raw")
+            .withCommands(List.of())
+            .withModelUsed(TEST_MODEL)
+            .withTokenUsage(TEST_TOKEN_USAGE)
+            .build());
 
     evaluator.shouldTerminate("eval-agent", 4, executionContext);
 

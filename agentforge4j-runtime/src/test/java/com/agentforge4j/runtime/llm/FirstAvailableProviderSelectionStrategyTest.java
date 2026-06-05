@@ -50,16 +50,15 @@ class FirstAvailableProviderSelectionStrategyTest {
   }
 
   private static AgentDefinition agentWithPreferences(ProviderPreference... preferences) {
-    return new AgentDefinition(
-        "agent-1",
-        "Agent",
-        AgentLocality.CLOUD,
-        true,
-        "sys",
-        List.of(preferences),
-        List.of("COMPLETE"),
-        null,
-        null,
-        "1.0.0");
+    return AgentDefinition.builder()
+        .withId("agent-1")
+        .withName("Agent")
+        .withLocality(AgentLocality.CLOUD)
+        .withEnabled(true)
+        .withSystemPrompt("sys")
+        .withProviderPreferences(List.of(preferences))
+        .withSupportedCommands(List.of("COMPLETE"))
+        .withVersion("1.0.0")
+        .build();
   }
 }

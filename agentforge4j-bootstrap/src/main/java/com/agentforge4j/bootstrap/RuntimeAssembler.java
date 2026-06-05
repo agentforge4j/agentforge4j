@@ -10,6 +10,7 @@ import com.agentforge4j.llm.LlmClientResolver;
 import com.agentforge4j.llm.RetryingLlmClientResolver;
 import com.agentforge4j.llm.api.LlmClient;
 import com.agentforge4j.llm.api.LlmRetryPolicy;
+import com.agentforge4j.llm.api.ModelTierResolver;
 import com.agentforge4j.runtime.WorkflowRuntimeBuilder;
 import com.agentforge4j.runtime.command.FileSink;
 import com.agentforge4j.runtime.event.EventRecorder;
@@ -87,6 +88,7 @@ final class RuntimeAssembler {
    * @param llmProviderSelectionStrategy must not be {@code null}
    * @param cacheEnabled                 whether prompt caching is active
    * @param llmCallObserver              must not be {@code null}
+   * @param modelTierResolver            must not be {@code null}
    * @param explicitInvoker              caller-provided invoker or {@code null} for default
    * @param cacheEnabledSet              true if {@code withCacheEnabled} was called explicitly
    * @return resolved invoker; never {@code null}
@@ -100,6 +102,7 @@ final class RuntimeAssembler {
       LlmProviderSelectionStrategy llmProviderSelectionStrategy,
       boolean cacheEnabled,
       LlmCallObserver llmCallObserver,
+      ModelTierResolver modelTierResolver,
       AgentInvoker explicitInvoker,
       boolean cacheEnabledSet) {
     if (explicitInvoker != null && cacheEnabledSet) {
@@ -124,6 +127,7 @@ final class RuntimeAssembler {
         .llmProviderSelectionStrategy(llmProviderSelectionStrategy)
         .promptCacheEnabled(cacheEnabled)
         .llmCallObserver(llmCallObserver)
+        .modelTierResolver(modelTierResolver)
         .build();
   }
 

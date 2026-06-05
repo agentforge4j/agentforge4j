@@ -87,13 +87,12 @@ class DefaultWorkflowRuntimeFailureTest {
         WorkflowLifecycle.ACTIVE,
         Map.of(),
         Map.of(),
-        List.of(new StepDefinition(
-            "s1",
-            "s1",
-            new ResourceBehaviour("/examples/sample.txt", "out", StepTransition.AUTO),
-            ContextMapping.none(),
-            null,
-            null)));
+        List.of(StepDefinition.builder()
+            .withStepId("s1")
+            .withName("s1")
+            .withBehaviour(new ResourceBehaviour("/examples/sample.txt", "out", StepTransition.AUTO))
+            .withContextMapping(ContextMapping.none())
+            .build()));
 
     return new DefaultWorkflowRuntime(
         new InMemoryWorkflowRepository(Map.of(workflow.id(), workflow)),

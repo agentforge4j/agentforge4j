@@ -34,13 +34,12 @@ class WorkflowValidatorTest {
 
   @Test
   void validateWorkflowRefs_rejectsUnknownNestedWorkflow() {
-    StepDefinition step = new StepDefinition(
-        "s1",
-        "S1",
-        new WorkflowBehaviour("missing-wf", StepTransition.AUTO),
-        new ContextMapping(List.of(), List.of()),
-        null,
-        null);
+    StepDefinition step = StepDefinition.builder()
+        .withStepId("s1")
+        .withName("S1")
+        .withBehaviour(new WorkflowBehaviour("missing-wf", StepTransition.AUTO))
+        .withContextMapping(new ContextMapping(List.of(), List.of()))
+        .build();
     WorkflowDefinition wf = wf("wf1", List.of(step));
 
     assertThatThrownBy(() -> validator.validateWorkflowRefs(Map.of("wf1", wf)))
@@ -51,13 +50,12 @@ class WorkflowValidatorTest {
 
   @Test
   void validateCircularRefs_detectsDirectSelfReference() {
-    StepDefinition selfRef = new StepDefinition(
-        "s1",
-        "S1",
-        new WorkflowBehaviour("wf-a", StepTransition.AUTO),
-        new ContextMapping(List.of(), List.of()),
-        null,
-        null);
+    StepDefinition selfRef = StepDefinition.builder()
+        .withStepId("s1")
+        .withName("S1")
+        .withBehaviour(new WorkflowBehaviour("wf-a", StepTransition.AUTO))
+        .withContextMapping(new ContextMapping(List.of(), List.of()))
+        .build();
     WorkflowDefinition wfA = wf("wf-a", List.of(selfRef));
 
     assertThatThrownBy(() -> validator.validateCircularRefs(Map.of("wf-a", wfA)))
@@ -94,20 +92,18 @@ class WorkflowValidatorTest {
 
   @Test
   void validateCircularRefs_detectsMutualWorkflowReferences() {
-    StepDefinition toB = new StepDefinition(
-        "s1",
-        "S1",
-        new WorkflowBehaviour("wf-b", StepTransition.AUTO),
-        new ContextMapping(List.of(), List.of()),
-        null,
-        null);
-    StepDefinition toA = new StepDefinition(
-        "s2",
-        "S2",
-        new WorkflowBehaviour("wf-a", StepTransition.AUTO),
-        new ContextMapping(List.of(), List.of()),
-        null,
-        null);
+    StepDefinition toB = StepDefinition.builder()
+        .withStepId("s1")
+        .withName("S1")
+        .withBehaviour(new WorkflowBehaviour("wf-b", StepTransition.AUTO))
+        .withContextMapping(new ContextMapping(List.of(), List.of()))
+        .build();
+    StepDefinition toA = StepDefinition.builder()
+        .withStepId("s2")
+        .withName("S2")
+        .withBehaviour(new WorkflowBehaviour("wf-a", StepTransition.AUTO))
+        .withContextMapping(new ContextMapping(List.of(), List.of()))
+        .build();
     WorkflowDefinition wfA = wf("wf-a", List.of(toB));
     WorkflowDefinition wfB = wf("wf-b", List.of(toA));
 
@@ -140,13 +136,12 @@ class WorkflowValidatorTest {
 
   @Test
   void validateArtifactRefs_rejectsUnknownArtifactOnInputStep() {
-    StepDefinition step = new StepDefinition(
-        "s1",
-        "S1",
-        new InputBehaviour("missing-artifact", StepTransition.AUTO),
-        new ContextMapping(List.of(), List.of()),
-        null,
-        null);
+    StepDefinition step = StepDefinition.builder()
+        .withStepId("s1")
+        .withName("S1")
+        .withBehaviour(new InputBehaviour("missing-artifact", StepTransition.AUTO))
+        .withContextMapping(new ContextMapping(List.of(), List.of()))
+        .build();
     WorkflowDefinition wf = wf("wf1", List.of(step));
 
     assertThatThrownBy(() -> validator.validateArtifactRefs(Map.of("wf1", wf)))
@@ -157,13 +152,12 @@ class WorkflowValidatorTest {
 
   @Test
   void validateAgentRefs_throwsWithAllUnresolvedSites() {
-    StepDefinition step = new StepDefinition(
-        "s1",
-        "S1",
-        new AgentBehaviour("ghost-agent", StepTransition.AUTO, null),
-        new ContextMapping(List.of(), List.of()),
-        null,
-        null);
+    StepDefinition step = StepDefinition.builder()
+        .withStepId("s1")
+        .withName("S1")
+        .withBehaviour(new AgentBehaviour("ghost-agent", StepTransition.AUTO, null))
+        .withContextMapping(new ContextMapping(List.of(), List.of()))
+        .build();
     WorkflowDefinition wf = wf("wf1", List.of(step));
 
     assertThatThrownBy(() -> validator.validateAgentRefs(Map.of("wf1", wf), Map.of()))
@@ -173,48 +167,44 @@ class WorkflowValidatorTest {
 
   @Test
   void validateAgentRefs_passesWhenCatalogContainsAgent() {
-    StepDefinition step = new StepDefinition(
-        "s1",
-        "S1",
-        new AgentBehaviour("ok-agent", StepTransition.AUTO, null),
-        new ContextMapping(List.of(), List.of()),
-        null,
-        null);
+    StepDefinition step = StepDefinition.builder()
+        .withStepId("s1")
+        .withName("S1")
+        .withBehaviour(new AgentBehaviour("ok-agent", StepTransition.AUTO, null))
+        .withContextMapping(new ContextMapping(List.of(), List.of()))
+        .build();
     WorkflowDefinition wf = wf("wf1", List.of(step));
-    AgentDefinition agent = new AgentDefinition(
-        "ok-agent",
-        "Ok",
-        AgentLocality.CLOUD,
-        true,
-        "sys",
-        List.of(new ProviderPreference("openai", "gpt-4o-mini")),
-        List.of("COMPLETE"),
-        null,
-        null,
-        "1.0.0");
+    AgentDefinition agent = AgentDefinition.builder()
+        .withId("ok-agent")
+        .withName("Ok")
+        .withLocality(AgentLocality.CLOUD)
+        .withEnabled(true)
+        .withSystemPrompt("sys")
+        .withProviderPreferences(List.of(new ProviderPreference("openai", "gpt-4o-mini")))
+        .withSupportedCommands(List.of("COMPLETE"))
+        .withVersion("1.0.0")
+        .build();
 
     assertThatCode(() -> validator.validateAgentRefs(Map.of("wf1", wf), Map.of("ok-agent", agent)))
         .doesNotThrowAnyException();
   }
 
   private static StepDefinition terminalStep(String stepId) {
-    return new StepDefinition(
-        stepId,
-        stepId,
-        new FailBehaviour("stop"),
-        new ContextMapping(List.of(), List.of()),
-        null,
-        null);
+    return StepDefinition.builder()
+        .withStepId(stepId)
+        .withName(stepId)
+        .withBehaviour(new FailBehaviour("stop"))
+        .withContextMapping(new ContextMapping(List.of(), List.of()))
+        .build();
   }
 
   private static StepDefinition workflowRefStep(String stepId, String workflowRef) {
-    return new StepDefinition(
-        stepId,
-        stepId,
-        new WorkflowBehaviour(workflowRef, StepTransition.AUTO),
-        new ContextMapping(List.of(), List.of()),
-        null,
-        null);
+    return StepDefinition.builder()
+        .withStepId(stepId)
+        .withName(stepId)
+        .withBehaviour(new WorkflowBehaviour(workflowRef, StepTransition.AUTO))
+        .withContextMapping(new ContextMapping(List.of(), List.of()))
+        .build();
   }
 
   private static WorkflowDefinition wf(String id, List<Executable> steps) {

@@ -57,25 +57,24 @@ class WorkflowRuntimeDriveIT {
 
   @Test
   void wiredRuntime_completesSingleAgentStep() {
-    AgentDefinition agent = new AgentDefinition(
-        "agent1",
-        "Agent",
-        AgentLocality.CLOUD,
-        true,
-        "stub system",
-        List.of(new ProviderPreference("openai", "gpt-test")),
-        List.of("COMPLETE"),
-        null,
-        null,
-        "1.0.0");
+    AgentDefinition agent = AgentDefinition.builder()
+        .withId("agent1")
+        .withName("Agent")
+        .withLocality(AgentLocality.CLOUD)
+        .withEnabled(true)
+        .withSystemPrompt("stub system")
+        .withProviderPreferences(List.of(new ProviderPreference("openai", "gpt-test")))
+        .withSupportedCommands(List.of("COMPLETE"))
+        .withVersion("1.0.0")
+        .build();
 
-    StepDefinition step = new StepDefinition(
-        "s1",
-        "Step1",
-        new AgentBehaviour(agent.id(), StepTransition.AUTO, null),
-        new ContextMapping(List.of(), List.of()),
-        null,
-        8);
+    StepDefinition step = StepDefinition.builder()
+        .withStepId("s1")
+        .withName("Step1")
+        .withBehaviour(new AgentBehaviour(agent.id(), StepTransition.AUTO, null))
+        .withContextMapping(new ContextMapping(List.of(), List.of()))
+        .withMaxUserPromptRounds(8)
+        .build();
 
     WorkflowDefinition workflow = new WorkflowDefinition(
         "wf-it",
@@ -125,7 +124,8 @@ class WorkflowRuntimeDriveIT {
         .eventRecorder(eventRecorder)
         .llmProviderSelectionStrategy(new FirstAvailableProviderSelectionStrategy())
         .promptCacheEnabled(true)
-        .llmCallObserver(new LlmCallObserver(eventRecorder))
+        .llmCallObserver(new LlmCallObserver(eventRecorder, MAPPER))
+        .modelTierResolver((provider, tier) -> null)
         .build();
   }
 
@@ -164,13 +164,11 @@ class WorkflowRuntimeDriveIT {
     ArtifactDefinition nestedArtifact = new ArtifactDefinition(
         "form1", List.of(new TextArtifactItem("nestedField", "Nested", true, null)));
 
-    StepDefinition inputStep = new StepDefinition(
-        "input",
-        "input",
-        new InputBehaviour("form1", StepTransition.AUTO),
-        null,
-        null,
-        null);
+    StepDefinition inputStep = StepDefinition.builder()
+        .withStepId("input")
+        .withName("input")
+        .withBehaviour(new InputBehaviour("form1", StepTransition.AUTO))
+        .build();
 
     WorkflowDefinition nested = workflow(
         "wf-nested-artifact",
@@ -213,23 +211,20 @@ class WorkflowRuntimeDriveIT {
 
   private static StepDefinition resourceStep(String stepId, String resourcePath,
       String contextKey) {
-    return new StepDefinition(
-        stepId,
-        stepId,
-        new ResourceBehaviour(resourcePath, contextKey, StepTransition.AUTO),
-        new ContextMapping(List.of(), List.of()),
-        null,
-        null);
+    return StepDefinition.builder()
+        .withStepId(stepId)
+        .withName(stepId)
+        .withBehaviour(new ResourceBehaviour(resourcePath, contextKey, StepTransition.AUTO))
+        .withContextMapping(new ContextMapping(List.of(), List.of()))
+        .build();
   }
 
   private static StepDefinition nestedWorkflowStep(String workflowRef) {
-    return new StepDefinition(
-        "invoke-nested",
-        "invoke-nested",
-        new WorkflowBehaviour(workflowRef, StepTransition.AUTO),
-        null,
-        null,
-        null);
+    return StepDefinition.builder()
+        .withStepId("invoke-nested")
+        .withName("invoke-nested")
+        .withBehaviour(new WorkflowBehaviour(workflowRef, StepTransition.AUTO))
+        .build();
   }
 
   private static BlueprintDefinition blueprint(String id,
