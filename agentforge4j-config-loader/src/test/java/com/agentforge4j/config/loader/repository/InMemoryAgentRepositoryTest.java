@@ -16,9 +16,16 @@ class InMemoryAgentRepositoryTest {
 
   @Test
   void get_returnsAgentFromCurrentSnapshot() {
-    AgentDefinition globalAgent = new AgentDefinition("agent-a", "Global", AgentLocality.CLOUD, true,
-        "global", List.of(new ProviderPreference("OPENAI", "gpt-4o-mini")), List.of("COMPLETE"),
-        null, null, "1.0.0");
+    AgentDefinition globalAgent = AgentDefinition.builder()
+        .withId("agent-a")
+        .withName("Global")
+        .withLocality(AgentLocality.CLOUD)
+        .withEnabled(true)
+        .withSystemPrompt("global")
+        .withProviderPreferences(List.of(new ProviderPreference("OPENAI", "gpt-4o-mini")))
+        .withSupportedCommands(List.of("COMPLETE"))
+        .withVersion("1.0.0")
+        .build();
     InMemoryAgentRepository repository = new InMemoryAgentRepository(Map.of("agent-a", globalAgent));
 
     assertThat(repository.get("agent-a").systemPrompt()).isEqualTo("global");
@@ -35,12 +42,26 @@ class InMemoryAgentRepositoryTest {
 
   @Test
   void replaceGlobalAgents_swapsSnapshotForSubsequentReads() {
-    AgentDefinition initialAgent = new AgentDefinition("agent-a", "Initial", AgentLocality.CLOUD, true,
-        "initial", List.of(new ProviderPreference("OPENAI", "gpt-4o-mini")), List.of("COMPLETE"),
-        null, null, "1.0.0");
-    AgentDefinition replacementAgent = new AgentDefinition("agent-b", "Replacement", AgentLocality.CLOUD, true,
-        "replacement", List.of(new ProviderPreference("OPENAI", "gpt-4o-mini")), List.of("COMPLETE"),
-        null, null, "1.0.0");
+    AgentDefinition initialAgent = AgentDefinition.builder()
+        .withId("agent-a")
+        .withName("Initial")
+        .withLocality(AgentLocality.CLOUD)
+        .withEnabled(true)
+        .withSystemPrompt("initial")
+        .withProviderPreferences(List.of(new ProviderPreference("OPENAI", "gpt-4o-mini")))
+        .withSupportedCommands(List.of("COMPLETE"))
+        .withVersion("1.0.0")
+        .build();
+    AgentDefinition replacementAgent = AgentDefinition.builder()
+        .withId("agent-b")
+        .withName("Replacement")
+        .withLocality(AgentLocality.CLOUD)
+        .withEnabled(true)
+        .withSystemPrompt("replacement")
+        .withProviderPreferences(List.of(new ProviderPreference("OPENAI", "gpt-4o-mini")))
+        .withSupportedCommands(List.of("COMPLETE"))
+        .withVersion("1.0.0")
+        .build();
     InMemoryAgentRepository repository = new InMemoryAgentRepository(Map.of("agent-a", initialAgent));
 
     repository.replaceGlobalAgents(Map.of("agent-b", replacementAgent));

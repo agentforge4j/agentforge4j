@@ -6,6 +6,7 @@ import com.agentforge4j.core.workflow.event.WorkflowEventType;
 import com.agentforge4j.core.workflow.state.ReservedContextKeys;
 import com.agentforge4j.core.workflow.state.WorkflowState;
 import com.agentforge4j.llm.api.LlmExecutionResponse;
+import com.agentforge4j.llm.api.ModelTier;
 import com.agentforge4j.llm.api.TokenUsageReport;
 import com.agentforge4j.runtime.event.EventRecorder;
 import com.agentforge4j.util.Validate;
@@ -29,18 +30,26 @@ public final class LlmCallObserver {
   /**
    * Called once per completed LLM provider call.
    *
-   * @param agentId  the agent that triggered the call
-   * @param provider the provider name (e.g. {@code "claude"})
-   * @param response the full provider response including usage and model metadata
-   * @param state    mutable run state — token total is read-add-written here
+   * @param agentId            the agent that triggered the call
+   * @param provider           the provider name (e.g. {@code "claude"})
+   * @param response           the full provider response including usage and model metadata
+   * @param resolvedModel      the model the runtime resolved and sent; {@code null} when the
+   *                           provider default was used
+   * @param modelSource        how the model was determined (pin, tier, or provider default)
+   * @param requestedModelTier the requested capability tier, or {@code null} when none applied
+   * @param state              mutable run state — token total is read-add-written here
    */
   public void observe(String agentId,
       String provider,
       LlmExecutionResponse response,
+      String resolvedModel,
+      ModelSource modelSource,
+      ModelTier requestedModelTier,
       WorkflowState state) {
     TokenUsageReport tokenUsage = response.tokenUsage();
     int callTotal = computeCallTokenTotal(tokenUsage);
-    String payload = buildPayload(agentId, provider, response.modelUsed(), tokenUsage, callTotal);
+    String payload = buildPayload(agentId, provider, response.modelUsed(), resolvedModel,
+        modelSource, requestedModelTier, tokenUsage, callTotal);
     eventRecorder.record(
         state.getRunId(),
         state.getCurrentStepId(),
@@ -62,17 +71,25 @@ public final class LlmCallObserver {
   private static String buildPayload(String agentId,
       String provider,
       String modelUsed,
+      String resolvedModel,
+      ModelSource modelSource,
+      ModelTier requestedModelTier,
       TokenUsageReport tokenUsage,
       int callTotal) {
     // totalTokens = inputTokens + outputTokens; TokenUsageReport has no totalTokens field by design
     Integer totalTokens = (tokenUsage == null
         || (tokenUsage.inputTokens() == null && tokenUsage.outputTokens() == null))
         ? null : callTotal;
-    return "{\"agentId\":%s,\"provider\":%s,\"modelUsed\":%s,\"inputTokens\":%s,\"outputTokens\":%s,\"totalTokens\":%s}"
+    return ("{\"agentId\":%s,\"provider\":%s,\"modelUsed\":%s,\"resolvedModel\":%s,"
+        + "\"modelSource\":%s,\"requestedModelTier\":%s,"
+        + "\"inputTokens\":%s,\"outputTokens\":%s,\"totalTokens\":%s}")
         .formatted(
             jsonString(agentId),
             jsonString(provider),
             jsonString(modelUsed),
+            jsonString(resolvedModel),
+            jsonString(modelSource == null ? null : modelSource.name()),
+            jsonString(requestedModelTier == null ? null : requestedModelTier.name()),
             jsonNumber(tokenUsage == null ? null : tokenUsage.inputTokens()),
             jsonNumber(tokenUsage == null ? null : tokenUsage.outputTokens()),
             jsonNumber(totalTokens));

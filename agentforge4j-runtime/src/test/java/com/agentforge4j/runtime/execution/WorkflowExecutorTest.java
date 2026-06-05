@@ -104,13 +104,12 @@ class WorkflowExecutorTest {
   }
 
   private static StepDefinition dummyStep(String stepId) {
-    return new StepDefinition(
-        stepId,
-        stepId,
-        new ResourceBehaviour("/examples/sample.txt", stepId + ".out", StepTransition.AUTO),
-        ContextMapping.none(),
-        null,
-        null);
+    return StepDefinition.builder()
+        .withStepId(stepId)
+        .withName(stepId)
+        .withBehaviour(new ResourceBehaviour("/examples/sample.txt", stepId + ".out", StepTransition.AUTO))
+        .withContextMapping(ContextMapping.none())
+        .build();
   }
 
   private static WorkflowDefinition workflow(String id,

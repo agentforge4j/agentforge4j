@@ -6,6 +6,7 @@ import com.agentforge4j.core.workflow.event.WorkflowEventType;
 import com.agentforge4j.core.workflow.state.ReservedContextKeys;
 import com.agentforge4j.core.workflow.state.WorkflowState;
 import com.agentforge4j.llm.api.LlmExecutionResponse;
+import com.agentforge4j.llm.api.ModelTier;
 import com.agentforge4j.llm.api.TokenUsageReport;
 import com.agentforge4j.runtime.event.EventRecorder;
 import com.agentforge4j.runtime.repository.InMemoryWorkflowEventLog;
@@ -30,6 +31,9 @@ class LlmCallObserverTest {
         "agent-x",
         "openai",
         llmResponse("gpt-4o-mini", TEST_TOKEN_USAGE),
+        "gpt-4o-mini",
+        ModelSource.TIER,
+        ModelTier.STANDARD,
         state);
 
     var completedEvents = eventLog.getEvents("run-llm-call-completed").stream()
@@ -41,6 +45,9 @@ class LlmCallObserverTest {
     String payload = completedEvents.get(0).payload();
     assertThat(payload).contains("\"agentId\":\"agent-x\"");
     assertThat(payload).contains("\"provider\":\"openai\"");
+    assertThat(payload).contains("\"resolvedModel\":\"gpt-4o-mini\"");
+    assertThat(payload).contains("\"modelSource\":\"TIER\"");
+    assertThat(payload).contains("\"requestedModelTier\":\"STANDARD\"");
     assertThat(payload).contains("\"inputTokens\":100");
     assertThat(payload).contains("\"outputTokens\":50");
     assertThat(payload).contains("\"totalTokens\":150");
@@ -55,6 +62,9 @@ class LlmCallObserverTest {
         "agent-x",
         "openai",
         llmResponse("gpt-4o-mini", TEST_TOKEN_USAGE),
+        null,
+        ModelSource.PROVIDER_DEFAULT,
+        null,
         state);
 
     assertThat(llmTokensTotalInContext(state)).isEqualTo(150);
@@ -67,8 +77,10 @@ class LlmCallObserverTest {
     TokenUsageReport firstUsage = new TokenUsageReport(10, 5, null, null);
     TokenUsageReport secondUsage = new TokenUsageReport(20, 8, null, null);
 
-    observer.observe("agent-x", "openai", llmResponse("gpt-4o-mini", firstUsage), state);
-    observer.observe("agent-x", "openai", llmResponse("gpt-4o-mini", secondUsage), state);
+    observer.observe("agent-x", "openai", llmResponse("gpt-4o-mini", firstUsage),
+        null, ModelSource.PROVIDER_DEFAULT, null, state);
+    observer.observe("agent-x", "openai", llmResponse("gpt-4o-mini", secondUsage),
+        null, ModelSource.PROVIDER_DEFAULT, null, state);
 
     assertThat(llmTokensTotalInContext(state)).isEqualTo(43);
   }
@@ -80,7 +92,8 @@ class LlmCallObserverTest {
     LlmCallObserver observer = new LlmCallObserver(recorder);
     WorkflowState state = workflowState("run-null-usage-contribution");
 
-    observer.observe("agent-x", "openai", llmResponse("gpt-4o", null), state);
+    observer.observe("agent-x", "openai", llmResponse("gpt-4o", null),
+        null, ModelSource.PROVIDER_DEFAULT, null, state);
 
     assertThat(llmTokensTotalInContext(state)).isEqualTo(0);
     assertThat(eventLog.getEvents("run-null-usage-contribution").stream()
@@ -95,7 +108,8 @@ class LlmCallObserverTest {
     LlmCallObserver observer = new LlmCallObserver(recorder);
     WorkflowState state = workflowState("run-null-token-payload");
 
-    observer.observe("agent-x", "openai", llmResponse("gpt-4o", null), state);
+    observer.observe("agent-x", "openai", llmResponse("gpt-4o", null),
+        null, ModelSource.PROVIDER_DEFAULT, null, state);
 
     String payload = eventLog.getEvents("run-null-token-payload").stream()
         .filter(e -> e.eventType() == WorkflowEventType.LLM_CALL_COMPLETED)

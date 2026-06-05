@@ -28,6 +28,7 @@ public final class AgentDefinitionFile {
   private String author;
   private String contact;
   private String version;
+  private String modelTier;
 
   /**
    * Converts this DTO into an {@link AgentDefinition} using the resolved system prompt content.
@@ -36,16 +37,18 @@ public final class AgentDefinitionFile {
    * @return immutable agent definition
    */
   public AgentDefinition toDefinition(String systemPrompt) {
-    return new AgentDefinition(
-        id,
-        name,
-        locality,
-        enabled,
-        systemPrompt,
-        providerPreferences,
-        supportedCommands,
-        author,
-        contact,
-        version);
+    return AgentDefinition.builder()
+        .withId(id)
+        .withName(name)
+        .withLocality(locality)
+        .withEnabled(enabled)
+        .withSystemPrompt(systemPrompt)
+        .withProviderPreferences(providerPreferences)
+        .withSupportedCommands(supportedCommands)
+        .withAuthor(author)
+        .withContact(contact)
+        .withVersion(version)
+        .withModelTier(modelTier)
+        .build();
   }
 }

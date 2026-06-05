@@ -24,13 +24,12 @@ class StepSequenceExecutorTest {
 
   @Test
   void step_uids_start_at_one_for_each_execution_context() {
-    StepDefinition step = new StepDefinition(
-        "s1",
-        "S",
-        new AgentBehaviour("a1", StepTransition.AUTO, null),
-        ContextMapping.none(),
-        null,
-        null);
+    StepDefinition step = StepDefinition.builder()
+        .withStepId("s1")
+        .withName("S")
+        .withBehaviour(new AgentBehaviour("a1", StepTransition.AUTO, null))
+        .withContextMapping(ContextMapping.none())
+        .build();
     WorkflowDefinition wf = new WorkflowDefinition(
         "wf1",
         "W",

@@ -110,12 +110,11 @@ class MaxIterationsHandlerTest {
   }
 
   private static StepDefinition dummyStep() {
-    return new StepDefinition(
-        "s1",
-        "s1",
-        new ResourceBehaviour("/examples/sample.txt", "out", StepTransition.AUTO),
-        ContextMapping.none(),
-        null,
-        null);
+    return StepDefinition.builder()
+        .withStepId("s1")
+        .withName("s1")
+        .withBehaviour(new ResourceBehaviour("/examples/sample.txt", "out", StepTransition.AUTO))
+        .withContextMapping(ContextMapping.none())
+        .build();
   }
 }

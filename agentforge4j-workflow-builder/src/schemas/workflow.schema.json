@@ -56,6 +56,16 @@
           "type": "integer",
           "minimum": 1,
           "description": "Maximum blocking USER_PROMPT pauses for this step before the run fails."
+        },
+        "modelTier": {
+          "type": ["string", "null"],
+          "enum": [
+            "LITE",
+            "STANDARD",
+            "POWERFUL",
+            null
+          ],
+          "description": "Optional capability tier overriding the agent tier for this step. A raw model pin always wins over the tier. Null inherits the agent tier."
         }
       }
     },

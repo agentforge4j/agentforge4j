@@ -415,13 +415,12 @@ class RetryPreviousBehaviourHandlerTest {
   }
 
   private static StepDefinition fallbackStep(String stepId) {
-    return new StepDefinition(
-        stepId,
-        stepId,
-        new ResourceBehaviour("/workflow-resources/info.txt", stepId + ".out", StepTransition.AUTO),
-        ContextMapping.none(),
-        null,
-        null);
+    return StepDefinition.builder()
+        .withStepId(stepId)
+        .withName(stepId)
+        .withBehaviour(new ResourceBehaviour("/workflow-resources/info.txt", stepId + ".out", StepTransition.AUTO))
+        .withContextMapping(ContextMapping.none())
+        .build();
   }
 
   private static final class FixtureBuilder {
@@ -523,13 +522,12 @@ class RetryPreviousBehaviourHandlerTest {
     TestFixture build() {
       RetryPreviousBehaviour behaviour = new RetryPreviousBehaviour(
           retryStepId, retryMode, maxAttempts, fallback);
-      StepDefinition owningStep = new StepDefinition(
-          owningStepId,
-          owningStepId,
-          behaviour,
-          ContextMapping.none(),
-          null,
-          null);
+      StepDefinition owningStep = StepDefinition.builder()
+          .withStepId(owningStepId)
+          .withName(owningStepId)
+          .withBehaviour(behaviour)
+          .withContextMapping(ContextMapping.none())
+          .build();
       WorkflowState state = new WorkflowState(
           RUN_ID, WORKFLOW_ID, null, Instant.parse("2026-05-01T12:00:00Z"));
 
@@ -585,14 +583,13 @@ class RetryPreviousBehaviourHandlerTest {
     }
 
     private static Executable mockStepExecutable(String stepId) {
-      return new StepDefinition(
-          stepId,
-          stepId,
-          new ResourceBehaviour("/workflow-resources/info.txt", stepId + ".out",
-              StepTransition.AUTO),
-          ContextMapping.none(),
-          null,
-          null);
+      return StepDefinition.builder()
+          .withStepId(stepId)
+          .withName(stepId)
+          .withBehaviour(new ResourceBehaviour("/workflow-resources/info.txt", stepId + ".out",
+              StepTransition.AUTO))
+          .withContextMapping(ContextMapping.none())
+          .build();
     }
   }
 

@@ -54,13 +54,12 @@ class DefaultLoopEvaluatorTest {
         WorkflowLifecycle.ACTIVE,
         Map.of(),
         Map.of(),
-        List.of(new StepDefinition(
-            "s1",
-            "s1",
-            new ResourceBehaviour("/examples/sample.txt", "out", StepTransition.AUTO),
-            ContextMapping.none(),
-            null,
-            null)));
+        List.of(StepDefinition.builder()
+            .withStepId("s1")
+            .withName("s1")
+            .withBehaviour(new ResourceBehaviour("/examples/sample.txt", "out", StepTransition.AUTO))
+            .withContextMapping(ContextMapping.none())
+            .build()));
     WorkflowState state = new WorkflowState("run-1", workflow.id(), null,
         Instant.parse("2026-05-01T00:00:00Z"));
     executionContext = new ExecutionContext(state, workflow, 32);

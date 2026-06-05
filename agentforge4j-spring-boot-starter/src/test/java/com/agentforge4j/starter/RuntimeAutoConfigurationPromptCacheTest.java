@@ -5,7 +5,6 @@ import com.agentforge4j.core.agent.AgentDefinition;
 import com.agentforge4j.core.agent.AgentLocality;
 import com.agentforge4j.core.agent.AgentRepository;
 import com.agentforge4j.core.agent.ProviderPreference;
-import com.agentforge4j.core.runtime.WorkflowRuntime;
 import com.agentforge4j.core.workflow.context.ContextMapping;
 import com.agentforge4j.core.workflow.state.WorkflowState;
 import com.agentforge4j.llm.LlmClientResolver;
@@ -109,17 +108,16 @@ class RuntimeAutoConfigurationPromptCacheTest {
   }
 
   private static AgentDefinition testAgent() {
-    return new AgentDefinition(
-        "a1",
-        "A",
-        AgentLocality.CLOUD,
-        true,
-        "agent-body",
-        List.of(new ProviderPreference("openai", "gpt-4o-mini")),
-        List.of("COMPLETE"),
-        null,
-        null,
-        "1.0.0");
+    return AgentDefinition.builder()
+        .withId("a1")
+        .withName("A")
+        .withLocality(AgentLocality.CLOUD)
+        .withEnabled(true)
+        .withSystemPrompt("agent-body")
+        .withProviderPreferences(List.of(new ProviderPreference("openai", "gpt-4o-mini")))
+        .withSupportedCommands(List.of("COMPLETE"))
+        .withVersion("1.0.0")
+        .build();
   }
 
   @Configuration
@@ -150,6 +148,7 @@ class RuntimeAutoConfigurationPromptCacheTest {
           .llmProviderSelectionStrategy(new FirstAvailableProviderSelectionStrategy())
           .promptCacheEnabled(cacheSettings.enabled())
           .llmCallObserver(llmCallObserver)
+          .modelTierResolver((provider, tier) -> null)
           .build();
     }
 

@@ -8,10 +8,15 @@ import com.agentforge4j.core.workflow.repository.WorkflowRepository;
 import com.agentforge4j.core.workflow.repository.WorkflowStateRepository;
 import com.agentforge4j.integrations.IntegrationRegistry;
 import com.agentforge4j.integrations.NoOpIntegrationRegistry;
+import com.agentforge4j.llm.ConfigModelTierResolver;
 import com.agentforge4j.llm.DefaultLlmClientResolver;
 import com.agentforge4j.llm.LlmClientResolver;
+import com.agentforge4j.llm.RetryingLlmClientResolver;
 import com.agentforge4j.llm.api.LlmClient;
 import com.agentforge4j.llm.api.LlmRetryPolicy;
+import com.agentforge4j.llm.api.ModelTier;
+import com.agentforge4j.llm.api.ModelTierResolver;
+import com.agentforge4j.runtime.WorkflowRuntimeBuilder;
 import com.agentforge4j.runtime.command.FileSink;
 import com.agentforge4j.runtime.event.EventRecorder;
 import com.agentforge4j.runtime.llm.AgentInvoker;
@@ -26,9 +31,13 @@ import com.agentforge4j.util.Validate;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.nio.file.Path;
 import java.time.Clock;
+import java.util.EnumMap;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.util.Map.Entry;
 
 /**
  * Static entry point for assembling an {@link AgentForge4j} facade with framework-agnostic
@@ -83,6 +92,7 @@ public final class AgentForge4jBootstrap {
     private LlmProviderSelectionStrategy llmProviderSelectionStrategy;
     private AgentInvoker agentInvoker;
     private LlmCallObserver llmCallObserver;
+    private ModelTierResolver modelTierResolver;
 
     private boolean cacheEnabled = false;
     private boolean cacheEnabledSet = false;
@@ -106,6 +116,7 @@ public final class AgentForge4jBootstrap {
      * Overrides the clock used for timestamps on state updates and events.
      *
      * @param clock clock instance; must not be {@code null}
+     *
      * @return this builder
      */
     public Builder withClock(Clock clock) {
@@ -117,6 +128,7 @@ public final class AgentForge4jBootstrap {
      * Overrides the Jackson {@link ObjectMapper} used for configuration loading and LLM parsing.
      *
      * @param objectMapper mapper instance; must not be {@code null}
+     *
      * @return this builder
      */
     public Builder withObjectMapper(ObjectMapper objectMapper) {
@@ -128,6 +140,7 @@ public final class AgentForge4jBootstrap {
      * Overrides the agent definition repository.
      *
      * @param agentRepository repository instance; must not be {@code null}
+     *
      * @return this builder
      */
     public Builder withAgentRepository(AgentRepository agentRepository) {
@@ -139,6 +152,7 @@ public final class AgentForge4jBootstrap {
      * Overrides the workflow definition repository.
      *
      * @param workflowRepository repository instance; must not be {@code null}
+     *
      * @return this builder
      */
     public Builder withWorkflowRepository(WorkflowRepository workflowRepository) {
@@ -151,6 +165,7 @@ public final class AgentForge4jBootstrap {
      * Overrides persistence for workflow state between drives.
      *
      * @param workflowStateRepository repository instance; must not be {@code null}
+     *
      * @return this builder
      */
     public Builder withWorkflowStateRepository(WorkflowStateRepository workflowStateRepository) {
@@ -163,6 +178,7 @@ public final class AgentForge4jBootstrap {
      * Overrides the append-only workflow event log.
      *
      * @param workflowEventLog event log instance; must not be {@code null}
+     *
      * @return this builder
      */
     public Builder withWorkflowEventLog(WorkflowEventLog workflowEventLog) {
@@ -175,6 +191,7 @@ public final class AgentForge4jBootstrap {
      * Overrides the integration registry for {@code CallEndpointCommand} resolution.
      *
      * @param integrationRegistry registry instance; must not be {@code null}
+     *
      * @return this builder
      */
     public Builder withIntegrationRegistry(IntegrationRegistry integrationRegistry) {
@@ -187,6 +204,7 @@ public final class AgentForge4jBootstrap {
      * Overrides the LLM client resolver.
      *
      * @param llmClientResolver resolver instance; must not be {@code null}
+     *
      * @return this builder
      */
     public Builder withLlmClientResolver(LlmClientResolver llmClientResolver) {
@@ -207,6 +225,7 @@ public final class AgentForge4jBootstrap {
      * (one attempt means no retry).
      *
      * @param llmRetryPolicy retry policy; must not be {@code null}
+     *
      * @return this builder
      */
     public Builder withLlmRetryPolicy(LlmRetryPolicy llmRetryPolicy) {
@@ -219,6 +238,7 @@ public final class AgentForge4jBootstrap {
      * Overrides the agent input context renderer.
      *
      * @param contextRenderer renderer instance; must not be {@code null}
+     *
      * @return this builder
      */
     public Builder withContextRenderer(ContextRenderer contextRenderer) {
@@ -230,6 +250,7 @@ public final class AgentForge4jBootstrap {
      * Overrides the LLM command response parser.
      *
      * @param llmCommandParser parser instance; must not be {@code null}
+     *
      * @return this builder
      */
     public Builder withLlmCommandParser(LlmCommandParser llmCommandParser) {
@@ -242,6 +263,7 @@ public final class AgentForge4jBootstrap {
      * Overrides the shared workflow event recorder.
      *
      * @param eventRecorder recorder instance; must not be {@code null}
+     *
      * @return this builder
      */
     public Builder withEventRecorder(EventRecorder eventRecorder) {
@@ -253,6 +275,7 @@ public final class AgentForge4jBootstrap {
      * Overrides where {@link com.agentforge4j.core.command.CreateFileCommand} content is written.
      *
      * @param fileSink file sink instance; must not be {@code null}
+     *
      * @return this builder
      */
     public Builder withFileSink(FileSink fileSink) {
@@ -265,6 +288,7 @@ public final class AgentForge4jBootstrap {
      *
      * @param fileSinkPath path used to create a
      *                     {@link com.agentforge4j.runtime.command.LocalFileSink} instance
+     *
      * @return this builder
      */
     public Builder withFileSinkPath(Path fileSinkPath) {
@@ -277,6 +301,7 @@ public final class AgentForge4jBootstrap {
      * Overrides the strategy for selecting an LLM provider from agent preferences.
      *
      * @param strategy selection strategy; must not be {@code null}
+     *
      * @return this builder
      */
     public Builder withLlmProviderSelectionStrategy(LlmProviderSelectionStrategy strategy) {
@@ -288,6 +313,7 @@ public final class AgentForge4jBootstrap {
      * Overrides the {@link AgentInvoker} used for agent and SPAR steps.
      *
      * @param agentInvoker invoker instance; must not be {@code null}
+     *
      * @return this builder
      */
     public Builder withAgentInvoker(AgentInvoker agentInvoker) {
@@ -299,6 +325,7 @@ public final class AgentForge4jBootstrap {
      * Overrides the observer invoked after each completed LLM call.
      *
      * @param llmCallObserver observer instance; must not be {@code null}
+     *
      * @return this builder
      */
     public Builder withLlmCallObserver(LlmCallObserver llmCallObserver) {
@@ -307,9 +334,25 @@ public final class AgentForge4jBootstrap {
     }
 
     /**
+     * Overrides the resolver that maps a capability tier to a concrete model per provider. When not
+     * set, a {@link ConfigModelTierResolver} built from the shipped defaults merged with any
+     * {@code agentforge4j.llm.model-tiers.<provider>.<tier>} overrides is used.
+     *
+     * @param modelTierResolver resolver instance; must not be {@code null}
+     *
+     * @return this builder
+     */
+    public Builder withModelTierResolver(ModelTierResolver modelTierResolver) {
+      this.modelTierResolver = Validate.notNull(modelTierResolver,
+          "modelTierResolver must not be null");
+      return this;
+    }
+
+    /**
      * Sets the maximum nested workflow depth forwarded to {@link WorkflowRuntimeBuilder}.
      *
      * @param maxNestingDepth maximum nesting depth (at least 1)
+     *
      * @return this builder
      */
     public Builder withMaxNestingDepth(int maxNestingDepth) {
@@ -322,6 +365,7 @@ public final class AgentForge4jBootstrap {
      * Opts in to loading agents from the given filesystem directory at build time.
      *
      * @param agentsDir agents root directory; must not be {@code null}
+     *
      * @return this builder
      */
     public Builder withAgentsDir(Path agentsDir) {
@@ -334,6 +378,7 @@ public final class AgentForge4jBootstrap {
      * Opts in to loading workflows from the given filesystem directory at build time.
      *
      * @param workflowsDir workflows root directory; must not be {@code null}
+     *
      * @return this builder
      */
     public Builder withWorkflowsDir(Path workflowsDir) {
@@ -347,6 +392,7 @@ public final class AgentForge4jBootstrap {
      * Enables or disables loading shipped agents from the classpath.
      *
      * @param loadShippedAgents {@code true} to load shipped agents
+     *
      * @return this builder
      */
     public Builder withLoadShippedAgents(boolean loadShippedAgents) {
@@ -359,6 +405,7 @@ public final class AgentForge4jBootstrap {
      * Enables or disables loading shipped workflows from the classpath.
      *
      * @param loadShippedWorkflows {@code true} to load shipped workflows
+     *
      * @return this builder
      */
     public Builder withLoadShippedWorkflows(boolean loadShippedWorkflows) {
@@ -371,6 +418,7 @@ public final class AgentForge4jBootstrap {
      * Enables or disables prompt-layer caching on the default {@link AgentInvoker}.
      *
      * @param cacheEnabled {@code true} to enable prompt cache boundaries on LLM requests
+     *
      * @return this builder
      */
     public Builder withCacheEnabled(boolean cacheEnabled) {
@@ -384,6 +432,7 @@ public final class AgentForge4jBootstrap {
      * last-write-wins within the same provider key.
      *
      * @param config provider configuration; must not be {@code null}
+     *
      * @return this builder
      */
     public Builder withLlmProvider(LlmProviderConfig config) {
@@ -397,10 +446,12 @@ public final class AgentForge4jBootstrap {
      * overrides not set.
      *
      * @return immutable facade; never {@code null}
+     *
      * @throws IllegalStateException if assembly fails (e.g. loading throws)
      */
     public AgentForge4j build() {
-      applyConfig(ConfigReader.read());
+      Map<String, String> config = ConfigReader.read();
+      applyConfig(config);
 
       Clock resolvedClock = (clock != null) ? clock : Clock.systemUTC();
       ObjectMapper resolvedMapper = (objectMapper != null)
@@ -455,10 +506,15 @@ public final class AgentForge4jBootstrap {
       LlmCallObserver resolvedObserver = (llmCallObserver != null)
           ? llmCallObserver : new LlmCallObserver(resolvedRecorder);
 
+      ModelTierResolver resolvedTierResolver = (modelTierResolver != null)
+          ? modelTierResolver
+          : ConfigModelTierResolver.withShippedDefaultsAndOverrides(
+              parseModelTierOverrides(config));
+
       AgentInvoker resolvedInvoker = RuntimeAssembler.agentInvoker(
           resolvedAgentRepo, resolvedResolver, resolvedRenderer, resolvedParser,
           resolvedMapper, resolvedRecorder, resolvedStrategy, cacheEnabled,
-          resolvedObserver, agentInvoker, cacheEnabledSet);
+          resolvedObserver, resolvedTierResolver, agentInvoker, cacheEnabledSet);
 
       WorkflowRuntime resolvedRuntime = RuntimeAssembler.runtime(
           resolvedWorkflowRepo, resolvedStateRepo, resolvedEventLog, resolvedClock,
@@ -529,6 +585,61 @@ public final class AgentForge4jBootstrap {
         if (val != null) {
           withLoadShippedWorkflows(Boolean.parseBoolean(val));
         }
+      }
+    }
+
+    /**
+     * Parses {@code agentforge4j.llm.model-tiers.<provider>.<tier>=<model>} entries from the merged
+     * configuration into a provider→tier→model override map. The tier name is case-insensitive and
+     * must match a {@link ModelTier} constant. Provider names may contain dashes (e.g.
+     * {@code azure-openai}); the tier is the segment after the final dot.
+     *
+     * @param config merged env/sys-prop map from {@link ConfigReader#read()}
+     *
+     * @return parsed overrides; empty when none are configured
+     *
+     * @throws IllegalStateException if a key is malformed or names an unknown tier
+     */
+    private Map<String, Map<ModelTier, String>> parseModelTierOverrides(
+        Map<String, String> config) {
+      String prefix = "agentforge4j.llm.model-tiers.";
+      Map<String, Map<ModelTier, String>> overrides = new HashMap<>();
+      config.entrySet().stream()
+          .filter(en -> en.getKey().startsWith(prefix))
+          .forEach(en -> addProviderTier(en, prefix, overrides));
+      return overrides;
+    }
+
+    private static void addProviderTier(Entry<String, String> entry, String prefix,
+        Map<String, Map<ModelTier, String>> overrides) {
+      String key = entry.getKey();
+      String remainder = key.substring(prefix.length());
+      int lastDot = getProviderEndIndex(remainder, key);
+      String provider = remainder.substring(0, lastDot);
+      String tierName = remainder.substring(lastDot + 1);
+      ModelTier tier = getModelTier(tierName, key);
+      overrides.computeIfAbsent(provider, providerKey -> new EnumMap<>(ModelTier.class))
+          .put(tier, entry.getValue());
+    }
+
+    private static int getProviderEndIndex(String remainder, String key) {
+      int lastDot = remainder.lastIndexOf('.');
+      if (lastDot <= 0 || lastDot == remainder.length() - 1) {
+        throw new IllegalStateException(
+            ("Invalid model tier config key '%s' — expected "
+                + "agentforge4j.llm.model-tiers.<provider>.<tier>").formatted(key));
+      }
+      return lastDot;
+    }
+
+    private static ModelTier getModelTier(String tierName, String key) {
+      try {
+        return ModelTier.valueOf(tierName.toUpperCase(Locale.ROOT));
+      } catch (IllegalArgumentException exception) {
+        throw new IllegalStateException(
+            ("Invalid tier '%s' in '%s' — valid tiers: LITE, STANDARD, POWERFUL")
+                .formatted(tierName, key),
+            exception);
       }
     }
   }

@@ -17,13 +17,11 @@ class StepDefinitionTest {
 
   @Test
   void null_context_mapping_defaults_to_none() {
-    StepDefinition step = new StepDefinition(
-        "s1",
-        "Name",
-        new FailBehaviour("r"),
-        null,
-        null,
-        null);
+    StepDefinition step = StepDefinition.builder()
+        .withStepId("s1")
+        .withName("Name")
+        .withBehaviour(new FailBehaviour("r"))
+        .build();
 
     assertThat(step.contextMapping()).isEqualTo(ContextMapping.none());
   }
@@ -32,13 +30,12 @@ class StepDefinitionTest {
   @NullAndEmptySource
   @ValueSource(strings = {" ", "\t"})
   void rejects_blank_step_id(String stepId) {
-    assertThatThrownBy(() -> new StepDefinition(
-        stepId,
-        "N",
-        new FailBehaviour("r"),
-        ContextMapping.none(),
-        null,
-        null))
+    assertThatThrownBy(() -> StepDefinition.builder()
+        .withStepId(stepId)
+        .withName("N")
+        .withBehaviour(new FailBehaviour("r"))
+        .withContextMapping(ContextMapping.none())
+        .build())
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("StepDefinition stepId must not be blank");
   }
@@ -47,20 +44,18 @@ class StepDefinitionTest {
   @NullAndEmptySource
   @ValueSource(strings = {" ", "\n"})
   void rejects_blank_name(String name) {
-    assertThatThrownBy(() -> new StepDefinition(
-        "s1",
-        name,
-        new FailBehaviour("r"),
-        null,
-        null,
-        null))
+    assertThatThrownBy(() -> StepDefinition.builder()
+        .withStepId("s1")
+        .withName(name)
+        .withBehaviour(new FailBehaviour("r"))
+        .build())
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("StepDefinition name must not be blank for step: s1");
   }
 
   @Test
   void rejects_null_behaviour() {
-    assertThatThrownBy(() -> new StepDefinition("s1", "N", null, null, null, null))
+    assertThatThrownBy(() -> StepDefinition.builder().withStepId("s1").withName("N").withBehaviour(null).build())
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("StepDefinition behaviour must not be null for step: s1");
   }
@@ -68,13 +63,12 @@ class StepDefinitionTest {
   @Test
   void preserves_explicit_context_mapping() {
     var mapping = new ContextMapping(List.of("in"), List.of("out"));
-    StepDefinition step = new StepDefinition(
-        "s1",
-        "N",
-        new AgentBehaviour("a", StepTransition.AUTO, null),
-        mapping,
-        null,
-        null);
+    StepDefinition step = StepDefinition.builder()
+        .withStepId("s1")
+        .withName("N")
+        .withBehaviour(new AgentBehaviour("a", StepTransition.AUTO, null))
+        .withContextMapping(mapping)
+        .build();
 
     assertThat(step.contextMapping()).isEqualTo(mapping);
   }

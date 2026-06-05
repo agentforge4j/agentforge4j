@@ -238,17 +238,16 @@ class AgentStepAuditRuntimeTest {
   }
 
   private static AgentDefinition agent(String id, List<String> commands) {
-    return new AgentDefinition(
-        id,
-        "A",
-        AgentLocality.CLOUD,
-        true,
-        "sys",
-        List.of(new ProviderPreference("openai", "gpt-4o-mini")),
-        commands,
-        null,
-        null,
-        "1.0.0");
+    return AgentDefinition.builder()
+        .withId(id)
+        .withName("A")
+        .withLocality(AgentLocality.CLOUD)
+        .withEnabled(true)
+        .withSystemPrompt("sys")
+        .withProviderPreferences(List.of(new ProviderPreference("openai", "gpt-4o-mini")))
+        .withSupportedCommands(commands)
+        .withVersion("1.0.0")
+        .build();
   }
 
   private static Fixture fixture(LlmClient client, AgentDefinition agentDef, int maxPromptRounds) {
@@ -267,13 +266,13 @@ class AgentStepAuditRuntimeTest {
     AgentRepository agentRepository = mock(AgentRepository.class);
     when(agentRepository.get(agentDef.id())).thenReturn(agentDef);
 
-    StepDefinition step = new StepDefinition(
-        "s1",
-        "S",
-        new AgentBehaviour(agentDef.id(), StepTransition.AUTO, null),
-        new ContextMapping(List.of(), List.of("out")),
-        null,
-        maxPromptRounds);
+    StepDefinition step = StepDefinition.builder()
+        .withStepId("s1")
+        .withName("S")
+        .withBehaviour(new AgentBehaviour(agentDef.id(), StepTransition.AUTO, null))
+        .withContextMapping(new ContextMapping(List.of(), List.of("out")))
+        .withMaxUserPromptRounds(maxPromptRounds)
+        .build();
     WorkflowDefinition wf = new WorkflowDefinition(
         "wf1",
         "W",
@@ -326,6 +325,7 @@ class AgentStepAuditRuntimeTest {
         .llmProviderSelectionStrategy(new FirstAvailableProviderSelectionStrategy())
         .promptCacheEnabled(true)
         .llmCallObserver(new LlmCallObserver(eventRecorder))
+        .modelTierResolver((provider, tier) -> null)
         .build();
   }
 

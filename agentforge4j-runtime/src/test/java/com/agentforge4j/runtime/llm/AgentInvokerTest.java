@@ -311,6 +311,7 @@ class AgentInvokerTest {
         .llmProviderSelectionStrategy(new FirstAvailableProviderSelectionStrategy())
         .promptCacheEnabled(true)
         .llmCallObserver(new LlmCallObserver(recorder))
+        .modelTierResolver((provider, tier) -> null)
         .build();
     WorkflowState state = workflowState("run-cap-zero");
     invoker.invoke("agent-x", ContextMapping.none(), state, null);
@@ -352,6 +353,7 @@ class AgentInvokerTest {
         .llmProviderSelectionStrategy(new FirstAvailableProviderSelectionStrategy())
         .promptCacheEnabled(true)
         .llmCallObserver(new LlmCallObserver(recorder))
+        .modelTierResolver((provider, tier) -> null)
         .build();
     WorkflowState state = workflowState("run-cap-custom");
     invoker.invoke("agent-x", ContextMapping.none(), state, null);
@@ -392,19 +394,18 @@ class AgentInvokerTest {
     when(client.execute(any())).thenReturn(llmResponse("[{\"type\":\"COMPLETE\"}]"));
 
     AgentRepository repo = mock(AgentRepository.class);
-    AgentDefinition agent = new AgentDefinition(
-        "agent-x",
-        "A",
-        com.agentforge4j.core.agent.AgentLocality.CLOUD,
-        true,
-        "sys",
-        List.of(
+    AgentDefinition agent = AgentDefinition.builder()
+        .withId("agent-x")
+        .withName("A")
+        .withLocality(com.agentforge4j.core.agent.AgentLocality.CLOUD)
+        .withEnabled(true)
+        .withSystemPrompt("sys")
+        .withProviderPreferences(List.of(
             new ProviderPreference("openai", "gpt-4o"),
-            new ProviderPreference("ollama", "llama3")),
-        List.of("COMPLETE"),
-        null,
-        null,
-        "1.0.0");
+            new ProviderPreference("ollama", "llama3")))
+        .withSupportedCommands(List.of("COMPLETE"))
+        .withVersion("1.0.0")
+        .build();
     when(repo.get("agent-x")).thenReturn(agent);
 
     LlmClientResolver resolver = mock(LlmClientResolver.class);
@@ -428,6 +429,7 @@ class AgentInvokerTest {
         .llmProviderSelectionStrategy(selectionStrategy)
         .promptCacheEnabled(true)
         .llmCallObserver(new LlmCallObserver(eventRecorder))
+        .modelTierResolver((provider, tier) -> null)
         .build();
 
     WorkflowState state = workflowState("run-strategy");
@@ -484,6 +486,7 @@ class AgentInvokerTest {
         .llmProviderSelectionStrategy(new FirstAvailableProviderSelectionStrategy())
         .promptCacheEnabled(true)
         .llmCallObserver(new LlmCallObserver(eventRecorder))
+        .modelTierResolver((provider, tier) -> null)
         .build();
     WorkflowState state = workflowState("run-system-prompt-order");
     invoker.invoke("agent-x", ContextMapping.none(), state, stepBody);
@@ -527,6 +530,7 @@ class AgentInvokerTest {
         .llmProviderSelectionStrategy(new FirstAvailableProviderSelectionStrategy())
         .promptCacheEnabled(true)
         .llmCallObserver(new LlmCallObserver(eventRecorder))
+        .modelTierResolver((provider, tier) -> null)
         .build();
     WorkflowState state = workflowState("run-system-prompt-no-step");
 
@@ -585,6 +589,7 @@ class AgentInvokerTest {
         .llmProviderSelectionStrategy(new FirstAvailableProviderSelectionStrategy())
         .promptCacheEnabled(true)
         .llmCallObserver(new LlmCallObserver(eventRecorder))
+        .modelTierResolver((provider, tier) -> null)
         .build();
     WorkflowState state = workflowState("run-system-prompt-separator");
     invoker.invoke("agent-x", ContextMapping.none(), state, stepBody);
@@ -619,6 +624,7 @@ class AgentInvokerTest {
         .llmProviderSelectionStrategy(new FirstAvailableProviderSelectionStrategy())
         .promptCacheEnabled(true)
         .llmCallObserver(new LlmCallObserver(eventRecorder))
+        .modelTierResolver((provider, tier) -> null)
         .build();
     WorkflowState state = workflowState("run-boundaries-deterministic");
     String stepBody = "STEP_BOUNDARY_MARKER";
@@ -644,17 +650,16 @@ class AgentInvokerTest {
     when(client.execute(any())).thenReturn(llmResponse("[{\"type\":\"COMPLETE\"}]"));
     AgentRepository repo = mock(AgentRepository.class);
     when(repo.get("agent-a")).thenReturn(agentSupportingOnlyCompleteWithBody("agent-a-body"));
-    when(repo.get("agent-b")).thenReturn(new AgentDefinition(
-        "agent-b",
-        "B",
-        AgentLocality.CLOUD,
-        true,
-        "agent-a-body",
-        List.of(new ProviderPreference("openai", "gpt-4o-mini")),
-        List.of("COMPLETE"),
-        null,
-        null,
-        "1.0.0"));
+    when(repo.get("agent-b")).thenReturn(AgentDefinition.builder()
+        .withId("agent-b")
+        .withName("B")
+        .withLocality(AgentLocality.CLOUD)
+        .withEnabled(true)
+        .withSystemPrompt("agent-a-body")
+        .withProviderPreferences(List.of(new ProviderPreference("openai", "gpt-4o-mini")))
+        .withSupportedCommands(List.of("COMPLETE"))
+        .withVersion("1.0.0")
+        .build());
     LlmClientResolver resolver = mock(LlmClientResolver.class);
     when(resolver.resolve("openai")).thenReturn(client);
     when(resolver.isProviderAvailable("openai")).thenReturn(true);
@@ -671,6 +676,7 @@ class AgentInvokerTest {
         .llmProviderSelectionStrategy(new FirstAvailableProviderSelectionStrategy())
         .promptCacheEnabled(true)
         .llmCallObserver(new LlmCallObserver(eventRecorder))
+        .modelTierResolver((provider, tier) -> null)
         .build();
     WorkflowState state = workflowState("run-layer1-stable");
 
@@ -726,6 +732,7 @@ class AgentInvokerTest {
         .llmProviderSelectionStrategy(new FirstAvailableProviderSelectionStrategy())
         .promptCacheEnabled(true)
         .llmCallObserver(new LlmCallObserver(eventRecorder))
+        .modelTierResolver((provider, tier) -> null)
         .build();
     WorkflowState state = workflowState("run-boundary-slices");
     invoker.invoke("agent-x", ContextMapping.none(), state, stepBody);
@@ -773,6 +780,7 @@ class AgentInvokerTest {
         .llmProviderSelectionStrategy(new FirstAvailableProviderSelectionStrategy())
         .promptCacheEnabled(true)
         .llmCallObserver(new LlmCallObserver(recorder))
+        .modelTierResolver((provider, tier) -> null)
         .build();
     AgentInvoker disabledInvoker = AgentInvoker.builder()
         .agentRepository(repo)
@@ -785,6 +793,7 @@ class AgentInvokerTest {
         .llmProviderSelectionStrategy(new FirstAvailableProviderSelectionStrategy())
         .promptCacheEnabled(false)
         .llmCallObserver(new LlmCallObserver(recorder))
+        .modelTierResolver((provider, tier) -> null)
         .build();
     WorkflowState enabledState = workflowState("run-cache-disabled-enabled");
     WorkflowState disabledState = workflowState("run-cache-disabled-disabled");
@@ -861,6 +870,7 @@ class AgentInvokerTest {
         .llmProviderSelectionStrategy(new FirstAvailableProviderSelectionStrategy())
         .promptCacheEnabled(true)
         .llmCallObserver(new LlmCallObserver(eventRecorder))
+        .modelTierResolver((provider, tier) -> null)
         .build();
     WorkflowState state = new WorkflowState("run-1", "wf-1", null,
         Instant.parse("2026-01-01T00:00:00Z"));
@@ -954,6 +964,7 @@ class AgentInvokerTest {
         .llmProviderSelectionStrategy(new FirstAvailableProviderSelectionStrategy())
         .promptCacheEnabled(true)
         .llmCallObserver(new LlmCallObserver(recorder))
+        .modelTierResolver((provider, tier) -> null)
         .build();
   }
 
@@ -970,6 +981,7 @@ class AgentInvokerTest {
         .llmProviderSelectionStrategy(new FirstAvailableProviderSelectionStrategy())
         .promptCacheEnabled(true)
         .llmCallObserver(new LlmCallObserver(recorder))
+        .modelTierResolver((provider, tier) -> null)
         .build();
   }
 
@@ -1009,16 +1021,15 @@ class AgentInvokerTest {
   }
 
   private static AgentDefinition agentSupportingOnlyCompleteWithBody(String systemPrompt) {
-    return new AgentDefinition(
-        "a1",
-        "A",
-        AgentLocality.CLOUD,
-        true,
-        systemPrompt,
-        List.of(new ProviderPreference("openai", "gpt-4o-mini")),
-        List.of("COMPLETE"),
-        null,
-        null,
-        "1.0.0");
+    return AgentDefinition.builder()
+        .withId("a1")
+        .withName("A")
+        .withLocality(AgentLocality.CLOUD)
+        .withEnabled(true)
+        .withSystemPrompt(systemPrompt)
+        .withProviderPreferences(List.of(new ProviderPreference("openai", "gpt-4o-mini")))
+        .withSupportedCommands(List.of("COMPLETE"))
+        .withVersion("1.0.0")
+        .build();
   }
 }
