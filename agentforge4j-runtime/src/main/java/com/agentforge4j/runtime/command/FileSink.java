@@ -10,9 +10,8 @@ package com.agentforge4j.runtime.command;
 @FunctionalInterface
 public interface FileSink {
 
-  /** Accepts writes but performs no I/O. */
-  FileSink NO_OP_FILE_SINK = (runId, stepId, path, content) -> {
-  };
+  /** Shared singleton {@link NoOpFileSink} that accepts writes but performs no I/O. */
+  FileSink NO_OP_FILE_SINK = new NoOpFileSink();
 
   /**
    * Accept a file produced by an agent. Implementations are responsible for their own
