@@ -53,7 +53,9 @@ public final class AgentBehaviourHandler implements BehaviourHandler<AgentBehavi
         result);
 
     if (applicationResult != CommandApplicationResult.AWAITING_INPUT
-        && applicationResult != CommandApplicationResult.AWAITING_APPROVAL) {
+        && applicationResult != CommandApplicationResult.AWAITING_APPROVAL
+        && applicationResult != CommandApplicationResult.AWAITING_TOOL_APPROVAL
+        && applicationResult != CommandApplicationResult.AWAITING_TOOL_DECISION) {
       executionContext.getState().putStepOutput(step.stepId(), result.rawResponse());
     }
 

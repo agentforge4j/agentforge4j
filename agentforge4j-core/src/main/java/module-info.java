@@ -19,6 +19,7 @@ module agentforge4j.core {
   exports com.agentforge4j.core.agent;
   exports com.agentforge4j.core.command;
   exports com.agentforge4j.core.command.schema;
+  exports com.agentforge4j.core.spi.tool;
   exports com.agentforge4j.core.runtime;
   exports com.agentforge4j.core.workflow;
   exports com.agentforge4j.core.workflow.artifact;

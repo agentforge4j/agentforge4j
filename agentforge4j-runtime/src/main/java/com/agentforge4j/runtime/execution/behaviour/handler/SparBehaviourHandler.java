@@ -155,7 +155,9 @@ public final class SparBehaviourHandler implements BehaviourHandler<SparBehaviou
     UserPromptPauseGuard.afterCommandApplication(step, state, result);
 
     if (result != CommandApplicationResult.AWAITING_INPUT
-        && result != CommandApplicationResult.AWAITING_APPROVAL) {
+        && result != CommandApplicationResult.AWAITING_APPROVAL
+        && result != CommandApplicationResult.AWAITING_TOOL_APPROVAL
+        && result != CommandApplicationResult.AWAITING_TOOL_DECISION) {
       state.putStepOutput(step.stepId(), resolution.rawResponse());
     }
     return result;

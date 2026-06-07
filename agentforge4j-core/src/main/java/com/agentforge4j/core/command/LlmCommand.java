@@ -20,7 +20,8 @@ import com.fasterxml.jackson.annotation.JsonTypeInfo;
     @JsonSubTypes.Type(value = ContinueCommand.class, name = "CONTINUE"),
     @JsonSubTypes.Type(value = GenerateQuestionsCommand.class, name = "GENERATE_QUESTIONS"),
     @JsonSubTypes.Type(value = EscalateCommand.class, name = "ESCALATE"),
-    @JsonSubTypes.Type(value = CallEndpointCommand.class, name = "CALL_ENDPOINT")
+    @JsonSubTypes.Type(value = CallEndpointCommand.class, name = "CALL_ENDPOINT"),
+    @JsonSubTypes.Type(value = ToolInvocationCommand.class, name = "TOOL_INVOCATION")
 })
 public sealed interface LlmCommand
     permits CreateFileCommand,
@@ -31,6 +32,7 @@ public sealed interface LlmCommand
     ContinueCommand,
     GenerateQuestionsCommand,
     EscalateCommand,
-    CallEndpointCommand {
+    CallEndpointCommand,
+    ToolInvocationCommand {
 
 }

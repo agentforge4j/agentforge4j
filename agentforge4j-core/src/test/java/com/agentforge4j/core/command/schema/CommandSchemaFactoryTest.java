@@ -43,9 +43,14 @@ class CommandSchemaFactoryTest {
   }
 
   @Test
-  void empty_supported_commands_means_all_llm_command_types() {
+  void empty_supported_commands_means_all_llm_command_types_except_opt_in_tool_invocation() {
     CommandResponseSchema schema = CommandSchemaFactory.build(null, mapper);
-    assertThat(schema.supportedCommandTypes()).isEqualTo(LlmCommandSubtypeRegistry.allTypeNamesOrdered());
+
+    List<String> expected = LlmCommandSubtypeRegistry.allTypeNamesOrdered().stream()
+        .filter(name -> !"TOOL_INVOCATION".equals(name))
+        .toList();
+    assertThat(schema.supportedCommandTypes()).isEqualTo(expected);
+    assertThat(schema.supportedCommandTypes()).doesNotContain("TOOL_INVOCATION");
   }
 
   @Test

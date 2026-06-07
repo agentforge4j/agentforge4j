@@ -2,6 +2,12 @@ package com.agentforge4j.runtime;
 
 import com.agentforge4j.core.exception.ExecutionNotFoundException;
 import com.agentforge4j.core.runtime.WorkflowRuntime;
+import com.agentforge4j.core.spi.tool.ApprovalDecision;
+import com.agentforge4j.core.spi.tool.PendingToolInvocation;
+import com.agentforge4j.core.spi.tool.PendingToolInvocationStore;
+import com.agentforge4j.core.spi.tool.ToolDecision;
+import com.agentforge4j.core.spi.tool.ToolExecutionOutcome;
+import com.agentforge4j.core.spi.tool.ToolExecutionService;
 import com.agentforge4j.core.workflow.Executable;
 import com.agentforge4j.core.workflow.WorkflowDefinition;
 import com.agentforge4j.core.workflow.artifact.ArtifactDefinition;
@@ -17,6 +23,7 @@ import com.agentforge4j.runtime.execution.ExecutableExecutor;
 import com.agentforge4j.runtime.execution.ExecutionContext;
 import com.agentforge4j.runtime.execution.ExecutionOutcome;
 import com.agentforge4j.runtime.execution.StepSequenceExecutor;
+import com.agentforge4j.runtime.tool.ToolResultApplier;
 import com.agentforge4j.util.Validate;
 import java.time.Clock;
 import java.util.Map;
@@ -59,6 +66,9 @@ public final class DefaultWorkflowRuntime implements WorkflowRuntime {
   private final int maxNestingDepth;
   private final StepTreeSearcher stepTreeSearcher;
   private final FailureSanitiser failureSanitiser;
+  private final ToolExecutionService toolExecutionService;
+  private final PendingToolInvocationStore pendingToolInvocationStore;
+  private final ToolResultApplier toolResultApplier;
 
   DefaultWorkflowRuntime(WorkflowRepository workflowRepository,
       WorkflowStateRepository workflowStateRepository,
@@ -67,7 +77,9 @@ public final class DefaultWorkflowRuntime implements WorkflowRuntime {
       EventRecorder eventRecorder,
       Clock clock,
       RunContextManager runContextManager,
-      int maxNestingDepth) {
+      int maxNestingDepth,
+      ToolExecutionService toolExecutionService,
+      PendingToolInvocationStore pendingToolInvocationStore) {
     this.workflowRepository = Validate.notNull(workflowRepository,
         "workflowRepository must not be null");
     this.workflowStateRepository = Validate.notNull(workflowStateRepository,
@@ -84,6 +96,10 @@ public final class DefaultWorkflowRuntime implements WorkflowRuntime {
         "maxNestingDepth must be at least 1").intValue();
     this.stepTreeSearcher = new StepTreeSearcher();
     this.failureSanitiser = new FailureSanitiser();
+    // Tool support is optional: these are null when no ToolExecutionService is wired.
+    this.toolExecutionService = toolExecutionService;
+    this.pendingToolInvocationStore = pendingToolInvocationStore;
+    this.toolResultApplier = new ToolResultApplier(eventRecorder);
   }
 
   /**
@@ -188,6 +204,14 @@ public final class DefaultWorkflowRuntime implements WorkflowRuntime {
     Validate.notBlank(stepId, "stepId must not be blank");
     WorkflowState state = loadState(runId);
     ensureNotCancelled(state, "approve");
+    if (state.getStatus() == WorkflowStatus.AWAITING_TOOL_APPROVAL) {
+      throw new IllegalStateException(
+          "Run is awaiting a tool approval; use continueAfterToolApproval instead of approve");
+    }
+    if (state.getStatus() == WorkflowStatus.AWAITING_TOOL_DECISION) {
+      throw new IllegalStateException(
+          "Run is awaiting a tool decision; use resolveToolDecision instead of approve");
+    }
     Validate.isTrue(state.getStatus() == WorkflowStatus.AWAITING_APPROVAL,
         "Cannot approve run '%s' in status %s".formatted(runId, state.getStatus()));
 
@@ -255,6 +279,177 @@ public final class DefaultWorkflowRuntime implements WorkflowRuntime {
    * {@inheritDoc}
    *
    * @throws ExecutionNotFoundException if no state exists for {@code runId}
+   * @throws IllegalStateException      if no tool-execution service is configured, or the run is in
+   *                                    {@link WorkflowStatus#AWAITING_APPROVAL} (use
+   *                                    {@code approve}) or
+   *                                    {@link WorkflowStatus#AWAITING_TOOL_DECISION} (use
+   *                                    {@code resolveToolDecision})
+   * @throws IllegalArgumentException   if the run is cancelled, not
+   *                                    {@link WorkflowStatus#AWAITING_TOOL_APPROVAL}, no pending
+   *                                    invocation matches, or an id/argument is blank or null
+   */
+  @Override
+  public WorkflowState continueAfterToolApproval(String runId, String toolInvocationId,
+      ApprovalDecision decision) {
+    validateToolResumeConfigured(runId, toolInvocationId);
+    Validate.notNull(decision, "decision must not be null");
+
+    WorkflowState state = loadState(runId);
+    try (RunContextManager.Scope ignored = runContextManager.open(runId, state.getWorkflowId(),
+        state.getCurrentStepId(), null)) {
+      validateToolResumeStatus(runId, state, WorkflowStatus.AWAITING_TOOL_APPROVAL,
+          "continueAfterToolApproval");
+      String capability = determineCapability(runId, toolInvocationId);
+
+      LOG.log(System.Logger.Level.INFO,
+          "Continuing after tool approval runId={0}, toolInvocationId={1}, decision={2}",
+          runId, toolInvocationId, decision.getClass().getSimpleName());
+
+      ToolExecutionOutcome outcome =
+          toolExecutionService.resume(runId, toolInvocationId, decision);
+      String actor = approverActor(decision);
+      if (outcome.status() == ToolExecutionOutcome.Status.EXECUTED) {
+        toolResultApplier.apply(capability, outcome.result(), state, actor);
+      } else {
+        // Rejected (or a failed resume): record the tool error so downstream steps can branch on it.
+        toolResultApplier.applyError(capability, outcome.detail(), state, actor);
+      }
+
+      advancePastToolStep(state, "tool-invocation:" + outcome.status());
+      return state.snapshot();
+    }
+  }
+
+  /**
+   * {@inheritDoc}
+   *
+   * @throws ExecutionNotFoundException if no state exists for {@code runId}
+   * @throws IllegalStateException      if no tool-execution service is configured, or the run is in
+   *                                    {@link WorkflowStatus#AWAITING_APPROVAL} (use
+   *                                    {@code approve} instead)
+   * @throws IllegalArgumentException   if the run is cancelled, not
+   *                                    {@link WorkflowStatus#AWAITING_TOOL_DECISION}, no pending
+   *                                    invocation matches, or an id is blank or the decision null
+   */
+  @Override
+  public WorkflowState resolveToolDecision(String runId, String toolInvocationId,
+      ToolDecision decision) {
+    validateToolResumeConfigured(runId, toolInvocationId);
+    Validate.notNull(decision, "decision must not be null");
+
+    WorkflowState state = loadState(runId);
+    try (RunContextManager.Scope ignored = runContextManager.open(runId, state.getWorkflowId(),
+        state.getCurrentStepId(), null)) {
+      validateToolResumeStatus(runId, state, WorkflowStatus.AWAITING_TOOL_DECISION,
+          "resolveToolDecision");
+
+      PendingToolInvocation pending = Validate.notNull(
+          pendingToolInvocationStore.find(runId, toolInvocationId),
+          () -> new IllegalArgumentException(
+              "No pending tool invocation '%s' for run '%s'".formatted(toolInvocationId, runId)));
+      String capability = pending.capability();
+
+      LOG.log(System.Logger.Level.INFO,
+          "Resolving tool decision runId={0}, toolInvocationId={1}, decision={2}",
+          runId, toolInvocationId, decision.getClass().getSimpleName());
+
+      if (decision instanceof ToolDecision.Retry) {
+        ToolExecutionOutcome outcome = toolExecutionService.resume(
+            runId, toolInvocationId, new ApprovalDecision.Approve("user-retry"));
+        if (outcome.status() == ToolExecutionOutcome.Status.EXECUTED) {
+          toolResultApplier.apply(capability, outcome.result(), state, "user-retry");
+        } else {
+          toolResultApplier.applyError(capability, outcome.detail(), state, "user-retry");
+        }
+      } else {
+        // Continue without the tool: surface the recorded reason and drop the pending row.
+        toolResultApplier.applyError(capability, pending.reason(), state, "user");
+        pendingToolInvocationStore.remove(runId, toolInvocationId);
+      }
+
+      advancePastToolStep(state, "tool-decision:" + decision.getClass().getSimpleName());
+      return state.snapshot();
+    }
+  }
+
+  private void advancePastToolStep(WorkflowState state, String stepOutputMarker) {
+    String stepId = state.getCurrentStepId();
+    if (StringUtils.isNotBlank(stepId)) {
+      // Synthetic step output (not the agent's response): marks the requesting step done so the
+      // drive loop advances past it without re-invoking the LLM. The real payload, if any, lives
+      // in the tool.<capability> / tool.<capability>.error context keys.
+      state.putStepOutput(stepId, stepOutputMarker);
+    }
+    state.setStatus(WorkflowStatus.RUNNING);
+    state.setLastUpdatedAt(clock.instant());
+    WorkflowDefinition workflow = workflowRepository.get(state.getWorkflowId());
+    drive(state, workflow);
+  }
+
+  private static String approverActor(ApprovalDecision decision) {
+    if (decision instanceof ApprovalDecision.Approve approve) {
+      return approve.approvedBy();
+    }
+    if (decision instanceof ApprovalDecision.Reject reject) {
+      return reject.rejectedBy();
+    }
+    return "user";
+  }
+
+  private String determineCapability(String runId, String toolInvocationId) {
+    PendingToolInvocation pending = Validate.notNull(
+        pendingToolInvocationStore.find(runId, toolInvocationId),
+        () -> new IllegalArgumentException(
+            "No pending tool invocation '%s' for run '%s'".formatted(toolInvocationId, runId)));
+    return pending.capability();
+  }
+
+  /**
+   * Guards a tool-resume verb: the run must be in {@code required}. A run in a <em>different</em>
+   * suspension status is rejected with an {@link IllegalStateException} naming the correct verb for
+   * its actual status (the three suspension statuses map one-to-one to {@code approve},
+   * {@code continueAfterToolApproval}, and {@code resolveToolDecision}); any other status is an
+   * {@link IllegalArgumentException}.
+   */
+  private static void validateToolResumeStatus(String runId, WorkflowState state,
+      WorkflowStatus required, String verb) {
+    ensureNotCancelled(state, verb);
+    WorkflowStatus actual = state.getStatus();
+    if (actual == required) {
+      return;
+    }
+    if (actual == WorkflowStatus.AWAITING_APPROVAL
+        || actual == WorkflowStatus.AWAITING_TOOL_APPROVAL
+        || actual == WorkflowStatus.AWAITING_TOOL_DECISION) {
+      throw new IllegalStateException("Run '%s' is in status %s; use %s instead of %s"
+          .formatted(runId, actual, verbFor(actual), verb));
+    }
+    throw new IllegalArgumentException(
+        "Cannot %s on run '%s' in status %s".formatted(verb, runId, actual));
+  }
+
+  private static String verbFor(WorkflowStatus suspensionStatus) {
+    return switch (suspensionStatus) {
+      case AWAITING_APPROVAL -> "approve";
+      case AWAITING_TOOL_APPROVAL -> "continueAfterToolApproval";
+      case AWAITING_TOOL_DECISION -> "resolveToolDecision";
+      default -> "the appropriate resume verb";
+    };
+  }
+
+  private void validateToolResumeConfigured(String runId, String toolInvocationId) {
+    Validate.notBlank(runId, "runId must not be blank");
+    Validate.notBlank(toolInvocationId, "toolInvocationId must not be blank");
+    Validate.notNull(toolExecutionService,
+        () -> new IllegalStateException("Tool execution service is not configured"));
+    Validate.notNull(pendingToolInvocationStore,
+        () -> new IllegalStateException("Pending tool invocation store is not configured"));
+  }
+
+  /**
+   * {@inheritDoc}
+   *
+   * @throws ExecutionNotFoundException if no state exists for {@code runId}
    * @throws IllegalArgumentException   if status is {@link WorkflowStatus#COMPLETED} or
    *                                    {@link WorkflowStatus#FAILED}, or {@code runId} is blank
    */
@@ -279,9 +474,7 @@ public final class DefaultWorkflowRuntime implements WorkflowRuntime {
 
   private static void writePromptAnswerToContext(WorkflowState state,
       Map<String, String> answers) {
-    String answer = answers.values().stream()
-        .findFirst()
-        .orElse("");
+    String answer = answers.values().stream().findFirst().orElse("");
 
     state.putContextValue("user.response." + state.getCurrentStepId(),
         new StringContextValue(answer)

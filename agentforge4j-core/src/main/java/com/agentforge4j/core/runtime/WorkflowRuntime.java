@@ -1,5 +1,7 @@
 package com.agentforge4j.core.runtime;
 
+import com.agentforge4j.core.spi.tool.ApprovalDecision;
+import com.agentforge4j.core.spi.tool.ToolDecision;
 import com.agentforge4j.core.workflow.state.WorkflowState;
 
 import java.util.Map;
@@ -23,6 +25,7 @@ public interface WorkflowRuntime {
    * Start a new run of the given workflow.
    *
    * @param workflowId id of a workflow known to the {@code WorkflowRepository}
+   *
    * @return the newly-created run id
    */
   String start(String workflowId);
@@ -71,8 +74,46 @@ public interface WorkflowRuntime {
 
   /**
    * @param runId id of the run
-   * @return a defensive snapshot of the current state — mutating the returned object does not
-   *         alter persisted runtime state
+   *
+   * @return a defensive snapshot of the current state — mutating the returned object does not alter
+   * persisted runtime state
    */
   WorkflowState getState(String runId);
+
+  /**
+   * Resume a run suspended awaiting approval of a tool invocation, applying the human decision.
+   *
+   * <p>Distinct from {@link #approve(String, String, String)} (which resumes a step and may
+   * re-invoke the agent): this delegates to the tool-execution service's resume path — re-resolving
+   * and invoking the exact approved tool without re-invoking the LLM — applies the outcome to
+   * state, and advances past the requesting step. Valid only when the run is in
+   * {@link com.agentforge4j.core.workflow.state.WorkflowStatus#AWAITING_TOOL_APPROVAL}.
+   *
+   * @param runId            id of the run
+   * @param toolInvocationId id of the pending tool invocation being decided
+   * @param decision         the human approve/reject decision
+   *
+   * @return a snapshot of the resumed run state
+   */
+  WorkflowState continueAfterToolApproval(String runId, String toolInvocationId,
+      ApprovalDecision decision);
+
+  /**
+   * Resolve a run suspended in
+   * {@link com.agentforge4j.core.workflow.state.WorkflowStatus#AWAITING_TOOL_DECISION} after a tool
+   * invocation was denied by policy or failed after retries, applying the operator's decision.
+   *
+   * <p>{@link ToolDecision.Continue} proceeds without the tool result, writing
+   * {@code tool.<capability>.error} to context; {@link ToolDecision.Retry} replays the exact stored
+   * call without re-invoking the LLM. Either way the requesting step is advanced. Valid only when
+   * the run is in {@code AWAITING_TOOL_DECISION}; use {@link #approve(String, String, String)} for
+   * escalation approvals instead.
+   *
+   * @param runId            id of the run
+   * @param toolInvocationId id of the pending tool invocation being resolved
+   * @param decision         the operator continue/retry decision
+   *
+   * @return a snapshot of the resumed run state
+   */
+  WorkflowState resolveToolDecision(String runId, String toolInvocationId, ToolDecision decision);
 }
