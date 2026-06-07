@@ -92,5 +92,29 @@ public enum WorkflowEventType {
   /**
    * Recorded when a step exceeds {@code maxUserPromptRounds} for blocking user prompts.
    */
-  USER_PROMPT_LIMIT_REACHED
+  USER_PROMPT_LIMIT_REACHED,
+  /**
+   * Recorded when a tool invocation is requested by the LLM and enters the execution chokepoint. Payload
+   * fields: {@code capability}, {@code agentId}, {@code stepUid}, {@code llmRationale}.
+   */
+  TOOL_INVOCATION_REQUESTED,
+  /**
+   * Recorded when a tool invocation succeeds (success-only; failures emit {@link #TOOL_INVOCATION_FAILED}).
+   * Payload fields: {@code capability}, {@code latencyMillis}.
+   */
+  TOOL_INVOCATION_COMPLETED,
+  /**
+   * Recorded when policy denies a tool invocation. Payload fields: {@code capability}, {@code reason}.
+   */
+  TOOL_INVOCATION_DENIED,
+  /**
+   * Recorded when a tool invocation is suspended awaiting human approval. Payload fields:
+   * {@code capability}, {@code reason}, {@code approverScope}.
+   */
+  TOOL_INVOCATION_APPROVAL_PENDING,
+  /**
+   * Recorded when a tool invocation fails. Payload fields: {@code capability}, {@code phase}
+   * ({@code RESOLVE} / {@code VALIDATE} / {@code INVOKE}), {@code errorMessage}.
+   */
+  TOOL_INVOCATION_FAILED
 }

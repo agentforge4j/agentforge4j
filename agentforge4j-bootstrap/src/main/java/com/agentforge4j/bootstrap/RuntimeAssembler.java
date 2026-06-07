@@ -8,6 +8,9 @@ import com.agentforge4j.core.workflow.repository.WorkflowStateRepository;
 import com.agentforge4j.integrations.IntegrationRegistry;
 import com.agentforge4j.llm.LlmClientResolver;
 import com.agentforge4j.llm.RetryingLlmClientResolver;
+import com.agentforge4j.core.spi.tool.PendingToolInvocationStore;
+import com.agentforge4j.core.spi.tool.ToolCatalog;
+import com.agentforge4j.core.spi.tool.ToolExecutionService;
 import com.agentforge4j.llm.api.LlmClient;
 import com.agentforge4j.llm.api.LlmRetryPolicy;
 import com.agentforge4j.llm.api.ModelTierResolver;
@@ -104,7 +107,8 @@ final class RuntimeAssembler {
       LlmCallObserver llmCallObserver,
       ModelTierResolver modelTierResolver,
       AgentInvoker explicitInvoker,
-      boolean cacheEnabledSet) {
+      boolean cacheEnabledSet,
+      ToolCatalog toolCatalog) {
     if (explicitInvoker != null && cacheEnabledSet) {
       LOGGER.log(System.Logger.Level.WARNING,
           """
@@ -128,6 +132,7 @@ final class RuntimeAssembler {
         .promptCacheEnabled(cacheEnabled)
         .llmCallObserver(llmCallObserver)
         .modelTierResolver(modelTierResolver)
+        .toolCatalog(toolCatalog)
         .build();
   }
 
@@ -153,7 +158,9 @@ final class RuntimeAssembler {
       IntegrationRegistry integrationRegistry,
       AgentInvoker agentInvoker,
       EventRecorder eventRecorder,
-      Integer maxNestingDepth) {
+      Integer maxNestingDepth,
+      ToolExecutionService toolExecutionService,
+      PendingToolInvocationStore pendingToolInvocationStore) {
     WorkflowRuntimeBuilder runtimeBuilder = new WorkflowRuntimeBuilder()
         .workflowRepository(workflowRepository)
         .workflowStateRepository(workflowStateRepository)
@@ -166,6 +173,12 @@ final class RuntimeAssembler {
 
     if (maxNestingDepth != null) {
       runtimeBuilder.maxNestingDepth(maxNestingDepth);
+    }
+    if (toolExecutionService != null) {
+      runtimeBuilder.toolExecutionService(toolExecutionService);
+    }
+    if (pendingToolInvocationStore != null) {
+      runtimeBuilder.pendingToolInvocationStore(pendingToolInvocationStore);
     }
 
     return runtimeBuilder.build();

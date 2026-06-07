@@ -17,9 +17,22 @@ public enum WorkflowStatus {
    */
   AWAITING_INPUT,
   /**
-   * Run waits for an explicit approval decision before continuing.
+   * Run waits for an explicit approval decision before continuing (an {@code ESCALATE} command).
+   * Resumed via {@code WorkflowRuntime.approve}.
    */
   AWAITING_APPROVAL,
+  /**
+   * Run waits for a human to approve a tool invocation <em>before</em> it executes (policy
+   * {@code RequireApproval}). Distinct from {@link #AWAITING_APPROVAL} (escalation): resumed via
+   * {@code WorkflowRuntime.continueAfterToolApproval}, never {@code approve}.
+   */
+  AWAITING_TOOL_APPROVAL,
+  /**
+   * Run waits for an operator {@code ToolDecision} (continue or retry) <em>after</em> a tool
+   * invocation was denied by policy or failed after retries. Resumed via
+   * {@code WorkflowRuntime.resolveToolDecision}, never {@code approve}.
+   */
+  AWAITING_TOOL_DECISION,
   /**
    * All steps finished successfully.
    */

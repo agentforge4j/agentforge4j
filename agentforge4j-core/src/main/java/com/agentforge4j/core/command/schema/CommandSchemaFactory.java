@@ -20,6 +20,14 @@ import org.apache.commons.lang3.StringUtils;
  */
 public final class CommandSchemaFactory {
 
+  /**
+   * Command type advertised to an agent only when it explicitly lists it in
+   * {@code supportedCommands}; excluded from the all-commands default so existing agents are
+   * unaffected and the runtime never receives a {@code TOOL_INVOCATION} for an unconfigured tool
+   * path.
+   */
+  private static final String OPT_IN_TOOL_INVOCATION = "TOOL_INVOCATION";
+
   private CommandSchemaFactory() {
   }
 
@@ -28,6 +36,7 @@ public final class CommandSchemaFactory {
    *
    * @param supportedCommands list of command type names to include, or null/empty for all
    * @param mapper            Jackson ObjectMapper for introspection
+   *
    * @return the constructed schema
    */
   public static CommandResponseSchema build(List<String> supportedCommands, ObjectMapper mapper) {
@@ -54,7 +63,9 @@ public final class CommandSchemaFactory {
   private static List<String> resolveSupported(List<String> supportedCommands,
       Map<String, Class<? extends LlmCommand>> registry) {
     if (supportedCommands == null || supportedCommands.isEmpty()) {
-      return List.copyOf(registry.keySet());
+      return registry.keySet().stream()
+          .filter(name -> !OPT_IN_TOOL_INVOCATION.equals(name))
+          .toList();
     }
     LinkedHashSet<String> unique = new LinkedHashSet<>();
     for (String raw : supportedCommands) {
@@ -70,7 +81,8 @@ public final class CommandSchemaFactory {
         Validate.notEmpty(unique, "supportedCommands must name at least one valid command type"));
   }
 
-  private static List<String> requiredJsonPropertyNames(ObjectMapper mapper, Class<?> commandClass) {
+  private static List<String> requiredJsonPropertyNames(ObjectMapper mapper,
+      Class<?> commandClass) {
     JavaType javaType = mapper.constructType(commandClass);
     BeanDescription desc = mapper.getDeserializationConfig().introspect(javaType);
     TreeSet<String> sorted = new TreeSet<>();

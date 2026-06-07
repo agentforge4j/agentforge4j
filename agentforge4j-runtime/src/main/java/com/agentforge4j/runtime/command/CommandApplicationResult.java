@@ -32,5 +32,21 @@ public enum CommandApplicationResult {
    * An {@code ESCALATE} command was applied — the run waits for
    * {@link com.agentforge4j.core.runtime.WorkflowRuntime#approve(String, String, String)}.
    */
-  AWAITING_APPROVAL;
+  AWAITING_APPROVAL,
+
+  /**
+   * A {@code TOOL_INVOCATION} requires human approval before execution (policy
+   * {@code RequireApproval}) — the run waits for
+   * {@link com.agentforge4j.core.runtime.WorkflowRuntime#continueAfterToolApproval(String, String,
+   * com.agentforge4j.core.spi.tool.ApprovalDecision)}.
+   */
+  AWAITING_TOOL_APPROVAL,
+
+  /**
+   * A {@code TOOL_INVOCATION} was denied by policy or failed after retries — the run waits for an
+   * operator {@code ToolDecision} via
+   * {@link com.agentforge4j.core.runtime.WorkflowRuntime#resolveToolDecision(String, String,
+   * com.agentforge4j.core.spi.tool.ToolDecision)}.
+   */
+  AWAITING_TOOL_DECISION;
 }

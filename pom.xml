@@ -33,6 +33,7 @@
     <spring-boot-dependencies.version>3.5.13</spring-boot-dependencies.version>
     <maven-surefire-plugin.version>3.5.2</maven-surefire-plugin.version>
     <maven-failsafe-plugin.version>3.5.2</maven-failsafe-plugin.version>
+    <mcp-sdk.version>1.0.1</mcp-sdk.version>
   </properties>
 
   <modules>
@@ -49,6 +50,7 @@
     <module>agentforge4j-llm-openai-compatible</module>
     <module>agentforge4j-llm-vllm</module>
     <module>agentforge4j-core</module>
+    <module>agentforge4j-mcp</module>
     <module>agentforge4j-schema</module>
     <module>agentforge4j-workflows</module>
     <module>agentforge4j-config-loader</module>
@@ -142,8 +144,23 @@
       </dependency>
       <dependency>
         <groupId>org.agentforge4j</groupId>
+        <artifactId>agentforge4j-mcp</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>org.agentforge4j</groupId>
         <artifactId>agentforge4j-schema</artifactId>
         <version>${project.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>io.modelcontextprotocol.sdk</groupId>
+        <artifactId>mcp-core</artifactId>
+        <version>${mcp-sdk.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>io.modelcontextprotocol.sdk</groupId>
+        <artifactId>mcp-json-jackson2</artifactId>
+        <version>${mcp-sdk.version}</version>
       </dependency>
       <dependency>
         <groupId>org.agentforge4j</groupId>

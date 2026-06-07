@@ -7,6 +7,9 @@ import com.agentforge4j.core.command.LlmCommand;
 import com.agentforge4j.core.command.schema.CommandResponseSchema;
 import com.agentforge4j.core.command.schema.CommandResponseSchemaRenderer;
 import com.agentforge4j.core.command.schema.CommandSchemaFactory;
+import com.agentforge4j.core.spi.tool.ToolCatalog;
+import com.agentforge4j.core.spi.tool.ToolDescriptor;
+import com.agentforge4j.core.spi.tool.ToolScope;
 import com.agentforge4j.core.workflow.context.ContextMapping;
 import com.agentforge4j.core.workflow.event.WorkflowEventType;
 import com.agentforge4j.core.workflow.state.WorkflowState;
@@ -51,7 +54,13 @@ public final class AgentInvoker {
   private final boolean promptCacheEnabled;
   private final LlmCallObserver llmCallObserver;
   private final ModelTierResolver modelTierResolver;
+  private final ToolCatalog toolCatalog;
   private final CommandResponseSchemaRenderer schemaRenderer = new CommandResponseSchemaRenderer();
+
+  /**
+   * Command type an agent must opt into ({@code supportedCommands}) before tools are advertised to it.
+   */
+  private static final String TOOL_INVOCATION_COMMAND = "TOOL_INVOCATION";
 
   /**
    * Returns a new builder for {@link AgentInvoker}.
@@ -74,6 +83,7 @@ public final class AgentInvoker {
     this.promptCacheEnabled = builder.promptCacheEnabled;
     this.llmCallObserver = builder.llmCallObserver;
     this.modelTierResolver = builder.modelTierResolver;
+    this.toolCatalog = builder.toolCatalog;
   }
 
   /**
@@ -92,6 +102,7 @@ public final class AgentInvoker {
     private ModelTierResolver modelTierResolver;
     private int llmOutputEventCharCap = DEFAULT_LLM_OUTPUT_EVENT_CHAR_CAP;
     private boolean promptCacheEnabled = false;
+    private ToolCatalog toolCatalog;
 
     private Builder() {
 
@@ -215,6 +226,18 @@ public final class AgentInvoker {
     }
 
     /**
+     * Configures the optional, nullable {@link ToolCatalog} used to advertise tool capabilities to the
+     * LLM. When {@code null} (the default) the prompt is unchanged and behaviour matches prior versions.
+     *
+     * @param toolCatalog tool catalog, or {@code null} to advertise no tools
+     * @return this builder; never {@code null}
+     */
+    public Builder toolCatalog(ToolCatalog toolCatalog) {
+      this.toolCatalog = toolCatalog;
+      return this;
+    }
+
+    /**
      * Builds the {@link AgentInvoker}.
      *
      * @return configured invoker; never {@code null}
@@ -306,7 +329,8 @@ public final class AgentInvoker {
     LlmClient client = llmClientResolver.resolve(preference.provider());
     CommandResponseSchema schema = CommandSchemaFactory.build(agent.supportedCommands(),
         objectMapper);
-    AssembledSystemPrompt assembled = assembleSystemPrompt(agent, stepPrompt, schema);
+    AssembledSystemPrompt assembled = appendToolCatalog(
+        assembleSystemPrompt(agent, stepPrompt, schema), schema, state);
 
     ParsedInvocation parsed = invokeLlmRecordAndParseWithRetry(
         agent, preference, resolution.resolvedModel(), client, assembled, userInput, schema, state,
@@ -491,6 +515,53 @@ public final class AgentInvoker {
           frameworkBlock, layerSeparator, agentBlock, hasStepLayer, prompt);
     }
     return new AssembledSystemPrompt(prompt, boundaries);
+  }
+
+  /**
+   * Appends a tool-capabilities section (uncached suffix, so prompt-cache boundaries are unchanged) when a
+   * {@link ToolCatalog} is configured, the agent has opted into {@code TOOL_INVOCATION}, and the catalog is
+   * non-empty for the run's scope. Otherwise returns {@code assembled} unchanged.
+   */
+  private AssembledSystemPrompt appendToolCatalog(AssembledSystemPrompt assembled,
+      CommandResponseSchema schema, WorkflowState state) {
+    if (toolCatalog == null
+        || !schema.supportedCommandTypes().contains(TOOL_INVOCATION_COMMAND)) {
+      return assembled;
+    }
+    List<ToolDescriptor> tools = toolCatalog.available(
+        new ToolScope(state.getWorkflowId(), state.getRunId()));
+    if (tools == null || tools.isEmpty()) {
+      return assembled;
+    }
+    String separator = System.lineSeparator() + System.lineSeparator();
+    return new AssembledSystemPrompt(
+        assembled.text() + separator + renderToolCatalog(tools),
+        assembled.promptLayerBoundaries());
+  }
+
+  private static String renderToolCatalog(List<ToolDescriptor> tools) {
+    StringBuilder builder = new StringBuilder();
+    builder.append("Available tools. To request one, emit a TOOL_INVOCATION command where ")
+        .append("\"arguments\" is a JSON object matching the tool's input schema (an object, not a ")
+        .append("string): ")
+        .append("{ \"type\": \"TOOL_INVOCATION\", \"capability\": \"<capability>\", ")
+        .append("\"arguments\": { ... } }.")
+        .append(System.lineSeparator())
+        .append("Only request a capability listed below. The runtime decides whether to execute it; ")
+        .append("you never reach the external system directly.")
+        .append(System.lineSeparator());
+    for (ToolDescriptor tool : tools) {
+      builder.append("- ").append(tool.capability());
+      if (StringUtils.isNotBlank(tool.description())) {
+        builder.append(": ").append(tool.description());
+      }
+      if (StringUtils.isNotBlank(tool.inputSchema())) {
+        builder.append(System.lineSeparator())
+            .append("  input schema: ").append(tool.inputSchema());
+      }
+      builder.append(System.lineSeparator());
+    }
+    return builder.toString().stripTrailing();
   }
 
   private static boolean appendStepPrompt(String stepPrompt, StringBuilder promptBuilder,

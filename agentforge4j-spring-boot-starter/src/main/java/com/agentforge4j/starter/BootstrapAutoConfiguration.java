@@ -3,6 +3,9 @@ package com.agentforge4j.starter;
 import com.agentforge4j.bootstrap.AgentForge4j;
 import com.agentforge4j.bootstrap.AgentForge4jBootstrap;
 import com.agentforge4j.llm.ConfigModelTierResolver;
+import com.agentforge4j.core.spi.tool.ToolExecutionOptions;
+import com.agentforge4j.core.spi.tool.ToolPolicy;
+import com.agentforge4j.core.spi.tool.ToolProvider;
 import com.agentforge4j.llm.DefaultLlmClientResolver;
 import com.agentforge4j.llm.LlmClientConfiguration;
 import com.agentforge4j.llm.api.ModelTier;
@@ -65,7 +68,10 @@ public class BootstrapAutoConfiguration {
       LlmCacheSettings cacheSettings,
       ModelTierProperties modelTierProperties,
       ObjectProvider<ObjectMapper> objectMapperProvider,
-      ObjectProvider<List<LlmClientConfiguration>> llmConfigurations) {
+      ObjectProvider<List<LlmClientConfiguration>> llmConfigurations,
+      ObjectProvider<List<ToolProvider>> toolProviders,
+      ObjectProvider<ToolPolicy> toolPolicy,
+      ObjectProvider<ToolExecutionOptions> toolExecutionOptions) {
     AgentForge4jBootstrap.Builder builder = AgentForge4jBootstrap.defaults();
     applyProperties(builder, properties);
     applyModelTiers(builder, modelTierProperties);
@@ -77,7 +83,27 @@ public class BootstrapAutoConfiguration {
     } else {
       builder.withLlmClientResolver(new DefaultLlmClientResolver(List.of()));
     }
+    applyToolSupport(builder, toolProviders, toolPolicy, toolExecutionOptions);
     return builder.build();
+  }
+
+  private static void applyToolSupport(AgentForge4jBootstrap.Builder builder,
+      ObjectProvider<List<ToolProvider>> toolProviders,
+      ObjectProvider<ToolPolicy> toolPolicy,
+      ObjectProvider<ToolExecutionOptions> toolExecutionOptions) {
+    List<ToolProvider> providers = toolProviders.getIfAvailable(List::of);
+    if (providers.isEmpty()) {
+      return;
+    }
+    builder.withToolProviders(providers);
+    ToolPolicy policy = toolPolicy.getIfAvailable();
+    if (policy != null) {
+      builder.withToolPolicy(policy);
+    }
+    ToolExecutionOptions options = toolExecutionOptions.getIfAvailable();
+    if (options != null) {
+      builder.withToolExecutionOptions(options);
+    }
   }
 
   private static void applyProperties(AgentForge4jBootstrap.Builder builder,

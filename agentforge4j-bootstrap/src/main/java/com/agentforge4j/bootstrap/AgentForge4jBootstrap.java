@@ -3,6 +3,13 @@ package com.agentforge4j.bootstrap;
 import com.agentforge4j.config.loader.LoadedConfiguration;
 import com.agentforge4j.core.agent.AgentRepository;
 import com.agentforge4j.core.runtime.WorkflowRuntime;
+import com.agentforge4j.core.spi.tool.PendingToolInvocationStore;
+import com.agentforge4j.core.spi.tool.ToolCatalog;
+import com.agentforge4j.core.spi.tool.ToolExecutionOptions;
+import com.agentforge4j.core.spi.tool.ToolExecutionService;
+import com.agentforge4j.core.spi.tool.ToolPolicy;
+import com.agentforge4j.core.spi.tool.ToolProvider;
+import com.agentforge4j.core.spi.tool.ToolProviderResolver;
 import com.agentforge4j.core.workflow.event.WorkflowEventLog;
 import com.agentforge4j.core.workflow.repository.WorkflowRepository;
 import com.agentforge4j.core.workflow.repository.WorkflowStateRepository;
@@ -27,6 +34,11 @@ import com.agentforge4j.runtime.llm.LlmCommandParser;
 import com.agentforge4j.runtime.llm.LlmProviderSelectionStrategy;
 import com.agentforge4j.runtime.repository.InMemoryWorkflowEventLog;
 import com.agentforge4j.runtime.repository.InMemoryWorkflowStateRepository;
+import com.agentforge4j.runtime.tool.DefaultToolCatalog;
+import com.agentforge4j.runtime.tool.DefaultToolExecutionService;
+import com.agentforge4j.runtime.tool.InMemoryPendingToolInvocationStore;
+import com.agentforge4j.runtime.tool.NoOpToolPolicy;
+import com.agentforge4j.runtime.tool.ProviderScanningResolver;
 import com.agentforge4j.util.Validate;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.nio.file.Path;
@@ -38,6 +50,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Map.Entry;
+import org.apache.commons.lang3.ObjectUtils;
 
 /**
  * Static entry point for assembling an {@link AgentForge4j} facade with framework-agnostic
@@ -93,6 +106,11 @@ public final class AgentForge4jBootstrap {
     private AgentInvoker agentInvoker;
     private LlmCallObserver llmCallObserver;
     private ModelTierResolver modelTierResolver;
+    private List<ToolProvider> toolProviders = List.of();
+    private ToolProviderResolver toolProviderResolver;
+    private ToolPolicy toolPolicy;
+    private PendingToolInvocationStore pendingToolInvocationStore;
+    private ToolExecutionOptions toolExecutionOptions;
 
     private boolean cacheEnabled = false;
     private boolean cacheEnabledSet = false;
@@ -349,6 +367,77 @@ public final class AgentForge4jBootstrap {
     }
 
     /**
+     * Provides the tool providers (for example MCP servers) to expose to the runtime. Configuring
+     * any tool support enables the tool-execution chokepoint and registers the
+     * {@code TOOL_INVOCATION} handler; with none configured, tool invocation is unavailable and
+     * behaviour is unchanged.
+     *
+     * @param toolProviders providers to scan; must not be {@code null}
+     *
+     * @return this builder
+     */
+    public Builder withToolProviders(List<ToolProvider> toolProviders) {
+      this.toolProviders = List.copyOf(
+          Validate.notNull(toolProviders, "toolProviders must not be null"));
+      return this;
+    }
+
+    /**
+     * Overrides the capability resolver (for example a platform binding-aware resolver). When set,
+     * it is the sole resolver and {@link #withToolProviders(List)} is not used to build one.
+     *
+     * @param toolProviderResolver resolver instance; must not be {@code null}
+     *
+     * @return this builder
+     */
+    public Builder withToolProviderResolver(ToolProviderResolver toolProviderResolver) {
+      this.toolProviderResolver =
+          Validate.notNull(toolProviderResolver, "toolProviderResolver must not be null");
+      return this;
+    }
+
+    /**
+     * Overrides the tool policy. Defaults to a no-op allow-all policy.
+     *
+     * @param toolPolicy policy instance; must not be {@code null}
+     *
+     * @return this builder
+     */
+    public Builder withToolPolicy(ToolPolicy toolPolicy) {
+      this.toolPolicy = Validate.notNull(toolPolicy, "toolPolicy must not be null");
+      return this;
+    }
+
+    /**
+     * Overrides the pending tool invocation store. Defaults to an in-memory store.
+     *
+     * @param pendingToolInvocationStore store instance; must not be {@code null}
+     *
+     * @return this builder
+     */
+    public Builder withPendingToolInvocationStore(
+        PendingToolInvocationStore pendingToolInvocationStore) {
+      this.pendingToolInvocationStore =
+          Validate.notNull(pendingToolInvocationStore,
+              "pendingToolInvocationStore must not be null");
+      return this;
+    }
+
+    /**
+     * Overrides the tool execution options (authoritative timeout, retries, backoff). Defaults to
+     * {@link ToolExecutionOptions#defaults()}.
+     *
+     * @param toolExecutionOptions options instance; must not be {@code null}
+     *
+     * @return this builder
+     */
+    public Builder withToolExecutionOptions(ToolExecutionOptions toolExecutionOptions) {
+      this.toolExecutionOptions =
+          Validate.notNull(toolExecutionOptions, "toolExecutionOptions must not be null");
+      return this;
+    }
+
+    /**
      * Sets the maximum nested workflow depth forwarded to {@link WorkflowRuntimeBuilder}.
      *
      * @param maxNestingDepth maximum nesting depth (at least 1)
@@ -453,73 +542,88 @@ public final class AgentForge4jBootstrap {
       Map<String, String> config = ConfigReader.read();
       applyConfig(config);
 
-      Clock resolvedClock = (clock != null) ? clock : Clock.systemUTC();
-      ObjectMapper resolvedMapper = (objectMapper != null)
-          ? objectMapper : ConfigurationLoader.defaultObjectMapper();
+      Clock resolvedClock = ObjectUtils.getIfNull(clock, Clock::systemUTC);
+      ObjectMapper resolvedMapper = ObjectUtils.getIfNull(objectMapper,
+          ConfigurationLoader::defaultObjectMapper);
 
       LoadedConfiguration loadedConfiguration = ConfigurationLoader.load(
           resolvedMapper, agentsDir, workflowsDir, loadShippedAgents, loadShippedWorkflows);
 
-      AgentRepository resolvedAgentRepo = (agentRepository != null)
-          ? agentRepository : ComponentDefaults.agentRepository(loadedConfiguration);
+      AgentRepository resolvedAgentRepo = ObjectUtils.getIfNull(agentRepository,
+          () -> ComponentDefaults.agentRepository(loadedConfiguration));
 
-      WorkflowRepository resolvedWorkflowRepo = (workflowRepository != null)
-          ? workflowRepository : ComponentDefaults.workflowRepository(loadedConfiguration);
+      WorkflowRepository resolvedWorkflowRepo = ObjectUtils.getIfNull(workflowRepository,
+          () -> ComponentDefaults.workflowRepository(loadedConfiguration));
 
-      WorkflowStateRepository resolvedStateRepo = (workflowStateRepository != null)
-          ? workflowStateRepository : new InMemoryWorkflowStateRepository();
+      WorkflowStateRepository resolvedStateRepo = ObjectUtils.getIfNull(workflowStateRepository,
+          InMemoryWorkflowStateRepository::new);
 
-      WorkflowEventLog resolvedEventLog = (workflowEventLog != null)
-          ? workflowEventLog : new InMemoryWorkflowEventLog();
+      WorkflowEventLog resolvedEventLog = ObjectUtils.getIfNull(workflowEventLog,
+          InMemoryWorkflowEventLog::new);
 
-      IntegrationRegistry resolvedRegistry = (integrationRegistry != null)
-          ? integrationRegistry : NoOpIntegrationRegistry.INSTANCE;
+      IntegrationRegistry resolvedRegistry = ObjectUtils.getIfNull(integrationRegistry,
+          () -> NoOpIntegrationRegistry.INSTANCE);
 
-      FileSink resolvedFileSink = (fileSink != null)
-          ? fileSink : ComponentDefaults.fileSink(fileSinkPath);
+      FileSink resolvedFileSink = ObjectUtils.getIfNull(fileSink,
+          () -> ComponentDefaults.fileSink(fileSinkPath));
 
-      List<LlmClient> llmClients = List.of();
-      if (llmClientResolver == null) {
-        llmClients = LlmClientWiring.buildLlmClients(resolvedMapper, llmProviders);
-      }
+      List<LlmClient> llmClients =
+          (llmClientResolver == null) ? LlmClientWiring.buildLlmClients(resolvedMapper,
+              llmProviders) :
+              List.of();
 
-      LlmClientResolver resolvedResolver = (llmClientResolver != null)
-          ? llmClientResolver : new DefaultLlmClientResolver(llmClients);
+      LlmClientResolver resolvedResolver = ObjectUtils.getIfNull(llmClientResolver,
+          () -> new DefaultLlmClientResolver(llmClients));
 
       resolvedResolver = RuntimeAssembler.applyRetryPolicy(
           resolvedResolver, llmRetryPolicy, llmClientResolver != null);
 
       RuntimeAssembler.warnIfNoProviders(llmClients, llmClientResolver != null);
 
-      LlmProviderSelectionStrategy resolvedStrategy = (llmProviderSelectionStrategy != null)
-          ? llmProviderSelectionStrategy : new FirstAvailableProviderSelectionStrategy();
+      LlmProviderSelectionStrategy resolvedStrategy = ObjectUtils.getIfNull(
+          llmProviderSelectionStrategy,
+          FirstAvailableProviderSelectionStrategy::new);
 
-      ContextRenderer resolvedRenderer = (contextRenderer != null)
-          ? contextRenderer : new ContextRenderer(resolvedMapper);
+      ContextRenderer resolvedRenderer = ObjectUtils.getIfNull(contextRenderer,
+          () -> new ContextRenderer(resolvedMapper));
 
-      LlmCommandParser resolvedParser = (llmCommandParser != null)
-          ? llmCommandParser : new LlmCommandParser(resolvedMapper);
+      LlmCommandParser resolvedParser = ObjectUtils.getIfNull(llmCommandParser,
+          () -> new LlmCommandParser(resolvedMapper));
 
-      EventRecorder resolvedRecorder = (eventRecorder != null)
-          ? eventRecorder : new EventRecorder(resolvedEventLog, resolvedClock);
+      EventRecorder resolvedRecorder = ObjectUtils.getIfNull(eventRecorder,
+          () -> new EventRecorder(resolvedEventLog, resolvedClock));
 
-      LlmCallObserver resolvedObserver = (llmCallObserver != null)
-          ? llmCallObserver : new LlmCallObserver(resolvedRecorder, resolvedMapper);
+      LlmCallObserver resolvedObserver = ObjectUtils.getIfNull(llmCallObserver,
+          () -> new LlmCallObserver(resolvedRecorder, resolvedMapper));
 
-      ModelTierResolver resolvedTierResolver = (modelTierResolver != null)
-          ? modelTierResolver
-          : ConfigModelTierResolver.withShippedDefaultsAndOverrides(
-              parseModelTierOverrides(config));
+      ModelTierResolver resolvedTierResolver = ObjectUtils.getIfNull(modelTierResolver,
+          () -> ConfigModelTierResolver.withShippedDefaultsAndOverrides(
+              parseModelTierOverrides(config)));
+
+      // Tool support is opt-in: assembled only when providers or a resolver are configured, so the OSS
+      // default (no MCP) is byte-identical to prior behaviour.
+      ToolCatalog resolvedToolCatalog = null;
+      ToolExecutionService resolvedToolExecutionService = null;
+      PendingToolInvocationStore resolvedPendingStore = null;
+      if (toolProviderResolver != null || !toolProviders.isEmpty()) {
+        ToolProviderResolver resolver = (toolProviderResolver != null)
+            ? toolProviderResolver : new ProviderScanningResolver(toolProviders);
+        resolvedToolCatalog = new DefaultToolCatalog(resolver);
+        resolvedPendingStore = ObjectUtils.getIfNull(pendingToolInvocationStore,
+            InMemoryPendingToolInvocationStore::new);
+        resolvedToolExecutionService = getResolvedToolExecutionService(resolver,
+            resolvedPendingStore, resolvedRecorder, resolvedMapper, resolvedClock);
+      }
 
       AgentInvoker resolvedInvoker = RuntimeAssembler.agentInvoker(
           resolvedAgentRepo, resolvedResolver, resolvedRenderer, resolvedParser,
           resolvedMapper, resolvedRecorder, resolvedStrategy, cacheEnabled,
-          resolvedObserver, resolvedTierResolver, agentInvoker, cacheEnabledSet);
+          resolvedObserver, resolvedTierResolver, agentInvoker, cacheEnabledSet, resolvedToolCatalog);
 
       WorkflowRuntime resolvedRuntime = RuntimeAssembler.runtime(
           resolvedWorkflowRepo, resolvedStateRepo, resolvedEventLog, resolvedClock,
           resolvedFileSink, resolvedRegistry, resolvedInvoker, resolvedRecorder,
-          maxNestingDepth);
+          maxNestingDepth, resolvedToolExecutionService, resolvedPendingStore);
 
       BootstrapComponents components = new BootstrapComponents(
           resolvedAgentRepo, resolvedWorkflowRepo, resolvedStateRepo, resolvedEventLog,
@@ -528,6 +632,17 @@ public final class AgentForge4jBootstrap {
           resolvedClock, resolvedInvoker, resolvedObserver, loadedConfiguration);
 
       return new AgentForge4j(resolvedRuntime, loadedConfiguration, components);
+    }
+
+    private ToolExecutionService getResolvedToolExecutionService(ToolProviderResolver resolver,
+        PendingToolInvocationStore resolvedPendingStore, EventRecorder resolvedRecorder,
+        ObjectMapper resolvedMapper, Clock resolvedClock) {
+      ToolPolicy resolvedPolicy = ObjectUtils.getIfNull(toolPolicy, NoOpToolPolicy::new);
+      ToolExecutionOptions resolvedOptions = ObjectUtils.getIfNull(toolExecutionOptions,
+          ToolExecutionOptions::defaults);
+      return new DefaultToolExecutionService(
+          resolver, resolvedPolicy, resolvedPendingStore, resolvedOptions,
+          resolvedRecorder, resolvedMapper, resolvedClock);
     }
 
     /**

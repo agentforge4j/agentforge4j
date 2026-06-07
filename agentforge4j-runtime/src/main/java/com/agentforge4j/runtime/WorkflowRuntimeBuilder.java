@@ -2,6 +2,8 @@ package com.agentforge4j.runtime;
 
 import com.agentforge4j.core.command.LlmCommand;
 import com.agentforge4j.core.runtime.WorkflowRuntime;
+import com.agentforge4j.core.spi.tool.PendingToolInvocationStore;
+import com.agentforge4j.core.spi.tool.ToolExecutionService;
 import com.agentforge4j.core.workflow.event.WorkflowEventLog;
 import com.agentforge4j.core.workflow.repository.WorkflowRepository;
 import com.agentforge4j.core.workflow.repository.WorkflowStateRepository;
@@ -44,8 +46,11 @@ import com.agentforge4j.runtime.execution.loop.FixedCountLoopStrategy;
 import com.agentforge4j.runtime.execution.loop.ForEachLoopStrategy;
 import com.agentforge4j.runtime.execution.loop.MaxIterationsHandler;
 import com.agentforge4j.runtime.llm.AgentInvoker;
+import com.agentforge4j.runtime.tool.ToolInvocationCommandHandler;
+import com.agentforge4j.runtime.tool.ToolResultApplier;
 import com.agentforge4j.util.Validate;
 import java.time.Clock;
+import java.util.ArrayList;
 import java.util.List;
 
 import static com.agentforge4j.runtime.command.FileSink.NO_OP_FILE_SINK;
@@ -79,11 +84,14 @@ public final class WorkflowRuntimeBuilder {
   private int maxNestingDepth = DefaultWorkflowRuntime.DEFAULT_MAX_NESTING_DEPTH;
   private AgentInvoker agentInvoker;
   private EventRecorder eventRecorder;
+  private ToolExecutionService toolExecutionService;
+  private PendingToolInvocationStore pendingToolInvocationStore;
 
   /**
    * Configures the workflow definition source.
    *
    * @param value repository instance
+   *
    * @return this builder
    */
   public WorkflowRuntimeBuilder workflowRepository(WorkflowRepository value) {
@@ -96,6 +104,7 @@ public final class WorkflowRuntimeBuilder {
    * drives.
    *
    * @param value repository instance
+   *
    * @return this builder
    */
   public WorkflowRuntimeBuilder workflowStateRepository(WorkflowStateRepository value) {
@@ -109,6 +118,7 @@ public final class WorkflowRuntimeBuilder {
    * {@link com.agentforge4j.core.workflow.event.WorkflowEvent} instances.
    *
    * @param value event log instance
+   *
    * @return this builder
    */
   public WorkflowRuntimeBuilder workflowEventLog(WorkflowEventLog value) {
@@ -121,6 +131,7 @@ public final class WorkflowRuntimeBuilder {
    * {@link java.time.Clock#systemUTC()} when omitted.
    *
    * @param value clock instance
+   *
    * @return this builder
    */
   public WorkflowRuntimeBuilder clock(Clock value) {
@@ -132,6 +143,7 @@ public final class WorkflowRuntimeBuilder {
    * Configures where {@link com.agentforge4j.core.command.CreateFileCommand} content is written.
    *
    * @param value file sink instance
+   *
    * @return this builder
    */
   public WorkflowRuntimeBuilder fileSink(FileSink value) {
@@ -143,6 +155,7 @@ public final class WorkflowRuntimeBuilder {
    * Configures execution of {@link com.agentforge4j.core.command.RunCommandCommand} shell strings.
    *
    * @param value shell runner instance
+   *
    * @return this builder
    */
   public WorkflowRuntimeBuilder shellCommandRunner(ShellCommandRunner value) {
@@ -155,6 +168,7 @@ public final class WorkflowRuntimeBuilder {
    * when omitted.
    *
    * @param value loop evaluator instance
+   *
    * @return this builder
    */
   public WorkflowRuntimeBuilder loopEvaluator(LoopEvaluator value) {
@@ -167,6 +181,7 @@ public final class WorkflowRuntimeBuilder {
    * checks.
    *
    * @param value integration registry instance
+   *
    * @return this builder
    */
   public WorkflowRuntimeBuilder integrationRegistry(IntegrationRegistry value) {
@@ -179,6 +194,7 @@ public final class WorkflowRuntimeBuilder {
    * {@link com.agentforge4j.runtime.execution.ExecutionContext}.
    *
    * @param value maximum nesting depth (at least 1)
+   *
    * @return this builder
    */
   public WorkflowRuntimeBuilder maxNestingDepth(int value) {
@@ -192,6 +208,7 @@ public final class WorkflowRuntimeBuilder {
    * when omitted.
    *
    * @param value run context manager instance
+   *
    * @return this builder
    */
   public WorkflowRuntimeBuilder runContextManager(RunContextManager value) {
@@ -204,6 +221,7 @@ public final class WorkflowRuntimeBuilder {
    * auto-configuration or constructed explicitly by non-Spring callers).
    *
    * @param value invoker instance
+   *
    * @return this builder
    */
   public WorkflowRuntimeBuilder agentInvoker(AgentInvoker value) {
@@ -212,11 +230,12 @@ public final class WorkflowRuntimeBuilder {
   }
 
   /**
-   * Configures the shared {@link EventRecorder} used by command handlers, loop strategies, and
-   * step executors. When omitted, {@link #build()} constructs one from
+   * Configures the shared {@link EventRecorder} used by command handlers, loop strategies, and step
+   * executors. When omitted, {@link #build()} constructs one from
    * {@link #workflowEventLog(WorkflowEventLog)} and {@link #clock(Clock)}.
    *
    * @param value event recorder instance
+   *
    * @return this builder
    */
   public WorkflowRuntimeBuilder eventRecorder(EventRecorder value) {
@@ -225,10 +244,41 @@ public final class WorkflowRuntimeBuilder {
   }
 
   /**
+   * Configures the optional tool-execution chokepoint. When set, a
+   * {@code ToolInvocationCommandHandler} is registered so {@code TOOL_INVOCATION} commands are
+   * dispatched, and tool-approval resume becomes available; when omitted, tool invocation is
+   * unavailable and behaviour is unchanged.
+   *
+   * @param value tool execution service instance
+   *
+   * @return this builder
+   */
+  public WorkflowRuntimeBuilder toolExecutionService(ToolExecutionService value) {
+    this.toolExecutionService = Validate.notNull(value, "toolExecutionService must not be null");
+    return this;
+  }
+
+  /**
+   * Configures the store used to resume approval-pending tool invocations. Required alongside
+   * {@link #toolExecutionService(ToolExecutionService)} for {@code continueAfterToolApproval} to
+   * function.
+   *
+   * @param value pending tool invocation store instance
+   *
+   * @return this builder
+   */
+  public WorkflowRuntimeBuilder pendingToolInvocationStore(PendingToolInvocationStore value) {
+    this.pendingToolInvocationStore =
+        Validate.notNull(value, "pendingToolInvocationStore must not be null");
+    return this;
+  }
+
+  /**
    * Validates required dependencies, wires executors and handlers, and returns a runnable
    * {@link com.agentforge4j.core.runtime.WorkflowRuntime}.
    *
    * @return configured runtime instance
+   *
    * @throws IllegalArgumentException if a required dependency is missing or invalid
    */
   public WorkflowRuntime build() {
@@ -257,7 +307,8 @@ public final class WorkflowRuntimeBuilder {
     WorkflowExecutor workflowExecutor = new WorkflowExecutor();
     BlueprintExecutor blueprintExecutor = new BlueprintExecutor();
 
-    BranchBehaviourHandler branchBehaviourHandler = new BranchBehaviourHandler(resolvedEventRecorder);
+    BranchBehaviourHandler branchBehaviourHandler = new BranchBehaviourHandler(
+        resolvedEventRecorder);
     RetryPreviousBehaviourHandler retryPreviousBehaviourHandler = new RetryPreviousBehaviourHandler(
         resolvedEventRecorder);
     StepExecutor stepExecutor = buildStepExecutor(
@@ -289,7 +340,9 @@ public final class WorkflowRuntimeBuilder {
         resolvedEventRecorder,
         resolvedClock,
         runContextManager,
-        maxNestingDepth);
+        maxNestingDepth,
+        toolExecutionService,
+        pendingToolInvocationStore);
   }
 
   private static void setupBlueprintLoopStrategies(BlueprintExecutor blueprintExecutor,
@@ -306,7 +359,8 @@ public final class WorkflowRuntimeBuilder {
   private List<CommandHandler<? extends LlmCommand>> determineCommandHandlers(
       EventRecorder eventRecorder, FileSink resolvedFileSink, ShellCommandRunner resolvedShell,
       Clock resolvedClock, IntegrationRegistry resolvedRegistry) {
-    return List.of(new CallEndpointCommandHandler(eventRecorder, resolvedRegistry),
+    List<CommandHandler<? extends LlmCommand>> handlers = new ArrayList<>(List.of(
+        new CallEndpointCommandHandler(eventRecorder, resolvedRegistry),
         new CompleteCommandHandler(eventRecorder),
         new ContinueCommandHandler(),
         new CreateFileCommandHandler(eventRecorder, resolvedFileSink),
@@ -314,7 +368,14 @@ public final class WorkflowRuntimeBuilder {
         new GeneralQuestionCommandHandler(eventRecorder, resolvedClock),
         new RunCommandHandler(eventRecorder, resolvedShell),
         new SetContextCommandHandler(eventRecorder),
-        new UserPromptCommandHandler(eventRecorder, resolvedClock));
+        new UserPromptCommandHandler(eventRecorder, resolvedClock)));
+    // TOOL_INVOCATION is dispatched only when a ToolExecutionService is configured; otherwise the
+    // command is never advertised (opt-in) and never reaches the applier.
+    if (toolExecutionService != null) {
+      handlers.add(new ToolInvocationCommandHandler(
+          toolExecutionService, new ToolResultApplier(eventRecorder), resolvedClock));
+    }
+    return List.copyOf(handlers);
   }
 
   private StepExecutor buildStepExecutor(AgentInvoker agentInvoker,

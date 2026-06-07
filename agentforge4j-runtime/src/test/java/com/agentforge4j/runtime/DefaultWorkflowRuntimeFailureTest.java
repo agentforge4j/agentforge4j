@@ -102,7 +102,9 @@ class DefaultWorkflowRuntimeFailureTest {
         eventRecorder,
         Clock.fixed(Instant.parse("2026-05-01T12:00:00Z"), ZoneOffset.UTC),
         RunContextManager.NO_OP,
-        DefaultWorkflowRuntime.DEFAULT_MAX_NESTING_DEPTH);
+        DefaultWorkflowRuntime.DEFAULT_MAX_NESTING_DEPTH,
+        null,
+        null);
   }
 
 }
