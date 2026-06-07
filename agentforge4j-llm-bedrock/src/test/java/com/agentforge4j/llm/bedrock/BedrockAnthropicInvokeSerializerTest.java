@@ -71,20 +71,6 @@ class BedrockAnthropicInvokeSerializerTest {
   }
 
   @Test
-  void rejectsNonAnthropicModelId() {
-    assertThatThrownBy(
-        () -> BedrockAnthropicInvokeSerializer.validateAnthropicModelId("meta.llama3-8b"))
-        .isInstanceOf(IllegalArgumentException.class)
-        .hasMessageContaining("anthropic.");
-  }
-
-  @Test
-  void acceptsModelIdWithCaseInsensitiveAnthropicPrefix() {
-    BedrockAnthropicInvokeSerializer.validateAnthropicModelId(
-        "ANTHROPIC.claude-3-haiku-20240307-v1:0");
-  }
-
-  @Test
   void rejectsNullRequestInToJson() {
     BedrockAnthropicInvokeSerializer serializer = new BedrockAnthropicInvokeSerializer(mapper);
     BedrockConfiguration cfg = FixedBedrockConfiguration.defaults();
@@ -234,13 +220,12 @@ class BedrockAnthropicInvokeSerializerTest {
     }
 
     @Test
-    void shouldEmitNoTtlFieldInRequestBody() throws Exception {
+    void shouldEmitNoTtlFieldInRequestBody() {
       String layer1 = cacheableLayerUtf8(4096);
-      String systemPrompt = layer1;
       PromptLayerBoundaries boundaries = new PromptLayerBoundaries(
           utf8Length(layer1), utf8Length(layer1), null);
       LlmExecutionRequest request = new LlmExecutionRequest(
-          "bedrock", "anthropic.claude-3-opus-20240229-v1:0", systemPrompt, "user", null,
+          "bedrock", "anthropic.claude-3-opus-20240229-v1:0", layer1, "user", null,
           boundaries);
       BedrockAnthropicInvokeSerializer serializer = new BedrockAnthropicInvokeSerializer(mapper);
 
@@ -251,7 +236,7 @@ class BedrockAnthropicInvokeSerializerTest {
     }
 
     @Test
-    void shouldNotEmitCachePoint() throws Exception {
+    void shouldNotEmitCachePoint() {
       String layer1 = cacheableLayerUtf8(4096);
       PromptLayerBoundaries boundaries = new PromptLayerBoundaries(
           utf8Length(layer1), utf8Length(layer1), null);

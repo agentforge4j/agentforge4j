@@ -71,6 +71,34 @@ class BedrockLlmClientFactoryIT {
   }
 
   @Test
+  void converseFamilyProducesTextAgainstLocalServer() throws Exception {
+    byte[] payload = """
+        {"output":{"message":{"role":"assistant","content":[{"text":"from-converse-it"}]}},\
+        "stopReason":"end_turn","usage":{"inputTokens":3,"outputTokens":2,"totalTokens":5}}
+        """.getBytes(UTF_8);
+    HttpServer server = newServer(payload, 0);
+    server.start();
+    try {
+      int port = server.getAddress().getPort();
+      BedrockConfiguration cfg = FixedBedrockConfiguration.builder()
+          .defaultModel("amazon.nova-lite-v1:0")
+          .endpointOverride(URI.create("http://127.0.0.1:" + port))
+          .credentialsProvider(StaticCredentialsProvider.create(
+              AwsBasicCredentials.create("local-access-key", "local-secret-key")))
+          .connectTimeout(Duration.ofSeconds(5))
+          .requestTimeout(Duration.ofSeconds(5))
+          .build();
+      BedrockLlmClientFactory factory = new BedrockLlmClientFactory();
+      LlmClient client = factory.create(new ObjectMapper(), cfg);
+      String out = client.execute(new LlmExecutionRequest(
+          "bedrock", null, "You are concise.", "Say hello.")).text();
+      assertThat(out).isEqualTo("from-converse-it");
+    } finally {
+      server.stop(0);
+    }
+  }
+
+  @Test
   void apiCallTimeoutWhenServerDelaysResponse() throws Exception {
     byte[] payload = "{\"content\":[{\"type\":\"text\",\"text\":\"late\"}]}".getBytes(UTF_8);
     HttpServer server = newServer(payload, 3_000);

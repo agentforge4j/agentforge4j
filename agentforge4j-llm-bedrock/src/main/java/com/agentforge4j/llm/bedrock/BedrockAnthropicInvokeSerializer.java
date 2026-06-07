@@ -8,15 +8,13 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.util.List;
-import org.apache.commons.lang3.StringUtils;
-import org.apache.commons.lang3.Strings;
 
 /**
  * Builds the JSON request body for Bedrock {@code InvokeModel} on Anthropic Claude (messages API).
  */
 final class BedrockAnthropicInvokeSerializer {
 
-  static final int DEFAULT_MAX_TOKENS = 4096;
+  static final int DEFAULT_MAX_TOKENS = BedrockInference.DEFAULT_MAX_TOKENS;
 
   private final ObjectMapper objectMapper;
 
@@ -32,7 +30,7 @@ final class BedrockAnthropicInvokeSerializer {
     ObjectNode root = objectMapper.createObjectNode();
     root.put("anthropic_version", config.getAnthropicVersion());
 
-    int maxTokens = resolveMaxTokens(request, config);
+    int maxTokens = BedrockInference.resolveMaxTokens(request, config);
     root.put("max_tokens", maxTokens);
 
     Double temperature = config.getTemperature();
@@ -55,26 +53,5 @@ final class BedrockAnthropicInvokeSerializer {
       throw new LlmInvocationException(
           "Failed to serialize Bedrock Anthropic request for model %s".formatted(modelId), e);
     }
-  }
-
-  /**
-   * Uses {@link LlmExecutionRequest#maxOutputTokens()} when set, otherwise a positive
-   * {@link BedrockConfiguration#getMaxTokens()}, otherwise {@link #DEFAULT_MAX_TOKENS}.
-   */
-  private static int resolveMaxTokens(LlmExecutionRequest request, BedrockConfiguration config) {
-    if (request.maxOutputTokens() != null) {
-      return request.maxOutputTokens();
-    }
-    if (config.getMaxTokens() != null && config.getMaxTokens() > 0) {
-      return config.getMaxTokens();
-    }
-    return DEFAULT_MAX_TOKENS;
-  }
-
-  static void validateAnthropicModelId(String modelId) {
-    String trimmed = StringUtils.trimToEmpty(modelId);
-    Validate.isTrue(Strings.CI.startsWith(trimmed, "anthropic."),
-        "Bedrock provider only supports Anthropic Claude model IDs (expected prefix 'anthropic.'), got: %s"
-            .formatted(modelId));
   }
 }

@@ -3,6 +3,7 @@ package com.agentforge4j.llm.bedrock;
 import com.agentforge4j.llm.api.LlmExecutionRequest;
 import com.agentforge4j.llm.api.LlmExecutionResponse;
 import com.agentforge4j.llm.api.LlmInvocationException;
+import com.agentforge4j.llm.api.PromptLayerBoundaries;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -13,8 +14,14 @@ import org.mockito.ArgumentCaptor;
 import software.amazon.awssdk.awscore.exception.AwsErrorDetails;
 import software.amazon.awssdk.core.SdkBytes;
 import software.amazon.awssdk.services.bedrockruntime.BedrockRuntimeClient;
+import software.amazon.awssdk.services.bedrockruntime.model.ContentBlock;
+import software.amazon.awssdk.services.bedrockruntime.model.ConversationRole;
+import software.amazon.awssdk.services.bedrockruntime.model.ConverseOutput;
+import software.amazon.awssdk.services.bedrockruntime.model.ConverseRequest;
+import software.amazon.awssdk.services.bedrockruntime.model.ConverseResponse;
 import software.amazon.awssdk.services.bedrockruntime.model.InvokeModelRequest;
 import software.amazon.awssdk.services.bedrockruntime.model.InvokeModelResponse;
+import software.amazon.awssdk.services.bedrockruntime.model.Message;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -128,13 +135,32 @@ class BedrockLlmClientTest {
     }
 
     @Test
-    void rejectsNonAnthropicDefaultModel() {
+    void acceptsNonAnthropicDefaultModelFromSupportedFamily() {
       BedrockRuntimeClient client = mock(BedrockRuntimeClient.class);
       var cfg = FixedBedrockConfiguration.builder().defaultModel("amazon.titan-text-express-v1")
           .build();
+      assertThat(new BedrockLlmClient(mapper, cfg, client).getProviderName()).isEqualTo("bedrock");
+    }
+
+    @Test
+    void rejectsUnknownDefaultModelFamily() {
+      BedrockRuntimeClient client = mock(BedrockRuntimeClient.class);
+      var cfg = FixedBedrockConfiguration.builder().defaultModel("cohere.command-r-v1:0").build();
       assertThatThrownBy(() -> new BedrockLlmClient(mapper, cfg, client))
           .isInstanceOf(IllegalArgumentException.class)
-          .hasMessageContaining("anthropic.");
+          .hasMessageContaining("supported family");
+    }
+
+    @Test
+    void requiresAnthropicVersionEvenForNonAnthropicDefaultModel_legacyConfigDebt() {
+      // Legacy config debt: anthropicVersion stays mandatory for all families even though Converse
+      // families (Nova/Llama/Titan) never use it. Flagged for a future config-cleanup PR.
+      BedrockRuntimeClient client = mock(BedrockRuntimeClient.class);
+      var cfg = FixedBedrockConfiguration.builder()
+          .defaultModel("amazon.nova-lite-v1:0").anthropicVersion("  ").build();
+      assertThatThrownBy(() -> new BedrockLlmClient(mapper, cfg, client))
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessageContaining("anthropicVersion");
     }
 
     @Test
@@ -384,14 +410,53 @@ class BedrockLlmClientTest {
     }
 
     @Test
-    void rejectsNonAnthropicModelOverride() {
+    void rejectsUnknownModelOverride() {
       BedrockRuntimeClient client = mock(BedrockRuntimeClient.class);
       BedrockLlmClient llm = new BedrockLlmClient(mapper, FixedBedrockConfiguration.defaults(),
           client);
       assertThatThrownBy(() -> llm.execute(
           new LlmExecutionRequest("bedrock", "meta.foo", "s", "u")))
-          .isInstanceOf(IllegalArgumentException.class)
-          .hasMessageContaining("anthropic.");
+          .isInstanceOf(LlmInvocationException.class)
+          .hasMessageContaining("meta.foo");
+    }
+
+    @Test
+    void dispatchesNonAnthropicModelThroughConverse() {
+      BedrockRuntimeClient client = mock(BedrockRuntimeClient.class);
+      when(client.converse(isA(ConverseRequest.class))).thenReturn(converseText("nova-says-hi"));
+      BedrockLlmClient llm = new BedrockLlmClient(mapper, FixedBedrockConfiguration.defaults(),
+          client);
+
+      String out = llm.execute(
+          new LlmExecutionRequest("bedrock", "amazon.nova-lite-v1:0", "s", "u")).text();
+
+      assertThat(out).isEqualTo("nova-says-hi");
+      verify(client).converse(isA(ConverseRequest.class));
+    }
+
+    @Test
+    void gracefullyIgnoresPromptCacheForConverseFamily() {
+      BedrockRuntimeClient client = mock(BedrockRuntimeClient.class);
+      when(client.converse(isA(ConverseRequest.class))).thenReturn(converseText("ok"));
+      BedrockLlmClient llm = new BedrockLlmClient(mapper, FixedBedrockConfiguration.defaults(),
+          client);
+
+      LlmExecutionResponse response = llm.execute(new LlmExecutionRequest(
+          "bedrock", "amazon.nova-lite-v1:0", "sys", "user", null,
+          new PromptLayerBoundaries(3, 3, null)));
+
+      assertThat(response.text()).isEqualTo("ok");
+    }
+
+    private static ConverseResponse converseText(String text) {
+      return ConverseResponse.builder()
+          .output(ConverseOutput.builder()
+              .message(Message.builder()
+                  .role(ConversationRole.ASSISTANT)
+                  .content(ContentBlock.fromText(text))
+                  .build())
+              .build())
+          .build();
     }
 
     @Test
