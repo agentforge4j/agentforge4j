@@ -207,7 +207,7 @@ class DefaultWorkflowRuntimeToolDecisionTest {
         List.of(new StepDefinition(
             "s1", "s1",
             new ResourceBehaviour("/examples/sample.txt", "out", StepTransition.AUTO),
-            ContextMapping.none(), null, null)));
+            ContextMapping.none(), null, null, null)));
   }
 
   private static final class StubToolService implements ToolExecutionService {

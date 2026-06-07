@@ -143,7 +143,7 @@
         <version>${project.version}</version>
       </dependency>
       <dependency>
-        <groupId>com.agentforge4j</groupId>
+        <groupId>org.agentforge4j</groupId>
         <artifactId>agentforge4j-mcp</artifactId>
         <version>${project.version}</version>
       </dependency>
