@@ -22,17 +22,16 @@ class AgentDefinitionTest {
       List<ProviderPreference> providerPreferences,
       List<String> supportedCommands,
       String version) {
-    return new AgentDefinition(
-        id,
-        name,
-        locality,
-        true,
-        systemPrompt,
-        providerPreferences,
-        supportedCommands,
-        null,
-        null,
-        version);
+    return AgentDefinition.builder()
+        .withId(id)
+        .withName(name)
+        .withLocality(locality)
+        .withEnabled(true)
+        .withSystemPrompt(systemPrompt)
+        .withProviderPreferences(providerPreferences)
+        .withSupportedCommands(supportedCommands)
+        .withVersion(version)
+        .build();
   }
 
   private static AgentDefinition baseline() {
@@ -190,19 +189,20 @@ class AgentDefinitionTest {
   @Test
   void jackson_round_trip_preserves_values() throws Exception {
     ObjectMapper mapper = new ObjectMapper();
-    AgentDefinition original = new AgentDefinition(
-        "orch",
-        "Orchestrator",
-        AgentLocality.CLOUD,
-        false,
-        "System prompt line.",
-        List.of(
+    AgentDefinition original = AgentDefinition.builder()
+        .withId("orch")
+        .withName("Orchestrator")
+        .withLocality(AgentLocality.CLOUD)
+        .withEnabled(false)
+        .withSystemPrompt("System prompt line.")
+        .withProviderPreferences(List.of(
             new ProviderPreference("bedrock", "claude-3"),
-            new ProviderPreference("openai", null)),
-        List.of("USER_PROMPT", "COMPLETE"),
-        "Team",
-        "team@example.com",
-        "2.3.4");
+            new ProviderPreference("openai", null)))
+        .withSupportedCommands(List.of("USER_PROMPT", "COMPLETE"))
+        .withAuthor("Team")
+        .withContact("team@example.com")
+        .withVersion("2.3.4")
+        .build();
 
     String json = mapper.writeValueAsString(original);
     AgentDefinition restored = mapper.readValue(json, AgentDefinition.class);

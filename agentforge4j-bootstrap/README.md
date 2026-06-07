@@ -217,7 +217,7 @@ When using the Spring Boot starter, registering a standalone `@Bean FileSink` do
 
 ```xml
 <dependency>
-    <groupId>com.agentforge4j</groupId>
+    <groupId>org.agentforge4j</groupId>
     <artifactId>agentforge4j-bootstrap</artifactId>
     <version>${agentforge4j.version}</version>
 </dependency>

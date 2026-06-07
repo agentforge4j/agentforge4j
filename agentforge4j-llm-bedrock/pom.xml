@@ -5,7 +5,7 @@
   <modelVersion>4.0.0</modelVersion>
 
   <parent>
-    <groupId>com.agentforge4j</groupId>
+    <groupId>org.agentforge4j</groupId>
     <artifactId>agentforge4j</artifactId>
     <version>0.0.1-SNAPSHOT</version>
     <relativePath>../pom.xml</relativePath>
@@ -41,15 +41,15 @@
 
   <dependencies>
     <dependency>
-      <groupId>com.agentforge4j</groupId>
+      <groupId>org.agentforge4j</groupId>
       <artifactId>agentforge4j-llm</artifactId>
     </dependency>
     <dependency>
-      <groupId>com.agentforge4j</groupId>
+      <groupId>org.agentforge4j</groupId>
       <artifactId>agentforge4j-llm-api</artifactId>
     </dependency>
     <dependency>
-      <groupId>com.agentforge4j</groupId>
+      <groupId>org.agentforge4j</groupId>
       <artifactId>agentforge4j-util</artifactId>
     </dependency>
     <dependency>
@@ -82,6 +82,11 @@
     <dependency>
       <groupId>org.assertj</groupId>
       <artifactId>assertj-core</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>com.tngtech.archunit</groupId>
+      <artifactId>archunit-junit5</artifactId>
       <scope>test</scope>
     </dependency>
     <dependency>

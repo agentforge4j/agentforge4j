@@ -2,15 +2,22 @@ package com.agentforge4j.starter;
 
 import com.agentforge4j.bootstrap.AgentForge4j;
 import com.agentforge4j.bootstrap.AgentForge4jBootstrap;
+import com.agentforge4j.llm.ConfigModelTierResolver;
 import com.agentforge4j.core.spi.tool.ToolExecutionOptions;
 import com.agentforge4j.core.spi.tool.ToolPolicy;
 import com.agentforge4j.core.spi.tool.ToolProvider;
 import com.agentforge4j.llm.DefaultLlmClientResolver;
 import com.agentforge4j.llm.LlmClientConfiguration;
+import com.agentforge4j.llm.api.ModelTier;
 import com.agentforge4j.util.Validate;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.nio.file.Path;
+import java.util.EnumMap;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.stream.Collectors;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
@@ -39,7 +46,8 @@ import org.springframework.context.annotation.Bean;
  * application.
  */
 @AutoConfiguration(after = JacksonAutoConfiguration.class)
-@EnableConfigurationProperties({AgentForge4jProperties.class, LlmCacheSettings.class})
+@EnableConfigurationProperties({AgentForge4jProperties.class, LlmCacheSettings.class,
+    ModelTierProperties.class})
 public class BootstrapAutoConfiguration {
 
   /**
@@ -50,6 +58,7 @@ public class BootstrapAutoConfiguration {
    * @param objectMapperProvider optional Jackson mapper from the context
    * @param llmConfigurations    optional provider configuration beans registered before this
    *                             config
+   *
    * @return assembled facade; never {@code null}
    */
   @Bean
@@ -57,6 +66,7 @@ public class BootstrapAutoConfiguration {
   public AgentForge4j agentForge4j(
       AgentForge4jProperties properties,
       LlmCacheSettings cacheSettings,
+      ModelTierProperties modelTierProperties,
       ObjectProvider<ObjectMapper> objectMapperProvider,
       ObjectProvider<List<LlmClientConfiguration>> llmConfigurations,
       ObjectProvider<List<ToolProvider>> toolProviders,
@@ -64,6 +74,7 @@ public class BootstrapAutoConfiguration {
       ObjectProvider<ToolExecutionOptions> toolExecutionOptions) {
     AgentForge4jBootstrap.Builder builder = AgentForge4jBootstrap.defaults();
     applyProperties(builder, properties);
+    applyModelTiers(builder, modelTierProperties);
     builder.withCacheEnabled(cacheSettings.enabled());
     List<LlmClientConfiguration> configurations = llmConfigurations.getIfAvailable(List::of);
     if (!configurations.isEmpty()) {
@@ -109,5 +120,47 @@ public class BootstrapAutoConfiguration {
     }
     builder.withLoadShippedAgents(properties.loadShippedAgents());
     builder.withLoadShippedWorkflows(properties.loadShippedWorkflows());
+  }
+
+  /**
+   * Builds a {@link ConfigModelTierResolver} from the shipped defaults merged with any
+   * {@code agentforge4j.llm.model-tiers.*} overrides and registers it on the builder. When no
+   * overrides are configured the bootstrap default (shipped defaults plus env/system-property
+   * overrides) is left in place.
+   *
+   * @param builder    bootstrap builder; must not be {@code null}
+   * @param properties bound model-tier properties; must not be {@code null}
+   */
+  private static void applyModelTiers(AgentForge4jBootstrap.Builder builder,
+      ModelTierProperties properties) {
+    Validate.notNull(properties, "ModelTier properties must not be null");
+    Map<String, Map<String, String>> configured = properties.modelTiers();
+    if (configured == null || configured.isEmpty()) {
+      return;
+    }
+    Map<String, Map<ModelTier, String>> overrides = new HashMap<>();
+    for (Map.Entry<String, Map<String, String>> providerEntry : configured.entrySet()) {
+      if (providerEntry.getValue() == null) {
+        continue;
+      }
+      Map<ModelTier, String> byTier = new EnumMap<>(ModelTier.class);
+      for (Map.Entry<String, String> tierEntry : providerEntry.getValue().entrySet()) {
+        byTier.put(parseTier(tierEntry.getKey(), providerEntry.getKey()), tierEntry.getValue());
+      }
+      overrides.put(providerEntry.getKey(), byTier);
+    }
+    builder.withModelTierResolver(
+        ConfigModelTierResolver.withShippedDefaultsAndOverrides(overrides));
+  }
+
+  private static ModelTier parseTier(String tierName, String provider) {
+    try {
+      return ModelTier.valueOf(tierName.toUpperCase(Locale.ROOT));
+    } catch (IllegalArgumentException exception) {
+      throw new IllegalStateException(
+          ("Invalid tier '%s' for provider '%s' under agentforge4j.llm.model-tiers — "
+              + "valid tiers: LITE, STANDARD, POWERFUL").formatted(tierName, provider),
+          exception);
+    }
   }
 }

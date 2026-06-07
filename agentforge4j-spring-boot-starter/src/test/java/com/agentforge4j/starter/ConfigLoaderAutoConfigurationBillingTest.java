@@ -14,7 +14,8 @@ class ConfigLoaderAutoConfigurationBillingTest {
 
     assertThat(annotation).isNotNull();
     assertThat(annotation.value())
-        .containsExactlyInAnyOrder(AgentForge4jProperties.class, LlmCacheSettings.class);
+        .containsExactlyInAnyOrder(AgentForge4jProperties.class, LlmCacheSettings.class,
+            ModelTierProperties.class);
   }
 
   @Test

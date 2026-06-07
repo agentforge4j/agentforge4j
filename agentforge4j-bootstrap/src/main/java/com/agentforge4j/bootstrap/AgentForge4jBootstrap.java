@@ -15,10 +15,15 @@ import com.agentforge4j.core.workflow.repository.WorkflowRepository;
 import com.agentforge4j.core.workflow.repository.WorkflowStateRepository;
 import com.agentforge4j.integrations.IntegrationRegistry;
 import com.agentforge4j.integrations.NoOpIntegrationRegistry;
+import com.agentforge4j.llm.ConfigModelTierResolver;
 import com.agentforge4j.llm.DefaultLlmClientResolver;
 import com.agentforge4j.llm.LlmClientResolver;
+import com.agentforge4j.llm.RetryingLlmClientResolver;
 import com.agentforge4j.llm.api.LlmClient;
 import com.agentforge4j.llm.api.LlmRetryPolicy;
+import com.agentforge4j.llm.api.ModelTier;
+import com.agentforge4j.llm.api.ModelTierResolver;
+import com.agentforge4j.runtime.WorkflowRuntimeBuilder;
 import com.agentforge4j.runtime.command.FileSink;
 import com.agentforge4j.runtime.event.EventRecorder;
 import com.agentforge4j.runtime.llm.AgentInvoker;
@@ -38,9 +43,13 @@ import com.agentforge4j.util.Validate;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.nio.file.Path;
 import java.time.Clock;
+import java.util.EnumMap;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.util.Map.Entry;
 import org.apache.commons.lang3.ObjectUtils;
 
 /**
@@ -96,6 +105,7 @@ public final class AgentForge4jBootstrap {
     private LlmProviderSelectionStrategy llmProviderSelectionStrategy;
     private AgentInvoker agentInvoker;
     private LlmCallObserver llmCallObserver;
+    private ModelTierResolver modelTierResolver;
     private List<ToolProvider> toolProviders = List.of();
     private ToolProviderResolver toolProviderResolver;
     private ToolPolicy toolPolicy;
@@ -342,6 +352,21 @@ public final class AgentForge4jBootstrap {
     }
 
     /**
+     * Overrides the resolver that maps a capability tier to a concrete model per provider. When not
+     * set, a {@link ConfigModelTierResolver} built from the shipped defaults merged with any
+     * {@code agentforge4j.llm.model-tiers.<provider>.<tier>} overrides is used.
+     *
+     * @param modelTierResolver resolver instance; must not be {@code null}
+     *
+     * @return this builder
+     */
+    public Builder withModelTierResolver(ModelTierResolver modelTierResolver) {
+      this.modelTierResolver = Validate.notNull(modelTierResolver,
+          "modelTierResolver must not be null");
+      return this;
+    }
+
+    /**
      * Provides the tool providers (for example MCP servers) to expose to the runtime. Configuring
      * any tool support enables the tool-execution chokepoint and registers the
      * {@code TOOL_INVOCATION} handler; with none configured, tool invocation is unavailable and
@@ -514,7 +539,8 @@ public final class AgentForge4jBootstrap {
      * @throws IllegalStateException if assembly fails (e.g. loading throws)
      */
     public AgentForge4j build() {
-      applyConfig(ConfigReader.read());
+      Map<String, String> config = ConfigReader.read();
+      applyConfig(config);
 
       Clock resolvedClock = ObjectUtils.getIfNull(clock, Clock::systemUTC);
       ObjectMapper resolvedMapper = ObjectUtils.getIfNull(objectMapper,
@@ -568,7 +594,11 @@ public final class AgentForge4jBootstrap {
           () -> new EventRecorder(resolvedEventLog, resolvedClock));
 
       LlmCallObserver resolvedObserver = ObjectUtils.getIfNull(llmCallObserver,
-          () -> new LlmCallObserver(resolvedRecorder));
+          () -> new LlmCallObserver(resolvedRecorder, resolvedMapper));
+
+      ModelTierResolver resolvedTierResolver = ObjectUtils.getIfNull(modelTierResolver,
+          () -> ConfigModelTierResolver.withShippedDefaultsAndOverrides(
+              parseModelTierOverrides(config)));
 
       // Tool support is opt-in: assembled only when providers or a resolver are configured, so the OSS
       // default (no MCP) is byte-identical to prior behaviour.
@@ -588,7 +618,7 @@ public final class AgentForge4jBootstrap {
       AgentInvoker resolvedInvoker = RuntimeAssembler.agentInvoker(
           resolvedAgentRepo, resolvedResolver, resolvedRenderer, resolvedParser,
           resolvedMapper, resolvedRecorder, resolvedStrategy, cacheEnabled,
-          resolvedObserver, agentInvoker, cacheEnabledSet, resolvedToolCatalog);
+          resolvedObserver, resolvedTierResolver, agentInvoker, cacheEnabledSet, resolvedToolCatalog);
 
       WorkflowRuntime resolvedRuntime = RuntimeAssembler.runtime(
           resolvedWorkflowRepo, resolvedStateRepo, resolvedEventLog, resolvedClock,
@@ -670,6 +700,61 @@ public final class AgentForge4jBootstrap {
         if (val != null) {
           withLoadShippedWorkflows(Boolean.parseBoolean(val));
         }
+      }
+    }
+
+    /**
+     * Parses {@code agentforge4j.llm.model-tiers.<provider>.<tier>=<model>} entries from the merged
+     * configuration into a provider→tier→model override map. The tier name is case-insensitive and
+     * must match a {@link ModelTier} constant. Provider names may contain dashes (e.g.
+     * {@code azure-openai}); the tier is the segment after the final dot.
+     *
+     * @param config merged env/sys-prop map from {@link ConfigReader#read()}
+     *
+     * @return parsed overrides; empty when none are configured
+     *
+     * @throws IllegalStateException if a key is malformed or names an unknown tier
+     */
+    private Map<String, Map<ModelTier, String>> parseModelTierOverrides(
+        Map<String, String> config) {
+      String prefix = "agentforge4j.llm.model-tiers.";
+      Map<String, Map<ModelTier, String>> overrides = new HashMap<>();
+      config.entrySet().stream()
+          .filter(en -> en.getKey().startsWith(prefix))
+          .forEach(en -> addProviderTier(en, prefix, overrides));
+      return overrides;
+    }
+
+    private static void addProviderTier(Entry<String, String> entry, String prefix,
+        Map<String, Map<ModelTier, String>> overrides) {
+      String key = entry.getKey();
+      String remainder = key.substring(prefix.length());
+      int lastDot = getProviderEndIndex(remainder, key);
+      String provider = remainder.substring(0, lastDot);
+      String tierName = remainder.substring(lastDot + 1);
+      ModelTier tier = getModelTier(tierName, key);
+      overrides.computeIfAbsent(provider, providerKey -> new EnumMap<>(ModelTier.class))
+          .put(tier, entry.getValue());
+    }
+
+    private static int getProviderEndIndex(String remainder, String key) {
+      int lastDot = remainder.lastIndexOf('.');
+      if (lastDot <= 0 || lastDot == remainder.length() - 1) {
+        throw new IllegalStateException(
+            ("Invalid model tier config key '%s' — expected "
+                + "agentforge4j.llm.model-tiers.<provider>.<tier>").formatted(key));
+      }
+      return lastDot;
+    }
+
+    private static ModelTier getModelTier(String tierName, String key) {
+      try {
+        return ModelTier.valueOf(tierName.toUpperCase(Locale.ROOT));
+      } catch (IllegalArgumentException exception) {
+        throw new IllegalStateException(
+            ("Invalid tier '%s' in '%s' — valid tiers: LITE, STANDARD, POWERFUL")
+                .formatted(tierName, key),
+            exception);
       }
     }
   }

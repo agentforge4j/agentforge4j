@@ -44,12 +44,18 @@ class AgentForgeLoaderTest {
   @Test
   void validateAgentRefs_reportsAllMissingRefsInOneException() {
     WorkflowValidator validator = new WorkflowValidator();
-    StepDefinition step1 = new StepDefinition("s1", "S1",
-        new AgentBehaviour("missing-one", StepTransition.AUTO, null),
-        new ContextMapping(List.of(), List.of()), null, null);
-    StepDefinition step2 = new StepDefinition("s2", "S2",
-        new AgentBehaviour("missing-two", StepTransition.AUTO, null),
-        new ContextMapping(List.of(), List.of()), null, null);
+    StepDefinition step1 = StepDefinition.builder()
+        .withStepId("s1")
+        .withName("S1")
+        .withBehaviour(new AgentBehaviour("missing-one", StepTransition.AUTO, null))
+        .withContextMapping(new ContextMapping(List.of(), List.of()))
+        .build();
+    StepDefinition step2 = StepDefinition.builder()
+        .withStepId("s2")
+        .withName("S2")
+        .withBehaviour(new AgentBehaviour("missing-two", StepTransition.AUTO, null))
+        .withContextMapping(new ContextMapping(List.of(), List.of()))
+        .build();
     WorkflowDefinition wf = new WorkflowDefinition(
         "wf1", "W", "d", null, null, null, null, WorkflowSource.CUSTOM, WorkflowLifecycle.ACTIVE,
         Map.of(), Map.of(), List.of(step1, step2));
@@ -62,16 +68,27 @@ class AgentForgeLoaderTest {
   }
 
   private static AgentDefinition sampleAgent(String id, String name) {
-    return new AgentDefinition(id, name, AgentLocality.CLOUD, true, "sys",
-        List.of(new ProviderPreference("openai", "gpt-4o-mini")), List.of("COMPLETE"), null, null, "1.0.0");
+    return AgentDefinition.builder()
+        .withId(id)
+        .withName(name)
+        .withLocality(AgentLocality.CLOUD)
+        .withEnabled(true)
+        .withSystemPrompt("sys")
+        .withProviderPreferences(List.of(new ProviderPreference("openai", "gpt-4o-mini")))
+        .withSupportedCommands(List.of("COMPLETE"))
+        .withVersion("1.0.0")
+        .build();
   }
 
   @Test
   void validateAgentRefs_succeedsWhenAgentsRegisteredBeforeValidation() {
     WorkflowValidator validator = new WorkflowValidator();
-    StepDefinition step = new StepDefinition("s1", "S1",
-        new AgentBehaviour("present", StepTransition.AUTO, null),
-        new ContextMapping(List.of(), List.of()), null, null);
+    StepDefinition step = StepDefinition.builder()
+        .withStepId("s1")
+        .withName("S1")
+        .withBehaviour(new AgentBehaviour("present", StepTransition.AUTO, null))
+        .withContextMapping(new ContextMapping(List.of(), List.of()))
+        .build();
     WorkflowDefinition wf = new WorkflowDefinition(
         "wf1", "W", "d", null, null, null, null, WorkflowSource.CUSTOM, WorkflowLifecycle.ACTIVE,
         Map.of(), Map.of(), List.of(step));
@@ -94,8 +111,12 @@ class AgentForgeLoaderTest {
     Map<String, WorkflowDefinition> target = new LinkedHashMap<>();
     WorkflowDefinition wf = new WorkflowDefinition(
         "wf", "W", "d", null, null, null, null, WorkflowSource.CUSTOM, WorkflowLifecycle.ACTIVE,
-        Map.of(), Map.of(), List.of(new StepDefinition("s1", "S1", new FailBehaviour("stop"),
-        new ContextMapping(List.of(), List.of()), null, null)));
+        Map.of(), Map.of(), List.of(StepDefinition.builder()
+            .withStepId("s1")
+            .withName("S1")
+            .withBehaviour(new FailBehaviour("stop"))
+            .withContextMapping(new ContextMapping(List.of(), List.of()))
+            .build()));
     target.put("wf", wf);
 
     AgentForgeLoader.mergeWorkflowsStrict(target, Map.of(), "empty");
@@ -108,13 +129,21 @@ class AgentForgeLoaderTest {
     Map<String, WorkflowDefinition> target = new LinkedHashMap<>();
     WorkflowDefinition existing = new WorkflowDefinition(
         "dup-wf", "Existing", "d", null, null, null, null, WorkflowSource.CUSTOM, WorkflowLifecycle.ACTIVE,
-        Map.of(), Map.of(), List.of(new StepDefinition("s1", "S1", new FailBehaviour("stop"),
-        new ContextMapping(List.of(), List.of()), null, null)));
+        Map.of(), Map.of(), List.of(StepDefinition.builder()
+            .withStepId("s1")
+            .withName("S1")
+            .withBehaviour(new FailBehaviour("stop"))
+            .withContextMapping(new ContextMapping(List.of(), List.of()))
+            .build()));
     target.put("dup-wf", existing);
     WorkflowDefinition duplicate = new WorkflowDefinition(
         "dup-wf", "Duplicate", "d", null, null, null, null, WorkflowSource.CUSTOM, WorkflowLifecycle.ACTIVE,
-        Map.of(), Map.of(), List.of(new StepDefinition("s2", "S2", new FailBehaviour("stop"),
-        new ContextMapping(List.of(), List.of()), null, null)));
+        Map.of(), Map.of(), List.of(StepDefinition.builder()
+            .withStepId("s2")
+            .withName("S2")
+            .withBehaviour(new FailBehaviour("stop"))
+            .withContextMapping(new ContextMapping(List.of(), List.of()))
+            .build()));
 
     assertThatThrownBy(() -> AgentForgeLoader.mergeWorkflowsStrict(
         target, Map.of("dup-wf", duplicate), "second source"))
@@ -142,8 +171,12 @@ class AgentForgeLoaderTest {
     AtomicReference<Path> capturedPath = new AtomicReference<>();
     WorkflowDefinition workflow = new WorkflowDefinition(
         "wf", "W", "d", null, null, null, null, WorkflowSource.CUSTOM, WorkflowLifecycle.ACTIVE,
-        Map.of(), Map.of(), List.of(new StepDefinition("s1", "S1", new FailBehaviour("stop"),
-        new ContextMapping(List.of(), List.of()), null, null)));
+        Map.of(), Map.of(), List.of(StepDefinition.builder()
+            .withStepId("s1")
+            .withName("S1")
+            .withBehaviour(new FailBehaviour("stop"))
+            .withContextMapping(new ContextMapping(List.of(), List.of()))
+            .build()));
     WorkflowDirectoryLoader directoryLoader = root -> {
       capturedPath.set(root);
       return new WorkflowDirectoryLoad(Map.of("wf", workflow), Map.of());

@@ -142,22 +142,20 @@ class BranchBehaviourHandlerTest {
   }
 
   private static StepDefinition branchStep(Map<String, Executable> branches, Executable defaultBranch) {
-    return new StepDefinition(
-        "branch",
-        "branch",
-        new BranchBehaviour("route", branches, defaultBranch),
-        ContextMapping.none(),
-        null,
-        null);
+    return StepDefinition.builder()
+        .withStepId("branch")
+        .withName("branch")
+        .withBehaviour(new BranchBehaviour("route", branches, defaultBranch))
+        .withContextMapping(ContextMapping.none())
+        .build();
   }
 
   private static StepDefinition resourceStep(String stepId) {
-    return new StepDefinition(
-        stepId,
-        stepId,
-        new ResourceBehaviour("/examples/sample.txt", stepId + ".out", StepTransition.AUTO),
-        ContextMapping.none(),
-        null,
-        null);
+    return StepDefinition.builder()
+        .withStepId(stepId)
+        .withName(stepId)
+        .withBehaviour(new ResourceBehaviour("/examples/sample.txt", stepId + ".out", StepTransition.AUTO))
+        .withContextMapping(ContextMapping.none())
+        .build();
   }
 }

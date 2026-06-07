@@ -98,9 +98,9 @@ public final class SparBehaviourHandler implements BehaviourHandler<SparBehaviou
       ContextMapping roundMapping = buildRoundMapping(step.contextMapping(), round - 1);
 
       AgentInvocationResult primary = spar(behaviour.agentRef(),
-          round, roundMapping, state, sparRoundPrompt, SPAR_PRIMARY_PREFIX);
+          round, roundMapping, state, sparRoundPrompt, SPAR_PRIMARY_PREFIX, step.modelTier());
       AgentInvocationResult challenger = spar(config.challengerAgentId(),
-          round, roundMapping, state, sparRoundPrompt, SPAR_CHALLENGER_PREFIX);
+          round, roundMapping, state, sparRoundPrompt, SPAR_CHALLENGER_PREFIX, step.modelTier());
 
       executedRounds = round;
 
@@ -139,7 +139,8 @@ public final class SparBehaviourHandler implements BehaviourHandler<SparBehaviou
         behaviour.agentRef(),
         buildResolutionMapping(step.contextMapping(), executedRounds),
         state,
-        step.stepPrompt());
+        step.stepPrompt(),
+        step.modelTier());
   }
 
   private CommandApplicationResult applyCommands(StepDefinition step,
@@ -175,14 +176,15 @@ public final class SparBehaviourHandler implements BehaviourHandler<SparBehaviou
   }
 
   private AgentInvocationResult spar(String agentRef, int round, ContextMapping roundMapping,
-      WorkflowState state, String sparRoundPrompt, String sparPrefix) {
+      WorkflowState state, String sparRoundPrompt, String sparPrefix, String stepModelTier) {
     LOG.log(System.Logger.Level.DEBUG, "SPAR round={0}, responder={1}", round,
         agentRef);
     AgentInvocationResult agent = agentInvoker.invoke(
         agentRef,
         roundMapping,
         state,
-        sparRoundPrompt);
+        sparRoundPrompt,
+        stepModelTier);
     state.putContextValue(sparPrefix + round,
         new StringContextValue(agent.rawResponse()));
     return agent;

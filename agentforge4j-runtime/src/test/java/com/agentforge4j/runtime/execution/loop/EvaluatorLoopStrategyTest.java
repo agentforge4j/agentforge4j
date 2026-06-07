@@ -156,12 +156,10 @@ class EvaluatorLoopStrategyTest {
   }
 
   private static StepDefinition dummyStep() {
-    return new StepDefinition(
-        "s1",
-        "s1",
-        new ResourceBehaviour("/examples/sample.txt", "out", StepTransition.AUTO),
-        null,
-        null,
-        null);
+    return StepDefinition.builder()
+        .withStepId("s1")
+        .withName("s1")
+        .withBehaviour(new ResourceBehaviour("/examples/sample.txt", "out", StepTransition.AUTO))
+        .build();
   }
 }

@@ -164,13 +164,11 @@ class ForEachLoopStrategyTest {
   }
 
   private static StepDefinition dummyStep() {
-    return new StepDefinition(
-        "dummy",
-        "dummy",
-        new ResourceBehaviour("/workflow-resources/info.txt", "dummy.out", StepTransition.AUTO),
-        null,
-        null,
-        null);
+    return StepDefinition.builder()
+        .withStepId("dummy")
+        .withName("dummy")
+        .withBehaviour(new ResourceBehaviour("/workflow-resources/info.txt", "dummy.out", StepTransition.AUTO))
+        .build();
   }
 
   private static LoopConfig forEachConfig(boolean allowMutation) {

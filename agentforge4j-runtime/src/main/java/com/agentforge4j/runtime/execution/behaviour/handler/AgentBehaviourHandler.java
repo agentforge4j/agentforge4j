@@ -95,7 +95,8 @@ public final class AgentBehaviourHandler implements BehaviourHandler<AgentBehavi
         behaviour.agentRef(),
         step.contextMapping(),
         executionContext.getState(),
-        step.stepPrompt());
+        step.stepPrompt(),
+        step.modelTier());
     LOG.log(System.Logger.Level.INFO, "Agent call completed stepId={0}, agentId={1}, commands={2}",
         step.stepId(), behaviour.agentRef(), result.commands().size());
     return result;

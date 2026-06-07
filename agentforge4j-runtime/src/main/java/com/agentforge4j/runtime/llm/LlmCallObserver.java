@@ -6,9 +6,12 @@ import com.agentforge4j.core.workflow.event.WorkflowEventType;
 import com.agentforge4j.core.workflow.state.ReservedContextKeys;
 import com.agentforge4j.core.workflow.state.WorkflowState;
 import com.agentforge4j.llm.api.LlmExecutionResponse;
+import com.agentforge4j.llm.api.ModelTier;
 import com.agentforge4j.llm.api.TokenUsageReport;
 import com.agentforge4j.runtime.event.EventRecorder;
 import com.agentforge4j.util.Validate;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 /**
  * Observes each completed LLM call: emits a {@link WorkflowEventType#LLM_CALL_COMPLETED} event and
@@ -21,26 +24,66 @@ import com.agentforge4j.util.Validate;
 public final class LlmCallObserver {
 
   private final EventRecorder eventRecorder;
+  private final ObjectMapper objectMapper;
 
-  public LlmCallObserver(EventRecorder eventRecorder) {
+  public LlmCallObserver(EventRecorder eventRecorder, ObjectMapper objectMapper) {
     this.eventRecorder = Validate.notNull(eventRecorder, "eventRecorder must not be null");
+    this.objectMapper = Validate.notNull(objectMapper, "objectMapper must not be null");
+  }
+
+  /**
+   * Typed shape of the {@link WorkflowEventType#LLM_CALL_COMPLETED} event payload. Serialized to JSON
+   * by Jackson; field declaration order is the emitted key order. {@code modelSource} and
+   * {@code requestedModelTier} serialize to their enum names ({@code null} stays {@code null}); all
+   * token counts may be {@code null} when the provider reported no usage.
+   *
+   * @param agentId            the agent that triggered the call
+   * @param provider           the provider name (e.g. {@code "claude"})
+   * @param modelUsed          the concrete model the provider reported running; nullable
+   * @param resolvedModel      the model the runtime resolved and sent; {@code null} for a provider
+   *                           default
+   * @param modelSource        how the model was determined (pin, tier, or provider default)
+   * @param requestedModelTier the requested capability tier, or {@code null} when none applied
+   * @param inputTokens        prompt token count, or {@code null} when not reported
+   * @param outputTokens       completion token count, or {@code null} when not reported
+   * @param totalTokens        {@code inputTokens + outputTokens}, or {@code null} when neither was
+   *                           reported
+   */
+  public record LlmCallCompletedPayload(
+      String agentId,
+      String provider,
+      String modelUsed,
+      String resolvedModel,
+      ModelSource modelSource,
+      ModelTier requestedModelTier,
+      Integer inputTokens,
+      Integer outputTokens,
+      Integer totalTokens) {
   }
 
   /**
    * Called once per completed LLM provider call.
    *
-   * @param agentId  the agent that triggered the call
-   * @param provider the provider name (e.g. {@code "claude"})
-   * @param response the full provider response including usage and model metadata
-   * @param state    mutable run state — token total is read-add-written here
+   * @param agentId            the agent that triggered the call
+   * @param provider           the provider name (e.g. {@code "claude"})
+   * @param response           the full provider response including usage and model metadata
+   * @param resolvedModel      the model the runtime resolved and sent; {@code null} when the
+   *                           provider default was used
+   * @param modelSource        how the model was determined (pin, tier, or provider default)
+   * @param requestedModelTier the requested capability tier, or {@code null} when none applied
+   * @param state              mutable run state — token total is read-add-written here
    */
   public void observe(String agentId,
       String provider,
       LlmExecutionResponse response,
+      String resolvedModel,
+      ModelSource modelSource,
+      ModelTier requestedModelTier,
       WorkflowState state) {
     TokenUsageReport tokenUsage = response.tokenUsage();
     int callTotal = computeCallTokenTotal(tokenUsage);
-    String payload = buildPayload(agentId, provider, response.modelUsed(), tokenUsage, callTotal);
+    String payload = buildPayload(agentId, provider, response.modelUsed(), resolvedModel,
+        modelSource, requestedModelTier, tokenUsage, callTotal);
     eventRecorder.record(
         state.getRunId(),
         state.getCurrentStepId(),
@@ -59,22 +102,34 @@ public final class LlmCallObserver {
     return input + output;
   }
 
-  private static String buildPayload(String agentId,
+  private String buildPayload(String agentId,
       String provider,
       String modelUsed,
+      String resolvedModel,
+      ModelSource modelSource,
+      ModelTier requestedModelTier,
       TokenUsageReport tokenUsage,
       int callTotal) {
+    // totalTokens = inputTokens + outputTokens; TokenUsageReport has no totalTokens field by design
     Integer totalTokens = (tokenUsage == null
         || (tokenUsage.inputTokens() == null && tokenUsage.outputTokens() == null))
         ? null : callTotal;
-    return "{\"agentId\":%s,\"provider\":%s,\"modelUsed\":%s,\"inputTokens\":%s,\"outputTokens\":%s,\"totalTokens\":%s}"
-        .formatted(
-            jsonString(agentId),
-            jsonString(provider),
-            jsonString(modelUsed),
-            jsonNumber(tokenUsage == null ? null : tokenUsage.inputTokens()),
-            jsonNumber(tokenUsage == null ? null : tokenUsage.outputTokens()),
-            jsonNumber(totalTokens));
+    LlmCallCompletedPayload payload = new LlmCallCompletedPayload(
+        agentId,
+        provider,
+        modelUsed,
+        resolvedModel,
+        modelSource,
+        requestedModelTier,
+        tokenUsage == null ? null : tokenUsage.inputTokens(),
+        tokenUsage == null ? null : tokenUsage.outputTokens(),
+        totalTokens);
+    try {
+      return objectMapper.writeValueAsString(payload);
+    } catch (JsonProcessingException e) {
+      throw new IllegalStateException(
+          "Failed to serialize LLM_CALL_COMPLETED payload for agent: %s".formatted(agentId), e);
+    }
   }
 
   private void accumulateTokens(WorkflowState state, int callTotal) {
@@ -93,14 +148,5 @@ public final class LlmCallObserver {
     if (currentStepUid != null) {
       state.putContextKeyWrittenAtUid(ReservedContextKeys.LLM_TOKENS_TOTAL, currentStepUid);
     }
-  }
-
-  private static String jsonString(String value) {
-    return value == null ? "null"
-        : "\"" + value.replace("\\", "\\\\").replace("\"", "\\\"") + "\"";
-  }
-
-  private static String jsonNumber(Integer value) {
-    return value == null ? "null" : value.toString();
   }
 }
