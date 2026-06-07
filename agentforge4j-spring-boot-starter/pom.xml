@@ -46,6 +46,11 @@
     </dependency>
     <dependency>
       <groupId>com.agentforge4j</groupId>
+      <artifactId>agentforge4j-mcp</artifactId>
+      <optional>true</optional>
+    </dependency>
+    <dependency>
+      <groupId>com.agentforge4j</groupId>
       <artifactId>agentforge4j-llm-openai</artifactId>
       <optional>true</optional>
     </dependency>

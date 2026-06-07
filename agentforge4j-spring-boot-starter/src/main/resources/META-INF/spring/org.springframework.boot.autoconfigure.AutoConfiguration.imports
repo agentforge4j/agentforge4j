@@ -7,6 +7,7 @@ com.agentforge4j.starter.llmclient.gemini.GeminiProviderAutoConfiguration
 com.agentforge4j.starter.llmclient.azureopenai.AzureOpenAiProviderAutoConfiguration
 com.agentforge4j.starter.llmclient.bedrock.BedrockProviderAutoConfiguration
 com.agentforge4j.starter.llmclient.mistral.MistralProviderAutoConfiguration
+com.agentforge4j.starter.mcp.McpAutoConfiguration
 com.agentforge4j.starter.BootstrapAutoConfiguration
 com.agentforge4j.starter.SpringRuntimeAutoConfiguration
 com.agentforge4j.starter.InMemoryRuntimePersistenceAutoConfiguration
