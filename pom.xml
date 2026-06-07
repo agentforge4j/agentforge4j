@@ -34,6 +34,18 @@
     <maven-surefire-plugin.version>3.5.2</maven-surefire-plugin.version>
     <maven-failsafe-plugin.version>3.5.2</maven-failsafe-plugin.version>
     <mcp-sdk.version>1.0.1</mcp-sdk.version>
+    <spotbugs-maven-plugin.version>4.9.3.0</spotbugs-maven-plugin.version>
+    <maven-checkstyle-plugin.version>3.6.0</maven-checkstyle-plugin.version>
+    <checkstyle.version>10.26.1</checkstyle.version>
+    <dependency-check-maven.version>12.1.3</dependency-check-maven.version>
+    <cyclonedx-maven-plugin.version>2.9.1</cyclonedx-maven-plugin.version>
+    <spotbugs-annotations.version>4.9.3</spotbugs-annotations.version>
+    <jqwik.version>1.9.3</jqwik.version>
+    <!-- Shared location for repo-wide static-analysis config, resolved from the reactor root so it
+         works from every module in the multi-module build. -->
+    <config.dir>${maven.multiModuleProjectDirectory}/config</config.dir>
+    <!-- Empty by default; CI overrides with -Dnvd.api.key=$NVD_API_KEY for usable NVD rate limits. -->
+    <nvd.api.key></nvd.api.key>
   </properties>
 
   <modules>
@@ -223,6 +235,16 @@
         <artifactId>archunit-junit5</artifactId>
         <version>${archunit.version}</version>
       </dependency>
+      <dependency>
+        <groupId>com.github.spotbugs</groupId>
+        <artifactId>spotbugs-annotations</artifactId>
+        <version>${spotbugs-annotations.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>net.jqwik</groupId>
+        <artifactId>jqwik</artifactId>
+        <version>${jqwik.version}</version>
+      </dependency>
     </dependencies>
   </dependencyManagement>
 
@@ -295,6 +317,112 @@
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-failsafe-plugin</artifactId>
+      </plugin>
+
+      <!-- SpotBugs: GATING. Fails the build on HIGH-confidence bug patterns in main sources. -->
+      <plugin>
+        <groupId>com.github.spotbugs</groupId>
+        <artifactId>spotbugs-maven-plugin</artifactId>
+        <version>${spotbugs-maven-plugin.version}</version>
+        <configuration>
+          <effort>Max</effort>
+          <threshold>High</threshold>
+          <includeTests>false</includeTests>
+          <failOnError>true</failOnError>
+          <excludeFilterFile>${config.dir}/spotbugs/spotbugs-exclude.xml</excludeFilterFile>
+        </configuration>
+        <executions>
+          <execution>
+            <id>spotbugs-check</id>
+            <phase>verify</phase>
+            <goals>
+              <goal>check</goal>
+            </goals>
+          </execution>
+        </executions>
+      </plugin>
+
+      <!-- Checkstyle: GATING. Minimal ruleset (braces, unused/redundant imports, empty blocks)
+           on main sources only; severity=error fails the build. -->
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-checkstyle-plugin</artifactId>
+        <version>${maven-checkstyle-plugin.version}</version>
+        <dependencies>
+          <!-- Pin a current Checkstyle; the plugin's bundled default resolved an old 9.3 that
+               cannot parse module declarations and predates current checks. -->
+          <dependency>
+            <groupId>com.puppycrawl.tools</groupId>
+            <artifactId>checkstyle</artifactId>
+            <version>${checkstyle.version}</version>
+          </dependency>
+        </dependencies>
+        <configuration>
+          <configLocation>${config.dir}/checkstyle/checkstyle.xml</configLocation>
+          <includeTestSourceDirectory>false</includeTestSourceDirectory>
+          <!-- module-info.java uses module-declaration syntax the Checkstyle Java grammar does not
+               parse, and carries none of the constructs these rules target. -->
+          <excludes>**/module-info.java</excludes>
+          <violationSeverity>error</violationSeverity>
+          <failsOnError>true</failsOnError>
+          <failOnViolation>true</failOnViolation>
+          <consoleOutput>true</consoleOutput>
+        </configuration>
+        <executions>
+          <execution>
+            <id>checkstyle-check</id>
+            <phase>verify</phase>
+            <goals>
+              <goal>check</goal>
+            </goals>
+          </execution>
+        </executions>
+      </plugin>
+
+      <!-- OWASP Dependency-Check: ADVISORY ONLY. Intentionally has NO <executions>, so it never
+           binds to `verify` and never runs in the normal build. The scheduled CI job invokes it
+           explicitly: mvn org.owasp:dependency-check-maven:aggregate -Dnvd.api.key=$NVD_API_KEY
+           Promote to gating later by adding a verify-bound execution plus
+           <failBuildOnCVSS>7</failBuildOnCVSS> once the suppression baseline and NVD key are
+           stable. -->
+      <plugin>
+        <groupId>org.owasp</groupId>
+        <artifactId>dependency-check-maven</artifactId>
+        <version>${dependency-check-maven.version}</version>
+        <configuration>
+          <formats>
+            <format>HTML</format>
+            <format>SARIF</format>
+          </formats>
+          <suppressionFiles>
+            <suppressionFile>${config.dir}/owasp/dependency-check-suppressions.xml</suppressionFile>
+          </suppressionFiles>
+          <nvdApiKey>${nvd.api.key}</nvdApiKey>
+        </configuration>
+      </plugin>
+
+      <!-- CycloneDX SBOM: emits a single aggregate bom.json + bom.xml for the whole reactor at the
+           root, bound to `package`. inherited=false keeps it root-only (no per-module BOMs). The
+           release workflow attaches the aggregate BOMs as supply-chain artifacts. -->
+      <plugin>
+        <groupId>org.cyclonedx</groupId>
+        <artifactId>cyclonedx-maven-plugin</artifactId>
+        <version>${cyclonedx-maven-plugin.version}</version>
+        <inherited>false</inherited>
+        <configuration>
+          <outputFormat>all</outputFormat>
+          <schemaVersion>1.5</schemaVersion>
+          <projectType>library</projectType>
+        </configuration>
+        <executions>
+          <execution>
+            <id>make-aggregate-bom</id>
+            <phase>package</phase>
+            <goals>
+              <goal>makeAggregateBom</goal>
+            </goals>
+          </execution>
+        </executions>
       </plugin>
     </plugins>
   </build>

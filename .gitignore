@@ -255,6 +255,9 @@ dist/
 agentforge4j-workflow-builder/node_modules/
 agentforge4j-workflow-builder/dist/
 
+### jqwik property-test run database (regenerated each run; not source)
+.jqwik-database
+
 ### Local review files
 changes.diff
 CHANGES.md

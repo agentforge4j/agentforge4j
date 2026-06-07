@@ -1,0 +1,54 @@
+# Dependabot configuration for AgentForge4j (OSS).
+# Keeps Maven dependencies, GitHub Actions, and the two npm front-end modules current.
+# Minor/patch updates are grouped to reduce PR noise; majors get their own PRs for review.
+version: 2
+
+updates:
+  # Maven dependencies for the whole multi-module reactor (root + all modules).
+  - package-ecosystem: "maven"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 10
+    groups:
+      maven-minor-and-patch:
+        update-types:
+          - "minor"
+          - "patch"
+    # Major bumps are intentionally left ungrouped so each lands in its own reviewable PR.
+
+  # GitHub Actions used by the CI/security/release workflows (pinned action versions).
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    groups:
+      github-actions-minor-and-patch:
+        update-types:
+          - "minor"
+          - "patch"
+
+  # npm front-end module: agentforge4j-web-ui (committed package-lock.json).
+  - package-ecosystem: "npm"
+    directory: "/agentforge4j-web-ui"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    groups:
+      web-ui-minor-and-patch:
+        update-types:
+          - "minor"
+          - "patch"
+
+  # npm front-end module: agentforge4j-workflow-builder (committed package-lock.json).
+  - package-ecosystem: "npm"
+    directory: "/agentforge4j-workflow-builder"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    groups:
+      workflow-builder-minor-and-patch:
+        update-types:
+          - "minor"
+          - "patch"

@@ -1,0 +1,59 @@
+name: CodeQL
+
+# Static application security testing (SAST) for the Java codebase.
+#
+# DISABLED for automatic runs while this repo is private without GitHub Advanced Security:
+# code scanning / SARIF upload requires GHAS on private repos, so push/PR/schedule runs fail at
+# the upload step. The workflow is kept manual-only (workflow_dispatch) for now.
+#
+# TO RE-ENABLE once the repo is public (code scanning is free) or GHAS is enabled, restore the
+# automatic triggers by replacing the `on:` block below with:
+#
+#   on:
+#     push:
+#       branches: ["main"]
+#     pull_request:
+#       branches: ["main"]
+#     schedule:
+#       - cron: "17 6 * * 1"
+#     workflow_dispatch:
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  analyze:
+    name: Analyze (java-kotlin)
+    runs-on: ubuntu-latest
+    permissions:
+      # Required to upload CodeQL SARIF results to the Security tab.
+      security-events: write
+      contents: read
+      actions: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: "temurin"
+          java-version: "17"
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          # java-kotlin is the canonical CodeQL identifier for JVM code. The repo is Java-only,
+          # so build-mode "none" is valid; if Kotlin source is ever added, switch this to
+          # autobuild/manual.
+          languages: java-kotlin
+          build-mode: none
+          queries: security-extended
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: "/language:java-kotlin"

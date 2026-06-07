@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  SpotBugs exclude (suppression) baseline for AgentForge4j.
+
+  Empty on purpose: it gives accepted suppressions a home without pre-suppressing anything.
+  Add a <Match> block here ONLY for a triaged, justified false positive, with a comment naming the
+  bug pattern, the class/method, and why it is safe. Never blanket-disable a detector.
+
+  Example shape (do not enable without justification):
+    <Match>
+      <Class name="com.agentforge4j.example.Foo"/>
+      <Bug pattern="EI_EXPOSE_REP"/>
+    </Match>
+-->
+<FindBugsFilter>
+</FindBugsFilter>

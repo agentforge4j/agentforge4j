@@ -86,8 +86,8 @@ public final class MistralLlmClient extends AbstractHttpLlmClient {
     MistralChoice firstChoice = validateApiError(json, dto);
 
     MistralMessage message = firstChoice.message();
-    String content = message == null ? null : message.content();
-    Validate.notBlank(content, () -> new LlmInvocationException(
+    String rawContent = message == null ? null : message.content();
+    String content = Validate.notBlank(rawContent, () -> new LlmInvocationException(
         "mistral response first choice content is blank: %s".formatted(json)));
     return new LlmExecutionResponse(
         LlmClient.stripCodeFence(content.strip()),

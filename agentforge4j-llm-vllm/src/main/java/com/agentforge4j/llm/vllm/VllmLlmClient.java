@@ -78,14 +78,15 @@ public final class VllmLlmClient extends AbstractHttpLlmClient {
   @Override
   protected LlmExecutionResponse validateAndExtractResponse(String json) throws IOException {
     VllmResponse response = objectMapper.readValue(json, VllmResponse.class);
-    List<VllmChoice> choices = response == null ? null : response.choices();
-    Validate.notEmpty(choices, () -> new LlmInvocationException(
-        "vLLM response choices are empty: %s".formatted(json)));
+    List<VllmChoice> choices = Validate.notEmpty(
+        response == null ? null : response.choices(),
+        () -> new LlmInvocationException(
+            "vLLM response choices are empty: %s".formatted(json)));
 
-    String content = choices.get(0) == null || choices.get(0).message() == null
+    String rawContent = choices.get(0) == null || choices.get(0).message() == null
         ? null
         : choices.get(0).message().content();
-    Validate.notBlank(content, () -> new LlmInvocationException(
+    String content = Validate.notBlank(rawContent, () -> new LlmInvocationException(
         "vLLM response first choice content is blank: %s".formatted(json)));
 
     VllmUsage usage = response == null ? null : response.usage();

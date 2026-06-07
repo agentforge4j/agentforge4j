@@ -2,7 +2,6 @@ package com.agentforge4j.runtime.llm;
 
 import com.agentforge4j.core.agent.AgentDefinition;
 import com.agentforge4j.core.agent.ProviderPreference;
-import com.agentforge4j.llm.LlmClientResolver;
 import java.util.List;
 
 /**

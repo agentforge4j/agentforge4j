@@ -106,8 +106,8 @@ public final class AzureOpenAiLlmClient extends AbstractHttpLlmClient {
 
     AzureChatCompletionChoice firstChoice = retrieveFirstChoice(json, dto);
     AzureChatCompletionMessage message = firstChoice.message();
-    String content = message == null ? null : message.content();
-    Validate.notBlank(content, () -> new
+    String rawContent = message == null ? null : message.content();
+    String content = Validate.notBlank(rawContent, () -> new
         LlmInvocationException(
         "azure-openai response first choice content is blank for deployment %s: %s".formatted(
             deploymentName, json)));

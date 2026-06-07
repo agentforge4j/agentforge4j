@@ -5,5 +5,8 @@
  * behaviour without creating cycles. Not a home for domain or orchestration types.
  */
 module agentforge4j.util {
+  // Compile-only: SpotBugs nullness annotations. `static` keeps it off the runtime module graph.
+  requires static com.github.spotbugs.annotations;
+
   exports com.agentforge4j.util;
 }

@@ -1,0 +1,15 @@
+# Gitleaks configuration for AgentForge4j (OSS).
+# Builds on the bundled default ruleset. A repo scan found no committed real or placeholder
+# secrets, so no custom allowlist is defined. If a confirmed false positive ever appears, add an
+# [[allowlists]] block below with at least one concrete check (paths, regexes, commits, or
+# stopwords) and a comment explaining why it is safe. Never blanket-disable a rule.
+#
+# Example (do not enable without justification):
+#   [[allowlists]]
+#   description = "documented example publishable key in docs/tests"
+#   regexes = ['''pk_test_[A-Za-z0-9]+''']
+#   paths   = ['''(.*?)(example|sample)\.env$''']
+
+[extend]
+# Start from gitleaks' built-in rules rather than redefining them.
+useDefault = true

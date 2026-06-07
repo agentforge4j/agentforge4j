@@ -1,5 +1,6 @@
 package com.agentforge4j.util;
 
+import edu.umd.cs.findbugs.annotations.NonNull;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -19,9 +20,10 @@ public final class Validate {
    *
    * @param value   the string to validate
    * @param message the exception message if validation fails
-   * @return the validated string
+   * @return the validated string; never {@code null}
    * @throws IllegalArgumentException if the string is blank
    */
+  @NonNull
   public static String notBlank(String value, String message) {
     return notBlank(value, () -> new IllegalArgumentException(message));
   }
@@ -31,8 +33,9 @@ public final class Validate {
    *
    * @param value             the string to validate
    * @param exceptionSupplier supplies the exception to throw if validation fails
-   * @return the validated string
+   * @return the validated string; never {@code null}
    */
+  @NonNull
   public static String notBlank(String value, Supplier<RuntimeException> exceptionSupplier) {
     notNull(exceptionSupplier, "Exception supplier must not be null");
     if (isBlank(value)) {
@@ -46,9 +49,10 @@ public final class Validate {
    *
    * @param value   the value to validate
    * @param message the exception message if validation fails
-   * @return the validated value
+   * @return the validated value; never {@code null}
    * @throws IllegalArgumentException if the value is null
    */
+  @NonNull
   public static <T> T notNull(T value, String message) {
     return notNull(value, () -> new IllegalArgumentException(message));
   }
@@ -58,8 +62,9 @@ public final class Validate {
    *
    * @param value             the value to validate
    * @param exceptionSupplier supplies the exception to throw if validation fails
-   * @return the validated value
+   * @return the validated value; never {@code null}
    */
+  @NonNull
   public static <T> T notNull(T value, Supplier<RuntimeException> exceptionSupplier) {
     if (exceptionSupplier == null) {
       throw new IllegalArgumentException("Exception supplier must not be null");
@@ -99,9 +104,10 @@ public final class Validate {
    *
    * @param collection the collection to validate
    * @param message    the exception message if validation fails
-   * @return the validated collection
+   * @return the validated collection; never {@code null}
    * @throws IllegalArgumentException if the collection is null or empty
    */
+  @NonNull
   public static <T extends Collection<?>> T notEmpty(final T collection, final String message) {
     return notEmpty(collection, () -> new IllegalArgumentException(message));
   }
@@ -111,8 +117,9 @@ public final class Validate {
    *
    * @param collection        the collection to validate
    * @param exceptionSupplier supplies the exception to throw if validation fails
-   * @return the validated collection
+   * @return the validated collection; never {@code null}
    */
+  @NonNull
   public static <T extends Collection<?>> T notEmpty(final T collection,
       Supplier<RuntimeException> exceptionSupplier) {
     notNull(exceptionSupplier, "Exception supplier must not be null");
