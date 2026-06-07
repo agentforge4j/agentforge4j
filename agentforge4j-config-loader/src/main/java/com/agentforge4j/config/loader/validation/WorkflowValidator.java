@@ -22,7 +22,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
-public class WorkflowValidator {
+public final class WorkflowValidator {
 
   /**
    * Verifies that workflow references point to known workflows.

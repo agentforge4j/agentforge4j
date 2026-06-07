@@ -12,7 +12,7 @@ import java.util.concurrent.atomic.AtomicReference;
 /**
  * In-memory {@link WorkflowRepository} whose snapshot can be replaced atomically.
  */
-public class InMemoryWorkflowRepository implements WorkflowRepository {
+public final class InMemoryWorkflowRepository implements WorkflowRepository {
 
   private final AtomicReference<Map<String, WorkflowDefinition>> byIdRef;
 

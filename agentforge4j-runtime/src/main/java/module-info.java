@@ -16,6 +16,7 @@ module agentforge4j.runtime {
   requires agentforge4j.config.loader;
   requires agentforge4j.schema;
   requires agentforge4j.integrations;
+  requires agentforge4j.llm.api;
   requires agentforge4j.llm;
   requires com.fasterxml.jackson.databind;
   requires com.fasterxml.jackson.core;
