@@ -1,6 +1,7 @@
 package com.agentforge4j.starter.mcp;
 
 import com.agentforge4j.core.spi.tool.ToolExecutionOptions;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.agentforge4j.core.spi.tool.ToolPolicy;
 import com.agentforge4j.core.spi.tool.ToolProvider;
 import com.agentforge4j.mcp.client.McpServerConnection;
@@ -12,9 +13,12 @@ import com.agentforge4j.mcp.client.transport.StreamableHttpTransport;
 import com.agentforge4j.runtime.tool.NoOpToolPolicy;
 import com.agentforge4j.starter.BootstrapAutoConfiguration;
 import com.agentforge4j.util.Validate;
+import io.modelcontextprotocol.json.McpJsonMapper;
+import io.modelcontextprotocol.json.jackson2.JacksonMcpJsonMapper;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import org.apache.commons.lang3.ObjectUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
@@ -115,14 +119,16 @@ public class McpAutoConfiguration {
 
   private static McpTransport buildTransport(McpProperties.ServerProperties server) {
     Duration timeout = ObjectUtils.getIfNull(server.requestTimeout(), DEFAULT_TIMEOUT);
+    McpJsonMapper jsonMapper = new JacksonMcpJsonMapper(new ObjectMapper());
     if ("STREAMABLE_HTTP".equalsIgnoreCase(server.transport())) {
       Validate.notBlank(server.url(),
           "MCP server '%s' with STREAMABLE_HTTP transport requires a url".formatted(server.id()));
-      return new StreamableHttpTransport(server.url(), timeout);
+      return new StreamableHttpTransport(server.url(), timeout, Map.of(), Map.of(), null,
+          jsonMapper);
     }
     Validate.notBlank(server.command(),
         "MCP server '%s' with STDIO transport requires a command".formatted(server.id()));
-    return new StdioTransport(server.command(), server.args(), server.env(), timeout);
+    return new StdioTransport(server.command(), server.args(), server.env(), timeout, jsonMapper);
   }
 
   private static String providerId(McpProperties.ServerProperties server) {

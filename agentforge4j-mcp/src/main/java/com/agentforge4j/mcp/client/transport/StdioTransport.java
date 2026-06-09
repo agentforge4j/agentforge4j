@@ -19,20 +19,7 @@ public final class StdioTransport extends AbstractSdkMcpTransport {
   private final Map<String, String> env;
 
   /**
-   * Creates a stdio transport using the SDK's default Jackson-2 JSON mapper.
-   *
-   * @param command        the executable to launch (non-blank)
-   * @param args           command-line arguments, or {@code null} for none
-   * @param env            environment variables, or {@code null} for none
-   * @param requestTimeout per-request timeout
-   */
-  public StdioTransport(String command, List<String> args, Map<String, String> env,
-      Duration requestTimeout) {
-    this(command, args, env, requestTimeout, defaultJsonMapper());
-  }
-
-  /**
-   * Creates a stdio transport with an explicit JSON mapper.
+   * Creates a stdio transport.
    *
    * @param command        the executable to launch (non-blank)
    * @param args           command-line arguments, or {@code null} for none

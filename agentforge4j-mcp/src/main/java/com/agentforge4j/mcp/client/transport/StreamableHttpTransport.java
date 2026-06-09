@@ -5,40 +5,113 @@ import io.modelcontextprotocol.client.transport.HttpClientStreamableHttpTranspor
 import io.modelcontextprotocol.json.McpJsonMapper;
 import io.modelcontextprotocol.spec.McpClientTransport;
 import java.time.Duration;
+import java.util.LinkedHashMap;
+import java.util.Map;
+import java.util.Set;
+import java.util.TreeSet;
+import java.util.function.Function;
 
 /**
  * {@link McpTransport} that connects to a remote MCP server over Streamable HTTP.
+ *
+ * <p>Carries a fixed set of per-server request headers (for example {@code Authorization} for
+ * hosted, auth-requiring servers), attached to every request. Header values are either literals
+ * ({@code staticHeaders}) or secret-reference keys ({@code secretHeaders}) resolved at connect time
+ * through an embedder-supplied {@code secretResolver}, mirroring the {@code HttpToolProvider}
+ * secret model. Pass empty maps and a {@code null} resolver for a server with no headers. Header
+ * values vary per tenant/user/org only at the platform layer, which supplies the resolved
+ * configuration here.
  */
 public final class StreamableHttpTransport extends AbstractSdkMcpTransport {
 
   private final String url;
+  private final Map<String, String> staticHeaders;
+  private final Map<String, String> secretHeaders;
+  private final Function<String, String> secretResolver;
 
   /**
-   * Creates a Streamable HTTP transport using the SDK's default Jackson-2 JSON mapper.
+   * Creates a Streamable HTTP transport.
    *
    * @param url            the base URL of the remote MCP server (non-blank)
    * @param requestTimeout per-request timeout
-   */
-  public StreamableHttpTransport(String url, Duration requestTimeout) {
-    this(url, requestTimeout, defaultJsonMapper());
-  }
-
-  /**
-   * Creates a Streamable HTTP transport with an explicit JSON mapper.
-   *
-   * @param url            the base URL of the remote MCP server (non-blank)
-   * @param requestTimeout per-request timeout
+   * @param staticHeaders  literal header name to value pairs (values non-blank); {@code null}
+   *                       treated as empty
+   * @param secretHeaders  header name to secret-reference key; resolved at connect via
+   *                       {@code secretResolver}; {@code null} treated as empty
+   * @param secretResolver resolves a secret-reference key to its value; required when
+   *                       {@code secretHeaders} is non-empty
    * @param jsonMapper     the JSON mapper used by the SDK transport
    */
-  public StreamableHttpTransport(String url, Duration requestTimeout, McpJsonMapper jsonMapper) {
+  public StreamableHttpTransport(String url, Duration requestTimeout,
+      Map<String, String> staticHeaders, Map<String, String> secretHeaders,
+      Function<String, String> secretResolver, McpJsonMapper jsonMapper) {
     super(jsonMapper, requestTimeout);
     this.url = Validate.notBlank(url, "url must not be blank");
+    this.staticHeaders = staticHeaders != null ? Map.copyOf(staticHeaders) : Map.of();
+    this.secretHeaders = secretHeaders != null ? Map.copyOf(secretHeaders) : Map.of();
+    this.secretResolver = secretResolver;
+    validateHeaders();
   }
 
   @Override
   protected McpClientTransport createSdkTransport() {
-    return HttpClientStreamableHttpTransport.builder(url)
-        .jsonMapper(jsonMapper())
-        .build();
+    Map<String, String> headers = resolveHeaders();
+    HttpClientStreamableHttpTransport.Builder builder =
+        HttpClientStreamableHttpTransport.builder(url).jsonMapper(jsonMapper());
+    if (!headers.isEmpty()) {
+      builder.customizeRequest(requestBuilder -> headers.forEach(requestBuilder::setHeader));
+    }
+    return builder.build();
+  }
+
+  /**
+   * Resolves the final header set: every literal header plus each secret-reference header resolved
+   * through the secret resolver. Resolution runs at connect time so rotated secrets are picked up
+   * on reconnect.
+   *
+   * @return the resolved header name to value map (empty when no headers are configured)
+   */
+  Map<String, String> resolveHeaders() {
+    if (staticHeaders.isEmpty() && secretHeaders.isEmpty()) {
+      return Map.of();
+    }
+    Map<String, String> resolved = new LinkedHashMap<>(staticHeaders);
+    secretHeaders.forEach((name, secretRef) -> {
+      String value = secretResolver.apply(secretRef);
+      Validate.notBlank(value, () -> new IllegalStateException(
+          "secret '%s' resolved to a blank value".formatted(secretRef)));
+      resolved.put(name, value);
+    });
+    return Map.copyOf(resolved);
+  }
+
+  private void validateHeaders() {
+    staticHeaders.forEach((name, value) -> {
+      Validate.notBlank(name, "header name must not be blank");
+      Validate.notBlank(value, "value for header '%s' must not be blank".formatted(name));
+    });
+    secretHeaders.forEach((name, secretRef) -> {
+      Validate.notBlank(name, "header name must not be blank");
+      Validate.notBlank(secretRef,
+          "secret-reference key for header '%s' must not be blank".formatted(name));
+    });
+    Set<String> staticNames = caseInsensitiveNames(staticHeaders);
+    caseInsensitiveNames(secretHeaders).forEach(name -> Validate.isTrue(
+        !staticNames.contains(name),
+        "header '%s' must not be both a literal and a secret-reference".formatted(name)));
+    Validate.isTrue(secretHeaders.isEmpty() || secretResolver != null,
+        "secretResolver is required when secret-reference headers are present");
+  }
+
+  /**
+   * Collects header names into a case-insensitive set, rejecting names that differ only by case —
+   * HTTP header names are case-insensitive, so such duplicates would silently overwrite each other
+   * on the request.
+   */
+  private static Set<String> caseInsensitiveNames(Map<String, String> headers) {
+    Set<String> names = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
+    headers.keySet().forEach(name -> Validate.isTrue(names.add(name),
+        "duplicate header name '%s' (header names are case-insensitive)".formatted(name)));
+    return names;
   }
 }

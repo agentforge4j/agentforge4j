@@ -2,11 +2,9 @@ package com.agentforge4j.mcp.client.transport;
 
 import com.agentforge4j.mcp.client.McpToolInvocationException;
 import com.agentforge4j.util.Validate;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import io.modelcontextprotocol.client.McpClient;
 import io.modelcontextprotocol.client.McpSyncClient;
 import io.modelcontextprotocol.json.McpJsonMapper;
-import io.modelcontextprotocol.json.jackson2.JacksonMcpJsonMapper;
 import io.modelcontextprotocol.spec.McpClientTransport;
 import io.modelcontextprotocol.spec.McpSchema;
 import java.io.IOException;
@@ -37,18 +35,6 @@ abstract class AbstractSdkMcpTransport implements McpTransport {
    */
   protected final McpJsonMapper jsonMapper() {
     return jsonMapper;
-  }
-
-  /**
-   * The default {@link McpJsonMapper} when a transport is constructed without an explicit one: the
-   * SDK's Jackson-2 binding over a fresh {@link ObjectMapper}. (The SDK's 1.x line dropped
-   * {@code McpJsonMapper.getDefault()} and split JSON binding into per-Jackson modules; the project
-   * is Jackson 2.)
-   *
-   * @return a Jackson-2-backed JSON mapper
-   */
-  protected static McpJsonMapper defaultJsonMapper() {
-    return new JacksonMcpJsonMapper(new ObjectMapper());
   }
 
   /**
