@@ -1,7 +1,6 @@
 package com.agentforge4j.runtime;
 
 import com.agentforge4j.config.loader.repository.InMemoryWorkflowRepository;
-import com.agentforge4j.integrations.NoOpIntegrationRegistry;
 import com.agentforge4j.runtime.command.FileSink;
 import com.agentforge4j.runtime.command.ShellCommandRunner;
 import com.agentforge4j.runtime.repository.InMemoryWorkflowEventLog;
@@ -26,7 +25,6 @@ class WorkflowRuntimeBuilderTest {
         .workflowStateRepository(new InMemoryWorkflowStateRepository())
         .workflowEventLog(new InMemoryWorkflowEventLog())
         .clock(Clock.fixed(Instant.parse("2026-05-01T12:00:00Z"), ZoneOffset.UTC))
-        .integrationRegistry(NoOpIntegrationRegistry.INSTANCE)
         .fileSink(FileSink.NO_OP_FILE_SINK)
         .shellCommandRunner(ShellCommandRunner.NO_OP_SHELL_COMMAND_RUNNER)
         .build())

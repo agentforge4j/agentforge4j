@@ -7,7 +7,6 @@ import com.agentforge4j.core.workflow.context.StringContextValue;
 import com.agentforge4j.core.workflow.repository.WorkflowStateRepository;
 import com.agentforge4j.core.workflow.state.WorkflowState;
 import com.agentforge4j.core.workflow.state.WorkflowStatus;
-import com.agentforge4j.integrations.NoOpIntegrationRegistry;
 import com.agentforge4j.llm.LlmClientResolver;
 import com.agentforge4j.llm.api.LlmClient;
 import com.agentforge4j.runtime.command.FileSink;
@@ -112,7 +111,6 @@ class WorkflowStateExposureRuntimeTest {
         .workflowEventLog(eventLog)
         .agentInvoker(agentInvoker)
         .clock(clock)
-        .integrationRegistry(NoOpIntegrationRegistry.INSTANCE)
         .fileSink(FileSink.NO_OP_FILE_SINK)
         .shellCommandRunner(ShellCommandRunner.NO_OP_SHELL_COMMAND_RUNNER)
         .build();

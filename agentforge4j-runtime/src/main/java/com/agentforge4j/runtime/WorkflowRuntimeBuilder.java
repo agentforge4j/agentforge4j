@@ -8,13 +8,10 @@ import com.agentforge4j.core.workflow.event.WorkflowEventLog;
 import com.agentforge4j.core.workflow.repository.WorkflowRepository;
 import com.agentforge4j.core.workflow.repository.WorkflowStateRepository;
 import com.agentforge4j.core.workflow.step.behaviour.StepBehaviour;
-import com.agentforge4j.integrations.IntegrationRegistry;
-import com.agentforge4j.integrations.NoOpIntegrationRegistry;
 import com.agentforge4j.runtime.command.CommandApplier;
 import com.agentforge4j.runtime.command.CommandHandler;
 import com.agentforge4j.runtime.command.FileSink;
 import com.agentforge4j.runtime.command.ShellCommandRunner;
-import com.agentforge4j.runtime.command.handler.CallEndpointCommandHandler;
 import com.agentforge4j.runtime.command.handler.CompleteCommandHandler;
 import com.agentforge4j.runtime.command.handler.ContinueCommandHandler;
 import com.agentforge4j.runtime.command.handler.CreateFileCommandHandler;
@@ -61,10 +58,9 @@ import static com.agentforge4j.runtime.command.ShellCommandRunner.NO_OP_SHELL_CO
  * behaviour handlers, loop strategies, and command handlers.
  *
  * <p>Required collaborators are repositories, a pre-built {@link AgentInvoker}, {@link FileSink},
- * {@link ShellCommandRunner}, and {@link com.agentforge4j.integrations.IntegrationRegistry}.
- * {@link java.time.Clock}, {@link LoopEvaluator}, and {@link RunContextManager} default when
- * omitted. A {@link com.agentforge4j.schema.SchemaProvider} may be configured but is not read by
- * the current {@link #build()} implementation.
+ * and {@link ShellCommandRunner}. {@link java.time.Clock}, {@link LoopEvaluator}, and
+ * {@link RunContextManager} default when omitted. A {@link com.agentforge4j.schema.SchemaProvider}
+ * may be configured but is not read by the current {@link #build()} implementation.
  *
  * <p>Public construction path for {@link com.agentforge4j.core.runtime.WorkflowRuntime};
  * {@link DefaultWorkflowRuntime} constructors stay package-private because they accept non-exported
@@ -78,7 +74,6 @@ public final class WorkflowRuntimeBuilder {
   private Clock clock;
   private FileSink fileSink;
   private ShellCommandRunner shellCommandRunner;
-  private IntegrationRegistry integrationRegistry;
   private LoopEvaluator loopEvaluator;
   private RunContextManager runContextManager = RunContextManager.NO_OP;
   private int maxNestingDepth = DefaultWorkflowRuntime.DEFAULT_MAX_NESTING_DEPTH;
@@ -177,19 +172,6 @@ public final class WorkflowRuntimeBuilder {
   }
 
   /**
-   * Configures {@link com.agentforge4j.core.command.CallEndpointCommand} resolution and permission
-   * checks.
-   *
-   * @param value integration registry instance
-   *
-   * @return this builder
-   */
-  public WorkflowRuntimeBuilder integrationRegistry(IntegrationRegistry value) {
-    this.integrationRegistry = Validate.notNull(value, "integrationRegistry must not be null");
-    return this;
-  }
-
-  /**
    * Configures the maximum nested workflow depth passed to
    * {@link com.agentforge4j.runtime.execution.ExecutionContext}.
    *
@@ -284,7 +266,6 @@ public final class WorkflowRuntimeBuilder {
   public WorkflowRuntime build() {
     validateRequired();
     Clock resolvedClock = resolveClock();
-    IntegrationRegistry resolvedRegistry = resolveIntegrationRegistry();
     FileSink resolvedFileSink = getResolvedFileSink();
     ShellCommandRunner resolvedShell = resolveShellCommandRunner();
     RunContextManager runContextManager = resolveRunContextManager();
@@ -293,7 +274,7 @@ public final class WorkflowRuntimeBuilder {
         : new EventRecorder(workflowEventLog, resolvedClock);
 
     CommandApplier commandApplier = new CommandApplier(determineCommandHandlers(
-        resolvedEventRecorder, resolvedFileSink, resolvedShell, resolvedClock, resolvedRegistry));
+        resolvedEventRecorder, resolvedFileSink, resolvedShell, resolvedClock));
 
     LoopEvaluator resolvedEvaluator = resolveLoopEvaluator(agentInvoker);
 
@@ -358,9 +339,8 @@ public final class WorkflowRuntimeBuilder {
 
   private List<CommandHandler<? extends LlmCommand>> determineCommandHandlers(
       EventRecorder eventRecorder, FileSink resolvedFileSink, ShellCommandRunner resolvedShell,
-      Clock resolvedClock, IntegrationRegistry resolvedRegistry) {
+      Clock resolvedClock) {
     List<CommandHandler<? extends LlmCommand>> handlers = new ArrayList<>(List.of(
-        new CallEndpointCommandHandler(eventRecorder, resolvedRegistry),
         new CompleteCommandHandler(eventRecorder),
         new ContinueCommandHandler(),
         new CreateFileCommandHandler(eventRecorder, resolvedFileSink),
@@ -403,10 +383,6 @@ public final class WorkflowRuntimeBuilder {
 
   private FileSink getResolvedFileSink() {
     return fileSink != null ? fileSink : NO_OP_FILE_SINK;
-  }
-
-  private IntegrationRegistry resolveIntegrationRegistry() {
-    return integrationRegistry != null ? integrationRegistry : NoOpIntegrationRegistry.INSTANCE;
   }
 
   private LoopEvaluator resolveLoopEvaluator(AgentInvoker agentInvoker) {

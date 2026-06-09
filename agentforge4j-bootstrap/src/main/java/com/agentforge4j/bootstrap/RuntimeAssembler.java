@@ -5,7 +5,6 @@ import com.agentforge4j.core.runtime.WorkflowRuntime;
 import com.agentforge4j.core.workflow.event.WorkflowEventLog;
 import com.agentforge4j.core.workflow.repository.WorkflowRepository;
 import com.agentforge4j.core.workflow.repository.WorkflowStateRepository;
-import com.agentforge4j.integrations.IntegrationRegistry;
 import com.agentforge4j.llm.LlmClientResolver;
 import com.agentforge4j.llm.RetryingLlmClientResolver;
 import com.agentforge4j.core.spi.tool.PendingToolInvocationStore;
@@ -144,7 +143,6 @@ final class RuntimeAssembler {
    * @param workflowEventLog        must not be {@code null}
    * @param clock                   must not be {@code null}
    * @param fileSink                must not be {@code null}
-   * @param integrationRegistry     must not be {@code null}
    * @param agentInvoker            must not be {@code null}
    * @param eventRecorder           must not be {@code null}
    * @param maxNestingDepth         optional nesting depth override
@@ -155,7 +153,6 @@ final class RuntimeAssembler {
       WorkflowEventLog workflowEventLog,
       Clock clock,
       FileSink fileSink,
-      IntegrationRegistry integrationRegistry,
       AgentInvoker agentInvoker,
       EventRecorder eventRecorder,
       Integer maxNestingDepth,
@@ -167,7 +164,6 @@ final class RuntimeAssembler {
         .workflowEventLog(workflowEventLog)
         .clock(clock)
         .fileSink(fileSink)
-        .integrationRegistry(integrationRegistry)
         .agentInvoker(agentInvoker)
         .eventRecorder(eventRecorder);
 

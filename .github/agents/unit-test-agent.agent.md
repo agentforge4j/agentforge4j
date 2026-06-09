@@ -126,11 +126,6 @@ Cover every `Validate` method: happy path, null/blank/empty inputs, polarity cor
 - Path traversal — `requireWithinBase` guard via crafted `..` paths.
 - `InMemoryAgentRepository` and `InMemoryWorkflowRepository` get/missing-id behaviour.
 
-### `agentforge4j-integrations`
-- `DefaultIntegrationRegistry` resolve, isOperationAllowed, isEnabled — happy and disabled paths.
-- `NoOpIntegrationRegistry.INSTANCE` returns no-allow defaults.
-- `IntegrationConfig` validation.
-
 ### `agentforge4j-runtime`
 - `DefaultWorkflowRuntime` happy path drive-loop via in-memory repositories.
 - `StepSequenceExecutor` resume-safety: pre-populated `stepOutputs` causes step skip.

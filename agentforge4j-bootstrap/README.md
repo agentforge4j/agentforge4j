@@ -147,7 +147,6 @@ AgentForge4j af = AgentForge4jBootstrap.defaults()
 | Workflow repository | `withWorkflowRepository(WorkflowRepository)` |
 | Workflow state | `withWorkflowStateRepository(WorkflowStateRepository)` |
 | Event log | `withWorkflowEventLog(WorkflowEventLog)` |
-| Integrations | `withIntegrationRegistry(IntegrationRegistry)` |
 | LLM resolver | `withLlmClientResolver(LlmClientResolver)` |
 | LLM retry policy | `withLlmRetryPolicy(LlmRetryPolicy)` |
 | Context renderer | `withContextRenderer(ContextRenderer)` |

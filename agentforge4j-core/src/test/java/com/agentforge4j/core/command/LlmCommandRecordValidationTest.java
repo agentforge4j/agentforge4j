@@ -80,35 +80,4 @@ class LlmCommandRecordValidationTest {
     list.clear();
     assertThat(cmd.questions()).containsExactly(q);
   }
-
-  @Test
-  void call_endpoint_normalizes_null_payload_to_empty_map() {
-    var cmd = new CallEndpointCommand("i", "op", null, null);
-    assertThat(cmd.payload()).isEmpty();
-  }
-
-  @Test
-  void call_endpoint_snapshot_payload_is_immutable_and_ignores_later_mutations_to_input_map() {
-    var backing = new java.util.HashMap<String, Object>();
-    backing.put("x", 1);
-    var cmd = new CallEndpointCommand("i", "op", backing, null);
-    backing.put("x", 2);
-    assertThat(cmd.payload()).containsEntry("x", 1);
-    assertThatThrownBy(() -> cmd.payload().put("y", 3))
-        .isInstanceOf(UnsupportedOperationException.class);
-  }
-
-  @Test
-  void call_endpoint_rejects_blank_integration_id() {
-    assertThatThrownBy(() -> new CallEndpointCommand(" ", "op", Map.of(), null))
-        .isInstanceOf(IllegalArgumentException.class)
-        .hasMessageContaining("integrationId");
-  }
-
-  @Test
-  void call_endpoint_rejects_blank_operation() {
-    assertThatThrownBy(() -> new CallEndpointCommand("id", "\n", Map.of(), null))
-        .isInstanceOf(IllegalArgumentException.class)
-        .hasMessageContaining("operation");
-  }
 }

@@ -1,8 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
 <project xmlns="http://maven.apache.org/POM/4.0.0"
   xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-  xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
-         https://maven.apache.org/xsd/maven-4.0.0.xsd">
+  xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
   <modelVersion>4.0.0</modelVersion>
+
   <parent>
     <groupId>org.agentforge4j</groupId>
     <artifactId>agentforge4j</artifactId>
@@ -10,8 +11,9 @@
     <relativePath>../pom.xml</relativePath>
   </parent>
 
-  <artifactId>agentforge4j-integrations</artifactId>
-  <description>Integration plugin model for calling external endpoints</description>
+  <artifactId>agentforge4j-tools-http</artifactId>
+  <name>AgentForge4J Tools HTTP</name>
+  <description>HTTP tool provider: exposes governed HTTP endpoints as ToolProviders</description>
 
   <licenses>
     <license>
@@ -24,9 +26,27 @@
   <dependencies>
     <dependency>
       <groupId>org.agentforge4j</groupId>
+      <artifactId>agentforge4j-core</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.agentforge4j</groupId>
       <artifactId>agentforge4j-util</artifactId>
     </dependency>
 
+    <dependency>
+      <groupId>com.fasterxml.jackson.core</groupId>
+      <artifactId>jackson-databind</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.apache.commons</groupId>
+      <artifactId>commons-lang3</artifactId>
+    </dependency>
+
+    <dependency>
+      <groupId>org.agentforge4j</groupId>
+      <artifactId>agentforge4j-runtime</artifactId>
+      <scope>test</scope>
+    </dependency>
     <dependency>
       <groupId>org.junit.jupiter</groupId>
       <artifactId>junit-jupiter</artifactId>

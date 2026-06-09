@@ -1,6 +1,5 @@
 package com.agentforge4j.runtime.execution;
 
-import com.agentforge4j.core.command.CallEndpointCommand;
 import com.agentforge4j.core.command.CompleteCommand;
 import com.agentforge4j.core.command.ContinueCommand;
 import com.agentforge4j.core.command.CreateFileCommand;
@@ -38,7 +37,6 @@ public final class UserPromptPauseGuard {
         CreateFileCommand.class, false,
         SetContextCommand.class, false,
         RunCommandCommand.class, false,
-        CallEndpointCommand.class, false,
         CompleteCommand.class, true,
         EscalateCommand.class, true,
         GenerateQuestionsCommand.class, true

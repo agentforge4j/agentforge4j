@@ -107,12 +107,4 @@ class CommandSchemaFactoryTest {
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("supportedCommands must name at least one valid command type");
   }
-
-  @Test
-  void call_endpoint_contract_lists_required_integration_fields() {
-    CommandResponseSchema schema = CommandSchemaFactory.build(List.of("CALL_ENDPOINT"), mapper);
-    CommandTypeContract contract = schema.commandContracts().get(0);
-    assertThat(contract.typeName()).isEqualTo("CALL_ENDPOINT");
-    assertThat(contract.requiredJsonPropertyNames()).containsExactly("integrationId", "operation");
-  }
 }

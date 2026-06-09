@@ -91,12 +91,6 @@ class BootstrapComponentsTest {
   }
 
   @Test
-  void componentsIntegrationRegistryIsNotNull() {
-    AgentForge4j af = AgentForge4jBootstrap.defaults().build();
-    assertThat(af.components().integrationRegistry()).isNotNull();
-  }
-
-  @Test
   void componentsAgentInvokerIsNotNull() {
     AgentForge4j af = AgentForge4jBootstrap.defaults().build();
     assertThat(af.components().agentInvoker()).isNotNull();

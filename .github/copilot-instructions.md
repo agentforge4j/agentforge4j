@@ -43,7 +43,7 @@ All modules live in a single Maven monorepo. Everything is versioned and release
 | `agentforge4j-schema` | JSON schemas as classpath resources | Built |
 | `agentforge4j-workflows` | Shipped workflows and agents as classpath resources | Built |
 | `agentforge4j-runtime` | Workflow execution state and command model | Built (currently in platform repo, relocation pending) |
-| `agentforge4j-integrations` | Integration plugin model for calling external endpoints | Built (currently in platform repo, relocation pending) |
+| `agentforge4j-tools-http` | HTTP tool provider: governed external HTTP calls as tool-SPI `ToolProvider`s | Built |
 | `agentforge4j-spring-boot-starter` | Spring Boot auto-configuration library | Built (currently in platform repo, relocation pending) |
 | `agentforge4j-quarkus-extension` | Quarkus auto-configuration | Planned |
 
@@ -181,11 +181,12 @@ These are non-negotiable. Flag any existing code that violates them.
 - `StepSequenceExecutor` skips steps already in `state.stepOutputs` (resume-safety)
 - Circular construction broken with late-bound setters + "set exactly once" guards
 
-### Integration concepts
-- `AgentIntegration` interface: `integrationId()`, `execute(String operation, Map<String, Object> payload)` returning String
-- `IntegrationConfig` — record: `enabled`, nullable `baseUrl`, nullable `apiKey`, `allowedOperations` List
-- `IntegrationRegistry` interface, `DefaultIntegrationRegistry` and `NoOpIntegrationRegistry.INSTANCE`
-- Credentials are **never** in workflow JSON or agent prompts — operator environment variables only.
+### External HTTP calls
+- Governed external HTTP calls are made through the tool SPI via `agentforge4j-tools-http`
+  (`HttpToolProvider` + code-defined `HttpEndpointDefinition`s), resolved like any other
+  `ToolProvider`. The legacy `CALL_ENDPOINT` command and `agentforge4j-integrations` module were removed.
+- Credentials are **never** in workflow JSON or agent prompts — secret header values are resolved
+  through a consumer-supplied secret resolver at invoke time, never inlined.
 
 ---
 
@@ -223,7 +224,7 @@ Bundled (classpath) agents and workflows live in `agentforge4j-workflows` and ar
 
 ### LlmCommand subtypes (sealed)
 
-`CreateFileCommand`, `UserPromptCommand`, `SetContextCommand`, `RunCommandCommand`, `CompleteCommand`, `ContinueCommand`, `GenerateQuestionsCommand`, `EscalateCommand`, `CallEndpointCommand`, plus the legacy `COMPLETE` variants. Jackson `@JsonTypeInfo` with `type` discriminator.
+`CreateFileCommand`, `UserPromptCommand`, `SetContextCommand`, `RunCommandCommand`, `CompleteCommand`, `ContinueCommand`, `GenerateQuestionsCommand`, `EscalateCommand`, `ToolInvocationCommand`. Jackson `@JsonTypeInfo` with `type` discriminator.
 
 ---
 
@@ -244,7 +245,7 @@ All file loading code uses `Validate.requireWithinBase()` to prevent path traver
 The following modules are complete and reviewed. Suggestions that change their architecture or public API are not welcome unless a bug is being fixed:
 
 - `agentforge4j-util`, `agentforge4j-core`, `agentforge4j-llm`, `agentforge4j-schema`, `agentforge4j-workflows`, `agentforge4j-config-loader`, all 9 LLM provider modules.
-- `agentforge4j-runtime`, `agentforge4j-integrations`, `agentforge4j-spring-boot-starter` are built but physically reside in the platform repo pending relocation to OSS.
+- `agentforge4j-runtime`, `agentforge4j-spring-boot-starter` are built but physically reside in the platform repo pending relocation to OSS.
 
 ---
 

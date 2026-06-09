@@ -9,7 +9,6 @@ module agentforge4j.bootstrap {
   requires agentforge4j.llm;
   requires agentforge4j.config.loader;
   requires agentforge4j.runtime;
-  requires agentforge4j.integrations;
   requires agentforge4j.schema;
   requires agentforge4j.workflows;
   requires com.fasterxml.jackson.databind;

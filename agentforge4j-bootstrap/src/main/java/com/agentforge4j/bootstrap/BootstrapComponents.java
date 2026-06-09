@@ -5,7 +5,6 @@ import com.agentforge4j.core.agent.AgentRepository;
 import com.agentforge4j.core.workflow.event.WorkflowEventLog;
 import com.agentforge4j.core.workflow.repository.WorkflowRepository;
 import com.agentforge4j.core.workflow.repository.WorkflowStateRepository;
-import com.agentforge4j.integrations.IntegrationRegistry;
 import com.agentforge4j.llm.LlmClientResolver;
 import com.agentforge4j.runtime.command.FileSink;
 import com.agentforge4j.runtime.event.EventRecorder;
@@ -37,7 +36,6 @@ public record BootstrapComponents(
     EventRecorder eventRecorder,
     FileSink fileSink,
     LlmProviderSelectionStrategy llmProviderSelectionStrategy,
-    IntegrationRegistry integrationRegistry,
     ObjectMapper objectMapper,
     Clock clock,
     AgentInvoker agentInvoker,

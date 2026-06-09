@@ -13,8 +13,6 @@ import com.agentforge4j.core.spi.tool.ToolProviderResolver;
 import com.agentforge4j.core.workflow.event.WorkflowEventLog;
 import com.agentforge4j.core.workflow.repository.WorkflowRepository;
 import com.agentforge4j.core.workflow.repository.WorkflowStateRepository;
-import com.agentforge4j.integrations.IntegrationRegistry;
-import com.agentforge4j.integrations.NoOpIntegrationRegistry;
 import com.agentforge4j.llm.ConfigModelTierResolver;
 import com.agentforge4j.llm.DefaultLlmClientResolver;
 import com.agentforge4j.llm.LlmClientResolver;
@@ -95,7 +93,6 @@ public final class AgentForge4jBootstrap {
     private WorkflowRepository workflowRepository;
     private WorkflowStateRepository workflowStateRepository;
     private WorkflowEventLog workflowEventLog;
-    private IntegrationRegistry integrationRegistry;
     private LlmClientResolver llmClientResolver;
     private LlmRetryPolicy llmRetryPolicy;
     private ContextRenderer contextRenderer;
@@ -202,19 +199,6 @@ public final class AgentForge4jBootstrap {
     public Builder withWorkflowEventLog(WorkflowEventLog workflowEventLog) {
       this.workflowEventLog = Validate.notNull(workflowEventLog,
           "workflowEventLog must not be null");
-      return this;
-    }
-
-    /**
-     * Overrides the integration registry for {@code CallEndpointCommand} resolution.
-     *
-     * @param integrationRegistry registry instance; must not be {@code null}
-     *
-     * @return this builder
-     */
-    public Builder withIntegrationRegistry(IntegrationRegistry integrationRegistry) {
-      this.integrationRegistry = Validate.notNull(integrationRegistry,
-          "integrationRegistry must not be null");
       return this;
     }
 
@@ -561,9 +545,6 @@ public final class AgentForge4jBootstrap {
       WorkflowEventLog resolvedEventLog = ObjectUtils.getIfNull(workflowEventLog,
           InMemoryWorkflowEventLog::new);
 
-      IntegrationRegistry resolvedRegistry = ObjectUtils.getIfNull(integrationRegistry,
-          () -> NoOpIntegrationRegistry.INSTANCE);
-
       FileSink resolvedFileSink = ObjectUtils.getIfNull(fileSink,
           () -> ComponentDefaults.fileSink(fileSinkPath));
 
@@ -622,13 +603,13 @@ public final class AgentForge4jBootstrap {
 
       WorkflowRuntime resolvedRuntime = RuntimeAssembler.runtime(
           resolvedWorkflowRepo, resolvedStateRepo, resolvedEventLog, resolvedClock,
-          resolvedFileSink, resolvedRegistry, resolvedInvoker, resolvedRecorder,
+          resolvedFileSink, resolvedInvoker, resolvedRecorder,
           maxNestingDepth, resolvedToolExecutionService, resolvedPendingStore);
 
       BootstrapComponents components = new BootstrapComponents(
           resolvedAgentRepo, resolvedWorkflowRepo, resolvedStateRepo, resolvedEventLog,
           resolvedResolver, resolvedRenderer, resolvedParser, resolvedRecorder,
-          resolvedFileSink, resolvedStrategy, resolvedRegistry, resolvedMapper,
+          resolvedFileSink, resolvedStrategy, resolvedMapper,
           resolvedClock, resolvedInvoker, resolvedObserver, loadedConfiguration);
 
       return new AgentForge4j(resolvedRuntime, loadedConfiguration, components);

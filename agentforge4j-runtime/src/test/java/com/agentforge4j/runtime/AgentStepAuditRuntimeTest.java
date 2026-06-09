@@ -19,7 +19,6 @@ import com.agentforge4j.core.workflow.state.WorkflowStatus;
 import com.agentforge4j.core.workflow.step.StepDefinition;
 import com.agentforge4j.core.workflow.step.StepTransition;
 import com.agentforge4j.core.workflow.step.behaviour.AgentBehaviour;
-import com.agentforge4j.integrations.NoOpIntegrationRegistry;
 import com.agentforge4j.llm.LlmClientResolver;
 import com.agentforge4j.llm.api.LlmClient;
 import com.agentforge4j.llm.api.LlmExecutionResponse;
@@ -301,7 +300,6 @@ class AgentStepAuditRuntimeTest {
         .workflowEventLog(eventLog)
         .agentInvoker(agentInvoker)
         .clock(clock)
-        .integrationRegistry(NoOpIntegrationRegistry.INSTANCE)
         .fileSink(FileSink.NO_OP_FILE_SINK)
         .shellCommandRunner(ShellCommandRunner.NO_OP_SHELL_COMMAND_RUNNER);
     if (runContextManager != null) {

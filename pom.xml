@@ -63,10 +63,10 @@
     <module>agentforge4j-llm-vllm</module>
     <module>agentforge4j-core</module>
     <module>agentforge4j-mcp</module>
+    <module>agentforge4j-tools-http</module>
     <module>agentforge4j-schema</module>
     <module>agentforge4j-workflows</module>
     <module>agentforge4j-config-loader</module>
-    <module>agentforge4j-integrations</module>
     <module>agentforge4j-runtime</module>
     <module>agentforge4j-bootstrap</module>
     <module>agentforge4j-spring-boot-starter</module>
@@ -161,6 +161,11 @@
       </dependency>
       <dependency>
         <groupId>org.agentforge4j</groupId>
+        <artifactId>agentforge4j-tools-http</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>org.agentforge4j</groupId>
         <artifactId>agentforge4j-schema</artifactId>
         <version>${project.version}</version>
       </dependency>
@@ -182,11 +187,6 @@
       <dependency>
         <groupId>org.agentforge4j</groupId>
         <artifactId>agentforge4j-workflows</artifactId>
-        <version>${project.version}</version>
-      </dependency>
-      <dependency>
-        <groupId>org.agentforge4j</groupId>
-        <artifactId>agentforge4j-integrations</artifactId>
         <version>${project.version}</version>
       </dependency>
       <dependency>

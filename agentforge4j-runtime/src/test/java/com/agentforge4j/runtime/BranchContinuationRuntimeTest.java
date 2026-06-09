@@ -22,7 +22,6 @@ import com.agentforge4j.core.workflow.step.blueprint.BlueprintDefinition;
 import com.agentforge4j.core.workflow.step.blueprint.BlueprintRef;
 import com.agentforge4j.core.workflow.step.loop.LoopConfig;
 import com.agentforge4j.core.workflow.step.loop.LoopTerminationStrategy;
-import com.agentforge4j.integrations.NoOpIntegrationRegistry;
 import com.agentforge4j.llm.LlmClientResolver;
 import com.agentforge4j.llm.api.LlmClient;
 import com.agentforge4j.runtime.command.FileSink;
@@ -288,7 +287,6 @@ class BranchContinuationRuntimeTest {
         .workflowEventLog(eventLog)
         .agentInvoker(agentInvoker)
         .clock(clock)
-        .integrationRegistry(NoOpIntegrationRegistry.INSTANCE)
         .fileSink(FileSink.NO_OP_FILE_SINK)
         .shellCommandRunner(ShellCommandRunner.NO_OP_SHELL_COMMAND_RUNNER)
         .build();

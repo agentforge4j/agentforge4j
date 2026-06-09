@@ -156,30 +156,6 @@ class LlmCommandJsonMappingTest {
   }
 
   @Test
-  void deserialize_call_endpoint_omitted_payload_becomes_empty_map() throws Exception {
-    String json = """
-        {"type":"CALL_ENDPOINT","integrationId":"int","operation":"op"}
-        """;
-    LlmCommand cmd = mapper.readValue(json, LlmCommand.class);
-    assertThat(cmd).isInstanceOfSatisfying(CallEndpointCommand.class, c -> {
-      assertThat(c.payload()).isEmpty();
-      assertThat(c.contextKey()).isNull();
-    });
-  }
-
-  @Test
-  void deserialize_call_endpoint_with_payload_and_context_key() throws Exception {
-    String json = """
-        {"type":"CALL_ENDPOINT","integrationId":"int","operation":"op","payload":{"a":1},"contextKey":"out"}
-        """;
-    LlmCommand cmd = mapper.readValue(json, LlmCommand.class);
-    assertThat(cmd).isInstanceOfSatisfying(CallEndpointCommand.class, c -> {
-      assertThat(c.payload()).containsEntry("a", 1);
-      assertThat(c.contextKey()).isEqualTo("out");
-    });
-  }
-
-  @Test
   void deserialize_generate_questions() throws Exception {
     String json = """
         {"type":"GENERATE_QUESTIONS","questions":[

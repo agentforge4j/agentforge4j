@@ -6,7 +6,6 @@ import com.agentforge4j.core.runtime.WorkflowRuntime;
 import com.agentforge4j.core.workflow.event.WorkflowEventLog;
 import com.agentforge4j.core.workflow.repository.WorkflowRepository;
 import com.agentforge4j.core.workflow.repository.WorkflowStateRepository;
-import com.agentforge4j.integrations.IntegrationRegistry;
 import com.agentforge4j.llm.LlmClientResolver;
 import com.agentforge4j.llm.RetryingLlmClientResolver;
 import com.agentforge4j.llm.api.LlmRetryPolicy;
@@ -49,9 +48,6 @@ class AgentForge4jBootstrapTest {
 
   @Mock
   private WorkflowEventLog workflowEventLog;
-
-  @Mock
-  private IntegrationRegistry integrationRegistry;
 
   @Mock
   private LlmClientResolver llmClientResolver;
@@ -191,20 +187,6 @@ class AgentForge4jBootstrapTest {
   @Test
   void withWorkflowEventLogNullThrowsImmediatelyBeforeBuild() {
     assertThatThrownBy(() -> AgentForge4jBootstrap.defaults().withWorkflowEventLog(null))
-        .isInstanceOf(IllegalArgumentException.class);
-  }
-
-  @Test
-  void customIntegrationRegistryAppliesInstanceToComponents() {
-    AgentForge4j af = AgentForge4jBootstrap.defaults()
-        .withIntegrationRegistry(integrationRegistry)
-        .build();
-    assertThat(af.components().integrationRegistry()).isSameAs(integrationRegistry);
-  }
-
-  @Test
-  void withIntegrationRegistryNullThrowsImmediatelyBeforeBuild() {
-    assertThatThrownBy(() -> AgentForge4jBootstrap.defaults().withIntegrationRegistry(null))
         .isInstanceOf(IllegalArgumentException.class);
   }
 

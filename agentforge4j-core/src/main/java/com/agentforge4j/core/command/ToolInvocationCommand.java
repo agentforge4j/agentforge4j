@@ -7,17 +7,17 @@ import java.util.UUID;
 import org.apache.commons.lang3.StringUtils;
 
 /**
- * Request from the LLM to invoke a logical tool capability. The eleventh {@link LlmCommand}; it
- * always flows through the runtime's {@code ToolExecutionService} chokepoint, never directly to an
- * external system.
+ * Request from the LLM to invoke a logical tool capability. An {@link LlmCommand} that always flows
+ * through the runtime's {@code ToolExecutionService} chokepoint, never directly to an external
+ * system.
  *
  * <p>{@code toolInvocationId} correlates audit events and approval resume. The LLM omits it when
  * emitting the command, so the compact constructor generates a UUID when it is {@code null} or
  * blank — leaving an explicitly supplied id untouched.
  *
- * <p>{@code arguments} is a JSON object (mirroring {@link CallEndpointCommand#payload()}): the LLM
- * emits it as a structured object, not an escaped JSON string. The runtime serializes it to JSON
- * text at the {@code ToolProvider} boundary, preserving the opaque-string contract there.
+ * <p>{@code arguments} is a JSON object: the LLM emits it as a structured object, not an escaped
+ * JSON string. The runtime serializes it to JSON text at the {@code ToolProvider} boundary,
+ * preserving the opaque-string contract there.
  *
  * @param toolInvocationId stable invocation id; generated if absent
  * @param capability       non-blank logical capability id, for example
