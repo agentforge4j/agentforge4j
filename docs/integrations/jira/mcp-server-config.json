@@ -1,0 +1,10 @@
+{
+  "name": "jira",
+  "providerId": "mcp:jira",
+  "transport": "STREAMABLE_HTTP",
+  "command": null,
+  "url": "https://<your-jira-host>/v1/mcp",
+  "envJson": null,
+  "headersJson": "{\"Authorization\":\"${secret:JIRA_TOKEN}\"}",
+  "enabled": true
+}

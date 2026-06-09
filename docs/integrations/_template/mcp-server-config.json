@@ -1,0 +1,10 @@
+{
+  "name": "<server-name>",
+  "providerId": "mcp:<server-name>",
+  "transport": "STDIO",
+  "command": "<executable and args, or: docker run -i --rm -e <ENV_VAR> <image>>",
+  "url": null,
+  "envJson": "{\"<ENV_VAR>\":\"${secret:SECRET_KEY}\"}",
+  "headersJson": null,
+  "enabled": true
+}

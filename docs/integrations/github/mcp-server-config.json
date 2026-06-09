@@ -1,0 +1,9 @@
+{
+  "name": "github",
+  "providerId": "mcp:github",
+  "transport": "STDIO",
+  "command": "docker run -i --rm -e GITHUB_PERSONAL_ACCESS_TOKEN ghcr.io/github/github-mcp-server",
+  "url": null,
+  "envJson": "{\"GITHUB_PERSONAL_ACCESS_TOKEN\":\"${secret:GITHUB_TOKEN}\"}",
+  "enabled": true
+}
