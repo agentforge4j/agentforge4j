@@ -1,5 +1,8 @@
 {
   "compilerOptions": {
+    // TypeScript 6 deprecates baseUrl; tsup's generated DTS config still injects it (TS5101).
+    // Remove once tsup emits a baseUrl-free config or is replaced.
+    "ignoreDeprecations": "6.0",
     "target": "ES2022",
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "module": "ESNext",

@@ -14,7 +14,7 @@
   },
   "dependencies": {
     "@agentforge4j/workflow-builder-react": "^0.3.0",
-    "lucide-react": "^0.400.0",
+    "lucide-react": "^1.17.0",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
     "react-router-dom": "^6.26.0"
@@ -24,11 +24,11 @@
     "@types/node": "^22.0.0",
     "@types/react": "^19.2.17",
     "@types/react-dom": "^19.0.0",
-    "@vitejs/plugin-react": "^4.3.0",
+    "@vitejs/plugin-react": "^5.2.0",
     "autoprefixer": "^10.4.0",
     "cross-env": "^7.0.3",
     "eslint": "^9.0.0",
-    "eslint-plugin-react-hooks": "^5.0.0",
+    "eslint-plugin-react-hooks": "^7.1.1",
     "eslint-plugin-react-refresh": "^0.5.2",
     "postcss": "^8.4.0",
     "tailwindcss": "^3.4.0",

@@ -16,6 +16,13 @@ updates:
           - "minor"
           - "patch"
     # Major bumps are intentionally left ungrouped so each lands in its own reviewable PR.
+    ignore:
+      # Spring Boot 4.x: the platform repo consumes the OSS starter on Boot 3.x; upgrade is coordinated, not automatic.
+      - dependency-name: "org.springframework.boot:*"
+        update-types: ["version-update:semver-major"]
+      # json-schema-validator is pinned to the 1.5.x line (last Jackson-2 release); 2.x is a rewrite, 3.x requires Jackson 3.
+      - dependency-name: "com.networknt:json-schema-validator"
+        update-types: ["version-update:semver-major"]
 
   # GitHub Actions used by the CI/security/release workflows (pinned action versions).
   - package-ecosystem: "github-actions"
@@ -40,6 +47,10 @@ updates:
         update-types:
           - "minor"
           - "patch"
+    ignore:
+      # react-router-dom 7 is a real migration (new package layout + data APIs); deferred until planned.
+      - dependency-name: "react-router-dom"
+        update-types: ["version-update:semver-major"]
 
   # npm front-end module: agentforge4j-workflow-builder (committed package-lock.json).
   - package-ecosystem: "npm"
