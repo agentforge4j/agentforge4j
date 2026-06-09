@@ -169,7 +169,12 @@
         "contextKey": { "type": "string", "minLength": 1 },
         "branches": {
           "type": "object",
-          "additionalProperties": { "$ref": "#/$defs/Executable" }
+          "additionalProperties": {
+            "anyOf": [
+              { "type": "null" },
+              { "$ref": "#/$defs/Executable" }
+            ]
+          }
         },
         "defaultBranch": { "$ref": "#/$defs/Executable" }
       },

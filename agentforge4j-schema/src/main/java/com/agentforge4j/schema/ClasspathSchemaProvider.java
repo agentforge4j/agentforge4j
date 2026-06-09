@@ -20,15 +20,16 @@ public final class ClasspathSchemaProvider implements SchemaProvider {
   private final String agentSchema;
   private final String blueprintSchema;
   private final String artifactSchema;
+  private final String integrationSchema;
 
   /**
    * Creates a provider by loading all required schemas from the classpath.
    *
    * @throws IllegalStateException if any required schema resource is missing
-   * @throws UncheckedIOException if a schema resource cannot be read
+   * @throws UncheckedIOException  if a schema resource cannot be read
    */
   public ClasspathSchemaProvider() {
-    this(resourcePath -> ClasspathSchemaProvider.class.getResourceAsStream(resourcePath));
+    this(ClasspathSchemaProvider.class::getResourceAsStream);
   }
 
   ClasspathSchemaProvider(Function<String, InputStream> resourceLoader) {
@@ -37,6 +38,7 @@ public final class ClasspathSchemaProvider implements SchemaProvider {
     this.agentSchema = load(resourceLoader, "/schema/agent.schema.json");
     this.blueprintSchema = load(resourceLoader, "/schema/blueprint.schema.json");
     this.artifactSchema = load(resourceLoader, "/schema/artifact.schema.json");
+    this.integrationSchema = load(resourceLoader, "/schema/integration.schema.json");
   }
 
   private static String load(Function<String, InputStream> resourceLoader, String resourcePath) {

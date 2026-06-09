@@ -35,7 +35,8 @@
         "type": { "type": "string", "const": "TEXT" },
         "id": { "type": "string" },
         "label": { "type": "string" },
-        "required": { "type": "boolean", "default": false }
+        "required": { "type": "boolean", "default": false },
+        "hint": { "type": "string" }
       }
     },
     "TextAreaItem": {
@@ -46,7 +47,8 @@
         "type": { "type": "string", "const": "TEXT_AREA" },
         "id": { "type": "string" },
         "label": { "type": "string" },
-        "required": { "type": "boolean", "default": false }
+        "required": { "type": "boolean", "default": false },
+        "hint": { "type": "string" }
       }
     },
     "SingleChoiceItem": {

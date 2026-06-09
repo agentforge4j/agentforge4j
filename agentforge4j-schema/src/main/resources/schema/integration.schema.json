@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "IntegrationDefinition",
+  "type": "object",
+  "required": ["displayName", "type", "config", "capabilities"],
+  "additionalProperties": false,
+  "properties": {
+    "id": {
+      "type": "string",
+      "description": "Stable integration id. Optional in-file: falls back to the filename stem when omitted."
+    },
+    "displayName": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Human-readable name."
+    },
+    "type": {
+      "type": "string",
+      "enum": ["MCP_STDIO", "MCP_STREAMABLE_HTTP", "HTTP_TOOL"],
+      "description": "Integration kind: an MCP server (stdio or streamable HTTP), or a code-defined HTTP tool set."
+    },
+    "active": {
+      "type": "boolean",
+      "default": true,
+      "description": "Whether this integration feeds capability resolution. Defaults to true when omitted."
+    },
+    "config": {
+      "type": ["object", "array"],
+      "description": "Type-specific payload (envelope-level here; refined per type in a later phase). MCP_STDIO / MCP_STREAMABLE_HTTP: an mcp_server_config object (name, providerId, transport, command, url, envJson, headersJson, enabled). HTTP_TOOL: an array of HttpEndpointDefinition objects (capability, displayName, description, method, urlTemplate, inputSchema, outputSchema, queryArgs, bodyMode, staticHeaders, secretHeaders, timeout, maxRetries, retryNonIdempotent, maxResponseBytes)."
+    },
+    "capabilities": {
+      "type": "array",
+      "minItems": 1,
+      "description": "Capabilities this integration exposes.",
+      "items": {
+        "type": "object",
+        "required": ["capability"],
+        "additionalProperties": false,
+        "properties": {
+          "capability": {
+            "type": "string",
+            "pattern": "^[a-z0-9_]+\\.[a-z0-9_]+$",
+            "description": "Logical capability id, lowercase <domain>.<verb_object>."
+          },
+          "remoteToolName": {
+            "type": ["string", "null"],
+            "description": "The integration's advertised tool name (MCP); null or absent for the HTTP tier."
+          },
+          "mutating": {
+            "type": "boolean",
+            "default": false,
+            "description": "Whether the capability mutates remote state (recommend gating with REQUIRE_APPROVAL)."
+          }
+        }
+      }
+    }
+  }
+}

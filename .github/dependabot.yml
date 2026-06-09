@@ -17,6 +17,10 @@ updates:
           - "patch"
     # Major bumps are intentionally left ungrouped so each lands in its own reviewable PR.
     ignore:
+      # Pin to the stable Jackson-2 1.5.x line: block the immature 2.0.x ground-up
+      # API rewrite and the Jackson-3 3.x line, while still allowing 1.5.x patches.
+      - dependency-name: "com.networknt:json-schema-validator"
+        versions: [">=2.0.0"]
       # Spring Boot 4.x: the platform repo consumes the OSS starter on Boot 3.x; upgrade is coordinated, not automatic.
       - dependency-name: "org.springframework.boot:*"
         update-types: ["version-update:semver-major"]

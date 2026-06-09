@@ -32,4 +32,11 @@ public interface SchemaProvider {
    * @return artifact schema JSON content
    */
   String artifactSchema();
+
+  /**
+   * Returns the integration definition schema as UTF-8 text.
+   *
+   * @return integration schema JSON content
+   */
+  String integrationSchema();
 }
