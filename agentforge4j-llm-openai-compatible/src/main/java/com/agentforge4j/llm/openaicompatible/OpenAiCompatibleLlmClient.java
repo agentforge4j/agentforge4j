@@ -62,6 +62,7 @@ public final class OpenAiCompatibleLlmClient extends AbstractHttpLlmClient {
         "openai-compatible authHeaderName must be provided");
     this.authHeaderPrefix = Validate.notNull(config.getAuthHeaderPrefix(),
         "openai-compatible authHeaderPrefix must not be null");
+    warnIfApiKeyOverPlainHttp(config.getBaseUrl(), this.apiKey);
   }
 
   private static URI resolveResponsesUri(OpenAiCompatibleConfiguration config) {

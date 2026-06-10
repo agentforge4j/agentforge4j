@@ -57,6 +57,7 @@ public final class ClaudeLlmClient extends AbstractHttpLlmClient {
         Validate.notBlank(config.getUrl(), "Claude URL must be provided"));
     this.maxTokenSize = Validate.isGreaterThanZero(config.getMaxTokenSize(),
         "Claude maxTokenSize must be positive").intValue();
+    warnIfApiKeyOverPlainHttp(config.getUrl(), this.apiKey);
   }
 
   /**

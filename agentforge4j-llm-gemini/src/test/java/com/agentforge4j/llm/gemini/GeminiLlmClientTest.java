@@ -411,7 +411,7 @@ class GeminiLlmClientTest {
   class BuildHttpRequestTests {
 
     @Test
-    void should_target_generate_content_with_model_and_encoded_api_key() {
+    void should_target_generate_content_with_model_and_api_key_header() {
       ObjectMapper mapper = new ObjectMapper();
       GeminiConfiguration config = FixedGeminiConfiguration.builder()
           .baseUrl("https://generativelanguage.googleapis.com/")
@@ -426,7 +426,9 @@ class GeminiLlmClientTest {
 
       assertThat(httpRequest.uri().toString())
           .isEqualTo(
-              "https://generativelanguage.googleapis.com/v1beta/models/custom-model:generateContent?key=k%2B1");
+              "https://generativelanguage.googleapis.com/v1beta/models/custom-model:generateContent");
+      assertThat(httpRequest.uri().getQuery()).isNull();
+      assertThat(httpRequest.headers().firstValue("x-goog-api-key")).contains("k+1");
       assertThat(httpRequest.method()).isEqualTo("POST");
       assertThat(httpRequest.timeout()).contains(Duration.ofSeconds(30));
       assertThat(httpRequest.headers().firstValue("Content-Type"))

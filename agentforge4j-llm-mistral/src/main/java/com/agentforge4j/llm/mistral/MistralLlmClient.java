@@ -51,6 +51,7 @@ public final class MistralLlmClient extends AbstractHttpLlmClient {
     String root = StringUtils.stripEnd(
         Validate.notBlank(config.getBaseUrl(), "Mistral baseUrl must be provided"), "/");
     this.chatCompletionsUri = URI.create(root + "/v1/chat/completions");
+    warnIfApiKeyOverPlainHttp(config.getBaseUrl(), this.apiKey);
   }
 
   /**

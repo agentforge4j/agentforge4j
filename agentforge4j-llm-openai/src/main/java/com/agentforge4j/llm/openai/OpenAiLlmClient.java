@@ -56,6 +56,7 @@ public final class OpenAiLlmClient extends AbstractHttpLlmClient {
     this.objectMapper = Validate.notNull(objectMapper, "OpenAi ObjectMapper must not be null");
     this.openAiResponsesUri = URI.create(
         Validate.notBlank(config.getUrl(), "OpenAI URL must be provided"));
+    warnIfApiKeyOverPlainHttp(config.getUrl(), this.apiKey);
   }
 
   /**

@@ -28,6 +28,11 @@ import lombok.RequiredArgsConstructor;
 @RequiredArgsConstructor
 public abstract class BaseWorkflowBundleLoader {
 
+  /**
+   * Maximum definition nesting accepted at load time; aligns with the runtime's default.
+   */
+  private static final int MAX_NESTING_DEPTH = 32;
+
   protected static final String WORKFLOW_DEFINITION_FILE = "workflow.json";
   protected static final String WORKFLOW_DIR_SUFFIX = ".workflow";
   protected static final String BLUEPRINT_SUFFIX = ".blueprint.json";
@@ -222,7 +227,8 @@ public abstract class BaseWorkflowBundleLoader {
         .toList();
   }
 
-  private Executable injectStepPrompt(Executable executable, Map<String, String> loadedStepPrompts) {
+  private Executable injectStepPrompt(Executable executable,
+      Map<String, String> loadedStepPrompts) {
     if (executable instanceof StepDefinition step) {
       return StepDefinition.duplicate(step, loadedStepPrompts.get(step.stepId()));
     } else if (executable instanceof BlueprintDefinition blueprint) {
@@ -253,13 +259,23 @@ public abstract class BaseWorkflowBundleLoader {
 
 
   private void validateBehaviourConfiguration(List<Executable> executables, String workflowId) {
+    validateBehaviourConfiguration(executables, workflowId, 0);
+  }
+
+  private void validateBehaviourConfiguration(List<Executable> executables, String workflowId,
+      int depth) {
+    // Matches the runtime's default nesting limit; fails fast with a clear message instead of
+    // a StackOverflowError on pathologically deep definitions.
+    Validate.isTrue(depth <= MAX_NESTING_DEPTH,
+        "Workflow '%s' exceeds the maximum nesting depth of %s"
+            .formatted(workflowId, MAX_NESTING_DEPTH));
     for (Executable executable : executables) {
       if (executable instanceof StepDefinition step) {
         validateStepBehaviour(step, workflowId);
       } else if (executable instanceof BlueprintDefinition blueprint) {
-        validateBehaviourConfiguration(blueprint.steps(), workflowId);
+        validateBehaviourConfiguration(blueprint.steps(), workflowId, depth + 1);
       } else if (executable instanceof WorkflowDefinition nested) {
-        validateBehaviourConfiguration(nested.steps(), nested.id());
+        validateBehaviourConfiguration(nested.steps(), nested.id(), depth + 1);
       } else if (executable instanceof BlueprintRef) {
         // No behaviour validation needed for refs.
       }

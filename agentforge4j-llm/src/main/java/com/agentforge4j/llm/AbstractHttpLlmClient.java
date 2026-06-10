@@ -14,6 +14,7 @@ import java.util.Optional;
 import java.util.function.Supplier;
 import lombok.Getter;
 import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.Strings;
 
 /**
  * Base {@link LlmClient} for HTTP JSON APIs: shared validation, transport, logging, and error
@@ -22,7 +23,7 @@ import org.apache.commons.lang3.StringUtils;
  * Subclasses implement:
  * <ul>
  *   <li>{@link #buildHttpRequest(LlmExecutionRequest)} — vendor-specific request shape and headers</li>
-   *   <li>{@link #validateAndExtractResponse(String)} — parse success responses into text and optional token usage</li>
+ *   <li>{@link #validateAndExtractResponse(String)} — parse success responses into text and optional token usage</li>
  * </ul>
  * <p>
  * {@link #execute(LlmExecutionRequest)} orchestrates build, send, status check, and extraction.
@@ -44,6 +45,7 @@ public abstract class AbstractHttpLlmClient implements LlmClient {
    * timeout).
    *
    * @param config non-null provider configuration
+   *
    * @throws IllegalArgumentException if provider id or default model is blank
    */
   public AbstractHttpLlmClient(LlmClientConfiguration config) {
@@ -64,9 +66,27 @@ public abstract class AbstractHttpLlmClient implements LlmClient {
   }
 
   /**
+   * Logs a warning when an API key is configured together with a plain {@code http://} endpoint,
+   * because the key would be sent unencrypted. Local key-less deployments (Ollama, vLLM) never
+   * trigger this. Call from provider constructors after URL and key are resolved.
+   *
+   * @param url    the configured endpoint URL; no warning when {@code null} or blank
+   * @param apiKey the configured API key; no warning when {@code null} or blank
+   */
+  protected final void warnIfApiKeyOverPlainHttp(String url, String apiKey) {
+    if (StringUtils.isNotBlank(apiKey)
+        && Strings.CI.startsWith(StringUtils.trimToEmpty(url), "http://")) {
+      LOG.log(System.Logger.Level.WARNING,
+          "{0} is configured with an API key over plain http; the key will be sent unencrypted"
+              + " - use https", providerName);
+    }
+  }
+
+  /**
    * Builds the outbound HTTP request for one execution.
    *
    * @param request validated execution parameters
+   *
    * @return request ready to send
    */
   protected abstract HttpRequest buildHttpRequest(LlmExecutionRequest request);
@@ -75,11 +95,14 @@ public abstract class AbstractHttpLlmClient implements LlmClient {
    * Parses a successful HTTP body into model output and optional provider token usage.
    *
    * @param json raw HTTP response body
+   *
    * @return execution response with extracted text; {@link LlmExecutionResponse#tokenUsage()} is
-   *         {@code null} when the provider returned no usage block
+   * {@code null} when the provider returned no usage block
+   *
    * @throws IOException if the body is malformed or indicates failure
    */
-  protected abstract LlmExecutionResponse validateAndExtractResponse(String json) throws IOException;
+  protected abstract LlmExecutionResponse validateAndExtractResponse(String json)
+      throws IOException;
 
   /**
    * Sends one LLM request for this client's provider.
@@ -95,7 +118,9 @@ public abstract class AbstractHttpLlmClient implements LlmClient {
    * </ol>
    *
    * @param request the LLM execution request
+   *
    * @return execution response with extracted model output and provider token usage when reported
+   *
    * @throws LlmInvocationException   if the request fails due to network issues, HTTP errors, or
    *                                  invalid responses
    * @throws IllegalArgumentException if the request is invalid

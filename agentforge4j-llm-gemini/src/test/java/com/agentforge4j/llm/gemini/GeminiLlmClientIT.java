@@ -193,7 +193,7 @@ class GeminiLlmClientIT {
   }
 
   @Test
-  void should_post_generate_content_path_with_model_and_query_key() throws Exception {
+  void should_post_generate_content_path_with_api_key_header_not_query() throws Exception {
     AtomicReference<String> full = new AtomicReference<>();
     try (GeminiLoopbackHttpServer http =
         new GeminiLoopbackHttpServer(200, VALID_GENERATE_CONTENT_JSON, null, full)) {
@@ -212,7 +212,12 @@ class GeminiLlmClientIT {
       assertThat(firstLine)
           .startsWith("POST ")
           .contains("/v1beta/models/gemini-test-model:generateContent")
-          .contains("key=loopback-key");
+          .doesNotContain("key=");
+      assertThat(full.get().lines()
+          .anyMatch(line -> line.toLowerCase().startsWith("x-goog-api-key:")
+              && line.contains("loopback-key")))
+          .as("x-goog-api-key header present")
+          .isTrue();
     }
   }
 

@@ -186,6 +186,31 @@ public final class HttpToolProvider implements ToolProvider {
     String scheme = uri.getScheme();
     Validate.isTrue(uri.isAbsolute() && ("http".equals(scheme) || "https".equals(scheme)),
         "urlTemplate must be an absolute http/https URL: %s".formatted(urlTemplate));
+    validateNoPlaceholderBeforePath(urlTemplate);
+  }
+
+  /**
+   * Rejects templates with a placeholder in the scheme or authority (everything before the path) so
+   * invoke-time values can never choose the target host or port — values may only vary the path and
+   * query of the configured endpoint.
+   */
+  private static void validateNoPlaceholderBeforePath(String urlTemplate) {
+    int firstPlaceholder = urlTemplate.indexOf('{');
+    if (firstPlaceholder < 0) {
+      return;
+    }
+    int authorityStart = urlTemplate.indexOf("://") + 3;
+    int pathStart = urlTemplate.length();
+    for (int i = authorityStart; i < urlTemplate.length(); i++) {
+      char c = urlTemplate.charAt(i);
+      if (c == '/' || c == '?' || c == '#') {
+        pathStart = i;
+        break;
+      }
+    }
+    Validate.isTrue(firstPlaceholder >= pathStart,
+        "urlTemplate must not contain placeholders before the path (host and port are fixed): %s"
+            .formatted(urlTemplate));
   }
 
   private void validateSecretHeaders(HttpEndpointDefinition definition) {

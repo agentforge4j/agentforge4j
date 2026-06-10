@@ -79,6 +79,22 @@ class StreamableHttpTransportTest {
   }
 
   @Test
+  void rejectsLiteralHeaderValueContainingCrLf() {
+    assertThatThrownBy(() -> new StreamableHttpTransport(URL, TIMEOUT,
+        Map.of("X-Api-Version", "2024\r\nX-Injected: evil"), Map.of(), null, JSON_MAPPER))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("CR/LF");
+  }
+
+  @Test
+  void rejectsHeaderNameContainingCrLf() {
+    assertThatThrownBy(() -> new StreamableHttpTransport(URL, TIMEOUT,
+        Map.of("X-Api\nVersion", "2024-01"), Map.of(), null, JSON_MAPPER))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("CR/LF");
+  }
+
+  @Test
   void rejectsNullJsonMapper() {
     assertThatThrownBy(() -> new StreamableHttpTransport(URL, TIMEOUT,
         Map.of(), Map.of(), null, null))
@@ -123,6 +139,16 @@ class StreamableHttpTransportTest {
     assertThatThrownBy(transport::resolveHeaders)
         .isInstanceOf(IllegalStateException.class)
         .hasMessageContaining("resolved to a blank value");
+  }
+
+  @Test
+  void throwsWhenSecretResolvesToValueContainingCrLf() {
+    StreamableHttpTransport transport = new StreamableHttpTransport(URL, TIMEOUT,
+        Map.of(), Map.of("Authorization", "token-ref"),
+        reference -> "Bearer x\r\nX-Injected: evil", JSON_MAPPER);
+    assertThatThrownBy(transport::resolveHeaders)
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessageContaining("CR/LF");
   }
 
   // --- headers reach the wire -----------------------------------------------------------------

@@ -123,7 +123,7 @@ public class McpAutoConfiguration {
     if ("STREAMABLE_HTTP".equalsIgnoreCase(server.transport())) {
       Validate.notBlank(server.url(),
           "MCP server '%s' with STREAMABLE_HTTP transport requires a url".formatted(server.id()));
-      return new StreamableHttpTransport(server.url(), timeout, Map.of(), Map.of(), null,
+      return new StreamableHttpTransport(server.url(), timeout, server.headers(), Map.of(), null,
           jsonMapper);
     }
     Validate.notBlank(server.command(),

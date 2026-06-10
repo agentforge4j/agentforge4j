@@ -60,6 +60,7 @@ public final class GeminiLlmClient extends AbstractHttpLlmClient {
         Validate.notBlank(config.getBaseUrl(), "Gemini baseUrl must be provided"), "/");
     this.requestTimeout = Validate.notNull(config.getRequestTimeout(),
         "Gemini request timeout must be provided");
+    warnIfApiKeyOverPlainHttp(this.baseUrl, this.apiKey);
   }
 
   @Override
@@ -70,20 +71,23 @@ public final class GeminiLlmClient extends AbstractHttpLlmClient {
     return HttpRequest.newBuilder(uri)
         .timeout(requestTimeout)
         .header("Content-Type", "application/json")
+        .header("x-goog-api-key", apiKey)
         .POST(HttpRequest.BodyPublishers.ofString(body))
         .build();
   }
 
+  /**
+   * Builds the generateContent URI for the given model. The API key is sent via the
+   * {@code x-goog-api-key} header, never as a query parameter — query strings end up in access
+   * logs, proxy logs, and debug output.
+   */
   private URI buildUri(String model) {
     String encodedModel = URLEncoder.encode(model, StandardCharsets.UTF_8)
         .replace("+", "%20");
 
-    String encodedApiKey = URLEncoder.encode(apiKey, StandardCharsets.UTF_8);
-
-    return URI.create("%s/v1beta/models/%s:generateContent?key=%s".formatted(
+    return URI.create("%s/v1beta/models/%s:generateContent".formatted(
         baseUrl,
-        encodedModel,
-        encodedApiKey
+        encodedModel
     ));
   }
 

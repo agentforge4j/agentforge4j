@@ -23,6 +23,9 @@ public record McpProperties(List<ServerProperties> servers) {
    * @param args           command-line arguments for stdio transport
    * @param url            base URL for streamable HTTP transport
    * @param env            environment variables for stdio transport
+   * @param headers        literal request headers for streamable HTTP transport, sent on every
+   *                       request (for example {@code Authorization} for hosted servers);
+   *                       {@code null} means none
    * @param enabled        whether the server is active; {@code null} means enabled
    * @param requestTimeout per-request timeout; defaults to 30s when {@code null}
    */
@@ -34,6 +37,7 @@ public record McpProperties(List<ServerProperties> servers) {
       List<String> args,
       String url,
       Map<String, String> env,
+      Map<String, String> headers,
       Boolean enabled,
       Duration requestTimeout) {
 

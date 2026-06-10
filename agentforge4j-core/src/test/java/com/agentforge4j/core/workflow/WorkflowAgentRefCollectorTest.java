@@ -176,6 +176,22 @@ class WorkflowAgentRefCollectorTest {
   }
 
   @Test
+  void circular_blueprint_reference_fails_fast_instead_of_overflowing() {
+    LoopConfig loop = LoopConfig.withDefaults(
+        LoopTerminationStrategy.AGENT_SIGNAL, null, null, 1, MaxIterationsAction.FAIL);
+    BlueprintDefinition selfReferencing = new BlueprintDefinition(
+        "bp1",
+        "BP",
+        new BlueprintBehaviour(loop, StepTransition.AUTO),
+        List.of(new BlueprintRef("bp1")));
+    var wf = workflow("root", List.of(new BlueprintRef("bp1")), Map.of("bp1", selfReferencing));
+
+    assertThatThrownBy(() -> WorkflowAgentRefCollector.collect(wf))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("maximum nesting depth");
+  }
+
+  @Test
   void inline_blueprint_definition_uses_enclosing_workflow_scope() {
     var inner = StepDefinition.builder()
         .withStepId("in")

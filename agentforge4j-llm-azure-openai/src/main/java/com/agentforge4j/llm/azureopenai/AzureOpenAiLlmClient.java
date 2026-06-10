@@ -58,6 +58,7 @@ public final class AzureOpenAiLlmClient extends AbstractHttpLlmClient {
     this.requestTimeout = Validate.notNull(config.getRequestTimeout(),
         "Azure openAi request timeout must be provided");
     this.chatCompletionsUri = buildChatUri(config);
+    warnIfApiKeyOverPlainHttp(config.getEndpoint(), this.apiKey);
   }
 
   private static URI buildChatUri(AzureOpenAiConfiguration config) {

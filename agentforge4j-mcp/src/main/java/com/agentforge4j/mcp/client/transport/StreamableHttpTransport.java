@@ -80,6 +80,8 @@ public final class StreamableHttpTransport extends AbstractSdkMcpTransport {
       String value = secretResolver.apply(secretRef);
       Validate.notBlank(value, () -> new IllegalStateException(
           "secret '%s' resolved to a blank value".formatted(secretRef)));
+      Validate.isTrue(containsNoCrLf(value), () -> new IllegalStateException(
+          "secret '%s' resolved to a value containing CR/LF".formatted(secretRef)));
       resolved.put(name, value);
     });
     return Map.copyOf(resolved);
@@ -89,11 +91,15 @@ public final class StreamableHttpTransport extends AbstractSdkMcpTransport {
     staticHeaders.forEach((name, value) -> {
       Validate.notBlank(name, "header name must not be blank");
       Validate.notBlank(value, "value for header '%s' must not be blank".formatted(name));
+      Validate.isTrue(containsNoCrLf(name) && containsNoCrLf(value),
+          "header '%s' must not contain CR/LF characters".formatted(name));
     });
     secretHeaders.forEach((name, secretRef) -> {
       Validate.notBlank(name, "header name must not be blank");
       Validate.notBlank(secretRef,
           "secret-reference key for header '%s' must not be blank".formatted(name));
+      Validate.isTrue(containsNoCrLf(name),
+          "header '%s' must not contain CR/LF characters".formatted(name));
     });
     Set<String> staticNames = caseInsensitiveNames(staticHeaders);
     caseInsensitiveNames(secretHeaders).forEach(name -> Validate.isTrue(
@@ -101,6 +107,14 @@ public final class StreamableHttpTransport extends AbstractSdkMcpTransport {
         "header '%s' must not be both a literal and a secret-reference".formatted(name)));
     Validate.isTrue(secretHeaders.isEmpty() || secretResolver != null,
         "secretResolver is required when secret-reference headers are present");
+  }
+
+  /**
+   * Rejects CR/LF early with a clear message. The JDK HTTP client refuses such values anyway, but
+   * only deep inside the SDK at connect time; failing here points at the offending header instead.
+   */
+  private static boolean containsNoCrLf(String value) {
+    return value.indexOf('\r') < 0 && value.indexOf('\n') < 0;
   }
 
   /**

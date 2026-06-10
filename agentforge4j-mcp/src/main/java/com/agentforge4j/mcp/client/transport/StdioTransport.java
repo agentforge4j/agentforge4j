@@ -11,6 +11,9 @@ import java.util.Map;
 
 /**
  * {@link McpTransport} that launches a local MCP server subprocess over stdio.
+ *
+ * <p>The command, arguments, and environment are passed verbatim to the subprocess launcher and
+ * must come from trusted configuration only — never from request-time or model-supplied input.
  */
 public final class StdioTransport extends AbstractSdkMcpTransport {
 

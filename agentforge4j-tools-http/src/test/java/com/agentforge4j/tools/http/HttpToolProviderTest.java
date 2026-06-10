@@ -341,6 +341,34 @@ class HttpToolProviderTest {
         .hasMessageContaining("not a declared inputSchema property");
   }
 
+  @Test
+  void rejectsPlaceholderInHost() {
+    assertThatThrownBy(() -> provider(new HttpEndpointDefinition(
+        "bad.host", "g", null, HttpMethod.GET, "https://{host}/g", objectSchema("host"), null,
+        Set.of(), BodyMode.NONE, Map.of(), Map.of(), null, -1, false, null)))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("placeholders before the path");
+  }
+
+  @Test
+  void rejectsPlaceholderInPort() {
+    assertThatThrownBy(() -> provider(new HttpEndpointDefinition(
+        "bad.port", "g", null, HttpMethod.GET, "https://example.com:{port}/g",
+        objectSchema("port"), null,
+        Set.of(), BodyMode.NONE, Map.of(), Map.of(), null, -1, false, null)))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("placeholders before the path");
+  }
+
+  @Test
+  void allowsPlaceholderInPathAndQuery() {
+    HttpToolProvider ok = provider(new HttpEndpointDefinition(
+        "ok.ph", "g", null, HttpMethod.GET, "https://example.com/items/{id}?tag={tag}",
+        objectSchema("id", "tag"), null,
+        Set.of(), BodyMode.NONE, Map.of(), Map.of(), null, -1, false, null));
+    assertThat(ok.listTools()).hasSize(1);
+  }
+
   // --- resolver integration -------------------------------------------------------------------
 
   @Test
