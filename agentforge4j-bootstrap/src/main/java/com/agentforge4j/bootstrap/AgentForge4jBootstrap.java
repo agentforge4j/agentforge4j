@@ -1,8 +1,14 @@
 package com.agentforge4j.bootstrap;
 
 import com.agentforge4j.config.loader.LoadedConfiguration;
+import com.agentforge4j.config.loader.integration.FileSystemIntegrationConfigLoader;
 import com.agentforge4j.core.agent.AgentRepository;
 import com.agentforge4j.core.runtime.WorkflowRuntime;
+import com.agentforge4j.core.spi.integration.IntegrationConfigLoader;
+import com.agentforge4j.core.spi.integration.IntegrationDefinition;
+import com.agentforge4j.core.spi.integration.IntegrationRepository;
+import com.agentforge4j.core.spi.integration.MutableIntegrationRepository;
+import com.agentforge4j.core.spi.integration.ToolProviderFactory;
 import com.agentforge4j.core.spi.tool.PendingToolInvocationStore;
 import com.agentforge4j.core.spi.tool.ToolCatalog;
 import com.agentforge4j.core.spi.tool.ToolExecutionOptions;
@@ -34,9 +40,11 @@ import com.agentforge4j.runtime.repository.InMemoryWorkflowEventLog;
 import com.agentforge4j.runtime.repository.InMemoryWorkflowStateRepository;
 import com.agentforge4j.runtime.tool.DefaultToolCatalog;
 import com.agentforge4j.runtime.tool.DefaultToolExecutionService;
+import com.agentforge4j.runtime.tool.InMemoryIntegrationRepository;
 import com.agentforge4j.runtime.tool.InMemoryPendingToolInvocationStore;
+import com.agentforge4j.runtime.tool.IntegrationToolProviderResolver;
 import com.agentforge4j.runtime.tool.NoOpToolPolicy;
-import com.agentforge4j.runtime.tool.ProviderScanningResolver;
+import com.agentforge4j.schema.ClasspathSchemaProvider;
 import com.agentforge4j.util.Validate;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.nio.file.Path;
@@ -108,6 +116,10 @@ public final class AgentForge4jBootstrap {
     private ToolPolicy toolPolicy;
     private PendingToolInvocationStore pendingToolInvocationStore;
     private ToolExecutionOptions toolExecutionOptions;
+    private Path integrationsDir;
+    private IntegrationConfigLoader integrationConfigLoader;
+    private MutableIntegrationRepository integrationRepository;
+    private ToolProviderFactory toolProviderFactory;
 
     private boolean cacheEnabled = false;
     private boolean cacheEnabledSet = false;
@@ -351,12 +363,18 @@ public final class AgentForge4jBootstrap {
     }
 
     /**
-     * Provides the tool providers (for example MCP servers) to expose to the runtime. Configuring
-     * any tool support enables the tool-execution chokepoint and registers the
+     * Provides pre-built tool providers (for example MCP servers) to expose to the runtime.
+     * Configuring any tool support enables the tool-execution chokepoint and registers the
      * {@code TOOL_INVOCATION} handler; with none configured, tool invocation is unavailable and
      * behaviour is unchanged.
      *
-     * @param toolProviders providers to scan; must not be {@code null}
+     * <p>These providers are merged with any configured integrations source into the single
+     * {@link IntegrationToolProviderResolver}; the two coexist unless they expose the same
+     * capability, which fails fast. Has no effect if
+     * {@link #withToolProviderResolver(ToolProviderResolver)} is set — an explicit resolver is the
+     * sole resolver.
+     *
+     * @param toolProviders providers to expose; must not be {@code null}
      *
      * @return this builder
      */
@@ -418,6 +436,70 @@ public final class AgentForge4jBootstrap {
     public Builder withToolExecutionOptions(ToolExecutionOptions toolExecutionOptions) {
       this.toolExecutionOptions =
           Validate.notNull(toolExecutionOptions, "toolExecutionOptions must not be null");
+      return this;
+    }
+
+    /**
+     * Opts in to loading integration definitions from top-level {@code *.json} files in the given
+     * directory at build time. Loaded definitions are saved into the integration repository and
+     * resolved into tool providers through the discovered {@code IntegrationToolProviderFactory}
+     * contributions, enabling tool support.
+     *
+     * <p>Has no effect if {@link #withToolProviderResolver(ToolProviderResolver)} is also set —
+     * an explicit resolver is the sole resolver. Coexists with {@link #withToolProviders(List)}:
+     * the two sources are merged into one resolver and only a shared capability fails fast.
+     *
+     * @param integrationsDir integrations root directory; must be an existing directory
+     *
+     * @return this builder
+     */
+    public Builder withIntegrationsDir(Path integrationsDir) {
+      Validate.notNull(integrationsDir, "integrationsDir");
+      this.integrationsDir = Validate.requireDirectory(integrationsDir,
+          "integrationsDir must be a valid directory");
+      return this;
+    }
+
+    /**
+     * Overrides the integration definition loader. When set, it is used instead of the filesystem
+     * loader over {@link #withIntegrationsDir(Path)}.
+     *
+     * @param integrationConfigLoader loader instance; must not be {@code null}
+     *
+     * @return this builder
+     */
+    public Builder withIntegrationConfigLoader(IntegrationConfigLoader integrationConfigLoader) {
+      this.integrationConfigLoader = Validate.notNull(integrationConfigLoader,
+          "integrationConfigLoader must not be null");
+      return this;
+    }
+
+    /**
+     * Overrides the integration repository that loaded definitions are saved into and the
+     * capability resolver reads from. Defaults to an in-memory repository.
+     *
+     * @param integrationRepository repository instance; must not be {@code null}
+     *
+     * @return this builder
+     */
+    public Builder withIntegrationRepository(MutableIntegrationRepository integrationRepository) {
+      this.integrationRepository = Validate.notNull(integrationRepository,
+          "integrationRepository must not be null");
+      return this;
+    }
+
+    /**
+     * Overrides the factory that realises integration definitions as tool providers. Defaults to
+     * the {@link ServiceLoaderToolProviderFactory} aggregating the discovered per-type
+     * contributions.
+     *
+     * @param toolProviderFactory factory instance; must not be {@code null}
+     *
+     * @return this builder
+     */
+    public Builder withToolProviderFactory(ToolProviderFactory toolProviderFactory) {
+      this.toolProviderFactory = Validate.notNull(toolProviderFactory,
+          "toolProviderFactory must not be null");
       return this;
     }
 
@@ -581,14 +663,14 @@ public final class AgentForge4jBootstrap {
           () -> ConfigModelTierResolver.withShippedDefaultsAndOverrides(
               parseModelTierOverrides(config)));
 
-      // Tool support is opt-in: assembled only when providers or a resolver are configured, so the OSS
-      // default (no MCP) is byte-identical to prior behaviour.
+      // Tool support is opt-in: assembled only when integrations, providers, or a resolver are
+      // configured, so the OSS default (no MCP) is byte-identical to prior behaviour.
       ToolCatalog resolvedToolCatalog = null;
       ToolExecutionService resolvedToolExecutionService = null;
       PendingToolInvocationStore resolvedPendingStore = null;
-      if (toolProviderResolver != null || !toolProviders.isEmpty()) {
-        ToolProviderResolver resolver = (toolProviderResolver != null)
-            ? toolProviderResolver : new ProviderScanningResolver(toolProviders);
+      ToolSupport toolSupport = resolveToolSupport(resolvedMapper);
+      ToolProviderResolver resolver = toolSupport.resolver();
+      if (resolver != null) {
         resolvedToolCatalog = new DefaultToolCatalog(resolver);
         resolvedPendingStore = ObjectUtils.getIfNull(pendingToolInvocationStore,
             InMemoryPendingToolInvocationStore::new);
@@ -609,10 +691,66 @@ public final class AgentForge4jBootstrap {
       BootstrapComponents components = new BootstrapComponents(
           resolvedAgentRepo, resolvedWorkflowRepo, resolvedStateRepo, resolvedEventLog,
           resolvedResolver, resolvedRenderer, resolvedParser, resolvedRecorder,
-          resolvedFileSink, resolvedStrategy, resolvedMapper,
+          resolvedFileSink, resolvedStrategy,
+          toolSupport.integrationRepository(), resolver, resolvedMapper,
           resolvedClock, resolvedInvoker, resolvedObserver, loadedConfiguration);
 
       return new AgentForge4j(resolvedRuntime, loadedConfiguration, components);
+    }
+
+    /**
+     * Resolves tool support from the configured tool sources; both parts are {@code null} when no
+     * tool support is configured. An explicit
+     * {@link #withToolProviderResolver(ToolProviderResolver)} is the sole resolver. Otherwise a
+     * single {@link IntegrationToolProviderResolver} merges two sources into one capability index:
+     * the active definitions of a configured integrations source (directory, loader, or repository)
+     * and the pre-built providers from {@link #withToolProviders(List)}. The two coexist; the only
+     * failure is a per-capability collision across the union, rejected by the resolver. The
+     * integration repository is returned (for component exposure) only when an integrations source
+     * was configured.
+     *
+     * @param resolvedMapper the resolved Jackson mapper for the filesystem integration loader
+     *
+     * @return the resolver driving tool support plus the integration repository feeding it (the
+     *     repository only on the integrations path)
+     */
+    private ToolSupport resolveToolSupport(ObjectMapper resolvedMapper) {
+      if (toolProviderResolver != null) {
+        return new ToolSupport(toolProviderResolver, null);
+      }
+      boolean integrationsConfigured = integrationsDir != null || integrationConfigLoader != null
+          || integrationRepository != null;
+      if (!integrationsConfigured && toolProviders.isEmpty()) {
+        return new ToolSupport(null, null);
+      }
+      MutableIntegrationRepository resolvedIntegrationRepository = ObjectUtils.getIfNull(
+          integrationRepository, InMemoryIntegrationRepository::new);
+      IntegrationConfigLoader resolvedIntegrationLoader = integrationConfigLoader;
+      if (resolvedIntegrationLoader == null && integrationsDir != null) {
+        resolvedIntegrationLoader = new FileSystemIntegrationConfigLoader(
+            resolvedMapper, new ClasspathSchemaProvider(), integrationsDir);
+      }
+      if (resolvedIntegrationLoader != null) {
+        for (IntegrationDefinition definition : resolvedIntegrationLoader.load()) {
+          resolvedIntegrationRepository.save(definition);
+        }
+      }
+      ToolProviderFactory resolvedFactory = ObjectUtils.getIfNull(toolProviderFactory,
+          () -> ServiceLoaderToolProviderFactory.discover(resolvedMapper));
+      ToolProviderResolver resolver = new IntegrationToolProviderResolver(
+          resolvedIntegrationRepository, resolvedFactory, toolProviders);
+      return new ToolSupport(resolver,
+          integrationsConfigured ? resolvedIntegrationRepository : null);
+    }
+
+    /**
+     * The resolved tool-support pair: the capability resolver driving tool execution and, on the
+     * integrations path only, the {@link IntegrationRepository} feeding it. Both are {@code null}
+     * when no tool support is configured.
+     */
+    private record ToolSupport(ToolProviderResolver resolver,
+                               IntegrationRepository integrationRepository) {
+
     }
 
     private ToolExecutionService getResolvedToolExecutionService(ToolProviderResolver resolver,
@@ -643,6 +781,12 @@ public final class AgentForge4jBootstrap {
         String val = config.get("agentforge4j.workflows.path");
         if (val != null) {
           withWorkflowsDir(Path.of(val));
+        }
+      }
+      if (integrationsDir == null) {
+        String val = config.get("agentforge4j.integrations.dir");
+        if (val != null) {
+          withIntegrationsDir(Path.of(val));
         }
       }
       if (fileSinkPath == null) {

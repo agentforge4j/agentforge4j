@@ -3,6 +3,9 @@ package com.agentforge4j.starter;
 import com.agentforge4j.bootstrap.AgentForge4j;
 import com.agentforge4j.bootstrap.AgentForge4jBootstrap;
 import com.agentforge4j.llm.ConfigModelTierResolver;
+import com.agentforge4j.core.spi.integration.IntegrationConfigLoader;
+import com.agentforge4j.core.spi.integration.MutableIntegrationRepository;
+import com.agentforge4j.core.spi.integration.ToolProviderFactory;
 import com.agentforge4j.core.spi.tool.ToolExecutionOptions;
 import com.agentforge4j.core.spi.tool.ToolPolicy;
 import com.agentforge4j.core.spi.tool.ToolProvider;
@@ -70,7 +73,10 @@ public class BootstrapAutoConfiguration {
       ObjectProvider<List<LlmClientConfiguration>> llmConfigurations,
       ObjectProvider<List<ToolProvider>> toolProviders,
       ObjectProvider<ToolPolicy> toolPolicy,
-      ObjectProvider<ToolExecutionOptions> toolExecutionOptions) {
+      ObjectProvider<ToolExecutionOptions> toolExecutionOptions,
+      ObjectProvider<IntegrationConfigLoader> integrationConfigLoader,
+      ObjectProvider<MutableIntegrationRepository> integrationRepository,
+      ObjectProvider<ToolProviderFactory> toolProviderFactory) {
     AgentForge4jBootstrap.Builder builder = AgentForge4jBootstrap.defaults();
     applyProperties(builder, properties);
     applyModelTiers(builder, modelTierProperties);
@@ -83,7 +89,38 @@ public class BootstrapAutoConfiguration {
       builder.withLlmClientResolver(new DefaultLlmClientResolver(List.of()));
     }
     applyToolSupport(builder, toolProviders, toolPolicy, toolExecutionOptions);
+    applyIntegrationOverrides(builder, integrationConfigLoader, integrationRepository,
+        toolProviderFactory);
     return builder.build();
+  }
+
+  /**
+   * Forwards application-registered integration component beans to the bootstrap builder. Each is
+   * optional: when absent, the bootstrap defaults (filesystem loader over
+   * {@code agentforge4j.integrations.dir}, in-memory repository, ServiceLoader-discovered factory
+   * contributions) apply.
+   *
+   * @param builder                 bootstrap builder; must not be {@code null}
+   * @param integrationConfigLoader optional loader bean overriding the filesystem loader
+   * @param integrationRepository   optional repository bean overriding the in-memory repository
+   * @param toolProviderFactory     optional factory bean overriding the discovered aggregator
+   */
+  private static void applyIntegrationOverrides(AgentForge4jBootstrap.Builder builder,
+      ObjectProvider<IntegrationConfigLoader> integrationConfigLoader,
+      ObjectProvider<MutableIntegrationRepository> integrationRepository,
+      ObjectProvider<ToolProviderFactory> toolProviderFactory) {
+    IntegrationConfigLoader loader = integrationConfigLoader.getIfAvailable();
+    if (loader != null) {
+      builder.withIntegrationConfigLoader(loader);
+    }
+    MutableIntegrationRepository repository = integrationRepository.getIfAvailable();
+    if (repository != null) {
+      builder.withIntegrationRepository(repository);
+    }
+    ToolProviderFactory factory = toolProviderFactory.getIfAvailable();
+    if (factory != null) {
+      builder.withToolProviderFactory(factory);
+    }
   }
 
   private static void applyToolSupport(AgentForge4jBootstrap.Builder builder,
@@ -113,6 +150,10 @@ public class BootstrapAutoConfiguration {
     }
     if (StringUtils.isNotBlank(properties.workflowsPath())) {
       builder.withWorkflowsDir(Path.of(properties.workflowsPath()));
+    }
+    if (properties.integrations() != null
+        && StringUtils.isNotBlank(properties.integrations().dir())) {
+      builder.withIntegrationsDir(Path.of(properties.integrations().dir()));
     }
     if (properties.maxNestingDepth() != null) {
       builder.withMaxNestingDepth(properties.maxNestingDepth());

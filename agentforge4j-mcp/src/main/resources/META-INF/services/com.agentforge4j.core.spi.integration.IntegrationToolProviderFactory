@@ -1,0 +1,2 @@
+com.agentforge4j.mcp.integration.McpStdioToolProviderFactory
+com.agentforge4j.mcp.integration.McpStreamableHttpToolProviderFactory

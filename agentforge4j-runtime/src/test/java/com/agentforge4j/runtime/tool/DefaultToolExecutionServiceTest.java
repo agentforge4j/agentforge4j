@@ -1,6 +1,7 @@
 package com.agentforge4j.runtime.tool;
 
 import com.agentforge4j.core.command.ToolInvocationCommand;
+import com.agentforge4j.core.spi.integration.ToolProviderFactory;
 import com.agentforge4j.core.spi.tool.ApprovalDecision;
 import com.agentforge4j.core.spi.tool.HealthStatus;
 import com.agentforge4j.core.spi.tool.PolicyDecision;
@@ -48,10 +49,18 @@ class DefaultToolExecutionServiceTest {
     return serviceWithOptions(policy, ToolExecutionOptions.defaults());
   }
 
+  /** The single pre-built provider feeds the resolver directly, so the factory is never called. */
+  private static ToolProviderFactory unusedFactory() {
+    return definition -> {
+      throw new AssertionError("factory must not be called for pre-built providers");
+    };
+  }
+
   private DefaultToolExecutionService serviceWithOptions(ToolPolicy policy,
       ToolExecutionOptions options) {
     return new DefaultToolExecutionService(
-        new ProviderScanningResolver(List.of(provider)),
+        new IntegrationToolProviderResolver(new InMemoryIntegrationRepository(),
+            unusedFactory(), List.of(provider)),
         policy,
         store,
         options,

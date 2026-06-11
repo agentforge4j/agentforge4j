@@ -126,10 +126,11 @@ final class ConfigurationLoader {
     if (agentsDir != null) {
       AgentPromptResolver promptResolver = new FileSystemAgentPromptResolver(new PromptLoader());
       agentLoader = new FileSystemAgentLoader(objectMapper, promptResolver, agentsDir);
-    } else
+    } else {
       agentLoader = Objects.requireNonNullElseGet(shippedClasspathAgentLoader,
           () -> new ClasspathAgentLoader(
               objectMapper, ClasspathAgentLoader.SHIPPED_AGENTS_ROOT));
+    }
     return agentLoader;
   }
 }

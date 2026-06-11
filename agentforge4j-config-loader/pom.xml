@@ -36,6 +36,17 @@
       <groupId>org.agentforge4j</groupId>
       <artifactId>agentforge4j-workflows</artifactId>
     </dependency>
+    <dependency>
+      <groupId>org.agentforge4j</groupId>
+      <artifactId>agentforge4j-schema</artifactId>
+    </dependency>
+    <!-- Main-scope: FileSystemIntegrationConfigLoader validates integration definition files
+         against integration.schema.json. Pinned to the 1.5.x (Jackson-2) line. -->
+    <dependency>
+      <groupId>com.networknt</groupId>
+      <artifactId>json-schema-validator</artifactId>
+      <version>1.5.9</version>
+    </dependency>
 
     <dependency>
       <groupId>org.projectlombok</groupId>

@@ -5,6 +5,9 @@ import static org.mockito.Mockito.mock;
 
 import com.agentforge4j.bootstrap.AgentForge4j;
 import com.agentforge4j.core.agent.AgentRepository;
+import com.agentforge4j.core.spi.integration.IntegrationDefinition;
+import com.agentforge4j.core.spi.integration.ToolProviderFactory;
+import com.agentforge4j.core.spi.tool.ToolProvider;
 import com.agentforge4j.llm.LlmClientResolver;
 import com.agentforge4j.runtime.command.FileSink;
 import org.junit.jupiter.api.Test;
@@ -14,7 +17,12 @@ import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
+import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
+
+import static org.mockito.Mockito.when;
 
 class BootstrapAutoConfigurationTest {
 
@@ -82,6 +90,36 @@ class BootstrapAutoConfigurationTest {
         .run(ctx -> assertThat(ctx.getStartupFailure()).isNull());
   }
 
+  @Test
+  void propertiesIntegrationsDirAppliedOnEmptyDirectory(@TempDir Path integrationsDir) {
+    runner.withPropertyValues("agentforge4j.integrations.dir=" + integrationsDir)
+        .run(ctx -> assertThat(ctx.getStartupFailure()).isNull());
+  }
+
+  @Test
+  void integrationsDirDefinitionsFlowThroughApplicationToolProviderFactoryBean(
+      @TempDir Path integrationsDir) throws Exception {
+    Files.writeString(integrationsDir.resolve("github.json"), """
+        {
+          "id": "github",
+          "displayName": "GitHub",
+          "type": "MCP_STDIO",
+          "config": { "command": "npx" },
+          "capabilities": [ { "capability": "github.create_issue" } ]
+        }
+        """);
+    RecordingToolProviderFactoryConfiguration.CREATED.clear();
+
+    runner.withUserConfiguration(RecordingToolProviderFactoryConfiguration.class)
+        .withPropertyValues("agentforge4j.integrations.dir=" + integrationsDir)
+        .run(ctx -> {
+          assertThat(ctx.getStartupFailure()).isNull();
+          assertThat(RecordingToolProviderFactoryConfiguration.CREATED)
+              .extracting(IntegrationDefinition::id)
+              .containsExactly("github");
+        });
+  }
+
   @Configuration
   static class CustomAgentRepositoryConfiguration {
 
@@ -90,6 +128,22 @@ class BootstrapAutoConfigurationTest {
     @Bean
     AgentRepository agentRepository() {
       return CUSTOM_AGENT_REPOSITORY;
+    }
+  }
+
+  @Configuration
+  static class RecordingToolProviderFactoryConfiguration {
+
+    static final List<IntegrationDefinition> CREATED = new ArrayList<>();
+
+    @Bean
+    ToolProviderFactory toolProviderFactory() {
+      return definition -> {
+        CREATED.add(definition);
+        ToolProvider provider = mock(ToolProvider.class);
+        when(provider.listTools()).thenReturn(List.of());
+        return provider;
+      };
     }
   }
 }

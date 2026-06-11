@@ -16,6 +16,7 @@ module agentforge4j.bootstrap {
   requires org.apache.commons.lang3;
 
   uses com.agentforge4j.llm.LlmClientFactory;
+  uses com.agentforge4j.core.spi.integration.IntegrationToolProviderFactory;
 
   exports com.agentforge4j.bootstrap;
 }

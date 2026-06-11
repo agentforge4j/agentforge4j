@@ -3,6 +3,7 @@ package com.agentforge4j.tools.http;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.agentforge4j.core.spi.integration.ToolProviderFactory;
 import com.agentforge4j.core.spi.tool.CapabilityResolutionException;
 import com.agentforge4j.core.spi.tool.HealthStatus;
 import com.agentforge4j.core.spi.tool.ResolvedTool;
@@ -13,7 +14,8 @@ import com.agentforge4j.core.spi.tool.ToolProvider;
 import com.agentforge4j.core.spi.tool.ToolResult;
 import com.agentforge4j.core.spi.tool.ToolScope;
 import com.agentforge4j.core.spi.tool.ToolSource;
-import com.agentforge4j.runtime.tool.ProviderScanningResolver;
+import com.agentforge4j.runtime.tool.InMemoryIntegrationRepository;
+import com.agentforge4j.runtime.tool.IntegrationToolProviderResolver;
 import com.agentforge4j.tools.http.LoopbackHttpServer.Captured;
 import com.agentforge4j.tools.http.LoopbackHttpServer.Response;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -372,7 +374,7 @@ class HttpToolProviderTest {
   // --- resolver integration -------------------------------------------------------------------
 
   @Test
-  void resolvesAndRunsThroughProviderScanningResolverAlongsideAnotherProvider() throws Exception {
+  void resolvesAndRunsThroughIntegrationResolverAlongsideAnotherProvider() throws Exception {
     try (LoopbackHttpServer server = new LoopbackHttpServer(Response.json(200, "{\"ok\":1}"))) {
       HttpEndpointDefinition definition = new HttpEndpointDefinition(
           "items.get", "items", null, HttpMethod.GET, server.baseUri() + "/items",
@@ -380,8 +382,8 @@ class HttpToolProviderTest {
       HttpToolProvider httpProvider = provider(definition);
       ToolProvider other = new StubProvider("stub:other", "other.cap");
 
-      ProviderScanningResolver resolver =
-          new ProviderScanningResolver(List.of(httpProvider, other));
+      IntegrationToolProviderResolver resolver = new IntegrationToolProviderResolver(
+          new InMemoryIntegrationRepository(), unusedFactory(), List.of(httpProvider, other));
       ResolvedTool resolved = resolver.resolve("items.get", new ToolScope("wf-1", "run-1"));
 
       assertThat(resolved.provider()).isSameAs(httpProvider);
@@ -399,11 +401,19 @@ class HttpToolProviderTest {
     HttpToolProvider httpProvider = provider(definition);
     ToolProvider clashing = new StubProvider("stub:other", "shared.cap");
 
-    assertThatThrownBy(() -> new ProviderScanningResolver(List.of(httpProvider, clashing)))
+    assertThatThrownBy(() -> new IntegrationToolProviderResolver(
+        new InMemoryIntegrationRepository(), unusedFactory(), List.of(httpProvider, clashing)))
         .isInstanceOf(CapabilityResolutionException.class);
   }
 
   // --- helpers --------------------------------------------------------------------------------
+
+  /** The pre-built providers feed the resolver directly, so the factory is never called. */
+  private static ToolProviderFactory unusedFactory() {
+    return definition -> {
+      throw new AssertionError("factory must not be called for pre-built providers");
+    };
+  }
 
   private HttpToolProvider provider(HttpEndpointDefinition... definitions) {
     return new HttpToolProvider("test", List.of(definitions), secrets::get, httpClient, noRetry,

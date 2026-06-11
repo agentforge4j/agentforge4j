@@ -90,6 +90,22 @@ class ConfigReaderWiringTest {
   }
 
   @Test
+  void integrationsDirFromEnv(@TempDir Path integrationsDir) {
+    setProperty("agentforge4j.integrations.dir", integrationsDir.toString());
+    AgentForge4j af = AgentForge4jBootstrap.defaults().build();
+    assertThat(af).isNotNull();
+  }
+
+  @Test
+  void programmaticIntegrationsDirWinsOverEnv(@TempDir Path integrationsDir) {
+    setProperty("agentforge4j.integrations.dir", "/tmp/env-integrations");
+    AgentForge4j af = AgentForge4jBootstrap.defaults()
+        .withIntegrationsDir(integrationsDir)
+        .build();
+    assertThat(af).isNotNull();
+  }
+
+  @Test
   void withFileSinkPathProgrammaticAppliesLocalFileSink(@TempDir Path tempDir) {
     AgentForge4j af = AgentForge4jBootstrap.defaults()
         .withFileSinkPath(tempDir)

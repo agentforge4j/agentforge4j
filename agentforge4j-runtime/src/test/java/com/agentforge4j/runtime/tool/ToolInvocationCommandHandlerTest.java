@@ -3,6 +3,7 @@ package com.agentforge4j.runtime.tool;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.agentforge4j.core.command.ToolInvocationCommand;
+import com.agentforge4j.core.spi.integration.ToolProviderFactory;
 import com.agentforge4j.core.spi.tool.HealthStatus;
 import com.agentforge4j.core.spi.tool.PolicyDecision;
 import com.agentforge4j.core.spi.tool.ToolDescriptor;
@@ -109,9 +110,17 @@ class ToolInvocationCommandHandlerTest {
     assertThat(provider.invocations).isZero();
   }
 
+  /** The single pre-built provider feeds the resolver directly, so the factory is never called. */
+  private static ToolProviderFactory unusedFactory() {
+    return definition -> {
+      throw new AssertionError("factory must not be called for pre-built providers");
+    };
+  }
+
   private ToolInvocationCommandHandler handler(ToolPolicy policy) {
     DefaultToolExecutionService service = new DefaultToolExecutionService(
-        new ProviderScanningResolver(List.of(provider)),
+        new IntegrationToolProviderResolver(new InMemoryIntegrationRepository(),
+            unusedFactory(), List.of(provider)),
         policy,
         store,
         new ToolExecutionOptions(Duration.ofSeconds(30), 0, Duration.ZERO),

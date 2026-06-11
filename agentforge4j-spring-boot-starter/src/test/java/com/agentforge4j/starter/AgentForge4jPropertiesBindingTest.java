@@ -14,6 +14,7 @@ class AgentForge4jPropertiesBindingTest {
     MockEnvironment env = new MockEnvironment()
         .withProperty("agentforge4j.agents-path", "/var/agents")
         .withProperty("agentforge4j.workflows-path", "/var/workflows")
+        .withProperty("agentforge4j.integrations.dir", "/var/integrations")
         .withProperty("agentforge4j.max-nesting-depth", "42")
         .withProperty("agentforge4j.load-shipped-workflows", "true")
         .withProperty("agentforge4j.load-shipped-agents", "false");
@@ -23,6 +24,7 @@ class AgentForge4jPropertiesBindingTest {
 
     assertThat(props.agentsPath()).isEqualTo("/var/agents");
     assertThat(props.workflowsPath()).isEqualTo("/var/workflows");
+    assertThat(props.integrations().dir()).isEqualTo("/var/integrations");
     assertThat(props.maxNestingDepth()).isEqualTo(42);
     assertThat(props.loadShippedWorkflows()).isTrue();
     assertThat(props.loadShippedAgents()).isFalse();
