@@ -26,9 +26,9 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 /**
- * Covers the bootstrap integrations chain: integrations dir → filesystem loader → in-memory
- * repository → tool provider factory → capability resolver, plus the escape hatches, the
- * coexistence of integrations with pre-built providers, and the shared-capability fail-fast.
+ * Covers the bootstrap integrations chain: integrations dir → filesystem loader → in-memory repository → tool provider
+ * factory → capability resolver, plus the escape hatches, the coexistence of integrations with pre-built providers, and
+ * the shared-capability fail-fast.
  */
 class IntegrationWiringTest {
 
@@ -277,8 +277,8 @@ class IntegrationWiringTest {
   }
 
   /**
-   * {@link ToolProviderFactory} fake that records the definitions it realises and hands back a stub
-   * provider exposing one descriptor per definition capability.
+   * {@link ToolProviderFactory} fake that records the definitions it realises and hands back a stub provider exposing
+   * one descriptor per definition capability.
    */
   private static final class RecordingToolProviderFactory implements ToolProviderFactory {
 

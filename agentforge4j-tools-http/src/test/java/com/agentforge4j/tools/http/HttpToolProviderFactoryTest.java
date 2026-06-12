@@ -1,8 +1,5 @@
 package com.agentforge4j.tools.http;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
-
 import com.agentforge4j.core.spi.integration.IntegrationCapability;
 import com.agentforge4j.core.spi.integration.IntegrationDefinition;
 import com.agentforge4j.core.spi.integration.IntegrationType;
@@ -20,11 +17,14 @@ import java.time.Duration;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
 /**
  * Covers the config-loaded HTTP path: an {@code HTTP_TOOL} {@link IntegrationDefinition} parsed by
- * {@link HttpToolProviderFactory} into a working {@link HttpToolProvider}, including secret-header
- * resolution through the {@link ToolProviderFactoryContext} resolver. The code-defined path is
- * covered by {@link HttpToolProviderTest}; this class exercises only the factory seam.
+ * {@link HttpToolProviderFactory} into a working {@link HttpToolProvider}, including secret-header resolution through
+ * the {@link ToolProviderFactoryContext} resolver. The code-defined path is covered by {@link HttpToolProviderTest};
+ * this class exercises only the factory seam.
  */
 class HttpToolProviderFactoryTest {
 

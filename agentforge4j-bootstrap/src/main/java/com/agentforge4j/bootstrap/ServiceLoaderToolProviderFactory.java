@@ -21,11 +21,11 @@ import java.util.ServiceLoader;
  * {@link ToolProviderFactory} that routes each {@link IntegrationDefinition} to the
  * {@link IntegrationToolProviderFactory} contribution matching its {@link IntegrationType}.
  * <p>
- * {@link #discover(ObjectMapper)} loads contributions via {@link ServiceLoader} (mirroring
- * {@code DefaultLlmClientResolver}'s {@code LlmClientFactory} discovery), so provider modules such
- * as {@code agentforge4j-mcp} plug in by being on the classpath — this module declares no concrete
- * provider dependency. Two contributions claiming the same type fail construction; a definition
- * whose type has no contribution fails {@link #create} naming the type and the missing module.
+ * {@link #discover(ObjectMapper, SecretResolver)} loads contributions via {@link ServiceLoader} (mirroring
+ * {@code DefaultLlmClientResolver}'s {@code LlmClientFactory} discovery), so provider modules such as
+ * {@code agentforge4j-mcp} plug in by being on the classpath — this module declares no concrete provider dependency.
+ * Two contributions claiming the same type fail construction; a definition whose type has no contribution fails
+ * {@link #create} naming the type and the missing module.
  */
 public final class ServiceLoaderToolProviderFactory implements ToolProviderFactory {
 
@@ -39,10 +39,8 @@ public final class ServiceLoaderToolProviderFactory implements ToolProviderFacto
    * Creates an aggregator over explicit contributions (typically used in tests).
    *
    * @param contributions  no null elements, at most one contribution per {@link IntegrationType}
-   * @param objectMapper   the single shared Jackson mapper threaded into each contribution; must
-   *                       not be {@code null}
-   * @param secretResolver the secret-reference resolver threaded into each contribution; must not
-   *                       be {@code null}
+   * @param objectMapper   the single shared Jackson mapper threaded into each contribution; must not be {@code null}
+   * @param secretResolver the secret-reference resolver threaded into each contribution; must not be {@code null}
    *
    * @throws IllegalStateException if two contributions claim the same type
    */
@@ -57,18 +55,15 @@ public final class ServiceLoaderToolProviderFactory implements ToolProviderFacto
   /**
    * Discovers {@link IntegrationToolProviderFactory} contributions on the classpath.
    * <p>
-   * An empty result is not an error: the aggregator only fails when asked to realise a definition
-   * whose type has no contribution.
+   * An empty result is not an error: the aggregator only fails when asked to realise a definition whose type has no
+   * contribution.
    *
-   * @param objectMapper   the single shared Jackson mapper threaded into each contribution; must
-   *                       not be {@code null}
-   * @param secretResolver the secret-reference resolver threaded into each contribution; must not
-   *                       be {@code null}
+   * @param objectMapper   the single shared Jackson mapper threaded into each contribution; must not be {@code null}
+   * @param secretResolver the secret-reference resolver threaded into each contribution; must not be {@code null}
    *
    * @return aggregator over all discovered contributions
    */
-  public static ServiceLoaderToolProviderFactory discover(ObjectMapper objectMapper,
-      SecretResolver secretResolver) {
+  public static ServiceLoaderToolProviderFactory discover(ObjectMapper objectMapper, SecretResolver secretResolver) {
     List<IntegrationToolProviderFactory> contributions = new ArrayList<>();
     ServiceLoader<IntegrationToolProviderFactory> loader = ServiceLoader.load(
         IntegrationToolProviderFactory.class, Thread.currentThread().getContextClassLoader());

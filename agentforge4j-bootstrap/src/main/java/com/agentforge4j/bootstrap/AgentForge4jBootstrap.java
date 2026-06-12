@@ -499,11 +499,10 @@ public final class AgentForge4jBootstrap {
     }
 
     /**
-     * Overrides the resolver that turns a secret-reference key into its live value at invoke time
-     * (for example an HTTP integration's {@code secretHeaders}). Defaults to
-     * {@link EnvironmentSecretResolver}, which reads process environment variables then system
-     * properties. An embedding application supplies its own implementation backed by its secret
-     * store.
+     * Overrides the resolver that turns a secret-reference key into its live value at invoke time (for example an HTTP
+     * integration's {@code secretHeaders}). Defaults to {@link EnvironmentSecretResolver}, which reads process
+     * environment variables then system properties. An embedding application supplies its own implementation backed by
+     * its secret store.
      *
      * @param secretResolver resolver instance; must not be {@code null}
      *

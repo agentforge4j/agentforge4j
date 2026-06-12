@@ -13,16 +13,14 @@ import java.time.Duration;
 import java.util.List;
 
 /**
- * Realises {@link IntegrationType#HTTP_TOOL} integrations: builds an {@link HttpToolProvider} over
- * the {@link HttpEndpointDefinition}s carried in the {@code config} payload (a JSON array, one
- * object per capability). Secret-header references are resolved at invoke time through the
- * {@link ToolProviderFactoryContext#secretResolver()}; the resulting provider id is
- * {@code "http:" + definition.id()}.
+ * Realises {@link IntegrationType#HTTP_TOOL} integrations: builds an {@link HttpToolProvider} over the
+ * {@link HttpEndpointDefinition}s carried in the {@code config} payload (a JSON array, one object per capability).
+ * Secret-header references are resolved at invoke time through the {@link ToolProviderFactoryContext#secretResolver()};
+ * the resulting provider id is {@code "http:" + definition.id()}.
  * <p>
- * Discovered via {@link java.util.ServiceLoader}; no connection is opened here — each request is
- * made lazily by the provider on invocation. This is the config-loaded sibling of the code-defined
- * {@code AgentForge4jBootstrap.defaults().withToolProviders(...)} path, which keeps working
- * unchanged.
+ * Discovered via {@link java.util.ServiceLoader}; no connection is opened here — each request is made lazily by the
+ * provider on invocation. This is the config-loaded sibling of the code-defined
+ * {@code AgentForge4jBootstrap.defaults().withToolProviders(...)} path, which keeps working unchanged.
  */
 public final class HttpToolProviderFactory implements IntegrationToolProviderFactory {
 
@@ -45,6 +43,8 @@ public final class HttpToolProviderFactory implements IntegrationToolProviderFac
   public ToolProvider create(IntegrationDefinition definition, ToolProviderFactoryContext context) {
     Validate.notNull(definition, "definition must not be null");
     Validate.notNull(context, "context must not be null");
+    Validate.notNull(context.secretResolver(), "context.secretResolver() must not be null");
+    Validate.notNull(context.objectMapper(), "context.objectMapper() must not be null");
     Validate.isTrue(definition.type() == IntegrationType.HTTP_TOOL,
         "Integration '%s' has type %s; this factory only supports HTTP_TOOL"
             .formatted(definition.id(), definition.type()));
