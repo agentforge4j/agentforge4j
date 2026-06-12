@@ -218,8 +218,8 @@ public final class Validate {
    * @param message the exception message if validation fails
    * @throws IllegalArgumentException if the value is outside the bounds
    */
-  public static void isBetween(Number lower, Number upper, Number value, String message) {
-    isBetween(lower, upper, value, () -> new IllegalArgumentException(message));
+  public static Number isBetween(Number lower, Number upper, Number value, String message) {
+    return isBetween(lower, upper, value, () -> new IllegalArgumentException(message));
   }
 
   /**
@@ -231,7 +231,7 @@ public final class Validate {
    * @param exceptionSupplier supplies the exception to throw if validation fails
    * @throws IllegalArgumentException if the value is outside the bounds
    */
-  public static void isBetween(Number lower, Number upper, Number value,
+  public static Number isBetween(Number lower, Number upper, Number value,
       Supplier<RuntimeException> exceptionSupplier) {
     notNull(exceptionSupplier, "Exception supplier must not be null");
     notNull(lower, exceptionSupplier);
@@ -242,6 +242,8 @@ public final class Validate {
     isTrue(
         value.doubleValue() >= lower.doubleValue() && value.doubleValue() <= upper.doubleValue(),
         exceptionSupplier);
+
+    return value;
   }
 
   /**

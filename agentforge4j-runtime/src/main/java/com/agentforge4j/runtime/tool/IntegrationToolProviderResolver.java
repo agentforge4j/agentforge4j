@@ -98,6 +98,6 @@ public final class IntegrationToolProviderResolver implements ToolProviderResolv
 
   @Override
   public List<ToolDescriptor> available(ToolScope scope) {
-    return List.copyOf(byCapability.values().stream().map(ResolvedTool::descriptor).toList());
+    return byCapability.values().stream().map(ResolvedTool::descriptor).toList();
   }
 }

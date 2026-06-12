@@ -1,8 +1,5 @@
 package com.agentforge4j.mcp.integration;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
-
 import com.agentforge4j.core.spi.integration.IntegrationCapability;
 import com.agentforge4j.core.spi.integration.IntegrationDefinition;
 import com.agentforge4j.core.spi.integration.IntegrationType;
@@ -12,6 +9,9 @@ import com.agentforge4j.mcp.client.McpToolProvider;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.List;
 import org.junit.jupiter.api.Test;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class McpStdioToolProviderFactoryTest {
 

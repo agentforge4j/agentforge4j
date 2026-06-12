@@ -1,9 +1,5 @@
 package com.agentforge4j.bootstrap;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
-
 import com.agentforge4j.core.spi.integration.IntegrationCapability;
 import com.agentforge4j.core.spi.integration.IntegrationDefinition;
 import com.agentforge4j.core.spi.integration.IntegrationType;
@@ -12,6 +8,10 @@ import com.agentforge4j.core.spi.tool.ToolProviderResolver;
 import com.agentforge4j.runtime.tool.IntegrationToolProviderResolver;
 import java.util.List;
 import org.junit.jupiter.api.Test;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 class BootstrapComponentsTest {
 

@@ -20,7 +20,7 @@ import java.util.ServiceLoader;
  * {@link ToolProviderFactory} that routes each {@link IntegrationDefinition} to the
  * {@link IntegrationToolProviderFactory} contribution matching its {@link IntegrationType}.
  * <p>
- * {@link #discover()} loads contributions via {@link ServiceLoader} (mirroring
+ * {@link #discover(ObjectMapper)} loads contributions via {@link ServiceLoader} (mirroring
  * {@code DefaultLlmClientResolver}'s {@code LlmClientFactory} discovery), so provider modules such
  * as {@code agentforge4j-mcp} plug in by being on the classpath — this module declares no concrete
  * provider dependency. Two contributions claiming the same type fail construction; a definition
@@ -47,7 +47,8 @@ public final class ServiceLoaderToolProviderFactory implements ToolProviderFacto
       Collection<IntegrationToolProviderFactory> contributions, ObjectMapper objectMapper) {
     this.contributionsByType = buildContributionMap(
         Validate.notNull(contributions, "contributions must not be null"));
-    this.context = new ToolProviderFactoryContext(objectMapper);
+    this.context = new ToolProviderFactoryContext(
+        Validate.notNull(objectMapper, "objectMapper must not be null"));
   }
 
   /**
@@ -74,10 +75,11 @@ public final class ServiceLoaderToolProviderFactory implements ToolProviderFacto
   @Override
   public ToolProvider create(IntegrationDefinition definition) {
     Validate.notNull(definition, "definition must not be null");
-    IntegrationToolProviderFactory contribution = contributionsByType.get(definition.type());
-    Validate.notNull(contribution, () -> new IllegalStateException(
-        "No IntegrationToolProviderFactory is registered for integration type %s (integration '%s'). Check that the provider module for this type (for example agentforge4j-mcp for the MCP types) is on the classpath."
-            .formatted(definition.type(), definition.id())));
+    IntegrationToolProviderFactory contribution =
+        Validate.notNull(contributionsByType.get(definition.type()),
+            () -> new IllegalStateException(
+                "No IntegrationToolProviderFactory is registered for integration type %s (integration '%s'). Check that the provider module for this type (for example agentforge4j-mcp for the MCP types) is on the classpath."
+                    .formatted(definition.type(), definition.id())));
     return contribution.create(definition, context);
   }
 

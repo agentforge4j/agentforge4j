@@ -44,9 +44,8 @@ final class McpIntegrations {
     try {
       return mapper.readTree(definition.config());
     } catch (JsonProcessingException e) {
-      throw new IllegalArgumentException(
-          "Integration '%s': malformed config JSON (%s)"
-              .formatted(definition.id(), e.getOriginalMessage()), e);
+      throw new IllegalArgumentException("Integration '%s': malformed config JSON (%s)"
+          .formatted(definition.id(), e.getOriginalMessage()), e);
     }
   }
 
@@ -114,8 +113,8 @@ final class McpIntegrations {
    *
    * @return the non-blank field value
    *
-   * @throws IllegalArgumentException if the field is absent, null, or blank, naming the
-   *                                  integration id and field
+   * @throws IllegalArgumentException if the field is absent, null, or blank, naming the integration
+   *                                  id and field
    */
   static String requiredText(JsonNode config, String field, IntegrationDefinition definition) {
     JsonNode value = config.get(field);

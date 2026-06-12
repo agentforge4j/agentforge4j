@@ -1,8 +1,5 @@
 package com.agentforge4j.mcp.integration;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
-
 import com.agentforge4j.core.spi.integration.IntegrationCapability;
 import com.agentforge4j.core.spi.integration.IntegrationDefinition;
 import com.agentforge4j.core.spi.integration.IntegrationType;
@@ -12,7 +9,12 @@ import java.time.Duration;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 
-/** Covers the shared {@code requestTimeout} parsing used by both MCP contributor factories. */
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
+/**
+ * Covers the shared {@code requestTimeout} parsing used by both MCP contributor factories.
+ */
 class McpIntegrationsTest {
 
   private static final ObjectMapper MAPPER = new ObjectMapper();

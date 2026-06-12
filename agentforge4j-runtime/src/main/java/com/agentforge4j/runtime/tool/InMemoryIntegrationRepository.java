@@ -10,9 +10,9 @@ import java.util.concurrent.ConcurrentHashMap;
 /**
  * In-memory {@link MutableIntegrationRepository} (OSS default). Integrations are keyed by id and
  * mutated administratively; the OSS active-toggle is an edit-then-reload, so writes are direct
- * upserts rather than snapshot replacement. Uniqueness across integrations (for example a capability
- * exposed by two of them) is enforced downstream by the resolver, not here — this store allows an
- * id to be overwritten so a reload can replace a prior definition idempotently.
+ * upserts rather than snapshot replacement. Uniqueness across integrations (for example a
+ * capability exposed by two of them) is enforced downstream by the resolver, not here — this store
+ * allows an id to be overwritten so a reload can replace a prior definition idempotently.
  */
 public final class InMemoryIntegrationRepository implements MutableIntegrationRepository {
 
@@ -25,8 +25,7 @@ public final class InMemoryIntegrationRepository implements MutableIntegrationRe
 
   @Override
   public IntegrationDefinition findById(String id) {
-    Validate.notBlank(id, "id must not be blank");
-    return byId.get(id);
+    return byId.get(Validate.notBlank(id, "id must not be blank"));
   }
 
   @Override
@@ -56,8 +55,7 @@ public final class InMemoryIntegrationRepository implements MutableIntegrationRe
 
   @Override
   public void remove(String id) {
-    Validate.notBlank(id, "id must not be blank");
-    byId.remove(id);
+    byId.remove(Validate.notBlank(id, "id must not be blank"));
   }
 
   private static boolean exposes(IntegrationDefinition definition, String capability) {

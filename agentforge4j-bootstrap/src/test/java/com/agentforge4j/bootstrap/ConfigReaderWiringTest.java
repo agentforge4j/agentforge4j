@@ -1,8 +1,5 @@
 package com.agentforge4j.bootstrap;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
-
 import com.agentforge4j.runtime.command.FileSink;
 import com.agentforge4j.runtime.command.LocalFileSink;
 import java.nio.file.Path;
@@ -11,6 +8,9 @@ import java.util.Map;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class ConfigReaderWiringTest {
 

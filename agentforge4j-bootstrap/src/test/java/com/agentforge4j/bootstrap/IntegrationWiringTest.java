@@ -1,10 +1,5 @@
 package com.agentforge4j.bootstrap;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
-
 import com.agentforge4j.core.spi.integration.IntegrationCapability;
 import com.agentforge4j.core.spi.integration.IntegrationDefinition;
 import com.agentforge4j.core.spi.integration.IntegrationType;
@@ -24,6 +19,11 @@ import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 /**
  * Covers the bootstrap integrations chain: integrations dir → filesystem loader → in-memory
@@ -239,8 +239,8 @@ class IntegrationWiringTest {
   }
 
   /**
-   * {@link ToolProviderFactory} fake that records the definitions it realises and hands back a
-   * stub provider exposing one descriptor per definition capability.
+   * {@link ToolProviderFactory} fake that records the definitions it realises and hands back a stub
+   * provider exposing one descriptor per definition capability.
    */
   private static final class RecordingToolProviderFactory implements ToolProviderFactory {
 

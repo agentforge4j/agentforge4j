@@ -21,9 +21,10 @@ public interface IntegrationToolProviderFactory {
   IntegrationType supportedType();
 
   /**
-   * Builds the tool provider for an integration of the {@linkplain #supportedType() supported
-   * type}, interpreting its type-specific {@code config} JSON with the collaborators supplied by
-   * {@code context} (for example the shared Jackson mapper).
+   * Builds the tool provider for an integration of the
+   * {@linkplain #supportedType() supported type}, interpreting its type-specific {@code config}
+   * JSON with the collaborators supplied by {@code context} (for example the shared Jackson
+   * mapper).
    *
    * @param definition the integration to realise; its type must equal {@link #supportedType()}
    * @param context    framework-supplied collaborators; never {@code null}

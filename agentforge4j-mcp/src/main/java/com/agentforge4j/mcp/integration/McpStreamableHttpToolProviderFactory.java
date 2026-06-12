@@ -18,8 +18,8 @@ import java.util.Map;
  * {@link McpIntegrations#DEFAULT_REQUEST_TIMEOUT} when omitted). The resulting provider id is
  * {@code "mcp:" + definition.id()}.
  * <p>
- * Discovered via {@link java.util.ServiceLoader}; the connection is not started here — the
- * provider connects lazily on first use.
+ * Discovered via {@link java.util.ServiceLoader}; the connection is not started here — the provider
+ * connects lazily on first use.
  */
 public final class McpStreamableHttpToolProviderFactory implements IntegrationToolProviderFactory {
 

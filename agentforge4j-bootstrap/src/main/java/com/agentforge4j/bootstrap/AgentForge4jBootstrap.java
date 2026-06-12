@@ -5,7 +5,6 @@ import com.agentforge4j.config.loader.integration.FileSystemIntegrationConfigLoa
 import com.agentforge4j.core.agent.AgentRepository;
 import com.agentforge4j.core.runtime.WorkflowRuntime;
 import com.agentforge4j.core.spi.integration.IntegrationConfigLoader;
-import com.agentforge4j.core.spi.integration.IntegrationDefinition;
 import com.agentforge4j.core.spi.integration.IntegrationRepository;
 import com.agentforge4j.core.spi.integration.MutableIntegrationRepository;
 import com.agentforge4j.core.spi.integration.ToolProviderFactory;
@@ -56,11 +55,11 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Map.Entry;
+import java.util.function.Function;
 import org.apache.commons.lang3.ObjectUtils;
 
 /**
- * Static entry point for assembling an {@link AgentForge4j} facade with framework-agnostic
- * defaults.
+ * Static entry point for assembling an {@link AgentForge4j} facade with framework-agnostic defaults.
  *
  * <pre>{@code
  * AgentForge4j af = AgentForge4jBootstrap.defaults().build();
@@ -73,9 +72,9 @@ public final class AgentForge4jBootstrap {
   }
 
   /**
-   * Returns a new {@link Builder} pre-populated with all framework defaults. No arguments are
-   * required; the returned builder produces a fully functional {@link AgentForge4j} instance when
-   * {@link Builder#build()} is called without any overrides.
+   * Returns a new {@link Builder} pre-populated with all framework defaults. No arguments are required; the returned
+   * builder produces a fully functional {@link AgentForge4j} instance when {@link Builder#build()} is called without
+   * any overrides.
    *
    * @return new builder; never {@code null}
    */
@@ -90,8 +89,7 @@ public final class AgentForge4jBootstrap {
    * passing null is always a bug. To restore a default, build a new instance.
    *
    * <p>{@link #withLlmProvider(LlmProviderConfig)} is <em>additive</em> across providers
-   * and last-write-wins within a provider key. All other {@code with*} methods are
-   * last-write-wins.
+   * and last-write-wins within a provider key. All other {@code with*} methods are last-write-wins.
    */
   public static final class Builder {
 
@@ -228,9 +226,8 @@ public final class AgentForge4jBootstrap {
     }
 
     /**
-     * Configures the LLM retry policy. When {@code maxAttempts > 1}, the assembled
-     * {@link LlmClientResolver} is automatically wrapped with {@link RetryingLlmClientResolver}
-     * using this policy.
+     * Configures the LLM retry policy. When {@code maxAttempts > 1}, the assembled {@link LlmClientResolver} is
+     * automatically wrapped with {@link RetryingLlmClientResolver} using this policy.
      *
      * <p>Has no effect if {@link #withLlmClientResolver(LlmClientResolver)} was also
      * called — an explicit resolver is never wrapped automatically.
@@ -300,8 +297,7 @@ public final class AgentForge4jBootstrap {
     /**
      * Overrides where {@link com.agentforge4j.core.command.CreateFileCommand} content is written.
      *
-     * @param fileSinkPath path used to create a
-     *                     {@link com.agentforge4j.runtime.command.LocalFileSink} instance
+     * @param fileSinkPath path used to create a {@link com.agentforge4j.runtime.command.LocalFileSink} instance
      *
      * @return this builder
      */
@@ -348,8 +344,8 @@ public final class AgentForge4jBootstrap {
     }
 
     /**
-     * Overrides the resolver that maps a capability tier to a concrete model per provider. When not
-     * set, a {@link ConfigModelTierResolver} built from the shipped defaults merged with any
+     * Overrides the resolver that maps a capability tier to a concrete model per provider. When not set, a
+     * {@link ConfigModelTierResolver} built from the shipped defaults merged with any
      * {@code agentforge4j.llm.model-tiers.<provider>.<tier>} overrides is used.
      *
      * @param modelTierResolver resolver instance; must not be {@code null}
@@ -363,16 +359,14 @@ public final class AgentForge4jBootstrap {
     }
 
     /**
-     * Provides pre-built tool providers (for example MCP servers) to expose to the runtime.
-     * Configuring any tool support enables the tool-execution chokepoint and registers the
-     * {@code TOOL_INVOCATION} handler; with none configured, tool invocation is unavailable and
-     * behaviour is unchanged.
+     * Provides pre-built tool providers (for example MCP servers) to expose to the runtime. Configuring any tool
+     * support enables the tool-execution chokepoint and registers the {@code TOOL_INVOCATION} handler; with none
+     * configured, tool invocation is unavailable and behaviour is unchanged.
      *
      * <p>These providers are merged with any configured integrations source into the single
-     * {@link IntegrationToolProviderResolver}; the two coexist unless they expose the same
-     * capability, which fails fast. Has no effect if
-     * {@link #withToolProviderResolver(ToolProviderResolver)} is set — an explicit resolver is the
-     * sole resolver.
+     * {@link IntegrationToolProviderResolver}; the two coexist unless they expose the same capability, which fails
+     * fast. Has no effect if {@link #withToolProviderResolver(ToolProviderResolver)} is set — an explicit resolver is
+     * the sole resolver.
      *
      * @param toolProviders providers to expose; must not be {@code null}
      *
@@ -385,8 +379,8 @@ public final class AgentForge4jBootstrap {
     }
 
     /**
-     * Overrides the capability resolver (for example a platform binding-aware resolver). When set,
-     * it is the sole resolver and {@link #withToolProviders(List)} is not used to build one.
+     * Overrides the capability resolver (for example a platform binding-aware resolver). When set, it is the sole
+     * resolver and {@link #withToolProviders(List)} is not used to build one.
      *
      * @param toolProviderResolver resolver instance; must not be {@code null}
      *
@@ -440,14 +434,13 @@ public final class AgentForge4jBootstrap {
     }
 
     /**
-     * Opts in to loading integration definitions from top-level {@code *.json} files in the given
-     * directory at build time. Loaded definitions are saved into the integration repository and
-     * resolved into tool providers through the discovered {@code IntegrationToolProviderFactory}
-     * contributions, enabling tool support.
+     * Opts in to loading integration definitions from top-level {@code *.json} files in the given directory at build
+     * time. Loaded definitions are saved into the integration repository and resolved into tool providers through the
+     * discovered {@code IntegrationToolProviderFactory} contributions, enabling tool support.
      *
      * <p>Has no effect if {@link #withToolProviderResolver(ToolProviderResolver)} is also set —
-     * an explicit resolver is the sole resolver. Coexists with {@link #withToolProviders(List)}:
-     * the two sources are merged into one resolver and only a shared capability fails fast.
+     * an explicit resolver is the sole resolver. Coexists with {@link #withToolProviders(List)}: the two sources are
+     * merged into one resolver and only a shared capability fails fast.
      *
      * @param integrationsDir integrations root directory; must be an existing directory
      *
@@ -461,8 +454,8 @@ public final class AgentForge4jBootstrap {
     }
 
     /**
-     * Overrides the integration definition loader. When set, it is used instead of the filesystem
-     * loader over {@link #withIntegrationsDir(Path)}.
+     * Overrides the integration definition loader. When set, it is used instead of the filesystem loader over
+     * {@link #withIntegrationsDir(Path)}.
      *
      * @param integrationConfigLoader loader instance; must not be {@code null}
      *
@@ -475,8 +468,8 @@ public final class AgentForge4jBootstrap {
     }
 
     /**
-     * Overrides the integration repository that loaded definitions are saved into and the
-     * capability resolver reads from. Defaults to an in-memory repository.
+     * Overrides the integration repository that loaded definitions are saved into and the capability resolver reads
+     * from. Defaults to an in-memory repository.
      *
      * @param integrationRepository repository instance; must not be {@code null}
      *
@@ -489,9 +482,8 @@ public final class AgentForge4jBootstrap {
     }
 
     /**
-     * Overrides the factory that realises integration definitions as tool providers. Defaults to
-     * the {@link ServiceLoaderToolProviderFactory} aggregating the discovered per-type
-     * contributions.
+     * Overrides the factory that realises integration definitions as tool providers. Defaults to the
+     * {@link ServiceLoaderToolProviderFactory} aggregating the discovered per-type contributions.
      *
      * @param toolProviderFactory factory instance; must not be {@code null}
      *
@@ -583,8 +575,8 @@ public final class AgentForge4jBootstrap {
     }
 
     /**
-     * Adds or replaces programmatic LLM provider configuration. Additive across provider keys;
-     * last-write-wins within the same provider key.
+     * Adds or replaces programmatic LLM provider configuration. Additive across provider keys; last-write-wins within
+     * the same provider key.
      *
      * @param config provider configuration; must not be {@code null}
      *
@@ -597,8 +589,7 @@ public final class AgentForge4jBootstrap {
     }
 
     /**
-     * Builds the {@link AgentForge4j} facade, assembling all components with defaults for any
-     * overrides not set.
+     * Builds the {@link AgentForge4j} facade, assembling all components with defaults for any overrides not set.
      *
      * @return immutable facade; never {@code null}
      *
@@ -681,7 +672,8 @@ public final class AgentForge4jBootstrap {
       AgentInvoker resolvedInvoker = RuntimeAssembler.agentInvoker(
           resolvedAgentRepo, resolvedResolver, resolvedRenderer, resolvedParser,
           resolvedMapper, resolvedRecorder, resolvedStrategy, cacheEnabled,
-          resolvedObserver, resolvedTierResolver, agentInvoker, cacheEnabledSet, resolvedToolCatalog);
+          resolvedObserver, resolvedTierResolver, agentInvoker, cacheEnabledSet,
+          resolvedToolCatalog);
 
       WorkflowRuntime resolvedRuntime = RuntimeAssembler.runtime(
           resolvedWorkflowRepo, resolvedStateRepo, resolvedEventLog, resolvedClock,
@@ -699,20 +691,18 @@ public final class AgentForge4jBootstrap {
     }
 
     /**
-     * Resolves tool support from the configured tool sources; both parts are {@code null} when no
-     * tool support is configured. An explicit
-     * {@link #withToolProviderResolver(ToolProviderResolver)} is the sole resolver. Otherwise a
-     * single {@link IntegrationToolProviderResolver} merges two sources into one capability index:
-     * the active definitions of a configured integrations source (directory, loader, or repository)
-     * and the pre-built providers from {@link #withToolProviders(List)}. The two coexist; the only
-     * failure is a per-capability collision across the union, rejected by the resolver. The
-     * integration repository is returned (for component exposure) only when an integrations source
-     * was configured.
+     * Resolves tool support from the configured tool sources; both parts are {@code null} when no tool support is
+     * configured. An explicit {@link #withToolProviderResolver(ToolProviderResolver)} is the sole resolver. Otherwise a
+     * single {@link IntegrationToolProviderResolver} merges two sources into one capability index: the active
+     * definitions of a configured integrations source (directory, loader, or repository) and the pre-built providers
+     * from {@link #withToolProviders(List)}. The two coexist; the only failure is a per-capability collision across the
+     * union, rejected by the resolver. The integration repository is returned (for component exposure) only when an
+     * integrations source was configured.
      *
      * @param resolvedMapper the resolved Jackson mapper for the filesystem integration loader
      *
-     * @return the resolver driving tool support plus the integration repository feeding it (the
-     *     repository only on the integrations path)
+     * @return the resolver driving tool support plus the integration repository feeding it (the repository only on the
+     * integrations path)
      */
     private ToolSupport resolveToolSupport(ObjectMapper resolvedMapper) {
       if (toolProviderResolver != null) {
@@ -725,28 +715,60 @@ public final class AgentForge4jBootstrap {
       }
       MutableIntegrationRepository resolvedIntegrationRepository = ObjectUtils.getIfNull(
           integrationRepository, InMemoryIntegrationRepository::new);
+      resolveAndSaveIntegrations(resolvedMapper, resolvedIntegrationRepository);
+      return new ToolSupport(resolveToolProviderResolver(
+          resolvedMapper, resolvedIntegrationRepository, integrationsConfigured),
+          integrationsConfigured ? resolvedIntegrationRepository : null);
+    }
+
+    private void resolveAndSaveIntegrations(ObjectMapper resolvedMapper,
+        MutableIntegrationRepository resolvedIntegrationRepository) {
       IntegrationConfigLoader resolvedIntegrationLoader = integrationConfigLoader;
       if (resolvedIntegrationLoader == null && integrationsDir != null) {
         resolvedIntegrationLoader = new FileSystemIntegrationConfigLoader(
             resolvedMapper, new ClasspathSchemaProvider(), integrationsDir);
       }
       if (resolvedIntegrationLoader != null) {
-        for (IntegrationDefinition definition : resolvedIntegrationLoader.load()) {
-          resolvedIntegrationRepository.save(definition);
-        }
+        resolvedIntegrationLoader.load().forEach(resolvedIntegrationRepository::save);
       }
-      ToolProviderFactory resolvedFactory = ObjectUtils.getIfNull(toolProviderFactory,
-          () -> ServiceLoaderToolProviderFactory.discover(resolvedMapper));
-      ToolProviderResolver resolver = new IntegrationToolProviderResolver(
-          resolvedIntegrationRepository, resolvedFactory, toolProviders);
-      return new ToolSupport(resolver,
-          integrationsConfigured ? resolvedIntegrationRepository : null);
+    }
+
+    private ToolProviderResolver resolveToolProviderResolver(ObjectMapper resolvedMapper,
+        MutableIntegrationRepository resolvedIntegrationRepository,
+        boolean integrationsConfigured) {
+      return new IntegrationToolProviderResolver(resolvedIntegrationRepository,
+          resolveToolProviderFactory(resolvedMapper, integrationsConfigured), toolProviders);
     }
 
     /**
-     * The resolved tool-support pair: the capability resolver driving tool execution and, on the
-     * integrations path only, the {@link IntegrationRepository} feeding it. Both are {@code null}
-     * when no tool support is configured.
+     * Resolves the factory that realises active integration definitions as tool providers. An explicitly configured
+     * factory always wins. Otherwise the ServiceLoader-discovered aggregator is built only when an integrations source
+     * is configured; on the pre-built-providers-only path the (empty) repository yields no definitions to realise, so
+     * the factory is never invoked and the discovery scan is skipped.
+     *
+     * @param resolvedMapper         the shared Jackson mapper threaded into discovered contributions
+     * @param integrationsConfigured whether an integrations source (dir, loader, or repository) was configured
+     *
+     * @return the resolved factory; never {@code null}
+     */
+    private ToolProviderFactory resolveToolProviderFactory(ObjectMapper resolvedMapper,
+        boolean integrationsConfigured) {
+      if (toolProviderFactory != null) {
+        return toolProviderFactory;
+      }
+      if (!integrationsConfigured) {
+        return definition -> {
+          throw new IllegalStateException(
+              "No ToolProviderFactory is configured and no integrations source is enabled; "
+                  + "this factory must not be invoked");
+        };
+      }
+      return ServiceLoaderToolProviderFactory.discover(resolvedMapper);
+    }
+
+    /**
+     * The resolved tool-support pair: the capability resolver driving tool execution and, on the integrations path
+     * only, the {@link IntegrationRepository} feeding it. Both are {@code null} when no tool support is configured.
      */
     private record ToolSupport(ToolProviderResolver resolver,
                                IntegrationRepository integrationRepository) {
@@ -765,36 +787,20 @@ public final class AgentForge4jBootstrap {
     }
 
     /**
-     * Applies non-LLM environment / system-property values as defaults for fields not already set
-     * programmatically. Programmatic {@code with*} calls always win.
+     * Applies non-LLM environment / system-property values as defaults for fields not already set programmatically.
+     * Programmatic {@code with*} calls always win.
      *
      * @param config merged env/sys-prop map from {@link ConfigReader#read()}
      */
     private void applyConfig(Map<String, String> config) {
-      if (agentsDir == null) {
-        String val = config.get("agentforge4j.agents.path");
-        if (val != null) {
-          withAgentsDir(Path.of(val));
-        }
-      }
-      if (workflowsDir == null) {
-        String val = config.get("agentforge4j.workflows.path");
-        if (val != null) {
-          withWorkflowsDir(Path.of(val));
-        }
-      }
-      if (integrationsDir == null) {
-        String val = config.get("agentforge4j.integrations.dir");
-        if (val != null) {
-          withIntegrationsDir(Path.of(val));
-        }
-      }
-      if (fileSinkPath == null) {
-        String val = config.get("agentforge4j.filesink.path");
-        if (val != null) {
-          withFileSinkPath(Path.of(val));
-        }
-      }
+      applyConfigPath(agentsDir, config.get("agentforge4j.agents.path"), this::withAgentsDir);
+      applyConfigPath(workflowsDir, config.get("agentforge4j.workflows.path"),
+          this::withWorkflowsDir);
+      applyConfigPath(integrationsDir, config.get("agentforge4j.integrations.dir"),
+          this::withIntegrationsDir);
+      applyConfigPath(fileSinkPath, config.get("agentforge4j.filesink.path"),
+          this::withFileSinkPath);
+
       if (!cacheEnabledSet) {
         String val = config.get("agentforge4j.llm.cache.enabled");
         if (val != null) {
@@ -828,11 +834,17 @@ public final class AgentForge4jBootstrap {
       }
     }
 
+    private static void applyConfigPath(Path path, String configValue, Function<Path, Builder> with) {
+      if (path == null && configValue != null) {
+        with.apply(Path.of(configValue));
+      }
+    }
+
     /**
-     * Parses {@code agentforge4j.llm.model-tiers.<provider>.<tier>=<model>} entries from the merged
-     * configuration into a provider→tier→model override map. The tier name is case-insensitive and
-     * must match a {@link ModelTier} constant. Provider names may contain dashes (e.g.
-     * {@code azure-openai}); the tier is the segment after the final dot.
+     * Parses {@code agentforge4j.llm.model-tiers.<provider>.<tier>=<model>} entries from the merged configuration into
+     * a provider→tier→model override map. The tier name is case-insensitive and must match a {@link ModelTier}
+     * constant. Provider names may contain dashes (e.g. {@code azure-openai}); the tier is the segment after the final
+     * dot.
      *
      * @param config merged env/sys-prop map from {@link ConfigReader#read()}
      *
@@ -878,8 +890,7 @@ public final class AgentForge4jBootstrap {
       } catch (IllegalArgumentException exception) {
         throw new IllegalStateException(
             ("Invalid tier '%s' in '%s' — valid tiers: LITE, STANDARD, POWERFUL")
-                .formatted(tierName, key),
-            exception);
+                .formatted(tierName, key), exception);
       }
     }
   }
