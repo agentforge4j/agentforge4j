@@ -34,13 +34,13 @@ final class BedrockModelRegistry {
 
   private static final List<Entry> ENTRIES = List.of(
       new Entry("anthropic.", BedrockModelFamily.ANTHROPIC, BedrockTransportType.INVOKE_MODEL,
-          new BedrockModelCapabilities(true, 200_000)),
+          new BedrockModelCapabilities(true)),
       new Entry("meta.llama", BedrockModelFamily.LLAMA, BedrockTransportType.CONVERSE,
-          new BedrockModelCapabilities(false, 128_000)),
+          new BedrockModelCapabilities(false)),
       new Entry("amazon.nova", BedrockModelFamily.NOVA, BedrockTransportType.CONVERSE,
-          new BedrockModelCapabilities(false, 300_000)),
+          new BedrockModelCapabilities(false)),
       new Entry("amazon.titan", BedrockModelFamily.TITAN, BedrockTransportType.CONVERSE,
-          new BedrockModelCapabilities(false, 8_000)));
+          new BedrockModelCapabilities(false)));
 
   /**
    * Resolves {@code modelId} to its family, transport, and capabilities.

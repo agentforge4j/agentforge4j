@@ -28,7 +28,7 @@ import static org.mockito.Mockito.when;
 class ConverseTransportTest {
 
   private static final String NOVA = "amazon.nova-lite-v1:0";
-  private final BedrockModelCapabilities novaCaps = new BedrockModelCapabilities(false, 300_000);
+  private final BedrockModelCapabilities novaCaps = new BedrockModelCapabilities(false);
 
   private static ConverseResponse responseWith(String text, TokenUsage usage) {
     ConverseResponse.Builder builder = ConverseResponse.builder()
