@@ -60,7 +60,15 @@ class FileSystemIntegrationConfigLoaderTest {
         {
           "displayName": "Airtable",
           "type": "HTTP_TOOL",
-          "config": [ { "capability": "airtable.list_records", "method": "GET" } ],
+          "config": [
+            {
+              "capability": "airtable.list_records",
+              "method": "GET",
+              "urlTemplate": "https://api.airtable.com/v0/{baseId}",
+              "inputSchema": { "type": "object", "properties": { "baseId": { "type": "string" } } },
+              "bodyMode": "NONE"
+            }
+          ],
           "capabilities": [ { "capability": "airtable.list_records" } ]
         }
         """);

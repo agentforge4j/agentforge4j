@@ -66,6 +66,11 @@
     </dependency>
 
     <dependency>
+      <groupId>org.agentforge4j</groupId>
+      <artifactId>agentforge4j-tools-http</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
       <groupId>org.junit.jupiter</groupId>
       <artifactId>junit-jupiter</artifactId>
       <scope>test</scope>

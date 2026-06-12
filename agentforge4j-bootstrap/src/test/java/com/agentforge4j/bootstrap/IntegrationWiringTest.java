@@ -151,6 +151,44 @@ class IntegrationWiringTest {
   }
 
   @Test
+  void httpToolIntegrationIsDiscoveredAndResolvesWithoutAnExplicitFactory() throws IOException {
+    // No withToolProviderFactory: the real ServiceLoader aggregator must discover the
+    // HttpToolProviderFactory (agentforge4j-tools-http is a test-scope dependency here), realise the
+    // HTTP_TOOL definition through the shipped mapper (ISO-8601 timeout included), and resolve the
+    // capability — i.e. the missing-contributor fail-fast no longer fires for HTTP_TOOL.
+    Files.writeString(integrationsDir.resolve("airtable.json"), """
+        {
+          "id": "airtable",
+          "displayName": "Airtable",
+          "type": "HTTP_TOOL",
+          "config": [
+            {
+              "capability": "airtable.list_records",
+              "method": "GET",
+              "urlTemplate": "https://api.airtable.com/v0/{baseId}",
+              "inputSchema": {
+                "type": "object",
+                "properties": { "baseId": { "type": "string" } }
+              },
+              "bodyMode": "NONE",
+              "timeout": "PT5S",
+              "secretHeaders": { "Authorization": "AIRTABLE_TOKEN" }
+            }
+          ],
+          "capabilities": [ { "capability": "airtable.list_records" } ]
+        }
+        """);
+
+    AgentForge4j af = AgentForge4jBootstrap.defaults()
+        .withIntegrationsDir(integrationsDir)
+        .build();
+
+    ResolvedTool resolved = af.components().toolProviderResolver()
+        .resolve("airtable.list_records", new ToolScope("wf", "run"));
+    assertThat(resolved.provider().providerId()).isEqualTo("http:airtable");
+  }
+
+  @Test
   void integrationsAndExplicitToolProviderSharingACapabilityFailFast() throws IOException {
     writeGithubDefinition(true);
     RecordingToolProviderFactory factory = new RecordingToolProviderFactory();

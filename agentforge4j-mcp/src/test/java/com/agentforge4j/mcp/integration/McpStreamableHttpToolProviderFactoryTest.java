@@ -3,6 +3,7 @@ package com.agentforge4j.mcp.integration;
 import com.agentforge4j.core.spi.integration.IntegrationCapability;
 import com.agentforge4j.core.spi.integration.IntegrationDefinition;
 import com.agentforge4j.core.spi.integration.IntegrationType;
+import com.agentforge4j.core.spi.integration.SecretResolver;
 import com.agentforge4j.core.spi.integration.ToolProviderFactoryContext;
 import com.agentforge4j.core.spi.tool.ToolProvider;
 import com.agentforge4j.mcp.client.McpToolProvider;
@@ -17,8 +18,9 @@ class McpStreamableHttpToolProviderFactoryTest {
 
   private final McpStreamableHttpToolProviderFactory factory =
       new McpStreamableHttpToolProviderFactory();
+  private final SecretResolver secretResolver = reference -> reference;
   private final ToolProviderFactoryContext context =
-      new ToolProviderFactoryContext(new ObjectMapper());
+      new ToolProviderFactoryContext(new ObjectMapper(), secretResolver);
 
   @Test
   void supportedType_isMcpStreamableHttp() {

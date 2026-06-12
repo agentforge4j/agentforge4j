@@ -26,7 +26,7 @@
     },
     "config": {
       "type": ["object", "array"],
-      "description": "Type-specific payload (envelope-level here; refined per type in a later phase). MCP_STDIO / MCP_STREAMABLE_HTTP: an mcp_server_config object (name, providerId, transport, command, url, envJson, headersJson, enabled). HTTP_TOOL: an array of HttpEndpointDefinition objects (capability, displayName, description, method, urlTemplate, inputSchema, outputSchema, queryArgs, bodyMode, staticHeaders, secretHeaders, timeout, maxRetries, retryNonIdempotent, maxResponseBytes)."
+      "description": "Type-specific payload. MCP_STDIO / MCP_STREAMABLE_HTTP: an mcp_server_config object (name, providerId, transport, command, url, envJson, headersJson, enabled). HTTP_TOOL: an array of HttpEndpointDefinition objects, validated against #/$defs/httpEndpoint by the conditional below."
     },
     "capabilities": {
       "type": "array",
@@ -51,6 +51,84 @@
             "default": false,
             "description": "Whether the capability mutates remote state (recommend gating with REQUIRE_APPROVAL)."
           }
+        }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "required": ["type"],
+        "properties": { "type": { "const": "HTTP_TOOL" } }
+      },
+      "then": {
+        "properties": {
+          "config": {
+            "type": "array",
+            "items": { "$ref": "#/$defs/httpEndpoint" }
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "httpEndpoint": {
+      "type": "object",
+      "required": ["capability", "method", "urlTemplate", "inputSchema", "bodyMode"],
+      "additionalProperties": false,
+      "description": "One HTTP_TOOL endpoint = one capability (OSS HttpEndpointDefinition).",
+      "properties": {
+        "capability": {
+          "type": "string",
+          "pattern": "^[a-z0-9_]+\\.[a-z0-9_]+$",
+          "description": "Logical capability id, lowercase <domain>.<verb_object>."
+        },
+        "displayName": { "type": ["string", "null"] },
+        "description": { "type": ["string", "null"] },
+        "method": {
+          "type": "string",
+          "enum": ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD"]
+        },
+        "urlTemplate": {
+          "type": "string",
+          "pattern": "^https?://",
+          "description": "Absolute http/https URL with {name} placeholders."
+        },
+        "inputSchema": {
+          "type": "object",
+          "description": "JSON Schema for the tool arguments; non-null."
+        },
+        "outputSchema": { "type": ["object", "null"] },
+        "queryArgs": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "bodyMode": {
+          "type": "string",
+          "enum": ["NONE", "JSON"]
+        },
+        "staticHeaders": {
+          "type": "object",
+          "additionalProperties": { "type": "string" }
+        },
+        "secretHeaders": {
+          "type": "object",
+          "additionalProperties": { "type": "string" },
+          "description": "Header name to secret-reference key, resolved at invoke."
+        },
+        "timeout": {
+          "type": ["string", "null"],
+          "description": "ISO-8601 duration (e.g. PT30S), or null for the provider default."
+        },
+        "maxRetries": {
+          "type": "integer",
+          "minimum": -1,
+          "description": "Retry budget; -1 means unset."
+        },
+        "retryNonIdempotent": { "type": "boolean" },
+        "maxResponseBytes": {
+          "type": ["integer", "null"],
+          "minimum": 1
         }
       }
     }

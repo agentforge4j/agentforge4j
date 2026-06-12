@@ -4,9 +4,11 @@ import com.agentforge4j.config.loader.LoadedConfiguration;
 import com.agentforge4j.config.loader.integration.FileSystemIntegrationConfigLoader;
 import com.agentforge4j.core.agent.AgentRepository;
 import com.agentforge4j.core.runtime.WorkflowRuntime;
+import com.agentforge4j.core.spi.integration.EnvironmentSecretResolver;
 import com.agentforge4j.core.spi.integration.IntegrationConfigLoader;
 import com.agentforge4j.core.spi.integration.IntegrationRepository;
 import com.agentforge4j.core.spi.integration.MutableIntegrationRepository;
+import com.agentforge4j.core.spi.integration.SecretResolver;
 import com.agentforge4j.core.spi.integration.ToolProviderFactory;
 import com.agentforge4j.core.spi.tool.PendingToolInvocationStore;
 import com.agentforge4j.core.spi.tool.ToolCatalog;
@@ -118,6 +120,7 @@ public final class AgentForge4jBootstrap {
     private IntegrationConfigLoader integrationConfigLoader;
     private MutableIntegrationRepository integrationRepository;
     private ToolProviderFactory toolProviderFactory;
+    private SecretResolver secretResolver;
 
     private boolean cacheEnabled = false;
     private boolean cacheEnabledSet = false;
@@ -496,6 +499,22 @@ public final class AgentForge4jBootstrap {
     }
 
     /**
+     * Overrides the resolver that turns a secret-reference key into its live value at invoke time
+     * (for example an HTTP integration's {@code secretHeaders}). Defaults to
+     * {@link EnvironmentSecretResolver}, which reads process environment variables then system
+     * properties. An embedding application supplies its own implementation backed by its secret
+     * store.
+     *
+     * @param secretResolver resolver instance; must not be {@code null}
+     *
+     * @return this builder
+     */
+    public Builder withSecretResolver(SecretResolver secretResolver) {
+      this.secretResolver = Validate.notNull(secretResolver, "secretResolver must not be null");
+      return this;
+    }
+
+    /**
      * Sets the maximum nested workflow depth forwarded to {@link WorkflowRuntimeBuilder}.
      *
      * @param maxNestingDepth maximum nesting depth (at least 1)
@@ -763,7 +782,9 @@ public final class AgentForge4jBootstrap {
                   + "this factory must not be invoked");
         };
       }
-      return ServiceLoaderToolProviderFactory.discover(resolvedMapper);
+      SecretResolver resolvedSecretResolver = ObjectUtils.getIfNull(secretResolver,
+          EnvironmentSecretResolver::new);
+      return ServiceLoaderToolProviderFactory.discover(resolvedMapper, resolvedSecretResolver);
     }
 
     /**

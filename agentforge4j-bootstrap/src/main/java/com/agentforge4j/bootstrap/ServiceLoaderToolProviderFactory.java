@@ -3,6 +3,7 @@ package com.agentforge4j.bootstrap;
 import com.agentforge4j.core.spi.integration.IntegrationDefinition;
 import com.agentforge4j.core.spi.integration.IntegrationToolProviderFactory;
 import com.agentforge4j.core.spi.integration.IntegrationType;
+import com.agentforge4j.core.spi.integration.SecretResolver;
 import com.agentforge4j.core.spi.integration.ToolProviderFactory;
 import com.agentforge4j.core.spi.integration.ToolProviderFactoryContext;
 import com.agentforge4j.core.spi.tool.ToolProvider;
@@ -37,18 +38,20 @@ public final class ServiceLoaderToolProviderFactory implements ToolProviderFacto
   /**
    * Creates an aggregator over explicit contributions (typically used in tests).
    *
-   * @param contributions no null elements, at most one contribution per {@link IntegrationType}
-   * @param objectMapper  the single shared Jackson mapper threaded into each contribution; must not
-   *                      be {@code null}
+   * @param contributions  no null elements, at most one contribution per {@link IntegrationType}
+   * @param objectMapper   the single shared Jackson mapper threaded into each contribution; must
+   *                       not be {@code null}
+   * @param secretResolver the secret-reference resolver threaded into each contribution; must not
+   *                       be {@code null}
    *
    * @throws IllegalStateException if two contributions claim the same type
    */
   public ServiceLoaderToolProviderFactory(
-      Collection<IntegrationToolProviderFactory> contributions, ObjectMapper objectMapper) {
+      Collection<IntegrationToolProviderFactory> contributions, ObjectMapper objectMapper,
+      SecretResolver secretResolver) {
     this.contributionsByType = buildContributionMap(
         Validate.notNull(contributions, "contributions must not be null"));
-    this.context = new ToolProviderFactoryContext(
-        Validate.notNull(objectMapper, "objectMapper must not be null"));
+    this.context = new ToolProviderFactoryContext(objectMapper, secretResolver);
   }
 
   /**
@@ -57,19 +60,22 @@ public final class ServiceLoaderToolProviderFactory implements ToolProviderFacto
    * An empty result is not an error: the aggregator only fails when asked to realise a definition
    * whose type has no contribution.
    *
-   * @param objectMapper the single shared Jackson mapper threaded into each contribution; must not
-   *                     be {@code null}
+   * @param objectMapper   the single shared Jackson mapper threaded into each contribution; must
+   *                       not be {@code null}
+   * @param secretResolver the secret-reference resolver threaded into each contribution; must not
+   *                       be {@code null}
    *
    * @return aggregator over all discovered contributions
    */
-  public static ServiceLoaderToolProviderFactory discover(ObjectMapper objectMapper) {
+  public static ServiceLoaderToolProviderFactory discover(ObjectMapper objectMapper,
+      SecretResolver secretResolver) {
     List<IntegrationToolProviderFactory> contributions = new ArrayList<>();
     ServiceLoader<IntegrationToolProviderFactory> loader = ServiceLoader.load(
         IntegrationToolProviderFactory.class, Thread.currentThread().getContextClassLoader());
     loader.forEach(contributions::add);
     LOG.log(System.Logger.Level.INFO,
         "Discovered {0} integration tool provider factory contribution(s)", contributions.size());
-    return new ServiceLoaderToolProviderFactory(contributions, objectMapper);
+    return new ServiceLoaderToolProviderFactory(contributions, objectMapper, secretResolver);
   }
 
   @Override

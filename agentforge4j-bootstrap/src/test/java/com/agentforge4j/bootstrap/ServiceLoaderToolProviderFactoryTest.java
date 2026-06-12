@@ -4,6 +4,7 @@ import com.agentforge4j.core.spi.integration.IntegrationCapability;
 import com.agentforge4j.core.spi.integration.IntegrationDefinition;
 import com.agentforge4j.core.spi.integration.IntegrationToolProviderFactory;
 import com.agentforge4j.core.spi.integration.IntegrationType;
+import com.agentforge4j.core.spi.integration.SecretResolver;
 import com.agentforge4j.core.spi.integration.ToolProviderFactoryContext;
 import com.agentforge4j.core.spi.tool.ToolProvider;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -17,6 +18,7 @@ import static org.mockito.Mockito.mock;
 class ServiceLoaderToolProviderFactoryTest {
 
   private final ObjectMapper objectMapper = new ObjectMapper();
+  private final SecretResolver secretResolver = reference -> reference;
 
   @Test
   void create_routesDefinitionToContributionMatchingItsType() {
@@ -24,7 +26,8 @@ class ServiceLoaderToolProviderFactoryTest {
     ToolProvider httpProvider = mock(ToolProvider.class);
     ServiceLoaderToolProviderFactory factory = new ServiceLoaderToolProviderFactory(List.of(
         new FixedContribution(IntegrationType.MCP_STDIO, stdioProvider),
-        new FixedContribution(IntegrationType.MCP_STREAMABLE_HTTP, httpProvider)), objectMapper);
+        new FixedContribution(IntegrationType.MCP_STREAMABLE_HTTP, httpProvider)),
+        objectMapper, secretResolver);
 
     assertThat(factory.create(definition("github", IntegrationType.MCP_STDIO)))
         .isSameAs(stdioProvider);
@@ -33,21 +36,23 @@ class ServiceLoaderToolProviderFactoryTest {
   }
 
   @Test
-  void create_passesTheSharedMapperToTheContributionContext() {
+  void create_passesTheSharedMapperAndSecretResolverToTheContributionContext() {
     CapturingContribution contribution = new CapturingContribution();
     ServiceLoaderToolProviderFactory factory =
-        new ServiceLoaderToolProviderFactory(List.of(contribution), objectMapper);
+        new ServiceLoaderToolProviderFactory(List.of(contribution), objectMapper, secretResolver);
 
     factory.create(definition("github", IntegrationType.MCP_STDIO));
 
     assertThat(contribution.seenContext).isNotNull();
     assertThat(contribution.seenContext.objectMapper()).isSameAs(objectMapper);
+    assertThat(contribution.seenContext.secretResolver()).isSameAs(secretResolver);
   }
 
   @Test
   void create_failsFastNamingTypeAndIntegrationWhenNoContributionIsRegistered() {
     ServiceLoaderToolProviderFactory factory = new ServiceLoaderToolProviderFactory(List.of(
-        new FixedContribution(IntegrationType.MCP_STDIO, mock(ToolProvider.class))), objectMapper);
+        new FixedContribution(IntegrationType.MCP_STDIO, mock(ToolProvider.class))),
+        objectMapper, secretResolver);
 
     assertThatThrownBy(() -> factory.create(definition("airtable", IntegrationType.HTTP_TOOL)))
         .isInstanceOf(IllegalStateException.class)
@@ -62,7 +67,7 @@ class ServiceLoaderToolProviderFactoryTest {
     OtherStdioContribution second = new OtherStdioContribution();
 
     assertThatThrownBy(() -> new ServiceLoaderToolProviderFactory(List.of(first, second),
-        objectMapper))
+        objectMapper, secretResolver))
         .isInstanceOf(IllegalStateException.class)
         .hasMessageContaining("MCP_STDIO")
         .hasMessageContaining(FixedContribution.class.getName())
@@ -71,10 +76,11 @@ class ServiceLoaderToolProviderFactoryTest {
 
   @Test
   void discover_toleratesAnEmptyClasspathButFailsOnFirstUnroutableDefinition() {
-    // bootstrap declares no concrete provider module, so discovery here finds no contributions —
-    // the aggregator must still construct and only fail when asked to realise a definition.
+    // bootstrap declares no MCP provider module, so MCP_STDIO has no contribution (the test-scoped
+    // HTTP contributor does not match it) — the aggregator must still construct and only fail when
+    // asked to realise that unroutable type.
     ServiceLoaderToolProviderFactory factory =
-        ServiceLoaderToolProviderFactory.discover(objectMapper);
+        ServiceLoaderToolProviderFactory.discover(objectMapper, secretResolver);
 
     assertThatThrownBy(() -> factory.create(definition("github", IntegrationType.MCP_STDIO)))
         .isInstanceOf(IllegalStateException.class)

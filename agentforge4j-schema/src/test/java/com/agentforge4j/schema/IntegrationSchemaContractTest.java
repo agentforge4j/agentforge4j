@@ -58,11 +58,68 @@ class IntegrationSchemaContractTest {
         {
           "displayName": "Airtable",
           "type": "HTTP_TOOL",
-          "config": [ { "capability": "airtable.list_records", "method": "GET" } ],
+          "config": [
+            {
+              "capability": "airtable.list_records",
+              "method": "GET",
+              "urlTemplate": "https://api.airtable.com/v0/{baseId}/{table}",
+              "inputSchema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["baseId", "table"],
+                "properties": {
+                  "baseId": { "type": "string" },
+                  "table": { "type": "string" }
+                }
+              },
+              "bodyMode": "NONE",
+              "secretHeaders": { "Authorization": "AIRTABLE_TOKEN" },
+              "timeout": null,
+              "maxRetries": -1,
+              "maxResponseBytes": null
+            }
+          ],
           "capabilities": [ { "capability": "airtable.list_records", "mutating": false } ]
         }
         """);
     assertThat(violations).isEmpty();
+  }
+
+  @Test
+  void integrationSchema_rejectsHttpEndpointMissingRequiredFields() throws Exception {
+    // urlTemplate, inputSchema, and bodyMode are required on each HTTP endpoint.
+    List<Error> violations = validate("""
+        {
+          "displayName": "Airtable",
+          "type": "HTTP_TOOL",
+          "config": [ { "capability": "airtable.list_records", "method": "GET" } ],
+          "capabilities": [ { "capability": "airtable.list_records" } ]
+        }
+        """);
+    assertThat(violations).isNotEmpty();
+  }
+
+  @Test
+  void integrationSchema_rejectsHttpEndpointWithUnknownFieldOrBadMethod() throws Exception {
+    // additionalProperties:false on the endpoint, plus the method enum (no TRACE).
+    List<Error> violations = validate("""
+        {
+          "displayName": "Airtable",
+          "type": "HTTP_TOOL",
+          "config": [
+            {
+              "capability": "airtable.list_records",
+              "method": "TRACE",
+              "urlTemplate": "https://api.airtable.com/v0/x",
+              "inputSchema": { "type": "object" },
+              "bodyMode": "NONE",
+              "surpriseField": true
+            }
+          ],
+          "capabilities": [ { "capability": "airtable.list_records" } ]
+        }
+        """);
+    assertThat(violations).isNotEmpty();
   }
 
   @Test

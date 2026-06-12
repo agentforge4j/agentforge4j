@@ -10,19 +10,23 @@ import com.fasterxml.jackson.databind.ObjectMapper;
  * keeps contributors {@link java.util.ServiceLoader}-instantiable through their no-arg constructor
  * while still handing them the single bootstrap-owned instances they need.
  *
- * <p>Currently exposes the shared Jackson {@link ObjectMapper} that parses the integration
- * {@code config} payload. It is the stable seam for future shared collaborators (for example a
- * secret resolver) so that adding one grows this context only and does not change the
- * {@link IntegrationToolProviderFactory} SPI.
+ * <p>Exposes the shared Jackson {@link ObjectMapper} that parses the integration {@code config}
+ * payload and the {@link SecretResolver} that turns secret-reference keys into live values at
+ * invoke time. Carrying collaborators here keeps the {@link IntegrationToolProviderFactory} SPI
+ * stable: a contributor that needs a new shared collaborator reads it from this context rather than
+ * forcing an SPI signature change.
  *
- * @param objectMapper the single shared Jackson mapper; never {@code null}
+ * @param objectMapper   the single shared Jackson mapper; never {@code null}
+ * @param secretResolver the secret-reference resolver for contributors that read secrets (for
+ *                       example HTTP {@code secretHeaders}); never {@code null}
  */
-public record ToolProviderFactoryContext(ObjectMapper objectMapper) {
+public record ToolProviderFactoryContext(ObjectMapper objectMapper, SecretResolver secretResolver) {
 
   /**
-   * Validates that {@code objectMapper} is non-null.
+   * Validates that {@code objectMapper} and {@code secretResolver} are non-null.
    */
   public ToolProviderFactoryContext {
     Validate.notNull(objectMapper, "objectMapper must not be null");
+    Validate.notNull(secretResolver, "secretResolver must not be null");
   }
 }
