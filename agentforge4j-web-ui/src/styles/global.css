@@ -1,8 +1,26 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 @import './tokens.css';
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import 'tailwindcss';
+
+/*
+ * Map the semantic design tokens (defined in tokens.css) onto Tailwind's color
+ * namespace so utilities like bg-bg, text-fg, and border-border resolve to the
+ * runtime CSS variables. `inline` keeps the var() reference in the generated
+ * utilities instead of emitting a (here, self-referential) theme variable.
+ */
+@theme inline {
+  --color-bg:          var(--color-bg);
+  --color-bg-elevated: var(--color-bg-elevated);
+  --color-fg:          var(--color-fg);
+  --color-fg-muted:    var(--color-fg-muted);
+  --color-border:      var(--color-border);
+  --color-brand:       var(--color-brand);
+  --color-brand-ink:   var(--color-brand-ink);
+  --color-accent:      var(--color-accent);
+  --color-success:     var(--color-success);
+  --color-warning:     var(--color-warning);
+  --color-danger:      var(--color-danger);
+}
 
 *, *::before, *::after { box-sizing: border-box; }
 html { scroll-behavior: smooth; }
