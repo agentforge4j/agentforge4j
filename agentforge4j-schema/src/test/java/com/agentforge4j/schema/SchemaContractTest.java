@@ -4,20 +4,18 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.networknt.schema.JsonSchema;
-import com.networknt.schema.JsonSchemaFactory;
-import com.networknt.schema.SpecVersion;
-import com.networknt.schema.ValidationMessage;
+import com.networknt.schema.Error;
+import com.networknt.schema.Schema;
+import com.networknt.schema.SchemaLocation;
+import com.networknt.schema.SchemaRegistry;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.net.URI;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.lang.reflect.Method;
-import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
@@ -25,8 +23,7 @@ import org.junit.jupiter.api.Test;
 class SchemaContractTest {
 
   private static final ObjectMapper MAPPER = new ObjectMapper();
-  private static final JsonSchemaFactory SCHEMA_FACTORY =
-      JsonSchemaFactory.getInstance(SpecVersion.VersionFlag.V202012);
+  private static final SchemaRegistry SCHEMA_REGISTRY = SchemaRegistries.draft202012();
 
   private static final Path MODULE_ROOT = Path.of(".").toAbsolutePath().normalize();
   private static final Path REPO_ROOT = MODULE_ROOT.getParent();
@@ -65,9 +62,10 @@ class SchemaContractTest {
     for (ResourceValidationCase validationCase : cases) {
       JsonNode instance = MAPPER.readTree(Files.readString(validationCase.resourcePath()));
       JsonNode schemaNode = MAPPER.readTree(Files.readString(validationCase.schemaPath()));
-      JsonSchema schema = SCHEMA_FACTORY.getSchema(validationCase.schemaPath().toUri(), schemaNode);
-      Set<ValidationMessage> violations = schema.validate(instance);
-      for (ValidationMessage violation : violations) {
+      Schema schema = SCHEMA_REGISTRY.getSchema(
+          SchemaLocation.of(validationCase.schemaPath().toUri().toString()), schemaNode);
+      List<Error> violations = schema.validate(instance);
+      for (Error violation : violations) {
         String path = violationPath(violation);
         errors.add(formatError(
             validationCase.resourcePath(),
@@ -82,10 +80,10 @@ class SchemaContractTest {
 
   private static List<String> validate(Path schemaPath, JsonNode schemaNode) {
     try {
-      JsonSchema metaSchema = SCHEMA_FACTORY.getSchema(
-          URI.create("https://json-schema.org/draft/2020-12/schema"));
-      Set<ValidationMessage> violations = metaSchema.validate(schemaNode);
-      return violations.stream().map(ValidationMessage::getMessage).toList();
+      Schema metaSchema = SCHEMA_REGISTRY.getSchema(
+          SchemaLocation.of("https://json-schema.org/draft/2020-12/schema"));
+      List<Error> violations = metaSchema.validate(schemaNode);
+      return violations.stream().map(Error::getMessage).toList();
     } catch (RuntimeException e) {
       return List.of(e.getMessage());
     }
@@ -134,7 +132,7 @@ class SchemaContractTest {
     return ".*" + regex;
   }
 
-  private static String violationPath(ValidationMessage violation) {
+  private static String violationPath(Error violation) {
     String[] candidateMethods = {"getPath", "getInstanceLocation", "getEvaluationPath"};
     for (String methodName : candidateMethods) {
       try {

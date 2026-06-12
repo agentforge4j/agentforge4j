@@ -2,14 +2,14 @@ package com.agentforge4j.schema;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.networknt.schema.JsonSchema;
-import com.networknt.schema.JsonSchemaFactory;
-import com.networknt.schema.SpecVersion;
-import com.networknt.schema.ValidationMessage;
-import java.net.URI;
+import com.networknt.schema.Error;
+import com.networknt.schema.Schema;
+import com.networknt.schema.SchemaLocation;
+import com.networknt.schema.SchemaRegistry;
+import com.networknt.schema.SpecificationVersion;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.Set;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -22,22 +22,22 @@ import static org.assertj.core.api.Assertions.assertThat;
 class IntegrationSchemaContractTest {
 
   private static final ObjectMapper MAPPER = new ObjectMapper();
-  private static final JsonSchemaFactory SCHEMA_FACTORY =
-      JsonSchemaFactory.getInstance(SpecVersion.VersionFlag.V202012);
+  private static final SchemaRegistry SCHEMA_REGISTRY =
+      SchemaRegistry.withDefaultDialect(SpecificationVersion.DRAFT_2020_12);
   private static final Path SCHEMA_PATH =
       Path.of("src/main/resources/schema/integration.schema.json").toAbsolutePath().normalize();
 
   @Test
   void integrationSchema_isValidDraft202012Document() throws Exception {
     JsonNode schemaNode = MAPPER.readTree(Files.readString(SCHEMA_PATH));
-    JsonSchema metaSchema = SCHEMA_FACTORY.getSchema(
-        URI.create("https://json-schema.org/draft/2020-12/schema"));
+    Schema metaSchema = SCHEMA_REGISTRY.getSchema(
+        SchemaLocation.of("https://json-schema.org/draft/2020-12/schema"));
     assertThat(metaSchema.validate(schemaNode)).isEmpty();
   }
 
   @Test
   void integrationSchema_acceptsValidMcpDefinition() throws Exception {
-    Set<ValidationMessage> violations = validate("""
+    List<Error> violations = validate("""
         {
           "id": "github",
           "displayName": "GitHub",
@@ -54,7 +54,7 @@ class IntegrationSchemaContractTest {
 
   @Test
   void integrationSchema_acceptsValidHttpDefinitionWithoutIdOrRemoteToolName() throws Exception {
-    Set<ValidationMessage> violations = validate("""
+    List<Error> violations = validate("""
         {
           "displayName": "Airtable",
           "type": "HTTP_TOOL",
@@ -67,7 +67,7 @@ class IntegrationSchemaContractTest {
 
   @Test
   void integrationSchema_rejectsUnknownType() throws Exception {
-    Set<ValidationMessage> violations = validate("""
+    List<Error> violations = validate("""
         {
           "displayName": "X",
           "type": "SMOKE_SIGNAL",
@@ -81,7 +81,7 @@ class IntegrationSchemaContractTest {
   @Test
   void integrationSchema_enforcesCapabilityPattern() throws Exception {
     // `pattern` on capabilities[].capability — must reject a non-snake-case id.
-    Set<ValidationMessage> violations = validate("""
+    List<Error> violations = validate("""
         {
           "displayName": "X",
           "type": "HTTP_TOOL",
@@ -95,7 +95,7 @@ class IntegrationSchemaContractTest {
   @Test
   void integrationSchema_enforcesNestedItemsRequired() throws Exception {
     // nested `items` subschema — capability object missing its required `capability` field.
-    Set<ValidationMessage> violations = validate("""
+    List<Error> violations = validate("""
         {
           "displayName": "X",
           "type": "HTTP_TOOL",
@@ -109,7 +109,7 @@ class IntegrationSchemaContractTest {
   @Test
   void integrationSchema_rejectsMissingRequiredField() throws Exception {
     // displayName is required at the envelope level.
-    Set<ValidationMessage> violations = validate("""
+    List<Error> violations = validate("""
         {
           "type": "HTTP_TOOL",
           "config": [],
@@ -121,7 +121,7 @@ class IntegrationSchemaContractTest {
 
   @Test
   void integrationSchema_rejectsUnknownTopLevelProperty() throws Exception {
-    Set<ValidationMessage> violations = validate("""
+    List<Error> violations = validate("""
         {
           "displayName": "X",
           "type": "HTTP_TOOL",
@@ -135,7 +135,7 @@ class IntegrationSchemaContractTest {
 
   @Test
   void integrationSchema_rejectsEmptyCapabilities() throws Exception {
-    Set<ValidationMessage> violations = validate("""
+    List<Error> violations = validate("""
         {
           "displayName": "X",
           "type": "HTTP_TOOL",
@@ -153,9 +153,10 @@ class IntegrationSchemaContractTest {
         .contains("\"$schema\": \"https://json-schema.org/draft/2020-12/schema\"");
   }
 
-  private static Set<ValidationMessage> validate(String instanceJson) throws Exception {
+  private static List<Error> validate(String instanceJson) throws Exception {
     JsonNode schemaNode = MAPPER.readTree(Files.readString(SCHEMA_PATH));
-    JsonSchema schema = SCHEMA_FACTORY.getSchema(SCHEMA_PATH.toUri(), schemaNode);
+    Schema schema = SCHEMA_REGISTRY.getSchema(
+        SchemaLocation.of(SCHEMA_PATH.toUri().toString()), schemaNode);
     return schema.validate(MAPPER.readTree(instanceJson));
   }
 }

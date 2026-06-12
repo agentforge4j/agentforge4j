@@ -45,10 +45,12 @@
       <artifactId>jackson-databind</artifactId>
       <scope>test</scope>
     </dependency>
+    <!-- 2.0.x line: still Jackson 2, converged with the MCP SDK's transitive 2.0.0; the 3.x
+         line is the Jackson-3 rewrite and stays blocked (dependabot + convergence guard). -->
     <dependency>
       <groupId>com.networknt</groupId>
       <artifactId>json-schema-validator</artifactId>
-      <version>1.5.9</version>
+      <version>2.0.1</version>
       <scope>test</scope>
     </dependency>
   </dependencies>

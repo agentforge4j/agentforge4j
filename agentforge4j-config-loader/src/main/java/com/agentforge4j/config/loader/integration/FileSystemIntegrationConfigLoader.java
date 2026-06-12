@@ -9,10 +9,10 @@ import com.agentforge4j.util.Validate;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.networknt.schema.JsonSchema;
-import com.networknt.schema.JsonSchemaFactory;
-import com.networknt.schema.SpecVersion;
-import com.networknt.schema.ValidationMessage;
+import com.networknt.schema.Error;
+import com.networknt.schema.Schema;
+import com.networknt.schema.SchemaRegistry;
+import com.networknt.schema.SpecificationVersion;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.file.Files;
@@ -21,7 +21,6 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -45,7 +44,7 @@ public final class FileSystemIntegrationConfigLoader implements IntegrationConfi
   private static final String INTEGRATION_FILE_SUFFIX = ".json";
 
   private final ObjectMapper objectMapper;
-  private final JsonSchema integrationSchema;
+  private final Schema integrationSchema;
   private final Path integrationsRoot;
 
   /**
@@ -129,10 +128,12 @@ public final class FileSystemIntegrationConfigLoader implements IntegrationConfi
       throw new UncheckedIOException(
           "Failed to read integration definition file: %s".formatted(file), e);
     }
-    Set<ValidationMessage> violations = integrationSchema.validate(node);
+    List<Error> violations = integrationSchema.validate(node);
     if (!violations.isEmpty()) {
+      // 2.0.x no longer bakes the instance location into getMessage(); reconstruct
+      // "{instanceLocation}: {message}" explicitly so operators still see which field failed.
       errors.add("%s: %s".formatted(file, violations.stream()
-          .map(ValidationMessage::getMessage)
+          .map(violation -> "%s: %s".formatted(violation.getInstanceLocation(), violation.getMessage()))
           .collect(Collectors.joining(", "))));
       return null;
     }
@@ -203,11 +204,12 @@ public final class FileSystemIntegrationConfigLoader implements IntegrationConfi
     return (value == null || value.isNull()) ? null : value.asText();
   }
 
-  private static JsonSchema parseIntegrationSchema(ObjectMapper objectMapper,
+  private static Schema parseIntegrationSchema(ObjectMapper objectMapper,
       SchemaProvider schemaProvider) {
     try {
       JsonNode schemaNode = objectMapper.readTree(schemaProvider.integrationSchema());
-      return JsonSchemaFactory.getInstance(SpecVersion.VersionFlag.V202012).getSchema(schemaNode);
+      return SchemaRegistry.withDefaultDialect(SpecificationVersion.DRAFT_2020_12)
+          .getSchema(schemaNode);
     } catch (JsonProcessingException e) {
       throw new IllegalStateException("Failed to parse integration.schema.json", e);
     }

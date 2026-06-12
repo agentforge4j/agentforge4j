@@ -17,14 +17,16 @@ updates:
           - "patch"
     # Major bumps are intentionally left ungrouped so each lands in its own reviewable PR.
     ignore:
-      # Pin to the stable Jackson-2 1.5.x line: block the immature 2.0.x ground-up
-      # API rewrite and the Jackson-3 3.x line, while still allowing 1.5.x patches.
+      # Pin to the 2.0.x (Jackson-2) line, converged with the MCP SDK's transitive 2.0.0:
+      # block the Jackson-3 3.x line while still allowing 2.0.x patches. Dependabot blocks the
+      # proposal; the platform-side convergence guard test blocks the resolution.
       - dependency-name: "com.networknt:json-schema-validator"
-        versions: [">=2.0.0"]
+        versions: [">=3.0.0"]
       # Spring Boot 4.x: the platform repo consumes the OSS starter on Boot 3.x; upgrade is coordinated, not automatic.
       - dependency-name: "org.springframework.boot:*"
         update-types: ["version-update:semver-major"]
-      # json-schema-validator is pinned to the 1.5.x line (last Jackson-2 release); 2.x is a rewrite, 3.x requires Jackson 3.
+      # json-schema-validator stays on the 2.0.x line (Jackson 2); 3.x requires Jackson 3 —
+      # any major bump must be a coordinated migration, never an automatic PR.
       - dependency-name: "com.networknt:json-schema-validator"
         update-types: ["version-update:semver-major"]
 

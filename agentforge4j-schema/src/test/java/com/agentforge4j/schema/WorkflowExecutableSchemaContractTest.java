@@ -4,13 +4,13 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.networknt.schema.JsonSchema;
-import com.networknt.schema.JsonSchemaFactory;
-import com.networknt.schema.SpecVersion;
-import com.networknt.schema.ValidationMessage;
+import com.networknt.schema.Error;
+import com.networknt.schema.Schema;
+import com.networknt.schema.SchemaLocation;
+import com.networknt.schema.SchemaRegistry;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.Set;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -20,8 +20,7 @@ import org.junit.jupiter.api.Test;
 class WorkflowExecutableSchemaContractTest {
 
   private static final ObjectMapper MAPPER = new ObjectMapper();
-  private static final JsonSchemaFactory SCHEMA_FACTORY =
-      JsonSchemaFactory.getInstance(SpecVersion.VersionFlag.V202012);
+  private static final SchemaRegistry SCHEMA_REGISTRY = SchemaRegistries.draft202012();
 
   private static final Path SCHEMA_PATH =
       Path.of("src/main/resources/schema/workflow.schema.json").toAbsolutePath().normalize();
@@ -29,7 +28,8 @@ class WorkflowExecutableSchemaContractTest {
   @Test
   void workflowSchema_rejectsTopLevelArtifacts() throws Exception {
     JsonNode schemaNode = MAPPER.readTree(Files.readString(SCHEMA_PATH));
-    JsonSchema schema = SCHEMA_FACTORY.getSchema(SCHEMA_PATH.toUri(), schemaNode);
+    Schema schema = SCHEMA_REGISTRY.getSchema(
+        SchemaLocation.of(SCHEMA_PATH.toUri().toString()), schemaNode);
     JsonNode instance = MAPPER.readTree("""
         {
           "kind": "WORKFLOW",
@@ -39,7 +39,7 @@ class WorkflowExecutableSchemaContractTest {
           "artifacts": {}
         }
         """);
-    Set<ValidationMessage> violations = schema.validate(instance);
+    List<Error> violations = schema.validate(instance);
     assertThat(violations)
         .isNotEmpty()
         .anyMatch(v -> v.getMessage() != null && v.getMessage().contains("artifacts"));
@@ -48,7 +48,8 @@ class WorkflowExecutableSchemaContractTest {
   @Test
   void workflowSchema_rejectsTopLevelBlueprints() throws Exception {
     JsonNode schemaNode = MAPPER.readTree(Files.readString(SCHEMA_PATH));
-    JsonSchema schema = SCHEMA_FACTORY.getSchema(SCHEMA_PATH.toUri(), schemaNode);
+    Schema schema = SCHEMA_REGISTRY.getSchema(
+        SchemaLocation.of(SCHEMA_PATH.toUri().toString()), schemaNode);
     JsonNode instance = MAPPER.readTree("""
         {
           "kind": "WORKFLOW",
@@ -58,7 +59,7 @@ class WorkflowExecutableSchemaContractTest {
           "blueprints": {}
         }
         """);
-    Set<ValidationMessage> violations = schema.validate(instance);
+    List<Error> violations = schema.validate(instance);
     assertThat(violations)
         .isNotEmpty()
         .anyMatch(v -> v.getMessage() != null && v.getMessage().contains("blueprints"));
@@ -67,7 +68,8 @@ class WorkflowExecutableSchemaContractTest {
   @Test
   void workflowSchema_acceptsStepPrompt() throws Exception {
     JsonNode schemaNode = MAPPER.readTree(Files.readString(SCHEMA_PATH));
-    JsonSchema schema = SCHEMA_FACTORY.getSchema(SCHEMA_PATH.toUri(), schemaNode);
+    Schema schema = SCHEMA_REGISTRY.getSchema(
+        SchemaLocation.of(SCHEMA_PATH.toUri().toString()), schemaNode);
     JsonNode instance = MAPPER.readTree("""
         {
           "kind": "WORKFLOW",
@@ -76,7 +78,7 @@ class WorkflowExecutableSchemaContractTest {
           "steps": [{"kind": "STEP", "stepId": "s1", "name": "S", "stepPrompt": "do the thing", "behaviour": {"type": "FAIL", "reason": "r"}}]
         }
         """);
-    Set<ValidationMessage> violations = schema.validate(instance);
+    List<Error> violations = schema.validate(instance);
     assertThat(violations).isEmpty();
   }
 }
