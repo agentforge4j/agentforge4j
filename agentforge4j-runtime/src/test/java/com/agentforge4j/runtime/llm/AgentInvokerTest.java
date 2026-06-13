@@ -513,11 +513,23 @@ class AgentInvokerTest {
     String agentBody = "AGENT_ONLY_LAYER";
     String stepBody = "STEP_SHOULD_NOT_APPEAR";
     AgentRepository repo = mock(AgentRepository.class);
-    when(repo.get("agent-x")).thenReturn(agentSupportingOnlyCompleteWithBody(agentBody));
+    AgentDefinition agent = agentSupportingOnlyCompleteWithBody(agentBody);
+    when(repo.get("agent-x")).thenReturn(agent);
     LlmClientResolver resolver = mock(LlmClientResolver.class);
     when(resolver.resolve("openai")).thenReturn(client);
     when(resolver.isProviderAvailable("openai")).thenReturn(true);
     when(resolver.listAvailableClients()).thenReturn(List.of("openai"));
+
+    // When no step layer is appended the assembled prompt is exactly the agent layer, one layer
+    // separator, then the framework block. Asserting that exact shape is robust to blank lines
+    // inside the framework block (a global "\n\n" count is not — the framework block contains
+    // its own blank lines, so counting separators conflates intra-layer formatting with layer
+    // boundaries).
+    CommandResponseSchema schema =
+        CommandSchemaFactory.build(agent.supportedCommands(), mapper);
+    String frameworkBlock = new CommandResponseSchemaRenderer().render(schema);
+    String layerSeparator = System.lineSeparator() + System.lineSeparator();
+    String expectedNoStepPrompt = agentBody + layerSeparator + frameworkBlock;
 
     EventRecorder eventRecorder = recorder(new InMemoryWorkflowEventLog());
     AgentInvoker invoker = AgentInvoker.builder()
@@ -540,7 +552,7 @@ class AgentInvokerTest {
     verify(client, times(1)).execute(nullStepCaptor.capture());
     String nullStepPrompt = nullStepCaptor.getValue().systemPrompt();
     assertThat(nullStepPrompt).doesNotContain(stepBody);
-    assertThat(layerSeparatorCount(nullStepPrompt)).isEqualTo(1);
+    assertThat(nullStepPrompt).isEqualTo(expectedNoStepPrompt);
 
     invoker.invoke("agent-x", ContextMapping.none(), state, "   ");
     ArgumentCaptor<LlmExecutionRequest> blankStepCaptor =
@@ -548,7 +560,7 @@ class AgentInvokerTest {
     verify(client, times(2)).execute(blankStepCaptor.capture());
     String blankStepPrompt = blankStepCaptor.getAllValues().get(1).systemPrompt();
     assertThat(blankStepPrompt).doesNotContain(stepBody);
-    assertThat(layerSeparatorCount(blankStepPrompt)).isEqualTo(1);
+    assertThat(blankStepPrompt).isEqualTo(expectedNoStepPrompt);
   }
 
   @Test
@@ -840,9 +852,10 @@ class AgentInvokerTest {
     for (LlmExecutionRequest request : captor.getAllValues()) {
       PromptLayerBoundaries boundaries = request.promptLayerBoundaries();
       assertThat(boundaries.layer3EndOffset()).isNull();
+      // No step layer: the prompt ends exactly at the framework layer, so layer 2 spans the
+      // whole prompt.
       assertThat(boundaries.layer2EndOffset())
           .isEqualTo(request.systemPrompt().getBytes(StandardCharsets.UTF_8).length);
-      assertThat(layerSeparatorCount(request.systemPrompt())).isEqualTo(1);
     }
   }
 
@@ -1004,20 +1017,6 @@ class AgentInvokerTest {
 
   private static byte[] slicePrefix(byte[] bytes, int endOffset) {
     return Arrays.copyOfRange(bytes, 0, endOffset);
-  }
-
-  private static int layerSeparatorCount(String text) {
-    String layerSeparator = System.lineSeparator() + System.lineSeparator();
-    int count = 0;
-    int from = 0;
-    while (true) {
-      int idx = text.indexOf(layerSeparator, from);
-      if (idx < 0) {
-        return count;
-      }
-      count++;
-      from = idx + layerSeparator.length();
-    }
   }
 
   private static AgentDefinition agentSupportingOnlyCompleteWithBody(String systemPrompt) {

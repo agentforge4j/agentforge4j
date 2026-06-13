@@ -1,0 +1,80 @@
+name: CI
+
+# Build + test gate for the OSS framework. Runs the full Maven `verify` (compile, Surefire
+# unit tests, Failsafe integration/loopback tests, and the gating SpotBugs/Checkstyle checks)
+# on a JDK matrix. Distinct from the release/publish, CodeQL, and Gitleaks workflows.
+#
+# The compiler `release` stays 17 (parent pom); the matrix also runs on 21 to prove no Java
+# 21+ API has crept into the JDK-17 main sources. JDK 26 is intentionally excluded — it
+# crashes the SpotBugs-class tooling pinned for the OSS build.
+
+on:
+  pull_request:
+    branches:
+      - main
+
+  push:
+    branches:
+      - main
+
+# Cancel superseded runs on the same ref so only the latest commit's CI keeps running.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: build (JDK ${{ matrix.java }})
+    runs-on: ubuntu-latest
+    strategy:
+      # Run every JDK leg to completion even if one fails, so a 17-only or 21-only break is
+      # visible in the same run.
+      fail-fast: false
+      matrix:
+        java: ["17", "21"]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up JDK ${{ matrix.java }}
+        uses: actions/setup-java@v5
+        with:
+          distribution: "temurin"
+          java-version: ${{ matrix.java }}
+          cache: maven
+
+      - name: Build and verify
+        # verify runs Surefire (*Test), Failsafe (*IT), and the gating SpotBugs + Checkstyle
+        # checks. OWASP Dependency-Check has no verify-bound execution, so it does not run here.
+        run: mvn -B -ntp verify
+
+      - name: Upload test reports
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          # Unique per matrix leg: upload-artifact v4 errors on duplicate names.
+          name: test-reports-jdk-${{ matrix.java }}
+          path: |
+            **/target/surefire-reports/**
+            **/target/failsafe-reports/**
+          if-no-files-found: ignore
+          retention-days: 7
+
+  quality-gate:
+    # Single stable required-check name for branch protection. A matrix otherwise produces
+    # per-leg contexts (build (JDK 17) / build (JDK 21)) that are brittle to require directly.
+    name: quality-gate
+    needs: [build]
+    # Always run so this check posts a definitive success/failure (never "skipped", which some
+    # branch-protection configurations treat as passing). The step below is what fails it.
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require all build legs to succeed
+        if: ${{ contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') }}
+        run: |
+          echo "One or more build legs did not succeed: ${{ join(needs.*.result, ', ') }}"
+          exit 1
