@@ -29,6 +29,11 @@ jobs:
   build:
     name: build (JDK ${{ matrix.java }})
     runs-on: ubuntu-latest
+    # Job-level so the SonarQube step's `if:` can read env.SONAR_TOKEN (step-level env is not in
+    # scope for that step's own `if`, and secrets.* cannot be referenced in `if` directly). Absent
+    # on fork PRs, which is why the step guards on it being non-empty.
+    env:
+      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
     strategy:
       # Run every JDK leg to completion even if one fails, so a 17-only or 21-only break is
       # visible in the same run.
@@ -37,7 +42,10 @@ jobs:
         java: ["17", "21"]
     steps:
       - name: Checkout
+        # Full history (no shallow clone) so SonarQube can attribute new code and blame accurately.
         uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
 
       - name: Set up JDK ${{ matrix.java }}
         uses: actions/setup-java@v5
@@ -47,9 +55,21 @@ jobs:
           cache: maven
 
       - name: Build and verify
-        # verify runs Surefire (*Test), Failsafe (*IT), and the gating SpotBugs + Checkstyle
-        # checks. OWASP Dependency-Check has no verify-bound execution, so it does not run here.
+        # verify runs Surefire (*Test), Failsafe (*IT), the gating SpotBugs + Checkstyle checks,
+        # and the JaCoCo report. OWASP Dependency-Check has no verify-bound execution, so it does
+        # not run here.
         run: mvn -B -ntp verify
+
+      - name: SonarQube Cloud analysis
+        # JDK-17 leg only: sonar-maven-plugin 5.x requires Java 17+, and a single analysis run must
+        # own the project key (running on both legs would conflict). Guarded on the secret so fork
+        # PRs (no SONAR_TOKEN) skip cleanly instead of hard-failing. Reuses the compiled classes and
+        # JaCoCo report from the verify step above rather than re-running the build. The scanner
+        # reads SONAR_TOKEN from the environment automatically; -Dsonar.qualitygate.wait=true fails
+        # this step (and thus the JDK-17 build leg, which the quality-gate job aggregates) when the
+        # Quality Gate fails.
+        if: ${{ matrix.java == '17' && env.SONAR_TOKEN != '' }}
+        run: mvn -B -ntp sonar:sonar -Dsonar.qualitygate.wait=true
 
       - name: Upload test reports
         if: failure()

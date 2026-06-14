@@ -43,6 +43,12 @@
     <cyclonedx-maven-plugin.version>2.9.1</cyclonedx-maven-plugin.version>
     <spotbugs-annotations.version>4.10.2</spotbugs-annotations.version>
     <jqwik.version>1.10.1</jqwik.version>
+    <jacoco-maven-plugin.version>0.8.15</jacoco-maven-plugin.version>
+    <sonar-maven-plugin.version>5.7.0.6970</sonar-maven-plugin.version>
+    <!-- SonarQube Cloud coordinates (public OSS project). Plain build properties, NOT secrets;
+         the analysis token is supplied separately via the SONAR_TOKEN env/secret in CI. -->
+    <sonar.organization>agentforge4j</sonar.organization>
+    <sonar.projectKey>agentforge4j</sonar.projectKey>
     <!-- Shared location for repo-wide static-analysis config, resolved from the reactor root so it
          works from every module in the multi-module build. -->
     <config.dir>${maven.multiModuleProjectDirectory}/config</config.dir>
@@ -282,6 +288,15 @@
             </execution>
           </executions>
         </plugin>
+
+        <!-- Invoked from the CLI as sonar:sonar in CI (not bound to a phase); pinned here so the
+             scanner version is reproducible. sonar-maven-plugin 5.x requires Java 17+ to run,
+             which the JDK-17 analysis leg in ci.yml satisfies. -->
+        <plugin>
+          <groupId>org.sonarsource.scanner.maven</groupId>
+          <artifactId>sonar-maven-plugin</artifactId>
+          <version>${sonar-maven-plugin.version}</version>
+        </plugin>
       </plugins>
     </pluginManagement>
 
@@ -319,6 +334,32 @@
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-failsafe-plugin</artifactId>
+      </plugin>
+
+      <!-- JaCoCo: code-coverage agent feeding SonarQube Cloud. NOT a build gate (coverage gating
+           is the Sonar Quality Gate). No module configures <argLine>, so Surefire and Failsafe both
+           resolve the agent from the shared ${argLine} property: unit (test) then IT (integration-
+           test) coverage append into one exec, and the verify-bound report emits
+           target/site/jacoco/jacoco.xml that Sonar auto-detects. -->
+      <plugin>
+        <groupId>org.jacoco</groupId>
+        <artifactId>jacoco-maven-plugin</artifactId>
+        <version>${jacoco-maven-plugin.version}</version>
+        <executions>
+          <execution>
+            <id>jacoco-prepare-agent</id>
+            <goals>
+              <goal>prepare-agent</goal>
+            </goals>
+          </execution>
+          <execution>
+            <id>jacoco-report</id>
+            <phase>verify</phase>
+            <goals>
+              <goal>report</goal>
+            </goals>
+          </execution>
+        </executions>
       </plugin>
 
       <!-- SpotBugs: GATING. Fails the build on HIGH-confidence bug patterns in main sources. -->
