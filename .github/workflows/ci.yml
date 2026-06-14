@@ -2,11 +2,13 @@ name: CI
 
 # Build + test gate for the OSS framework. Runs the full Maven `verify` (compile, Surefire
 # unit tests, Failsafe integration/loopback tests, and the gating SpotBugs/Checkstyle checks)
-# on a JDK matrix. Distinct from the release/publish, CodeQL, and Gitleaks workflows.
+# via the Maven Wrapper (`./mvnw`, pinned Maven version) on an OS × JDK matrix. Distinct from
+# the release/publish, CodeQL, and Gitleaks workflows.
 #
 # The compiler `release` stays 17 (parent pom); the matrix also runs on 21 to prove no Java
 # 21+ API has crept into the JDK-17 main sources. JDK 26 is intentionally excluded — it
-# crashes the SpotBugs-class tooling pinned for the OSS build.
+# crashes the SpotBugs-class tooling pinned for the OSS build. One windows-latest × JDK 21 leg
+# exercises real Windows path/symlink handling (a Windows-only failure is a genuine finding).
 
 on:
   pull_request:
@@ -25,21 +27,32 @@ concurrency:
 permissions:
   contents: read
 
+# Uniform shell across every leg so a single `./mvnw` invocation works on Linux and on the
+# windows-latest runner (which provides Git Bash for `shell: bash`).
+defaults:
+  run:
+    shell: bash
+
 jobs:
   build:
-    name: build (JDK ${{ matrix.java }})
-    runs-on: ubuntu-latest
+    name: build (${{ matrix.os }}, JDK ${{ matrix.java }})
+    runs-on: ${{ matrix.os }}
     # Job-level so the SonarQube step's `if:` can read env.SONAR_TOKEN (step-level env is not in
     # scope for that step's own `if`, and secrets.* cannot be referenced in `if` directly). Absent
     # on fork PRs, which is why the step guards on it being non-empty.
     env:
       SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
     strategy:
-      # Run every JDK leg to completion even if one fails, so a 17-only or 21-only break is
-      # visible in the same run.
+      # Run every leg to completion even if one fails, so a 17-only, 21-only, or Windows-only
+      # break is visible in the same run.
       fail-fast: false
       matrix:
+        os: [ubuntu-latest, windows-latest]
         java: ["17", "21"]
+        # Windows runs a single JDK-21 leg (path/symlink coverage); ubuntu covers both JDKs.
+        exclude:
+          - os: windows-latest
+            java: "17"
     steps:
       - name: Checkout
         # Full history (no shallow clone) so SonarQube can attribute new code and blame accurately.
@@ -58,7 +71,7 @@ jobs:
         # verify runs Surefire (*Test), Failsafe (*IT), the gating SpotBugs + Checkstyle checks,
         # and the JaCoCo report. OWASP Dependency-Check has no verify-bound execution, so it does
         # not run here.
-        run: mvn -B -ntp verify
+        run: ./mvnw -B -ntp verify
 
       - name: SonarQube Cloud analysis
         # JDK-17 leg only: sonar-maven-plugin 5.x requires Java 17+, and a single analysis run must
@@ -68,15 +81,16 @@ jobs:
         # reads SONAR_TOKEN from the environment automatically; -Dsonar.qualitygate.wait=true fails
         # this step (and thus the JDK-17 build leg, which the quality-gate job aggregates) when the
         # Quality Gate fails.
-        if: ${{ matrix.java == '17' && env.SONAR_TOKEN != '' }}
-        run: mvn -B -ntp sonar:sonar -Dsonar.qualitygate.wait=true
+        if: ${{ matrix.os == 'ubuntu-latest' && matrix.java == '17' && env.SONAR_TOKEN != '' }}
+        run: ./mvnw -B -ntp sonar:sonar -Dsonar.qualitygate.wait=true
 
       - name: Upload test reports
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          # Unique per matrix leg: upload-artifact v4 errors on duplicate names.
-          name: test-reports-jdk-${{ matrix.java }}
+          # Unique per matrix leg (os + jdk): upload-artifact v4 errors on duplicate names, and
+          # ubuntu/windows both run a JDK-21 leg.
+          name: test-reports-${{ matrix.os }}-jdk-${{ matrix.java }}
           path: |
             **/target/surefire-reports/**
             **/target/failsafe-reports/**

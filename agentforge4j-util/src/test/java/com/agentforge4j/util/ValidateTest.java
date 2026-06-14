@@ -253,28 +253,33 @@ class ValidateTest {
   @Nested
   class RequireWithinBaseTests {
 
+    // requireWithinBase returns the canonical real path (toRealPath) for an existing resolved
+    // target, so expectations compare against toRealPath rather than toAbsolutePath().normalize().
+    // The two coincide on most paths, but diverge where the temp directory sits under a Windows
+    // 8.3 short name (e.g. a CI runner's RUNNER~1), which toRealPath expands to its long form.
+
     @Test
-    void shouldResolveWithinBase() {
+    void shouldResolveWithinBase() throws IOException {
       Path result = Validate.requireWithinBase(baseDir, "file.txt", "message");
-      assertThat(result).isEqualTo(fileInBase.toAbsolutePath().normalize());
+      assertThat(result).isEqualTo(fileInBase.toRealPath());
     }
 
     @Test
-    void shouldResolveSubPathWithinBase() {
+    void shouldResolveSubPathWithinBase() throws IOException {
       Path result = Validate.requireWithinBase(baseDir, "sub", "message");
-      assertThat(result).isEqualTo(subDir.toAbsolutePath().normalize());
+      assertThat(result).isEqualTo(subDir.toRealPath());
     }
 
     @Test
-    void shouldResolveDotToBaseDirectory() {
+    void shouldResolveDotToBaseDirectory() throws IOException {
       Path result = Validate.requireWithinBase(baseDir, ".", "message");
-      assertThat(result).isEqualTo(baseDir.toAbsolutePath().normalize());
+      assertThat(result).isEqualTo(baseDir.toRealPath());
     }
 
     @Test
-    void shouldResolveRedundantSegmentsWithinBase() {
+    void shouldResolveRedundantSegmentsWithinBase() throws IOException {
       Path result = Validate.requireWithinBase(baseDir, "sub/../file.txt", "message");
-      assertThat(result).isEqualTo(fileInBase.toAbsolutePath().normalize());
+      assertThat(result).isEqualTo(fileInBase.toRealPath());
     }
 
     @Test
