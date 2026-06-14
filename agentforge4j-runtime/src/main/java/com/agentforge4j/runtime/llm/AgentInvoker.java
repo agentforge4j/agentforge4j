@@ -29,9 +29,9 @@ import java.util.List;
 import org.apache.commons.lang3.StringUtils;
 
 /**
- * Drives a single agent invocation: resolves the agent definition, picks the first enabled provider
- * preference, renders the input context as JSON, executes against the resolved {@link LlmClient},
- * and parses the structured command output.
+ * Drives a single agent invocation: resolves the agent definition, picks the first enabled provider preference, renders
+ * the input context as JSON, executes against the resolved {@link LlmClient}, and parses the structured command
+ * output.
  */
 public final class AgentInvoker {
 
@@ -226,10 +226,11 @@ public final class AgentInvoker {
     }
 
     /**
-     * Configures the optional, nullable {@link ToolCatalog} used to advertise tool capabilities to the
-     * LLM. When {@code null} (the default) the prompt is unchanged and behaviour matches prior versions.
+     * Configures the optional, nullable {@link ToolCatalog} used to advertise tool capabilities to the LLM. When
+     * {@code null} (the default) the prompt is unchanged and behaviour matches prior versions.
      *
      * @param toolCatalog tool catalog, or {@code null} to advertise no tools
+     *
      * @return this builder; never {@code null}
      */
     public Builder toolCatalog(ToolCatalog toolCatalog) {
@@ -292,8 +293,8 @@ public final class AgentInvoker {
    * @param contextMapping context mapping for input rendering; must not be {@code null}
    * @param state          mutable run state; must not be {@code null}
    * @param stepPrompt     optional static step prompt material; may be blank
-   * @param stepModelTier  optional step-level tier name overriding the agent tier; {@code null} or
-   *                       blank inherits the agent tier
+   * @param stepModelTier  optional step-level tier name overriding the agent tier; {@code null} or blank inherits the
+   *                       agent tier
    *
    * @return the parsed invocation result; never {@code null}
    */
@@ -350,11 +351,10 @@ public final class AgentInvoker {
   }
 
   /**
-   * Resolves the concrete model and its source for this call, applying precedence: a raw model pin
-   * on the selected provider preference wins; otherwise an effective tier (step tier overriding
-   * agent tier) is resolved via the {@link ModelTierResolver}; otherwise no model is sent and the
-   * provider default is used. A declared tier that cannot be resolved throws
-   * {@link ModelTierResolutionException} rather than silently downgrading.
+   * Resolves the concrete model and its source for this call, applying precedence: a raw model pin on the selected
+   * provider preference wins; otherwise an effective tier (step tier overriding agent tier) is resolved via the
+   * {@link ModelTierResolver}; otherwise no model is sent and the provider default is used. A declared tier that cannot
+   * be resolved throws {@link ModelTierResolutionException} rather than silently downgrading.
    */
   private ModelResolution resolveModel(AgentDefinition agent,
       ProviderPreference preference,
@@ -376,7 +376,7 @@ public final class AgentInvoker {
 
   private static ModelTier parseTier(String tierName, String agentId) {
     try {
-      return ModelTier.valueOf(tierName.trim());
+      return ModelTier.fromName(tierName);
     } catch (IllegalArgumentException e) {
       throw new ModelTierResolutionException(
           "Invalid model tier '%s' for agent '%s'; valid tiers: LITE, STANDARD, POWERFUL".formatted(
@@ -495,8 +495,8 @@ public final class AgentInvoker {
   }
 
   /**
-   * Assembles the system prompt from three layers (most-stable first): framework command contract,
-   * agent system prompt (boundaries already merged at load), then optional static step material.
+   * Assembles the system prompt from three layers (most-stable first): framework command contract, agent system prompt
+   * (boundaries already merged at load), then optional static step material.
    */
   private AssembledSystemPrompt assembleSystemPrompt(
       AgentDefinition agent, String stepPrompt, CommandResponseSchema schema) {
@@ -519,8 +519,8 @@ public final class AgentInvoker {
 
   /**
    * Appends a tool-capabilities section (uncached suffix, so prompt-cache boundaries are unchanged) when a
-   * {@link ToolCatalog} is configured, the agent has opted into {@code TOOL_INVOCATION}, and the catalog is
-   * non-empty for the run's scope. Otherwise returns {@code assembled} unchanged.
+   * {@link ToolCatalog} is configured, the agent has opted into {@code TOOL_INVOCATION}, and the catalog is non-empty
+   * for the run's scope. Otherwise returns {@code assembled} unchanged.
    */
   private AssembledSystemPrompt appendToolCatalog(AssembledSystemPrompt assembled,
       CommandResponseSchema schema, WorkflowState state) {

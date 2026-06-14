@@ -14,7 +14,7 @@ You must produce exactly three files (using the framework’s file-creation mech
 
 ## agent.json content
 
-The definition must satisfy the platform’s agent schema (validated by the runtime). In practice ensure:
+The definition must satisfy the framework’s agent schema (validated by the runtime). In practice ensure:
 
 - **id** — kebab-case, unique, descriptive (typically matches the agent directory name stem)
 - **name** — human-readable name

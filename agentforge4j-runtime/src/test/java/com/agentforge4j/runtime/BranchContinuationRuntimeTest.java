@@ -185,7 +185,7 @@ class BranchContinuationRuntimeTest {
     String runId = fixture.runtime().start(workflow.id());
     assertThat(fixture.runtime().getState(runId).getStatus()).isEqualTo(WorkflowStatus.FAILED);
 
-    fixture.runtime().retry(runId, "branch");
+    fixture.runtime().retry(runId, "branch", "user");
     assertThat(fixture.runtime().getState(runId).getStatus()).isEqualTo(WorkflowStatus.COMPLETED);
   }
 

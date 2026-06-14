@@ -14,11 +14,11 @@ import java.util.Map;
 
 /**
  * Resolves a {@link BlueprintRef} against the current workflow's blueprints map and executes the
- * {@link BlueprintDefinition} — either as a sequential body, or under the loop strategy selected
- * from the blueprint's {@code LoopConfig}.
+ * {@link BlueprintDefinition} — either as a sequential body, or under the loop strategy selected from the blueprint's
+ * {@code LoopConfig}.
  *
-   * <p>Resolution uses the innermost (active) workflow on {@link ExecutionContext#getActiveWorkflowStack()}.
-   * When a nested workflow is in flight its blueprints shadow the parent's for the duration of that nested scope.
+ * <p>Resolution uses the innermost (active) workflow on {@link ExecutionContext#getActiveWorkflowStack()}.
+ * When a nested workflow is in flight its blueprints shadow the parent's for the duration of that nested scope.
  *
  * <p>Loop strategies and the step-sequence executor are installed via setters
  * after construction to break the construction-time cycle with {@link ExecutableExecutor}.
@@ -29,6 +29,7 @@ public final class BlueprintExecutor {
 
   private Map<LoopTerminationStrategy, LoopStrategy> loopStrategies;
   private StepSequenceExecutor stepSequenceExecutor;
+  private TransitionGate transitionGate;
 
   public void setLoopStrategies(Collection<LoopStrategy> strategies) {
     Validate.isTrue(this.loopStrategies == null,
@@ -44,12 +45,16 @@ public final class BlueprintExecutor {
         "stepSequenceExecutor must not be null");
   }
 
+  public void setTransitionGate(TransitionGate transitionGate) {
+    Validate.isTrue(this.transitionGate == null, "TransitionGate already set on BlueprintExecutor");
+    this.transitionGate = Validate.notNull(transitionGate, "transitionGate must not be null");
+  }
+
   public ExecutionOutcome execute(BlueprintRef ref, ExecutionContext executionContext) {
     Validate.notNull(ref, "ref must not be null");
-    Validate.notNull(stepSequenceExecutor,
-        "BlueprintExecutor not wired: call setStepSequenceExecutor first");
-    Validate.notNull(loopStrategies,
-        "BlueprintExecutor not wired: call setLoopStrategies first");
+    Validate.notNull(stepSequenceExecutor, "BlueprintExecutor not wired: call setStepSequenceExecutor first");
+    Validate.notNull(loopStrategies, "BlueprintExecutor not wired: call setLoopStrategies first");
+    Validate.notNull(transitionGate, "BlueprintExecutor not wired: call setTransitionGate first");
 
     Validate.isTrue(!executionContext.getActiveWorkflowStack().isEmpty(),
         "no active workflow on stack");
@@ -61,12 +66,27 @@ public final class BlueprintExecutor {
     LOG.log(System.Logger.Level.DEBUG, "Resolving blueprint blueprintId={0}", ref.blueprintId());
 
     LoopConfig loopConfig = blueprint.behaviour().loopConfig();
+    ExecutionOutcome outcome = resolveExecutionOutcome(executionContext, loopConfig,
+        blueprint);
+    if (outcome != ExecutionOutcome.COMPLETED) {
+      return outcome;
+    }
+    if (transitionGate.suspendBlueprintIfGated(ref, blueprint.behaviour(),
+        executionContext.getState())) {
+      return ExecutionOutcome.PAUSED;
+    }
+    return ExecutionOutcome.COMPLETED;
+  }
+
+  private ExecutionOutcome resolveExecutionOutcome(ExecutionContext executionContext, LoopConfig loopConfig,
+      BlueprintDefinition blueprint) {
     if (loopConfig == null) {
       return stepSequenceExecutor.executeAll(blueprint.steps(), executionContext);
+    } else {
+      LOG.log(System.Logger.Level.DEBUG, "Loop strategy engaged strategy={0}, maxIterations={1}",
+          loopConfig.terminationStrategy(), loopConfig.maxIterations());
+      return lookupStrategy(loopConfig).iterate(blueprint, loopConfig, executionContext);
     }
-    LOG.log(System.Logger.Level.DEBUG, "Loop strategy engaged strategy={0}, maxIterations={1}",
-        loopConfig.terminationStrategy(), loopConfig.maxIterations());
-    return lookupStrategy(loopConfig).iterate(blueprint, loopConfig, executionContext);
   }
 
   private LoopStrategy lookupStrategy(LoopConfig config) {

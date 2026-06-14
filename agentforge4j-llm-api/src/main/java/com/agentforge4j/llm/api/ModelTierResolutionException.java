@@ -2,7 +2,7 @@ package com.agentforge4j.llm.api;
 
 /**
  * Thrown when a declared {@link ModelTier} cannot be resolved to a concrete model string for the
- * selected provider — that is, no mapping exists after shipped defaults and any operator or tenant
+ * selected provider — that is, no mapping exists after shipped defaults and any operator
  * overrides have been applied. Signals a configuration gap rather than a transient failure; the
  * runtime never silently downgrades to a provider default in this case.
  */

@@ -27,13 +27,16 @@ public final class StepExecutor {
   private final Map<Class<? extends StepBehaviour>, BehaviourHandler<? extends StepBehaviour>> handlersByType;
   private final EventRecorder eventRecorder;
   private final Clock clock;
+  private final TransitionGate transitionGate;
 
   public StepExecutor(Collection<BehaviourHandler<? extends StepBehaviour>> handlers,
       EventRecorder eventRecorder,
-      Clock clock) {
+      Clock clock,
+      TransitionGate transitionGate) {
     Validate.notEmpty(handlers, "StepExecutor requires at least one BehaviourHandler");
     this.eventRecorder = Validate.notNull(eventRecorder, "eventRecorder must not be null");
     this.clock = Validate.notNull(clock, "clock must not be null");
+    this.transitionGate = Validate.notNull(transitionGate, "transitionGate must not be null");
     this.handlersByType = indexHandlers(handlers);
   }
 
@@ -75,6 +78,11 @@ public final class StepExecutor {
           "runtime");
       LOG.log(System.Logger.Level.INFO, "STEP_COMPLETED runId={0}, stepId={1}",
           state.getRunId(), step.stepId());
+    }
+    if (outcome == ExecutionOutcome.COMPLETED && transitionGate.suspendIfGated(step, state)) {
+      LOG.log(System.Logger.Level.INFO, "STEP gated, suspending runId={0}, stepId={1}, status={2}",
+          state.getRunId(), step.stepId(), state.getStatus());
+      return ExecutionOutcome.PAUSED;
     }
     return outcome;
   }

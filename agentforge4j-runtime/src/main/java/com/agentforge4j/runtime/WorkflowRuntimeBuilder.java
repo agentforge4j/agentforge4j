@@ -7,6 +7,8 @@ import com.agentforge4j.core.spi.tool.ToolExecutionService;
 import com.agentforge4j.core.workflow.event.WorkflowEventLog;
 import com.agentforge4j.core.workflow.repository.WorkflowRepository;
 import com.agentforge4j.core.workflow.repository.WorkflowStateRepository;
+import com.agentforge4j.core.workflow.requirement.DefaultRequirementResolver;
+import com.agentforge4j.core.workflow.requirement.RequirementResolver;
 import com.agentforge4j.core.workflow.step.behaviour.StepBehaviour;
 import com.agentforge4j.runtime.command.CommandApplier;
 import com.agentforge4j.runtime.command.CommandHandler;
@@ -25,6 +27,7 @@ import com.agentforge4j.runtime.execution.BlueprintExecutor;
 import com.agentforge4j.runtime.execution.ExecutableExecutor;
 import com.agentforge4j.runtime.execution.StepExecutor;
 import com.agentforge4j.runtime.execution.StepSequenceExecutor;
+import com.agentforge4j.runtime.execution.TransitionGate;
 import com.agentforge4j.runtime.execution.WorkflowExecutor;
 import com.agentforge4j.runtime.execution.behaviour.BehaviourHandler;
 import com.agentforge4j.runtime.execution.behaviour.handler.AgentBehaviourHandler;
@@ -49,22 +52,22 @@ import com.agentforge4j.util.Validate;
 import java.time.Clock;
 import java.util.ArrayList;
 import java.util.List;
+import org.apache.commons.lang3.ObjectUtils;
 
 import static com.agentforge4j.runtime.command.FileSink.NO_OP_FILE_SINK;
 import static com.agentforge4j.runtime.command.ShellCommandRunner.NO_OP_SHELL_COMMAND_RUNNER;
 
 /**
- * Fluent builder that wires a {@link DefaultWorkflowRuntime} with the canonical executor graph,
- * behaviour handlers, loop strategies, and command handlers.
+ * Fluent builder that wires a {@link DefaultWorkflowRuntime} with the canonical executor graph, behaviour handlers,
+ * loop strategies, and command handlers.
  *
  * <p>Required collaborators are repositories, a pre-built {@link AgentInvoker}, {@link FileSink},
- * and {@link ShellCommandRunner}. {@link java.time.Clock}, {@link LoopEvaluator}, and
- * {@link RunContextManager} default when omitted. A {@link com.agentforge4j.schema.SchemaProvider}
- * may be configured but is not read by the current {@link #build()} implementation.
+ * and {@link ShellCommandRunner}. {@link java.time.Clock}, {@link LoopEvaluator}, and {@link RunContextManager} default
+ * when omitted. A {@link com.agentforge4j.schema.SchemaProvider} may be configured but is not read by the current
+ * {@link #build()} implementation.
  *
  * <p>Public construction path for {@link com.agentforge4j.core.runtime.WorkflowRuntime};
- * {@link DefaultWorkflowRuntime} constructors stay package-private because they accept non-exported
- * execution types.
+ * {@link DefaultWorkflowRuntime} constructors stay package-private because they accept non-exported execution types.
  */
 public final class WorkflowRuntimeBuilder {
 
@@ -81,6 +84,7 @@ public final class WorkflowRuntimeBuilder {
   private EventRecorder eventRecorder;
   private ToolExecutionService toolExecutionService;
   private PendingToolInvocationStore pendingToolInvocationStore;
+  private RequirementResolver requirementResolver;
 
   /**
    * Configures the workflow definition source.
@@ -95,8 +99,7 @@ public final class WorkflowRuntimeBuilder {
   }
 
   /**
-   * Configures persistence for {@link com.agentforge4j.core.workflow.state.WorkflowState} between
-   * drives.
+   * Configures persistence for {@link com.agentforge4j.core.workflow.state.WorkflowState} between drives.
    *
    * @param value repository instance
    *
@@ -109,8 +112,8 @@ public final class WorkflowRuntimeBuilder {
   }
 
   /**
-   * Configures the append-only event log receiving
-   * {@link com.agentforge4j.core.workflow.event.WorkflowEvent} instances.
+   * Configures the append-only event log receiving {@link com.agentforge4j.core.workflow.event.WorkflowEvent}
+   * instances.
    *
    * @param value event log instance
    *
@@ -159,8 +162,7 @@ public final class WorkflowRuntimeBuilder {
   }
 
   /**
-   * Configures the evaluator loop strategy dependency. Defaults to {@link DefaultLoopEvaluator}
-   * when omitted.
+   * Configures the evaluator loop strategy dependency. Defaults to {@link DefaultLoopEvaluator} when omitted.
    *
    * @param value loop evaluator instance
    *
@@ -186,8 +188,7 @@ public final class WorkflowRuntimeBuilder {
   }
 
   /**
-   * Configures correlation scope hooks for each drive. Defaults to {@link RunContextManager#NO_OP}
-   * when omitted.
+   * Configures correlation scope hooks for each drive. Defaults to {@link RunContextManager#NO_OP} when omitted.
    *
    * @param value run context manager instance
    *
@@ -199,8 +200,8 @@ public final class WorkflowRuntimeBuilder {
   }
 
   /**
-   * Configures the {@link AgentInvoker} used for agent and SPAR steps (for example from Spring
-   * auto-configuration or constructed explicitly by non-Spring callers).
+   * Configures the {@link AgentInvoker} used for agent and SPAR steps (for example from Spring auto-configuration or
+   * constructed explicitly by non-Spring callers).
    *
    * @param value invoker instance
    *
@@ -212,9 +213,9 @@ public final class WorkflowRuntimeBuilder {
   }
 
   /**
-   * Configures the shared {@link EventRecorder} used by command handlers, loop strategies, and step
-   * executors. When omitted, {@link #build()} constructs one from
-   * {@link #workflowEventLog(WorkflowEventLog)} and {@link #clock(Clock)}.
+   * Configures the shared {@link EventRecorder} used by command handlers, loop strategies, and step executors. When
+   * omitted, {@link #build()} constructs one from {@link #workflowEventLog(WorkflowEventLog)} and
+   * {@link #clock(Clock)}.
    *
    * @param value event recorder instance
    *
@@ -226,10 +227,9 @@ public final class WorkflowRuntimeBuilder {
   }
 
   /**
-   * Configures the optional tool-execution chokepoint. When set, a
-   * {@code ToolInvocationCommandHandler} is registered so {@code TOOL_INVOCATION} commands are
-   * dispatched, and tool-approval resume becomes available; when omitted, tool invocation is
-   * unavailable and behaviour is unchanged.
+   * Configures the optional tool-execution chokepoint. When set, a {@code ToolInvocationCommandHandler} is registered
+   * so {@code TOOL_INVOCATION} commands are dispatched, and tool-approval resume becomes available; when omitted, tool
+   * invocation is unavailable and behaviour is unchanged.
    *
    * @param value tool execution service instance
    *
@@ -242,8 +242,7 @@ public final class WorkflowRuntimeBuilder {
 
   /**
    * Configures the store used to resume approval-pending tool invocations. Required alongside
-   * {@link #toolExecutionService(ToolExecutionService)} for {@code continueAfterToolApproval} to
-   * function.
+   * {@link #toolExecutionService(ToolExecutionService)} for {@code continueAfterToolApproval} to function.
    *
    * @param value pending tool invocation store instance
    *
@@ -252,6 +251,20 @@ public final class WorkflowRuntimeBuilder {
   public WorkflowRuntimeBuilder pendingToolInvocationStore(PendingToolInvocationStore value) {
     this.pendingToolInvocationStore =
         Validate.notNull(value, "pendingToolInvocationStore must not be null");
+    return this;
+  }
+
+  /**
+   * Configures the resolver used to satisfy declared {@code requirements} at the run-start checkpoint and at deferred
+   * first use. Defaults to {@link DefaultRequirementResolver} (default- or-empty) when omitted, so a pure-{@code core}
+   * runtime still enforces the fail-fast guarantee.
+   *
+   * @param value requirement resolver instance
+   *
+   * @return this builder
+   */
+  public WorkflowRuntimeBuilder requirementResolver(RequirementResolver value) {
+    this.requirementResolver = Validate.notNull(value, "requirementResolver must not be null");
     return this;
   }
 
@@ -281,17 +294,21 @@ public final class WorkflowRuntimeBuilder {
     MaxIterationsHandler maxIterationsHandler = new MaxIterationsHandler(resolvedEventRecorder,
         resolvedClock);
 
+    RequirementResolver resolvedRequirementResolver = ObjectUtils.getIfNull(requirementResolver,
+        DefaultRequirementResolver::new);
+
     // The executor graph has a cycle: ExecutableExecutor needs BlueprintExecutor
     // and WorkflowExecutor; both of those need a StepSequenceExecutor that in
     // turn needs the ExecutableExecutor. We break the cycle with late-bound
     // setters on BlueprintExecutor and WorkflowExecutor.
-    WorkflowExecutor workflowExecutor = new WorkflowExecutor();
+    WorkflowExecutor workflowExecutor = new WorkflowExecutor(resolvedRequirementResolver);
     BlueprintExecutor blueprintExecutor = new BlueprintExecutor();
 
     BranchBehaviourHandler branchBehaviourHandler = new BranchBehaviourHandler(
         resolvedEventRecorder);
     RetryPreviousBehaviourHandler retryPreviousBehaviourHandler = new RetryPreviousBehaviourHandler(
         resolvedEventRecorder);
+    TransitionGate transitionGate = new TransitionGate(resolvedEventRecorder);
     StepExecutor stepExecutor = buildStepExecutor(
         agentInvoker,
         commandApplier,
@@ -299,10 +316,12 @@ public final class WorkflowRuntimeBuilder {
         resolvedClock,
         workflowExecutor,
         branchBehaviourHandler,
-        retryPreviousBehaviourHandler);
+        retryPreviousBehaviourHandler,
+        transitionGate);
 
     ExecutableExecutor executableExecutor =
-        new ExecutableExecutor(stepExecutor, blueprintExecutor, workflowExecutor);
+        new ExecutableExecutor(stepExecutor, blueprintExecutor, workflowExecutor,
+            resolvedRequirementResolver);
     branchBehaviourHandler.setExecutableExecutor(executableExecutor);
     retryPreviousBehaviourHandler.setExecutableExecutor(executableExecutor);
     StepSequenceExecutor stepSequenceExecutor = new StepSequenceExecutor(executableExecutor);
@@ -311,6 +330,7 @@ public final class WorkflowRuntimeBuilder {
         maxIterationsHandler,
         resolvedEvaluator);
     blueprintExecutor.setStepSequenceExecutor(stepSequenceExecutor);
+    blueprintExecutor.setTransitionGate(transitionGate);
     workflowExecutor.setStepSequenceExecutor(stepSequenceExecutor);
 
     return new DefaultWorkflowRuntime(
@@ -323,7 +343,9 @@ public final class WorkflowRuntimeBuilder {
         runContextManager,
         maxNestingDepth,
         toolExecutionService,
-        pendingToolInvocationStore);
+        pendingToolInvocationStore,
+        resolvedRequirementResolver,
+        transitionGate);
   }
 
   private static void setupBlueprintLoopStrategies(BlueprintExecutor blueprintExecutor,
@@ -364,7 +386,8 @@ public final class WorkflowRuntimeBuilder {
       Clock resolvedClock,
       WorkflowExecutor workflowExecutor,
       BranchBehaviourHandler branchBehaviourHandler,
-      RetryPreviousBehaviourHandler retryPreviousBehaviourHandler) {
+      RetryPreviousBehaviourHandler retryPreviousBehaviourHandler,
+      TransitionGate transitionGate) {
     List<BehaviourHandler<? extends StepBehaviour>> handlers = List.of(
         new AgentBehaviourHandler(agentInvoker, commandApplier, eventRecorder),
         new SparBehaviourHandler(agentInvoker, commandApplier, eventRecorder),
@@ -374,7 +397,7 @@ public final class WorkflowRuntimeBuilder {
         branchBehaviourHandler,
         new FailBehaviourHandler(),
         retryPreviousBehaviourHandler);
-    return new StepExecutor(handlers, eventRecorder, resolvedClock);
+    return new StepExecutor(handlers, eventRecorder, resolvedClock, transitionGate);
   }
 
   private ShellCommandRunner resolveShellCommandRunner() {

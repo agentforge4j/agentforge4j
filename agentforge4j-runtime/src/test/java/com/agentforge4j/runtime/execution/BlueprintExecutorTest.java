@@ -13,17 +13,16 @@ import com.agentforge4j.core.workflow.step.blueprint.BlueprintDefinition;
 import com.agentforge4j.core.workflow.step.blueprint.BlueprintRef;
 import com.agentforge4j.core.workflow.step.loop.LoopConfig;
 import com.agentforge4j.core.workflow.step.loop.LoopTerminationStrategy;
+import com.agentforge4j.runtime.event.EventRecorder;
 import com.agentforge4j.runtime.execution.loop.FixedCountLoopStrategy;
-import com.agentforge4j.runtime.execution.loop.LoopStrategy;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
-import org.mockito.ArgumentCaptor;
-
 import java.time.Instant;
 import java.util.ArrayDeque;
 import java.util.Deque;
 import java.util.List;
 import java.util.Map;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -53,6 +52,7 @@ class BlueprintExecutorTest {
     when(fixedCountLoopStrategy.strategy()).thenReturn(LoopTerminationStrategy.FIXED_COUNT);
     blueprintExecutor.setStepSequenceExecutor(stepSequenceExecutor);
     blueprintExecutor.setLoopStrategies(List.of(fixedCountLoopStrategy));
+    blueprintExecutor.setTransitionGate(new TransitionGate(mock(EventRecorder.class)));
     when(stepSequenceExecutor.executeAll(anyList(), any())).thenReturn(ExecutionOutcome.COMPLETED);
 
     state = new WorkflowState("run-1", "wf-root", null, Instant.parse("2026-05-01T00:00:00Z"));
@@ -167,7 +167,7 @@ class BlueprintExecutorTest {
   void unwired_execute_before_setters_throws() {
     BlueprintExecutor unwired = new BlueprintExecutor();
     WorkflowDefinition root = workflow("wf-root", Map.of(BP_ID,
-        blueprint(BP_ID, List.of(resourceStep("s", "k")), null)),
+            blueprint(BP_ID, List.of(resourceStep("s", "k")), null)),
         List.of(resourceStep("holder", "holder")));
     ExecutionContext ctx = contextWithStack(root);
 

@@ -4,7 +4,7 @@ import com.agentforge4j.core.command.ToolInvocationCommand;
 
 /**
  * Policy gate for tool invocation. Tier gating, RBAC, allowlists, and rate limits are policy
- * implementations injected at the platform boundary, not core concepts. The OSS default is
+ * implementations injected by the embedding application, not core concepts. The OSS default is
  * {@code NoOpToolPolicy} returning {@link PolicyDecision.Allow}.
  */
 public interface ToolPolicy {

@@ -88,8 +88,8 @@ public final class IntegrationToolProviderResolver implements ToolProviderResolv
   @Override
   public ResolvedTool resolve(String capability, ToolScope scope) {
     // scope is intentionally ignored: OSS carries no tenant/binding model and resolves a capability
-    // identically regardless of workflow/run. Binding-aware resolution by scope is the platform's
-    // concern, not this OSS resolver's.
+    // identically regardless of workflow/run. Binding-aware resolution by scope is the embedding
+    // application's concern, not this OSS resolver's.
     Validate.notBlank(capability, "capability must not be blank");
     return Validate.notNull(byCapability.get(capability),
         () -> new CapabilityResolutionException(

@@ -1,13 +1,5 @@
 package com.agentforge4j.runtime.llm;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
-
 import com.agentforge4j.core.agent.AgentDefinition;
 import com.agentforge4j.core.agent.AgentLocality;
 import com.agentforge4j.core.agent.AgentRepository;
@@ -30,6 +22,14 @@ import java.time.ZoneOffset;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 class AgentInvokerModelTierTest {
 
@@ -81,6 +81,22 @@ class AgentInvokerModelTierTest {
 
     assertThat(requestModel(client)).isEqualTo("resolved-POWERFUL");
     assertThat(result.requestedModelTier()).isEqualTo(ModelTier.POWERFUL);
+  }
+
+  @Test
+  void lowercaseTierResolvesIdenticallyToUppercase() {
+    LlmClient client = client();
+    ModelTierResolver resolver = (provider, tier) ->
+        tier == ModelTier.STANDARD ? "resolved-standard" : null;
+    AgentInvoker invoker = invoker(agent(new ProviderPreference("openai", null), "standard"),
+        client, resolver);
+
+    AgentInvocationResult result = invoker.invoke("agent-x", ContextMapping.none(),
+        state("run-lower-tier"), null);
+
+    assertThat(requestModel(client)).isEqualTo("resolved-standard");
+    assertThat(result.modelSource()).isEqualTo(ModelSource.TIER);
+    assertThat(result.requestedModelTier()).isEqualTo(ModelTier.STANDARD);
   }
 
   @Test

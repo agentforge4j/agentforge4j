@@ -12,7 +12,7 @@ import com.agentforge4j.util.Validate;
 public record WorkflowBehaviour(
     String workflowRef,
     StepTransition transition
-) implements StepBehaviour {
+) implements StepBehaviour, TransitionAware {
 
   public WorkflowBehaviour {
     Validate.notBlank(workflowRef, "WorkflowBehaviour workflowRef must not be blank");

@@ -7,7 +7,7 @@ import { exportStepJson } from '../model/mapper';
 import agentSchema from '../schemas/agent.schema.json';
 import artifactSchema from '../schemas/artifact.schema.json';
 import blueprintSchema from '../schemas/blueprint.schema.json';
-import workflowSchema from '../schemas/workflow.schema.json';
+import workflowSchema from '../generated/workflow.schema.json';
 
 type SchemaValidationResult = {
   valid: boolean;

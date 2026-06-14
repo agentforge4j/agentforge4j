@@ -6,6 +6,7 @@ import com.agentforge4j.core.workflow.Executable;
 import com.agentforge4j.core.workflow.WorkflowAgentRefCollector;
 import com.agentforge4j.core.workflow.WorkflowAgentRefCollector.AgentRefSite;
 import com.agentforge4j.core.workflow.WorkflowDefinition;
+import com.agentforge4j.core.workflow.requirement.WorkflowRequirement;
 import com.agentforge4j.core.workflow.step.StepDefinition;
 import com.agentforge4j.core.workflow.step.behaviour.BranchBehaviour;
 import com.agentforge4j.core.workflow.step.behaviour.InputBehaviour;
@@ -27,6 +28,7 @@ public final class WorkflowValidator {
    * Verifies that workflow references point to known workflows.
    *
    * @param workflows workflows to validate
+   *
    * @throws IllegalArgumentException when a workflow reference targets an unknown workflow
    */
   public void validateWorkflowRefs(Map<String, WorkflowDefinition> workflows) {
@@ -38,6 +40,7 @@ public final class WorkflowValidator {
    * Verifies that blueprint references point to declared blueprints in the same workflow.
    *
    * @param workflows workflows to validate
+   *
    * @throws IllegalArgumentException when a blueprint reference targets an unknown blueprint
    */
   public void validateBlueprintRefs(Map<String, WorkflowDefinition> workflows) {
@@ -48,6 +51,7 @@ public final class WorkflowValidator {
    * Verifies that artifact references point to declared artifacts in the same workflow.
    *
    * @param workflows workflows to validate
+   *
    * @throws IllegalArgumentException when an artifact reference targets an unknown artifact
    */
   public void validateArtifactRefs(Map<String, WorkflowDefinition> workflows) {
@@ -58,6 +62,7 @@ public final class WorkflowValidator {
    * Verifies that workflow reference graphs do not contain cycles.
    *
    * @param workflows workflows to validate
+   *
    * @throws IllegalStateException when a circular workflow reference is detected
    */
   public void validateCircularRefs(Map<String, WorkflowDefinition> workflows) {
@@ -69,6 +74,7 @@ public final class WorkflowValidator {
    * Verifies that {@code RetryPreviousBehaviour} references target known steps.
    *
    * @param workflows workflows to validate
+   *
    * @throws IllegalArgumentException when a retry step reference targets an unknown step id
    */
   public void validateRetryStepRefs(Map<String, WorkflowDefinition> workflows) {
@@ -260,10 +266,51 @@ public final class WorkflowValidator {
   }
 
   /**
+   * Verifies the structural integrity of each workflow's {@code requirements} declarations: requirement-id uniqueness,
+   * that a targeted {@code stepId} resolves to a real step, and that no two requirements of the same type target the
+   * same site. Requirement {@code type}, {@code action} values, and {@code default} payloads are opaque and are not
+   * interpreted here.
+   *
+   * @param workflows workflows to validate
+   *
+   * @throws IllegalArgumentException when a requirement declaration is structurally invalid
+   */
+  public void validateRequirements(Map<String, WorkflowDefinition> workflows) {
+    workflows.values().forEach(WorkflowValidator::validateWorkflowRequirements);
+  }
+
+  private static void validateWorkflowRequirements(WorkflowDefinition workflow) {
+    List<WorkflowRequirement> requirements = workflow.requirements();
+    if (requirements.isEmpty()) {
+      return;
+    }
+    Set<String> stepIds = new HashSet<>();
+    collectStepIds(workflow.steps(), stepIds);
+    Set<String> seenIds = new HashSet<>();
+    Set<String> seenTargets = new HashSet<>();
+    for (WorkflowRequirement requirement : requirements) {
+      Validate.isTrue(seenIds.add(requirement.id()),
+          "Workflow '%s' declares duplicate requirement id '%s'"
+              .formatted(workflow.id(), requirement.id()));
+      if (requirement.stepId() != null) {
+        Validate.isTrue(stepIds.contains(requirement.stepId()),
+            "Requirement '%s' in workflow '%s' targets unknown step '%s'"
+                .formatted(requirement.id(), workflow.id(), requirement.stepId()));
+      }
+      String target = "%s|%s|%s|%s".formatted(requirement.type(), requirement.scope(),
+          requirement.stepId(), requirement.action());
+      Validate.isTrue(seenTargets.add(target),
+          "Workflow '%s' declares conflicting requirements of type '%s' for the same target"
+              .formatted(workflow.id(), requirement.type()));
+    }
+  }
+
+  /**
    * Verifies that every agent reference in every workflow resolves to a known agent id.
    *
    * @param workflows workflows whose agent references are checked
    * @param agents    available agents keyed by id
+   *
    * @throws UnresolvedAgentReferenceException when one or more agent references are unresolved
    */
   public void validateAgentRefs(

@@ -4,7 +4,7 @@ package com.agentforge4j.llm.api;
  * Resolves a declared {@link ModelTier} to a concrete, versioned model string for a given
  * provider.
  *
- * <p>Implementations range from a static shipped default map to a tenant-aware, database-backed
+ * <p>Implementations range from a static shipped default map to a context-aware, database-backed
  * resolver. Resolution is provider-scoped because the same tier maps to different model identifiers
  * across providers.
  */

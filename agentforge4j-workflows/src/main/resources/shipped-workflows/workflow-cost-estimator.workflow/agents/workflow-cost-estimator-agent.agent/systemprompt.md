@@ -16,7 +16,7 @@ You analyse an AgentForge4j workflow definition and produce a structured credit 
 | gpt-4o-mini | 1 |
 | claude-sonnet (any) | 27 |
 | claude-haiku (any) | 2.5 |
-| ollama / vllm (local) | 0.5 (platform fee) |
+| ollama / vllm (local) | 0.5 (service fee) |
 | unknown model | 10 (conservative estimate) |
 
 Output tokens cost ~3–4x more than input. The blended rate above accounts for this. Assume 60% input / 40% output split for typical agent invocations.

@@ -12,6 +12,7 @@ import com.agentforge4j.core.workflow.WorkflowLifecycle;
 import com.agentforge4j.core.workflow.WorkflowSource;
 import com.agentforge4j.core.workflow.context.ContextMapping;
 import com.agentforge4j.core.workflow.event.WorkflowEventType;
+import com.agentforge4j.core.workflow.requirement.DefaultRequirementResolver;
 import com.agentforge4j.core.workflow.state.WorkflowStatus;
 import com.agentforge4j.core.workflow.step.StepDefinition;
 import com.agentforge4j.core.workflow.step.StepTransition;
@@ -19,8 +20,8 @@ import com.agentforge4j.core.workflow.step.behaviour.ResourceBehaviour;
 import com.agentforge4j.runtime.event.EventRecorder;
 import com.agentforge4j.runtime.execution.ExecutableExecutor;
 import com.agentforge4j.runtime.execution.ExecutionContext;
-import com.agentforge4j.runtime.execution.ExecutionOutcome;
 import com.agentforge4j.runtime.execution.StepSequenceExecutor;
+import com.agentforge4j.runtime.execution.TransitionGate;
 import com.agentforge4j.runtime.repository.InMemoryWorkflowEventLog;
 import com.agentforge4j.runtime.repository.InMemoryWorkflowStateRepository;
 import java.time.Clock;
@@ -104,7 +105,9 @@ class DefaultWorkflowRuntimeFailureTest {
         RunContextManager.NO_OP,
         DefaultWorkflowRuntime.DEFAULT_MAX_NESTING_DEPTH,
         null,
-        null);
+        null,
+        new DefaultRequirementResolver(),
+        new TransitionGate(eventRecorder));
   }
 
 }

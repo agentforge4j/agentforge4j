@@ -49,8 +49,8 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 /**
- * Runtime-level checks for LLM audit events, input vs approval taxonomy, and user-prompt caps. LLM
- * is mocked; this is a fast unit-style suite, not an HTTP integration test.
+ * Runtime-level checks for LLM audit events, input vs approval taxonomy, and user-prompt caps. LLM is mocked; this is a
+ * fast unit-style suite, not an HTTP integration test.
  */
 class AgentStepAuditRuntimeTest {
 
@@ -116,10 +116,10 @@ class AgentStepAuditRuntimeTest {
 
     String runId = f.runtime().start("wf1");
     assertThat(f.runtime().getState(runId).getStatus()).isEqualTo(WorkflowStatus.AWAITING_INPUT);
-    f.runtime().submitInput(runId, Map.of("response", "a1"));
+    f.runtime().submitInput(runId, Map.of("response", "a1"), "user");
     assertThat(f.runtime().getState(runId).getStatus()).isEqualTo(WorkflowStatus.AWAITING_INPUT);
 
-    f.runtime().submitInput(runId, Map.of("response", "a2"));
+    f.runtime().submitInput(runId, Map.of("response", "a2"), "user");
 
     WorkflowState state = f.stateRepository().findById(runId).orElseThrow();
     assertThat(state.getStatus()).isEqualTo(WorkflowStatus.FAILED);
@@ -141,8 +141,8 @@ class AgentStepAuditRuntimeTest {
     Fixture f = fixture(client, agent("a1", List.of("USER_PROMPT", "COMPLETE")), 2);
 
     String runId = f.runtime().start("wf1");
-    f.runtime().submitInput(runId, Map.of("response", "a1"));
-    f.runtime().submitInput(runId, Map.of("response", "a2"));
+    f.runtime().submitInput(runId, Map.of("response", "a1"), "user");
+    f.runtime().submitInput(runId, Map.of("response", "a2"), "user");
 
     WorkflowState state = f.stateRepository().findById(runId).orElseThrow();
     assertThat(state.getStatus()).isEqualTo(WorkflowStatus.FAILED);
@@ -183,7 +183,7 @@ class AgentStepAuditRuntimeTest {
     String runId = f.runtime().start("wf1");
     int scopesAfterStart = runContextManager.opens.size();
     int closesAfterStart = runContextManager.closeCount.get();
-    f.runtime().submitInput(runId, Map.of("response", "ok"));
+    f.runtime().submitInput(runId, Map.of("response", "ok"), "user");
 
     assertThat(runContextManager.opens.size())
         .as("submitInput on the prompt-answer path must open a RunContextManager scope")
@@ -210,7 +210,7 @@ class AgentStepAuditRuntimeTest {
     Fixture f = fixture(client, agent("a1", List.of("USER_PROMPT", "SET_CONTEXT", "COMPLETE")), 8);
 
     String runId = f.runtime().start("wf1");
-    f.runtime().submitInput(runId, Map.of("response", "ok"));
+    f.runtime().submitInput(runId, Map.of("response", "ok"), "user");
     WorkflowState state = f.runtime().getState(runId);
     assertThat(state.getStatus()).isEqualTo(WorkflowStatus.COMPLETED);
     assertThat(state.getUserPromptPauseCountForStep("s1")).isZero();
@@ -231,7 +231,7 @@ class AgentStepAuditRuntimeTest {
 
     String runId = f.runtime().start("wf1");
     int afterFirst = f.eventLog().getEvents(runId).size();
-    f.runtime().submitInput(runId, Map.of("response", "ok"));
+    f.runtime().submitInput(runId, Map.of("response", "ok"), "user");
     int afterSecond = f.eventLog().getEvents(runId).size();
     assertThat(afterSecond).isGreaterThan(afterFirst);
   }

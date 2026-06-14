@@ -185,6 +185,7 @@ public final class AgentForgeLoader {
     runValidation("artifact refs", () -> validator.validateArtifactRefs(workflows));
     runValidation("circular refs", () -> validator.validateCircularRefs(workflows));
     runValidation("retry refs", () -> validator.validateRetryStepRefs(workflows));
+    runValidation("requirement refs", () -> validator.validateRequirements(workflows));
   }
 
   /**

@@ -9,7 +9,7 @@ import java.util.concurrent.ConcurrentHashMap;
 /**
  * Registry of MCP server connections keyed by server id. It owns connection lifecycle only
  * (server-id to {@link McpServerConnection}); it never resolves a capability to a provider — that
- * is the job of the runtime/platform {@code ToolProviderResolver}.
+ * is the job of the runtime's {@code ToolProviderResolver}.
  */
 public final class McpServerRegistry {
 

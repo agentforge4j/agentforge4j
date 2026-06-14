@@ -11,7 +11,7 @@ import java.util.concurrent.atomic.AtomicReference;
 /**
  * Lifecycle wrapper around a single MCP server's {@link McpTransport}: it owns connect, reconnect,
  * health, and dispose for one server id. It is a connection manager, not a capability resolver —
- * capability resolution lives entirely in the runtime/platform {@code ToolProviderResolver}.
+ * capability resolution lives entirely in the runtime's {@code ToolProviderResolver}.
  */
 public final class McpServerConnection {
 

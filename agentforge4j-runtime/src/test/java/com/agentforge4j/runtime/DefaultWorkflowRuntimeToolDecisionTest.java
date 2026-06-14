@@ -16,6 +16,7 @@ import com.agentforge4j.core.workflow.WorkflowSource;
 import com.agentforge4j.core.workflow.context.ContextMapping;
 import com.agentforge4j.core.workflow.context.ContextValue;
 import com.agentforge4j.core.workflow.context.StringContextValue;
+import com.agentforge4j.core.workflow.requirement.DefaultRequirementResolver;
 import com.agentforge4j.core.workflow.state.WorkflowState;
 import com.agentforge4j.core.workflow.state.WorkflowStatus;
 import com.agentforge4j.core.workflow.step.StepDefinition;
@@ -25,6 +26,7 @@ import com.agentforge4j.runtime.event.EventRecorder;
 import com.agentforge4j.runtime.execution.ExecutableExecutor;
 import com.agentforge4j.runtime.execution.ExecutionOutcome;
 import com.agentforge4j.runtime.execution.StepSequenceExecutor;
+import com.agentforge4j.runtime.execution.TransitionGate;
 import com.agentforge4j.runtime.repository.InMemoryWorkflowEventLog;
 import com.agentforge4j.runtime.repository.InMemoryWorkflowStateRepository;
 import com.agentforge4j.runtime.tool.InMemoryPendingToolInvocationStore;
@@ -58,7 +60,7 @@ class DefaultWorkflowRuntimeToolDecisionTest {
     seedState(WorkflowStatus.AWAITING_TOOL_DECISION);
     seedPending("policy denied");
 
-    runtime().resolveToolDecision("run-1", "tid-1", new ToolDecision.Continue());
+    runtime().resolveToolDecision("run-1", "tid-1", new ToolDecision.Continue("op-1"));
 
     assertThat(errorValue()).isEqualTo("policy denied");
     assertThat(store.find("run-1", "tid-1")).isNull();
@@ -70,17 +72,29 @@ class DefaultWorkflowRuntimeToolDecisionTest {
     seedPending("invoke failed");
     toolService.resumeOutcome = ToolExecutionOutcome.executed(ToolResult.success("PR-ok", 1L));
 
-    runtime().resolveToolDecision("run-1", "tid-1", new ToolDecision.Retry());
+    runtime().resolveToolDecision("run-1", "tid-1", new ToolDecision.Retry("op-1"));
 
     assertThat(contextValue("tool." + CAPABILITY)).isEqualTo("PR-ok");
     assertThat(store.find("run-1", "tid-1")).isNull();
   }
 
   @Test
+  void resolveToolDecisionGatesAHumanReviewStepAfterAdvancing() {
+    DefaultWorkflowRuntime runtime = runtimeWith(StepTransition.HUMAN_REVIEW);
+    seedState(WorkflowStatus.AWAITING_TOOL_DECISION);
+    seedPending("policy denied");
+
+    runtime.resolveToolDecision("run-1", "tid-1", new ToolDecision.Continue("op-1"));
+
+    assertThat(stateRepo.findById("run-1").orElseThrow().getStatus())
+        .isEqualTo(WorkflowStatus.AWAITING_REVIEW);
+  }
+
+  @Test
   void approveOnAwaitingToolDecisionIsRejected() {
     seedState(WorkflowStatus.AWAITING_TOOL_DECISION);
 
-    assertThatThrownBy(() -> runtime().approve("run-1", "s1", "note"))
+    assertThatThrownBy(() -> runtime().approve("run-1", "s1", "note", "op-1"))
         .isInstanceOf(IllegalStateException.class)
         .hasMessageContaining("resolveToolDecision");
   }
@@ -90,7 +104,7 @@ class DefaultWorkflowRuntimeToolDecisionTest {
     seedState(WorkflowStatus.AWAITING_APPROVAL);
 
     assertThatThrownBy(
-        () -> runtime().resolveToolDecision("run-1", "tid-1", new ToolDecision.Continue()))
+        () -> runtime().resolveToolDecision("run-1", "tid-1", new ToolDecision.Continue("op-1")))
         .isInstanceOf(IllegalStateException.class)
         .hasMessageContaining("approve");
   }
@@ -125,7 +139,7 @@ class DefaultWorkflowRuntimeToolDecisionTest {
   void approveOnAwaitingToolApprovalIsRejected() {
     seedState(WorkflowStatus.AWAITING_TOOL_APPROVAL);
 
-    assertThatThrownBy(() -> runtime().approve("run-1", "s1", "note"))
+    assertThatThrownBy(() -> runtime().approve("run-1", "s1", "note", "op-1"))
         .isInstanceOf(IllegalStateException.class)
         .hasMessageContaining("continueAfterToolApproval");
   }
@@ -155,7 +169,7 @@ class DefaultWorkflowRuntimeToolDecisionTest {
     seedState(WorkflowStatus.AWAITING_TOOL_APPROVAL);
 
     assertThatThrownBy(
-        () -> runtime().resolveToolDecision("run-1", "tid-1", new ToolDecision.Continue()))
+        () -> runtime().resolveToolDecision("run-1", "tid-1", new ToolDecision.Continue("op-1")))
         .isInstanceOf(IllegalStateException.class)
         .hasMessageContaining("continueAfterToolApproval");
   }
@@ -173,7 +187,9 @@ class DefaultWorkflowRuntimeToolDecisionTest {
         RunContextManager.NO_OP,
         DefaultWorkflowRuntime.DEFAULT_MAX_NESTING_DEPTH,
         toolService,
-        store);
+        store,
+        new DefaultRequirementResolver(),
+        new TransitionGate(eventRecorder));
   }
 
   private void seedState(WorkflowStatus status) {
@@ -201,13 +217,35 @@ class DefaultWorkflowRuntimeToolDecisionTest {
   }
 
   private static WorkflowDefinition workflow() {
+    return workflowWith(StepTransition.AUTO);
+  }
+
+  private static WorkflowDefinition workflowWith(StepTransition transition) {
     return new WorkflowDefinition(
         "wf-1", "wf-1", null, null, null, null, null,
         WorkflowSource.CUSTOM, WorkflowLifecycle.ACTIVE, Map.of(), Map.of(),
         List.of(new StepDefinition(
             "s1", "s1",
-            new ResourceBehaviour("/examples/sample.txt", "out", StepTransition.AUTO),
+            new ResourceBehaviour("/examples/sample.txt", "out", transition),
             ContextMapping.none(), null, null, null)));
+  }
+
+  private DefaultWorkflowRuntime runtimeWith(StepTransition transition) {
+    when(stepSequenceExecutor.executeAll(anyList(), any())).thenReturn(ExecutionOutcome.COMPLETED);
+    EventRecorder eventRecorder = new EventRecorder(new InMemoryWorkflowEventLog(), CLOCK);
+    return new DefaultWorkflowRuntime(
+        new InMemoryWorkflowRepository(Map.of("wf-1", workflowWith(transition))),
+        stateRepo,
+        stepSequenceExecutor,
+        mock(ExecutableExecutor.class),
+        eventRecorder,
+        CLOCK,
+        RunContextManager.NO_OP,
+        DefaultWorkflowRuntime.DEFAULT_MAX_NESTING_DEPTH,
+        toolService,
+        store,
+        new DefaultRequirementResolver(),
+        new TransitionGate(eventRecorder));
   }
 
   private static final class StubToolService implements ToolExecutionService {

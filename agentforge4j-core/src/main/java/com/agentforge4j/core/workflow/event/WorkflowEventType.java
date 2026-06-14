@@ -25,6 +25,27 @@ public enum WorkflowEventType {
    */
   STEP_RETRIED,
   /**
+   * Recorded when a step completes into a {@code HUMAN_REVIEW} gate and the run suspends awaiting review.
+   */
+  STEP_AWAITING_REVIEW,
+  /**
+   * Recorded when a suspended review is submitted (forward-only) and the run advances.
+   */
+  STEP_REVIEWED,
+  /**
+   * Recorded when a step completes into a {@code HUMAN_APPROVAL} gate and the run suspends awaiting an approval
+   * decision.
+   */
+  STEP_AWAITING_APPROVAL,
+  /**
+   * Recorded when a suspended step approval is granted and the run advances.
+   */
+  STEP_APPROVED,
+  /**
+   * Recorded when a suspended step approval is rejected and the run fails.
+   */
+  STEP_REJECTED,
+  /**
    * Recorded when the run blocks waiting for typed user input (prompt response or artifact).
    */
   AWAITING_INPUT,
@@ -45,16 +66,15 @@ public enum WorkflowEventType {
    */
   LLM_OUTPUT,
   /**
-   * Recorded once per LLM provider call, carrying token usage and model metadata. Payload is a JSON
-   * object with fields: {@code stepId}, {@code agentId}, {@code provider}, {@code modelUsed},
-   * {@code inputTokens}, {@code outputTokens}, {@code totalTokens}. Null token fields are emitted
-   * as JSON {@code null}, never {@code 0}.
+   * Recorded once per LLM provider call, carrying token usage and model metadata. Payload is a JSON object with fields:
+   * {@code stepId}, {@code agentId}, {@code provider}, {@code modelUsed}, {@code inputTokens}, {@code outputTokens},
+   * {@code totalTokens}. Null token fields are emitted as JSON {@code null}, never {@code 0}.
    */
   LLM_CALL_COMPLETED,
   /**
-   * Recorded when durable usage projection fails after {@link #LLM_CALL_COMPLETED}. Payload is a
-   * JSON object with fields: {@code originalEventId}, {@code runId}, {@code stepId},
-   * {@code reason}, and optional {@code exceptionClass}.
+   * Recorded when durable usage projection fails after {@link #LLM_CALL_COMPLETED}. Payload is a JSON object with
+   * fields: {@code originalEventId}, {@code runId}, {@code stepId}, {@code reason}, and optional
+   * {@code exceptionClass}.
    */
   USAGE_RECORD_FAILED,
   /**
@@ -94,13 +114,13 @@ public enum WorkflowEventType {
    */
   USER_PROMPT_LIMIT_REACHED,
   /**
-   * Recorded when a tool invocation is requested by the LLM and enters the execution chokepoint. Payload
-   * fields: {@code capability}, {@code agentId}, {@code stepUid}, {@code llmRationale}.
+   * Recorded when a tool invocation is requested by the LLM and enters the execution chokepoint. Payload fields:
+   * {@code capability}, {@code agentId}, {@code stepUid}, {@code llmRationale}.
    */
   TOOL_INVOCATION_REQUESTED,
   /**
-   * Recorded when a tool invocation succeeds (success-only; failures emit {@link #TOOL_INVOCATION_FAILED}).
-   * Payload fields: {@code capability}, {@code latencyMillis}.
+   * Recorded when a tool invocation succeeds (success-only; failures emit {@link #TOOL_INVOCATION_FAILED}). Payload
+   * fields: {@code capability}, {@code latencyMillis}.
    */
   TOOL_INVOCATION_COMPLETED,
   /**
@@ -108,13 +128,13 @@ public enum WorkflowEventType {
    */
   TOOL_INVOCATION_DENIED,
   /**
-   * Recorded when a tool invocation is suspended awaiting human approval. Payload fields:
-   * {@code capability}, {@code reason}, {@code approverScope}.
+   * Recorded when a tool invocation is suspended awaiting human approval. Payload fields: {@code capability},
+   * {@code reason}, {@code approverScope}.
    */
   TOOL_INVOCATION_APPROVAL_PENDING,
   /**
-   * Recorded when a tool invocation fails. Payload fields: {@code capability}, {@code phase}
-   * ({@code RESOLVE} / {@code VALIDATE} / {@code INVOKE}), {@code errorMessage}.
+   * Recorded when a tool invocation fails. Payload fields: {@code capability}, {@code phase} ({@code RESOLVE} /
+   * {@code VALIDATE} / {@code INVOKE}), {@code errorMessage}.
    */
   TOOL_INVOCATION_FAILED
 }

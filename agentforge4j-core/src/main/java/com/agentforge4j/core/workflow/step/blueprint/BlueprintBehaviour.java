@@ -1,6 +1,7 @@
 package com.agentforge4j.core.workflow.step.blueprint;
 
 import com.agentforge4j.core.workflow.step.StepTransition;
+import com.agentforge4j.core.workflow.step.behaviour.TransitionAware;
 import com.agentforge4j.core.workflow.step.loop.LoopConfig;
 import com.agentforge4j.util.Validate;
 
@@ -13,7 +14,7 @@ import com.agentforge4j.util.Validate;
 public record BlueprintBehaviour(
     LoopConfig loopConfig,
     StepTransition transition
-) {
+) implements TransitionAware {
 
   public BlueprintBehaviour {
     Validate.notNull(transition, "BlueprintBehaviour transition must not be null");

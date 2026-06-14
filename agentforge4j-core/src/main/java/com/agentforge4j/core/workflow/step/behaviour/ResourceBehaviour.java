@@ -16,7 +16,7 @@ public record ResourceBehaviour(
     String resourcePath,
     String contextKey,
     StepTransition transition
-) implements StepBehaviour {
+) implements StepBehaviour, TransitionAware {
 
   public ResourceBehaviour {
     Validate.notBlank(resourcePath, "ResourceBehaviour resourcePath must not be blank");

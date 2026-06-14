@@ -5,7 +5,7 @@ package com.agentforge4j.core.spi.tool;
  *
  * <p>Lookups are always scoped by {@code runId}, so an id belonging to another run is never
  * returned.
- * Platform implementations additionally scope by tenant.
+ * An embedding application may additionally scope lookups within its own identity model.
  */
 public interface PendingToolInvocationStore {
 

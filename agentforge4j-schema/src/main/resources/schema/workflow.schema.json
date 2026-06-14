@@ -27,9 +27,29 @@
       "type": "array",
       "minItems": 1,
       "items": { "$ref": "#/$defs/Executable" }
+    },
+    "requirements": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/WorkflowRequirement" },
+      "description": "Central, self-targeting requirement declarations. Opaque to the framework; interpreted by the configured RequirementResolver keyed on requirement type."
     }
   },
   "$defs": {
+    "WorkflowRequirement": {
+      "type": "object",
+      "required": ["id", "type", "scope", "resolution"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string", "description": "Unique requirement id within the workflow." },
+        "type": { "type": "string", "description": "Opaque requirement type; interpreted by the configured RequirementResolver. Not interpreted by the framework core." },
+        "scope": { "type": "string", "enum": ["WORKFLOW", "STEP", "STEP_ACTION"] },
+        "stepId": { "type": "string", "description": "Target step id when scope is STEP or STEP_ACTION." },
+        "action": { "type": "string", "description": "Opaque target action when scope is STEP_ACTION." },
+        "required": { "type": "boolean", "description": "Whether the workflow cannot run unless this requirement resolves." },
+        "default": { "description": "Optional opaque default payload; carried as raw JSON and never interpreted by the framework." },
+        "resolution": { "type": "string", "enum": ["INSTALL", "RUN_START", "INSTALL_OR_RUN_START", "DEFERRED"] }
+      }
+    },
     "Executable": {
       "oneOf": [
         { "$ref": "#/$defs/StepDefinition" },

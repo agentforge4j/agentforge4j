@@ -5,7 +5,7 @@ import java.util.List;
 /**
  * Read access to the configured integrations that feed capability resolution. This is the single
  * source of integrations for the resolver. Implementations live downstream (OSS loader/in-memory;
- * platform persistence-backed).
+ * or persistence-backed in an embedding application).
  */
 public interface IntegrationRepository {
 

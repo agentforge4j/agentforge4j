@@ -15,7 +15,7 @@ import org.springframework.context.annotation.Bean;
 /**
  * In-memory run state, event log, and file metadata when no {@link DataSource} is configured.
  *
- * <p>When a platform JPA module and datasource are present, {@link WorkflowStateRepository},
+ * <p>When a JPA persistence module and datasource are present, {@link WorkflowStateRepository},
  * {@link WorkflowEventLog}, and {@link WorkflowFileRepository} beans come from that module
  * instead.
  */

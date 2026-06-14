@@ -2,14 +2,15 @@ package com.agentforge4j.bootstrap;
 
 import com.agentforge4j.core.agent.AgentRepository;
 import com.agentforge4j.core.runtime.WorkflowRuntime;
-import com.agentforge4j.core.workflow.event.WorkflowEventLog;
-import com.agentforge4j.core.workflow.repository.WorkflowRepository;
-import com.agentforge4j.core.workflow.repository.WorkflowStateRepository;
-import com.agentforge4j.llm.LlmClientResolver;
-import com.agentforge4j.llm.RetryingLlmClientResolver;
 import com.agentforge4j.core.spi.tool.PendingToolInvocationStore;
 import com.agentforge4j.core.spi.tool.ToolCatalog;
 import com.agentforge4j.core.spi.tool.ToolExecutionService;
+import com.agentforge4j.core.workflow.event.WorkflowEventLog;
+import com.agentforge4j.core.workflow.repository.WorkflowRepository;
+import com.agentforge4j.core.workflow.repository.WorkflowStateRepository;
+import com.agentforge4j.core.workflow.requirement.RequirementResolver;
+import com.agentforge4j.llm.LlmClientResolver;
+import com.agentforge4j.llm.RetryingLlmClientResolver;
 import com.agentforge4j.llm.api.LlmClient;
 import com.agentforge4j.llm.api.LlmRetryPolicy;
 import com.agentforge4j.llm.api.ModelTierResolver;
@@ -26,8 +27,8 @@ import java.time.Clock;
 import java.util.List;
 
 /**
- * Assembles the {@link AgentInvoker} and {@link WorkflowRuntime} from resolved components. Internal
- * — not part of the public API.
+ * Assembles the {@link AgentInvoker} and {@link WorkflowRuntime} from resolved components. Internal — not part of the
+ * public API.
  */
 final class RuntimeAssembler {
 
@@ -38,12 +39,13 @@ final class RuntimeAssembler {
   }
 
   /**
-   * Wraps {@code resolver} with {@link RetryingLlmClientResolver} when {@code retryPolicy} is
-   * non-null, {@code retryPolicy.maxAttempts() > 1}, and {@code resolverWasExplicit} is false.
+   * Wraps {@code resolver} with {@link RetryingLlmClientResolver} when {@code retryPolicy} is non-null,
+   * {@code retryPolicy.maxAttempts() > 1}, and {@code resolverWasExplicit} is false.
    *
    * @param resolver            base resolver; must not be {@code null}
    * @param retryPolicy         optional retry policy
    * @param resolverWasExplicit true if the caller provided an explicit resolver
+   *
    * @return wrapped or original resolver; never {@code null}
    */
   static LlmClientResolver applyRetryPolicy(LlmClientResolver resolver,
@@ -78,8 +80,8 @@ final class RuntimeAssembler {
   }
 
   /**
-   * Builds the default {@link AgentInvoker}. Logs a WARNING when both an explicit invoker and
-   * {@code cacheEnabled} were configured (cache setting ignored).
+   * Builds the default {@link AgentInvoker}. Logs a WARNING when both an explicit invoker and {@code cacheEnabled} were
+   * configured (cache setting ignored).
    *
    * @param agentRepository              must not be {@code null}
    * @param llmClientResolver            must not be {@code null}
@@ -93,6 +95,7 @@ final class RuntimeAssembler {
    * @param modelTierResolver            must not be {@code null}
    * @param explicitInvoker              caller-provided invoker or {@code null} for default
    * @param cacheEnabledSet              true if {@code withCacheEnabled} was called explicitly
+   *
    * @return resolved invoker; never {@code null}
    */
   static AgentInvoker agentInvoker(AgentRepository agentRepository,
@@ -146,6 +149,9 @@ final class RuntimeAssembler {
    * @param agentInvoker            must not be {@code null}
    * @param eventRecorder           must not be {@code null}
    * @param maxNestingDepth         optional nesting depth override
+   * @param requirementResolver     optional requirement resolver; when {@code null} the runtime builder defaults to its
+   *                                in-process {@code DefaultRequirementResolver}
+   *
    * @return assembled runtime; never {@code null}
    */
   static WorkflowRuntime runtime(WorkflowRepository workflowRepository,
@@ -157,7 +163,8 @@ final class RuntimeAssembler {
       EventRecorder eventRecorder,
       Integer maxNestingDepth,
       ToolExecutionService toolExecutionService,
-      PendingToolInvocationStore pendingToolInvocationStore) {
+      PendingToolInvocationStore pendingToolInvocationStore,
+      RequirementResolver requirementResolver) {
     WorkflowRuntimeBuilder runtimeBuilder = new WorkflowRuntimeBuilder()
         .workflowRepository(workflowRepository)
         .workflowStateRepository(workflowStateRepository)
@@ -175,6 +182,9 @@ final class RuntimeAssembler {
     }
     if (pendingToolInvocationStore != null) {
       runtimeBuilder.pendingToolInvocationStore(pendingToolInvocationStore);
+    }
+    if (requirementResolver != null) {
+      runtimeBuilder.requirementResolver(requirementResolver);
     }
 
     return runtimeBuilder.build();

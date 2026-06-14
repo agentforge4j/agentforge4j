@@ -18,9 +18,9 @@ import java.util.function.Function;
  * hosted, auth-requiring servers), attached to every request. Header values are either literals
  * ({@code staticHeaders}) or secret-reference keys ({@code secretHeaders}) resolved at connect time
  * through an embedder-supplied {@code secretResolver}, mirroring the {@code HttpToolProvider}
- * secret model. Pass empty maps and a {@code null} resolver for a server with no headers. Header
- * values vary per tenant/user/org only at the platform layer, which supplies the resolved
- * configuration here.
+ * secret model. Pass empty maps and a {@code null} resolver for a server with no headers. Any
+ * variation of header values across callers is resolved by the embedding application, which supplies
+ * the resolved configuration here.
  */
 public final class StreamableHttpTransport extends AbstractSdkMcpTransport {
 

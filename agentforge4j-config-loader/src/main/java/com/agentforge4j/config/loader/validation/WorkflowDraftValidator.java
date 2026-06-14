@@ -31,6 +31,7 @@ public final class WorkflowDraftValidator {
     runValidation(errors, "validateArtifactRefs", () -> validator.validateArtifactRefs(workflows));
     runValidation(errors, "validateCircularRefs", () -> validator.validateCircularRefs(workflows));
     runValidation(errors, "validateRetryStepRefs", () -> validator.validateRetryStepRefs(workflows));
+    runValidation(errors, "validateRequirements", () -> validator.validateRequirements(workflows));
     return new ValidationReport(errors);
   }
 

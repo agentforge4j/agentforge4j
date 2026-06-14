@@ -6,7 +6,7 @@ package com.agentforge4j.core.spi.integration;
  * <p>Integration configuration never carries plaintext credentials: a {@code secretHeaders} entry
  * (or any other secret slot) holds a <em>reference</em> key, and this resolver turns that key into the live value when
  * the integration is invoked. The OSS default ({@link EnvironmentSecretResolver}) reads process environment variables
- * and system properties; an embedding application (for example the platform) supplies its own implementation backed by
+ * and system properties; an embedding application supplies its own implementation backed by
  * its secret store.
  *
  * <p>Resolution is deliberately lazy — performed per invocation, not at wiring time — so an unused

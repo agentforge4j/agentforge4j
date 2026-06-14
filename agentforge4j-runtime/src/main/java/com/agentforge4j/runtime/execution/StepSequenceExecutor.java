@@ -3,6 +3,7 @@ package com.agentforge4j.runtime.execution;
 import com.agentforge4j.core.workflow.Executable;
 import com.agentforge4j.core.workflow.state.WorkflowStatus;
 import com.agentforge4j.core.workflow.step.StepDefinition;
+import com.agentforge4j.core.workflow.step.blueprint.BlueprintRef;
 import com.agentforge4j.util.Validate;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -10,14 +11,13 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Drives a flat list of {@link Executable}s by delegating to {@link ExecutableExecutor} until the
- * list is exhausted or a non-{@code COMPLETED} outcome is produced.
+ * Drives a flat list of {@link Executable}s by delegating to {@link ExecutableExecutor} until the list is exhausted or
+ * a non-{@code COMPLETED} outcome is produced.
  *
  * <p>Re-entry safety: when a run is resumed (for example after
- * {@code submitInput}) the whole sequence may be re-driven from the start. Plain
- * {@link StepDefinition} entries whose id is already present in {@code state.stepOutputs} are
- * skipped so we never re-invoke an LLM or re-ask for user input for a step that already produced a
- * result.
+ * {@code submitInput}) the whole sequence may be re-driven from the start. Plain {@link StepDefinition} entries whose
+ * id is already present in {@code state.stepOutputs} are skipped so we never re-invoke an LLM or re-ask for user input
+ * for a step that already produced a result.
  *
  * <p>{@code BlueprintRef} and nested {@code WorkflowDefinition} entries are
  * always re-entered — their own executors are responsible for resume-safety within their bodies.
@@ -36,8 +36,8 @@ public final class StepSequenceExecutor {
   /**
    * Execute each element in sequence.
    *
-   * @return the outcome of the last executable if it was non-{@code COMPLETED}; otherwise
-   * {@code COMPLETED} when all executables finished normally.
+   * @return the outcome of the last executable if it was non-{@code COMPLETED}; otherwise {@code COMPLETED} when all
+   * executables finished normally.
    */
   public ExecutionOutcome executeAll(List<Executable> executables,
       ExecutionContext executionContext) {
@@ -127,7 +127,14 @@ public final class StepSequenceExecutor {
   }
 
   private static boolean shouldSkip(Executable executable, Map<String, String> stepOutputs) {
-    return executable instanceof StepDefinition step
-        && stepOutputs.containsKey(step.stepId());
+    if (executable instanceof StepDefinition step) {
+      return stepOutputs.containsKey(step.stepId());
+    }
+    // A blueprint whose post-loop gate already fired is skipped on resume: its body completed before
+    // the gate suspended, so re-entering would re-run (and re-gate) it.
+    if (executable instanceof BlueprintRef ref) {
+      return stepOutputs.containsKey(TransitionGate.blueprintGateMarker(ref.blueprintId()));
+    }
+    return false;
   }
 }

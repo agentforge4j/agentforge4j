@@ -13,7 +13,7 @@ import com.agentforge4j.util.Validate;
 public record InputBehaviour(
     String artifactId,
     StepTransition transition
-) implements StepBehaviour {
+) implements StepBehaviour, TransitionAware {
 
   public InputBehaviour {
     Validate.notBlank(artifactId, "InputBehaviour artifactId must not be blank");

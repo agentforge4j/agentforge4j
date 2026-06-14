@@ -8,7 +8,7 @@ import com.agentforge4j.core.spi.tool.ToolPolicy;
 
 /**
  * Default OSS {@link ToolPolicy} that allows every invocation. Tier gating, RBAC, and rate limits
- * are platform-boundary policy implementations, not core concepts.
+ * are policy implementations injected by the embedding application, not core concepts.
  */
 public final class NoOpToolPolicy implements ToolPolicy {
 

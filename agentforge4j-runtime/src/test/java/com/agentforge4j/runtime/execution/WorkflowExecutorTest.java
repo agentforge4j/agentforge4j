@@ -4,6 +4,7 @@ import com.agentforge4j.core.workflow.WorkflowDefinition;
 import com.agentforge4j.core.workflow.WorkflowLifecycle;
 import com.agentforge4j.core.workflow.WorkflowSource;
 import com.agentforge4j.core.workflow.context.ContextMapping;
+import com.agentforge4j.core.workflow.requirement.DefaultRequirementResolver;
 import com.agentforge4j.core.workflow.state.WorkflowState;
 import com.agentforge4j.core.workflow.step.StepDefinition;
 import com.agentforge4j.core.workflow.step.StepTransition;
@@ -32,7 +33,7 @@ class WorkflowExecutorTest {
 
   @BeforeEach
   void setUp() {
-    workflowExecutor = new WorkflowExecutor();
+    workflowExecutor = new WorkflowExecutor(new DefaultRequirementResolver());
     stepSequenceExecutor = mock(StepSequenceExecutor.class);
     workflowExecutor.setStepSequenceExecutor(stepSequenceExecutor);
 
@@ -97,7 +98,7 @@ class WorkflowExecutorTest {
 
   @Test
   void unwired_execute_throws() {
-    WorkflowExecutor unwired = new WorkflowExecutor();
+    WorkflowExecutor unwired = new WorkflowExecutor(new DefaultRequirementResolver());
     assertThatThrownBy(() -> unwired.execute(nested, executionContext))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("setStepSequenceExecutor");

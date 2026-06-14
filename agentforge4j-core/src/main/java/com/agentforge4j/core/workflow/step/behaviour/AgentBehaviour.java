@@ -15,7 +15,7 @@ public record AgentBehaviour(
     String agentRef,
     StepTransition transition,
     RetryPolicy retryPolicy
-) implements StepBehaviour {
+) implements StepBehaviour, TransitionAware {
 
   public AgentBehaviour {
     Validate.notBlank(agentRef, "AgentBehaviour agentRef must not be blank");

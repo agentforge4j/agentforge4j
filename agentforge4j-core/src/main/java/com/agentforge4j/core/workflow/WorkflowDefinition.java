@@ -1,6 +1,7 @@
 package com.agentforge4j.core.workflow;
 
 import com.agentforge4j.core.workflow.artifact.ArtifactDefinition;
+import com.agentforge4j.core.workflow.requirement.WorkflowRequirement;
 import com.agentforge4j.core.workflow.step.blueprint.BlueprintDefinition;
 import com.agentforge4j.util.Validate;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
@@ -25,16 +26,18 @@ public record WorkflowDefinition(
     String author,
     String contact,
     String version,
-    /**
-     * Stable server-side identity for cost estimates (optional in workflow JSON). Do not use
-     * {@link #id} as the long-term estimate key; ids may be renamed when forking or editing drafts.
-     */
+     // Stable server-side identity for cost estimates (optional in workflow JSON). Do not use
+     // {@link #id} as the long-term estimate key; ids may be renamed when forking or editing drafts.
     String uuid,
     WorkflowSource source,
     WorkflowLifecycle lifecycle,
     Map<String, ArtifactDefinition> artifacts,
     Map<String, BlueprintDefinition> blueprints,
-    List<Executable> steps
+    List<Executable> steps,
+     // Central, self-targeting requirement declarations; {@code null} or absent becomes an empty
+     // list. Opaque to {@code core}: structurally validated at load and asserted at the run-start
+     // checkpoint, but never interpreted here.
+    List<WorkflowRequirement> requirements
 ) implements Executable {
 
   public WorkflowDefinition {
@@ -49,6 +52,19 @@ public record WorkflowDefinition(
     Validate.notEmpty(steps,
         "WorkflowDefinition steps must not be empty for workflow: %s".formatted(id));
     steps = List.copyOf(steps);
+    requirements = requirements != null ? List.copyOf(requirements) : List.of();
+  }
+
+  /**
+   * Back-compatible constructor without {@code requirements} (defaults to empty). Delegates to the
+   * canonical constructor so existing positional callers keep compiling.
+   */
+  public WorkflowDefinition(String id, String name, String description, String author,
+      String contact, String version, String uuid, WorkflowSource source,
+      WorkflowLifecycle lifecycle, Map<String, ArtifactDefinition> artifacts,
+      Map<String, BlueprintDefinition> blueprints, List<Executable> steps) {
+    this(id, name, description, author, contact, version, uuid, source, lifecycle, artifacts,
+        blueprints, steps, List.of());
   }
 
   public static WorkflowDefinition duplicate(WorkflowDefinition workflowDefinition,
@@ -65,7 +81,8 @@ public record WorkflowDefinition(
         workflowDefinition.lifecycle(),
         workflowDefinition.artifacts(),
         blueprints,
-        loadedStepPrompts);
+        loadedStepPrompts,
+        workflowDefinition.requirements());
   }
 
   public static WorkflowDefinition duplicate(WorkflowDefinition workflowDefinition,
@@ -84,6 +101,7 @@ public record WorkflowDefinition(
         lifecycle,
         artifacts,
         blueprints,
-        loadedStepPrompts);
+        loadedStepPrompts,
+        workflowDefinition.requirements());
   }
 }

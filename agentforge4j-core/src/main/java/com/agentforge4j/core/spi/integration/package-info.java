@@ -11,6 +11,6 @@
  * {@link com.agentforge4j.core.spi.tool.ToolProvider}.
  *
  * <p>All contracts here are pure: no Spring, persistence, LLM-vendor, or tenant/user/role concept.
- * Implementations live downstream (OSS loader/in-memory; platform persistence-backed).
+ * Implementations live downstream (OSS loader/in-memory; or persistence-backed in an embedding application).
  */
 package com.agentforge4j.core.spi.integration;

@@ -254,6 +254,8 @@ dist/
 .turbo/
 agentforge4j-workflow-builder/node_modules/
 agentforge4j-workflow-builder/dist/
+# Build-time derivative copied from agentforge4j-schema by scripts/sync-schema.mjs
+agentforge4j-workflow-builder/src/generated/
 
 ### jqwik property-test run database (regenerated each run; not source)
 .jqwik-database

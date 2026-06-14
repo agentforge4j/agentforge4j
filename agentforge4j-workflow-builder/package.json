@@ -25,11 +25,12 @@
     "access": "public"
   },
   "scripts": {
-    "build": "tsup",
-    "dev": "vite dev",
+    "sync-schema": "node scripts/sync-schema.mjs",
+    "build": "npm run sync-schema && tsup",
+    "dev": "npm run sync-schema && vite dev",
     "prepublishOnly": "npm run typecheck && npm run build && npm run test",
-    "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "typecheck": "npm run sync-schema && tsc --noEmit",
+    "test": "npm run sync-schema && vitest run"
   },
   "peerDependencies": {
     "react": "^18.0.0 || ^19.0.0",

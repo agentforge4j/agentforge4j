@@ -19,7 +19,7 @@ public record SparBehaviour(
     SparConfig sparConfig,
     StepTransition transition,
     RetryPolicy retryPolicy
-) implements StepBehaviour {
+) implements StepBehaviour, TransitionAware {
 
   public SparBehaviour {
     Validate.notBlank(agentRef, "SparBehaviour agentRef must not be blank");

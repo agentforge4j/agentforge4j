@@ -23,6 +23,7 @@ module agentforge4j.core {
   exports com.agentforge4j.core.spi.integration;
   exports com.agentforge4j.core.runtime;
   exports com.agentforge4j.core.workflow;
+  exports com.agentforge4j.core.workflow.requirement;
   exports com.agentforge4j.core.workflow.artifact;
   exports com.agentforge4j.core.workflow.step;
   exports com.agentforge4j.core.workflow.context;

@@ -20,6 +20,7 @@ import com.agentforge4j.core.spi.tool.ToolProviderResolver;
 import com.agentforge4j.core.workflow.event.WorkflowEventLog;
 import com.agentforge4j.core.workflow.repository.WorkflowRepository;
 import com.agentforge4j.core.workflow.repository.WorkflowStateRepository;
+import com.agentforge4j.core.workflow.requirement.RequirementResolver;
 import com.agentforge4j.llm.ConfigModelTierResolver;
 import com.agentforge4j.llm.DefaultLlmClientResolver;
 import com.agentforge4j.llm.LlmClientResolver;
@@ -111,6 +112,7 @@ public final class AgentForge4jBootstrap {
     private AgentInvoker agentInvoker;
     private LlmCallObserver llmCallObserver;
     private ModelTierResolver modelTierResolver;
+    private RequirementResolver requirementResolver;
     private List<ToolProvider> toolProviders = List.of();
     private ToolProviderResolver toolProviderResolver;
     private ToolPolicy toolPolicy;
@@ -362,6 +364,22 @@ public final class AgentForge4jBootstrap {
     }
 
     /**
+     * Overrides the resolver consulted for declared workflow requirements at the run-start checkpoint and at deferred
+     * first use. When not set, the runtime defaults to the in-process {@code DefaultRequirementResolver}
+     * (default-or-empty), preserving the fail-fast guarantee out of the box. The embedding application supplies a
+     * store-backed resolver here.
+     *
+     * @param requirementResolver resolver instance; must not be {@code null}
+     *
+     * @return this builder
+     */
+    public Builder withRequirementResolver(RequirementResolver requirementResolver) {
+      this.requirementResolver = Validate.notNull(requirementResolver,
+          "requirementResolver must not be null");
+      return this;
+    }
+
+    /**
      * Provides pre-built tool providers (for example MCP servers) to expose to the runtime. Configuring any tool
      * support enables the tool-execution chokepoint and registers the {@code TOOL_INVOCATION} handler; with none
      * configured, tool invocation is unavailable and behaviour is unchanged.
@@ -382,7 +400,8 @@ public final class AgentForge4jBootstrap {
     }
 
     /**
-     * Overrides the capability resolver (for example a platform binding-aware resolver). When set, it is the sole
+     * Overrides the capability resolver (for example a binding-aware resolver supplied by the embedding application).
+     * When set, it is the sole
      * resolver and {@link #withToolProviders(List)} is not used to build one.
      *
      * @param toolProviderResolver resolver instance; must not be {@code null}
@@ -693,16 +712,13 @@ public final class AgentForge4jBootstrap {
           resolvedObserver, resolvedTierResolver, agentInvoker, cacheEnabledSet,
           resolvedToolCatalog);
 
-      WorkflowRuntime resolvedRuntime = RuntimeAssembler.runtime(
-          resolvedWorkflowRepo, resolvedStateRepo, resolvedEventLog, resolvedClock,
-          resolvedFileSink, resolvedInvoker, resolvedRecorder,
-          maxNestingDepth, resolvedToolExecutionService, resolvedPendingStore);
+      WorkflowRuntime resolvedRuntime = RuntimeAssembler.runtime(resolvedWorkflowRepo, resolvedStateRepo,
+          resolvedEventLog, resolvedClock, resolvedFileSink, resolvedInvoker, resolvedRecorder, maxNestingDepth,
+          resolvedToolExecutionService, resolvedPendingStore, requirementResolver);
 
-      BootstrapComponents components = new BootstrapComponents(
-          resolvedAgentRepo, resolvedWorkflowRepo, resolvedStateRepo, resolvedEventLog,
-          resolvedResolver, resolvedRenderer, resolvedParser, resolvedRecorder,
-          resolvedFileSink, resolvedStrategy,
-          toolSupport.integrationRepository(), resolver, resolvedMapper,
+      BootstrapComponents components = new BootstrapComponents(resolvedAgentRepo, resolvedWorkflowRepo,
+          resolvedStateRepo, resolvedEventLog, resolvedResolver, resolvedRenderer, resolvedParser, resolvedRecorder,
+          resolvedFileSink, resolvedStrategy, toolSupport.integrationRepository(), resolver, resolvedMapper,
           resolvedClock, resolvedInvoker, resolvedObserver, loadedConfiguration);
 
       return new AgentForge4j(resolvedRuntime, loadedConfiguration, components);
