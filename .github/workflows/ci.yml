@@ -86,7 +86,7 @@ jobs:
 
       - name: Upload test reports
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           # Unique per matrix leg (os + jdk): upload-artifact v4 errors on duplicate names, and
           # ubuntu/windows both run a JDK-21 leg.
