@@ -211,7 +211,7 @@ class AbstractHttpLlmClientTest {
 
     @Test
     void should_throw_on_mismatched_provider() {
-      LlmExecutionRequest request = new LlmExecutionRequest("claude", "gpt-4", "prompt", "input");
+      LlmExecutionRequest request = new LlmExecutionRequest("claude", "gpt-4", "prompt", "input", null, null, null);
 
       assertThrows(IllegalArgumentException.class, () -> {
         client.execute(request);
@@ -221,14 +221,14 @@ class AbstractHttpLlmClientTest {
     @Test
     void should_throw_on_blank_user_input() {
       assertThrows(IllegalArgumentException.class, () -> {
-        client.execute(new LlmExecutionRequest("openai", null, "system", "  "));
+        client.execute(new LlmExecutionRequest("openai", null, "system", "  ", null, null, null));
       });
     }
 
     @Test
     void should_throw_on_blank_system_prompt() {
       assertThrows(IllegalArgumentException.class, () -> {
-        client.execute(new LlmExecutionRequest("openai", null, "\t", "user"));
+        client.execute(new LlmExecutionRequest("openai", null, "\t", "user", null, null, null));
       });
     }
   }

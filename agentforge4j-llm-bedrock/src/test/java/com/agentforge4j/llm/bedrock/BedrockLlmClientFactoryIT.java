@@ -63,7 +63,7 @@ class BedrockLlmClientFactoryIT {
       BedrockLlmClientFactory factory = new BedrockLlmClientFactory();
       LlmClient client = factory.create(new ObjectMapper(), cfg);
       String out = client.execute(new LlmExecutionRequest(
-          "bedrock", null, "You are concise.", "Say hello.")).text();
+          "bedrock", null, "You are concise.", "Say hello.", null, null, null)).text();
       assertThat(out).isEqualTo("from-factory-it");
     } finally {
       server.stop(0);
@@ -91,7 +91,7 @@ class BedrockLlmClientFactoryIT {
       BedrockLlmClientFactory factory = new BedrockLlmClientFactory();
       LlmClient client = factory.create(new ObjectMapper(), cfg);
       String out = client.execute(new LlmExecutionRequest(
-          "bedrock", null, "You are concise.", "Say hello.")).text();
+          "bedrock", null, "You are concise.", "Say hello.", null, null, null)).text();
       assertThat(out).isEqualTo("from-converse-it");
     } finally {
       server.stop(0);
@@ -115,7 +115,7 @@ class BedrockLlmClientFactoryIT {
       BedrockLlmClientFactory factory = new BedrockLlmClientFactory();
       LlmClient client = factory.create(new ObjectMapper(), cfg);
       assertThatThrownBy(() -> client.execute(
-          new LlmExecutionRequest("bedrock", null, "s", "u")))
+          new LlmExecutionRequest("bedrock", null, "s", "u", null, null, null)))
           .isInstanceOf(SdkClientException.class);
     } finally {
       server.stop(0);

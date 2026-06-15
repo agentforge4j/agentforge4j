@@ -243,7 +243,7 @@ class VllmLlmClientTest {
           .build();
       VllmLlmClient client = new VllmLlmClient(mapper, config);
       LlmExecutionRequest request =
-          LlmExecutionRequest.withDefaultModel("vllm", "system prompt", "user input");
+          new LlmExecutionRequest("vllm", null, "system prompt", "user input", null, null, null);
 
       HttpRequest httpRequest = client.buildHttpRequest(request);
 
@@ -258,7 +258,7 @@ class VllmLlmClientTest {
       ObjectMapper mapper = new ObjectMapper();
       VllmLlmClient client = new VllmLlmClient(mapper, FixedVllmConfiguration.defaults());
       LlmExecutionRequest request =
-          LlmExecutionRequest.withDefaultModel("vllm", "sys", "usr");
+          new LlmExecutionRequest("vllm", null, "sys", "usr", null, null, null);
 
       HttpRequest httpRequest = client.buildHttpRequest(request);
 
@@ -273,7 +273,7 @@ class VllmLlmClientTest {
           .build();
       VllmLlmClient client = new VllmLlmClient(mapper, config);
       LlmExecutionRequest request =
-          LlmExecutionRequest.withDefaultModel("vllm", "Be brief.", "Ping");
+          new LlmExecutionRequest("vllm", null, "Be brief.", "Ping", null, null, null);
 
       String body = collectUtf8RequestBody(client.buildHttpRequest(request));
       var expected = new VllmRequest(
@@ -294,7 +294,7 @@ class VllmLlmClientTest {
           .build();
       VllmLlmClient client = new VllmLlmClient(mapper, config);
       LlmExecutionRequest request =
-          new LlmExecutionRequest("vllm", "explicit-model", "S", "U");
+          new LlmExecutionRequest("vllm", "explicit-model", "S", "U", null, null, null);
 
       String body = collectUtf8RequestBody(client.buildHttpRequest(request));
 
@@ -306,7 +306,7 @@ class VllmLlmClientTest {
       ObjectMapper mapper = new ObjectMapper();
       VllmLlmClient client = new VllmLlmClient(mapper, FixedVllmConfiguration.defaults());
       LlmExecutionRequest request =
-          LlmExecutionRequest.withDefaultModel("vllm", "a", "b");
+          new LlmExecutionRequest("vllm", null, "a", "b", null, null, null);
 
       String body = collectUtf8RequestBody(client.buildHttpRequest(request));
 
@@ -322,10 +322,10 @@ class VllmLlmClientTest {
       ObjectMapper mapper = new ObjectMapper();
       VllmLlmClient client = new VllmLlmClient(mapper, FixedVllmConfiguration.defaults());
       LlmExecutionRequest withoutBoundaries =
-          new LlmExecutionRequest("vllm", "model-a", "system", "user");
+          new LlmExecutionRequest("vllm", "model-a", "system", "user", null, null, null);
       PromptLayerBoundaries boundaries = new PromptLayerBoundaries(50, 100, null);
       LlmExecutionRequest withBoundaries = new LlmExecutionRequest(
-          "vllm", "model-a", "system", "user", null, boundaries);
+          "vllm", "model-a", "system", "user", null, boundaries, null);
 
       String withoutBody = collectUtf8RequestBody(client.buildHttpRequest(withoutBoundaries));
       String withBody = collectUtf8RequestBody(client.buildHttpRequest(withBoundaries));
@@ -339,7 +339,7 @@ class VllmLlmClientTest {
       VllmLlmClient client = new VllmLlmClient(mapper, FixedVllmConfiguration.defaults());
       PromptLayerBoundaries boundaries = new PromptLayerBoundaries(100, 200, null);
       LlmExecutionRequest request = new LlmExecutionRequest(
-          "vllm", "model-a", "system", "user", null, boundaries);
+          "vllm", "model-a", "system", "user", null, boundaries, null);
 
       String body = collectUtf8RequestBody(client.buildHttpRequest(request));
 

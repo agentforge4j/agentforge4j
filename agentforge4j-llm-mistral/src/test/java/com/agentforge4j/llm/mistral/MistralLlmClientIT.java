@@ -152,7 +152,7 @@ class MistralLlmClientIT {
           .build();
       MistralLlmClient client = new MistralLlmClient(mapper, config);
       LlmExecutionRequest request =
-          LlmExecutionRequest.withDefaultModel("mistral", "You are helpful.", "Say hi.");
+          new LlmExecutionRequest("mistral", null, "You are helpful.", "Say hi.", null, null, null);
 
       var response = client.execute(request);
 
@@ -187,7 +187,7 @@ class MistralLlmClientIT {
           .build();
       MistralLlmClient client = new MistralLlmClient(mapper, config);
       LlmExecutionRequest request =
-          LlmExecutionRequest.withDefaultModel("mistral", "system", "user");
+          new LlmExecutionRequest("mistral", null, "system", "user", null, null, null);
 
       LlmExecutionResponse response = client.execute(request);
       assertThat(response.text()).isEqualTo("with usage");
@@ -216,7 +216,7 @@ class MistralLlmClientIT {
           .baseUrl(http.baseUrl().toString())
           .build();
       MistralLlmClient client = new MistralLlmClient(mapper, config);
-      LlmExecutionRequest request = new LlmExecutionRequest("MISTRAL", null, "system", "user");
+      LlmExecutionRequest request = new LlmExecutionRequest("MISTRAL", null, "system", "user", null, null, null);
 
       assertThat(client.execute(request).text()).isEqualTo("pong");
     }
@@ -232,7 +232,7 @@ class MistralLlmClientIT {
           .build();
       MistralLlmClient client = new MistralLlmClient(mapper, config);
       LlmExecutionRequest request =
-          LlmExecutionRequest.withDefaultModel("mistral", "system", "user");
+          new LlmExecutionRequest("mistral", null, "system", "user", null, null, null);
 
       assertThatThrownBy(() -> client.execute(request))
           .isInstanceOf(LlmInvocationException.class)
@@ -254,7 +254,7 @@ class MistralLlmClientIT {
           .build();
       MistralLlmClient client = new MistralLlmClient(mapper, config);
       LlmExecutionRequest request =
-          LlmExecutionRequest.withDefaultModel("mistral", "system", "user");
+          new LlmExecutionRequest("mistral", null, "system", "user", null, null, null);
 
       assertThatThrownBy(() -> client.execute(request))
           .isInstanceOf(LlmInvocationException.class)
@@ -272,7 +272,7 @@ class MistralLlmClientIT {
           .build();
       MistralLlmClient client = new MistralLlmClient(mapper, config);
       LlmExecutionRequest request =
-          LlmExecutionRequest.withDefaultModel("mistral", "system", "user");
+          new LlmExecutionRequest("mistral", null, "system", "user", null, null, null);
 
       assertThatThrownBy(() -> client.execute(request))
           .isInstanceOf(LlmInvocationException.class)
@@ -294,7 +294,7 @@ class MistralLlmClientIT {
         .build();
     MistralLlmClient client = new MistralLlmClient(mapper, config);
     LlmExecutionRequest request =
-        LlmExecutionRequest.withDefaultModel("mistral", "system", "user");
+        new LlmExecutionRequest("mistral", null, "system", "user", null, null, null);
 
     assertThatThrownBy(() -> client.execute(request))
         .isInstanceOf(LlmInvocationException.class)

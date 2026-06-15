@@ -32,8 +32,8 @@ class DefaultLlmClientResolverDiscoverIT {
     assertThat(client.getProviderName()).isEqualTo(ServiceLoaderStubLlmClientFactory.PROVIDER);
 
     LlmExecutionResponse result = client.execute(
-        LlmExecutionRequest.withDefaultModel(ServiceLoaderStubLlmClientFactory.PROVIDER, "sys",
-            "ping"));
+        new LlmExecutionRequest(ServiceLoaderStubLlmClientFactory.PROVIDER, null, "sys",
+            "ping", null, null, null));
 
     assertThat(result.text()).isEqualTo("stub:ping");
     assertThat(result.tokenUsage()).isNull();

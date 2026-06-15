@@ -420,7 +420,7 @@ class GeminiLlmClientTest {
           .build();
       GeminiLlmClient client = new GeminiLlmClient(mapper, config);
       LlmExecutionRequest request =
-          new LlmExecutionRequest("gemini", "custom-model", "sys", "user");
+          new LlmExecutionRequest("gemini", "custom-model", "sys", "user", null, null, null);
 
       HttpRequest httpRequest = client.buildHttpRequest(request);
 
@@ -440,7 +440,7 @@ class GeminiLlmClientTest {
       ObjectMapper mapper = new ObjectMapper();
       GeminiLlmClient client = new GeminiLlmClient(mapper, FixedGeminiConfiguration.defaults());
       LlmExecutionRequest request =
-          LlmExecutionRequest.withDefaultModel("gemini", "s", "u");
+          new LlmExecutionRequest("gemini", null, "s", "u", null, null, null);
 
       HttpRequest httpRequest = client.buildHttpRequest(request);
 
@@ -453,7 +453,7 @@ class GeminiLlmClientTest {
       ObjectMapper mapper = new ObjectMapper();
       GeminiLlmClient client = new GeminiLlmClient(mapper, FixedGeminiConfiguration.defaults());
       LlmExecutionRequest request =
-          new LlmExecutionRequest("gemini", "m", "You are helpful.", "Hello.");
+          new LlmExecutionRequest("gemini", "m", "You are helpful.", "Hello.", null, null, null);
 
       String body = collectUtf8RequestBody(client.buildHttpRequest(request));
       GeminiRequest expected = new GeminiRequest(
@@ -469,7 +469,7 @@ class GeminiLlmClientTest {
       ObjectMapper mapper = new ObjectMapper();
       GeminiLlmClient client = new GeminiLlmClient(mapper, FixedGeminiConfiguration.defaults());
       LlmExecutionRequest request =
-          new LlmExecutionRequest("gemini", "m", "s", "u", 2048);
+          new LlmExecutionRequest("gemini", "m", "s", "u", 2048, null, null);
 
       JsonNode tree = mapper.readTree(collectUtf8RequestBody(client.buildHttpRequest(request)));
 
@@ -482,7 +482,7 @@ class GeminiLlmClientTest {
       ObjectMapper mapper = new ObjectMapper();
       GeminiLlmClient client = new GeminiLlmClient(mapper, FixedGeminiConfiguration.defaults());
       LlmExecutionRequest request =
-          new LlmExecutionRequest("gemini", "m", "s", "u");
+          new LlmExecutionRequest("gemini", "m", "s", "u", null, null, null);
 
       JsonNode tree = mapper.readTree(collectUtf8RequestBody(client.buildHttpRequest(request)));
 
@@ -497,7 +497,7 @@ class GeminiLlmClientTest {
           .build();
       GeminiLlmClient client = new GeminiLlmClient(mapper, config);
       LlmExecutionRequest request =
-          new LlmExecutionRequest("gemini", "m", "s", "u");
+          new LlmExecutionRequest("gemini", "m", "s", "u", null, null, null);
 
       JsonNode tree = mapper.readTree(collectUtf8RequestBody(client.buildHttpRequest(request)));
 
@@ -512,7 +512,7 @@ class GeminiLlmClientTest {
           .build();
       GeminiLlmClient client = new GeminiLlmClient(mapper, config);
       LlmExecutionRequest request =
-          new LlmExecutionRequest("gemini", "m", "s", "u", 1200);
+          new LlmExecutionRequest("gemini", "m", "s", "u", 1200, null, null);
 
       JsonNode tree = mapper.readTree(collectUtf8RequestBody(client.buildHttpRequest(request)));
 
@@ -528,7 +528,7 @@ class GeminiLlmClientTest {
       GeminiLlmClient client =
           new GeminiLlmClient(new ObjectMapper(), FixedGeminiConfiguration.defaults());
       LlmExecutionRequest request =
-          LlmExecutionRequest.withDefaultModel("openai", "system", "user");
+          new LlmExecutionRequest("openai", null, "system", "user", null, null, null);
 
       assertThatThrownBy(() -> client.execute(request))
           .isInstanceOf(IllegalArgumentException.class)
@@ -551,7 +551,7 @@ class GeminiLlmClientTest {
           new GeminiLlmClient(new ObjectMapper(), FixedGeminiConfiguration.defaults());
 
       assertThatThrownBy(() -> client.execute(
-          new LlmExecutionRequest("gemini", null, "system", "user", 0)))
+          new LlmExecutionRequest("gemini", null, "system", "user", 0, null, null)))
           .isInstanceOf(IllegalArgumentException.class)
           .hasMessageContaining("maxOutputTokens");
     }
@@ -564,7 +564,7 @@ class GeminiLlmClientTest {
     void shouldProduceDeterministicRequestBodyForIdenticalInput() throws Exception {
       ObjectMapper mapper = new ObjectMapper();
       GeminiLlmClient client = new GeminiLlmClient(mapper, FixedGeminiConfiguration.defaults());
-      LlmExecutionRequest request = LlmExecutionRequest.withDefaultModel("gemini", "sys", "usr");
+      LlmExecutionRequest request = new LlmExecutionRequest("gemini", null, "sys", "usr", null, null, null);
 
       String first = collectUtf8RequestBody(client.buildHttpRequest(request));
       String second = collectUtf8RequestBody(client.buildHttpRequest(request));
@@ -578,7 +578,7 @@ class GeminiLlmClientTest {
       GeminiLlmClient client = new GeminiLlmClient(mapper, FixedGeminiConfiguration.defaults());
       PromptLayerBoundaries boundaries = new PromptLayerBoundaries(100, 200, null);
       LlmExecutionRequest request = new LlmExecutionRequest(
-          "gemini", "m", "system prompt", "user", null, boundaries);
+          "gemini", "m", "system prompt", "user", null, boundaries, null);
 
       String body = collectUtf8RequestBody(client.buildHttpRequest(request));
 

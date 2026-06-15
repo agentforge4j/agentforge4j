@@ -42,7 +42,7 @@ public final class TestFixtures {
 
   public static LlmExecutionRequest testRequest(String provider, String model, String systemPrompt,
       String userInput) {
-    return new LlmExecutionRequest(provider, model, systemPrompt, userInput);
+    return new LlmExecutionRequest(provider, model, systemPrompt, userInput, null, null, null);
   }
 
   public static ObjectMapper testObjectMapper() {

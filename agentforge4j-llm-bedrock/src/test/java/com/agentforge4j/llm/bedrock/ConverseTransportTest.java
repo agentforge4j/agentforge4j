@@ -56,7 +56,7 @@ class ConverseTransportTest {
         .thenReturn(responseWith("```json\n{\"a\":1}\n```", null));
 
     LlmExecutionResponse response = transport(client).execute(
-        new LlmExecutionRequest("bedrock", NOVA, "sys", "user"), NOVA, novaCaps);
+        new LlmExecutionRequest("bedrock", NOVA, "sys", "user", null, null, null), NOVA, novaCaps);
 
     assertThat(response.text()).isEqualTo("{\"a\":1}");
     assertThat(response.modelUsed()).isEqualTo(NOVA);
@@ -72,7 +72,7 @@ class ConverseTransportTest {
     when(client.converse(isA(ConverseRequest.class))).thenReturn(responseWith("ok", usage));
 
     TokenUsageReport report = transport(client).execute(
-        new LlmExecutionRequest("bedrock", NOVA, "s", "u"), NOVA, novaCaps).tokenUsage();
+        new LlmExecutionRequest("bedrock", NOVA, "s", "u", null, null, null), NOVA, novaCaps).tokenUsage();
 
     assertThat(report).isNotNull();
     assertThat(report.inputTokens()).isEqualTo(11);
@@ -89,7 +89,7 @@ class ConverseTransportTest {
         FixedBedrockConfiguration.builder().defaultModel(NOVA).temperature(0.5).build(), client);
 
     transport.execute(
-        new LlmExecutionRequest("bedrock", NOVA, "the-system", "the-user", 321), NOVA, novaCaps);
+        new LlmExecutionRequest("bedrock", NOVA, "the-system", "the-user", 321, null, null), NOVA, novaCaps);
 
     ArgumentCaptor<ConverseRequest> captor = ArgumentCaptor.forClass(ConverseRequest.class);
     verify(client).converse(captor.capture());
@@ -107,7 +107,7 @@ class ConverseTransportTest {
     BedrockRuntimeClient client = mock(BedrockRuntimeClient.class);
     when(client.converse(isA(ConverseRequest.class))).thenReturn(responseWith("ok", null));
 
-    transport(client).execute(new LlmExecutionRequest("bedrock", NOVA, "s", "u"), NOVA, novaCaps);
+    transport(client).execute(new LlmExecutionRequest("bedrock", NOVA, "s", "u", null, null, null), NOVA, novaCaps);
 
     ArgumentCaptor<ConverseRequest> captor = ArgumentCaptor.forClass(ConverseRequest.class);
     verify(client).converse(captor.capture());
@@ -119,7 +119,7 @@ class ConverseTransportTest {
     BedrockRuntimeClient client = mock(BedrockRuntimeClient.class);
     when(client.converse(isA(ConverseRequest.class))).thenReturn(responseWith("ok", null));
     LlmExecutionRequest request = new LlmExecutionRequest(
-        "bedrock", NOVA, "sys", "user", null, new PromptLayerBoundaries(3, 3, null));
+        "bedrock", NOVA, "sys", "user", null, new PromptLayerBoundaries(3, 3, null), null);
 
     LlmExecutionResponse response = transport(client).execute(request, NOVA, novaCaps);
 
@@ -136,7 +136,7 @@ class ConverseTransportTest {
         .statusCode(429).build());
 
     assertThatThrownBy(() -> transport(client).execute(
-        new LlmExecutionRequest("bedrock", NOVA, "s", "u"), NOVA, novaCaps))
+        new LlmExecutionRequest("bedrock", NOVA, "s", "u", null, null, null), NOVA, novaCaps))
         .isInstanceOf(LlmInvocationException.class)
         .hasMessageContaining("bedrock HTTP error")
         .hasMessageContaining("429");
@@ -152,7 +152,7 @@ class ConverseTransportTest {
         .build());
 
     assertThatThrownBy(() -> transport(client).execute(
-        new LlmExecutionRequest("bedrock", NOVA, "s", "u"), NOVA, novaCaps))
+        new LlmExecutionRequest("bedrock", NOVA, "s", "u", null, null, null), NOVA, novaCaps))
         .isInstanceOf(LlmInvocationException.class)
         .hasMessageContaining("content");
   }

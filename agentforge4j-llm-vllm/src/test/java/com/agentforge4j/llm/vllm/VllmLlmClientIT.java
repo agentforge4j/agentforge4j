@@ -44,7 +44,7 @@ class VllmLlmClientIT {
           .build();
       VllmLlmClient client = new VllmLlmClient(new ObjectMapper(), config);
       LlmExecutionRequest request =
-          LlmExecutionRequest.withDefaultModel("vllm", "system", "user");
+          new LlmExecutionRequest("vllm", null, "system", "user", null, null, null);
 
       var response = client.execute(request);
       assertThat(response.text()).isEqualTo("Hello from loopback");
@@ -61,7 +61,7 @@ class VllmLlmClientIT {
           .build();
       VllmLlmClient client = new VllmLlmClient(new ObjectMapper(), config);
       LlmExecutionRequest request =
-          LlmExecutionRequest.withDefaultModel("vllm", "system", "user");
+          new LlmExecutionRequest("vllm", null, "system", "user", null, null, null);
 
       LlmExecutionResponse response = client.execute(request);
       assertThat(response.text()).isEqualTo("Hello from vLLM");
@@ -90,7 +90,7 @@ class VllmLlmClientIT {
           .build();
       VllmLlmClient client = new VllmLlmClient(new ObjectMapper(), config);
       LlmExecutionRequest request =
-          new LlmExecutionRequest("VLLM", null, "system", "user");
+          new LlmExecutionRequest("VLLM", null, "system", "user", null, null, null);
 
       assertThat(client.execute(request).text()).isEqualTo("Hello from loopback");
     }
@@ -100,7 +100,7 @@ class VllmLlmClientIT {
   void should_throw_when_provider_name_mismatched() {
     VllmLlmClient client = new VllmLlmClient(new ObjectMapper(), FixedVllmConfiguration.defaults());
     LlmExecutionRequest request =
-        LlmExecutionRequest.withDefaultModel("openai", "system", "user");
+        new LlmExecutionRequest("openai", null, "system", "user", null, null, null);
 
     assertThatThrownBy(() -> client.execute(request))
         .isInstanceOf(IllegalArgumentException.class)
@@ -115,7 +115,7 @@ class VllmLlmClientIT {
           .build();
       VllmLlmClient client = new VllmLlmClient(new ObjectMapper(), config);
       LlmExecutionRequest request =
-          LlmExecutionRequest.withDefaultModel("vllm", "system", "user");
+          new LlmExecutionRequest("vllm", null, "system", "user", null, null, null);
 
       assertThatThrownBy(() -> client.execute(request))
           .isInstanceOf(LlmInvocationException.class)
@@ -133,7 +133,7 @@ class VllmLlmClientIT {
           .build();
       VllmLlmClient client = new VllmLlmClient(new ObjectMapper(), config);
       LlmExecutionRequest request =
-          LlmExecutionRequest.withDefaultModel("vllm", "system", "user");
+          new LlmExecutionRequest("vllm", null, "system", "user", null, null, null);
 
       assertThatThrownBy(() -> client.execute(request))
           .isInstanceOf(LlmInvocationException.class)
@@ -149,7 +149,7 @@ class VllmLlmClientIT {
           .build();
       VllmLlmClient client = new VllmLlmClient(new ObjectMapper(), config);
       LlmExecutionRequest request =
-          LlmExecutionRequest.withDefaultModel("vllm", "system", "user");
+          new LlmExecutionRequest("vllm", null, "system", "user", null, null, null);
 
       assertThatThrownBy(() -> client.execute(request))
           .isInstanceOf(LlmInvocationException.class)
@@ -168,7 +168,7 @@ class VllmLlmClientIT {
           .build();
       VllmLlmClient client = new VllmLlmClient(new ObjectMapper(), config);
       LlmExecutionRequest request =
-          LlmExecutionRequest.withDefaultModel("vllm", "system", "user");
+          new LlmExecutionRequest("vllm", null, "system", "user", null, null, null);
 
       assertThatThrownBy(() -> client.execute(request))
           .isInstanceOf(LlmInvocationException.class)
@@ -191,7 +191,7 @@ class VllmLlmClientIT {
           .build();
       VllmLlmClient client = new VllmLlmClient(new ObjectMapper(), config);
       LlmExecutionRequest request =
-          LlmExecutionRequest.withDefaultModel("vllm", "system", "user");
+          new LlmExecutionRequest("vllm", null, "system", "user", null, null, null);
 
       assertThatThrownBy(() -> client.execute(request))
           .isInstanceOf(LlmInvocationException.class)
@@ -210,7 +210,7 @@ class VllmLlmClientIT {
           .build();
       VllmLlmClient client = new VllmLlmClient(new ObjectMapper(), config);
       LlmExecutionRequest request =
-          LlmExecutionRequest.withDefaultModel("vllm", "S", "U");
+          new LlmExecutionRequest("vllm", null, "S", "U", null, null, null);
 
       client.execute(request);
 
@@ -234,7 +234,7 @@ class VllmLlmClientIT {
           .build();
       VllmLlmClient client = new VllmLlmClient(new ObjectMapper(), config);
       LlmExecutionRequest request =
-          LlmExecutionRequest.withDefaultModel("vllm", "sys", "usr");
+          new LlmExecutionRequest("vllm", null, "sys", "usr", null, null, null);
 
       client.execute(request);
 
@@ -259,7 +259,7 @@ class VllmLlmClientIT {
           .build();
       VllmLlmClient client = new VllmLlmClient(new ObjectMapper(), config);
       LlmExecutionRequest request =
-          new LlmExecutionRequest("vllm", "explicit-model", "S", "U");
+          new LlmExecutionRequest("vllm", "explicit-model", "S", "U", null, null, null);
 
       client.execute(request);
 
@@ -274,7 +274,7 @@ class VllmLlmClientIT {
         .build();
     VllmLlmClient client = new VllmLlmClient(new ObjectMapper(), config);
     LlmExecutionRequest request =
-        LlmExecutionRequest.withDefaultModel("vllm", "system", "user");
+        new LlmExecutionRequest("vllm", null, "system", "user", null, null, null);
 
     assertThatThrownBy(() -> client.execute(request))
         .isInstanceOf(LlmInvocationException.class)
@@ -292,7 +292,7 @@ class VllmLlmClientIT {
           .build();
       VllmLlmClient client = new VllmLlmClient(new ObjectMapper(), config);
       LlmExecutionRequest request =
-          LlmExecutionRequest.withDefaultModel("vllm", "system", "user");
+          new LlmExecutionRequest("vllm", null, "system", "user", null, null, null);
 
       assertThatThrownBy(() -> client.execute(request))
           .isInstanceOf(LlmInvocationException.class)
@@ -309,7 +309,7 @@ class VllmLlmClientIT {
           .build();
       var client = new VllmLlmClientFactory().create(new ObjectMapper(), config);
       LlmExecutionRequest request =
-          LlmExecutionRequest.withDefaultModel("vllm", "system", "user");
+          new LlmExecutionRequest("vllm", null, "system", "user", null, null, null);
 
       assertThat(client.execute(request).text()).isEqualTo("Hello from loopback");
     }

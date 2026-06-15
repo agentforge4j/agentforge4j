@@ -312,8 +312,8 @@ class ClaudeLlmClientTest {
     void shouldPostToConfiguredMessagesUrl() throws Exception {
       ClaudeConfiguration config = FixedClaudeConfiguration.defaults();
       ClaudeLlmClient client = new ClaudeLlmClient(new ObjectMapper(), config);
-      LlmExecutionRequest request = LlmExecutionRequest.withDefaultModel(
-          "claude", "system text", "user text");
+      LlmExecutionRequest request = new LlmExecutionRequest(
+          "claude", null, "system text", "user text", null, null, null);
 
       HttpRequest httpRequest = client.buildHttpRequest(request);
 
@@ -325,8 +325,8 @@ class ClaudeLlmClientTest {
     void shouldSetContentTypeApiKeyAndVersionHeaders() {
       ClaudeConfiguration config = FixedClaudeConfiguration.defaults();
       ClaudeLlmClient client = new ClaudeLlmClient(new ObjectMapper(), config);
-      LlmExecutionRequest request = LlmExecutionRequest.withDefaultModel(
-          "claude", "system text", "user text");
+      LlmExecutionRequest request = new LlmExecutionRequest(
+          "claude", null, "system text", "user text", null, null, null);
 
       HttpRequest httpRequest = client.buildHttpRequest(request);
 
@@ -339,8 +339,8 @@ class ClaudeLlmClientTest {
     void shouldSerializeExpectedRequestFields() throws Exception {
       ClaudeConfiguration config = FixedClaudeConfiguration.defaults();
       ClaudeLlmClient client = new ClaudeLlmClient(new ObjectMapper(), config);
-      LlmExecutionRequest request = LlmExecutionRequest.withDefaultModel(
-          "claude", "my system", "my user");
+      LlmExecutionRequest request = new LlmExecutionRequest(
+          "claude", null, "my system", "my user", null, null, null);
 
       String raw = requestBodyToString(client.buildHttpRequest(request));
       JsonNode root = new ObjectMapper().readTree(raw);
@@ -362,7 +362,7 @@ class ClaudeLlmClientTest {
       ClaudeConfiguration config = FixedClaudeConfiguration.defaults();
       ClaudeLlmClient client = new ClaudeLlmClient(new ObjectMapper(), config);
       LlmExecutionRequest request = new LlmExecutionRequest(
-          "claude", "other-model", "sys", "user");
+          "claude", "other-model", "sys", "user", null, null, null);
 
       String raw = requestBodyToString(client.buildHttpRequest(request));
       JsonNode root = new ObjectMapper().readTree(raw);
@@ -381,7 +381,7 @@ class ClaudeLlmClientTest {
           .maxTokenSize(100)
           .build();
       ClaudeLlmClient client = new ClaudeLlmClient(new ObjectMapper(), config);
-      LlmExecutionRequest request = LlmExecutionRequest.withDefaultModel("claude", "s", "u");
+      LlmExecutionRequest request = new LlmExecutionRequest("claude", null, "s", "u", null, null, null);
 
       HttpRequest httpRequest = client.buildHttpRequest(request);
 
@@ -423,7 +423,7 @@ class ClaudeLlmClientTest {
       String systemPrompt = layer1 + separator + layer2 + separator + layer3;
       PromptLayerBoundaries boundaries = boundariesFor(layer1, separator, layer2, layer3);
       LlmExecutionRequest request = new LlmExecutionRequest(
-          "claude", "m", systemPrompt, "user", null, boundaries);
+          "claude", "m", systemPrompt, "user", null, boundaries, null);
       ClaudeLlmClient client = new ClaudeLlmClient(new ObjectMapper(),
           FixedClaudeConfiguration.defaults());
 
@@ -447,7 +447,7 @@ class ClaudeLlmClientTest {
       String systemPrompt = layer1 + separator + layer2 + separator + layer3;
       PromptLayerBoundaries boundaries = boundariesFor(layer1, separator, layer2, layer3);
       LlmExecutionRequest request = new LlmExecutionRequest(
-          "claude", "m", systemPrompt, "user", null, boundaries);
+          "claude", "m", systemPrompt, "user", null, boundaries, null);
       ClaudeLlmClient client = new ClaudeLlmClient(new ObjectMapper(),
           FixedClaudeConfiguration.defaults());
 
@@ -478,7 +478,7 @@ class ClaudeLlmClientTest {
       PromptLayerBoundaries boundaries = new PromptLayerBoundaries(
           utf8Length(layer1), utf8Length(layer1), null);
       LlmExecutionRequest request = new LlmExecutionRequest(
-          "claude", "claude-haiku-4-5-20251001", layer1, "user", null, boundaries);
+          "claude", "claude-haiku-4-5-20251001", layer1, "user", null, boundaries, null);
       ClaudeLlmClient client = new ClaudeLlmClient(new ObjectMapper(),
           FixedClaudeConfiguration.defaults());
 
@@ -493,7 +493,7 @@ class ClaudeLlmClientTest {
       PromptLayerBoundaries boundaries = new PromptLayerBoundaries(
           utf8Length(layer1), utf8Length(layer1), null);
       LlmExecutionRequest request = new LlmExecutionRequest(
-          "claude", "claude-sonnet-4-20250514", layer1, "user", null, boundaries);
+          "claude", "claude-sonnet-4-20250514", layer1, "user", null, boundaries, null);
       ClaudeLlmClient client = new ClaudeLlmClient(new ObjectMapper(),
           FixedClaudeConfiguration.defaults());
 
@@ -510,7 +510,7 @@ class ClaudeLlmClientTest {
       String systemPrompt = layer1 + separator + layer2;
       PromptLayerBoundaries boundaries = boundariesFor(layer1, separator, layer2, null);
       LlmExecutionRequest request = new LlmExecutionRequest(
-          "claude", "m", systemPrompt, "user", null, boundaries);
+          "claude", "m", systemPrompt, "user", null, boundaries, null);
       ClaudeLlmClient client = new ClaudeLlmClient(new ObjectMapper(),
           FixedClaudeConfiguration.defaults());
 
@@ -521,8 +521,8 @@ class ClaudeLlmClientTest {
 
     @Test
     void shouldOmitCacheControlWhenBoundariesNull() throws Exception {
-      LlmExecutionRequest request = LlmExecutionRequest.withDefaultModel(
-          "claude", "my system", "my user");
+      LlmExecutionRequest request = new LlmExecutionRequest(
+          "claude", null, "my system", "my user", null, null, null);
       ClaudeLlmClient client = new ClaudeLlmClient(new ObjectMapper(),
           FixedClaudeConfiguration.defaults());
 
@@ -542,7 +542,7 @@ class ClaudeLlmClientTest {
       String systemPrompt = layer1 + separator + layer2;
       PromptLayerBoundaries boundaries = boundariesFor(layer1, separator, layer2, null);
       LlmExecutionRequest request = new LlmExecutionRequest(
-          "claude", "m", systemPrompt, "user", null, boundaries);
+          "claude", "m", systemPrompt, "user", null, boundaries, null);
       ClaudeLlmClient client = new ClaudeLlmClient(new ObjectMapper(),
           FixedClaudeConfiguration.defaults());
 
@@ -562,7 +562,7 @@ class ClaudeLlmClientTest {
       String systemPrompt = layer1 + separator + layer2 + separator + layer3;
       PromptLayerBoundaries boundaries = boundariesFor(layer1, separator, layer2, layer3);
       LlmExecutionRequest request = new LlmExecutionRequest(
-          "claude", "m", systemPrompt, "user", null, boundaries);
+          "claude", "m", systemPrompt, "user", null, boundaries, null);
       ClaudeLlmClient client = new ClaudeLlmClient(new ObjectMapper(),
           FixedClaudeConfiguration.defaults());
 

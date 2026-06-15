@@ -17,7 +17,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 class RetryingLlmClientResolverTest {
 
   private static LlmExecutionRequest dummyRequest() {
-    return LlmExecutionRequest.withDefaultModel("openai", "prompt", "input");
+    return new LlmExecutionRequest("openai", null, "prompt", "input", null, null, null);
   }
 
   static final class Fail503Client implements LlmClient {

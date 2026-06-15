@@ -197,7 +197,7 @@ class OllamaLlmClientIT {
           new OllamaLlmClient(new ObjectMapper(),
               configForUrl(http.chatUrl(), java.time.Duration.ofSeconds(30)));
       LlmExecutionRequest request =
-          LlmExecutionRequest.withDefaultModel("ollama", "system prompt", "user input");
+          new LlmExecutionRequest("ollama", null, "system prompt", "user input", null, null, null);
 
       var response = client.execute(request);
       assertThat(response.text()).isEqualTo("Hello from loopback");
@@ -213,7 +213,7 @@ class OllamaLlmClientIT {
           new OllamaLlmClient(new ObjectMapper(),
               configForUrl(http.chatUrl(), java.time.Duration.ofSeconds(30)));
       LlmExecutionRequest request =
-          LlmExecutionRequest.withDefaultModel("ollama", "system prompt", "user input");
+          new LlmExecutionRequest("ollama", null, "system prompt", "user input", null, null, null);
 
       LlmExecutionResponse response = client.execute(request);
       assertThat(response.text()).isEqualTo("Hello");
@@ -240,7 +240,7 @@ class OllamaLlmClientIT {
           new OllamaLlmClient(new ObjectMapper(),
               configForUrl(http.chatUrl(), java.time.Duration.ofSeconds(30)));
       LlmExecutionRequest request =
-          new LlmExecutionRequest("OLLAMA", null, "system prompt", "user input");
+          new LlmExecutionRequest("OLLAMA", null, "system prompt", "user input", null, null, null);
 
       assertThat(client.execute(request).text()).isEqualTo("Hello from loopback");
     }
@@ -251,7 +251,7 @@ class OllamaLlmClientIT {
     OllamaLlmClient client = new OllamaLlmClient(new ObjectMapper(),
         configForUrl("http://127.0.0.1:9/api/chat", java.time.Duration.ofSeconds(1)));
     LlmExecutionRequest request =
-        LlmExecutionRequest.withDefaultModel("openai", "system prompt", "user input");
+        new LlmExecutionRequest("openai", null, "system prompt", "user input", null, null, null);
 
     assertThatThrownBy(() -> client.execute(request))
         .isInstanceOf(IllegalArgumentException.class)
@@ -265,7 +265,7 @@ class OllamaLlmClientIT {
           new OllamaLlmClient(new ObjectMapper(),
               configForUrl(http.chatUrl(), java.time.Duration.ofSeconds(30)));
       LlmExecutionRequest request =
-          LlmExecutionRequest.withDefaultModel("ollama", "system prompt", "user input");
+          new LlmExecutionRequest("ollama", null, "system prompt", "user input", null, null, null);
 
       assertThatThrownBy(() -> client.execute(request))
           .isInstanceOf(LlmInvocationException.class)
@@ -288,7 +288,7 @@ class OllamaLlmClientIT {
           new OllamaLlmClient(new ObjectMapper(),
               configForUrl(http.chatUrl(), java.time.Duration.ofSeconds(30)));
       LlmExecutionRequest request =
-          LlmExecutionRequest.withDefaultModel("ollama", "system prompt", "user input");
+          new LlmExecutionRequest("ollama", null, "system prompt", "user input", null, null, null);
 
       assertThatThrownBy(() -> client.execute(request))
           .isInstanceOf(LlmInvocationException.class)
@@ -304,7 +304,7 @@ class OllamaLlmClientIT {
           new OllamaLlmClient(new ObjectMapper(),
               configForUrl(http.chatUrl(), java.time.Duration.ofSeconds(30)));
       LlmExecutionRequest request =
-          LlmExecutionRequest.withDefaultModel("ollama", "system prompt", "user input");
+          new LlmExecutionRequest("ollama", null, "system prompt", "user input", null, null, null);
 
       assertThatThrownBy(() -> client.execute(request))
           .isInstanceOf(LlmInvocationException.class)
@@ -319,7 +319,7 @@ class OllamaLlmClientIT {
       OllamaLlmClient client = new OllamaLlmClient(new ObjectMapper(),
           configForUrl(http.chatUrl(), java.time.Duration.ofSeconds(30)));
       LlmExecutionRequest request =
-          LlmExecutionRequest.withDefaultModel("ollama", "S", "U");
+          new LlmExecutionRequest("ollama", null, "S", "U", null, null, null);
 
       client.execute(request);
 
@@ -342,7 +342,7 @@ class OllamaLlmClientIT {
           new OllamaLlmClient(new ObjectMapper(),
               configForUrl(http.chatUrl(), java.time.Duration.ofSeconds(30)));
       LlmExecutionRequest request =
-          LlmExecutionRequest.withDefaultModel("ollama", "sys", "usr");
+          new LlmExecutionRequest("ollama", null, "sys", "usr", null, null, null);
 
       client.execute(request);
 
@@ -364,7 +364,7 @@ class OllamaLlmClientIT {
           new OllamaLlmClient(new ObjectMapper(),
               configForUrl(http.chatUrl(), java.time.Duration.ofSeconds(30)));
       LlmExecutionRequest request =
-          new LlmExecutionRequest("ollama", "explicit-model", "sys", "usr");
+          new LlmExecutionRequest("ollama", "explicit-model", "sys", "usr", null, null, null);
 
       client.execute(request);
 
@@ -379,7 +379,7 @@ class OllamaLlmClientIT {
       OllamaConfiguration config = configForUrl(http.chatUrl(), java.time.Duration.ofSeconds(30));
       var client = factory.create(new ObjectMapper(), config);
 
-      assertThat(client.execute(LlmExecutionRequest.withDefaultModel("ollama", "a", "b")).text())
+      assertThat(client.execute(new LlmExecutionRequest("ollama", null, "a", "b", null, null, null)).text())
           .isEqualTo("Hello from loopback");
     }
   }

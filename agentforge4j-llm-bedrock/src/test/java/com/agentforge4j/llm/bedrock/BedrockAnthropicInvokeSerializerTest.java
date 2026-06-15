@@ -34,7 +34,7 @@ class BedrockAnthropicInvokeSerializerTest {
         "bedrock",
         null,
         "You are the system.",
-        "User says hi.");
+        "User says hi.", null, null, null);
 
     String json = serializer.toJson(req, cfg.getDefaultModel(), cfg);
     JsonNode root = mapper.readTree(json);
@@ -55,7 +55,7 @@ class BedrockAnthropicInvokeSerializerTest {
   void omitsTemperatureWhenNull() throws Exception {
     BedrockAnthropicInvokeSerializer serializer = new BedrockAnthropicInvokeSerializer(mapper);
     BedrockConfiguration cfg = FixedBedrockConfiguration.builder().temperature(null).build();
-    LlmExecutionRequest req = new LlmExecutionRequest("bedrock", null, "s", "u");
+    LlmExecutionRequest req = new LlmExecutionRequest("bedrock", null, "s", "u", null, null, null);
     String json = serializer.toJson(req, cfg.getDefaultModel(), cfg);
     assertThat(mapper.readTree(json).has("temperature")).isFalse();
   }
@@ -64,7 +64,7 @@ class BedrockAnthropicInvokeSerializerTest {
   void usesDefaultMaxTokensWhenUnset() throws Exception {
     BedrockAnthropicInvokeSerializer serializer = new BedrockAnthropicInvokeSerializer(mapper);
     BedrockConfiguration cfg = FixedBedrockConfiguration.builder().maxTokens(null).build();
-    LlmExecutionRequest req = new LlmExecutionRequest("bedrock", null, "s", "u");
+    LlmExecutionRequest req = new LlmExecutionRequest("bedrock", null, "s", "u", null, null, null);
     String json = serializer.toJson(req, cfg.getDefaultModel(), cfg);
     assertThat(mapper.readTree(json).path("max_tokens").asInt())
         .isEqualTo(BedrockAnthropicInvokeSerializer.DEFAULT_MAX_TOKENS);
@@ -82,7 +82,7 @@ class BedrockAnthropicInvokeSerializerTest {
   @Test
   void rejectsBlankModelIdInToJson() {
     BedrockAnthropicInvokeSerializer serializer = new BedrockAnthropicInvokeSerializer(mapper);
-    LlmExecutionRequest req = new LlmExecutionRequest("bedrock", null, "s", "u");
+    LlmExecutionRequest req = new LlmExecutionRequest("bedrock", null, "s", "u", null, null, null);
     assertThatThrownBy(() -> serializer.toJson(req, "  ", FixedBedrockConfiguration.defaults()))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("modelId");
@@ -91,7 +91,7 @@ class BedrockAnthropicInvokeSerializerTest {
   @Test
   void rejectsNullConfigurationInToJson() {
     BedrockAnthropicInvokeSerializer serializer = new BedrockAnthropicInvokeSerializer(mapper);
-    LlmExecutionRequest req = new LlmExecutionRequest("bedrock", null, "s", "u");
+    LlmExecutionRequest req = new LlmExecutionRequest("bedrock", null, "s", "u", null, null, null);
     assertThatThrownBy(() -> serializer.toJson(req, "anthropic.claude-3-haiku-20240307-v1:0", null))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("config");
@@ -103,7 +103,7 @@ class BedrockAnthropicInvokeSerializerTest {
     BedrockConfiguration cfg = FixedBedrockConfiguration.builder()
         .anthropicVersion("bedrock-2023-05-31-custom")
         .build();
-    LlmExecutionRequest req = new LlmExecutionRequest("bedrock", null, "s", "u");
+    LlmExecutionRequest req = new LlmExecutionRequest("bedrock", null, "s", "u", null, null, null);
     String json = serializer.toJson(req, cfg.getDefaultModel(), cfg);
     assertThat(mapper.readTree(json).path("anthropic_version").asText())
         .isEqualTo("bedrock-2023-05-31-custom");
@@ -113,7 +113,7 @@ class BedrockAnthropicInvokeSerializerTest {
   void usesDefaultMaxTokensWhenConfiguredMaxTokensIsZero() throws Exception {
     BedrockAnthropicInvokeSerializer serializer = new BedrockAnthropicInvokeSerializer(mapper);
     BedrockConfiguration cfg = FixedBedrockConfiguration.builder().maxTokens(0).build();
-    LlmExecutionRequest req = new LlmExecutionRequest("bedrock", null, "s", "u");
+    LlmExecutionRequest req = new LlmExecutionRequest("bedrock", null, "s", "u", null, null, null);
     String json = serializer.toJson(req, cfg.getDefaultModel(), cfg);
     assertThat(mapper.readTree(json).path("max_tokens").asInt())
         .isEqualTo(BedrockAnthropicInvokeSerializer.DEFAULT_MAX_TOKENS);
@@ -124,7 +124,7 @@ class BedrockAnthropicInvokeSerializerTest {
     BedrockAnthropicInvokeSerializer serializer = new BedrockAnthropicInvokeSerializer(mapper);
     BedrockConfiguration cfg = FixedBedrockConfiguration.builder().maxTokens(512).build();
     LlmExecutionRequest req =
-        new LlmExecutionRequest("bedrock", null, "s", "u", 2048);
+        new LlmExecutionRequest("bedrock", null, "s", "u", 2048, null, null);
     String json = serializer.toJson(req, cfg.getDefaultModel(), cfg);
     assertThat(mapper.readTree(json).path("max_tokens").asInt()).isEqualTo(2048);
   }
@@ -134,7 +134,7 @@ class BedrockAnthropicInvokeSerializerTest {
       throws Exception {
     BedrockAnthropicInvokeSerializer serializer = new BedrockAnthropicInvokeSerializer(mapper);
     BedrockConfiguration cfg = FixedBedrockConfiguration.builder().maxTokens(777).build();
-    LlmExecutionRequest req = new LlmExecutionRequest("bedrock", null, "s", "u");
+    LlmExecutionRequest req = new LlmExecutionRequest("bedrock", null, "s", "u", null, null, null);
     String json = serializer.toJson(req, cfg.getDefaultModel(), cfg);
     assertThat(mapper.readTree(json).path("max_tokens").asInt()).isEqualTo(777);
   }
@@ -170,7 +170,7 @@ class BedrockAnthropicInvokeSerializerTest {
       PromptLayerBoundaries boundaries = boundariesFor(layer1, separator, layer2, layer3);
       LlmExecutionRequest request = new LlmExecutionRequest(
           "bedrock", "anthropic.claude-3-opus-20240229-v1:0", systemPrompt, "user", null,
-          boundaries);
+          boundaries, null);
       BedrockAnthropicInvokeSerializer serializer = new BedrockAnthropicInvokeSerializer(mapper);
       BedrockConfiguration cfg = FixedBedrockConfiguration.defaults();
 
@@ -194,7 +194,7 @@ class BedrockAnthropicInvokeSerializerTest {
       PromptLayerBoundaries boundaries = boundariesFor(layer1, separator, layer2, layer3);
       LlmExecutionRequest request = new LlmExecutionRequest(
           "bedrock", "anthropic.claude-3-opus-20240229-v1:0", systemPrompt, "user", null,
-          boundaries);
+          boundaries, null);
       BedrockAnthropicInvokeSerializer serializer = new BedrockAnthropicInvokeSerializer(mapper);
 
       JsonNode system = mapper.readTree(serializer.toJson(
@@ -208,7 +208,7 @@ class BedrockAnthropicInvokeSerializerTest {
 
     @Test
     void shouldOmitCacheControlWhenBoundariesNull() throws Exception {
-      LlmExecutionRequest request = new LlmExecutionRequest("bedrock", null, "my system", "my user");
+      LlmExecutionRequest request = new LlmExecutionRequest("bedrock", null, "my system", "my user", null, null, null);
       BedrockAnthropicInvokeSerializer serializer = new BedrockAnthropicInvokeSerializer(mapper);
       JsonNode system = mapper.readTree(serializer.toJson(
           request, FixedBedrockConfiguration.defaults().getDefaultModel(),
@@ -226,7 +226,7 @@ class BedrockAnthropicInvokeSerializerTest {
           utf8Length(layer1), utf8Length(layer1), null);
       LlmExecutionRequest request = new LlmExecutionRequest(
           "bedrock", "anthropic.claude-3-opus-20240229-v1:0", layer1, "user", null,
-          boundaries);
+          boundaries, null);
       BedrockAnthropicInvokeSerializer serializer = new BedrockAnthropicInvokeSerializer(mapper);
 
       String json = serializer.toJson(
@@ -241,7 +241,7 @@ class BedrockAnthropicInvokeSerializerTest {
       PromptLayerBoundaries boundaries = new PromptLayerBoundaries(
           utf8Length(layer1), utf8Length(layer1), null);
       LlmExecutionRequest request = new LlmExecutionRequest(
-          "bedrock", "anthropic.claude-3-opus-20240229-v1:0", layer1, "user", null, boundaries);
+          "bedrock", "anthropic.claude-3-opus-20240229-v1:0", layer1, "user", null, boundaries, null);
       BedrockAnthropicInvokeSerializer serializer = new BedrockAnthropicInvokeSerializer(mapper);
 
       String json = serializer.toJson(

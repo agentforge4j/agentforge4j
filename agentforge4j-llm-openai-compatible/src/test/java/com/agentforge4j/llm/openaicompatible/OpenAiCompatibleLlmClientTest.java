@@ -258,7 +258,7 @@ class OpenAiCompatibleLlmClientTest {
           .build();
       OpenAiCompatibleLlmClient client = new OpenAiCompatibleLlmClient(mapper, config);
       LlmExecutionRequest request =
-          LlmExecutionRequest.withDefaultModel("openai-compatible", "system prompt", "user input");
+          new LlmExecutionRequest("openai-compatible", null, "system prompt", "user input", null, null, null);
 
       HttpRequest httpRequest = client.buildHttpRequest(request);
 
@@ -277,7 +277,7 @@ class OpenAiCompatibleLlmClientTest {
           .build();
       OpenAiCompatibleLlmClient client = new OpenAiCompatibleLlmClient(mapper, config);
       LlmExecutionRequest request =
-          LlmExecutionRequest.withDefaultModel("openai-compatible", "sys", "usr");
+          new LlmExecutionRequest("openai-compatible", null, "sys", "usr", null, null, null);
 
       HttpRequest httpRequest = client.buildHttpRequest(request);
 
@@ -294,7 +294,7 @@ class OpenAiCompatibleLlmClientTest {
           .build();
       OpenAiCompatibleLlmClient client = new OpenAiCompatibleLlmClient(mapper, config);
       LlmExecutionRequest request =
-          LlmExecutionRequest.withDefaultModel("openai-compatible", "Be brief.", "Ping");
+          new LlmExecutionRequest("openai-compatible", null, "Be brief.", "Ping", null, null, null);
 
       String body = collectUtf8RequestBody(client.buildHttpRequest(request));
       var expected = new OpenAiCompatibleResponsesRequest(
@@ -316,7 +316,7 @@ class OpenAiCompatibleLlmClientTest {
           .build();
       OpenAiCompatibleLlmClient client = new OpenAiCompatibleLlmClient(mapper, config);
       LlmExecutionRequest request =
-          new LlmExecutionRequest("openai-compatible", "explicit-model", "S", "U");
+          new LlmExecutionRequest("openai-compatible", "explicit-model", "S", "U", null, null, null);
 
       String body = collectUtf8RequestBody(client.buildHttpRequest(request));
 
@@ -333,7 +333,7 @@ class OpenAiCompatibleLlmClientTest {
       OpenAiCompatibleLlmClient client =
           new OpenAiCompatibleLlmClient(mapper, FixedOpenAiCompatibleConfiguration.defaults());
       LlmExecutionRequest request =
-          LlmExecutionRequest.withDefaultModel("openai-compatible", "sys", "usr");
+          new LlmExecutionRequest("openai-compatible", null, "sys", "usr", null, null, null);
 
       String first = collectUtf8RequestBody(client.buildHttpRequest(request));
       String second = collectUtf8RequestBody(client.buildHttpRequest(request));
@@ -348,7 +348,7 @@ class OpenAiCompatibleLlmClientTest {
           new OpenAiCompatibleLlmClient(mapper, FixedOpenAiCompatibleConfiguration.defaults());
       PromptLayerBoundaries boundaries = new PromptLayerBoundaries(100, 200, null);
       LlmExecutionRequest request = new LlmExecutionRequest(
-          "openai-compatible", "m", "system prompt", "user", null, boundaries);
+          "openai-compatible", "m", "system prompt", "user", null, boundaries, null);
 
       String body = collectUtf8RequestBody(client.buildHttpRequest(request));
 

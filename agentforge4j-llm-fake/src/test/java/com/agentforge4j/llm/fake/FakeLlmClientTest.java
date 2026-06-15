@@ -47,7 +47,7 @@ class FakeLlmClientTest {
   void nullIdentity_failsClosed() {
     FakeLlmClient client = clientFor(RUN, scriptOf(
         new FakeScriptKey(WF, STEP, AGENT, 0), new FakeResponse("x", null)));
-    LlmExecutionRequest noIdentity = new LlmExecutionRequest("fake", null, "system", "user");
+    LlmExecutionRequest noIdentity = new LlmExecutionRequest("fake", null, "system", "user", null, null, null);
 
     assertThatThrownBy(() -> client.execute(noIdentity))
         .isInstanceOf(FakeResponseNotFoundException.class)

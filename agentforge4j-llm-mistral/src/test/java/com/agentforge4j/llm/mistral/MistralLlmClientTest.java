@@ -322,7 +322,7 @@ class MistralLlmClientTest {
           .build();
       MistralLlmClient client = new MistralLlmClient(mapper, config);
       LlmExecutionRequest request =
-          LlmExecutionRequest.withDefaultModel("mistral", "system prompt", "user input");
+          new LlmExecutionRequest("mistral", null, "system prompt", "user input", null, null, null);
 
       HttpRequest httpRequest = client.buildHttpRequest(request);
 
@@ -339,7 +339,7 @@ class MistralLlmClientTest {
           .baseUrl("http://127.0.0.1:9")
           .build();
       MistralLlmClient client = new MistralLlmClient(mapper, config);
-      LlmExecutionRequest request = LlmExecutionRequest.withDefaultModel("mistral", "s", "u");
+      LlmExecutionRequest request = new LlmExecutionRequest("mistral", null, "s", "u", null, null, null);
 
       HttpRequest httpRequest = client.buildHttpRequest(request);
 
@@ -353,7 +353,7 @@ class MistralLlmClientTest {
           .requestTimeout(Duration.ofSeconds(88))
           .build();
       MistralLlmClient client = new MistralLlmClient(mapper, config);
-      LlmExecutionRequest request = LlmExecutionRequest.withDefaultModel("mistral", "sys", "usr");
+      LlmExecutionRequest request = new LlmExecutionRequest("mistral", null, "sys", "usr", null, null, null);
 
       HttpRequest httpRequest = client.buildHttpRequest(request);
 
@@ -367,7 +367,7 @@ class MistralLlmClientTest {
           .apiKey("sk-mistral-secret")
           .build();
       MistralLlmClient client = new MistralLlmClient(mapper, config);
-      LlmExecutionRequest request = LlmExecutionRequest.withDefaultModel("mistral", "sys", "usr");
+      LlmExecutionRequest request = new LlmExecutionRequest("mistral", null, "sys", "usr", null, null, null);
 
       HttpRequest httpRequest = client.buildHttpRequest(request);
 
@@ -385,7 +385,7 @@ class MistralLlmClientTest {
           .build();
       MistralLlmClient client = new MistralLlmClient(mapper, config);
       LlmExecutionRequest request =
-          LlmExecutionRequest.withDefaultModel("mistral", "Be brief.", "Ping");
+          new LlmExecutionRequest("mistral", null, "Be brief.", "Ping", null, null, null);
 
       String body = collectUtf8RequestBody(client.buildHttpRequest(request));
       var root = mapper.createObjectNode();
@@ -406,7 +406,7 @@ class MistralLlmClientTest {
       ObjectMapper mapper = new ObjectMapper();
       MistralLlmClient client = new MistralLlmClient(mapper, FixedMistralConfiguration.defaults());
       LlmExecutionRequest request =
-          new LlmExecutionRequest("mistral", "custom-model", "sys", "usr");
+          new LlmExecutionRequest("mistral", "custom-model", "sys", "usr", null, null, null);
 
       String body = collectUtf8RequestBody(client.buildHttpRequest(request));
 
@@ -464,7 +464,7 @@ class MistralLlmClientTest {
       MistralLlmClient client =
           new MistralLlmClient(new ObjectMapper(), FixedMistralConfiguration.defaults());
       LlmExecutionRequest request =
-          LlmExecutionRequest.withDefaultModel("openai", "system", "user");
+          new LlmExecutionRequest("openai", null, "system", "user", null, null, null);
 
       assertThatThrownBy(() -> client.execute(request))
           .isInstanceOf(IllegalArgumentException.class)
@@ -489,7 +489,7 @@ class MistralLlmClientTest {
     void shouldProduceDeterministicRequestBodyForIdenticalInput() throws Exception {
       ObjectMapper mapper = new ObjectMapper();
       MistralLlmClient client = new MistralLlmClient(mapper, FixedMistralConfiguration.defaults());
-      LlmExecutionRequest request = LlmExecutionRequest.withDefaultModel("mistral", "sys", "usr");
+      LlmExecutionRequest request = new LlmExecutionRequest("mistral", null, "sys", "usr", null, null, null);
 
       String first = collectUtf8RequestBody(client.buildHttpRequest(request));
       String second = collectUtf8RequestBody(client.buildHttpRequest(request));
@@ -503,7 +503,7 @@ class MistralLlmClientTest {
       MistralLlmClient client = new MistralLlmClient(mapper, FixedMistralConfiguration.defaults());
       PromptLayerBoundaries boundaries = new PromptLayerBoundaries(100, 200, null);
       LlmExecutionRequest request = new LlmExecutionRequest(
-          "mistral", "m", "system prompt", "user", null, boundaries);
+          "mistral", "m", "system prompt", "user", null, boundaries, null);
 
       String body = collectUtf8RequestBody(client.buildHttpRequest(request));
 

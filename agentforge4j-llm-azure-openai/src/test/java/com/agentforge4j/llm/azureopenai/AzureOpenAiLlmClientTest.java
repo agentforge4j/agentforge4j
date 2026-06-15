@@ -330,7 +330,7 @@ class AzureOpenAiLlmClientTest {
           .build();
       AzureOpenAiLlmClient client = new AzureOpenAiLlmClient(mapper, config);
       LlmExecutionRequest request =
-          LlmExecutionRequest.withDefaultModel("azure-openai", "system prompt", "user input");
+          new LlmExecutionRequest("azure-openai", null, "system prompt", "user input", null, null, null);
 
       HttpRequest httpRequest = client.buildHttpRequest(request);
 
@@ -351,7 +351,7 @@ class AzureOpenAiLlmClientTest {
           .build();
       AzureOpenAiLlmClient client = new AzureOpenAiLlmClient(mapper, config);
       LlmExecutionRequest request =
-          LlmExecutionRequest.withDefaultModel("azure-openai", "s", "u");
+          new LlmExecutionRequest("azure-openai", null, "s", "u", null, null, null);
 
       HttpRequest httpRequest = client.buildHttpRequest(request);
 
@@ -368,7 +368,7 @@ class AzureOpenAiLlmClientTest {
           .build();
       AzureOpenAiLlmClient client = new AzureOpenAiLlmClient(mapper, config);
       LlmExecutionRequest request =
-          LlmExecutionRequest.withDefaultModel("azure-openai", "sys", "usr");
+          new LlmExecutionRequest("azure-openai", null, "sys", "usr", null, null, null);
 
       HttpRequest httpRequest = client.buildHttpRequest(request);
 
@@ -383,7 +383,7 @@ class AzureOpenAiLlmClientTest {
           .build();
       AzureOpenAiLlmClient client = new AzureOpenAiLlmClient(mapper, config);
       LlmExecutionRequest request =
-          LlmExecutionRequest.withDefaultModel("azure-openai", "sys", "usr");
+          new LlmExecutionRequest("azure-openai", null, "sys", "usr", null, null, null);
 
       HttpRequest httpRequest = client.buildHttpRequest(request);
 
@@ -399,7 +399,7 @@ class AzureOpenAiLlmClientTest {
           .build();
       AzureOpenAiLlmClient client = new AzureOpenAiLlmClient(mapper, config);
       LlmExecutionRequest request =
-          LlmExecutionRequest.withDefaultModel("azure-openai", "Be brief.", "Ping");
+          new LlmExecutionRequest("azure-openai", null, "Be brief.", "Ping", null, null, null);
 
       String body = collectUtf8RequestBody(client.buildHttpRequest(request));
       var root = mapper.createObjectNode();
@@ -424,7 +424,7 @@ class AzureOpenAiLlmClientTest {
       AzureOpenAiLlmClient client =
           new AzureOpenAiLlmClient(new ObjectMapper(), FixedAzureOpenAiConfiguration.defaults());
       LlmExecutionRequest request =
-          LlmExecutionRequest.withDefaultModel("openai", "system", "user");
+          new LlmExecutionRequest("openai", null, "system", "user", null, null, null);
 
       assertThatThrownBy(() -> client.execute(request))
           .isInstanceOf(IllegalArgumentException.class)
@@ -451,7 +451,7 @@ class AzureOpenAiLlmClientTest {
       AzureOpenAiLlmClient client =
           new AzureOpenAiLlmClient(mapper, FixedAzureOpenAiConfiguration.defaults());
       LlmExecutionRequest request =
-          LlmExecutionRequest.withDefaultModel("azure-openai", "sys", "usr");
+          new LlmExecutionRequest("azure-openai", null, "sys", "usr", null, null, null);
 
       String first = collectUtf8RequestBody(client.buildHttpRequest(request));
       String second = collectUtf8RequestBody(client.buildHttpRequest(request));
@@ -466,7 +466,7 @@ class AzureOpenAiLlmClientTest {
           new AzureOpenAiLlmClient(mapper, FixedAzureOpenAiConfiguration.defaults());
       PromptLayerBoundaries boundaries = new PromptLayerBoundaries(100, 200, null);
       LlmExecutionRequest request = new LlmExecutionRequest(
-          "azure-openai", "m", "system prompt", "user", null, boundaries);
+          "azure-openai", "m", "system prompt", "user", null, boundaries, null);
 
       String body = collectUtf8RequestBody(client.buildHttpRequest(request));
 

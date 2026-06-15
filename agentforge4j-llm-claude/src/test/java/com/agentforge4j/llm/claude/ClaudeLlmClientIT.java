@@ -167,7 +167,7 @@ class ClaudeLlmClientIT {
           .build();
       ClaudeLlmClient client = new ClaudeLlmClient(new ObjectMapper(), config);
       LlmExecutionRequest request =
-          LlmExecutionRequest.withDefaultModel("claude", "system", "user");
+          new LlmExecutionRequest("claude", null, "system", "user", null, null, null);
 
       LlmExecutionResponse response = client.execute(request);
 
@@ -185,7 +185,7 @@ class ClaudeLlmClientIT {
           .build();
       ClaudeLlmClient client = new ClaudeLlmClient(new ObjectMapper(), config);
       LlmExecutionRequest request =
-          LlmExecutionRequest.withDefaultModel("claude", "system", "user");
+          new LlmExecutionRequest("claude", null, "system", "user", null, null, null);
 
       LlmExecutionResponse response = client.execute(request);
 
@@ -214,7 +214,7 @@ class ClaudeLlmClientIT {
           .build();
       ClaudeLlmClient client = new ClaudeLlmClient(new ObjectMapper(), config);
       LlmExecutionRequest request =
-          new LlmExecutionRequest("CLAUDE", null, "system", "user");
+          new LlmExecutionRequest("CLAUDE", null, "system", "user", null, null, null);
 
       assertThat(client.execute(request).text()).isEqualTo("Hello from Claude");
     }
@@ -225,7 +225,7 @@ class ClaudeLlmClientIT {
     ClaudeLlmClient client =
         new ClaudeLlmClient(new ObjectMapper(), FixedClaudeConfiguration.defaults());
     LlmExecutionRequest request =
-        LlmExecutionRequest.withDefaultModel("openai", "system", "user");
+        new LlmExecutionRequest("openai", null, "system", "user", null, null, null);
 
     assertThatThrownBy(() -> client.execute(request))
         .isInstanceOf(IllegalArgumentException.class)
@@ -240,7 +240,7 @@ class ClaudeLlmClientIT {
           .build();
       ClaudeLlmClient client = new ClaudeLlmClient(new ObjectMapper(), config);
       LlmExecutionRequest request =
-          LlmExecutionRequest.withDefaultModel("claude", "system", "user");
+          new LlmExecutionRequest("claude", null, "system", "user", null, null, null);
 
       assertThatThrownBy(() -> client.execute(request))
           .isInstanceOf(LlmInvocationException.class)
@@ -258,7 +258,7 @@ class ClaudeLlmClientIT {
           .build();
       ClaudeLlmClient client = new ClaudeLlmClient(new ObjectMapper(), config);
       LlmExecutionRequest request =
-          LlmExecutionRequest.withDefaultModel("claude", "system", "user");
+          new LlmExecutionRequest("claude", null, "system", "user", null, null, null);
 
       assertThatThrownBy(() -> client.execute(request))
           .isInstanceOf(LlmInvocationException.class)
@@ -274,7 +274,7 @@ class ClaudeLlmClientIT {
           .build();
       ClaudeLlmClient client = new ClaudeLlmClient(new ObjectMapper(), config);
       LlmExecutionRequest request =
-          LlmExecutionRequest.withDefaultModel("claude", "system", "user");
+          new LlmExecutionRequest("claude", null, "system", "user", null, null, null);
 
       assertThatThrownBy(() -> client.execute(request))
           .isInstanceOf(LlmInvocationException.class)
@@ -291,7 +291,7 @@ class ClaudeLlmClientIT {
           .build();
       ClaudeLlmClient client = new ClaudeLlmClient(new ObjectMapper(), config);
       LlmExecutionRequest request =
-          LlmExecutionRequest.withDefaultModel("claude", "system", "user");
+          new LlmExecutionRequest("claude", null, "system", "user", null, null, null);
 
       assertThatThrownBy(() -> client.execute(request))
           .isInstanceOf(LlmInvocationException.class)
@@ -310,7 +310,7 @@ class ClaudeLlmClientIT {
           .build();
       ClaudeLlmClient client = new ClaudeLlmClient(new ObjectMapper(), config);
       LlmExecutionRequest request =
-          LlmExecutionRequest.withDefaultModel("claude", "S", "U");
+          new LlmExecutionRequest("claude", null, "S", "U", null, null, null);
 
       client.execute(request);
 
@@ -335,7 +335,7 @@ class ClaudeLlmClientIT {
           .build();
       ClaudeLlmClient client = new ClaudeLlmClient(new ObjectMapper(), config);
       LlmExecutionRequest request =
-          LlmExecutionRequest.withDefaultModel("claude", "sys", "usr");
+          new LlmExecutionRequest("claude", null, "sys", "usr", null, null, null);
 
       client.execute(request);
 
@@ -363,7 +363,7 @@ class ClaudeLlmClientIT {
           .build();
       ClaudeLlmClient client = new ClaudeLlmClient(new ObjectMapper(), config);
       LlmExecutionRequest request =
-          new LlmExecutionRequest("claude", "explicit-model", "sys", "usr");
+          new LlmExecutionRequest("claude", "explicit-model", "sys", "usr", null, null, null);
 
       client.execute(request);
 

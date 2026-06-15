@@ -163,7 +163,7 @@ class AbstractHttpLlmClientIT {
       LlmClientConfiguration config = TestFixtures.testConfig("openai", "gpt-4");
       UriTargetingHttpLlmClient client = new UriTargetingHttpLlmClient(config, endpoint);
       LlmExecutionRequest request =
-          LlmExecutionRequest.withDefaultModel("openai", "system", "user");
+          new LlmExecutionRequest("openai", null, "system", "user", null, null, null);
 
       LlmExecutionResponse result = client.execute(request);
 
@@ -179,7 +179,7 @@ class AbstractHttpLlmClientIT {
       LlmClientConfiguration config = TestFixtures.testConfig("OpenAI", "gpt-4");
       UriTargetingHttpLlmClient client = new UriTargetingHttpLlmClient(config, endpoint);
       LlmExecutionRequest request =
-          new LlmExecutionRequest("OPENAI", null, "system", "user");
+          new LlmExecutionRequest("OPENAI", null, "system", "user", null, null, null);
 
       assertThat(client.execute(request).text()).isEqualTo("pong");
     }
@@ -192,7 +192,7 @@ class AbstractHttpLlmClientIT {
       LlmClientConfiguration config = TestFixtures.testConfig("openai", "gpt-4");
       UriTargetingHttpLlmClient client = new UriTargetingHttpLlmClient(config, endpoint);
       LlmExecutionRequest request =
-          LlmExecutionRequest.withDefaultModel("openai", "system", "user");
+          new LlmExecutionRequest("openai", null, "system", "user", null, null, null);
 
       assertThatThrownBy(() -> client.execute(request))
           .isInstanceOf(LlmInvocationException.class)
@@ -209,7 +209,7 @@ class AbstractHttpLlmClientIT {
       LlmClientConfiguration config = TestFixtures.testConfig("openai", "gpt-4");
       FailingExtractHttpLlmClient client = new FailingExtractHttpLlmClient(config, endpoint);
       LlmExecutionRequest request =
-          LlmExecutionRequest.withDefaultModel("openai", "system", "user");
+          new LlmExecutionRequest("openai", null, "system", "user", null, null, null);
 
       assertThatThrownBy(() -> client.execute(request))
           .isInstanceOf(LlmInvocationException.class)
@@ -228,7 +228,7 @@ class AbstractHttpLlmClientIT {
     LlmClientConfiguration config = TestFixtures.testConfig("openai", "gpt-4");
     UriTargetingHttpLlmClient client = new UriTargetingHttpLlmClient(config, endpoint);
     LlmExecutionRequest request =
-        LlmExecutionRequest.withDefaultModel("openai", "system", "user");
+        new LlmExecutionRequest("openai", null, "system", "user", null, null, null);
 
     assertThatThrownBy(() -> client.execute(request))
         .isInstanceOf(LlmInvocationException.class)
@@ -243,7 +243,7 @@ class AbstractHttpLlmClientIT {
       LlmClientConfiguration config = TestFixtures.testConfig("openai", "gpt-4");
       UriTargetingHttpLlmClient client = new UriTargetingHttpLlmClient(config, endpoint);
       LlmExecutionRequest request =
-          LlmExecutionRequest.withDefaultModel("openai", "system", "user");
+          new LlmExecutionRequest("openai", null, "system", "user", null, null, null);
 
       assertThat(client.execute(request).text()).isEmpty();
     }

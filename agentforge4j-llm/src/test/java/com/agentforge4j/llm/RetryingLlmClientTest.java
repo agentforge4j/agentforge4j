@@ -73,7 +73,7 @@ class RetryingLlmClientTest {
   }
 
   private static LlmExecutionRequest dummyRequest() {
-    return LlmExecutionRequest.withDefaultModel("test", "prompt", "input");
+    return new LlmExecutionRequest("test", null, "prompt", "input", null, null, null);
   }
 
   @Nested

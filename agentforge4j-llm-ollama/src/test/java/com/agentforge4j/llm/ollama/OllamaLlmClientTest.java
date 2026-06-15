@@ -156,8 +156,8 @@ class OllamaLlmClientTest {
       OllamaConfiguration config = new TestOllamaConfiguration();
       ObjectMapper mapper = new ObjectMapper();
       OllamaLlmClient client = new OllamaLlmClient(mapper, config);
-      LlmExecutionRequest request = LlmExecutionRequest.withDefaultModel("ollama", "system prompt",
-          "user input");
+      LlmExecutionRequest request = new LlmExecutionRequest("ollama", null, "system prompt",
+          "user input", null, null, null);
 
       HttpRequest httpRequest = client.buildHttpRequest(request);
 
@@ -170,8 +170,8 @@ class OllamaLlmClientTest {
       OllamaConfiguration config = new TestOllamaConfiguration();
       ObjectMapper mapper = new ObjectMapper();
       OllamaLlmClient client = new OllamaLlmClient(mapper, config);
-      LlmExecutionRequest request = LlmExecutionRequest.withDefaultModel("ollama", "system prompt",
-          "user input");
+      LlmExecutionRequest request = new LlmExecutionRequest("ollama", null, "system prompt",
+          "user input", null, null, null);
 
       HttpRequest httpRequest = client.buildHttpRequest(request);
 
@@ -186,8 +186,8 @@ class OllamaLlmClientTest {
           new TestOllamaConfiguration("http://localhost:11434/api/chat", shortTimeout, "llama2");
       ObjectMapper mapper = new ObjectMapper();
       OllamaLlmClient client = new OllamaLlmClient(mapper, config);
-      LlmExecutionRequest request = LlmExecutionRequest.withDefaultModel("ollama", "system prompt",
-          "user input");
+      LlmExecutionRequest request = new LlmExecutionRequest("ollama", null, "system prompt",
+          "user input", null, null, null);
 
       HttpRequest httpRequest = client.buildHttpRequest(request);
 
@@ -217,7 +217,7 @@ class OllamaLlmClientTest {
 
       assertThatThrownBy(
           () -> client.execute(
-              LlmExecutionRequest.withDefaultModel("openai", "system prompt", "user input")))
+              new LlmExecutionRequest("openai", null, "system prompt", "user input", null, null, null)))
           .isInstanceOf(IllegalArgumentException.class)
           .hasMessageContaining("does not match");
     }
@@ -231,10 +231,10 @@ class OllamaLlmClientTest {
       ObjectMapper mapper = new ObjectMapper();
       OllamaLlmClient client = new OllamaLlmClient(mapper, new TestOllamaConfiguration());
       LlmExecutionRequest withoutBoundaries =
-          new LlmExecutionRequest("ollama", "llama2", "system", "user");
+          new LlmExecutionRequest("ollama", "llama2", "system", "user", null, null, null);
       PromptLayerBoundaries boundaries = new PromptLayerBoundaries(50, 100, null);
       LlmExecutionRequest withBoundaries = new LlmExecutionRequest(
-          "ollama", "llama2", "system", "user", null, boundaries);
+          "ollama", "llama2", "system", "user", null, boundaries, null);
 
       String withoutBody = collectUtf8RequestBody(client.buildHttpRequest(withoutBoundaries));
       String withBody = collectUtf8RequestBody(client.buildHttpRequest(withBoundaries));
@@ -248,7 +248,7 @@ class OllamaLlmClientTest {
       OllamaLlmClient client = new OllamaLlmClient(mapper, new TestOllamaConfiguration());
       PromptLayerBoundaries boundaries = new PromptLayerBoundaries(100, 200, null);
       LlmExecutionRequest request = new LlmExecutionRequest(
-          "ollama", "llama2", "system", "user", null, boundaries);
+          "ollama", "llama2", "system", "user", null, boundaries, null);
 
       String body = collectUtf8RequestBody(client.buildHttpRequest(request));
 

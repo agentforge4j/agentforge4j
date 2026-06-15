@@ -208,7 +208,7 @@ class BedrockLlmClientTest {
       var cfg = FixedBedrockConfiguration.defaults();
       BedrockLlmClient llm = new BedrockLlmClient(mapper, cfg, client);
       LlmExecutionRequest req = new LlmExecutionRequest(
-          "bedrock", null, "system", "user");
+          "bedrock", null, "system", "user", null, null, null);
       LlmExecutionResponse response = llm.execute(req);
       assertThat(response.text()).isEqualTo("OK");
       assertThat(response.tokenUsage()).isNull();
@@ -230,7 +230,7 @@ class BedrockLlmClientTest {
       BedrockLlmClient llm = new BedrockLlmClient(mapper, FixedBedrockConfiguration.defaults(),
           client);
       LlmExecutionResponse response = llm.execute(
-          new LlmExecutionRequest("bedrock", null, "system", "user"));
+          new LlmExecutionRequest("bedrock", null, "system", "user", null, null, null));
       assertThat(response.text()).isEqualTo("OK");
       assertThat(response.tokenUsage()).isNotNull();
       assertThat(response.tokenUsage().inputTokens()).isEqualTo(14);
@@ -259,7 +259,7 @@ class BedrockLlmClientTest {
           "bedrock",
           requestedModel,
           "You must reply with JSON only.",
-          "Run workflow")).text();
+          "Run workflow", null, null, null)).text();
 
       JsonNode parsed = mapper.readTree(out);
       assertThat(parsed.path("commands").isArray()).isTrue();
@@ -286,7 +286,7 @@ class BedrockLlmClientTest {
               .build());
       BedrockLlmClient llm = new BedrockLlmClient(mapper, FixedBedrockConfiguration.defaults(),
           client);
-      assertThat(llm.execute(new LlmExecutionRequest("BEDROCK", null, "s", "u")).text()).isEqualTo(
+      assertThat(llm.execute(new LlmExecutionRequest("BEDROCK", null, "s", "u", null, null, null)).text()).isEqualTo(
           "x");
     }
 
@@ -301,7 +301,7 @@ class BedrockLlmClientTest {
       String model = "ANTHROPIC.claude-3-haiku-20240307-v1:0";
       var cfg = FixedBedrockConfiguration.builder().defaultModel(model).build();
       BedrockLlmClient llm = new BedrockLlmClient(mapper, cfg, client);
-      assertThat(llm.execute(new LlmExecutionRequest("bedrock", null, "s", "u")).text()).isEqualTo(
+      assertThat(llm.execute(new LlmExecutionRequest("bedrock", null, "s", "u", null, null, null)).text()).isEqualTo(
           "y");
     }
 
@@ -314,7 +314,7 @@ class BedrockLlmClientTest {
               .build());
       BedrockLlmClient llm = new BedrockLlmClient(mapper, FixedBedrockConfiguration.defaults(),
           client);
-      assertThatThrownBy(() -> llm.execute(new LlmExecutionRequest("bedrock", null, "s", "u")))
+      assertThatThrownBy(() -> llm.execute(new LlmExecutionRequest("bedrock", null, "s", "u", null, null, null)))
           .isInstanceOf(LlmInvocationException.class)
           .hasMessageContaining("blank");
     }
@@ -326,7 +326,7 @@ class BedrockLlmClientTest {
           InvokeModelResponse.builder().build());
       BedrockLlmClient llm = new BedrockLlmClient(mapper, FixedBedrockConfiguration.defaults(),
           client);
-      assertThatThrownBy(() -> llm.execute(new LlmExecutionRequest("bedrock", null, "s", "u")))
+      assertThatThrownBy(() -> llm.execute(new LlmExecutionRequest("bedrock", null, "s", "u", null, null, null)))
           .isInstanceOf(LlmInvocationException.class)
           .hasMessageContaining("blank");
     }
@@ -340,7 +340,7 @@ class BedrockLlmClientTest {
               .build());
       BedrockLlmClient llm = new BedrockLlmClient(mapper, FixedBedrockConfiguration.defaults(),
           client);
-      assertThatThrownBy(() -> llm.execute(new LlmExecutionRequest("bedrock", null, "s", "u")))
+      assertThatThrownBy(() -> llm.execute(new LlmExecutionRequest("bedrock", null, "s", "u", null, null, null)))
           .isInstanceOf(LlmInvocationException.class)
           .hasMessageContaining("content");
     }
@@ -354,7 +354,7 @@ class BedrockLlmClientTest {
               .build());
       BedrockLlmClient llm = new BedrockLlmClient(mapper, FixedBedrockConfiguration.defaults(),
           client);
-      assertThatThrownBy(() -> llm.execute(new LlmExecutionRequest("bedrock", null, "s", "u")))
+      assertThatThrownBy(() -> llm.execute(new LlmExecutionRequest("bedrock", null, "s", "u", null, null, null)))
           .isInstanceOf(LlmInvocationException.class)
           .hasMessageContaining("could not be parsed")
           .cause()
@@ -371,7 +371,7 @@ class BedrockLlmClientTest {
 
       var cfg = FixedBedrockConfiguration.defaults();
       BedrockLlmClient llm = new BedrockLlmClient(mapper, cfg, client);
-      LlmExecutionRequest req = new LlmExecutionRequest("bedrock", null, "s", "u");
+      LlmExecutionRequest req = new LlmExecutionRequest("bedrock", null, "s", "u", null, null, null);
       assertThatThrownBy(() -> llm.execute(req))
           .isInstanceOf(LlmInvocationException.class)
           .hasMessageContaining("bedrock HTTP error");
@@ -393,7 +393,7 @@ class BedrockLlmClientTest {
       var cfg = FixedBedrockConfiguration.defaults();
       BedrockLlmClient llm = new BedrockLlmClient(mapper, cfg, client);
       assertThatThrownBy(() -> llm.execute(
-          new LlmExecutionRequest("bedrock", null, "s", "u")))
+          new LlmExecutionRequest("bedrock", null, "s", "u", null, null, null)))
           .isInstanceOf(LlmInvocationException.class)
           .hasMessageContaining("429")
           .hasMessageContaining("ThrottlingException");
@@ -404,7 +404,7 @@ class BedrockLlmClientTest {
       BedrockRuntimeClient client = mock(BedrockRuntimeClient.class);
       BedrockLlmClient llm = new BedrockLlmClient(mapper, FixedBedrockConfiguration.defaults(),
           client);
-      assertThatThrownBy(() -> llm.execute(new LlmExecutionRequest("openai", null, "s", "u")))
+      assertThatThrownBy(() -> llm.execute(new LlmExecutionRequest("openai", null, "s", "u", null, null, null)))
           .isInstanceOf(IllegalArgumentException.class)
           .hasMessageContaining("provider");
     }
@@ -415,7 +415,7 @@ class BedrockLlmClientTest {
       BedrockLlmClient llm = new BedrockLlmClient(mapper, FixedBedrockConfiguration.defaults(),
           client);
       assertThatThrownBy(() -> llm.execute(
-          new LlmExecutionRequest("bedrock", "meta.foo", "s", "u")))
+          new LlmExecutionRequest("bedrock", "meta.foo", "s", "u", null, null, null)))
           .isInstanceOf(LlmInvocationException.class)
           .hasMessageContaining("meta.foo");
     }
@@ -428,7 +428,7 @@ class BedrockLlmClientTest {
           client);
 
       String out = llm.execute(
-          new LlmExecutionRequest("bedrock", "amazon.nova-lite-v1:0", "s", "u")).text();
+          new LlmExecutionRequest("bedrock", "amazon.nova-lite-v1:0", "s", "u", null, null, null)).text();
 
       assertThat(out).isEqualTo("nova-says-hi");
       verify(client).converse(isA(ConverseRequest.class));
@@ -443,7 +443,7 @@ class BedrockLlmClientTest {
 
       LlmExecutionResponse response = llm.execute(new LlmExecutionRequest(
           "bedrock", "amazon.nova-lite-v1:0", "sys", "user", null,
-          new PromptLayerBoundaries(3, 3, null)));
+          new PromptLayerBoundaries(3, 3, null), null));
 
       assertThat(response.text()).isEqualTo("ok");
     }
@@ -471,7 +471,7 @@ class BedrockLlmClientTest {
       BedrockConfiguration cfg =
           FixedBedrockConfiguration.builder().maxTokens(100).build();
       BedrockLlmClient llm = new BedrockLlmClient(mapper, cfg, client);
-      llm.execute(new LlmExecutionRequest("bedrock", null, "s", "u", 50));
+      llm.execute(new LlmExecutionRequest("bedrock", null, "s", "u", 50, null, null));
 
       ArgumentCaptor<InvokeModelRequest> captor = ArgumentCaptor.forClass(InvokeModelRequest.class);
       verify(client).invokeModel(captor.capture());
@@ -492,7 +492,7 @@ class BedrockLlmClientTest {
       BedrockConfiguration cfg =
           FixedBedrockConfiguration.builder().maxTokens(333).build();
       BedrockLlmClient llm = new BedrockLlmClient(mapper, cfg, client);
-      llm.execute(new LlmExecutionRequest("bedrock", null, "s", "u"));
+      llm.execute(new LlmExecutionRequest("bedrock", null, "s", "u", null, null, null));
 
       ArgumentCaptor<InvokeModelRequest> captor = ArgumentCaptor.forClass(InvokeModelRequest.class);
       verify(client).invokeModel(captor.capture());
@@ -506,7 +506,7 @@ class BedrockLlmClientTest {
       BedrockLlmClient llm = new BedrockLlmClient(mapper, FixedBedrockConfiguration.defaults(),
           client);
       assertThatThrownBy(() -> llm.execute(
-          new LlmExecutionRequest("bedrock", null, "s", "u", 0)))
+          new LlmExecutionRequest("bedrock", null, "s", "u", 0, null, null)))
           .isInstanceOf(IllegalArgumentException.class)
           .hasMessageContaining("maxOutputTokens");
     }

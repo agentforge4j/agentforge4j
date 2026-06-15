@@ -49,7 +49,7 @@ class OpenAiCompatibleLlmClientIT {
           .build();
       OpenAiCompatibleLlmClient client = new OpenAiCompatibleLlmClient(new ObjectMapper(), config);
       LlmExecutionRequest request =
-          LlmExecutionRequest.withDefaultModel("openai-compatible", "system", "user");
+          new LlmExecutionRequest("openai-compatible", null, "system", "user", null, null, null);
 
       var response = client.execute(request);
       assertThat(response.text()).isEqualTo("Hello from compatible");
@@ -67,7 +67,7 @@ class OpenAiCompatibleLlmClientIT {
           .build();
       OpenAiCompatibleLlmClient client = new OpenAiCompatibleLlmClient(new ObjectMapper(), config);
       LlmExecutionRequest request =
-          LlmExecutionRequest.withDefaultModel("openai-compatible", "system", "user");
+          new LlmExecutionRequest("openai-compatible", null, "system", "user", null, null, null);
 
       LlmExecutionResponse response = client.execute(request);
       assertThat(response.text()).isEqualTo("Hello from compatible");
@@ -96,7 +96,7 @@ class OpenAiCompatibleLlmClientIT {
           .build();
       OpenAiCompatibleLlmClient client = new OpenAiCompatibleLlmClient(new ObjectMapper(), config);
       LlmExecutionRequest request =
-          new LlmExecutionRequest("OPENAI-COMPATIBLE", null, "system", "user");
+          new LlmExecutionRequest("OPENAI-COMPATIBLE", null, "system", "user", null, null, null);
 
       assertThat(client.execute(request).text()).isEqualTo("Hello from compatible");
     }
@@ -108,7 +108,7 @@ class OpenAiCompatibleLlmClientIT {
         new OpenAiCompatibleLlmClient(new ObjectMapper(),
             FixedOpenAiCompatibleConfiguration.defaults());
     LlmExecutionRequest request =
-        LlmExecutionRequest.withDefaultModel("openai", "system", "user");
+        new LlmExecutionRequest("openai", null, "system", "user", null, null, null);
 
     assertThatThrownBy(() -> client.execute(request))
         .isInstanceOf(IllegalArgumentException.class)
@@ -124,7 +124,7 @@ class OpenAiCompatibleLlmClientIT {
           .build();
       OpenAiCompatibleLlmClient client = new OpenAiCompatibleLlmClient(new ObjectMapper(), config);
       LlmExecutionRequest request =
-          LlmExecutionRequest.withDefaultModel("openai-compatible", "system", "user");
+          new LlmExecutionRequest("openai-compatible", null, "system", "user", null, null, null);
 
       assertThatThrownBy(() -> client.execute(request))
           .isInstanceOf(LlmInvocationException.class)
@@ -143,7 +143,7 @@ class OpenAiCompatibleLlmClientIT {
           .build();
       OpenAiCompatibleLlmClient client = new OpenAiCompatibleLlmClient(new ObjectMapper(), config);
       LlmExecutionRequest request =
-          LlmExecutionRequest.withDefaultModel("openai-compatible", "system", "user");
+          new LlmExecutionRequest("openai-compatible", null, "system", "user", null, null, null);
 
       assertThatThrownBy(() -> client.execute(request))
           .isInstanceOf(LlmInvocationException.class)
@@ -160,7 +160,7 @@ class OpenAiCompatibleLlmClientIT {
           .build();
       OpenAiCompatibleLlmClient client = new OpenAiCompatibleLlmClient(new ObjectMapper(), config);
       LlmExecutionRequest request =
-          LlmExecutionRequest.withDefaultModel("openai-compatible", "system", "user");
+          new LlmExecutionRequest("openai-compatible", null, "system", "user", null, null, null);
 
       assertThatThrownBy(() -> client.execute(request))
           .isInstanceOf(LlmInvocationException.class)
@@ -180,7 +180,7 @@ class OpenAiCompatibleLlmClientIT {
           .build();
       OpenAiCompatibleLlmClient client = new OpenAiCompatibleLlmClient(new ObjectMapper(), config);
       LlmExecutionRequest request =
-          LlmExecutionRequest.withDefaultModel("openai-compatible", "system", "user");
+          new LlmExecutionRequest("openai-compatible", null, "system", "user", null, null, null);
 
       assertThatThrownBy(() -> client.execute(request))
           .isInstanceOf(LlmInvocationException.class)
@@ -201,7 +201,7 @@ class OpenAiCompatibleLlmClientIT {
           .build();
       OpenAiCompatibleLlmClient client = new OpenAiCompatibleLlmClient(new ObjectMapper(), config);
       LlmExecutionRequest request =
-          LlmExecutionRequest.withDefaultModel("openai-compatible", "system", "user");
+          new LlmExecutionRequest("openai-compatible", null, "system", "user", null, null, null);
 
       assertThatThrownBy(() -> client.execute(request))
           .isInstanceOf(LlmInvocationException.class)
@@ -229,7 +229,7 @@ class OpenAiCompatibleLlmClientIT {
           .build();
       OpenAiCompatibleLlmClient client = new OpenAiCompatibleLlmClient(new ObjectMapper(), config);
       LlmExecutionRequest request =
-          LlmExecutionRequest.withDefaultModel("openai-compatible", "system", "user");
+          new LlmExecutionRequest("openai-compatible", null, "system", "user", null, null, null);
 
       assertThatThrownBy(() -> client.execute(request))
           .isInstanceOf(LlmInvocationException.class)
@@ -248,7 +248,7 @@ class OpenAiCompatibleLlmClientIT {
           .build();
       OpenAiCompatibleLlmClient client = new OpenAiCompatibleLlmClient(new ObjectMapper(), config);
       LlmExecutionRequest request =
-          LlmExecutionRequest.withDefaultModel("openai-compatible", "S", "U");
+          new LlmExecutionRequest("openai-compatible", null, "S", "U", null, null, null);
 
       client.execute(request);
 
@@ -272,7 +272,7 @@ class OpenAiCompatibleLlmClientIT {
           .build();
       OpenAiCompatibleLlmClient client = new OpenAiCompatibleLlmClient(new ObjectMapper(), config);
       LlmExecutionRequest request =
-          LlmExecutionRequest.withDefaultModel("openai-compatible", "sys", "usr");
+          new LlmExecutionRequest("openai-compatible", null, "sys", "usr", null, null, null);
 
       client.execute(request);
 
@@ -293,7 +293,7 @@ class OpenAiCompatibleLlmClientIT {
           .build();
       OpenAiCompatibleLlmClient client = new OpenAiCompatibleLlmClient(new ObjectMapper(), config);
       LlmExecutionRequest request =
-          LlmExecutionRequest.withDefaultModel("openai-compatible", "a", "b");
+          new LlmExecutionRequest("openai-compatible", null, "a", "b", null, null, null);
 
       client.execute(request);
 
@@ -314,7 +314,7 @@ class OpenAiCompatibleLlmClientIT {
           .build();
       OpenAiCompatibleLlmClient client = new OpenAiCompatibleLlmClient(new ObjectMapper(), config);
       LlmExecutionRequest request =
-          LlmExecutionRequest.withDefaultModel("openai-compatible", "sys", "usr");
+          new LlmExecutionRequest("openai-compatible", null, "sys", "usr", null, null, null);
 
       client.execute(request);
 
@@ -336,7 +336,7 @@ class OpenAiCompatibleLlmClientIT {
           .build();
       OpenAiCompatibleLlmClient client = new OpenAiCompatibleLlmClient(new ObjectMapper(), config);
       LlmExecutionRequest request =
-          new LlmExecutionRequest("openai-compatible", "explicit-model", "S", "U");
+          new LlmExecutionRequest("openai-compatible", "explicit-model", "S", "U", null, null, null);
 
       client.execute(request);
 
@@ -351,7 +351,7 @@ class OpenAiCompatibleLlmClientIT {
         .build();
     OpenAiCompatibleLlmClient client = new OpenAiCompatibleLlmClient(new ObjectMapper(), config);
     LlmExecutionRequest request =
-        LlmExecutionRequest.withDefaultModel("openai-compatible", "system", "user");
+        new LlmExecutionRequest("openai-compatible", null, "system", "user", null, null, null);
 
     assertThatThrownBy(() -> client.execute(request))
         .isInstanceOf(LlmInvocationException.class)
@@ -369,7 +369,7 @@ class OpenAiCompatibleLlmClientIT {
           .build();
       OpenAiCompatibleLlmClient client = new OpenAiCompatibleLlmClient(new ObjectMapper(), config);
       LlmExecutionRequest request =
-          LlmExecutionRequest.withDefaultModel("openai-compatible", "system", "user");
+          new LlmExecutionRequest("openai-compatible", null, "system", "user", null, null, null);
 
       assertThatThrownBy(() -> client.execute(request))
           .isInstanceOf(LlmInvocationException.class)
@@ -386,7 +386,7 @@ class OpenAiCompatibleLlmClientIT {
           .build();
       var client = new OpenAiCompatibleLlmClientFactory().create(new ObjectMapper(), config);
       LlmExecutionRequest request =
-          LlmExecutionRequest.withDefaultModel("openai-compatible", "system", "user");
+          new LlmExecutionRequest("openai-compatible", null, "system", "user", null, null, null);
 
       assertThat(client.execute(request).text()).isEqualTo("Hello from compatible");
     }

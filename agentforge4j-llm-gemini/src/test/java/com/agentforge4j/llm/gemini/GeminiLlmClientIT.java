@@ -40,7 +40,7 @@ class GeminiLlmClientIT {
           .build();
       GeminiLlmClient client = new GeminiLlmClient(new ObjectMapper(), config);
       LlmExecutionRequest request =
-          LlmExecutionRequest.withDefaultModel("gemini", "system prompt", "user input");
+          new LlmExecutionRequest("gemini", null, "system prompt", "user input", null, null, null);
 
       var response = client.execute(request);
       assertThat(response.text()).isEqualTo("Hello from gemini IT");
@@ -57,7 +57,7 @@ class GeminiLlmClientIT {
           .build();
       GeminiLlmClient client = new GeminiLlmClient(new ObjectMapper(), config);
       LlmExecutionRequest request =
-          LlmExecutionRequest.withDefaultModel("gemini", "system prompt", "user input");
+          new LlmExecutionRequest("gemini", null, "system prompt", "user input", null, null, null);
 
       LlmExecutionResponse response = client.execute(request);
       assertThat(response.text()).isEqualTo("hello");
@@ -86,7 +86,7 @@ class GeminiLlmClientIT {
           .build();
       GeminiLlmClient client = new GeminiLlmClient(new ObjectMapper(), config);
       LlmExecutionRequest request =
-          new LlmExecutionRequest("GEMINI", null, "system", "user");
+          new LlmExecutionRequest("GEMINI", null, "system", "user", null, null, null);
 
       assertThat(client.execute(request).text()).isEqualTo("Hello from gemini IT");
     }
@@ -97,7 +97,7 @@ class GeminiLlmClientIT {
     GeminiLlmClient client =
         new GeminiLlmClient(new ObjectMapper(), FixedGeminiConfiguration.defaults());
     LlmExecutionRequest request =
-        LlmExecutionRequest.withDefaultModel("openai", "system", "user");
+        new LlmExecutionRequest("openai", null, "system", "user", null, null, null);
 
     assertThatThrownBy(() -> client.execute(request))
         .isInstanceOf(IllegalArgumentException.class)
@@ -112,7 +112,7 @@ class GeminiLlmClientIT {
           .build();
       GeminiLlmClient client = new GeminiLlmClient(new ObjectMapper(), config);
       LlmExecutionRequest request =
-          LlmExecutionRequest.withDefaultModel("gemini", "system", "user");
+          new LlmExecutionRequest("gemini", null, "system", "user", null, null, null);
 
       assertThatThrownBy(() -> client.execute(request))
           .isInstanceOf(LlmInvocationException.class)
@@ -130,7 +130,7 @@ class GeminiLlmClientIT {
           .build();
       GeminiLlmClient client = new GeminiLlmClient(new ObjectMapper(), config);
       LlmExecutionRequest request =
-          LlmExecutionRequest.withDefaultModel("gemini", "system", "user");
+          new LlmExecutionRequest("gemini", null, "system", "user", null, null, null);
 
       assertThatThrownBy(() -> client.execute(request))
           .isInstanceOf(LlmInvocationException.class)
@@ -146,7 +146,7 @@ class GeminiLlmClientIT {
           .build();
       GeminiLlmClient client = new GeminiLlmClient(new ObjectMapper(), config);
       LlmExecutionRequest request =
-          LlmExecutionRequest.withDefaultModel("gemini", "system", "user");
+          new LlmExecutionRequest("gemini", null, "system", "user", null, null, null);
 
       assertThatThrownBy(() -> client.execute(request))
           .isInstanceOf(LlmInvocationException.class)
@@ -166,7 +166,7 @@ class GeminiLlmClientIT {
           .build();
       GeminiLlmClient client = new GeminiLlmClient(new ObjectMapper(), config);
       LlmExecutionRequest request =
-          LlmExecutionRequest.withDefaultModel("gemini", "system", "user");
+          new LlmExecutionRequest("gemini", null, "system", "user", null, null, null);
 
       assertThatThrownBy(() -> client.execute(request))
           .isInstanceOf(LlmInvocationException.class)
@@ -184,7 +184,7 @@ class GeminiLlmClientIT {
           .build();
       GeminiLlmClient client = new GeminiLlmClient(new ObjectMapper(), config);
       LlmExecutionRequest request =
-          LlmExecutionRequest.withDefaultModel("gemini", "system", "user");
+          new LlmExecutionRequest("gemini", null, "system", "user", null, null, null);
 
       assertThatThrownBy(() -> client.execute(request))
           .isInstanceOf(LlmInvocationException.class)
@@ -204,7 +204,7 @@ class GeminiLlmClientIT {
           .build();
       GeminiLlmClient client = new GeminiLlmClient(new ObjectMapper(), config);
       LlmExecutionRequest request =
-          LlmExecutionRequest.withDefaultModel("gemini", "S", "U");
+          new LlmExecutionRequest("gemini", null, "S", "U", null, null, null);
 
       client.execute(request);
 
@@ -231,7 +231,7 @@ class GeminiLlmClientIT {
           .build();
       GeminiLlmClient client = new GeminiLlmClient(new ObjectMapper(), config);
       LlmExecutionRequest request =
-          new LlmExecutionRequest("gemini", "m", "You are helpful.", "Hello.");
+          new LlmExecutionRequest("gemini", "m", "You are helpful.", "Hello.", null, null, null);
 
       client.execute(request);
 
@@ -253,7 +253,7 @@ class GeminiLlmClientIT {
           .build();
       GeminiLlmClient client = new GeminiLlmClient(new ObjectMapper(), config);
       LlmExecutionRequest request =
-          LlmExecutionRequest.withDefaultModel("gemini", "a", "b");
+          new LlmExecutionRequest("gemini", null, "a", "b", null, null, null);
 
       client.execute(request);
 
@@ -271,7 +271,7 @@ class GeminiLlmClientIT {
           .build();
       GeminiLlmClient client = new GeminiLlmClient(new ObjectMapper(), config);
       LlmExecutionRequest request =
-          LlmExecutionRequest.withDefaultModel("gemini", "sys", "usr");
+          new LlmExecutionRequest("gemini", null, "sys", "usr", null, null, null);
 
       client.execute(request);
 
@@ -291,7 +291,7 @@ class GeminiLlmClientIT {
           .build();
       GeminiLlmClient client = new GeminiLlmClient(new ObjectMapper(), config);
       LlmExecutionRequest request =
-          new LlmExecutionRequest("gemini", "explicit-model", "S", "U");
+          new LlmExecutionRequest("gemini", "explicit-model", "S", "U", null, null, null);
 
       client.execute(request);
 
@@ -306,7 +306,7 @@ class GeminiLlmClientIT {
         .build();
     GeminiLlmClient client = new GeminiLlmClient(new ObjectMapper(), config);
     LlmExecutionRequest request =
-        LlmExecutionRequest.withDefaultModel("gemini", "system", "user");
+        new LlmExecutionRequest("gemini", null, "system", "user", null, null, null);
 
     assertThatThrownBy(() -> client.execute(request))
         .isInstanceOf(LlmInvocationException.class)
@@ -324,7 +324,7 @@ class GeminiLlmClientIT {
           .build();
       GeminiLlmClient client = new GeminiLlmClient(new ObjectMapper(), config);
       LlmExecutionRequest request =
-          LlmExecutionRequest.withDefaultModel("gemini", "system", "user");
+          new LlmExecutionRequest("gemini", null, "system", "user", null, null, null);
 
       assertThatThrownBy(() -> client.execute(request))
           .isInstanceOf(LlmInvocationException.class)
@@ -341,7 +341,7 @@ class GeminiLlmClientIT {
           .build();
       var client = new GeminiLlmClientFactory().create(new ObjectMapper(), config);
       LlmExecutionRequest request =
-          LlmExecutionRequest.withDefaultModel("gemini", "system", "user");
+          new LlmExecutionRequest("gemini", null, "system", "user", null, null, null);
 
       assertThat(client.execute(request).text()).isEqualTo("Hello from gemini IT");
     }

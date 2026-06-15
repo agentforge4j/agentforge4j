@@ -44,7 +44,7 @@ class AzureOpenAiLlmClientIT {
           .build();
       AzureOpenAiLlmClient client = new AzureOpenAiLlmClient(new ObjectMapper(), config);
       LlmExecutionRequest request =
-          LlmExecutionRequest.withDefaultModel("azure-openai", "system", "user");
+          new LlmExecutionRequest("azure-openai", null, "system", "user", null, null, null);
 
       var response = client.execute(request);
       assertThat(response.text()).isEqualTo("Hello from Azure");
@@ -62,7 +62,7 @@ class AzureOpenAiLlmClientIT {
           .build();
       AzureOpenAiLlmClient client = new AzureOpenAiLlmClient(new ObjectMapper(), config);
       LlmExecutionRequest request =
-          LlmExecutionRequest.withDefaultModel("azure-openai", "system", "user");
+          new LlmExecutionRequest("azure-openai", null, "system", "user", null, null, null);
 
       LlmExecutionResponse response = client.execute(request);
       assertThat(response.text()).isEqualTo("ok");
@@ -91,7 +91,7 @@ class AzureOpenAiLlmClientIT {
           .build();
       AzureOpenAiLlmClient client = new AzureOpenAiLlmClient(new ObjectMapper(), config);
       LlmExecutionRequest request =
-          new LlmExecutionRequest("AZURE-OPENAI", null, "system", "user");
+          new LlmExecutionRequest("AZURE-OPENAI", null, "system", "user", null, null, null);
 
       assertThat(client.execute(request).text()).isEqualTo("Hello from Azure");
     }
@@ -105,7 +105,7 @@ class AzureOpenAiLlmClientIT {
           .build();
       AzureOpenAiLlmClient client = new AzureOpenAiLlmClient(new ObjectMapper(), config);
       LlmExecutionRequest request =
-          LlmExecutionRequest.withDefaultModel("azure-openai", "system", "user");
+          new LlmExecutionRequest("azure-openai", null, "system", "user", null, null, null);
 
       assertThatThrownBy(() -> client.execute(request))
           .isInstanceOf(LlmInvocationException.class)
@@ -126,7 +126,7 @@ class AzureOpenAiLlmClientIT {
           .build();
       AzureOpenAiLlmClient client = new AzureOpenAiLlmClient(new ObjectMapper(), config);
       LlmExecutionRequest request =
-          LlmExecutionRequest.withDefaultModel("azure-openai", "system", "user");
+          new LlmExecutionRequest("azure-openai", null, "system", "user", null, null, null);
 
       assertThatThrownBy(() -> client.execute(request))
           .isInstanceOf(LlmInvocationException.class)
@@ -145,7 +145,7 @@ class AzureOpenAiLlmClientIT {
           .build();
       AzureOpenAiLlmClient client = new AzureOpenAiLlmClient(new ObjectMapper(), config);
       LlmExecutionRequest request =
-          LlmExecutionRequest.withDefaultModel("azure-openai", "system", "user");
+          new LlmExecutionRequest("azure-openai", null, "system", "user", null, null, null);
 
       assertThatThrownBy(() -> client.execute(request))
           .isInstanceOf(LlmInvocationException.class)
@@ -161,7 +161,7 @@ class AzureOpenAiLlmClientIT {
           .build();
       AzureOpenAiLlmClient client = new AzureOpenAiLlmClient(new ObjectMapper(), config);
       LlmExecutionRequest request =
-          LlmExecutionRequest.withDefaultModel("azure-openai", "system", "user");
+          new LlmExecutionRequest("azure-openai", null, "system", "user", null, null, null);
 
       assertThatThrownBy(() -> client.execute(request))
           .isInstanceOf(LlmInvocationException.class)
@@ -182,7 +182,7 @@ class AzureOpenAiLlmClientIT {
           .build();
       AzureOpenAiLlmClient client = new AzureOpenAiLlmClient(new ObjectMapper(), config);
       LlmExecutionRequest request =
-          LlmExecutionRequest.withDefaultModel("azure-openai", "system", "user");
+          new LlmExecutionRequest("azure-openai", null, "system", "user", null, null, null);
 
       assertThatThrownBy(() -> client.execute(request))
           .isInstanceOf(LlmInvocationException.class)
@@ -201,7 +201,7 @@ class AzureOpenAiLlmClientIT {
           .build();
       AzureOpenAiLlmClient client = new AzureOpenAiLlmClient(new ObjectMapper(), config);
       LlmExecutionRequest request =
-          LlmExecutionRequest.withDefaultModel("azure-openai", "S", "U");
+          new LlmExecutionRequest("azure-openai", null, "S", "U", null, null, null);
 
       client.execute(request);
 
@@ -221,7 +221,7 @@ class AzureOpenAiLlmClientIT {
         .build();
     AzureOpenAiLlmClient client = new AzureOpenAiLlmClient(new ObjectMapper(), config);
     LlmExecutionRequest request =
-        LlmExecutionRequest.withDefaultModel("azure-openai", "system", "user");
+        new LlmExecutionRequest("azure-openai", null, "system", "user", null, null, null);
 
     assertThatThrownBy(() -> client.execute(request))
         .isInstanceOf(LlmInvocationException.class)
@@ -239,7 +239,7 @@ class AzureOpenAiLlmClientIT {
           .build();
       AzureOpenAiLlmClient client = new AzureOpenAiLlmClient(new ObjectMapper(), config);
       LlmExecutionRequest request =
-          LlmExecutionRequest.withDefaultModel("azure-openai", "system", "user");
+          new LlmExecutionRequest("azure-openai", null, "system", "user", null, null, null);
 
       assertThatThrownBy(() -> client.execute(request))
           .isInstanceOf(LlmInvocationException.class)
@@ -256,7 +256,7 @@ class AzureOpenAiLlmClientIT {
           .build();
       var client = new AzureOpenAiLlmClientFactory().create(new ObjectMapper(), config);
       LlmExecutionRequest request =
-          LlmExecutionRequest.withDefaultModel("azure-openai", "system", "user");
+          new LlmExecutionRequest("azure-openai", null, "system", "user", null, null, null);
 
       assertThat(client.execute(request).text()).isEqualTo("Hello from Azure");
     }
