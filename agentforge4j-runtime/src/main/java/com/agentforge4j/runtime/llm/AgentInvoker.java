@@ -17,6 +17,7 @@ import com.agentforge4j.llm.LlmClientResolver;
 import com.agentforge4j.llm.api.LlmClient;
 import com.agentforge4j.llm.api.LlmExecutionRequest;
 import com.agentforge4j.llm.api.LlmExecutionResponse;
+import com.agentforge4j.llm.api.LlmInvocationIdentity;
 import com.agentforge4j.llm.api.ModelTier;
 import com.agentforge4j.llm.api.ModelTierResolutionException;
 import com.agentforge4j.llm.api.ModelTierResolver;
@@ -287,7 +288,10 @@ public final class AgentInvoker {
   }
 
   /**
-   * Invokes an agent, optionally overriding the agent's capability tier for this step.
+   * Invokes an agent, optionally overriding the agent's capability tier for this step. Callers
+   * without an active-workflow context use the run's root workflow id (from {@code state}) as the
+   * invocation identity's workflow id; callers driving a nested workflow should use the
+   * {@code activeWorkflowId} overload so the identity reflects the innermost active workflow.
    *
    * @param agentId        the agent to invoke; must not be blank
    * @param contextMapping context mapping for input rendering; must not be {@code null}
@@ -303,16 +307,47 @@ public final class AgentInvoker {
       WorkflowState state,
       String stepPrompt,
       String stepModelTier) {
+    Validate.notNull(state, "state must not be null");
+    return invoke(agentId, contextMapping, state, stepPrompt, stepModelTier, state.getWorkflowId());
+  }
+
+  /**
+   * Invokes an agent, carrying the innermost active workflow id onto the invocation identity. The
+   * run executes under a single root run/state ({@code WorkflowState.workflowId} is the root and is
+   * immutable), so the active workflow id of a nested workflow is not recoverable from {@code state}
+   * — the caller (which holds the execution context) supplies it here so that
+   * {@link LlmInvocationIdentity#workflowId()} distinguishes steps of different nested workflows
+   * under one run.
+   *
+   * @param agentId         the agent to invoke; must not be blank
+   * @param contextMapping  context mapping for input rendering; must not be {@code null}
+   * @param state           mutable run state; must not be {@code null}
+   * @param stepPrompt      optional static step prompt material; may be blank
+   * @param stepModelTier   optional step-level tier name overriding the agent tier; {@code null} or blank inherits the
+   *                        agent tier
+   * @param activeWorkflowId innermost active workflow id for this call (the run's root workflow id
+   *                        when not nested); must not be blank
+   *
+   * @return the parsed invocation result; never {@code null}
+   */
+  public AgentInvocationResult invoke(String agentId,
+      ContextMapping contextMapping,
+      WorkflowState state,
+      String stepPrompt,
+      String stepModelTier,
+      String activeWorkflowId) {
     Validate.notBlank(agentId, "agentId must not be blank");
     Validate.notNull(contextMapping, "contextMapping must not be null");
     Validate.notNull(state, "state must not be null");
+    Validate.notBlank(activeWorkflowId, "activeWorkflowId must not be blank");
 
     AgentDefinition agent = agentRepository.get(agentId);
     Validate.isTrue(agent.enabled(),
         "Agent '%s' is disabled and cannot be invoked".formatted(agent.id()));
 
     String userInput = contextRenderer.render(state.getContext(), contextMapping);
-    return invokeWithAudit(agent, userInput, stepPrompt, stepModelTier, state, agentId);
+    return invokeWithAudit(agent, userInput, stepPrompt, stepModelTier, state, agentId,
+        activeWorkflowId);
   }
 
   private AgentInvocationResult invokeWithAudit(AgentDefinition agent,
@@ -320,7 +355,8 @@ public final class AgentInvoker {
       String stepPrompt,
       String stepModelTier,
       WorkflowState state,
-      String actorIdForEvents) {
+      String actorIdForEvents,
+      String activeWorkflowId) {
     ProviderPreference preference = llmProviderSelectionStrategy.selectInitialProvider(
         agent, llmClientResolver.listAvailableClients());
     ModelResolution resolution = resolveModel(agent, preference, stepModelTier);
@@ -335,7 +371,7 @@ public final class AgentInvoker {
 
     ParsedInvocation parsed = invokeLlmRecordAndParseWithRetry(
         agent, preference, resolution.resolvedModel(), client, assembled, userInput, schema, state,
-        actorIdForEvents);
+        actorIdForEvents, activeWorkflowId);
     llmCallObserver.observe(actorIdForEvents, preference.provider(), parsed.llmResponse(),
         resolution.resolvedModel(), resolution.modelSource(), resolution.requestedModelTier(),
         state);
@@ -398,11 +434,14 @@ public final class AgentInvoker {
       String originalUserInput,
       CommandResponseSchema schema,
       WorkflowState state,
-      String actorIdForEvents) {
+      String actorIdForEvents,
+      String activeWorkflowId) {
     String correctionBody = "";
 
     LOG.log(System.Logger.Level.DEBUG, "Dispatching LLM call provider={0}, model={1}",
         preference.provider(), effectiveModel);
+    LlmInvocationIdentity identity = new LlmInvocationIdentity(
+        activeWorkflowId, state.getRunId(), state.getCurrentStepId(), agent.id());
     LlmCommandParseException lastParseFailure = null;
     for (int attempt = 1; attempt <= RETRY_ATTEMPTS; attempt++) {
       String effectiveUserInput = toCorrectedPrompt(originalUserInput, attempt, correctionBody);
@@ -414,7 +453,8 @@ public final class AgentInvoker {
               assembled.text(),
               effectiveUserInput,
               null,
-              assembled.promptLayerBoundaries()),
+              assembled.promptLayerBoundaries(),
+              identity),
           attempt > 1);
 
       String responseText = response.text();

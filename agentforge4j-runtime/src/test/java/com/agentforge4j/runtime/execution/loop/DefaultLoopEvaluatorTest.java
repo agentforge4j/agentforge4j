@@ -68,7 +68,7 @@ class DefaultLoopEvaluatorTest {
 
   @Test
   void terminates_when_agent_returns_termination_signal() {
-    when(agentInvoker.invoke(eq("eval-agent"), any(), any(), isNull()))
+    when(agentInvoker.invoke(eq("eval-agent"), any(), any(), isNull(), isNull(), any()))
         .thenReturn(AgentInvocationResult.builder()
             .withRawResponse("raw")
             .withCommands(List.of(new CompleteCommand(null)))
@@ -81,7 +81,7 @@ class DefaultLoopEvaluatorTest {
 
   @Test
   void continues_when_agent_returns_continue_signal() {
-    when(agentInvoker.invoke(eq("eval-agent"), any(), any(), isNull()))
+    when(agentInvoker.invoke(eq("eval-agent"), any(), any(), isNull(), isNull(), any()))
         .thenReturn(AgentInvocationResult.builder()
             .withRawResponse("raw")
             .withCommands(List.of(new ContinueCommand(null, null, List.of())))
@@ -94,7 +94,7 @@ class DefaultLoopEvaluatorTest {
 
   @Test
   void malformed_agent_response_propagates_from_invoker() {
-    when(agentInvoker.invoke(eq("eval-agent"), any(), any(), isNull()))
+    when(agentInvoker.invoke(eq("eval-agent"), any(), any(), isNull(), isNull(), any()))
         .thenThrow(new LlmCommandParseException("bad json"));
 
     assertThatThrownBy(() -> evaluator.shouldTerminate("eval-agent", 1, executionContext))
@@ -104,7 +104,7 @@ class DefaultLoopEvaluatorTest {
   @Test
   void passes_state_to_evaluator_agent_invocation() {
     when(agentInvoker.invoke(eq("eval-agent"), eq(ContextMapping.none()),
-        eq(executionContext.getState()), isNull()))
+        eq(executionContext.getState()), isNull(), isNull(), any()))
         .thenReturn(AgentInvocationResult.builder()
             .withRawResponse("raw")
             .withCommands(List.of())
@@ -116,7 +116,7 @@ class DefaultLoopEvaluatorTest {
 
     ArgumentCaptor<WorkflowState> stateCaptor = ArgumentCaptor.forClass(WorkflowState.class);
     verify(agentInvoker).invoke(eq("eval-agent"), eq(ContextMapping.none()),
-        stateCaptor.capture(), isNull());
+        stateCaptor.capture(), isNull(), isNull(), any());
     assertThat(stateCaptor.getValue().getRunId()).isEqualTo("run-1");
   }
 }

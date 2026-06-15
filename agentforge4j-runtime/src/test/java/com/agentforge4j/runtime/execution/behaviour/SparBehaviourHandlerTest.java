@@ -76,18 +76,17 @@ class SparBehaviourHandlerTest {
 
   @Test
   void stops_after_round_one_when_neither_requests_valid_continuation() {
-    when(agentInvoker.invoke(eq(PRIMARY), any(), any(), anyString(), any()))
+    when(agentInvoker.invoke(eq(PRIMARY), any(), any(), anyString(), any(), any()))
         .thenReturn(bareContinueResult())
         .thenReturn(bareContinueResult());
-    when(agentInvoker.invoke(eq(CHALLENGER), any(), any(), anyString(), any()))
-        .thenReturn(bareContinueResult());
-    when(commandApplier.apply(any(), any(), any(), anyString(), anyInt()))
-        .thenReturn(CommandApplicationResult.CONTINUE);
+    when(agentInvoker.invoke(eq(CHALLENGER), any(), any(), anyString(), any(), any())).thenReturn(bareContinueResult());
+    when(commandApplier.apply(any(), any(), any(), anyString(), anyInt())).thenReturn(
+        CommandApplicationResult.CONTINUE);
 
     runHandler();
 
-    verify(agentInvoker, times(2)).invoke(eq(PRIMARY), any(), any(), anyString(), any());
-    verify(agentInvoker, times(1)).invoke(eq(CHALLENGER), any(), any(), anyString(), any());
+    verify(agentInvoker, times(2)).invoke(eq(PRIMARY), any(), any(), anyString(), any(), any());
+    verify(agentInvoker, times(1)).invoke(eq(CHALLENGER), any(), any(), anyString(), any(), any());
     assertThat(state.getContext()).containsKeys("spar.primary.round.1", "spar.challenger.round.1");
     assertThat(state.getContext()).doesNotContainKey("spar.primary.round.2");
     verify(commandApplier, times(1)).apply(any(), any(), any(), anyString(), anyInt());
@@ -95,11 +94,11 @@ class SparBehaviourHandlerTest {
 
   @Test
   void continues_when_one_side_requests_with_valid_reason() {
-    when(agentInvoker.invoke(eq(PRIMARY), any(), any(), anyString(), any()))
+    when(agentInvoker.invoke(eq(PRIMARY), any(), any(), anyString(), any(), any()))
         .thenReturn(invokeResult(false, null))
         .thenReturn(invokeResult(false, null))
         .thenReturn(invokeResult(false, null));
-    when(agentInvoker.invoke(eq(CHALLENGER), any(), any(), anyString(), any()))
+    when(agentInvoker.invoke(eq(CHALLENGER), any(), any(), anyString(), any(), any()))
         .thenReturn(invokeResult(true, GOOD_REASON))
         .thenReturn(invokeResult(false, null));
     when(commandApplier.apply(any(), any(), any(), anyString(), anyInt()))
@@ -107,17 +106,17 @@ class SparBehaviourHandlerTest {
 
     runHandler();
 
-    verify(agentInvoker, times(3)).invoke(eq(PRIMARY), any(), any(), anyString(), any());
-    verify(agentInvoker, times(2)).invoke(eq(CHALLENGER), any(), any(), anyString(), any());
+    verify(agentInvoker, times(3)).invoke(eq(PRIMARY), any(), any(), anyString(), any(), any());
+    verify(agentInvoker, times(2)).invoke(eq(CHALLENGER), any(), any(), anyString(), any(), any());
     assertThat(state.getContext()).containsKeys("spar.primary.round.1", "spar.challenger.round.2");
   }
 
   @Test
   void does_not_continue_on_vague_reason() {
-    when(agentInvoker.invoke(eq(PRIMARY), any(), any(), anyString(), any()))
+    when(agentInvoker.invoke(eq(PRIMARY), any(), any(), anyString(), any(), any()))
         .thenReturn(invokeResult(true, "I disagree with the proposal as written"))
         .thenReturn(invokeResult(false, null));
-    when(agentInvoker.invoke(eq(CHALLENGER), any(), any(), anyString(), any()))
+    when(agentInvoker.invoke(eq(CHALLENGER), any(), any(), anyString(), any(), any()))
         .thenReturn(invokeResult(true, "This needs more discussion before we can finalize"))
         .thenReturn(invokeResult(false, null));
     when(commandApplier.apply(any(), any(), any(), anyString(), anyInt()))
@@ -125,8 +124,8 @@ class SparBehaviourHandlerTest {
 
     runHandler();
 
-    verify(agentInvoker, times(2)).invoke(eq(PRIMARY), any(), any(), anyString(), any());
-    verify(agentInvoker, times(1)).invoke(eq(CHALLENGER), any(), any(), anyString(), any());
+    verify(agentInvoker, times(2)).invoke(eq(PRIMARY), any(), any(), anyString(), any(), any());
+    verify(agentInvoker, times(1)).invoke(eq(CHALLENGER), any(), any(), anyString(), any(), any());
   }
 
   @Test
@@ -141,11 +140,11 @@ class SparBehaviourHandlerTest {
         .withStepPrompt(STEP_PROMPT)
         .build();
 
-    when(agentInvoker.invoke(eq(PRIMARY), any(), any(), anyString(), any()))
+    when(agentInvoker.invoke(eq(PRIMARY), any(), any(), anyString(), any(), any()))
         .thenReturn(invokeResult(true, GOOD_REASON))
         .thenReturn(invokeResult(true, GOOD_REASON))
         .thenReturn(invokeResult(false, null));
-    when(agentInvoker.invoke(eq(CHALLENGER), any(), any(), anyString(), any()))
+    when(agentInvoker.invoke(eq(CHALLENGER), any(), any(), anyString(), any(), any()))
         .thenReturn(invokeResult(true, GOOD_REASON))
         .thenReturn(invokeResult(true, GOOD_REASON));
     when(commandApplier.apply(any(), any(), any(), anyString(), anyInt()))
@@ -153,8 +152,8 @@ class SparBehaviourHandlerTest {
 
     runHandler();
 
-    verify(agentInvoker, times(3)).invoke(eq(PRIMARY), any(), any(), anyString(), any());
-    verify(agentInvoker, times(2)).invoke(eq(CHALLENGER), any(), any(), anyString(), any());
+    verify(agentInvoker, times(3)).invoke(eq(PRIMARY), any(), any(), anyString(), any(), any());
+    verify(agentInvoker, times(2)).invoke(eq(CHALLENGER), any(), any(), anyString(), any(), any());
     assertThat(state.getContext()).containsKeys(
         "spar.primary.round.1", "spar.challenger.round.1",
         "spar.primary.round.2", "spar.challenger.round.2");
@@ -171,7 +170,7 @@ class SparBehaviourHandlerTest {
         .withStepPrompt(STEP_PROMPT)
         .build();
 
-    when(agentInvoker.invoke(anyString(), any(), same(state), anyString(), any()))
+    when(agentInvoker.invoke(anyString(), any(), same(state), anyString(), any(), any()))
         .thenReturn(invokeResult(false, null))
         .thenReturn(invokeResult(true, GOOD_REASON))
         .thenReturn(invokeResult(false, null))
@@ -183,7 +182,7 @@ class SparBehaviourHandlerTest {
     ArgumentCaptor<ContextMapping> cap = ArgumentCaptor.forClass(ContextMapping.class);
     runHandler();
 
-    verify(agentInvoker, times(5)).invoke(anyString(), cap.capture(), same(state), anyString(), any());
+    verify(agentInvoker, times(5)).invoke(anyString(), cap.capture(), same(state), anyString(), any(), any());
     List<ContextMapping> maps = cap.getAllValues();
     // round 1: primary + challenger — same widened instance per round, never the step's mapping ref
     assertThat(maps.get(0)).isNotSameAs(base);
@@ -208,7 +207,7 @@ class SparBehaviourHandlerTest {
 
   @Test
   void early_stop_after_round_one_never_includes_round_two_spar_keys_in_any_mapping() {
-    when(agentInvoker.invoke(anyString(), any(), same(state), anyString(), any()))
+    when(agentInvoker.invoke(anyString(), any(), same(state), anyString(), any(), any()))
         .thenReturn(bareContinueResult())
         .thenReturn(bareContinueResult())
         .thenReturn(bareContinueResult());
@@ -218,17 +217,17 @@ class SparBehaviourHandlerTest {
     ArgumentCaptor<ContextMapping> cap = ArgumentCaptor.forClass(ContextMapping.class);
     runHandler();
 
-    verify(agentInvoker, times(3)).invoke(anyString(), cap.capture(), same(state), anyString(), any());
+    verify(agentInvoker, times(3)).invoke(anyString(), cap.capture(), same(state), anyString(), any(), any());
     assertThat(cap.getAllValues()).allSatisfy(m -> assertThat(m.inputKeys())
         .noneMatch(k -> k.endsWith("round.2")));
   }
 
   @Test
   void resolution_invocation_widens_context_only_for_executed_rounds() {
-    when(agentInvoker.invoke(eq(PRIMARY), any(), any(), anyString(), any()))
+    when(agentInvoker.invoke(eq(PRIMARY), any(), any(), anyString(), any(), any()))
         .thenReturn(bareContinueResult())
         .thenReturn(bareContinueResult());
-    when(agentInvoker.invoke(eq(CHALLENGER), any(), any(), anyString(), any()))
+    when(agentInvoker.invoke(eq(CHALLENGER), any(), any(), anyString(), any(), any()))
         .thenReturn(bareContinueResult());
     when(commandApplier.apply(any(), any(), any(), anyString(), anyInt()))
         .thenReturn(CommandApplicationResult.CONTINUE);
@@ -236,7 +235,7 @@ class SparBehaviourHandlerTest {
     ArgumentCaptor<ContextMapping> mappingCaptor = ArgumentCaptor.forClass(ContextMapping.class);
     runHandler();
 
-    verify(agentInvoker, times(2)).invoke(eq(PRIMARY), mappingCaptor.capture(), any(), anyString(), any());
+    verify(agentInvoker, times(2)).invoke(eq(PRIMARY), mappingCaptor.capture(), any(), anyString(), any(), any());
     assertThat(mappingCaptor.getAllValues().get(0).inputKeys()).doesNotContain(
         "spar.primary.round.1");
     ContextMapping resolutionMapping = mappingCaptor.getAllValues().get(1);
@@ -247,10 +246,10 @@ class SparBehaviourHandlerTest {
 
   @Test
   void spar_round_prompts_include_continuation_instructions_resolution_does_not() {
-    when(agentInvoker.invoke(eq(PRIMARY), any(), any(), anyString(), any()))
+    when(agentInvoker.invoke(eq(PRIMARY), any(), any(), anyString(), any(), any()))
         .thenReturn(bareContinueResult())
         .thenReturn(bareContinueResult());
-    when(agentInvoker.invoke(eq(CHALLENGER), any(), any(), anyString(), any()))
+    when(agentInvoker.invoke(eq(CHALLENGER), any(), any(), anyString(), any(), any()))
         .thenReturn(bareContinueResult());
     when(commandApplier.apply(any(), any(), any(), anyString(), anyInt()))
         .thenReturn(CommandApplicationResult.CONTINUE);
@@ -258,7 +257,7 @@ class SparBehaviourHandlerTest {
     ArgumentCaptor<String> promptCaptor = ArgumentCaptor.forClass(String.class);
     runHandler();
 
-    verify(agentInvoker, times(2)).invoke(eq(PRIMARY), any(), any(), promptCaptor.capture(), any());
+    verify(agentInvoker, times(2)).invoke(eq(PRIMARY), any(), any(), promptCaptor.capture(), any(), any());
     List<String> primaryPrompts = promptCaptor.getAllValues();
     assertThat(primaryPrompts.get(0)).contains("SPAR round output");
     assertThat(primaryPrompts.get(1)).isEqualTo(STEP_PROMPT);

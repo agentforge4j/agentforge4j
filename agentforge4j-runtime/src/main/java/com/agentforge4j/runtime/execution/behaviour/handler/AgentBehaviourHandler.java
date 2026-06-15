@@ -15,12 +15,12 @@ import com.agentforge4j.runtime.llm.AgentInvoker;
 import com.agentforge4j.util.Validate;
 
 /**
- * Handles an {@link AgentBehaviour}: invokes the configured agent, applies its commands, and maps
- * the application result to an {@link ExecutionOutcome}.
+ * Handles an {@link AgentBehaviour}: invokes the configured agent, applies its commands, and maps the application
+ * result to an {@link ExecutionOutcome}.
  *
  * <p>Retries driven by {@code RetryPolicy} are orchestrated by the runtime, not
- * by this handler — a single invocation per handler call keeps the logic simple and makes the retry
- * decision observable in the event log.
+ * by this handler — a single invocation per handler call keeps the logic simple and makes the retry decision observable
+ * in the event log.
  */
 public final class AgentBehaviourHandler implements BehaviourHandler<AgentBehaviour> {
 
@@ -96,7 +96,8 @@ public final class AgentBehaviourHandler implements BehaviourHandler<AgentBehavi
         step.contextMapping(),
         executionContext.getState(),
         step.stepPrompt(),
-        step.modelTier());
+        step.modelTier(),
+        executionContext.getActiveWorkflowId());
     LOG.log(System.Logger.Level.INFO, "Agent call completed stepId={0}, agentId={1}, commands={2}",
         step.stepId(), behaviour.agentRef(), result.commands().size());
     return result;

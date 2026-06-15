@@ -24,14 +24,14 @@ import java.util.List;
 import org.apache.commons.lang3.StringUtils;
 
 /**
- * Handles a {@link SparBehaviour}: runs primary vs challenger exchanges until neither side has a
- * valid reason to continue or {@code maxRounds} is reached, then a final resolution round where the
- * primary agent is given the resolution prompt.
+ * Handles a {@link SparBehaviour}: runs primary vs challenger exchanges until neither side has a valid reason to
+ * continue or {@code maxRounds} is reached, then a final resolution round where the primary agent is given the
+ * resolution prompt.
  *
  * <p>Intermediate round outputs are recorded on the shared context under
- * reserved keys so the next round can see the previous responses. Only the final resolution round's
- * commands are applied via {@link CommandApplier} — earlier rounds contribute their outputs to the
- * shared context only, not side effects.
+ * reserved keys so the next round can see the previous responses. Only the final resolution round's commands are
+ * applied via {@link CommandApplier} — earlier rounds contribute their outputs to the shared context only, not side
+ * effects.
  */
 public final class SparBehaviourHandler implements BehaviourHandler<SparBehaviour> {
 
@@ -48,8 +48,8 @@ public final class SparBehaviourHandler implements BehaviourHandler<SparBehaviou
   public static final String SPAR_CHALLENGER_PREFIX = "spar.challenger.round.";
 
   /**
-   * Appended to the step prompt for SPAR exchange invocations so models return structured
-   * continuation metadata on {@code CONTINUE}.
+   * Appended to the step prompt for SPAR exchange invocations so models return structured continuation metadata on
+   * {@code CONTINUE}.
    */
   static final String SPAR_ROUND_STEP_PROMPT_SUFFIX = """
       SPAR round output (this is not the final resolution call):
@@ -85,6 +85,7 @@ public final class SparBehaviourHandler implements BehaviourHandler<SparBehaviou
   public ExecutionOutcome handle(StepDefinition step, SparBehaviour behaviour,
       ExecutionContext executionContext) {
     WorkflowState state = executionContext.getState();
+    String activeWorkflowId = executionContext.getActiveWorkflowId();
     SparConfig config = behaviour.sparConfig();
     LOG.log(System.Logger.Level.DEBUG,
         "SPAR start stepId={0}, agentId={1}, challengerAgentId={2}, maxRounds={3}",
@@ -98,9 +99,11 @@ public final class SparBehaviourHandler implements BehaviourHandler<SparBehaviou
       ContextMapping roundMapping = buildRoundMapping(step.contextMapping(), round - 1);
 
       AgentInvocationResult primary = spar(behaviour.agentRef(),
-          round, roundMapping, state, sparRoundPrompt, SPAR_PRIMARY_PREFIX, step.modelTier());
+          round, roundMapping, state, sparRoundPrompt, SPAR_PRIMARY_PREFIX, step.modelTier(),
+          activeWorkflowId);
       AgentInvocationResult challenger = spar(config.challengerAgentId(),
-          round, roundMapping, state, sparRoundPrompt, SPAR_CHALLENGER_PREFIX, step.modelTier());
+          round, roundMapping, state, sparRoundPrompt, SPAR_CHALLENGER_PREFIX, step.modelTier(),
+          activeWorkflowId);
 
       executedRounds = round;
 
@@ -117,7 +120,7 @@ public final class SparBehaviourHandler implements BehaviourHandler<SparBehaviou
     }
 
     AgentInvocationResult resolution = finalResolutionRound(step, behaviour, state, config,
-        executedRounds);
+        executedRounds, activeWorkflowId);
     Integer currentStepUid = state.getStepExecutionUid().get(state.getCurrentStepId());
     UserPromptPauseGuard.ensureBlockingUserPromptAllowed(eventRecorder, step, state,
         resolution.commands());
@@ -131,7 +134,8 @@ public final class SparBehaviourHandler implements BehaviourHandler<SparBehaviou
   }
 
   private AgentInvocationResult finalResolutionRound(StepDefinition step,
-      SparBehaviour behaviour, WorkflowState state, SparConfig config, int executedRounds) {
+      SparBehaviour behaviour, WorkflowState state, SparConfig config, int executedRounds,
+      String activeWorkflowId) {
     state.putContextValue("spar.resolution.prompt",
         new StringContextValue(config.resolutionPrompt()));
 
@@ -140,7 +144,8 @@ public final class SparBehaviourHandler implements BehaviourHandler<SparBehaviou
         buildResolutionMapping(step.contextMapping(), executedRounds),
         state,
         step.stepPrompt(),
-        step.modelTier());
+        step.modelTier(),
+        activeWorkflowId);
   }
 
   private CommandApplicationResult applyCommands(StepDefinition step,
@@ -176,7 +181,8 @@ public final class SparBehaviourHandler implements BehaviourHandler<SparBehaviou
   }
 
   private AgentInvocationResult spar(String agentRef, int round, ContextMapping roundMapping,
-      WorkflowState state, String sparRoundPrompt, String sparPrefix, String stepModelTier) {
+      WorkflowState state, String sparRoundPrompt, String sparPrefix, String stepModelTier,
+      String activeWorkflowId) {
     LOG.log(System.Logger.Level.DEBUG, "SPAR round={0}, responder={1}", round,
         agentRef);
     AgentInvocationResult agent = agentInvoker.invoke(
@@ -184,7 +190,8 @@ public final class SparBehaviourHandler implements BehaviourHandler<SparBehaviou
         roundMapping,
         state,
         sparRoundPrompt,
-        stepModelTier);
+        stepModelTier,
+        activeWorkflowId);
     state.putContextValue(sparPrefix + round,
         new StringContextValue(agent.rawResponse()));
     return agent;
@@ -201,16 +208,14 @@ public final class SparBehaviourHandler implements BehaviourHandler<SparBehaviou
   }
 
   /**
-   * Widens {@code inputKeys} so exchange invocations for round {@code N} can read prior rounds'
-   * outputs (round {@code N} uses keys for rounds {@code 1 .. N-1}). {@code outputKeys} are
-   * unchanged.
+   * Widens {@code inputKeys} so exchange invocations for round {@code N} can read prior rounds' outputs (round
+   * {@code N} uses keys for rounds {@code 1 .. N-1}). {@code outputKeys} are unchanged.
    *
    * <p>Always returns a new {@link ContextMapping} instance (never the {@code original} reference)
    * so callers cannot accidentally share mutable intent across rounds.
    *
    * @param original       the step's declared context mapping
-   * @param previousRounds number of completed SPAR rounds already stored in context (0 for round
-   *                       1)
+   * @param previousRounds number of completed SPAR rounds already stored in context (0 for round 1)
    */
   public static ContextMapping buildRoundMapping(ContextMapping original, int previousRounds) {
     Validate.isTrue(previousRounds >= 0, "previousRounds must be non-negative");

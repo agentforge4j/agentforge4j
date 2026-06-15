@@ -1,10 +1,14 @@
 package com.agentforge4j.llm.api;
 
 /**
- * Thrown when an LLM request fails due to network issues, HTTP errors, invalid responses, or
- * provider-specific validation failures.
+ * Thrown when an LLM request fails due to network issues, HTTP errors, invalid responses, or provider-specific
+ * validation failures.
+ *
+ * <p>Not {@code final}: providers may define specific subtypes (for example a scripted provider's
+ * "no response for this key" failure) so callers can catch the provider-neutral type while still distinguishing the
+ * cause. A subtype with no HTTP status is treated as non-transient by {@code RetryingLlmClient}.
  */
-public final class LlmInvocationException extends RuntimeException {
+public class LlmInvocationException extends RuntimeException {
 
   private final Integer httpStatus;
 

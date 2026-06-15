@@ -10,12 +10,12 @@ import com.agentforge4j.runtime.llm.AgentInvoker;
 import lombok.RequiredArgsConstructor;
 
 /**
- * Default {@link LoopEvaluator} that invokes the evaluator agent and inspects the parsed commands
- * for a {@link CompleteCommand}.
+ * Default {@link LoopEvaluator} that invokes the evaluator agent and inspects the parsed commands for a
+ * {@link CompleteCommand}.
  *
  * <p>The evaluator agent is handed the full shared context (empty
- * {@link ContextMapping}) so it can reason over the current iteration's outputs, and it signals
- * termination by emitting a {@code COMPLETE} command — any other output keeps the loop going.
+ * {@link ContextMapping}) so it can reason over the current iteration's outputs, and it signals termination by emitting
+ * a {@code COMPLETE} command — any other output keeps the loop going.
  */
 @RequiredArgsConstructor
 public final class DefaultLoopEvaluator implements LoopEvaluator {
@@ -30,7 +30,9 @@ public final class DefaultLoopEvaluator implements LoopEvaluator {
         evaluatorAgentId,
         ContextMapping.none(),
         executionContext.getState(),
-        null);
+        null,
+        null,
+        executionContext.getActiveWorkflowId());
     for (LlmCommand command : result.commands()) {
       if (command instanceof CompleteCommand) {
         return true;

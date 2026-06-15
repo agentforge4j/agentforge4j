@@ -15,6 +15,7 @@ import com.agentforge4j.llm.LlmClientResolver;
 import com.agentforge4j.llm.api.LlmClient;
 import com.agentforge4j.llm.api.LlmExecutionRequest;
 import com.agentforge4j.llm.api.LlmExecutionResponse;
+import com.agentforge4j.llm.api.LlmInvocationIdentity;
 import com.agentforge4j.llm.api.PromptLayerBoundaries;
 import com.agentforge4j.llm.api.TokenUsageReport;
 import com.agentforge4j.runtime.event.EventRecorder;
@@ -55,6 +56,83 @@ class AgentInvokerTest {
     AgentInvocationResult result = invoker.invoke("agent-x", ContextMapping.none(), state, null);
 
     assertThat(result.tokenUsage()).isEqualTo(usage);
+  }
+
+  @Test
+  void invoke_withoutActiveWorkflowId_populatesIdentityFromRootStateAndAgent() {
+    ObjectMapper mapper = new ObjectMapper();
+    LlmClient client = mock(LlmClient.class);
+    when(client.getProviderName()).thenReturn("openai");
+    when(client.execute(any())).thenReturn(llmResponse("[{\"type\":\"COMPLETE\"}]"));
+
+    AgentInvoker invoker = invokerWithAudit(mapper, client,
+        recorder(new InMemoryWorkflowEventLog()));
+    WorkflowState state = workflowState("run-identity");
+
+    // Convenience overload without an execution context: identity workflowId falls back to the
+    // run's root workflow id (state.getWorkflowId()).
+    invoker.invoke("agent-x", ContextMapping.none(), state, null);
+
+    ArgumentCaptor<LlmExecutionRequest> captor = ArgumentCaptor.forClass(LlmExecutionRequest.class);
+    verify(client).execute(captor.capture());
+    LlmInvocationIdentity identity = captor.getValue().identity();
+    assertThat(identity).isNotNull();
+    assertThat(identity.workflowId()).isEqualTo("wf-1");
+    assertThat(identity.runId()).isEqualTo("run-identity");
+    assertThat(identity.stepId()).isEqualTo("step-1");
+    assertThat(identity.agentId()).isEqualTo("a1");
+  }
+
+  @Test
+  void invoke_withActiveWorkflowId_usesItAsIdentityWorkflowId() {
+    ObjectMapper mapper = new ObjectMapper();
+    LlmClient client = mock(LlmClient.class);
+    when(client.getProviderName()).thenReturn("openai");
+    when(client.execute(any())).thenReturn(llmResponse("[{\"type\":\"COMPLETE\"}]"));
+
+    AgentInvoker invoker = invokerWithAudit(mapper, client,
+        recorder(new InMemoryWorkflowEventLog()));
+    WorkflowState state = workflowState("run-nested");
+
+    // Nested workflow: the active workflow id differs from the run's root workflow id.
+    invoker.invoke("agent-x", ContextMapping.none(), state, null, null, "epic-implementation");
+
+    ArgumentCaptor<LlmExecutionRequest> captor = ArgumentCaptor.forClass(LlmExecutionRequest.class);
+    verify(client).execute(captor.capture());
+    LlmInvocationIdentity identity = captor.getValue().identity();
+    assertThat(identity.workflowId()).isEqualTo("epic-implementation");
+    assertThat(identity.workflowId()).isNotEqualTo(state.getWorkflowId());
+    assertThat(identity.runId()).isEqualTo("run-nested");
+    assertThat(identity.stepId()).isEqualTo("step-1");
+    assertThat(identity.agentId()).isEqualTo("a1");
+  }
+
+  @Test
+  void distinctActiveWorkflowIds_yieldDistinctIdentities_forSameRunStepAndAgent() {
+    ObjectMapper mapper = new ObjectMapper();
+    LlmClient client = mock(LlmClient.class);
+    when(client.getProviderName()).thenReturn("openai");
+    when(client.execute(any())).thenReturn(llmResponse("[{\"type\":\"COMPLETE\"}]"));
+
+    AgentInvoker invoker = invokerWithAudit(mapper, client,
+        recorder(new InMemoryWorkflowEventLog()));
+    WorkflowState state = workflowState("run-collide");
+
+    // Two different nested sub-workflows under one run reuse the same stepId + agentId.
+    invoker.invoke("agent-x", ContextMapping.none(), state, null, null, "sub-a");
+    invoker.invoke("agent-x", ContextMapping.none(), state, null, null, "sub-b");
+
+    ArgumentCaptor<LlmExecutionRequest> captor = ArgumentCaptor.forClass(LlmExecutionRequest.class);
+    verify(client, times(2)).execute(captor.capture());
+    LlmInvocationIdentity a = captor.getAllValues().get(0).identity();
+    LlmInvocationIdentity b = captor.getAllValues().get(1).identity();
+    assertThat(a.runId()).isEqualTo(b.runId());
+    assertThat(a.stepId()).isEqualTo(b.stepId());
+    assertThat(a.agentId()).isEqualTo(b.agentId());
+    // Active workflow id is the only differentiator — keys do not collide.
+    assertThat(a.workflowId()).isEqualTo("sub-a");
+    assertThat(b.workflowId()).isEqualTo("sub-b");
+    assertThat(a.workflowId()).isNotEqualTo(b.workflowId());
   }
 
   @Test

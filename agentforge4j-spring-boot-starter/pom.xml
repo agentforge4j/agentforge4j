@@ -107,6 +107,11 @@
       <artifactId>agentforge4j-llm-mistral</artifactId>
       <optional>true</optional>
     </dependency>
+    <dependency>
+      <groupId>org.agentforge4j</groupId>
+      <artifactId>agentforge4j-llm-fake</artifactId>
+      <optional>true</optional>
+    </dependency>
 
     <dependency>
       <groupId>org.springframework.boot</groupId>
