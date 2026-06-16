@@ -1,0 +1,54 @@
+name: Dependabot auto-merge
+
+# Approves and enables auto-merge for Dependabot PATCH updates only. Minor/major bumps are left
+# for manual review. Because dependabot.yml groups minor+patch and fetch-metadata reports the
+# highest update-type in a group, only pure-patch groups (and standalone patch PRs) qualify.
+#
+# Security model:
+#   - Trigger is `pull_request` (NOT `pull_request_target`): the workflow definition that runs is
+#     the one on the base branch, untrusted PR code never runs in a privileged context, and fork
+#     PRs receive a read-only token regardless of the permissions block below.
+#   - The job is guarded to the `dependabot[bot]` actor — a GitHub-managed App identity that cannot
+#     be spoofed. A human pushing onto a Dependabot branch flips `github.actor` to that human, so
+#     the guard fails and auto-merge stops.
+#   - Elevated permissions are job-scoped; the GITHUB_TOKEN is the built-in token (no PAT).
+#   - `--auto` only completes the merge once the required status checks (quality-gate) pass, and
+#     only if the repository "Allow auto-merge" setting is enabled (otherwise this is inert).
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+# Cancel a superseded run for the same PR ref when Dependabot force-pushes an update.
+concurrency:
+  group: dependabot-auto-merge-${{ github.ref }}
+  cancel-in-progress: true
+
+# Read-only by default; the merge job elevates the minimum it needs at job level.
+permissions:
+  contents: read
+
+jobs:
+  auto-merge:
+    name: auto-merge
+    # Dependabot's own PRs only — a GitHub App identity that cannot be impersonated.
+    if: ${{ github.actor == 'dependabot[bot]' }}
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+    steps:
+      - name: Fetch Dependabot metadata
+        id: metadata
+        uses: dependabot/fetch-metadata@25dd0e34f4fe68f24cc83900b1fe3fe149efef98 # v3.1.0
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Approve and enable auto-merge (patch only)
+        # Patch bumps only; minor/major (and any group reporting a higher type) are skipped.
+        if: ${{ steps.metadata.outputs.update-type == 'version-update:semver-patch' }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+        run: |
+          gh pr review --approve "$PR_URL"
+          gh pr merge --auto --squash "$PR_URL"

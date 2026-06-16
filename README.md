@@ -1,5 +1,8 @@
 # AgentForge4j <WIP> <Needs to change to address the changes in my original idea/vision>
 
+[![CI](https://github.com/agentforge4j/agentforge4j/actions/workflows/ci.yml/badge.svg)](https://github.com/agentforge4j/agentforge4j/actions/workflows/ci.yml)
+[![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
+
 **NOTE:** This project is in active development. The README will evolve as the project progresses. The current content is a comprehensive overview of the vision, architecture, and roadmap, but some details may change as the implementation unfolds.
 
 **Structured multi-agent AI workflow orchestration for the Java ecosystem.**
