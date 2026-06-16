@@ -30,6 +30,9 @@ import com.agentforge4j.runtime.execution.ExecutionOutcome;
 import com.agentforge4j.runtime.execution.RequirementCheckpoint;
 import com.agentforge4j.runtime.execution.StepSequenceExecutor;
 import com.agentforge4j.runtime.execution.TransitionGate;
+import com.agentforge4j.runtime.interceptor.ExecutionBlockedException;
+import com.agentforge4j.runtime.interceptor.RunExecutionContext;
+import com.agentforge4j.runtime.interceptor.RunExecutionInterceptor;
 import com.agentforge4j.runtime.tool.ToolResultApplier;
 import com.agentforge4j.util.Validate;
 import java.time.Clock;
@@ -76,6 +79,7 @@ public final class DefaultWorkflowRuntime implements WorkflowRuntime {
   private final ToolResultApplier toolResultApplier;
   private final RequirementResolver requirementResolver;
   private final TransitionGate transitionGate;
+  private final RunExecutionInterceptor runExecutionInterceptor;
 
   DefaultWorkflowRuntime(WorkflowRepository workflowRepository,
       WorkflowStateRepository workflowStateRepository,
@@ -88,7 +92,8 @@ public final class DefaultWorkflowRuntime implements WorkflowRuntime {
       ToolExecutionService toolExecutionService,
       PendingToolInvocationStore pendingToolInvocationStore,
       RequirementResolver requirementResolver,
-      TransitionGate transitionGate) {
+      TransitionGate transitionGate,
+      RunExecutionInterceptor runExecutionInterceptor) {
     this.workflowRepository = Validate.notNull(workflowRepository,
         "workflowRepository must not be null");
     this.workflowStateRepository = Validate.notNull(workflowStateRepository,
@@ -111,6 +116,8 @@ public final class DefaultWorkflowRuntime implements WorkflowRuntime {
     this.toolResultApplier = new ToolResultApplier(eventRecorder);
     this.requirementResolver = Validate.notNull(requirementResolver, "requirementResolver must not be null");
     this.transitionGate = Validate.notNull(transitionGate, "transitionGate must not be null");
+    this.runExecutionInterceptor = Validate.notNull(runExecutionInterceptor,
+        "runExecutionInterceptor must not be null");
   }
 
   /**
@@ -669,18 +676,44 @@ public final class DefaultWorkflowRuntime implements WorkflowRuntime {
   }
 
   private void drive(WorkflowState state, WorkflowDefinition workflow) {
+    if (state.getStepExecutionUid().isEmpty()) {
+      // First entry into main execution (on resume at least one step has already executed). A
+      // registered interceptor may throw ExecutionBlockedException here to block before any step
+      // runs; it is raised outside the try below so it propagates cleanly rather than failing the run.
+      // The interceptor receives a defensive snapshot, so it cannot mutate live run state.
+      try {
+        runExecutionInterceptor.beforeMainExecution( new RunExecutionContext(state.getRunId(), state.snapshot()));
+      } catch (ExecutionBlockedException blocked) {
+        recordRunBlocked(state, null);
+        throw blocked;
+      }
+    }
     ExecutionContext executionContext = newExecutionContext(state, workflow);
     executionContext.enterWorkflow(workflow);
     try {
       ExecutionOutcome outcome = stepSequenceExecutor.executeAll(workflow.steps(),
           executionContext);
       finaliseDrive(state, outcome);
+    } catch (ExecutionBlockedException blocked) {
+      // A deliberate control veto (e.g. budget block) — record a neutral block event and propagate.
+      // The run status is left unchanged (non-terminal); never the failRun path.
+      recordRunBlocked(state, state.getCurrentStepId());
+      throw blocked;
     } catch (RuntimeException throwable) {
       failRun(state, state.getCurrentStepId(), throwable);
     } finally {
       executionContext.exitWorkflow();
       workflowStateRepository.save(state);
     }
+  }
+
+  /**
+   * Records a neutral {@link WorkflowEventType#RUN_BLOCKED} audit event when a registered interceptor vetoes the run.
+   * The run status is deliberately left unchanged so the embedding application can resolve the block (resume or
+   * cancel); OSS performs no terminal transition.
+   */
+  private void recordRunBlocked(WorkflowState state, String stepId) {
+    eventRecorder.record(state.getRunId(), stepId, WorkflowEventType.RUN_BLOCKED, null, "runtime");
   }
 
   private ExecutionContext newExecutionContext(WorkflowState state, WorkflowDefinition workflow) {

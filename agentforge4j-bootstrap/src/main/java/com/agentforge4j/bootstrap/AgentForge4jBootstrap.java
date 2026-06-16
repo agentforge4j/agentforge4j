@@ -30,6 +30,7 @@ import com.agentforge4j.llm.api.LlmRetryPolicy;
 import com.agentforge4j.llm.api.ModelTier;
 import com.agentforge4j.llm.api.ModelTierResolver;
 import com.agentforge4j.runtime.WorkflowRuntimeBuilder;
+import com.agentforge4j.runtime.interceptor.RunExecutionInterceptor;
 import com.agentforge4j.runtime.command.FileSink;
 import com.agentforge4j.runtime.event.EventRecorder;
 import com.agentforge4j.runtime.llm.AgentInvoker;
@@ -111,6 +112,7 @@ public final class AgentForge4jBootstrap {
     private LlmProviderSelectionStrategy llmProviderSelectionStrategy;
     private AgentInvoker agentInvoker;
     private LlmCallObserver llmCallObserver;
+    private RunExecutionInterceptor runExecutionInterceptor;
     private ModelTierResolver modelTierResolver;
     private RequirementResolver requirementResolver;
     private List<ToolProvider> toolProviders = List.of();
@@ -345,6 +347,21 @@ public final class AgentForge4jBootstrap {
      */
     public Builder withLlmCallObserver(LlmCallObserver llmCallObserver) {
       this.llmCallObserver = Validate.notNull(llmCallObserver, "llmCallObserver must not be null");
+      return this;
+    }
+
+    /**
+     * Registers a control interceptor fired before a run enters main execution and before each LLM
+     * call. Either hook may throw {@link com.agentforge4j.runtime.interceptor.ExecutionBlockedException}
+     * to block. Defaults to a no-op, so behaviour is unchanged when not set.
+     *
+     * @param runExecutionInterceptor interceptor instance; must not be {@code null}
+     *
+     * @return this builder
+     */
+    public Builder withRunExecutionInterceptor(RunExecutionInterceptor runExecutionInterceptor) {
+      this.runExecutionInterceptor = Validate.notNull(runExecutionInterceptor,
+          "runExecutionInterceptor must not be null");
       return this;
     }
 
@@ -687,6 +704,9 @@ public final class AgentForge4jBootstrap {
       LlmCallObserver resolvedObserver = ObjectUtils.getIfNull(llmCallObserver,
           () -> new LlmCallObserver(resolvedRecorder, resolvedMapper));
 
+      RunExecutionInterceptor resolvedInterceptor = ObjectUtils.getIfNull(runExecutionInterceptor,
+          () -> RunExecutionInterceptor.NO_OP);
+
       ModelTierResolver resolvedTierResolver = ObjectUtils.getIfNull(modelTierResolver,
           () -> ConfigModelTierResolver.withShippedDefaultsAndOverrides(
               parseModelTierOverrides(config)));
@@ -710,11 +730,13 @@ public final class AgentForge4jBootstrap {
           resolvedAgentRepo, resolvedResolver, resolvedRenderer, resolvedParser,
           resolvedMapper, resolvedRecorder, resolvedStrategy, cacheEnabled,
           resolvedObserver, resolvedTierResolver, agentInvoker, cacheEnabledSet,
-          resolvedToolCatalog);
+          resolvedToolCatalog, resolvedInterceptor);
 
-      WorkflowRuntime resolvedRuntime = RuntimeAssembler.runtime(resolvedWorkflowRepo, resolvedStateRepo,
-          resolvedEventLog, resolvedClock, resolvedFileSink, resolvedInvoker, resolvedRecorder, maxNestingDepth,
-          resolvedToolExecutionService, resolvedPendingStore, requirementResolver);
+      WorkflowRuntime resolvedRuntime = RuntimeAssembler.runtime(
+          resolvedWorkflowRepo, resolvedStateRepo, resolvedEventLog, resolvedClock,
+          resolvedFileSink, resolvedInvoker, resolvedRecorder,
+          maxNestingDepth, resolvedToolExecutionService, resolvedPendingStore,
+          requirementResolver, resolvedInterceptor);
 
       BootstrapComponents components = new BootstrapComponents(resolvedAgentRepo, resolvedWorkflowRepo,
           resolvedStateRepo, resolvedEventLog, resolvedResolver, resolvedRenderer, resolvedParser, resolvedRecorder,

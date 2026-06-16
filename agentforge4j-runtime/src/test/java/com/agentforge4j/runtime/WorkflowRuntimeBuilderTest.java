@@ -3,6 +3,7 @@ package com.agentforge4j.runtime;
 import com.agentforge4j.config.loader.repository.InMemoryWorkflowRepository;
 import com.agentforge4j.runtime.command.FileSink;
 import com.agentforge4j.runtime.command.ShellCommandRunner;
+import com.agentforge4j.runtime.interceptor.RunExecutionInterceptor;
 import com.agentforge4j.runtime.repository.InMemoryWorkflowEventLog;
 import com.agentforge4j.runtime.repository.InMemoryWorkflowStateRepository;
 import java.time.Clock;
@@ -11,6 +12,7 @@ import java.time.ZoneOffset;
 import java.util.Collections;
 import org.junit.jupiter.api.Test;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
@@ -30,5 +32,15 @@ class WorkflowRuntimeBuilderTest {
         .build())
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessage("agentInvoker is required");
+  }
+
+  @Test
+  void runExecutionInterceptor_setterIsFluentAndRejectsNull() {
+    WorkflowRuntimeBuilder builder = new WorkflowRuntimeBuilder();
+
+    assertThat(builder.runExecutionInterceptor(RunExecutionInterceptor.NO_OP)).isSameAs(builder);
+    assertThatThrownBy(() -> builder.runExecutionInterceptor(null))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessage("runExecutionInterceptor must not be null");
   }
 }

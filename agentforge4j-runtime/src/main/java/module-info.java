@@ -29,6 +29,7 @@ module agentforge4j.runtime {
   exports com.agentforge4j.runtime.tool;
 
   exports com.agentforge4j.runtime.llm;
+  exports com.agentforge4j.runtime.interceptor;
 
   opens com.agentforge4j.runtime.llm to com.fasterxml.jackson.databind;
 }

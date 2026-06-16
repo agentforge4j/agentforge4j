@@ -189,7 +189,8 @@ class DefaultWorkflowRuntimeToolDecisionTest {
         toolService,
         store,
         new DefaultRequirementResolver(),
-        new TransitionGate(eventRecorder));
+        new TransitionGate(eventRecorder),
+        com.agentforge4j.runtime.interceptor.RunExecutionInterceptor.NO_OP);
   }
 
   private void seedState(WorkflowStatus status) {
@@ -245,7 +246,8 @@ class DefaultWorkflowRuntimeToolDecisionTest {
         toolService,
         store,
         new DefaultRequirementResolver(),
-        new TransitionGate(eventRecorder));
+        new TransitionGate(eventRecorder),
+        com.agentforge4j.runtime.interceptor.RunExecutionInterceptor.NO_OP);
   }
 
   private static final class StubToolService implements ToolExecutionService {

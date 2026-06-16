@@ -67,8 +67,9 @@ public enum WorkflowEventType {
   LLM_OUTPUT,
   /**
    * Recorded once per LLM provider call, carrying token usage and model metadata. Payload is a JSON object with fields:
-   * {@code stepId}, {@code agentId}, {@code provider}, {@code modelUsed}, {@code inputTokens}, {@code outputTokens},
-   * {@code totalTokens}. Null token fields are emitted as JSON {@code null}, never {@code 0}.
+   * {@code agentId}, {@code provider}, {@code modelUsed}, {@code resolvedModel}, {@code modelSource},
+   * {@code requestedModelTier}, {@code inputTokens}, {@code outputTokens}, {@code totalTokens}, {@code cachedTokens}.
+   * Null token fields are emitted as JSON {@code null}, never {@code 0}.
    */
   LLM_CALL_COMPLETED,
   /**
@@ -101,6 +102,12 @@ public enum WorkflowEventType {
    * Recorded when the run is cancelled.
    */
   RUN_CANCELLED,
+  /**
+   * Recorded when a registered run-execution interceptor vetoes the run (throws {@code ExecutionBlockedException})
+   * before main execution or before an LLM call. A neutral control signal carrying no reason or payload: the run status
+   * is left unchanged (non-terminal) and the embedding application resolves it (resume or cancel).
+   */
+  RUN_BLOCKED,
   /**
    * Recorded when the active agent is changed mid-run.
    */

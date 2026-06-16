@@ -23,6 +23,8 @@ import com.agentforge4j.llm.api.ModelTierResolutionException;
 import com.agentforge4j.llm.api.ModelTierResolver;
 import com.agentforge4j.llm.api.PromptLayerBoundaries;
 import com.agentforge4j.runtime.event.EventRecorder;
+import com.agentforge4j.runtime.interceptor.LlmCallContext;
+import com.agentforge4j.runtime.interceptor.RunExecutionInterceptor;
 import com.agentforge4j.util.Validate;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.nio.charset.StandardCharsets;
@@ -56,6 +58,7 @@ public final class AgentInvoker {
   private final LlmCallObserver llmCallObserver;
   private final ModelTierResolver modelTierResolver;
   private final ToolCatalog toolCatalog;
+  private final RunExecutionInterceptor runExecutionInterceptor;
   private final CommandResponseSchemaRenderer schemaRenderer = new CommandResponseSchemaRenderer();
 
   /**
@@ -85,6 +88,7 @@ public final class AgentInvoker {
     this.llmCallObserver = builder.llmCallObserver;
     this.modelTierResolver = builder.modelTierResolver;
     this.toolCatalog = builder.toolCatalog;
+    this.runExecutionInterceptor = builder.runExecutionInterceptor;
   }
 
   /**
@@ -104,9 +108,21 @@ public final class AgentInvoker {
     private int llmOutputEventCharCap = DEFAULT_LLM_OUTPUT_EVENT_CHAR_CAP;
     private boolean promptCacheEnabled = false;
     private ToolCatalog toolCatalog;
+    private RunExecutionInterceptor runExecutionInterceptor = RunExecutionInterceptor.NO_OP;
 
     private Builder() {
 
+    }
+
+    /**
+     * @param runExecutionInterceptor control interceptor fired before each LLM call; defaults to a no-op when not set
+     *
+     * @return this builder; never {@code null}
+     */
+    public Builder runExecutionInterceptor(RunExecutionInterceptor runExecutionInterceptor) {
+      this.runExecutionInterceptor = Validate.notNull(runExecutionInterceptor,
+          "runExecutionInterceptor must not be null");
+      return this;
     }
 
     /**
@@ -288,10 +304,10 @@ public final class AgentInvoker {
   }
 
   /**
-   * Invokes an agent, optionally overriding the agent's capability tier for this step. Callers
-   * without an active-workflow context use the run's root workflow id (from {@code state}) as the
-   * invocation identity's workflow id; callers driving a nested workflow should use the
-   * {@code activeWorkflowId} overload so the identity reflects the innermost active workflow.
+   * Invokes an agent, optionally overriding the agent's capability tier for this step. Callers without an
+   * active-workflow context use the run's root workflow id (from {@code state}) as the invocation identity's workflow
+   * id; callers driving a nested workflow should use the {@code activeWorkflowId} overload so the identity reflects the
+   * innermost active workflow.
    *
    * @param agentId        the agent to invoke; must not be blank
    * @param contextMapping context mapping for input rendering; must not be {@code null}
@@ -312,21 +328,20 @@ public final class AgentInvoker {
   }
 
   /**
-   * Invokes an agent, carrying the innermost active workflow id onto the invocation identity. The
-   * run executes under a single root run/state ({@code WorkflowState.workflowId} is the root and is
-   * immutable), so the active workflow id of a nested workflow is not recoverable from {@code state}
-   * — the caller (which holds the execution context) supplies it here so that
-   * {@link LlmInvocationIdentity#workflowId()} distinguishes steps of different nested workflows
-   * under one run.
+   * Invokes an agent, carrying the innermost active workflow id onto the invocation identity. The run executes under a
+   * single root run/state ({@code WorkflowState.workflowId} is the root and is immutable), so the active workflow id of
+   * a nested workflow is not recoverable from {@code state} — the caller (which holds the execution context) supplies
+   * it here so that {@link LlmInvocationIdentity#workflowId()} distinguishes steps of different nested workflows under
+   * one run.
    *
-   * @param agentId         the agent to invoke; must not be blank
-   * @param contextMapping  context mapping for input rendering; must not be {@code null}
-   * @param state           mutable run state; must not be {@code null}
-   * @param stepPrompt      optional static step prompt material; may be blank
-   * @param stepModelTier   optional step-level tier name overriding the agent tier; {@code null} or blank inherits the
-   *                        agent tier
-   * @param activeWorkflowId innermost active workflow id for this call (the run's root workflow id
-   *                        when not nested); must not be blank
+   * @param agentId          the agent to invoke; must not be blank
+   * @param contextMapping   context mapping for input rendering; must not be {@code null}
+   * @param state            mutable run state; must not be {@code null}
+   * @param stepPrompt       optional static step prompt material; may be blank
+   * @param stepModelTier    optional step-level tier name overriding the agent tier; {@code null} or blank inherits the
+   *                         agent tier
+   * @param activeWorkflowId innermost active workflow id for this call (the run's root workflow id when not nested);
+   *                         must not be blank
    *
    * @return the parsed invocation result; never {@code null}
    */
@@ -368,6 +383,14 @@ public final class AgentInvoker {
         objectMapper);
     AssembledSystemPrompt assembled = appendToolCatalog(
         assembleSystemPrompt(agent, stepPrompt, schema), schema, state);
+
+    // Control hook fired once per logical call (before the retry wrapper), matching the single post-call debit in
+    // LlmCallObserver. maxOutputTokens is not set on the request today, so it is reported as null (the embedding
+    // application falls back to its governing default); cached-input status is unknown pre-call. A registered
+    // interceptor may throw ExecutionBlockedException here to veto the call.
+    runExecutionInterceptor.beforeLlmCall(new LlmCallContext(
+        state.getRunId(), state.getCurrentStepId(), agent.id(), preference.provider(),
+        resolution.resolvedModel(), null, assembled.text().length() + userInput.length(), true));
 
     ParsedInvocation parsed = invokeLlmRecordAndParseWithRetry(
         agent, preference, resolution.resolvedModel(), client, assembled, userInput, schema, state,

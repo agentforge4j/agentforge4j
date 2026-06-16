@@ -122,6 +122,25 @@ class LlmCallObserverTest {
     assertThat(payload).contains("\"inputTokens\":null");
     assertThat(payload).contains("\"outputTokens\":null");
     assertThat(payload).contains("\"totalTokens\":null");
+    assertThat(payload).contains("\"cachedTokens\":null");
+  }
+
+  @Test
+  void observe_payload_includes_cachedTokens_when_reported() {
+    InMemoryWorkflowEventLog eventLog = new InMemoryWorkflowEventLog();
+    LlmCallObserver observer = new LlmCallObserver(recorder(eventLog), objectMapper);
+    WorkflowState state = workflowState("run-cached-tokens");
+
+    observer.observe("agent-x", "openai",
+        llmResponse("gpt-4o-mini", new TokenUsageReport(100, 50, 30, 10)),
+        "gpt-4o-mini", ModelSource.TIER, ModelTier.STANDARD, state);
+
+    String payload = eventLog.getEvents("run-cached-tokens").stream()
+        .filter(e -> e.eventType() == WorkflowEventType.LLM_CALL_COMPLETED)
+        .findFirst()
+        .orElseThrow()
+        .payload();
+    assertThat(payload).contains("\"cachedTokens\":30");
   }
 
   private static int llmTokensTotalInContext(WorkflowState state) {

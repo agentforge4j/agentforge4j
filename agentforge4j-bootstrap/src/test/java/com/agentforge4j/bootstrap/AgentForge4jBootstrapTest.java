@@ -12,6 +12,7 @@ import com.agentforge4j.llm.api.LlmRetryPolicy;
 import com.agentforge4j.runtime.command.FileSink;
 import com.agentforge4j.runtime.command.LocalFileSink;
 import com.agentforge4j.runtime.event.EventRecorder;
+import com.agentforge4j.runtime.interceptor.RunExecutionInterceptor;
 import com.agentforge4j.runtime.llm.AgentInvoker;
 import com.agentforge4j.runtime.llm.ContextRenderer;
 import com.agentforge4j.runtime.llm.LlmCallObserver;
@@ -116,6 +117,21 @@ class AgentForge4jBootstrapTest {
   @Test
   void withClockNullThrowsImmediatelyBeforeBuild() {
     assertThatThrownBy(() -> AgentForge4jBootstrap.defaults().withClock(null))
+        .isInstanceOf(IllegalArgumentException.class);
+  }
+
+  @Test
+  void withRunExecutionInterceptorBuildsSuccessfully() {
+    AgentForge4j af = AgentForge4jBootstrap.defaults()
+        .withRunExecutionInterceptor(RunExecutionInterceptor.NO_OP)
+        .build();
+    assertThat(af.runtime()).isNotNull();
+  }
+
+  @Test
+  void withRunExecutionInterceptorNullThrowsImmediatelyBeforeBuild() {
+    assertThatThrownBy(
+        () -> AgentForge4jBootstrap.defaults().withRunExecutionInterceptor(null))
         .isInstanceOf(IllegalArgumentException.class);
   }
 

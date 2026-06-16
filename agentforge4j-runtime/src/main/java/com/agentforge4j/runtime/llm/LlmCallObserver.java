@@ -48,6 +48,7 @@ public final class LlmCallObserver {
    * @param outputTokens       completion token count, or {@code null} when not reported
    * @param totalTokens        {@code inputTokens + outputTokens}, or {@code null} when neither was
    *                           reported
+   * @param cachedTokens       prompt-cache input tokens the provider reported, or {@code null} when not reported
    */
   public record LlmCallCompletedPayload(
       String agentId,
@@ -58,7 +59,8 @@ public final class LlmCallObserver {
       ModelTier requestedModelTier,
       Integer inputTokens,
       Integer outputTokens,
-      Integer totalTokens) {
+      Integer totalTokens,
+      Integer cachedTokens) {
   }
 
   /**
@@ -123,7 +125,8 @@ public final class LlmCallObserver {
         requestedModelTier,
         tokenUsage == null ? null : tokenUsage.inputTokens(),
         tokenUsage == null ? null : tokenUsage.outputTokens(),
-        totalTokens);
+        totalTokens,
+        tokenUsage == null ? null : tokenUsage.cachedInputTokens());
     try {
       return objectMapper.writeValueAsString(payload);
     } catch (JsonProcessingException e) {

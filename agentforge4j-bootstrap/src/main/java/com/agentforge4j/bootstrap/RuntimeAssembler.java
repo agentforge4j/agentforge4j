@@ -15,6 +15,7 @@ import com.agentforge4j.llm.api.LlmClient;
 import com.agentforge4j.llm.api.LlmRetryPolicy;
 import com.agentforge4j.llm.api.ModelTierResolver;
 import com.agentforge4j.runtime.WorkflowRuntimeBuilder;
+import com.agentforge4j.runtime.interceptor.RunExecutionInterceptor;
 import com.agentforge4j.runtime.command.FileSink;
 import com.agentforge4j.runtime.event.EventRecorder;
 import com.agentforge4j.runtime.llm.AgentInvoker;
@@ -110,7 +111,8 @@ final class RuntimeAssembler {
       ModelTierResolver modelTierResolver,
       AgentInvoker explicitInvoker,
       boolean cacheEnabledSet,
-      ToolCatalog toolCatalog) {
+      ToolCatalog toolCatalog,
+      RunExecutionInterceptor runExecutionInterceptor) {
     if (explicitInvoker != null && cacheEnabledSet) {
       LOGGER.log(System.Logger.Level.WARNING,
           """
@@ -135,6 +137,7 @@ final class RuntimeAssembler {
         .llmCallObserver(llmCallObserver)
         .modelTierResolver(modelTierResolver)
         .toolCatalog(toolCatalog)
+        .runExecutionInterceptor(runExecutionInterceptor)
         .build();
   }
 
@@ -151,6 +154,8 @@ final class RuntimeAssembler {
    * @param maxNestingDepth         optional nesting depth override
    * @param requirementResolver     optional requirement resolver; when {@code null} the runtime builder defaults to its
    *                                in-process {@code DefaultRequirementResolver}
+   * @param runExecutionInterceptor optional run-execution interceptor; when {@code null} the runtime builder defaults
+   *                                to its {@code NO_OP} interceptor
    *
    * @return assembled runtime; never {@code null}
    */
@@ -164,7 +169,8 @@ final class RuntimeAssembler {
       Integer maxNestingDepth,
       ToolExecutionService toolExecutionService,
       PendingToolInvocationStore pendingToolInvocationStore,
-      RequirementResolver requirementResolver) {
+      RequirementResolver requirementResolver,
+      RunExecutionInterceptor runExecutionInterceptor) {
     WorkflowRuntimeBuilder runtimeBuilder = new WorkflowRuntimeBuilder()
         .workflowRepository(workflowRepository)
         .workflowStateRepository(workflowStateRepository)
@@ -172,7 +178,8 @@ final class RuntimeAssembler {
         .clock(clock)
         .fileSink(fileSink)
         .agentInvoker(agentInvoker)
-        .eventRecorder(eventRecorder);
+        .eventRecorder(eventRecorder)
+        .runExecutionInterceptor(runExecutionInterceptor);
 
     if (maxNestingDepth != null) {
       runtimeBuilder.maxNestingDepth(maxNestingDepth);

@@ -45,6 +45,7 @@ import com.agentforge4j.runtime.execution.loop.EvaluatorLoopStrategy;
 import com.agentforge4j.runtime.execution.loop.FixedCountLoopStrategy;
 import com.agentforge4j.runtime.execution.loop.ForEachLoopStrategy;
 import com.agentforge4j.runtime.execution.loop.MaxIterationsHandler;
+import com.agentforge4j.runtime.interceptor.RunExecutionInterceptor;
 import com.agentforge4j.runtime.llm.AgentInvoker;
 import com.agentforge4j.runtime.tool.ToolInvocationCommandHandler;
 import com.agentforge4j.runtime.tool.ToolResultApplier;
@@ -85,6 +86,7 @@ public final class WorkflowRuntimeBuilder {
   private ToolExecutionService toolExecutionService;
   private PendingToolInvocationStore pendingToolInvocationStore;
   private RequirementResolver requirementResolver;
+  private RunExecutionInterceptor runExecutionInterceptor = RunExecutionInterceptor.NO_OP;
 
   /**
    * Configures the workflow definition source.
@@ -269,6 +271,19 @@ public final class WorkflowRuntimeBuilder {
   }
 
   /**
+   * Configures the control interceptor fired before main execution and before each LLM call. Defaults to
+   * {@link RunExecutionInterceptor#NO_OP}.
+   *
+   * @param value run-execution interceptor instance
+   *
+   * @return this builder
+   */
+  public WorkflowRuntimeBuilder runExecutionInterceptor(RunExecutionInterceptor value) {
+    this.runExecutionInterceptor = Validate.notNull(value, "runExecutionInterceptor must not be null");
+    return this;
+  }
+
+  /**
    * Validates required dependencies, wires executors and handlers, and returns a runnable
    * {@link com.agentforge4j.core.runtime.WorkflowRuntime}.
    *
@@ -345,7 +360,8 @@ public final class WorkflowRuntimeBuilder {
         toolExecutionService,
         pendingToolInvocationStore,
         resolvedRequirementResolver,
-        transitionGate);
+        transitionGate,
+        runExecutionInterceptor);
   }
 
   private static void setupBlueprintLoopStrategies(BlueprintExecutor blueprintExecutor,
