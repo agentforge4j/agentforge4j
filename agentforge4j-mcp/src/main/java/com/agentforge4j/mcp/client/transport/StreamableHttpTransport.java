@@ -59,7 +59,9 @@ public final class StreamableHttpTransport extends AbstractSdkMcpTransport {
     HttpClientStreamableHttpTransport.Builder builder =
         HttpClientStreamableHttpTransport.builder(url).jsonMapper(jsonMapper());
     if (!headers.isEmpty()) {
-      builder.customizeRequest(requestBuilder -> headers.forEach(requestBuilder::setHeader));
+      builder.httpRequestCustomizer(
+          (requestBuilder, httpMethod, uri, body, context) ->
+              headers.forEach(requestBuilder::setHeader));
     }
     return builder.build();
   }

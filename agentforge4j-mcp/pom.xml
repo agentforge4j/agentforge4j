@@ -15,6 +15,11 @@
   <name>AgentForge4J MCP</name>
   <description>MCP client integration: exposes MCP servers as ToolProviders</description>
 
+  <!-- JPMS carve-out: this module intentionally has no module-info.java. The MCP SDK publishes
+       an invalid Automatic-Module-Name ("io.modelcontextprotocol.sdk.mcp-core" contains a hyphen,
+       which is not a legal Java module name), so no JPMS module can `requires` it. The module
+       therefore stays classpath-only. See README "Module Structure". -->
+
   <licenses>
     <license>
       <name>Apache License, Version 2.0</name>
