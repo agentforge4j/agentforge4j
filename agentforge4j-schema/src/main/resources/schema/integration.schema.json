@@ -1,8 +1,9 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "IntegrationDefinition",
+  "description": "One external integration (MCP server or HTTP-endpoint set). An integration declares no capability envelope: the realised tools reported by the provider are the only capability source.",
   "type": "object",
-  "required": ["displayName", "type", "config", "capabilities"],
+  "required": ["displayName", "type", "config"],
   "additionalProperties": false,
   "properties": {
     "id": {
@@ -27,32 +28,6 @@
     "config": {
       "type": ["object", "array"],
       "description": "Type-specific payload. MCP_STDIO / MCP_STREAMABLE_HTTP: an mcp_server_config object (name, providerId, transport, command, url, envJson, headersJson, enabled). HTTP_TOOL: an array of HttpEndpointDefinition objects, validated against #/$defs/httpEndpoint by the conditional below."
-    },
-    "capabilities": {
-      "type": "array",
-      "minItems": 1,
-      "description": "Capabilities this integration exposes.",
-      "items": {
-        "type": "object",
-        "required": ["capability"],
-        "additionalProperties": false,
-        "properties": {
-          "capability": {
-            "type": "string",
-            "pattern": "^[a-z0-9_]+\\.[a-z0-9_]+$",
-            "description": "Logical capability id, lowercase <domain>.<verb_object>."
-          },
-          "remoteToolName": {
-            "type": ["string", "null"],
-            "description": "The integration's advertised tool name (MCP); null or absent for the HTTP tier."
-          },
-          "mutating": {
-            "type": "boolean",
-            "default": false,
-            "description": "Whether the capability mutates remote state (recommend gating with REQUIRE_APPROVAL)."
-          }
-        }
-      }
     }
   },
   "allOf": [
@@ -74,7 +49,7 @@
   "$defs": {
     "httpEndpoint": {
       "type": "object",
-      "required": ["capability", "method", "urlTemplate", "inputSchema", "bodyMode"],
+      "required": ["capability", "mutating", "method", "urlTemplate", "inputSchema", "bodyMode"],
       "additionalProperties": false,
       "description": "One HTTP_TOOL endpoint = one capability (OSS HttpEndpointDefinition).",
       "properties": {
@@ -85,6 +60,10 @@
         },
         "displayName": { "type": ["string", "null"] },
         "description": { "type": ["string", "null"] },
+        "mutating": {
+          "type": "boolean",
+          "description": "Whether invoking this endpoint may mutate remote state; the realised tool risk signal (recommend gating a mutating endpoint with REQUIRE_APPROVAL)."
+        },
         "method": {
           "type": "string",
           "enum": ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD"]

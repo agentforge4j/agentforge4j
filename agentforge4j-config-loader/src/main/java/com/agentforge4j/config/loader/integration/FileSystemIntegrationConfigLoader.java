@@ -1,6 +1,5 @@
 package com.agentforge4j.config.loader.integration;
 
-import com.agentforge4j.core.spi.integration.IntegrationCapability;
 import com.agentforge4j.core.spi.integration.IntegrationConfigLoader;
 import com.agentforge4j.core.spi.integration.IntegrationDefinition;
 import com.agentforge4j.core.spi.integration.IntegrationType;
@@ -153,8 +152,7 @@ public final class FileSystemIntegrationConfigLoader implements IntegrationConfi
     IntegrationType type = parseType(textOrNull(node, "type"), file);
     boolean active = !node.has("active") || node.get("active").asBoolean();
     String config = writeConfig(node.get("config"), file);
-    return new IntegrationDefinition(id, displayName, type, config, toCapabilities(node, file),
-        active);
+    return new IntegrationDefinition(id, displayName, type, config, active);
   }
 
   private static String resolveId(JsonNode node, Path file) {
@@ -184,19 +182,6 @@ public final class FileSystemIntegrationConfigLoader implements IntegrationConfi
       throw new IllegalArgumentException(
           "Failed to serialize integration config (file %s)".formatted(file), e);
     }
-  }
-
-  private static List<IntegrationCapability> toCapabilities(JsonNode node, Path file) {
-    List<IntegrationCapability> capabilities = new ArrayList<>();
-    for (JsonNode capabilityNode : node.get("capabilities")) {
-      String capability = Validate.notBlank(textOrNull(capabilityNode, "capability"),
-          "Integration capability id must not be blank (file %s)".formatted(file));
-      String remoteToolName = textOrNull(capabilityNode, "remoteToolName");
-      boolean mutating = capabilityNode.has("mutating")
-          && capabilityNode.get("mutating").asBoolean();
-      capabilities.add(new IntegrationCapability(capability, remoteToolName, mutating));
-    }
-    return List.copyOf(capabilities);
   }
 
   private static String textOrNull(JsonNode node, String field) {

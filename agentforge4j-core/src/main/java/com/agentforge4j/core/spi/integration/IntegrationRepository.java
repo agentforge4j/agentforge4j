@@ -24,13 +24,4 @@ public interface IntegrationRepository {
    * @return the integration with this id, or {@code null} if none is registered
    */
   IntegrationDefinition findById(String id);
-
-  /**
-   * Returns the active integrations that expose a capability.
-   *
-   * @param capability logical capability id
-   *
-   * @return the matching active integrations; never {@code null}
-   */
-  List<IntegrationDefinition> findByCapability(String capability);
 }

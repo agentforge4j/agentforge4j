@@ -3,7 +3,6 @@ package com.agentforge4j.runtime.tool;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import com.agentforge4j.core.spi.integration.IntegrationCapability;
 import com.agentforge4j.core.spi.integration.IntegrationDefinition;
 import com.agentforge4j.core.spi.integration.IntegrationType;
 import com.agentforge4j.core.spi.integration.ToolProviderFactory;
@@ -15,8 +14,10 @@ import com.agentforge4j.core.spi.tool.ToolExecutionOptions;
 import com.agentforge4j.core.spi.tool.ToolInvocationContext;
 import com.agentforge4j.core.spi.tool.ToolProvider;
 import com.agentforge4j.core.spi.tool.ToolResult;
+import com.agentforge4j.core.spi.tool.ToolRiskMetadata;
 import com.agentforge4j.core.spi.tool.ToolScope;
 import com.agentforge4j.core.spi.tool.ToolSource;
+import java.util.Arrays;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 
@@ -24,9 +25,12 @@ class IntegrationToolProviderResolverTest {
 
   private final ToolScope scope = new ToolScope("wf", "run");
 
-  /** Realises each definition as a provider whose tools mirror its declared capabilities. */
+  /**
+   * Realises each definition as a provider whose single realised tool's capability is carried
+   * verbatim in {@code config} — the resolver indexes the realised set, never any declared envelope.
+   */
   private final ToolProviderFactory factory =
-      definition -> provider("mcp:" + definition.id(), definition.capabilities());
+      definition -> provider("mcp:" + definition.id(), definition.config());
 
   @Test
   void resolvesCapabilityFromActiveIntegration() {
@@ -147,20 +151,19 @@ class IntegrationToolProviderResolverTest {
   }
 
   private static ToolProvider preBuilt(String providerId, String capability) {
-    return provider(providerId,
-        List.of(new IntegrationCapability(capability, capability, false)));
+    return provider(providerId, capability);
   }
 
   private static IntegrationDefinition definition(String id, boolean active, String capability) {
-    return new IntegrationDefinition(id, id, IntegrationType.MCP_STDIO, "{}",
-        List.of(new IntegrationCapability(capability, capability, false)), active);
+    // The fake factory realises one tool whose capability is carried verbatim in config.
+    return new IntegrationDefinition(id, id, IntegrationType.MCP_STDIO, capability, active);
   }
 
-  private static ToolProvider provider(String providerId,
-      List<IntegrationCapability> capabilities) {
-    List<ToolDescriptor> descriptors = capabilities.stream()
-        .map(capability -> new ToolDescriptor(capability.capability(), capability.capability(),
-            null, null, null, new ToolSource(providerId, capability.capability())))
+  private static ToolProvider provider(String providerId, String... capabilities) {
+    List<ToolDescriptor> descriptors = Arrays.stream(capabilities)
+        .map(capability -> new ToolDescriptor(capability, capability,
+            null, null, null, new ToolSource(providerId, capability),
+            ToolRiskMetadata.conservative()))
         .toList();
     return new ToolProvider() {
       @Override

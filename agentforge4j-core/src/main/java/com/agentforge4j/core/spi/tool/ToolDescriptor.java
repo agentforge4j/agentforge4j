@@ -12,6 +12,8 @@ import com.agentforge4j.util.Validate;
  * @param inputSchema  JSON Schema for the arguments as JSON text, or {@code null}
  * @param outputSchema JSON Schema for the result as JSON text, or {@code null} if unknown
  * @param source       physical source that fulfils this capability
+ * @param riskMetadata realised risk signal for this tool; non-null (use
+ *                     {@link ToolRiskMetadata#conservative()} when no trustworthy signal exists)
  */
 public record ToolDescriptor(
     String capability,
@@ -19,13 +21,16 @@ public record ToolDescriptor(
     String description,
     String inputSchema,
     String outputSchema,
-    ToolSource source) {
+    ToolSource source,
+    ToolRiskMetadata riskMetadata) {
 
   /**
-   * Validates that {@code capability} is non-blank and {@code source} is non-null.
+   * Validates that {@code capability} is non-blank and {@code source} and {@code riskMetadata} are
+   * non-null.
    */
   public ToolDescriptor {
     Validate.notBlank(capability, "ToolDescriptor capability must not be blank");
     Validate.notNull(source, "ToolDescriptor source must not be null");
+    Validate.notNull(riskMetadata, "ToolDescriptor riskMetadata must not be null");
   }
 }

@@ -11,13 +11,16 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.MethodSource;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * Contract for {@code integration.schema.json}: it is a valid Draft 2020-12 document, accepts a
- * well-formed integration definition (MCP and HTTP tiers), and rejects malformed ones. Mirrors
- * {@link SchemaContractTest} / {@link WorkflowExecutableSchemaContractTest}.
+ * Contract for {@code integration.schema.json}: it is a valid Draft 2020-12 document, accepts a well-formed integration
+ * definition (MCP and HTTP tiers), and rejects malformed ones. An integration declares no capability envelope — the
+ * realised tools reported by the provider are the only capability source — so a {@code capabilities} property is
+ * rejected. Mirrors {@link SchemaContractTest} / {@link WorkflowExecutableSchemaContractTest}.
  */
 class IntegrationSchemaContractTest {
 
@@ -36,17 +39,14 @@ class IntegrationSchemaContractTest {
   }
 
   @Test
-  void integrationSchema_acceptsValidMcpDefinition() throws Exception {
+  void integrationSchema_acceptsValidMcpDefinitionWithoutCapabilities() throws Exception {
     List<Error> violations = validate("""
         {
           "id": "github",
           "displayName": "GitHub",
           "type": "MCP_STDIO",
           "active": true,
-          "config": { "name": "github", "providerId": "mcp:github", "transport": "STDIO" },
-          "capabilities": [
-            { "capability": "github.create_issue", "remoteToolName": "create_issue", "mutating": true }
-          ]
+          "config": { "name": "github", "providerId": "mcp:github", "transport": "STDIO" }
         }
         """);
     assertThat(violations).isEmpty();
@@ -61,6 +61,7 @@ class IntegrationSchemaContractTest {
           "config": [
             {
               "capability": "airtable.list_records",
+              "mutating": false,
               "method": "GET",
               "urlTemplate": "https://api.airtable.com/v0/{baseId}/{table}",
               "inputSchema": {
@@ -78,128 +79,16 @@ class IntegrationSchemaContractTest {
               "maxRetries": -1,
               "maxResponseBytes": null
             }
-          ],
-          "capabilities": [ { "capability": "airtable.list_records", "mutating": false } ]
+          ]
         }
         """);
     assertThat(violations).isEmpty();
   }
 
-  @Test
-  void integrationSchema_rejectsHttpEndpointMissingRequiredFields() throws Exception {
-    // urlTemplate, inputSchema, and bodyMode are required on each HTTP endpoint.
-    List<Error> violations = validate("""
-        {
-          "displayName": "Airtable",
-          "type": "HTTP_TOOL",
-          "config": [ { "capability": "airtable.list_records", "method": "GET" } ],
-          "capabilities": [ { "capability": "airtable.list_records" } ]
-        }
-        """);
-    assertThat(violations).isNotEmpty();
-  }
-
-  @Test
-  void integrationSchema_rejectsHttpEndpointWithUnknownFieldOrBadMethod() throws Exception {
-    // additionalProperties:false on the endpoint, plus the method enum (no TRACE).
-    List<Error> violations = validate("""
-        {
-          "displayName": "Airtable",
-          "type": "HTTP_TOOL",
-          "config": [
-            {
-              "capability": "airtable.list_records",
-              "method": "TRACE",
-              "urlTemplate": "https://api.airtable.com/v0/x",
-              "inputSchema": { "type": "object" },
-              "bodyMode": "NONE",
-              "surpriseField": true
-            }
-          ],
-          "capabilities": [ { "capability": "airtable.list_records" } ]
-        }
-        """);
-    assertThat(violations).isNotEmpty();
-  }
-
-  @Test
-  void integrationSchema_rejectsUnknownType() throws Exception {
-    List<Error> violations = validate("""
-        {
-          "displayName": "X",
-          "type": "SMOKE_SIGNAL",
-          "config": {},
-          "capabilities": [ { "capability": "x.do_thing" } ]
-        }
-        """);
-    assertThat(violations).isNotEmpty();
-  }
-
-  @Test
-  void integrationSchema_enforcesCapabilityPattern() throws Exception {
-    // `pattern` on capabilities[].capability — must reject a non-snake-case id.
-    List<Error> violations = validate("""
-        {
-          "displayName": "X",
-          "type": "HTTP_TOOL",
-          "config": [],
-          "capabilities": [ { "capability": "Github.CreatePR" } ]
-        }
-        """);
-    assertThat(violations).isNotEmpty();
-  }
-
-  @Test
-  void integrationSchema_enforcesNestedItemsRequired() throws Exception {
-    // nested `items` subschema — capability object missing its required `capability` field.
-    List<Error> violations = validate("""
-        {
-          "displayName": "X",
-          "type": "HTTP_TOOL",
-          "config": [],
-          "capabilities": [ { "mutating": true } ]
-        }
-        """);
-    assertThat(violations).isNotEmpty();
-  }
-
-  @Test
-  void integrationSchema_rejectsMissingRequiredField() throws Exception {
-    // displayName is required at the envelope level.
-    List<Error> violations = validate("""
-        {
-          "type": "HTTP_TOOL",
-          "config": [],
-          "capabilities": [ { "capability": "x.do_thing" } ]
-        }
-        """);
-    assertThat(violations).isNotEmpty();
-  }
-
-  @Test
-  void integrationSchema_rejectsUnknownTopLevelProperty() throws Exception {
-    List<Error> violations = validate("""
-        {
-          "displayName": "X",
-          "type": "HTTP_TOOL",
-          "config": [],
-          "capabilities": [ { "capability": "x.do_thing" } ],
-          "surpriseField": true
-        }
-        """);
-    assertThat(violations).isNotEmpty();
-  }
-
-  @Test
-  void integrationSchema_rejectsEmptyCapabilities() throws Exception {
-    List<Error> violations = validate("""
-        {
-          "displayName": "X",
-          "type": "HTTP_TOOL",
-          "config": [],
-          "capabilities": []
-        }
-        """);
+  @ParameterizedTest
+  @MethodSource("integrationSchema_isNotEmpty")
+  void integrationSchema_acceptsValidMcpDefinitionWithCapabilities(String value) throws Exception {
+    List<Error> violations = validate(value);
     assertThat(violations).isNotEmpty();
   }
 
@@ -215,5 +104,85 @@ class IntegrationSchemaContractTest {
     Schema schema = SCHEMA_REGISTRY.getSchema(
         SchemaLocation.of(SCHEMA_PATH.toUri().toString()), schemaNode);
     return schema.validate(MAPPER.readTree(instanceJson));
+  }
+
+  static List<String> integrationSchema_isNotEmpty() {
+    return List.of(
+        // mutating, urlTemplate, inputSchema, and bodyMode are required on each HTTP endpoint.
+        """
+            {
+              "displayName": "Airtable",
+              "type": "HTTP_TOOL",
+              "config": [ { "capability": "airtable.list_records", "method": "GET" } ]
+            }
+            """,
+        // additionalProperties:false on the endpoint, plus the method enum (no TRACE).
+        """
+            {
+              "displayName": "Airtable",
+              "type": "HTTP_TOOL",
+              "config": [
+                {
+                  "capability": "airtable.list_records",
+                  "mutating": false,
+                  "method": "TRACE",
+                  "urlTemplate": "https://api.airtable.com/v0/x",
+                  "inputSchema": { "type": "object" },
+                  "bodyMode": "NONE",
+                  "surpriseField": true
+                }
+              ]
+            }
+            """,
+        // `pattern` on config[].capability — must reject a non-snake-case id.
+        """
+            {
+              "displayName": "X",
+              "type": "HTTP_TOOL",
+              "config": [
+                {
+                  "capability": "Github.CreatePR",
+                  "mutating": true,
+                  "method": "POST",
+                  "urlTemplate": "https://example.com/x",
+                  "inputSchema": { "type": "object" },
+                  "bodyMode": "NONE"
+                }
+              ]
+            }
+            """,
+        """
+            {
+              "displayName": "X",
+              "type": "SMOKE_SIGNAL",
+              "config": {}
+            }
+            """,
+        // displayName is required at the envelope level.
+        """
+            {
+              "type": "HTTP_TOOL",
+              "config": []
+            }
+            """,
+        """
+            {
+              "displayName": "X",
+              "type": "HTTP_TOOL",
+              "config": [],
+              "surpriseField": true
+            }
+            """,
+        // The declared capability envelope was removed; realised tools are the only source, so a
+        // `capabilities` property is now an unknown top-level property (additionalProperties:false).
+        """
+            {
+              "displayName": "X",
+              "type": "MCP_STDIO",
+              "config": { "command": "npx" },
+              "capabilities": [ { "capability": "x.do_thing" } ]
+            }
+            """
+    );
   }
 }

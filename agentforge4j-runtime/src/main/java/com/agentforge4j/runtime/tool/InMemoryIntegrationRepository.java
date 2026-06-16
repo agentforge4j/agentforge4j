@@ -29,15 +29,6 @@ public final class InMemoryIntegrationRepository implements MutableIntegrationRe
   }
 
   @Override
-  public List<IntegrationDefinition> findByCapability(String capability) {
-    Validate.notBlank(capability, "capability must not be blank");
-    return byId.values().stream()
-        .filter(IntegrationDefinition::active)
-        .filter(definition -> exposes(definition, capability))
-        .toList();
-  }
-
-  @Override
   public void save(IntegrationDefinition definition) {
     Validate.notNull(definition, "definition must not be null");
     byId.put(definition.id(), definition);
@@ -48,7 +39,7 @@ public final class InMemoryIntegrationRepository implements MutableIntegrationRe
     Validate.notBlank(id, "id must not be blank");
     IntegrationDefinition updated = byId.computeIfPresent(id, (key, existing) ->
         new IntegrationDefinition(existing.id(), existing.displayName(), existing.type(),
-            existing.config(), existing.capabilities(), active));
+            existing.config(), active));
     Validate.notNull(updated, () -> new IllegalArgumentException(
         "No integration registered with id '%s'".formatted(id)));
   }
@@ -56,10 +47,5 @@ public final class InMemoryIntegrationRepository implements MutableIntegrationRe
   @Override
   public void remove(String id) {
     byId.remove(Validate.notBlank(id, "id must not be blank"));
-  }
-
-  private static boolean exposes(IntegrationDefinition definition, String capability) {
-    return definition.capabilities().stream()
-        .anyMatch(integrationCapability -> integrationCapability.capability().equals(capability));
   }
 }

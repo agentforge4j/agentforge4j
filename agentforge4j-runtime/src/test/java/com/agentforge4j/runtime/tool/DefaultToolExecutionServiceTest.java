@@ -12,6 +12,7 @@ import com.agentforge4j.core.spi.tool.ToolInvocationContext;
 import com.agentforge4j.core.spi.tool.ToolPolicy;
 import com.agentforge4j.core.spi.tool.ToolProvider;
 import com.agentforge4j.core.spi.tool.ToolResult;
+import com.agentforge4j.core.spi.tool.ToolRiskMetadata;
 import com.agentforge4j.core.spi.tool.ToolScope;
 import com.agentforge4j.core.spi.tool.ToolSource;
 import com.agentforge4j.core.workflow.event.WorkflowEvent;
@@ -28,6 +29,7 @@ import java.util.ArrayList;
 import java.util.Deque;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -218,6 +220,57 @@ class DefaultToolExecutionServiceTest {
     assertThat(store.find("run-1", command.toolInvocationId())).isNotNull();
   }
 
+  // --- risk signal (ToolRiskMetadata) ---------------------------------------------------------
+
+  @Test
+  void riskSignalIsAvailableToPolicyOnTheResolvedDescriptor() {
+    provider.result = ToolResult.success("{\"ok\":true}", 1L);
+    AtomicReference<ToolRiskMetadata> seen = new AtomicReference<>();
+    ToolPolicy capturing = (cmd, descriptor, cit) -> {
+      seen.set(descriptor.riskMetadata());
+      return new PolicyDecision.Allow();
+    };
+
+    service(capturing).execute(command(Map.of("title", "x")), ctx);
+
+    assertThat(seen.get()).isNotNull();
+    assertThat(seen.get().mutating()).isTrue();
+  }
+
+  @Test
+  void defaultNoOpPolicyIgnoresRiskSignalAndExecutes() {
+    provider.result = ToolResult.success("{\"ok\":true}", 1L);
+
+    ToolExecutionOutcome outcome =
+        service(new NoOpToolPolicy()).execute(command(Map.of("title", "x")), ctx);
+
+    // The conservative (mutating) signal is present but the default policy does not consume it.
+    assertThat(outcome.status()).isEqualTo(ToolExecutionOutcome.Status.EXECUTED);
+  }
+
+  @Test
+  void riskAwarePolicyMayRaiseApprovalOnAMutatingSignal() {
+    ToolPolicy riskAware = (cmd, descriptor, cit) -> descriptor.riskMetadata().mutating()
+        ? new PolicyDecision.RequireApproval("mutating tool", "OPERATOR")
+        : new PolicyDecision.Allow();
+
+    ToolExecutionOutcome outcome =
+        service(riskAware).execute(command(Map.of("title", "x")), ctx);
+
+    assertThat(outcome.status()).isEqualTo(ToolExecutionOutcome.Status.APPROVAL_PENDING);
+  }
+
+  @Test
+  void policyIsAuthoritativeSoAFalseSignalCannotBypassARequiredApproval() {
+    provider.risk = new ToolRiskMetadata(false);
+
+    ToolExecutionOutcome outcome =
+        service(requireApproval()).execute(command(Map.of("title", "x")), ctx);
+
+    // mutating=false is advisory; it must not reduce a policy-required approval.
+    assertThat(outcome.status()).isEqualTo(ToolExecutionOutcome.Status.APPROVAL_PENDING);
+  }
+
   private ToolInvocationCommand command(Map<String, Object> arguments) {
     return new ToolInvocationCommand(null, "github.create_pull_request", arguments, "because");
   }
@@ -242,21 +295,22 @@ class DefaultToolExecutionServiceTest {
   }
 
   private static ToolPolicy allow() {
-    return (cmd, descriptor, ctx) -> new PolicyDecision.Allow();
+    return (cmd, descriptor, cit) -> new PolicyDecision.Allow();
   }
 
   private static ToolPolicy deny(String reason) {
-    return (cmd, descriptor, ctx) -> new PolicyDecision.Deny(reason);
+    return (cmd, descriptor, cit) -> new PolicyDecision.Deny(reason);
   }
 
   private static ToolPolicy requireApproval() {
-    return (cmd, descriptor, ctx) -> new PolicyDecision.RequireApproval("needs review", "OPERATOR");
+    return (cmd, descriptor, cit) -> new PolicyDecision.RequireApproval("needs review", "OPERATOR");
   }
 
   private static final class ScriptedProvider implements ToolProvider {
 
     private ToolResult result = ToolResult.success(null, 0L);
     private final Deque<ToolResult> scriptedResults = new ArrayDeque<>();
+    private ToolRiskMetadata risk = ToolRiskMetadata.conservative();
     private int invocations;
 
     @Override
@@ -268,7 +322,7 @@ class DefaultToolExecutionServiceTest {
     public List<ToolDescriptor> listTools() {
       return List.of(
           new ToolDescriptor("github.create_pull_request", "Create PR", null, SCHEMA, null,
-              new ToolSource("mcp:test", "create_pull_request")));
+              new ToolSource("mcp:test", "create_pull_request"), risk));
     }
 
     @Override

@@ -1,8 +1,5 @@
 package com.agentforge4j.tools.http;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
-
 import com.agentforge4j.core.spi.integration.ToolProviderFactory;
 import com.agentforge4j.core.spi.tool.CapabilityResolutionException;
 import com.agentforge4j.core.spi.tool.HealthStatus;
@@ -12,6 +9,7 @@ import com.agentforge4j.core.spi.tool.ToolExecutionOptions;
 import com.agentforge4j.core.spi.tool.ToolInvocationContext;
 import com.agentforge4j.core.spi.tool.ToolProvider;
 import com.agentforge4j.core.spi.tool.ToolResult;
+import com.agentforge4j.core.spi.tool.ToolRiskMetadata;
 import com.agentforge4j.core.spi.tool.ToolScope;
 import com.agentforge4j.core.spi.tool.ToolSource;
 import com.agentforge4j.runtime.tool.InMemoryIntegrationRepository;
@@ -27,6 +25,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import org.junit.jupiter.api.Test;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class HttpToolProviderTest {
 
@@ -46,7 +47,7 @@ class HttpToolProviderTest {
   @Test
   void listToolsMapsDefinitionsToDescriptors() {
     HttpEndpointDefinition definition = new HttpEndpointDefinition(
-        "weather.get_current", "Get weather", "Current weather", HttpMethod.GET,
+        "weather.get_current", "Get weather", "Current weather", false, HttpMethod.GET,
         "https://example.com/weather/{city}", objectSchema("city"), null,
         Set.of(), BodyMode.NONE, Map.of(), Map.of(), null, -1, false, null);
     HttpToolProvider provider = provider(definition);
@@ -60,9 +61,26 @@ class HttpToolProviderTest {
     assertThat(descriptor.inputSchema()).contains("\"city\"");
     assertThat(descriptor.source().providerId()).isEqualTo("http:test");
     assertThat(descriptor.source().remoteToolName()).isEqualTo("weather.get_current");
+    assertThat(descriptor.riskMetadata().mutating()).isFalse();
     assertThat(provider.providerId()).isEqualTo("http:test");
     assertThat(provider.health().state()).isEqualTo(HealthStatus.State.UP);
     assertThat(provider.health().detail()).isEqualTo("structural");
+  }
+
+  @Test
+  void listToolsCarriesRealisedRiskMetadataFromMutatingFlag() {
+    HttpEndpointDefinition readOnly = new HttpEndpointDefinition(
+        "reports.fetch", "reports", null, false, HttpMethod.GET,
+        "https://example.com/reports", objectSchema(), null,
+        Set.of(), BodyMode.NONE, Map.of(), Map.of(), null, -1, false, null);
+    HttpEndpointDefinition writing = new HttpEndpointDefinition(
+        "reports.create", "reports", null, true, HttpMethod.POST,
+        "https://example.com/reports", objectSchema("name"), null,
+        Set.of(), BodyMode.JSON, Map.of(), Map.of(), null, -1, false, null);
+    HttpToolProvider provider = provider(readOnly, writing);
+
+    assertThat(descriptor(provider, "reports.fetch").riskMetadata().mutating()).isFalse();
+    assertThat(descriptor(provider, "reports.create").riskMetadata().mutating()).isTrue();
   }
 
   // --- request mapping ------------------------------------------------------------------------
@@ -71,7 +89,7 @@ class HttpToolProviderTest {
   void getEncodesPathSegmentAndQuery() throws Exception {
     try (LoopbackHttpServer server = new LoopbackHttpServer(Response.json(200, "{\"ok\":true}"))) {
       HttpEndpointDefinition definition = new HttpEndpointDefinition(
-          "items.get", "items", null, HttpMethod.GET, server.baseUri() + "/items/{id}",
+          "items.get", "items", null, false, HttpMethod.GET, server.baseUri() + "/items/{id}",
           objectSchema("id", "q"), null, Set.of("q"), BodyMode.NONE, Map.of(), Map.of(),
           null, -1, false, null);
       HttpToolProvider provider = provider(definition);
@@ -91,7 +109,7 @@ class HttpToolProviderTest {
   void postSendsRemainingArgsAsJsonBody() throws Exception {
     try (LoopbackHttpServer server = new LoopbackHttpServer(Response.json(200, "{\"id\":7}"))) {
       HttpEndpointDefinition definition = new HttpEndpointDefinition(
-          "orders.create", "orders", null, HttpMethod.POST, server.baseUri() + "/orders",
+          "orders.create", "orders", null, true, HttpMethod.POST, server.baseUri() + "/orders",
           objectSchema("sku", "qty"), null, Set.of(), BodyMode.JSON, Map.of(), Map.of(),
           null, -1, false, null);
       HttpToolProvider provider = provider(definition);
@@ -113,7 +131,7 @@ class HttpToolProviderTest {
   void getWithBodyModeNoneSendsNoBody() throws Exception {
     try (LoopbackHttpServer server = new LoopbackHttpServer(Response.json(200, "{}"))) {
       HttpEndpointDefinition definition = new HttpEndpointDefinition(
-          "health.ping", "ping", null, HttpMethod.GET, server.baseUri() + "/ping",
+          "health.ping", "ping", null, false, HttpMethod.GET, server.baseUri() + "/ping",
           objectSchema(), null, Set.of(), BodyMode.NONE, Map.of(), Map.of(), null, -1, false, null);
       HttpToolProvider provider = provider(definition);
 
@@ -128,7 +146,7 @@ class HttpToolProviderTest {
   void secretHeaderIsResolvedAtInvokeAndNeverInlined() throws Exception {
     try (LoopbackHttpServer server = new LoopbackHttpServer(Response.json(200, "{}"))) {
       HttpEndpointDefinition definition = new HttpEndpointDefinition(
-          "secure.get", "secure", null, HttpMethod.GET, server.baseUri() + "/secure",
+          "secure.get", "secure", null, false, HttpMethod.GET, server.baseUri() + "/secure",
           objectSchema(), null, Set.of(), BodyMode.NONE, Map.of(),
           Map.of("Authorization", "auth.token"), null, -1, false, null);
       HttpToolProvider provider = provider(definition);
@@ -190,7 +208,7 @@ class HttpToolProviderTest {
     try (LoopbackHttpServer server =
         new LoopbackHttpServer(Response.json(200, "{\"big\":\"xxxxxxxxxxxxxxxx\"}"))) {
       HttpEndpointDefinition definition = new HttpEndpointDefinition(
-          "small.get", "small", null, HttpMethod.GET, server.baseUri() + "/small",
+          "small.get", "small", null, false, HttpMethod.GET, server.baseUri() + "/small",
           objectSchema(), null, Set.of(), BodyMode.NONE, Map.of(), Map.of(), null, -1, false, 8L);
       HttpToolProvider provider = provider(definition);
 
@@ -250,7 +268,7 @@ class HttpToolProviderTest {
     try (LoopbackHttpServer server =
         new LoopbackHttpServer(new Response(200, "{}", "application/json", 1_500L))) {
       HttpEndpointDefinition definition = new HttpEndpointDefinition(
-          "slow.get", "slow", null, HttpMethod.GET, server.baseUri() + "/slow",
+          "slow.get", "slow", null, false, HttpMethod.GET, server.baseUri() + "/slow",
           objectSchema(), null, Set.of(), BodyMode.NONE, Map.of(), Map.of(),
           Duration.ofMillis(200), -1, false, null);
       HttpToolProvider provider = provider(definition);
@@ -268,10 +286,10 @@ class HttpToolProviderTest {
   @Test
   void rejectsDuplicateCapability() {
     HttpEndpointDefinition first = new HttpEndpointDefinition(
-        "dup.cap", "a", null, HttpMethod.GET, "https://example.com/a", objectSchema(), null,
+        "dup.cap", "a", null, false, HttpMethod.GET, "https://example.com/a", objectSchema(), null,
         Set.of(), BodyMode.NONE, Map.of(), Map.of(), null, -1, false, null);
     HttpEndpointDefinition second = new HttpEndpointDefinition(
-        "dup.cap", "b", null, HttpMethod.GET, "https://example.com/b", objectSchema(), null,
+        "dup.cap", "b", null, false, HttpMethod.GET, "https://example.com/b", objectSchema(), null,
         Set.of(), BodyMode.NONE, Map.of(), Map.of(), null, -1, false, null);
 
     assertThatThrownBy(() -> provider(first, second))
@@ -281,83 +299,92 @@ class HttpToolProviderTest {
 
   @Test
   void rejectsJsonBodyOnGet() {
-    assertThatThrownBy(() -> provider(new HttpEndpointDefinition(
-        "bad.get", "g", null, HttpMethod.GET, "https://example.com/g", objectSchema("x"), null,
-        Set.of(), BodyMode.JSON, Map.of(), Map.of(), null, -1, false, null)))
+    HttpEndpointDefinition first = new HttpEndpointDefinition(
+        "bad.get", "g", null, false, HttpMethod.GET, "https://example.com/g", objectSchema("x"), null,
+        Set.of(), BodyMode.JSON, Map.of(), Map.of(), null, -1, false, null);
+    assertThatThrownBy(() -> provider(first))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("bodyMode JSON");
   }
 
   @Test
   void rejectsRetryNonIdempotentOnGet() {
-    assertThatThrownBy(() -> provider(new HttpEndpointDefinition(
-        "bad.retry", "g", null, HttpMethod.GET, "https://example.com/g", objectSchema(), null,
-        Set.of(), BodyMode.NONE, Map.of(), Map.of(), null, -1, true, null)))
+    HttpEndpointDefinition first = new HttpEndpointDefinition(
+        "bad.retry", "g", null, false, HttpMethod.GET, "https://example.com/g", objectSchema(), null,
+        Set.of(), BodyMode.NONE, Map.of(), Map.of(), null, -1, true, null);
+    assertThatThrownBy(() -> provider(first))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("retryNonIdempotent");
   }
 
   @Test
   void rejectsOrphanPropertyWhenBodyNone() {
-    assertThatThrownBy(() -> provider(new HttpEndpointDefinition(
-        "bad.orphan", "g", null, HttpMethod.GET, "https://example.com/g", objectSchema("x"), null,
-        Set.of(), BodyMode.NONE, Map.of(), Map.of(), null, -1, false, null)))
+    HttpEndpointDefinition first = new HttpEndpointDefinition(
+        "bad.orphan", "g", null, false, HttpMethod.GET, "https://example.com/g", objectSchema("x"), null,
+        Set.of(), BodyMode.NONE, Map.of(), Map.of(), null, -1, false, null);
+    assertThatThrownBy(() -> provider(first))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("no path/query target");
   }
 
   @Test
   void rejectsBlankSecretRef() {
-    assertThatThrownBy(() -> provider(new HttpEndpointDefinition(
-        "bad.secret", "g", null, HttpMethod.GET, "https://example.com/g", objectSchema(), null,
-        Set.of(), BodyMode.NONE, Map.of(), Map.of("Authorization", "  "), null, -1, false, null)))
+    HttpEndpointDefinition first = new HttpEndpointDefinition(
+        "bad.secret", "g", null, false, HttpMethod.GET, "https://example.com/g", objectSchema(), null,
+        Set.of(), BodyMode.NONE, Map.of(), Map.of("Authorization", "  "), null, -1, false, null);
+    assertThatThrownBy(() -> provider(first))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("must not be blank");
   }
 
   @Test
   void rejectsHeaderInBothStaticAndSecret() {
-    assertThatThrownBy(() -> provider(new HttpEndpointDefinition(
-        "bad.overlap", "g", null, HttpMethod.GET, "https://example.com/g", objectSchema(), null,
+    HttpEndpointDefinition first = new HttpEndpointDefinition(
+        "bad.overlap", "g", null, false, HttpMethod.GET, "https://example.com/g", objectSchema(), null,
         Set.of(), BodyMode.NONE, Map.of("Authorization", "static"),
-        Map.of("Authorization", "auth.token"), null, -1, false, null)))
+        Map.of("Authorization", "auth.token"), null, -1, false, null);
+    assertThatThrownBy(() -> provider(first))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("both staticHeaders and secretHeaders");
   }
 
   @Test
   void rejectsNonAbsoluteUrl() {
-    assertThatThrownBy(() -> provider(new HttpEndpointDefinition(
-        "bad.url", "g", null, HttpMethod.GET, "/relative/path", objectSchema(), null,
-        Set.of(), BodyMode.NONE, Map.of(), Map.of(), null, -1, false, null)))
+    HttpEndpointDefinition first = new HttpEndpointDefinition(
+        "bad.url", "g", null, false, HttpMethod.GET, "/relative/path", objectSchema(), null,
+        Set.of(), BodyMode.NONE, Map.of(), Map.of(), null, -1, false, null);
+    assertThatThrownBy(() -> provider(first))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("absolute http/https");
   }
 
   @Test
   void rejectsPlaceholderNotDeclaredInSchema() {
-    assertThatThrownBy(() -> provider(new HttpEndpointDefinition(
-        "bad.ph", "g", null, HttpMethod.GET, "https://example.com/{id}", objectSchema(), null,
-        Set.of(), BodyMode.NONE, Map.of(), Map.of(), null, -1, false, null)))
+    HttpEndpointDefinition first = new HttpEndpointDefinition(
+        "bad.ph", "g", null, false, HttpMethod.GET, "https://example.com/{id}", objectSchema(), null,
+        Set.of(), BodyMode.NONE, Map.of(), Map.of(), null, -1, false, null);
+    assertThatThrownBy(() -> provider(first))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("not a declared inputSchema property");
   }
 
   @Test
   void rejectsPlaceholderInHost() {
-    assertThatThrownBy(() -> provider(new HttpEndpointDefinition(
-        "bad.host", "g", null, HttpMethod.GET, "https://{host}/g", objectSchema("host"), null,
-        Set.of(), BodyMode.NONE, Map.of(), Map.of(), null, -1, false, null)))
+    HttpEndpointDefinition first = new HttpEndpointDefinition(
+        "bad.host", "g", null, false, HttpMethod.GET, "https://{host}/g", objectSchema("host"), null,
+        Set.of(), BodyMode.NONE, Map.of(), Map.of(), null, -1, false, null);
+    assertThatThrownBy(() -> provider(first))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("placeholders before the path");
   }
 
   @Test
   void rejectsPlaceholderInPort() {
-    assertThatThrownBy(() -> provider(new HttpEndpointDefinition(
-        "bad.port", "g", null, HttpMethod.GET, "https://example.com:{port}/g",
+    HttpEndpointDefinition first = new HttpEndpointDefinition(
+        "bad.port", "g", null, false, HttpMethod.GET, "https://example.com:{port}/g",
         objectSchema("port"), null,
-        Set.of(), BodyMode.NONE, Map.of(), Map.of(), null, -1, false, null)))
+        Set.of(), BodyMode.NONE, Map.of(), Map.of(), null, -1, false, null);
+    assertThatThrownBy(() -> provider(first))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("placeholders before the path");
   }
@@ -365,7 +392,7 @@ class HttpToolProviderTest {
   @Test
   void allowsPlaceholderInPathAndQuery() {
     HttpToolProvider ok = provider(new HttpEndpointDefinition(
-        "ok.ph", "g", null, HttpMethod.GET, "https://example.com/items/{id}?tag={tag}",
+        "ok.ph", "g", null, false, HttpMethod.GET, "https://example.com/items/{id}?tag={tag}",
         objectSchema("id", "tag"), null,
         Set.of(), BodyMode.NONE, Map.of(), Map.of(), null, -1, false, null));
     assertThat(ok.listTools()).hasSize(1);
@@ -377,7 +404,7 @@ class HttpToolProviderTest {
   void resolvesAndRunsThroughIntegrationResolverAlongsideAnotherProvider() throws Exception {
     try (LoopbackHttpServer server = new LoopbackHttpServer(Response.json(200, "{\"ok\":1}"))) {
       HttpEndpointDefinition definition = new HttpEndpointDefinition(
-          "items.get", "items", null, HttpMethod.GET, server.baseUri() + "/items",
+          "items.get", "items", null, false, HttpMethod.GET, server.baseUri() + "/items",
           objectSchema(), null, Set.of(), BodyMode.NONE, Map.of(), Map.of(), null, -1, false, null);
       HttpToolProvider httpProvider = provider(definition);
       ToolProvider other = new StubProvider("stub:other", "other.cap");
@@ -396,7 +423,7 @@ class HttpToolProviderTest {
   @Test
   void duplicateCapabilityAcrossProvidersFailsFast() {
     HttpEndpointDefinition definition = new HttpEndpointDefinition(
-        "shared.cap", "items", null, HttpMethod.GET, "https://example.com/items",
+        "shared.cap", "items", null, false, HttpMethod.GET, "https://example.com/items",
         objectSchema(), null, Set.of(), BodyMode.NONE, Map.of(), Map.of(), null, -1, false, null);
     HttpToolProvider httpProvider = provider(definition);
     ToolProvider clashing = new StubProvider("stub:other", "shared.cap");
@@ -408,7 +435,9 @@ class HttpToolProviderTest {
 
   // --- helpers --------------------------------------------------------------------------------
 
-  /** The pre-built providers feed the resolver directly, so the factory is never called. */
+  /**
+   * The pre-built providers feed the resolver directly, so the factory is never called.
+   */
   private static ToolProviderFactory unusedFactory() {
     return definition -> {
       throw new AssertionError("factory must not be called for pre-built providers");
@@ -427,7 +456,7 @@ class HttpToolProviderTest {
   private ToolResult invokeSimpleGet(LoopbackHttpServer server, String arguments,
       ToolExecutionOptions options) {
     HttpEndpointDefinition definition = new HttpEndpointDefinition(
-        "simple.get", "simple", null, HttpMethod.GET, server.baseUri() + "/simple",
+        "simple.get", "simple", null, false, HttpMethod.GET, server.baseUri() + "/simple",
         objectSchema(), null, Set.of(), BodyMode.NONE, Map.of(), Map.of(), null, -1, false, null);
     HttpToolProvider provider = provider(definition);
     return provider.invoke(descriptor(provider, "simple.get"), arguments, ctx, options);
@@ -435,7 +464,7 @@ class HttpToolProviderTest {
 
   private HttpEndpointDefinition postDefinition(LoopbackHttpServer server, boolean retryNonIdempotent) {
     return new HttpEndpointDefinition(
-        "orders.create", "orders", null, HttpMethod.POST, server.baseUri() + "/orders",
+        "orders.create", "orders", null, true, HttpMethod.POST, server.baseUri() + "/orders",
         objectSchema("sku"), null, Set.of(), BodyMode.JSON, Map.of(), Map.of(), null, -1,
         retryNonIdempotent, null);
   }
@@ -475,7 +504,7 @@ class HttpToolProviderTest {
     @Override
     public List<ToolDescriptor> listTools() {
       return List.of(new ToolDescriptor(capability, capability, null, null, null,
-          new ToolSource(id, capability)));
+          new ToolSource(id, capability), ToolRiskMetadata.conservative()));
     }
 
     @Override

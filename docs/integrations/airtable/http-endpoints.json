@@ -3,6 +3,7 @@
     "capability": "airtable.list_records",
     "displayName": "List records",
     "description": "List records in an Airtable table",
+    "mutating": false,
     "method": "GET",
     "urlTemplate": "https://api.airtable.com/v0/{baseId}/{tableName}",
     "inputSchema": {
@@ -30,6 +31,7 @@
     "capability": "airtable.create_record",
     "displayName": "Create record",
     "description": "Create a record in an Airtable table",
+    "mutating": true,
     "method": "POST",
     "urlTemplate": "https://api.airtable.com/v0/{baseId}/{tableName}",
     "inputSchema": {

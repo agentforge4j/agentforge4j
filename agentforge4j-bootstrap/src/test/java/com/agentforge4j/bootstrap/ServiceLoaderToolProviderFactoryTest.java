@@ -1,6 +1,5 @@
 package com.agentforge4j.bootstrap;
 
-import com.agentforge4j.core.spi.integration.IntegrationCapability;
 import com.agentforge4j.core.spi.integration.IntegrationDefinition;
 import com.agentforge4j.core.spi.integration.IntegrationToolProviderFactory;
 import com.agentforge4j.core.spi.integration.IntegrationType;
@@ -88,8 +87,7 @@ class ServiceLoaderToolProviderFactoryTest {
   }
 
   private static IntegrationDefinition definition(String id, IntegrationType type) {
-    return new IntegrationDefinition(id, "Display", type, "{}",
-        List.of(new IntegrationCapability("domain.action", null, false)), true);
+    return new IntegrationDefinition(id, "Display", type, "{}", true);
   }
 
   private static final class FixedContribution implements IntegrationToolProviderFactory {

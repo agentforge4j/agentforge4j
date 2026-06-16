@@ -7,6 +7,7 @@ import com.agentforge4j.core.spi.tool.ToolDescriptor;
 import com.agentforge4j.core.spi.tool.ToolExecutionOptions;
 import com.agentforge4j.core.spi.tool.ToolInvocationContext;
 import com.agentforge4j.core.spi.tool.ToolResult;
+import com.agentforge4j.core.spi.tool.ToolRiskMetadata;
 import com.agentforge4j.core.spi.tool.ToolScope;
 import com.agentforge4j.core.spi.tool.ToolSource;
 import com.agentforge4j.mcp.client.transport.McpTransport;
@@ -39,6 +40,8 @@ class McpToolProviderTest {
     assertThat(descriptor.inputSchema()).isEqualTo("{\"type\":\"object\"}");
     assertThat(descriptor.source().providerId()).isEqualTo("mcp:test");
     assertThat(descriptor.source().remoteToolName()).isEqualTo("create_pull_request");
+    // The MCP transport surfaces no mutation hint, so every realised tool defaults to conservative.
+    assertThat(descriptor.riskMetadata().mutating()).isTrue();
     assertThat(transport.started).isTrue();
   }
 
@@ -79,7 +82,7 @@ class McpToolProviderTest {
 
   private static ToolDescriptor descriptorFor(String remoteToolName) {
     return new ToolDescriptor(remoteToolName, remoteToolName, null, null, null,
-        new ToolSource("mcp:test", remoteToolName));
+        new ToolSource("mcp:test", remoteToolName), ToolRiskMetadata.conservative());
   }
 
   private static final class ScriptedTransport implements McpTransport {

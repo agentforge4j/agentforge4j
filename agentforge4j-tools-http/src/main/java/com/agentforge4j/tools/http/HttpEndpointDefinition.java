@@ -18,6 +18,10 @@ import java.util.Set;
  *                           and unique within the provider, and used as the {@code remoteToolName}
  * @param displayName        human-readable name, or {@code null}
  * @param description        human-readable description, or {@code null}
+ * @param mutating           whether invoking this endpoint may mutate remote state; surfaced as the
+ *                           realised {@link com.agentforge4j.core.spi.tool.ToolRiskMetadata} signal.
+ *                           {@code null} (absent) normalizes to {@code true} — the highest safe
+ *                           risk — so a definition that omits the signal is treated as conservative
  * @param method             HTTP method
  * @param urlTemplate        absolute {@code http}/{@code https} URL with {@code {name}}
  *                           placeholders
@@ -40,6 +44,7 @@ public record HttpEndpointDefinition(
     String capability,
     String displayName,
     String description,
+    Boolean mutating,
     HttpMethod method,
     String urlTemplate,
     JsonNode inputSchema,
@@ -57,6 +62,7 @@ public record HttpEndpointDefinition(
    * Validates per-field invariants and defensively copies the collections.
    */
   public HttpEndpointDefinition {
+    mutating = mutating == null || mutating;
     Validate.notBlank(capability, "HttpEndpointDefinition capability must not be blank");
     Validate.notNull(method, "HttpEndpointDefinition method must not be null");
     Validate.notBlank(urlTemplate, "HttpEndpointDefinition urlTemplate must not be blank");

@@ -3,6 +3,7 @@
     "capability": "<domain>.<verb_object>",
     "displayName": "<display name>",
     "description": "<description>",
+    "mutating": false,
     "method": "GET",
     "urlTemplate": "https://api.example.com/v1/{id}",
     "inputSchema": {

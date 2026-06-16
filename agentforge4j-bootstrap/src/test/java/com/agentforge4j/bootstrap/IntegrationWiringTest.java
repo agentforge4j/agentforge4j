@@ -1,6 +1,5 @@
 package com.agentforge4j.bootstrap;
 
-import com.agentforge4j.core.spi.integration.IntegrationCapability;
 import com.agentforge4j.core.spi.integration.IntegrationDefinition;
 import com.agentforge4j.core.spi.integration.IntegrationType;
 import com.agentforge4j.core.spi.integration.ToolProviderFactory;
@@ -9,6 +8,7 @@ import com.agentforge4j.core.spi.tool.ResolvedTool;
 import com.agentforge4j.core.spi.tool.ToolDescriptor;
 import com.agentforge4j.core.spi.tool.ToolProvider;
 import com.agentforge4j.core.spi.tool.ToolProviderResolver;
+import com.agentforge4j.core.spi.tool.ToolRiskMetadata;
 import com.agentforge4j.core.spi.tool.ToolScope;
 import com.agentforge4j.core.spi.tool.ToolSource;
 import com.agentforge4j.runtime.tool.InMemoryIntegrationRepository;
@@ -116,7 +116,7 @@ class IntegrationWiringTest {
     when(preBuilt.providerId()).thenReturn("http:tickets");
     when(preBuilt.listTools()).thenReturn(List.of(new ToolDescriptor(
         "tickets.create", "tickets.create", null, null, null,
-        new ToolSource("http:tickets", "create"))));
+        new ToolSource("http:tickets", "create"), ToolRiskMetadata.conservative())));
 
     AgentForge4j af = AgentForge4jBootstrap.defaults()
         .withIntegrationsDir(integrationsDir)
@@ -138,7 +138,7 @@ class IntegrationWiringTest {
     when(mcpProvider.providerId()).thenReturn("mcp:github");
     when(mcpProvider.listTools()).thenReturn(List.of(new ToolDescriptor(
         "github.create_issue", "github.create_issue", null, null, null,
-        new ToolSource("mcp:github", "create_issue"))));
+        new ToolSource("mcp:github", "create_issue"), ToolRiskMetadata.conservative())));
 
     AgentForge4j af = AgentForge4jBootstrap.defaults()
         .withToolProviders(List.of(mcpProvider))
@@ -164,6 +164,7 @@ class IntegrationWiringTest {
           "config": [
             {
               "capability": "airtable.list_records",
+              "mutating": false,
               "method": "GET",
               "urlTemplate": "https://api.airtable.com/v0/{baseId}",
               "inputSchema": {
@@ -174,8 +175,7 @@ class IntegrationWiringTest {
               "timeout": "PT5S",
               "secretHeaders": { "Authorization": "AIRTABLE_TOKEN" }
             }
-          ],
-          "capabilities": [ { "capability": "airtable.list_records" } ]
+          ]
         }
         """);
 
@@ -196,7 +196,7 @@ class IntegrationWiringTest {
     when(preBuilt.providerId()).thenReturn("http:dup");
     when(preBuilt.listTools()).thenReturn(List.of(new ToolDescriptor(
         "github.create_issue", "github.create_issue", null, null, null,
-        new ToolSource("http:dup", "create_issue"))));
+        new ToolSource("http:dup", "create_issue"), ToolRiskMetadata.conservative())));
 
     assertThatThrownBy(() -> AgentForge4jBootstrap.defaults()
         .withIntegrationsDir(integrationsDir)
@@ -262,23 +262,21 @@ class IntegrationWiringTest {
           "displayName": "GitHub",
           "type": "MCP_STDIO",
           "active": %s,
-          "config": { "command": "npx" },
-          "capabilities": [
-            { "capability": "github.create_issue", "remoteToolName": "create_issue" }
-          ]
+          "config": { "command": "npx" }
         }
         """.formatted(active));
   }
 
   private static IntegrationDefinition githubDefinition() {
     return new IntegrationDefinition("github", "GitHub", IntegrationType.MCP_STDIO,
-        "{ \"command\": \"npx\" }",
-        List.of(new IntegrationCapability("github.create_issue", "create_issue", false)), true);
+        "{ \"command\": \"npx\" }", true);
   }
 
   /**
-   * {@link ToolProviderFactory} fake that records the definitions it realises and hands back a stub provider exposing
-   * one descriptor per definition capability.
+   * {@link ToolProviderFactory} fake that records the definitions it realises and hands back a stub
+   * provider exposing the realised GitHub MCP tool. Every definition realised in this test is the
+   * GitHub MCP server, whose realised capability is {@code github.create_issue} (capability == remote
+   * tool name in the OSS MCP mapping).
    */
   private static final class RecordingToolProviderFactory implements ToolProviderFactory {
 
@@ -288,11 +286,10 @@ class IntegrationWiringTest {
     public ToolProvider create(IntegrationDefinition definition) {
       created.add(definition);
       ToolProvider provider = mock(ToolProvider.class);
-      List<ToolDescriptor> descriptors = definition.capabilities().stream()
-          .map(capability -> new ToolDescriptor(capability.capability(), null, null, null, null,
-              new ToolSource("mcp:%s".formatted(definition.id()), capability.remoteToolName())))
-          .toList();
-      when(provider.listTools()).thenReturn(descriptors);
+      when(provider.listTools()).thenReturn(List.of(new ToolDescriptor(
+          "github.create_issue", "github.create_issue", null, null, null,
+          new ToolSource("mcp:%s".formatted(definition.id()), "create_issue"),
+          ToolRiskMetadata.conservative())));
       return provider;
     }
   }

@@ -1,6 +1,5 @@
 package com.agentforge4j.tools.http;
 
-import com.agentforge4j.core.spi.integration.IntegrationCapability;
 import com.agentforge4j.core.spi.integration.IntegrationDefinition;
 import com.agentforge4j.core.spi.integration.IntegrationType;
 import com.agentforge4j.core.spi.integration.SecretResolver;
@@ -14,7 +13,6 @@ import com.agentforge4j.core.spi.tool.ToolScope;
 import com.agentforge4j.tools.http.LoopbackHttpServer.Response;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.Duration;
-import java.util.List;
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -57,6 +55,16 @@ class HttpToolProviderFactoryTest {
   }
 
   @Test
+  void create_endpointOmittingMutatingDefaultsToConservativeRiskSignal() {
+    // The factory parses config JSON directly (no schema gate on this seam), so an endpoint that
+    // omits `mutating` must still surface the highest safe risk rather than the primitive-false.
+    ToolProvider provider = factory.create(definition("weather", endpointConfig("https://x/{city}")),
+        context);
+
+    assertThat(provider.listTools().get(0).riskMetadata().mutating()).isTrue();
+  }
+
+  @Test
   void create_providerInvokesEndpointResolvingTheSecretHeaderAtInvoke() throws Exception {
     try (LoopbackHttpServer server = new LoopbackHttpServer(Response.json(200, "{\"ok\":true}"))) {
       ToolProvider provider = factory.create(
@@ -83,8 +91,7 @@ class HttpToolProviderFactoryTest {
   @Test
   void create_rejectsADefinitionOfTheWrongType() {
     IntegrationDefinition mcp = new IntegrationDefinition("github", "GitHub",
-        IntegrationType.MCP_STDIO, "{}",
-        List.of(new IntegrationCapability("github.create_issue", "create_issue", false)), true);
+        IntegrationType.MCP_STDIO, "{}", true);
 
     assertThatThrownBy(() -> factory.create(mcp, context))
         .isInstanceOf(IllegalArgumentException.class)
@@ -92,8 +99,7 @@ class HttpToolProviderFactoryTest {
   }
 
   private static IntegrationDefinition definition(String id, String config) {
-    return new IntegrationDefinition(id, id, IntegrationType.HTTP_TOOL, config,
-        List.of(new IntegrationCapability("weather.get_current", null, false)), true);
+    return new IntegrationDefinition(id, id, IntegrationType.HTTP_TOOL, config, true);
   }
 
   private static String endpointConfig(String urlTemplate) {

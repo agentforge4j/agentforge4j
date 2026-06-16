@@ -1,12 +1,10 @@
 package com.agentforge4j.mcp.integration;
 
-import com.agentforge4j.core.spi.integration.IntegrationCapability;
 import com.agentforge4j.core.spi.integration.IntegrationDefinition;
 import com.agentforge4j.core.spi.integration.IntegrationType;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.Duration;
-import java.util.List;
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -55,7 +53,6 @@ class McpIntegrationsTest {
 
   private static IntegrationDefinition definition() {
     return new IntegrationDefinition("github", "GitHub", IntegrationType.MCP_STDIO,
-        "{ \"command\": \"npx\" }",
-        List.of(new IntegrationCapability("github.create_issue", "create_issue", true)), true);
+        "{ \"command\": \"npx\" }", true);
   }
 }

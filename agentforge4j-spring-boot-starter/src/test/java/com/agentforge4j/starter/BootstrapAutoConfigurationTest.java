@@ -104,8 +104,7 @@ class BootstrapAutoConfigurationTest {
           "id": "github",
           "displayName": "GitHub",
           "type": "MCP_STDIO",
-          "config": { "command": "npx" },
-          "capabilities": [ { "capability": "github.create_issue" } ]
+          "config": { "command": "npx" }
         }
         """);
     RecordingToolProviderFactoryConfiguration.CREATED.clear();

@@ -1,6 +1,5 @@
 package com.agentforge4j.mcp.integration;
 
-import com.agentforge4j.core.spi.integration.IntegrationCapability;
 import com.agentforge4j.core.spi.integration.IntegrationDefinition;
 import com.agentforge4j.core.spi.integration.IntegrationType;
 import com.agentforge4j.core.spi.integration.SecretResolver;
@@ -8,7 +7,6 @@ import com.agentforge4j.core.spi.integration.ToolProviderFactoryContext;
 import com.agentforge4j.core.spi.tool.ToolProvider;
 import com.agentforge4j.mcp.client.McpToolProvider;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import java.util.List;
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -62,8 +60,7 @@ class McpStreamableHttpToolProviderFactoryTest {
   @Test
   void create_rejectsDefinitionOfAnotherType() {
     IntegrationDefinition definition = new IntegrationDefinition("github", "GitHub",
-        IntegrationType.MCP_STDIO, "{ \"command\": \"npx\" }",
-        List.of(new IntegrationCapability("github.create_issue", null, false)), true);
+        IntegrationType.MCP_STDIO, "{ \"command\": \"npx\" }", true);
 
     assertThatThrownBy(() -> factory.create(definition, context))
         .isInstanceOf(IllegalArgumentException.class)
@@ -72,7 +69,6 @@ class McpStreamableHttpToolProviderFactoryTest {
   }
 
   private static IntegrationDefinition definition(String id, String config) {
-    return new IntegrationDefinition(id, "Jira", IntegrationType.MCP_STREAMABLE_HTTP, config,
-        List.of(new IntegrationCapability("jira.create_issue", "create_issue", true)), true);
+    return new IntegrationDefinition(id, "Jira", IntegrationType.MCP_STREAMABLE_HTTP, config, true);
   }
 }

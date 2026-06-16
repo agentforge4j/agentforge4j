@@ -6,6 +6,7 @@ import com.agentforge4j.core.spi.tool.ToolExecutionOptions;
 import com.agentforge4j.core.spi.tool.ToolInvocationContext;
 import com.agentforge4j.core.spi.tool.ToolProvider;
 import com.agentforge4j.core.spi.tool.ToolResult;
+import com.agentforge4j.core.spi.tool.ToolRiskMetadata;
 import com.agentforge4j.core.spi.tool.ToolSource;
 import com.agentforge4j.util.Validate;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -262,7 +263,8 @@ public final class HttpToolProvider implements ToolProvider {
           definition.description(),
           writeJson(definition.inputSchema()),
           definition.outputSchema() != null ? writeJson(definition.outputSchema()) : null,
-          new ToolSource(providerId, definition.capability())));
+          new ToolSource(providerId, definition.capability()),
+          new ToolRiskMetadata(definition.mutating())));
     }
     return List.copyOf(result);
   }

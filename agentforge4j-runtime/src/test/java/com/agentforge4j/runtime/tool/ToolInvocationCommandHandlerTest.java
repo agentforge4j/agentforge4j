@@ -1,7 +1,5 @@
 package com.agentforge4j.runtime.tool;
 
-import static org.assertj.core.api.Assertions.assertThat;
-
 import com.agentforge4j.core.command.ToolInvocationCommand;
 import com.agentforge4j.core.spi.integration.ToolProviderFactory;
 import com.agentforge4j.core.spi.tool.HealthStatus;
@@ -12,6 +10,7 @@ import com.agentforge4j.core.spi.tool.ToolInvocationContext;
 import com.agentforge4j.core.spi.tool.ToolPolicy;
 import com.agentforge4j.core.spi.tool.ToolProvider;
 import com.agentforge4j.core.spi.tool.ToolResult;
+import com.agentforge4j.core.spi.tool.ToolRiskMetadata;
 import com.agentforge4j.core.spi.tool.ToolSource;
 import com.agentforge4j.core.workflow.context.ContextMapping;
 import com.agentforge4j.core.workflow.state.WorkflowState;
@@ -28,6 +27,8 @@ import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
+
+import static org.assertj.core.api.Assertions.assertThat;
 
 class ToolInvocationCommandHandlerTest {
 
@@ -110,7 +111,9 @@ class ToolInvocationCommandHandlerTest {
     assertThat(provider.invocations).isZero();
   }
 
-  /** The single pre-built provider feeds the resolver directly, so the factory is never called. */
+  /**
+   * The single pre-built provider feeds the resolver directly, so the factory is never called.
+   */
   private static ToolProviderFactory unusedFactory() {
     return definition -> {
       throw new AssertionError("factory must not be called for pre-built providers");
@@ -146,15 +149,15 @@ class ToolInvocationCommandHandlerTest {
   }
 
   private static ToolPolicy allow() {
-    return (cmd, descriptor, ctx) -> new PolicyDecision.Allow();
+    return (cmd, descriptor, tic) -> new PolicyDecision.Allow();
   }
 
   private static ToolPolicy deny(String reason) {
-    return (cmd, descriptor, ctx) -> new PolicyDecision.Deny(reason);
+    return (cmd, descriptor, tic) -> new PolicyDecision.Deny(reason);
   }
 
   private static ToolPolicy requireApproval() {
-    return (cmd, descriptor, ctx) -> new PolicyDecision.RequireApproval("needs review", "OPERATOR");
+    return (cmd, descriptor, tic) -> new PolicyDecision.RequireApproval("needs review", "OPERATOR");
   }
 
   private static final class ScriptedProvider implements ToolProvider {
@@ -170,7 +173,7 @@ class ToolInvocationCommandHandlerTest {
     @Override
     public List<ToolDescriptor> listTools() {
       return List.of(new ToolDescriptor(CAPABILITY, "Create PR", null, SCHEMA, null,
-          new ToolSource("mcp:test", "create_pull_request")));
+          new ToolSource("mcp:test", "create_pull_request"), ToolRiskMetadata.conservative()));
     }
 
     @Override

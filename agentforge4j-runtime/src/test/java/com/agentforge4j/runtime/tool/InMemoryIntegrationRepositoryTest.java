@@ -3,10 +3,8 @@ package com.agentforge4j.runtime.tool;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import com.agentforge4j.core.spi.integration.IntegrationCapability;
 import com.agentforge4j.core.spi.integration.IntegrationDefinition;
 import com.agentforge4j.core.spi.integration.IntegrationType;
-import java.util.List;
 import org.junit.jupiter.api.Test;
 
 class InMemoryIntegrationRepositoryTest {
@@ -14,7 +12,7 @@ class InMemoryIntegrationRepositoryTest {
   @Test
   void savesAndFindsById() {
     InMemoryIntegrationRepository repository = new InMemoryIntegrationRepository();
-    IntegrationDefinition github = definition("github", true, "github.create_pull_request");
+    IntegrationDefinition github = definition("github", true);
 
     repository.save(github);
 
@@ -29,8 +27,8 @@ class InMemoryIntegrationRepositoryTest {
   @Test
   void findActiveReturnsOnlyActiveIntegrations() {
     InMemoryIntegrationRepository repository = new InMemoryIntegrationRepository();
-    IntegrationDefinition github = definition("github", true, "github.create_pull_request");
-    IntegrationDefinition jira = definition("jira", false, "jira.create_issue");
+    IntegrationDefinition github = definition("github", true);
+    IntegrationDefinition jira = definition("jira", false);
     repository.save(github);
     repository.save(jira);
 
@@ -38,21 +36,9 @@ class InMemoryIntegrationRepositoryTest {
   }
 
   @Test
-  void findByCapabilityReturnsActiveExposersOnly() {
-    InMemoryIntegrationRepository repository = new InMemoryIntegrationRepository();
-    IntegrationDefinition active = definition("github", true, "github.create_pull_request");
-    IntegrationDefinition inactive = definition("github-fork", false, "github.create_pull_request");
-    repository.save(active);
-    repository.save(inactive);
-
-    assertThat(repository.findByCapability("github.create_pull_request")).containsExactly(active);
-    assertThat(repository.findByCapability("jira.create_issue")).isEmpty();
-  }
-
-  @Test
   void setActiveTogglesAndIsReflectedByFindActive() {
     InMemoryIntegrationRepository repository = new InMemoryIntegrationRepository();
-    repository.save(definition("github", false, "github.create_pull_request"));
+    repository.save(definition("github", false));
 
     assertThat(repository.findActive()).isEmpty();
 
@@ -76,7 +62,7 @@ class InMemoryIntegrationRepositoryTest {
   @Test
   void removeRemovesAndFindByIdReturnsNullAfterwards() {
     InMemoryIntegrationRepository repository = new InMemoryIntegrationRepository();
-    repository.save(definition("github", true, "github.create_pull_request"));
+    repository.save(definition("github", true));
 
     repository.remove("github");
 
@@ -96,16 +82,15 @@ class InMemoryIntegrationRepositoryTest {
   @Test
   void saveWithSameIdOverwritesWithoutThrowing() {
     InMemoryIntegrationRepository repository = new InMemoryIntegrationRepository();
-    repository.save(definition("github", true, "github.create_pull_request"));
-    IntegrationDefinition replacement = definition("github", false, "github.merge_pull_request");
+    repository.save(definition("github", true));
+    IntegrationDefinition replacement = definition("github", false);
 
     repository.save(replacement);
 
     assertThat(repository.findById("github")).isSameAs(replacement);
   }
 
-  private static IntegrationDefinition definition(String id, boolean active, String capability) {
-    return new IntegrationDefinition(id, id, IntegrationType.MCP_STDIO, "{}",
-        List.of(new IntegrationCapability(capability, capability, false)), active);
+  private static IntegrationDefinition definition(String id, boolean active) {
+    return new IntegrationDefinition(id, id, IntegrationType.MCP_STDIO, "{}", active);
   }
 }

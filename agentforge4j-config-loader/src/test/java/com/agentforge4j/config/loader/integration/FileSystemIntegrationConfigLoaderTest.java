@@ -3,7 +3,6 @@ package com.agentforge4j.config.loader.integration;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import com.agentforge4j.core.spi.integration.IntegrationCapability;
 import com.agentforge4j.core.spi.integration.IntegrationDefinition;
 import com.agentforge4j.core.spi.integration.IntegrationType;
 import com.agentforge4j.schema.ClasspathSchemaProvider;
@@ -32,10 +31,7 @@ class FileSystemIntegrationConfigLoaderTest {
           "displayName": "GitHub",
           "type": "MCP_STDIO",
           "active": true,
-          "config": { "command": "npx", "args": ["-y", "@modelcontextprotocol/server-github"] },
-          "capabilities": [
-            { "capability": "github.create_issue", "remoteToolName": "create_issue", "mutating": true }
-          ]
+          "config": { "command": "npx", "args": ["-y", "@modelcontextprotocol/server-github"] }
         }
         """);
 
@@ -50,8 +46,6 @@ class FileSystemIntegrationConfigLoaderTest {
     assertThat(MAPPER.readTree(definition.config()))
         .isEqualTo(MAPPER.readTree(
             "{ \"command\": \"npx\", \"args\": [\"-y\", \"@modelcontextprotocol/server-github\"] }"));
-    assertThat(definition.capabilities()).containsExactly(
-        new IntegrationCapability("github.create_issue", "create_issue", true));
   }
 
   @Test
@@ -63,13 +57,13 @@ class FileSystemIntegrationConfigLoaderTest {
           "config": [
             {
               "capability": "airtable.list_records",
+              "mutating": false,
               "method": "GET",
               "urlTemplate": "https://api.airtable.com/v0/{baseId}",
               "inputSchema": { "type": "object", "properties": { "baseId": { "type": "string" } } },
               "bodyMode": "NONE"
             }
-          ],
-          "capabilities": [ { "capability": "airtable.list_records" } ]
+          ]
         }
         """);
 
@@ -77,8 +71,6 @@ class FileSystemIntegrationConfigLoaderTest {
 
     assertThat(loaded).hasSize(1);
     assertThat(loaded.get(0).id()).isEqualTo("airtable");
-    assertThat(loaded.get(0).capabilities())
-        .containsExactly(new IntegrationCapability("airtable.list_records", null, false));
   }
 
   @Test
@@ -88,8 +80,7 @@ class FileSystemIntegrationConfigLoaderTest {
           "displayName": "Jira",
           "type": "MCP_STREAMABLE_HTTP",
           "active": false,
-          "config": { "url": "https://mcp.example.com/jira" },
-          "capabilities": [ { "capability": "jira.create_issue" } ]
+          "config": { "url": "https://mcp.example.com/jira" }
         }
         """);
 
@@ -130,8 +121,7 @@ class FileSystemIntegrationConfigLoaderTest {
         {
           "displayName": "X",
           "type": "SMOKE_SIGNAL",
-          "config": {},
-          "capabilities": [ { "capability": "x.do_thing" } ]
+          "config": {}
         }
         """);
     write("malformed.json", "{ not json");
@@ -149,8 +139,7 @@ class FileSystemIntegrationConfigLoaderTest {
           "id": "github",
           "displayName": "GitHub",
           "type": "MCP_STDIO",
-          "config": { "command": "npx" },
-          "capabilities": [ { "capability": "github.create_issue" } ]
+          "config": { "command": "npx" }
         }
         """);
     write("second.json", """
@@ -158,8 +147,7 @@ class FileSystemIntegrationConfigLoaderTest {
           "id": "github",
           "displayName": "GitHub Mirror",
           "type": "MCP_STDIO",
-          "config": { "command": "npx" },
-          "capabilities": [ { "capability": "github.create_pull_request" } ]
+          "config": { "command": "npx" }
         }
         """);
 
@@ -176,8 +164,7 @@ class FileSystemIntegrationConfigLoaderTest {
         {
           "displayName": "GitHub",
           "type": "MCP_STDIO",
-          "config": { "command": "npx" },
-          "capabilities": [ { "capability": "github.create_issue" } ]
+          "config": { "command": "npx" }
         }
         """);
     Files.writeString(tempDir.resolve("README.md"), "not an integration");

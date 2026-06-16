@@ -6,6 +6,7 @@ import com.agentforge4j.core.spi.tool.ToolExecutionOptions;
 import com.agentforge4j.core.spi.tool.ToolInvocationContext;
 import com.agentforge4j.core.spi.tool.ToolProvider;
 import com.agentforge4j.core.spi.tool.ToolResult;
+import com.agentforge4j.core.spi.tool.ToolRiskMetadata;
 import com.agentforge4j.core.spi.tool.ToolSource;
 import com.agentforge4j.mcp.client.transport.RemoteTool;
 import com.agentforge4j.mcp.client.transport.RemoteToolResult;
@@ -18,6 +19,10 @@ import java.util.List;
  * logical {@link ToolDescriptor}s (capability defaulting to the remote tool name) and delegates
  * invocation to the connection. It resolves nothing across servers: capability resolution is the
  * resolver's job.
+ *
+ * <p>The realised tool set carries no trustworthy mutation hint (the transport surfaces only name,
+ * description, and input schema), so every descriptor is tagged with
+ * {@link ToolRiskMetadata#conservative()} — the highest safe risk.
  */
 public final class McpToolProvider implements ToolProvider {
 
@@ -50,7 +55,8 @@ public final class McpToolProvider implements ToolProvider {
           tool.description(),
           tool.inputSchemaJson(),
           null,
-          new ToolSource(providerId, tool.name())));
+          new ToolSource(providerId, tool.name()),
+          ToolRiskMetadata.conservative()));
     }
     return List.copyOf(descriptors);
   }
