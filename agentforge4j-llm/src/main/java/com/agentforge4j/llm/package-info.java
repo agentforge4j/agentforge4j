@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 /**
  * LLM implementation support: client resolution, service discovery, and provider wiring.
  * <p>

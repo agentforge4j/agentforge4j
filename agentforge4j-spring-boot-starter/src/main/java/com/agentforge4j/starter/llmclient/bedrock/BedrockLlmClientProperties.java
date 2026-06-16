@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 package com.agentforge4j.starter.llmclient.bedrock;
 
 import java.time.Duration;

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 /**
  * JSON Schema assets and validation entry points aligned with core workflow and agent contracts.
  *

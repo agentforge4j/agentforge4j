@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 /**
  * Framework-agnostic bootstrap: assembles runtime and configuration defaults without binding to
  * Spring or a specific LLM provider module.

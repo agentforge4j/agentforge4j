@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 package com.agentforge4j.llm.mistral.dto;
 
 import java.util.List;

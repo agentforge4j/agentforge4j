@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 package com.agentforge4j.runtime.execution.behaviour;
 
 import static org.assertj.core.api.Assertions.assertThat;

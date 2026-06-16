@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 package com.agentforge4j.tools.http;
 
 import com.agentforge4j.core.spi.integration.IntegrationDefinition;

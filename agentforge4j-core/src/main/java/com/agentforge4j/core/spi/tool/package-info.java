@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 /**
  * Transport-agnostic SPI contracts for governed tool invocation (MCP and future tool sources).
  *

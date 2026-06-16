@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 package com.agentforge4j.llm.gemini.dto;
 
 import com.fasterxml.jackson.annotation.JsonValue;

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 /**
  * Shipped workflow bundle resources and classpath locators for built-in demonstration bundles.
  *

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 package com.agentforge4j.llm.fake;
 
 import com.agentforge4j.llm.api.LlmClient;

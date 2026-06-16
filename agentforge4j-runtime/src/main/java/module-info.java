@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 /**
  * Workflow execution engine: owns state transitions, events, and command handling for runs.
  *

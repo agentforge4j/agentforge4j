@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 /**
  * Small shared primitives (validation helpers, common utilities) reused across modules.
  *

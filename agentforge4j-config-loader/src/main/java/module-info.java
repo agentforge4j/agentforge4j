@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 /**
  * Loads workflow and agent bundles from the filesystem or classpath and maps them into core models.
  *

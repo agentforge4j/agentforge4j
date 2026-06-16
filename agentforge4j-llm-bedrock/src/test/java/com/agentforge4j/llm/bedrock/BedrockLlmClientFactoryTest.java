@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 package com.agentforge4j.llm.bedrock;
 
 import static java.nio.charset.StandardCharsets.UTF_8;

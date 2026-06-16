@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 package com.agentforge4j.runtime;
 
 import org.apache.commons.lang3.StringUtils;

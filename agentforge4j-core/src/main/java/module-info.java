@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 /**
  * Framework-agnostic domain contracts for workflow-driven orchestration.
  *

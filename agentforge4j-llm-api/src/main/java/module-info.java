@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 /**
  * Provider-neutral LLM invocation contract: request parameters, client interface, and caller-facing
  * failures. Implementation modules ({@code agentforge4j.llm} and provider adapters) depend on this

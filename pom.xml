@@ -45,6 +45,7 @@
     <jqwik.version>1.10.1</jqwik.version>
     <jacoco-maven-plugin.version>0.8.15</jacoco-maven-plugin.version>
     <sonar-maven-plugin.version>5.7.0.6970</sonar-maven-plugin.version>
+    <license-maven-plugin.version>5.0.0</license-maven-plugin.version>
     <!-- SonarQube Cloud coordinates (public OSS project). Plain build properties, NOT secrets;
          the analysis token is supplied separately via the SONAR_TOKEN env/secret in CI. -->
     <sonar.organization>agentforge4j</sonar.organization>
@@ -469,6 +470,44 @@
             <phase>package</phase>
             <goals>
               <goal>makeAggregateBom</goal>
+            </goals>
+          </execution>
+        </executions>
+      </plugin>
+
+      <!-- License headers: GATING. Inserts (license:format) and enforces (check, bound to verify)
+           the bare SPDX identifier line on every Java source. SINGLE_LINE_DOUBLESLASH_STYLE renders
+           the one-line template as exactly "// SPDX-License-Identifier: Apache-2.0" (overriding the
+           default SLASHSTAR block style); includes restrict the sweep to *.java so no other file
+           type is touched, and target/ (generated sources) is excluded. module-info.java is a
+           .java file and is headered too. -->
+      <plugin>
+        <groupId>com.mycila</groupId>
+        <artifactId>license-maven-plugin</artifactId>
+        <version>${license-maven-plugin.version}</version>
+        <configuration>
+          <licenseSets>
+            <licenseSet>
+              <header>${config.dir}/license/spdx-apache-2.0.txt</header>
+              <includes>
+                <include>**/*.java</include>
+              </includes>
+              <excludes>
+                <exclude>**/target/**</exclude>
+              </excludes>
+            </licenseSet>
+          </licenseSets>
+          <mapping>
+            <java>SINGLE_LINE_DOUBLESLASH_STYLE</java>
+          </mapping>
+          <strictCheck>true</strictCheck>
+        </configuration>
+        <executions>
+          <execution>
+            <id>license-check</id>
+            <phase>verify</phase>
+            <goals>
+              <goal>check</goal>
             </goals>
           </execution>
         </executions>

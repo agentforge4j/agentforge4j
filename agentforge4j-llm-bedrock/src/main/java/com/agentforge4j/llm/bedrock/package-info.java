@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 /**
  * Amazon Bedrock LLM integration for AgentForge4J.
  * <p>

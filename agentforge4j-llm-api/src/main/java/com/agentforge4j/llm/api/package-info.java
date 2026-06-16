@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 /**
  * Public LLM invocation contract shared by runtime callers and provider adapters.
  * <p>

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 package com.agentforge4j.core.agent;
 
 import com.fasterxml.jackson.databind.ObjectMapper;

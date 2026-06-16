@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 /**
  * HTTP tool provider: exposes governed external HTTP endpoints as tool-SPI {@code ToolProvider}s.
  *
