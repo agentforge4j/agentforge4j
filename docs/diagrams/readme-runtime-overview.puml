@@ -1,0 +1,35 @@
+@startuml readme-runtime-overview
+'==============================================================================
+' Diagram  : Runtime Execution Overview (README companion)
+' Version  : v2
+' Date     : 2026-06-17
+' Audience : README / docs readers — the main lifecycle, not every behaviour.
+' Type     : SIMPLIFIED MAINTAINED COMPANION of runtime-execution-chain.puml.
+'            One idea: how a workflow run advances (and that not every step
+'            calls the LLM).
+' Source   : agentforge4j-runtime (live source) + runtime-execution-chain.puml.
+'==============================================================================
+skinparam packageStyle rectangle
+skinparam classAttributeIconSize 0
+hide empty members
+
+start
+:start workflow run;
+repeat :resolve next step + behaviour;
+if (agent-bearing behaviour?) then (yes)
+  :invoke agent (LLM)\nand parse commands;
+  if (tool command?) then (yes)
+    :governed tool call\n(policy + approval gate);
+  else (no)
+  endif
+else (no - non-agent behaviour)
+  :run behaviour\n(no LLM call);
+endif
+:transition gate\n(AUTO / HUMAN_REVIEW / HUMAN_APPROVAL);
+:persist state\n+ emit events;
+repeat while (more steps?) is (yes)
+->no;
+:terminal state\n(COMPLETED / FAILED / CANCELLED);
+stop
+
+@enduml

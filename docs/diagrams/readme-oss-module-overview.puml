@@ -1,0 +1,44 @@
+@startuml readme-oss-module-overview
+'==============================================================================
+' Diagram  : OSS Module Overview (README companion)
+' Version  : v3
+' Date     : 2026-06-17
+' Audience : README / docs readers — a grouped architecture orientation.
+' Type     : SIMPLIFIED MAINTAINED COMPANION of oss-module-dependency.puml.
+'            One idea: how the OSS modules layer by responsibility (each module
+'            points to what it depends on / the SPI it plugs into).
+' Source   : root reactor pom.xml + module-info.java (live source) +
+'            oss-module-dependency.puml.
+'==============================================================================
+skinparam componentStyle rectangle
+skinparam packageStyle rectangle
+skinparam linetype ortho
+skinparam shadowing false
+skinparam nodesep 28
+skinparam ranksep 34
+hide empty members
+top to bottom direction
+
+[Spring Boot Starter] as starter
+[Bootstrap] as bootstrap
+[Runtime] as runtime
+[Config Loader] as config
+[Core] as core
+[LLM API] as llm
+[Tools / MCP] as tools
+[Providers] as providers
+
+starter   --> bootstrap
+bootstrap --> runtime
+runtime   --> config
+config    --> core
+runtime   --> core
+runtime   --> llm
+tools     ..> core : tool SPI
+providers ..> llm  : LLM SPI
+
+' Layout-only ranking: keep the SPI implementors directly below their SPI.
+core -[hidden]-> tools
+llm  -[hidden]-> providers
+
+@enduml

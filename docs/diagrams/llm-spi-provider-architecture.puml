@@ -1,0 +1,156 @@
+@startuml llm-spi-provider-architecture
+'==============================================================================
+' Diagram : LLM SPI + Provider Architecture (Component + Class hybrid)
+' Version : v1.2
+' Date    : 2026-06-16
+' Source  : agentforge4j-llm-api, agentforge4j-llm, provider modules, bootstrap.
+' Note    : LlmClientFactory lives in module agentforge4j-llm (com.agentforge4j.llm),
+'           NOT in llm-api. There is no ServiceLoaderModelTierResolver.
+'==============================================================================
+skinparam classAttributeIconSize 0
+skinparam packageStyle rectangle
+hide empty members
+top to bottom direction
+
+'------------------------------ llm-api contracts -----------------------------
+package "agentforge4j-llm-api  (contracts, no impl)" #F3F7FF {
+  interface LlmClient {
+    +getProviderName() : String
+    +execute(LlmExecutionRequest) : LlmExecutionResponse
+    +getRetryPolicy() : Optional<LlmRetryPolicy>
+  }
+  class LlmExecutionRequest <<record>>
+  class LlmExecutionResponse <<record>>
+  class TokenUsageReport <<record>> {
+    +inputTokens : long
+    +outputTokens : long
+    +cachedInputTokens : long
+    +cacheWriteTokens : long
+    ' (no totalTokens)
+  }
+  class LlmRetryPolicy <<record>>
+  class LlmInvocationException
+  class PromptLayerBoundaries <<record>>
+  enum ModelTier {
+    LITE
+    STANDARD
+    POWERFUL
+  }
+  interface ModelTierResolver {
+    +resolve(provider : String, tier : ModelTier) : String
+  }
+  class ModelTierResolutionException
+}
+LlmExecutionResponse *-- TokenUsageReport
+
+'------------------------------- llm shared base ------------------------------
+package "agentforge4j-llm  (shared impl base)" #F3FFF5 {
+  interface LlmClientFactory {
+    +getProviderName() : String
+    +requiresApiKey() : boolean
+    +create(ObjectMapper, LlmClientConfiguration) : LlmClient
+  }
+  abstract class AbstractHttpLlmClient {
+    #buildHttpRequest(LlmExecutionRequest) : HttpRequest
+    #validateAndExtractResponse(json) : LlmExecutionResponse
+  }
+  class RetryingLlmClient <<decorator>>
+  class ConfigModelTierResolver
+  class ShippedModelTierDefaults
+}
+
+AbstractHttpLlmClient ..|> LlmClient
+RetryingLlmClient ..|> LlmClient
+RetryingLlmClient o--> LlmClient : wraps (transient-only retry)
+RetryingLlmClient ..> LlmRetryPolicy
+ConfigModelTierResolver ..|> ModelTierResolver
+ConfigModelTierResolver --> ShippedModelTierDefaults : fallback defaults
+LlmClientFactory ..> LlmClient : creates
+
+note right of RetryingLlmClient
+  Centralised retry decorator — providers do
+  NOT implement their own retry.
+end note
+
+'------------------------------- provider modules -----------------------------
+package "LLM providers (×10)  <<providers>>" as providers #FFFDF3 {
+  class "openai : OpenAiLlmClientFactory / OpenAiLlmClient" as P_openai
+  class "claude : ClaudeLlmClientFactory / ClaudeLlmClient" as P_claude
+  class "ollama : OllamaLlmClientFactory / OllamaLlmClient" as P_ollama
+  class "vllm : VllmLlmClientFactory / VllmLlmClient" as P_vllm
+  class "gemini : GeminiLlmClientFactory / GeminiLlmClient" as P_gemini
+  class "mistral : MistralLlmClientFactory / MistralLlmClient" as P_mistral
+  class "azure-openai : AzureOpenAiLlmClientFactory / AzureOpenAiLlmClient" as P_azure
+  class "openai-compatible : OpenAiCompatibleLlmClientFactory / OpenAiCompatibleLlmClient" as P_compat
+  class "bedrock : BedrockLlmClientFactory / BedrockLlmClient" as P_bedrock
+  class "llm-fake : FakeLlmClientFactory / FakeLlmClient" as P_fake
+}
+
+' 8 HTTP providers extend AbstractHttpLlmClient; bedrock + fake implement LlmClient directly.
+P_openai  ..|> LlmClientFactory
+P_claude  ..|> LlmClientFactory
+P_ollama  ..|> LlmClientFactory
+P_vllm    ..|> LlmClientFactory
+P_gemini  ..|> LlmClientFactory
+P_mistral ..|> LlmClientFactory
+P_azure   ..|> LlmClientFactory
+P_compat  ..|> LlmClientFactory
+P_bedrock ..|> LlmClientFactory
+P_fake    ..|> LlmClientFactory
+
+P_openai  ..> AbstractHttpLlmClient
+P_claude  ..> AbstractHttpLlmClient
+P_ollama  ..> AbstractHttpLlmClient
+P_vllm    ..> AbstractHttpLlmClient
+P_gemini  ..> AbstractHttpLlmClient
+P_mistral ..> AbstractHttpLlmClient
+P_azure   ..> AbstractHttpLlmClient
+P_compat  ..> AbstractHttpLlmClient
+
+note bottom of P_bedrock
+  AWS SDK v2 — SigV4 auth, InvokeModel (Anthropic)
+  / Converse transports. Implements LlmClient directly
+  (does NOT extend AbstractHttpLlmClient).
+end note
+note bottom of P_fake
+  Scripted deterministic responses; no HTTP.
+  Implements LlmClient directly. Tests / dev / sandbox.
+end note
+
+'-------------------------------- bootstrap -----------------------------------
+package "agentforge4j-bootstrap" {
+  class AgentForge4jBootstrap
+  class LlmClientWiring
+  class ConfigReader
+}
+
+AgentForge4jBootstrap --> LlmClientWiring
+LlmClientWiring ..> providers : <<discovers>>\nServiceLoader<LlmClientFactory>
+LlmClientWiring --> ConfigReader
+
+note bottom of ConfigReader
+  env prefix AGENTFORGE4J_, sys-prop prefix agentforge4j.
+  System properties win over env vars.
+  Provider-config precedence:
+  programmatic (withLlmProvider) > env/sysprop
+  > no-API-key defaults (ollama, vllm).
+end note
+
+'---------------------- model-pin precedence (runtime) ------------------------
+package "runtime.llm  (AgentInvoker selection ladder)" {
+  enum ModelSource {
+    PIN
+    TIER
+    PROVIDER_DEFAULT
+  }
+}
+note right of ModelSource
+  AgentInvoker resolves model:
+  1. modelPin (concrete model)         -> PIN
+  2. ModelTierResolver (tier -> model) -> TIER
+  3. provider default                  -> PROVIDER_DEFAULT
+  ModelSource labels the outcome for audit.
+end note
+ModelSource ..> ModelTierResolver
+
+@enduml

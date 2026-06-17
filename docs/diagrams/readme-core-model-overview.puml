@@ -1,0 +1,29 @@
+@startuml readme-core-model-overview
+'==============================================================================
+' Diagram  : Core Model Overview (README companion)
+' Version  : v2
+' Date     : 2026-06-17
+' Audience : README / docs readers — the main domain concepts only.
+' Type     : SIMPLIFIED MAINTAINED COMPANION of core-type-hierarchy.puml.
+'            One idea: a workflow controls the AI — it contains steps, steps use
+'            behaviours, and only agent behaviours invoke an agent.
+' Source   : agentforge4j-core (live source) + core-type-hierarchy.puml.
+'==============================================================================
+skinparam classAttributeIconSize 0
+skinparam packageStyle rectangle
+skinparam linetype ortho
+hide empty members
+top to bottom direction
+
+class Workflow
+class Step
+class Behaviour
+class Agent
+class Transition
+
+Workflow "1" *-- "*" Step : contains
+Step --> Behaviour : uses
+Behaviour ..> Agent : may invoke
+Step --> Transition : gated by
+
+@enduml

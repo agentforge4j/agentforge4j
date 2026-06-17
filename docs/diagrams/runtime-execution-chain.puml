@@ -1,0 +1,204 @@
+@startuml runtime-execution-chain
+'==============================================================================
+' Diagram : agentforge4j-runtime Execution Chain (Class Diagram)
+' Version : v1.2
+' Date    : 2026-06-16
+' Source  : agentforge4j-runtime/src/main/java + WorkflowRuntime in core (live).
+' Emphasis: composition + call chain (not full UML rigour). The single tool
+'           chokepoint is DefaultToolExecutionService.
+'==============================================================================
+skinparam classAttributeIconSize 0
+skinparam packageStyle rectangle
+hide empty members
+left to right direction
+
+'------------------------------- entry point ---------------------------------
+package "core.runtime" {
+  interface WorkflowRuntime {
+    +start(workflowId) : String
+    +continueRun(runId, actorId)
+    +submitInput(runId, answers, actorId)
+    +approve(runId, stepId, note, actorId)
+    +retry(runId, stepId, actorId)
+    +cancel(runId, actorId)
+    +submitReview(runId, stepId, note, actorId)
+    +decideStepApproval(runId, stepId, decision)
+    +continueAfterToolApproval(runId, toolInvocationId, ApprovalDecision) : WorkflowState
+    +resolveToolDecision(runId, toolInvocationId, ToolDecision) : WorkflowState
+    +getState(runId) : WorkflowState
+  }
+}
+
+package "runtime" {
+  class DefaultWorkflowRuntime {
+    -maxNestingDepth : int
+  }
+  interface RunContextManager {
+    +open(runId, workflowId, stepId, agentId) : Scope
+  }
+  class StepSequenceExecutor
+  class ExecutableExecutor
+  class EventRecorder
+  class TransitionGate
+  class ToolResultApplier
+}
+
+WorkflowRuntime <|.. DefaultWorkflowRuntime
+
+DefaultWorkflowRuntime --> StepSequenceExecutor
+DefaultWorkflowRuntime --> ExecutableExecutor
+DefaultWorkflowRuntime --> TransitionGate
+DefaultWorkflowRuntime --> ToolResultApplier
+DefaultWorkflowRuntime --> RunContextManager
+DefaultWorkflowRuntime --> EventRecorder
+
+'---------------------------- behaviour dispatch ------------------------------
+package "runtime.execution.behaviour(.handler)" {
+  interface "BehaviourHandler<B extends StepBehaviour>" as BehaviourHandler {
+    +behaviourType() : Class<B>
+    +handle(StepDefinition, B, ExecutionContext) : ExecutionOutcome
+  }
+  class AgentBehaviourHandler
+  class SparBehaviourHandler
+  class WorkflowBehaviourHandler
+  class InputBehaviourHandler
+  class ResourceBehaviourHandler
+  class BranchBehaviourHandler
+  class FailBehaviourHandler
+  class RetryPreviousBehaviourHandler
+}
+
+ExecutableExecutor --> BehaviourHandler : dispatch by behaviourType()
+BehaviourHandler <|.. AgentBehaviourHandler
+BehaviourHandler <|.. SparBehaviourHandler
+BehaviourHandler <|.. WorkflowBehaviourHandler
+BehaviourHandler <|.. InputBehaviourHandler
+BehaviourHandler <|.. ResourceBehaviourHandler
+BehaviourHandler <|.. BranchBehaviourHandler
+BehaviourHandler <|.. FailBehaviourHandler
+BehaviourHandler <|.. RetryPreviousBehaviourHandler
+
+AgentBehaviourHandler --> AgentInvoker
+
+'----------------------------- agent invocation -------------------------------
+package "runtime.llm" {
+  class AgentInvoker
+  enum ModelSource {
+    PIN
+    TIER
+    PROVIDER_DEFAULT
+  }
+  interface LlmClientResolver
+  class LlmCommandParser
+}
+
+AgentInvoker --> LlmClientResolver : provider selection\n(PIN > TIER > PROVIDER_DEFAULT)
+AgentInvoker ..> ModelSource : audits source
+AgentInvoker --> LlmCommandParser : parse LlmCommand sequence
+LlmClientResolver ..> "llm-api.LlmClient" : execute(request)
+
+'----------------------------- command handling -------------------------------
+package "runtime.command(.handler)" {
+  interface "CommandHandler<C extends LlmCommand>" as CommandHandler {
+    +getCommandClass() : Class<C>
+    +apply(C, CommandApplicationRequest) : CommandApplicationResult
+  }
+  class CompleteCommandHandler
+  class ContinueCommandHandler
+  class CreateFileCommandHandler
+  class EscalateCommandHandler
+  class GeneralQuestionCommandHandler
+  class RunCommandHandler
+  class SetContextCommandHandler
+  class UserPromptCommandHandler
+}
+
+AgentInvoker --> CommandHandler : dispatch per LlmCommand
+CommandHandler <|.. CompleteCommandHandler
+CommandHandler <|.. ContinueCommandHandler
+CommandHandler <|.. CreateFileCommandHandler
+CommandHandler <|.. EscalateCommandHandler
+CommandHandler <|.. GeneralQuestionCommandHandler
+CommandHandler <|.. RunCommandHandler
+CommandHandler <|.. SetContextCommandHandler
+CommandHandler <|.. UserPromptCommandHandler
+CommandHandler <|.. ToolInvocationCommandHandler
+
+'--------------------------- tool execution chokepoint ------------------------
+package "runtime.tool" {
+  class DefaultToolExecutionService <<chokepoint>> {
+    .. single tool chokepoint ..
+    1. resolve via ToolProviderResolver
+    2. validate via ToolArgumentValidator
+    3. check ToolPolicy
+    4. hard-timeout invoke (ExecutorService)
+    5. pre-invoke approval suspend -> AWAITING_TOOL_APPROVAL
+       (resume: continueAfterToolApproval)
+    6. post denial/failure (after retries) -> AWAITING_TOOL_DECISION
+       (resume: resolveToolDecision)
+  }
+  class DefaultToolCatalog
+  class NoOpToolPolicy
+  class InMemoryPendingToolInvocationStore
+  class ToolArgumentValidator
+  class ToolInvocationCommandHandler
+}
+
+ToolInvocationCommandHandler --> DefaultToolExecutionService
+DefaultToolExecutionService ..|> "core.spi.tool.ToolExecutionService"
+DefaultToolExecutionService --> "core.spi.tool.ToolProviderResolver"
+DefaultToolExecutionService --> ToolArgumentValidator
+DefaultToolExecutionService --> "core.spi.tool.ToolPolicy"
+DefaultToolExecutionService --> InMemoryPendingToolInvocationStore
+DefaultToolExecutionService ..> ToolResultApplier : apply result, continue
+NoOpToolPolicy ..|> "core.spi.tool.ToolPolicy"
+DefaultToolCatalog ..|> "core.spi.tool.ToolCatalog"
+
+'------------------------------- transition gate ------------------------------
+note right of TransitionGate
+  TransitionGate.suspendIfGated(...) and
+  suspendBlueprintIfGated(...) evaluate at:
+  step completion, input completion,
+  tool completion, blueprint post-loop.
+  HUMAN_REVIEW   -> AWAITING_REVIEW
+  HUMAN_APPROVAL -> AWAITING_STEP_APPROVAL
+end note
+
+'------------------------------ in-memory stores ------------------------------
+package "runtime  (in-memory stores; used when no persistence module present)" {
+  class InMemoryWorkflowStateRepository
+  class InMemoryWorkflowEventLog
+  class InMemoryWorkflowFileRepository
+  class InMemoryIntegrationRepository
+}
+
+'------------------------------- starter seam ---------------------------------
+package "spring-boot-starter" {
+  class MdcRunContextManager
+}
+RunContextManager <|.. MdcRunContextManager
+
+'------------------------------- flow narration -------------------------------
+note as N_flow
+  <b>Dispatch flow (per behaviour kind)</b>
+  start() -> behaviour dispatch loop (ExecutableExecutor -> BehaviourHandler).
+  Each StepBehaviour is routed to its own handler; only agent-bearing steps
+  call the LLM.
+
+  <b>Agent-bearing</b> (AgentBehaviour, SparBehaviour):
+  handler -> AgentInvoker -> LlmClient.execute -> LlmCommandParser
+  -> CommandHandler per command.
+
+  <b>Tool command</b> (when the LLM emits ToolInvocationCommand):
+  DefaultToolExecutionService -> (approve/decision suspend) or invoke
+  -> ToolResultApplier -> continue.
+
+  <b>Non-agent</b> (InputBehaviour, ResourceBehaviour, BranchBehaviour,
+  FailBehaviour, RetryPreviousBehaviour, WorkflowBehaviour):
+  handled entirely by their BehaviourHandler — <b>no AgentInvoker / no LLM call</b>.
+
+  <b>Always</b>: handler -> TransitionGate -> status update
+  -> events emitted (EventRecorder).
+end note
+
+@enduml

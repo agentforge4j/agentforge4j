@@ -1,0 +1,270 @@
+@startuml core-type-hierarchy
+'==============================================================================
+' Diagram : agentforge4j-core Type Hierarchy (Class Diagram)
+' Version : v1.2
+' Date    : 2026-06-16
+' Source  : agentforge4j-core/src/main/java (live source). Packages shown are
+'           the real subpackages of com.agentforge4j.core.
+'==============================================================================
+skinparam classAttributeIconSize 0
+skinparam packageStyle rectangle
+hide empty members
+
+'------------------------------ Executable side -------------------------------
+package "core.workflow" {
+  interface Executable <<sealed>>
+  class WorkflowDefinition <<record>>
+}
+
+package "core.agent" {
+  class AgentDefinition <<record>> {
+    +modelTier : String
+  }
+  note bottom of AgentDefinition
+    NOT an Executable. modelTier is a String
+    (core ⊥ llm-api — see ModelTier box).
+  end note
+}
+
+package "core.workflow.step" {
+  class StepDefinition <<record>> {
+    +behaviour : StepBehaviour
+    +modelTier : String
+  }
+  enum StepTransition {
+    AUTO
+    HUMAN_REVIEW
+    HUMAN_APPROVAL
+  }
+}
+
+package "core.workflow.step.blueprint" {
+  class BlueprintDefinition <<record>>
+  class BlueprintRef <<record>>
+  class BlueprintBehaviour <<record>>
+}
+
+Executable <|.. WorkflowDefinition
+Executable <|.. StepDefinition
+Executable <|.. BlueprintDefinition
+Executable <|.. BlueprintRef
+
+'------------------------------- behaviours -----------------------------------
+package "core.workflow.step.behaviour" {
+  interface StepBehaviour <<sealed>>
+  interface TransitionAware {
+    +transition() : StepTransition
+  }
+  class AgentBehaviour         <<record>>
+  class SparBehaviour          <<record>>
+  class WorkflowBehaviour      <<record>>
+  class InputBehaviour         <<record>>
+  class ResourceBehaviour      <<record>>
+  class BranchBehaviour        <<record>>
+  class FailBehaviour          <<record>>
+  class RetryPreviousBehaviour <<record>>
+}
+
+StepBehaviour <|.. AgentBehaviour
+StepBehaviour <|.. SparBehaviour
+StepBehaviour <|.. WorkflowBehaviour
+StepBehaviour <|.. InputBehaviour
+StepBehaviour <|.. ResourceBehaviour
+StepBehaviour <|.. BranchBehaviour
+StepBehaviour <|.. FailBehaviour
+StepBehaviour <|.. RetryPreviousBehaviour
+
+' Only 5 of the 8 permits are TransitionAware; BlueprintBehaviour also is.
+TransitionAware <|.. AgentBehaviour
+TransitionAware <|.. SparBehaviour
+TransitionAware <|.. WorkflowBehaviour
+TransitionAware <|.. InputBehaviour
+TransitionAware <|.. ResourceBehaviour
+TransitionAware <|.. BlueprintBehaviour
+TransitionAware ..> StepTransition
+note right of TransitionAware
+  BranchBehaviour, FailBehaviour and
+  RetryPreviousBehaviour are NOT TransitionAware.
+  BlueprintBehaviour is a separate record
+  (not a StepBehaviour permit).
+end note
+
+StepDefinition *-- StepBehaviour
+' BlueprintRef holds a String blueprintId, resolved to a BlueprintDefinition at
+' runtime via repository/catalog (no direct type reference to BlueprintBehaviour).
+BlueprintRef ..> BlueprintDefinition : <<references by id>>
+BlueprintDefinition *-- BlueprintBehaviour : behaviour
+BlueprintDefinition o-- Executable : steps
+
+'------------------------------ state / events --------------------------------
+package "core.workflow.state" {
+  enum WorkflowStatus {
+    RUNNING
+    PAUSED
+    AWAITING_INPUT
+    AWAITING_APPROVAL
+    AWAITING_TOOL_APPROVAL
+    AWAITING_TOOL_DECISION
+    AWAITING_REVIEW
+    AWAITING_STEP_APPROVAL
+    COMPLETED
+    FAILED
+    CANCELLED
+  }
+  interface RunFailure <<sealed>> {
+    +failureReason() : String
+    +failedStepId() : String
+    +supportId() : String
+  }
+  class ExceptionFailure <<record>>
+  class StepRejectionFailure <<record>>
+  note right of RunFailure
+    @JsonTypeInfo(property = "kind",
+      defaultImpl = ExceptionFailure)
+  end note
+  RunFailure <|.. ExceptionFailure
+  RunFailure <|.. StepRejectionFailure
+}
+
+package "core.workflow.event" {
+  enum WorkflowEventType {
+    RUN_STARTED / RUN_COMPLETED / RUN_FAILED / RUN_CANCELLED
+    STEP_STARTED / STEP_COMPLETED / STEP_FAILED / STEP_RETRIED
+    STEP_AWAITING_REVIEW / STEP_REVIEWED
+    STEP_AWAITING_APPROVAL / STEP_APPROVED / STEP_REJECTED
+    AWAITING_INPUT / AWAITING_APPROVAL / APPROVED / REJECTED
+    LLM_OUTPUT / LLM_CALL_COMPLETED / USAGE_RECORD_FAILED
+    CONTEXT_UPDATED / AGENT_SWAPPED / PROMPT_OVERRIDDEN
+    LOOP_ITERATION_STARTED / LOOP_ITERATION_COMPLETED
+    USER_PROMPT_LIMIT_REACHED
+    TOOL_INVOCATION_REQUESTED / TOOL_INVOCATION_COMPLETED
+    TOOL_INVOCATION_DENIED / TOOL_INVOCATION_APPROVAL_PENDING
+    TOOL_INVOCATION_FAILED
+    .. 31 values total ..
+  }
+}
+
+'---------------------------- requirements substrate --------------------------
+package "core.workflow.requirement" {
+  class WorkflowRequirement <<record>> {
+    +id : String
+    +type : String
+    +scope : RequirementScope
+    +stepId : String
+    +action : String
+    +required : boolean
+    +defaultJson : String
+    +resolution : ResolutionMode
+  }
+  enum RequirementScope {
+    WORKFLOW
+    STEP
+    STEP_ACTION
+  }
+  enum ResolutionMode {
+    INSTALL
+    RUN_START
+    INSTALL_OR_RUN_START
+    DEFERRED
+  }
+  interface RequirementResolver {
+    +resolve(WorkflowRequirement, ResolutionContext) : String
+  }
+  class DefaultRequirementResolver
+  class ResolutionContext <<record>> {
+    +workflowId : String
+    +runId : String
+    +contextValues : Map<String,String>
+  }
+  WorkflowRequirement *-- RequirementScope
+  WorkflowRequirement *-- ResolutionMode
+  RequirementResolver <|.. DefaultRequirementResolver
+  RequirementResolver ..> ResolutionContext
+}
+
+'-------------------------------- tool SPI ------------------------------------
+package "core.spi.tool" {
+  interface ToolCatalog
+  interface ToolPolicy
+  interface ToolProviderResolver
+  interface ToolProvider {
+    +providerId() : String
+    +listTools() : List<ToolDescriptor>
+  }
+  interface ToolExecutionService
+  interface PendingToolInvocationStore
+  interface ApprovalDecision <<sealed>>
+  class "ApprovalDecision.Approve" as Approve <<record>>
+  class "ApprovalDecision.Reject"  as Reject  <<record>>
+  interface ToolDecision <<sealed>> {
+    +actorId() : String
+  }
+  class "ToolDecision.Continue" as TdContinue <<record>>
+  class "ToolDecision.Retry"    as TdRetry    <<record>>
+  ApprovalDecision <|.. Approve
+  ApprovalDecision <|.. Reject
+  ToolDecision <|.. TdContinue
+  ToolDecision <|.. TdRetry
+  ' resolve() returns a ResolvedTool that carries the ToolProvider.
+  ToolProviderResolver ..> ToolProvider : <<resolves>>
+}
+
+package "core.command" {
+  class ToolInvocationCommand <<record>> {
+    +toolInvocationId : String
+    +capability : String
+    +arguments : Map<String,Object>
+    +llmRationale : String
+  }
+  note bottom of ToolInvocationCommand
+    One of the 9 LlmCommand permits
+    (see runtime-execution-chain diagram).
+  end note
+}
+
+'----------------------------- integration SPI --------------------------------
+package "core.spi.integration" {
+  class IntegrationDefinition <<record>> {
+    +id : String
+    +displayName : String
+    +type : IntegrationType
+    +config : String
+    +capabilities : List<IntegrationCapability>
+    +active : boolean
+  }
+  enum IntegrationType {
+    MCP_STDIO
+    MCP_STREAMABLE_HTTP
+    HTTP_TOOL
+  }
+  class IntegrationCapability <<record>> {
+    +capability : String
+    +remoteToolName : String
+    +mutating : boolean
+  }
+  interface IntegrationRepository
+  interface MutableIntegrationRepository
+  interface IntegrationToolProviderFactory
+  IntegrationDefinition *-- IntegrationType
+  IntegrationDefinition *-- IntegrationCapability
+  IntegrationRepository <|-- MutableIntegrationRepository
+}
+
+'------------------------ llm-api boundary (separate) -------------------------
+package "llm-api  (core does NOT depend on this)" #FFF3F3 {
+  enum ModelTier {
+    LITE
+    STANDARD
+    POWERFUL
+  }
+  interface ModelTierResolver {
+    +resolve(provider : String, tier : ModelTier) : String
+  }
+  class ModelTierResolutionException
+  note bottom of ModelTier
+    Lives in agentforge4j-llm-api. core keeps
+    modelTier as a String to preserve core ⊥ llm-api.
+  end note
+}
+
+@enduml

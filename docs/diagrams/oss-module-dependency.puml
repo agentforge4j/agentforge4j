@@ -1,0 +1,166 @@
+@startuml oss-module-dependency
+'==============================================================================
+' Diagram : OSS Module Dependency (Component Diagram)
+' Version : v1.2
+' Date    : 2026-06-16
+' Source  : each module's module-info.java + root reactor pom.xml (live source)
+' Note    : solid edges are JPMS `requires` (modules with module-info.java).
+'           `agentforge4j-mcp` and `agentforge4j-spring-boot-starter` have no
+'           module-info.java, so their edges are plain Maven <<compile>>
+'           dependencies (dashed/orange), not JPMS `requires`. Reactor has 22
+'           modules. There is NO `agentforge4j-integrations` module (integration
+'           SPI lives in core) and NO `agentforge4j-file-api` module (planned).
+'==============================================================================
+skinparam componentStyle rectangle
+skinparam packageStyle rectangle
+skinparam classAttributeIconSize 0
+hide empty members
+left to right direction
+
+package "Foundation" {
+  [agentforge4j-util] as util
+}
+
+package "Core contracts" {
+  [agentforge4j-schema] as schema
+  [agentforge4j-llm-api] as llmapi
+}
+
+package "Domain" {
+  [agentforge4j-core] as core
+}
+
+package "LLM shared" {
+  [agentforge4j-llm] as llm
+}
+
+package "LLM providers" as providers {
+  [openai]
+  [claude]
+  [ollama]
+  [vllm]
+  [gemini]
+  [mistral]
+  [azure-openai]
+  [openai-compatible]
+  [bedrock]
+  [llm-fake]
+}
+
+package "Tool / MCP" {
+  [agentforge4j-mcp] as mcp
+  [agentforge4j-tools-http] as toolshttp
+}
+
+package "Config & content" {
+  [agentforge4j-config-loader] as configloader
+  [agentforge4j-workflows] as workflows
+}
+
+package "Execution" {
+  [agentforge4j-runtime] as runtime
+}
+
+package "Bootstrap" {
+  [agentforge4j-bootstrap] as bootstrap
+}
+
+package "Spring" {
+  [agentforge4j-spring-boot-starter] as starter
+}
+
+'------------------------------- requires -------------------------------------
+llmapi --> util
+schema --> util
+core   --> util
+llm    --> llmapi : <<transitive>>
+
+' Each of the 10 providers `requires agentforge4j.llm` (+ util).
+' llm-api is visible transitively through llm, not required directly.
+[openai]            --> llm
+[claude]            --> llm
+[ollama]            --> llm
+[vllm]              --> llm
+[gemini]            --> llm
+[mistral]           --> llm
+[azure-openai]      --> llm
+[openai-compatible] --> llm
+[bedrock]           --> llm
+[llm-fake]          --> llm
+
+' mcp has NO module-info.java -> Maven compile dependency, not JPMS `requires`.
+mcp       .[#darkorange].> core : <<compile>>
+mcp       .[#darkorange].> util : <<compile>>
+toolshttp --> core
+toolshttp --> util
+
+configloader --> core
+configloader --> schema
+configloader --> workflows
+configloader --> util
+workflows    --> util
+
+runtime --> core
+runtime --> configloader
+runtime --> schema
+runtime --> llmapi
+runtime --> llm
+runtime --> util
+
+bootstrap --> runtime
+bootstrap --> core
+bootstrap --> llmapi
+bootstrap --> llm
+bootstrap --> configloader
+bootstrap --> schema
+bootstrap --> workflows
+bootstrap --> util
+
+' spring-boot-starter has NO module-info.java -> Maven compile dependency.
+starter .[#darkorange].> bootstrap : <<compile>>
+
+'---------------------------- ServiceLoader seams -----------------------------
+bootstrap ..> providers  : <<discovers>>\nServiceLoader<LlmClientFactory>
+bootstrap ..> toolshttp  : <<discovers>>\nIntegrationToolProviderFactory
+bootstrap ..> mcp        : <<discovers>>\nIntegrationToolProviderFactory
+
+'-------------------------------- annotations ---------------------------------
+legend bottom
+  <b>Edge legend</b>
+  Solid arrow = JPMS <b>`requires`</b> (module has module-info.java)
+  <color:darkorange>Dashed orange arrow</color> = Maven <b><<compile>></b> dependency
+  (carve-outs <b>mcp</b> & <b>spring-boot-starter</b> — no module-info.java)
+  Dashed grey arrow = <<discovers>> via ServiceLoader
+endlegend
+
+note as N_boundary
+  <b>Hard boundary: core ⊥ llm-api</b>
+  core `requires` only util — it never requires llm-api.
+  `modelTier` is stored as a String on AgentDefinition /
+  StepDefinition so core stays independent of the LLM SPI.
+end note
+core      .. N_boundary
+N_boundary .. llmapi
+
+note bottom of starter
+  JPMS carve-out: <b>no module-info.java</b>
+  (Spring Boot auto-configuration)
+end note
+
+note bottom of mcp
+  JPMS carve-out: <b>no module-info.java</b>
+  (MCP SDK automatic module name)
+end note
+
+note as N_absent
+  <b>Not present in the reactor</b>
+  * No `agentforge4j-integrations` module — the integration SPI
+    lives in core (`com.agentforge4j.core.spi.integration`);
+    tools-http and mcp contribute IntegrationToolProviderFactory impls
+    (tools-http via module-info `provides` + META-INF/services;
+    mcp via META-INF/services: McpStdio / McpStreamableHttp factories).
+  * No `agentforge4j-file-api` module yet (planned).
+  Providers also `requires agentforge4j.util` (edges omitted for clarity).
+end note
+
+@enduml

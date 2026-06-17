@@ -1,0 +1,32 @@
+@startuml readme-llm-architecture-overview
+'==============================================================================
+' Diagram  : LLM Architecture Overview (README companion)
+' Version  : v3
+' Date     : 2026-06-17
+' Audience : README / docs readers — the main request path, not every field.
+' Type     : SIMPLIFIED MAINTAINED COMPANION of llm-spi-provider-architecture.puml.
+'            One idea: a pluggable provider stack with centralised retry.
+' Source   : agentforge4j-llm-api, agentforge4j-llm, provider modules (live)
+'            + llm-spi-provider-architecture.puml.
+'==============================================================================
+skinparam packageStyle rectangle
+skinparam rectangleBorderThickness 1
+skinparam shadowing false
+skinparam nodesep 36
+skinparam ranksep 30
+skinparam padding 4
+hide empty members
+top to bottom direction
+
+rectangle "  Runtime / AgentInvoker  " as Runtime
+rectangle "  LlmClient (interface)  " as Client
+rectangle "  RetryingLlmClient  \n  (centralised retry)  " as Retry
+rectangle "  Providers  \n  OpenAI / Claude / Bedrock  \n  + more  " as Providers
+rectangle "  LlmClientFactory  \n  (+ ModelTierResolver)  \n  creates & selects the provider client  " as Factory
+
+Runtime --> Client : calls execute()
+Client  --> Retry  : resolved to
+Retry   --> Providers : wraps provider client
+Factory --> Providers : creates / selects
+
+@enduml
