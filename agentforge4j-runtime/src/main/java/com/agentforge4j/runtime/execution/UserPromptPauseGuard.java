@@ -9,6 +9,7 @@ import com.agentforge4j.core.command.GenerateQuestionsCommand;
 import com.agentforge4j.core.command.LlmCommand;
 import com.agentforge4j.core.command.RunCommandCommand;
 import com.agentforge4j.core.command.SetContextCommand;
+import com.agentforge4j.core.command.ToolInvocationCommand;
 import com.agentforge4j.core.command.UserPromptCommand;
 import com.agentforge4j.core.workflow.event.WorkflowEventType;
 import com.agentforge4j.core.workflow.state.WorkflowState;
@@ -38,6 +39,7 @@ public final class UserPromptPauseGuard {
         CreateFileCommand.class, false,
         SetContextCommand.class, false,
         RunCommandCommand.class, false,
+        ToolInvocationCommand.class, false,
         CompleteCommand.class, true,
         EscalateCommand.class, true,
         GenerateQuestionsCommand.class, true

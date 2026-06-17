@@ -5,6 +5,7 @@ import com.agentforge4j.core.command.CompleteCommand;
 import com.agentforge4j.core.command.EscalateCommand;
 import com.agentforge4j.core.command.GenerateQuestionsCommand;
 import com.agentforge4j.core.command.LlmCommand;
+import com.agentforge4j.core.command.ToolInvocationCommand;
 import com.agentforge4j.core.command.UserPromptCommand;
 import com.agentforge4j.core.workflow.artifact.TextArtifactItem;
 import com.agentforge4j.core.workflow.context.ContextMapping;
@@ -124,6 +125,27 @@ class UserPromptPauseGuardTest {
     List<LlmCommand> commands = List.of(
         new CompleteCommand(null),
         new UserPromptCommand("optional", false));
+
+    assertThatCode(() -> UserPromptPauseGuard.ensureBlockingUserPromptAllowed(
+        eventRecorder(), STEP, freshState(), commands))
+        .doesNotThrowAnyException();
+  }
+
+  @Test
+  void tool_invocation_command_is_a_non_terminator_and_does_not_throw() {
+    List<LlmCommand> commands = List.of(
+        new ToolInvocationCommand(null, "github.create_pull_request", null, null));
+
+    assertThatCode(() -> UserPromptPauseGuard.ensureBlockingUserPromptAllowed(
+        eventRecorder(), STEP, freshState(), commands))
+        .doesNotThrowAnyException();
+  }
+
+  @Test
+  void blocking_prompt_after_tool_invocation_is_reachable_and_does_not_violate_protocol() {
+    List<LlmCommand> commands = List.of(
+        new ToolInvocationCommand(null, "github.create_pull_request", null, null),
+        new UserPromptCommand("pause", true));
 
     assertThatCode(() -> UserPromptPauseGuard.ensureBlockingUserPromptAllowed(
         eventRecorder(), STEP, freshState(), commands))
