@@ -3,6 +3,8 @@ package com.agentforge4j.config.loader.workflow;
 
 import com.agentforge4j.config.loader.WorkflowDirectoryLoad;
 import com.agentforge4j.core.workflow.WorkflowDefinition;
+import com.agentforge4j.core.workflow.step.StepDefinition;
+import com.agentforge4j.core.workflow.step.behaviour.BranchBehaviour;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 
@@ -55,5 +57,30 @@ class ClasspathWorkflowLoaderTest {
     WorkflowDefinition costEstimator = loaded.workflows().get("workflow-cost-estimator");
     assertThat(costEstimator).isNotNull();
     assertThat(costEstimator.artifacts()).containsKey("estimation-input");
+  }
+
+  @Test
+  void loadWorkflows_retainsExplicitNullBranchEntry_forEpicImplementationSuccess() {
+    // Regression for the epic-implementation "rework-decision" defect: the loader must retain a
+    // branch key explicitly mapped to null ("SUCCESS": null) as a present-but-null entry, so the
+    // runtime can tell an explicit "matched, complete" route apart from an unmatched value.
+    ObjectMapper objectMapper = new ObjectMapper();
+    ClasspathWorkflowLoader loader = new ClasspathWorkflowLoader(objectMapper);
+
+    WorkflowDefinition epicImplementation = loader.loadWorkflows().workflows().get("epic-implementation");
+    assertThat(epicImplementation).isNotNull();
+
+    BranchBehaviour reworkDecision = epicImplementation.steps().stream()
+        .filter(StepDefinition.class::isInstance)
+        .map(StepDefinition.class::cast)
+        .filter(step -> "rework-decision".equals(step.stepId()))
+        .map(step -> (BranchBehaviour) step.behaviour())
+        .findFirst()
+        .orElseThrow();
+
+    assertThat(reworkDecision.branches()).containsKey("SUCCESS");
+    assertThat(reworkDecision.branches().get("SUCCESS")).isNull();
+    assertThat(reworkDecision.branches().get("NEEDS_REWORK")).isNotNull();
+    assertThat(reworkDecision.defaultBranch()).isNotNull();
   }
 }

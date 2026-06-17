@@ -102,6 +102,23 @@ class BranchBehaviourHandlerTest {
   }
 
   @Test
+  void matched_branch_with_null_executable_completes_and_does_not_fall_through_to_default() {
+    // Exact shape of the epic-implementation "rework-decision" defect: an explicit-null match must
+    // complete the branch step, never route to the (non-null) default branch.
+    StepDefinition defaultBranch = resourceStep("mark-epic-failed");
+    StepDefinition rework = resourceStep("rework");
+    Map<String, Executable> branches = new LinkedHashMap<>();
+    branches.put("SUCCESS", null);
+    branches.put("NEEDS_REWORK", rework);
+    putRoute("SUCCESS");
+    StepDefinition branchStep = branchStep(branches, defaultBranch);
+
+    assertThat(handler.handle(branchStep, (BranchBehaviour) branchStep.behaviour(), executionContext))
+        .isEqualTo(ExecutionOutcome.COMPLETED);
+    verify(executableExecutor, times(0)).execute(any(), any());
+  }
+
+  @Test
   void first_matching_branch_wins() {
     StepDefinition first = resourceStep("first");
     StepDefinition second = resourceStep("second");
