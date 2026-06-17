@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package com.agentforge4j.runtime.execution.behaviour.handler;
 
+import com.agentforge4j.core.workflow.context.ContextProvenance;
 import com.agentforge4j.core.workflow.context.StringContextValue;
 import com.agentforge4j.core.workflow.step.StepDefinition;
 import com.agentforge4j.core.workflow.step.behaviour.ResourceBehaviour;
@@ -36,7 +37,7 @@ public final class ResourceBehaviourHandler implements BehaviourHandler<Resource
     String content = resolveResource(behaviour.resourcePath());
     executionContext.getState().putContextValue(
         behaviour.contextKey(),
-        new StringContextValue(content));
+        new StringContextValue(content, ContextProvenance.SYSTEM_GENERATED));
 
     return ExecutionOutcome.COMPLETED;
   }

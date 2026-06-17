@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package com.agentforge4j.runtime.execution.behaviour.handler;
 
+import com.agentforge4j.core.workflow.context.ContextProvenance;
 import com.agentforge4j.core.exception.StepExecutionException;
 import com.agentforge4j.core.workflow.Executable;
 import com.agentforge4j.core.workflow.context.ContextMapping;
@@ -133,7 +134,7 @@ class RetryPreviousBehaviourHandlerTest {
           .owningStepId("s3")
           .sequence("s1", "s2", "s3")
           .retryStepExecuted(2)
-          .contextValue("__retry_s2_attempts", new NumberContextValue(99))
+          .contextValue("__retry_s2_attempts", new NumberContextValue(99, ContextProvenance.USER_SUPPLIED))
           .build();
 
       f.handle();
@@ -192,7 +193,7 @@ class RetryPreviousBehaviourHandlerTest {
           .sequence("s1", "s2", "s3", "s4")
           .retryStepExecuted(3)
           .stepExecuted("s3", 4, "out-s3")
-          .contextWrittenAtUid("ctxX", 4, new StringContextValue("remove-me"))
+          .contextWrittenAtUid("ctxX", 4, new StringContextValue("remove-me", ContextProvenance.USER_SUPPLIED))
           .attemptCounter("1")
           .build();
 
@@ -534,9 +535,9 @@ class RetryPreviousBehaviourHandlerTest {
 
       String attemptKey = "__retry_" + retryStepId + "_attempts";
       if (attemptCount != null) {
-        state.putContextValue(attemptKey, new StringContextValue(String.valueOf(attemptCount)));
+        state.putContextValue(attemptKey, new StringContextValue(String.valueOf(attemptCount), ContextProvenance.USER_SUPPLIED));
       } else if (attemptCounterString != null) {
-        state.putContextValue(attemptKey, new StringContextValue(attemptCounterString));
+        state.putContextValue(attemptKey, new StringContextValue(attemptCounterString, ContextProvenance.USER_SUPPLIED));
       }
       extraContext.forEach(state::putContextValue);
 

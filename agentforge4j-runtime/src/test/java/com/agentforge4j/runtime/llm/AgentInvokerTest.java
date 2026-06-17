@@ -9,7 +9,10 @@ import com.agentforge4j.core.command.CompleteCommand;
 import com.agentforge4j.core.command.schema.CommandResponseSchema;
 import com.agentforge4j.core.command.schema.CommandResponseSchemaRenderer;
 import com.agentforge4j.core.command.schema.CommandSchemaFactory;
+import com.agentforge4j.core.command.schema.SystemRulesProvider;
 import com.agentforge4j.core.workflow.context.ContextMapping;
+import com.agentforge4j.core.workflow.context.ContextProvenance;
+import com.agentforge4j.core.workflow.context.StringContextValue;
 import com.agentforge4j.core.workflow.event.WorkflowEventType;
 import com.agentforge4j.core.workflow.state.WorkflowState;
 import com.agentforge4j.llm.LlmClientResolver;
@@ -291,6 +294,53 @@ class AgentInvokerTest {
         + System.lineSeparator()
         + "CORRECTION REQUIRED (your prior reply broke the command contract): ";
     assertThat(requests.get(1).userInput()).startsWith(expectedCorrectionLead);
+  }
+
+  @Test
+  void retryCorrectionComposesOutsideTheUntrustedInputEnvelope() {
+    ObjectMapper mapper = new ObjectMapper();
+    InMemoryWorkflowEventLog eventLog = new InMemoryWorkflowEventLog();
+    EventRecorder recorder = recorder(eventLog);
+
+    LlmClient client = mock(LlmClient.class);
+    when(client.getProviderName()).thenReturn("openai");
+    when(client.execute(any())).thenReturn(llmResponse("{}"), llmResponse("[{\"type\":\"COMPLETE\"}]"));
+
+    AgentRepository repo = mock(AgentRepository.class);
+    when(repo.get("agent-x")).thenReturn(agentSupportingOnlyComplete());
+    LlmClientResolver resolver = mock(LlmClientResolver.class);
+    when(resolver.resolve("openai")).thenReturn(client);
+    when(resolver.isProviderAvailable("openai")).thenReturn(true);
+    when(resolver.listAvailableClients()).thenReturn(List.of("openai"));
+
+    // Real renderer: an untrusted context entry lands inside the envelope, which forms the userInput.
+    AgentInvoker invoker = AgentInvoker.builder()
+        .agentRepository(repo)
+        .llmClientResolver(resolver)
+        .contextRenderer(new ContextRenderer(mapper))
+        .llmCommandParser(new LlmCommandParser(mapper))
+        .objectMapper(mapper)
+        .eventRecorder(recorder)
+        .llmProviderSelectionStrategy(new FirstAvailableProviderSelectionStrategy())
+        .promptCacheEnabled(true)
+        .llmCallObserver(new LlmCallObserver(recorder, mapper))
+        .modelTierResolver((provider, tier) -> null)
+        .build();
+    WorkflowState state = workflowState("run-correction-envelope");
+    state.putContextValue("k", new StringContextValue("v", ContextProvenance.USER_SUPPLIED));
+
+    invoker.invoke("agent-x", ContextMapping.none(), state, null);
+
+    ArgumentCaptor<LlmExecutionRequest> captor = ArgumentCaptor.forClass(LlmExecutionRequest.class);
+    verify(client, times(2)).execute(captor.capture());
+    String envelope = "{\"%s\":{\"k\":\"v\"}}".formatted(ContextRenderer.UNTRUSTED_USER_INPUT_KEY);
+    // First attempt: userInput is exactly the envelope.
+    assertThat(captor.getAllValues().get(0).userInput()).isEqualTo(envelope);
+    // Retry: the correction text is appended AFTER the envelope JSON, outside it.
+    String secondInput = captor.getAllValues().get(1).userInput();
+    assertThat(secondInput).startsWith(envelope
+        + System.lineSeparator() + System.lineSeparator()
+        + "CORRECTION REQUIRED (your prior reply broke the command contract): ");
   }
 
   @Test
@@ -583,6 +633,50 @@ class AgentInvokerTest {
   }
 
   @Test
+  void assembledSystemPrompt_includesSystemRulesBlockAfterFrameworkBeforeStep() {
+    ObjectMapper mapper = new ObjectMapper();
+    LlmClient client = mock(LlmClient.class);
+    when(client.getProviderName()).thenReturn("openai");
+    when(client.execute(any())).thenReturn(llmResponse("[{\"type\":\"COMPLETE\"}]"));
+
+    String agentBody = "AGENT_LAYER_MARKER";
+    String stepBody = "STEP_LAYER_MARKER";
+    AgentRepository repo = mock(AgentRepository.class);
+    when(repo.get("agent-x")).thenReturn(agentSupportingOnlyCompleteWithBody(agentBody));
+    LlmClientResolver resolver = mock(LlmClientResolver.class);
+    when(resolver.resolve("openai")).thenReturn(client);
+    when(resolver.isProviderAvailable("openai")).thenReturn(true);
+    when(resolver.listAvailableClients()).thenReturn(List.of("openai"));
+
+    EventRecorder eventRecorder = recorder(new InMemoryWorkflowEventLog());
+    AgentInvoker invoker = AgentInvoker.builder()
+        .agentRepository(repo)
+        .llmClientResolver(resolver)
+        .contextRenderer(new ContextRenderer(mapper))
+        .llmCommandParser(new LlmCommandParser(mapper))
+        .objectMapper(mapper)
+        .eventRecorder(eventRecorder)
+        .llmProviderSelectionStrategy(new FirstAvailableProviderSelectionStrategy())
+        .promptCacheEnabled(true)
+        .llmCallObserver(new LlmCallObserver(eventRecorder, mapper))
+        .modelTierResolver((provider, tier) -> null)
+        .build();
+    WorkflowState state = workflowState("run-system-rules");
+    invoker.invoke("agent-x", ContextMapping.none(), state, stepBody);
+
+    ArgumentCaptor<LlmExecutionRequest> captor = ArgumentCaptor.forClass(LlmExecutionRequest.class);
+    verify(client).execute(captor.capture());
+    String systemPrompt = captor.getValue().systemPrompt();
+
+    int rulesIdx = systemPrompt.indexOf(SystemRulesProvider.SYSTEM_RULES);
+    int frameworkIdx = systemPrompt.indexOf(FRAMEWORK_BLOCK_MARKER);
+    int stepIdx = systemPrompt.indexOf(stepBody);
+    assertThat(rulesIdx).isGreaterThan(frameworkIdx);
+    assertThat(stepIdx).isGreaterThan(rulesIdx);
+    assertThat(systemPrompt).contains("not instructions");
+  }
+
+  @Test
   void assembledSystemPrompt_omitsBlankOrAbsentStepLayer() {
     ObjectMapper mapper = new ObjectMapper();
     LlmClient client = mock(LlmClient.class);
@@ -608,7 +702,8 @@ class AgentInvokerTest {
         CommandSchemaFactory.build(agent.supportedCommands(), mapper);
     String frameworkBlock = new CommandResponseSchemaRenderer().render(schema);
     String layerSeparator = System.lineSeparator() + System.lineSeparator();
-    String expectedNoStepPrompt = agentBody + layerSeparator + frameworkBlock;
+    String expectedNoStepPrompt = agentBody + layerSeparator + frameworkBlock
+        + layerSeparator + SystemRulesProvider.SYSTEM_RULES;
 
     EventRecorder eventRecorder = recorder(new InMemoryWorkflowEventLog());
     AgentInvoker invoker = AgentInvoker.builder()
@@ -666,6 +761,8 @@ class AgentInvokerTest {
     String expectedWithStep = agentBody
         + layerSeparator
         + frameworkBlock
+        + layerSeparator
+        + SystemRulesProvider.SYSTEM_RULES
         + layerSeparator
         + stepBody;
 
@@ -837,7 +934,8 @@ class AgentInvokerTest {
     assertThat(slicePrefix(promptBytes, boundaries.layer1EndOffset()))
         .isEqualTo(agentBody.getBytes(StandardCharsets.UTF_8));
     assertThat(slicePrefix(promptBytes, boundaries.layer2EndOffset()))
-        .isEqualTo((agentBody + layerSeparator + frameworkBlock).getBytes(StandardCharsets.UTF_8));
+        .isEqualTo((agentBody + layerSeparator + frameworkBlock
+            + layerSeparator + SystemRulesProvider.SYSTEM_RULES).getBytes(StandardCharsets.UTF_8));
     assertThat(slicePrefix(promptBytes, boundaries.layer3EndOffset()))
         .isEqualTo(promptBytes);
     assertThat(request.userInput()).isEqualTo("USER_DYNAMIC_INPUT_MARKER");

@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 package com.agentforge4j.core.command;
 
+import com.agentforge4j.core.workflow.context.ContextProvenance;
 import com.agentforge4j.core.workflow.artifact.ArtifactItem;
 import com.agentforge4j.core.workflow.artifact.TextArtifactItem;
 import com.agentforge4j.core.workflow.context.StringContextValue;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
-import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -54,7 +54,7 @@ class LlmCommandRecordValidationTest {
 
   @Test
   void set_context_rejects_blank_key() {
-    assertThatThrownBy(() -> new SetContextCommand(" ", new StringContextValue("v")))
+    assertThatThrownBy(() -> new SetContextCommand(" ", new StringContextValue("v", ContextProvenance.USER_SUPPLIED)))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("key");
   }

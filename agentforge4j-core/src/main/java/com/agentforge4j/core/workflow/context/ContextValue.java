@@ -23,4 +23,21 @@ public sealed interface ContextValue
     JsonContextValue,
     ContextValueList {
 
+  /**
+   * Origin of this value, stamped at the context write. Never {@code null}.
+   *
+   * @return the provenance of this value
+   */
+  ContextProvenance provenance();
+
+  /**
+   * Returns a copy of this value with its provenance replaced. Used by the write path to re-stamp a
+   * value whose provenance must be set authoritatively server-side (for example an LLM-emitted
+   * {@code SET_CONTEXT} value, re-stamped {@link ContextProvenance#LLM_GENERATED}).
+   *
+   * @param provenance the provenance to apply; never {@code null}
+   *
+   * @return a copy carrying {@code provenance}; never {@code null}
+   */
+  ContextValue withProvenance(ContextProvenance provenance);
 }

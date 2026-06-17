@@ -2,6 +2,7 @@
 package com.agentforge4j.runtime.execution.behaviour.handler;
 
 import com.agentforge4j.core.workflow.context.ContextMapping;
+import com.agentforge4j.core.workflow.context.ContextProvenance;
 import com.agentforge4j.core.workflow.context.StringContextValue;
 import com.agentforge4j.core.workflow.state.WorkflowState;
 import com.agentforge4j.core.workflow.step.StepDefinition;
@@ -140,7 +141,7 @@ public final class SparBehaviourHandler implements BehaviourHandler<SparBehaviou
       SparBehaviour behaviour, WorkflowState state, SparConfig config, int executedRounds,
       String activeWorkflowId) {
     state.putContextValue("spar.resolution.prompt",
-        new StringContextValue(config.resolutionPrompt()));
+        new StringContextValue(config.resolutionPrompt(), ContextProvenance.SYSTEM_GENERATED));
 
     return agentInvoker.invoke(
         behaviour.agentRef(),
@@ -196,7 +197,7 @@ public final class SparBehaviourHandler implements BehaviourHandler<SparBehaviou
         stepModelTier,
         activeWorkflowId);
     state.putContextValue(sparPrefix + round,
-        new StringContextValue(agent.rawResponse()));
+        new StringContextValue(agent.rawResponse(), ContextProvenance.LLM_GENERATED));
     return agent;
   }
 

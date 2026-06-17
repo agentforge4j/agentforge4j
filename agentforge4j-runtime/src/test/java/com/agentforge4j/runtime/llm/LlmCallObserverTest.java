@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package com.agentforge4j.runtime.llm;
 
+import com.agentforge4j.core.workflow.context.ContextProvenance;
 import com.agentforge4j.core.workflow.context.ContextValue;
 import com.agentforge4j.core.workflow.context.NumberContextValue;
 import com.agentforge4j.core.workflow.event.WorkflowEventType;
@@ -142,6 +143,18 @@ class LlmCallObserverTest {
         .orElseThrow()
         .payload();
     assertThat(payload).contains("\"cachedTokens\":30");
+  }
+
+  @Test
+  void observe_stamps_llm_tokens_total_as_system_generated() {
+    LlmCallObserver observer = new LlmCallObserver(recorder(new InMemoryWorkflowEventLog()), objectMapper);
+    WorkflowState state = workflowState("run-llm-tokens-provenance");
+
+    observer.observe("agent-x", "openai", llmResponse("gpt-4o-mini", TEST_TOKEN_USAGE),
+        null, ModelSource.PROVIDER_DEFAULT, null, state);
+
+    ContextValue value = state.getContext().get(ReservedContextKeys.LLM_TOKENS_TOTAL);
+    assertThat(value.provenance()).isEqualTo(ContextProvenance.SYSTEM_GENERATED);
   }
 
   private static int llmTokensTotalInContext(WorkflowState state) {

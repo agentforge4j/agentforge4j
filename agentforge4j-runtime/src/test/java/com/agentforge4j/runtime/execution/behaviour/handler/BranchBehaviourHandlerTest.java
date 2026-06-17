@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package com.agentforge4j.runtime.execution.behaviour.handler;
 
+import com.agentforge4j.core.workflow.context.ContextProvenance;
 import com.agentforge4j.core.exception.StepExecutionException;
 import com.agentforge4j.core.workflow.Executable;
 import com.agentforge4j.core.workflow.WorkflowDefinition;
@@ -156,7 +157,7 @@ class BranchBehaviourHandlerTest {
   }
 
   private void putRoute(String value) {
-    state.putContextValue("route", new StringContextValue(value));
+    state.putContextValue("route", new StringContextValue(value, ContextProvenance.USER_SUPPLIED));
   }
 
   private static StepDefinition branchStep(Map<String, Executable> branches, Executable defaultBranch) {

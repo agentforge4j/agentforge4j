@@ -11,6 +11,8 @@ import com.agentforge4j.core.workflow.WorkflowDefinition;
 import com.agentforge4j.core.workflow.WorkflowLifecycle;
 import com.agentforge4j.core.workflow.WorkflowSource;
 import com.agentforge4j.core.workflow.context.ContextMapping;
+import com.agentforge4j.core.workflow.context.ContextProvenance;
+import com.agentforge4j.core.workflow.context.ContextValue;
 import com.agentforge4j.core.workflow.event.WorkflowEvent;
 import com.agentforge4j.core.workflow.event.WorkflowEventLog;
 import com.agentforge4j.core.workflow.event.WorkflowEventType;
@@ -235,6 +237,24 @@ class AgentStepAuditRuntimeTest {
     f.runtime().submitInput(runId, Map.of("response", "ok"), "user");
     int afterSecond = f.eventLog().getEvents(runId).size();
     assertThat(afterSecond).isGreaterThan(afterFirst);
+  }
+
+  @Test
+  void submitInput_stamps_prompt_answer_as_user_supplied() {
+    LlmClient client = mock(LlmClient.class);
+    when(client.getProviderName()).thenReturn("openai");
+    when(client.execute(any())).thenReturn(
+        llmResponse("[{\"type\":\"USER_PROMPT\",\"message\":\"Q\",\"responseRequired\":true}]"),
+        llmResponse("[{\"type\":\"COMPLETE\"}]"));
+
+    Fixture f = fixture(client, agent("a1", List.of("USER_PROMPT", "COMPLETE")), 8);
+
+    String runId = f.runtime().start("wf1");
+    f.runtime().submitInput(runId, Map.of("response", "my answer"), "user");
+
+    WorkflowState state = f.runtime().getState(runId);
+    ContextValue answer = state.getContextValue("user.response.s1").orElseThrow();
+    assertThat(answer.provenance()).isEqualTo(ContextProvenance.USER_SUPPLIED);
   }
 
   private static AgentDefinition agent(String id, List<String> commands) {

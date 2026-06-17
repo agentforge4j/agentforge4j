@@ -2,6 +2,7 @@
 package com.agentforge4j.runtime.tool;
 
 import com.agentforge4j.core.spi.tool.ToolResult;
+import com.agentforge4j.core.workflow.context.ContextProvenance;
 import com.agentforge4j.core.workflow.context.StringContextValue;
 import com.agentforge4j.core.workflow.event.WorkflowEventType;
 import com.agentforge4j.core.workflow.state.WorkflowState;
@@ -58,7 +59,7 @@ public final class ToolResultApplier {
       return;
     }
     String key = TOOL_CONTEXT_KEY_PREFIX + capability;
-    state.putContextValue(key, new StringContextValue(result.output()));
+    state.putContextValue(key, new StringContextValue(result.output(), ContextProvenance.EXTERNAL_TOOL));
     String currentStepId = state.getCurrentStepId();
     if (StringUtils.isNotBlank(currentStepId)) {
       Integer uid = state.getStepExecutionUid().get(currentStepId);
@@ -85,7 +86,8 @@ public final class ToolResultApplier {
     Validate.notBlank(capability, "capability must not be blank");
     Validate.notNull(state, "state must not be null");
     String key = TOOL_CONTEXT_KEY_PREFIX + capability + TOOL_ERROR_KEY_SUFFIX;
-    state.putContextValue(key, new StringContextValue(StringUtils.defaultString(reason)));
+    state.putContextValue(key,
+        new StringContextValue(StringUtils.defaultString(reason), ContextProvenance.EXTERNAL_TOOL));
     String currentStepId = state.getCurrentStepId();
     if (StringUtils.isNotBlank(currentStepId)) {
       Integer uid = state.getStepExecutionUid().get(currentStepId);

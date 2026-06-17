@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package com.agentforge4j.core.workflow.state;
 
+import com.agentforge4j.core.workflow.context.ContextProvenance;
 import com.agentforge4j.core.workflow.context.StringContextValue;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -76,7 +77,7 @@ class WorkflowStateTest {
     assertThatThrownBy(() -> state.getStepOutputs().clear())
         .isInstanceOf(UnsupportedOperationException.class);
 
-    assertThatThrownBy(() -> state.getContext().put("k", new StringContextValue("v")))
+    assertThatThrownBy(() -> state.getContext().put("k", new StringContextValue("v", ContextProvenance.USER_SUPPLIED)))
         .isInstanceOf(UnsupportedOperationException.class);
     assertThatThrownBy(() -> state.getContext().remove("k"))
         .isInstanceOf(UnsupportedOperationException.class);
@@ -157,7 +158,7 @@ class WorkflowStateTest {
   @ValueSource(strings = {" ", "\t"})
   void put_context_value_rejects_invalid_inputs(String key) {
     var state = new WorkflowState("run-1", "wf-1", null, t());
-    var value = new StringContextValue("value");
+    var value = new StringContextValue("value", ContextProvenance.USER_SUPPLIED);
 
     assertThatThrownBy(() -> state.putContextValue(key, value))
         .isInstanceOf(IllegalArgumentException.class);
@@ -200,7 +201,7 @@ class WorkflowStateTest {
   @Test
   void mutation_methods_update_internal_maps() {
     var state = new WorkflowState("run-1", "wf-1", null, t());
-    var value = new StringContextValue("abc");
+    var value = new StringContextValue("abc", ContextProvenance.USER_SUPPLIED);
 
     state.putContextValue("k1", value);
     state.putStepOutput("step-1", "out-1");
@@ -219,7 +220,7 @@ class WorkflowStateTest {
   @Test
   void clearEntriesFromUid_removes_regular_keys_at_or_after_uid() {
     WorkflowState state = new WorkflowState("run-1", "wf-1", null, t());
-    state.putContextValue("regular_key", new StringContextValue("value"));
+    state.putContextValue("regular_key", new StringContextValue("value", ContextProvenance.USER_SUPPLIED));
     state.putContextKeyWrittenAtUid("regular_key", 5);
 
     state.clearEntriesFromUid(5);
@@ -231,7 +232,7 @@ class WorkflowStateTest {
   @Test
   void clearEntriesFromUid_retains_reserved_prefix_keys() {
     WorkflowState state = new WorkflowState("run-1", "wf-1", null, t());
-    StringContextValue reservedValue = new StringContextValue("reserved");
+    StringContextValue reservedValue = new StringContextValue("reserved", ContextProvenance.USER_SUPPLIED);
     state.putContextValue("__reserved_key", reservedValue);
     state.putContextKeyWrittenAtUid("__reserved_key", 5);
 
@@ -244,7 +245,7 @@ class WorkflowStateTest {
   @Test
   void clearEntriesFromUid_retains_keys_written_before_uid() {
     WorkflowState state = new WorkflowState("run-1", "wf-1", null, t());
-    StringContextValue earlyValue = new StringContextValue("early");
+    StringContextValue earlyValue = new StringContextValue("early", ContextProvenance.USER_SUPPLIED);
     state.putContextValue("early_key", earlyValue);
     state.putContextKeyWrittenAtUid("early_key", 3);
 
@@ -257,7 +258,7 @@ class WorkflowStateTest {
   @Test
   void clearEntriesFromUid_retains_llm_tokens_total() {
     WorkflowState state = new WorkflowState("run-1", "wf-1", null, t());
-    StringContextValue totalValue = new StringContextValue("42");
+    StringContextValue totalValue = new StringContextValue("42", ContextProvenance.USER_SUPPLIED);
     state.putContextValue(ReservedContextKeys.LLM_TOKENS_TOTAL, totalValue);
     state.putContextKeyWrittenAtUid(ReservedContextKeys.LLM_TOKENS_TOTAL, 5);
 
@@ -275,7 +276,7 @@ class WorkflowStateTest {
     var initial = state.getLastUpdatedAt();
 
     state.putStepOutput("step-1", "out");
-    state.putContextValue("k", new StringContextValue("v"));
+    state.putContextValue("k", new StringContextValue("v", ContextProvenance.USER_SUPPLIED));
     state.putStepExecutionUid("step-1", 1);
     state.putContextKeyWrittenAtUid("k", 1);
     state.removeContextValue("k");
@@ -290,7 +291,7 @@ class WorkflowStateTest {
     original.setStatus(WorkflowStatus.PAUSED);
     original.setCurrentStepId("s1");
     original.setLastUpdatedAt(Instant.parse("2026-03-01T01:00:00Z"));
-    original.putContextValue("k", new StringContextValue("v"));
+    original.putContextValue("k", new StringContextValue("v", ContextProvenance.USER_SUPPLIED));
     original.putStepOutput("s1", "out");
     original.putStepExecutionUid("s1", 7);
     original.putContextKeyWrittenAtUid("k", 7);
@@ -305,14 +306,28 @@ class WorkflowStateTest {
     assertThat(copy.getForEachListFingerprint("bp-a")).contains("abc123");
 
     copy.setStatus(WorkflowStatus.COMPLETED);
-    copy.putContextValue("extra", new StringContextValue("x"));
+    copy.putContextValue("extra", new StringContextValue("x", ContextProvenance.USER_SUPPLIED));
     copy.putStepOutput("s2", "more");
 
     assertThat(original.getStatus()).isEqualTo(WorkflowStatus.PAUSED);
     assertThat(original.getContext()).doesNotContainKey("extra");
     assertThat(original.getStepOutputs()).doesNotContainKey("s2");
 
-    assertThatThrownBy(() -> copy.getContext().put("z", new StringContextValue("nope")))
+    assertThatThrownBy(() -> copy.getContext().put("z", new StringContextValue("nope", ContextProvenance.USER_SUPPLIED)))
         .isInstanceOf(UnsupportedOperationException.class);
+  }
+
+  @Test
+  void snapshot_preserves_context_value_provenance() {
+    WorkflowState original = new WorkflowState("run-1", "wf-1", null, t());
+    original.putContextValue("trusted", new StringContextValue("a", ContextProvenance.SYSTEM_GENERATED));
+    original.putContextValue("untrusted", new StringContextValue("b", ContextProvenance.USER_SUPPLIED));
+
+    WorkflowState copy = original.snapshot();
+
+    assertThat(copy.getContextValue("trusted").orElseThrow().provenance())
+        .isEqualTo(ContextProvenance.SYSTEM_GENERATED);
+    assertThat(copy.getContextValue("untrusted").orElseThrow().provenance())
+        .isEqualTo(ContextProvenance.USER_SUPPLIED);
   }
 }

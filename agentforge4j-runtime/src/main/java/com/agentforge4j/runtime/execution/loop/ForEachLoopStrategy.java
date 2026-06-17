@@ -1,8 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 package com.agentforge4j.runtime.execution.loop;
 
+import com.agentforge4j.core.workflow.context.BooleanContextValue;
 import com.agentforge4j.core.workflow.context.ContextValue;
 import com.agentforge4j.core.workflow.context.ContextValueList;
+import com.agentforge4j.core.workflow.context.JsonContextValue;
+import com.agentforge4j.core.workflow.context.NumberContextValue;
 import com.agentforge4j.core.workflow.context.StringContextValue;
 import com.agentforge4j.core.workflow.state.WorkflowState;
 import com.agentforge4j.core.workflow.state.WorkflowStatus;
@@ -24,13 +27,11 @@ import java.util.Optional;
 import java.util.stream.Collectors;
 
 /**
- * Iterates the blueprint body once per element in a list stored in the shared context under
- * {@code forEachContextKey}.
+ * Iterates the blueprint body once per element in a list stored in the shared context under {@code forEachContextKey}.
  *
  * <p>The current element is exposed under the reserved context key
- * {@link #LOOP_ITEM_KEY} for the duration of each iteration. {@code maxIterations} still applies as
- * a ceiling — when the list has more elements than the ceiling the {@link MaxIterationsHandler} is
- * invoked.
+ * {@link #LOOP_ITEM_KEY} for the duration of each iteration. {@code maxIterations} still applies as a ceiling — when
+ * the list has more elements than the ceiling the {@link MaxIterationsHandler} is invoked.
  */
 public final class ForEachLoopStrategy extends AbstractLoopStrategy {
 
@@ -152,7 +153,9 @@ public final class ForEachLoopStrategy extends AbstractLoopStrategy {
       return list;
     }
     if (raw instanceof StringContextValue scalar) {
-      return new ContextValueList(List.of(scalar));
+      // Wrap a scalar source value for iteration; inherit its provenance — this is internal
+      // repackaging of an existing value, not a fresh external write (no re-stamp).
+      return new ContextValueList(List.of(scalar), scalar.provenance());
     }
     throw new IllegalStateException(
         "FOR_EACH loop requires a ContextValueList under key '%s' but found %s"
@@ -172,9 +175,11 @@ public final class ForEachLoopStrategy extends AbstractLoopStrategy {
     state.clearForEachListFingerprint(blueprintId);
   }
 
-  private static String fingerprint(ContextValueList list) {
+  // Package-private for direct fingerprint regression tests.
+  static String fingerprint(ContextValueList list) {
     String payload = list.values().size() + "|"
-        + list.values().stream().map(Object::toString).collect(Collectors.joining("|"));
+        + list.values().stream().map(ForEachLoopStrategy::contentSignature)
+        .collect(Collectors.joining("|"));
     try {
       MessageDigest digest = MessageDigest.getInstance("SHA-256");
       byte[] hash = digest.digest(payload.getBytes(StandardCharsets.UTF_8));
@@ -182,5 +187,32 @@ public final class ForEachLoopStrategy extends AbstractLoopStrategy {
     } catch (NoSuchAlgorithmException e) {
       throw new IllegalStateException("SHA-256 unavailable", e);
     }
+  }
+
+  /**
+   * Content-only signature of a context value, deliberately excluding {@code provenance}. The FOR_EACH fingerprint
+   * tracks list <em>content</em>; using the records' {@code toString()} would couple it to provenance metadata (added
+   * by the provenance work), so a re-stamped list of identical values would read as "changed" and a pre-provenance
+   * persisted fingerprint would mismatch on resume.
+   */
+  private static String contentSignature(ContextValue value) {
+    if (value instanceof StringContextValue stringValue) {
+      return "S:" + stringValue.value();
+    }
+    if (value instanceof NumberContextValue numberValue) {
+      return "N:" + numberValue.value();
+    }
+    if (value instanceof BooleanContextValue booleanValue) {
+      return "B:" + booleanValue.value();
+    }
+    if (value instanceof JsonContextValue jsonValue) {
+      return "J:" + jsonValue.json();
+    }
+    if (value instanceof ContextValueList listValue) {
+      return "L:[" + listValue.values().stream().map(ForEachLoopStrategy::contentSignature)
+          .collect(Collectors.joining(",")) + "]";
+    }
+    throw new IllegalStateException(
+        "Unknown ContextValue type: " + value.getClass().getName());
   }
 }

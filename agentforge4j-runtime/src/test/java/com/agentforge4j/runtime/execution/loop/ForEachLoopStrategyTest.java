@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package com.agentforge4j.runtime.execution.loop;
 
+import com.agentforge4j.core.workflow.context.ContextProvenance;
 import com.agentforge4j.core.workflow.WorkflowDefinition;
 import com.agentforge4j.core.workflow.WorkflowLifecycle;
 import com.agentforge4j.core.workflow.WorkflowSource;
@@ -43,6 +44,30 @@ class ForEachLoopStrategyTest {
 
   private static final String LIST_KEY = "items";
   private static final String BLUEPRINT_ID = "bp-for-each";
+
+  @Test
+  void fingerprint_is_provenance_independent() {
+    ContextValueList userSupplied = new ContextValueList(
+        List.of(new StringContextValue("a", ContextProvenance.USER_SUPPLIED),
+            new StringContextValue("b", ContextProvenance.USER_SUPPLIED)),
+        ContextProvenance.USER_SUPPLIED);
+    ContextValueList systemGenerated = new ContextValueList(
+        List.of(new StringContextValue("a", ContextProvenance.SYSTEM_GENERATED),
+            new StringContextValue("b", ContextProvenance.LLM_GENERATED)),
+        ContextProvenance.SYSTEM_GENERATED);
+
+    // Identical values, different container and element provenance -> identical fingerprint:
+    // the content hash must track values, not provenance metadata.
+    assertThat(ForEachLoopStrategy.fingerprint(userSupplied))
+        .isEqualTo(ForEachLoopStrategy.fingerprint(systemGenerated));
+
+    ContextValueList differentContent = new ContextValueList(
+        List.of(new StringContextValue("a", ContextProvenance.USER_SUPPLIED),
+            new StringContextValue("c", ContextProvenance.USER_SUPPLIED)),
+        ContextProvenance.USER_SUPPLIED);
+    assertThat(ForEachLoopStrategy.fingerprint(userSupplied))
+        .isNotEqualTo(ForEachLoopStrategy.fingerprint(differentContent));
+  }
 
   private EventRecorder eventRecorder;
   private MaxIterationsHandler maxIterationsHandler;
@@ -159,9 +184,9 @@ class ForEachLoopStrategyTest {
   private void putList(String... values) {
     List<ContextValue> items = new ArrayList<>();
     for (String value : values) {
-      items.add(new StringContextValue(value));
+      items.add(new StringContextValue(value, ContextProvenance.USER_SUPPLIED));
     }
-    state.putContextValue(LIST_KEY, new ContextValueList(items));
+    state.putContextValue(LIST_KEY, new ContextValueList(items, ContextProvenance.USER_SUPPLIED));
   }
 
   private static StepDefinition dummyStep() {

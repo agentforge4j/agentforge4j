@@ -2,6 +2,7 @@
 package com.agentforge4j.runtime.command.handler;
 
 import com.agentforge4j.core.command.UserPromptCommand;
+import com.agentforge4j.core.workflow.context.ContextProvenance;
 import com.agentforge4j.core.workflow.context.StringContextValue;
 import com.agentforge4j.core.workflow.event.WorkflowEventType;
 import com.agentforge4j.core.workflow.state.WorkflowStatus;
@@ -14,14 +15,16 @@ import java.time.Clock;
 import java.util.UUID;
 
 /**
- * Handles {@link UserPromptCommand} either by pausing for input when a response is required, or by
- * recording a fire-and-forget user-visible message in context.
+ * Handles {@link UserPromptCommand} either by pausing for input when a response is required, or by recording a
+ * fire-and-forget user-visible message in context.
  */
 public class UserPromptCommandHandler implements CommandHandler<UserPromptCommand> {
 
   private static final System.Logger LOG = System.getLogger(
       UserPromptCommandHandler.class.getName());
-  /** Prefix for context keys storing non-blocking {@link UserPromptCommand} messages. */
+  /**
+   * Prefix for context keys storing non-blocking {@link UserPromptCommand} messages.
+   */
   public static final String USER_MESSAGE_CONTEXT_PREFIX = "user.message.";
 
   private final EventRecorder eventRecorder;
@@ -48,9 +51,8 @@ public class UserPromptCommandHandler implements CommandHandler<UserPromptComman
    *
    * <p>When {@link UserPromptCommand#responseRequired()} is {@code true}, sets
    * {@link com.agentforge4j.core.workflow.state.WorkflowStatus#AWAITING_INPUT} and returns
-   * {@link CommandApplicationResult#AWAITING_INPUT}; otherwise stores the message under a generated
-   * context key prefixed by {@link #USER_MESSAGE_CONTEXT_PREFIX} and returns
-   * {@link CommandApplicationResult#CONTINUE}.
+   * {@link CommandApplicationResult#AWAITING_INPUT}; otherwise stores the message under a generated context key
+   * prefixed by {@link #USER_MESSAGE_CONTEXT_PREFIX} and returns {@link CommandApplicationResult#CONTINUE}.
    */
   @Override
   public CommandApplicationResult apply(UserPromptCommand cmd, CommandApplicationRequest request) {
@@ -73,7 +75,7 @@ public class UserPromptCommandHandler implements CommandHandler<UserPromptComman
       return CommandApplicationResult.AWAITING_INPUT;
     }
     String key = USER_MESSAGE_CONTEXT_PREFIX + UUID.randomUUID();
-    request.state().putContextValue(key, new StringContextValue(cmd.message()));
+    request.state().putContextValue(key, new StringContextValue(cmd.message(), ContextProvenance.LLM_GENERATED));
     eventRecorder.record(request.state().getRunId(), request.state().getCurrentStepId(),
         WorkflowEventType.CONTEXT_UPDATED, "user-visible message: %s".formatted(cmd.message()),
         request.agentId());

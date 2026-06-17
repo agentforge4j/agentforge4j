@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package com.agentforge4j.runtime;
 
+import com.agentforge4j.core.workflow.context.ContextProvenance;
 import com.agentforge4j.config.loader.repository.InMemoryWorkflowRepository;
 import com.agentforge4j.core.agent.AgentRepository;
 import com.agentforge4j.core.runtime.WorkflowRuntime;
@@ -63,7 +64,7 @@ class WorkflowStateExposureRuntimeTest {
     stored.setStatus(WorkflowStatus.PAUSED);
     stored.setCurrentStepId("step-a");
     stored.setLastUpdatedAt(t);
-    stored.putContextValue("k", new StringContextValue("v"));
+    stored.putContextValue("k", new StringContextValue("v", ContextProvenance.USER_SUPPLIED));
     stateRepo.save(stored);
 
     WorkflowRuntime runtime = minimalRuntime(stateRepo);
@@ -71,7 +72,7 @@ class WorkflowStateExposureRuntimeTest {
 
     assertThat(view).isNotSameAs(stored);
     view.setStatus(WorkflowStatus.COMPLETED);
-    view.putContextValue("leak", new StringContextValue("x"));
+    view.putContextValue("leak", new StringContextValue("x", ContextProvenance.USER_SUPPLIED));
 
     assertThat(stored.getStatus()).isEqualTo(WorkflowStatus.PAUSED);
     assertThat(stored.getContext()).doesNotContainKey("leak");
@@ -82,11 +83,11 @@ class WorkflowStateExposureRuntimeTest {
     WorkflowStateRepository stateRepo = new InMemoryWorkflowStateRepository();
     Instant t = Instant.parse("2026-05-01T00:00:00Z");
     WorkflowState stored = new WorkflowState("run-1", "wf-1", null, t);
-    stored.putContextValue("k", new StringContextValue("v"));
+    stored.putContextValue("k", new StringContextValue("v", ContextProvenance.USER_SUPPLIED));
     stateRepo.save(stored);
 
     WorkflowState view = minimalRuntime(stateRepo).getState("run-1");
-    assertThatThrownBy(() -> view.getContext().put("bad", new StringContextValue("y")))
+    assertThatThrownBy(() -> view.getContext().put("bad", new StringContextValue("y", ContextProvenance.USER_SUPPLIED)))
         .isInstanceOf(UnsupportedOperationException.class);
 
     WorkflowState live = stateRepo.findById("run-1").orElseThrow();

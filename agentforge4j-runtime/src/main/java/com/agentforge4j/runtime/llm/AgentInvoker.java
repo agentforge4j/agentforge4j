@@ -8,6 +8,7 @@ import com.agentforge4j.core.command.LlmCommand;
 import com.agentforge4j.core.command.schema.CommandResponseSchema;
 import com.agentforge4j.core.command.schema.CommandResponseSchemaRenderer;
 import com.agentforge4j.core.command.schema.CommandSchemaFactory;
+import com.agentforge4j.core.command.schema.SystemRulesProvider;
 import com.agentforge4j.core.spi.tool.ToolCatalog;
 import com.agentforge4j.core.spi.tool.ToolDescriptor;
 import com.agentforge4j.core.spi.tool.ToolScope;
@@ -61,6 +62,7 @@ public final class AgentInvoker {
   private final ToolCatalog toolCatalog;
   private final RunExecutionInterceptor runExecutionInterceptor;
   private final CommandResponseSchemaRenderer schemaRenderer = new CommandResponseSchemaRenderer();
+  private final SystemRulesProvider systemRulesProvider = new SystemRulesProvider();
 
   /**
    * Command type an agent must opt into ({@code supportedCommands}) before tools are advertised to it.
@@ -559,24 +561,29 @@ public final class AgentInvoker {
   }
 
   /**
-   * Assembles the system prompt from three layers (most-stable first): framework command contract, agent system prompt
-   * (boundaries already merged at load), then optional static step material.
+   * Assembles the system prompt from trusted layers: agent system prompt, then the framework command contract, then the
+   * constant system-rules block (untrusted-input handling), then optional static step material. The agent and
+   * framework+rules layers form the cacheable prefix (layer 1 / layer 2); the system-rules block is constant, so it
+   * stays within the stable layer-2 region.
    */
   private AssembledSystemPrompt assembleSystemPrompt(
       AgentDefinition agent, String stepPrompt, CommandResponseSchema schema) {
     String frameworkBlock = schemaRenderer.render(schema);
+    String rulesBlock = systemRulesProvider.systemRules();
     String layerSeparator = System.lineSeparator() + System.lineSeparator();
     String agentBlock = agent.systemPrompt();
     StringBuilder promptBuilder = new StringBuilder()
         .append(agentBlock)
         .append(layerSeparator)
-        .append(frameworkBlock);
+        .append(frameworkBlock)
+        .append(layerSeparator)
+        .append(rulesBlock);
     boolean hasStepLayer = appendStepPrompt(stepPrompt, promptBuilder, layerSeparator);
     String prompt = promptBuilder.toString();
     PromptLayerBoundaries boundaries = null;
     if (promptCacheEnabled) {
       boundaries = computePromptLayerBoundaries(
-          frameworkBlock, layerSeparator, agentBlock, hasStepLayer, prompt);
+          frameworkBlock, rulesBlock, layerSeparator, agentBlock, hasStepLayer, prompt);
     }
     return new AssembledSystemPrompt(prompt, boundaries);
   }
@@ -639,12 +646,14 @@ public final class AgentInvoker {
 
   private static PromptLayerBoundaries computePromptLayerBoundaries(
       String frameworkBlock,
+      String rulesBlock,
       String layerSeparator,
       String agentBlock,
       boolean hasStepLayer,
       String assembledPrompt) {
     int layer1End = utf8ByteLength(agentBlock);
-    int layer2End = utf8ByteLength(frameworkBlock + layerSeparator + agentBlock);
+    // Layer 2 spans the trusted cacheable prefix: agent + framework + the constant system-rules block.
+    int layer2End = utf8ByteLength(agentBlock + layerSeparator + frameworkBlock + layerSeparator + rulesBlock);
     Integer layer3End = hasStepLayer ? utf8ByteLength(assembledPrompt) : null;
     return new PromptLayerBoundaries(layer1End, layer2End, layer3End);
   }

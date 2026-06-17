@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package com.agentforge4j.runtime.llm;
 
+import com.agentforge4j.core.workflow.context.ContextProvenance;
 import com.agentforge4j.core.workflow.context.ContextValue;
 import com.agentforge4j.core.workflow.context.NumberContextValue;
 import com.agentforge4j.core.workflow.event.WorkflowEventType;
@@ -147,7 +148,7 @@ public final class LlmCallObserver {
     }
     state.putContextValue(
         ReservedContextKeys.LLM_TOKENS_TOTAL,
-        new NumberContextValue(runningTotal + callTotal));
+        new NumberContextValue(runningTotal + callTotal, ContextProvenance.SYSTEM_GENERATED));
     Integer currentStepUid = state.getStepExecutionUid().get(state.getCurrentStepId());
     if (currentStepUid != null) {
       state.putContextKeyWrittenAtUid(ReservedContextKeys.LLM_TOKENS_TOTAL, currentStepUid);

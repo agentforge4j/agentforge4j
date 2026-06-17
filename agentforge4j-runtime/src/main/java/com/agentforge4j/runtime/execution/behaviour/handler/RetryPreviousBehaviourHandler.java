@@ -3,6 +3,7 @@ package com.agentforge4j.runtime.execution.behaviour.handler;
 
 import com.agentforge4j.core.exception.StepExecutionException;
 import com.agentforge4j.core.workflow.Executable;
+import com.agentforge4j.core.workflow.context.ContextProvenance;
 import com.agentforge4j.core.workflow.context.ContextValue;
 import com.agentforge4j.core.workflow.context.StringContextValue;
 import com.agentforge4j.core.workflow.event.WorkflowEventType;
@@ -74,7 +75,8 @@ public final class RetryPreviousBehaviourHandler implements
             .formatted(step.stepId(), behaviour.retryStepId())));
 
     attempts++;
-    state.putContextValue(attemptKey, new StringContextValue(String.valueOf(attempts)));
+    state.putContextValue(attemptKey,
+        new StringContextValue(String.valueOf(attempts), ContextProvenance.SYSTEM_GENERATED));
 
     state.clearEntriesFromUid(retryUid);
     LOG.log(System.Logger.Level.DEBUG, "Retry clearFromUid retryUid={0}", retryUid);

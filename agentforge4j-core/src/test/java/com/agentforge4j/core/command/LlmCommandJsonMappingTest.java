@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package com.agentforge4j.core.command;
 
+import com.agentforge4j.core.workflow.context.ContextProvenance;
 import com.agentforge4j.core.workflow.artifact.TextArtifactItem;
 import com.agentforge4j.core.workflow.context.BooleanContextValue;
 import com.agentforge4j.core.workflow.context.ContextValueList;
@@ -136,14 +137,14 @@ class LlmCommandJsonMappingTest {
             {"type":"SET_CONTEXT","key":"b","value":{"type":"BOOLEAN","value":false}}
             """,
         LlmCommand.class))
-        .isInstanceOfSatisfying(SetContextCommand.class, c -> assertThat(c.value()).isEqualTo(new BooleanContextValue(false)));
+        .isInstanceOfSatisfying(SetContextCommand.class, c -> assertThat(c.value()).isEqualTo(new BooleanContextValue(false, ContextProvenance.USER_SUPPLIED)));
 
     assertThat(mapper.readValue(
         """
             {"type":"SET_CONTEXT","key":"j","value":{"type":"JSON","json":"[]"}}
             """,
         LlmCommand.class))
-        .isInstanceOfSatisfying(SetContextCommand.class, c -> assertThat(c.value()).isEqualTo(new JsonContextValue("[]")));
+        .isInstanceOfSatisfying(SetContextCommand.class, c -> assertThat(c.value()).isEqualTo(new JsonContextValue("[]", ContextProvenance.USER_SUPPLIED)));
 
     assertThat(mapper.readValue(
         """
@@ -153,7 +154,7 @@ class LlmCommandJsonMappingTest {
             """,
         LlmCommand.class))
         .isInstanceOfSatisfying(SetContextCommand.class, c -> assertThat(c.value())
-            .isEqualTo(new ContextValueList(List.of(new StringContextValue("a")))));
+            .isEqualTo(new ContextValueList(List.of(new StringContextValue("a", ContextProvenance.USER_SUPPLIED)), ContextProvenance.USER_SUPPLIED)));
   }
 
   @Test

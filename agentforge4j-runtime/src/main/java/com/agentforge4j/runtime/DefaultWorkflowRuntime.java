@@ -15,6 +15,7 @@ import com.agentforge4j.core.spi.tool.ToolExecutionService;
 import com.agentforge4j.core.workflow.Executable;
 import com.agentforge4j.core.workflow.WorkflowDefinition;
 import com.agentforge4j.core.workflow.artifact.ArtifactDefinition;
+import com.agentforge4j.core.workflow.context.ContextProvenance;
 import com.agentforge4j.core.workflow.context.StringContextValue;
 import com.agentforge4j.core.workflow.event.WorkflowEventType;
 import com.agentforge4j.core.workflow.repository.WorkflowRepository;
@@ -618,7 +619,7 @@ public final class DefaultWorkflowRuntime implements WorkflowRuntime {
     String answer = answers.values().stream().findFirst().orElse("");
 
     state.putContextValue("user.response." + state.getCurrentStepId(),
-        new StringContextValue(answer)
+        new StringContextValue(answer, ContextProvenance.USER_SUPPLIED)
     );
   }
 
@@ -796,7 +797,7 @@ public final class DefaultWorkflowRuntime implements WorkflowRuntime {
         state.removeContextValue(key);
         continue;
       }
-      state.putContextValue(key, new StringContextValue(value));
+      state.putContextValue(key, new StringContextValue(value, ContextProvenance.USER_SUPPLIED));
     }
   }
 }

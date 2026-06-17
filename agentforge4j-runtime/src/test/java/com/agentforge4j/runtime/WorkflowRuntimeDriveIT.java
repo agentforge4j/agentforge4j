@@ -13,6 +13,9 @@ import com.agentforge4j.core.workflow.WorkflowSource;
 import com.agentforge4j.core.workflow.artifact.ArtifactDefinition;
 import com.agentforge4j.core.workflow.artifact.TextArtifactItem;
 import com.agentforge4j.core.workflow.context.ContextMapping;
+import com.agentforge4j.core.workflow.context.ContextProvenance;
+import com.agentforge4j.core.workflow.context.ContextValue;
+import com.agentforge4j.core.workflow.state.WorkflowState;
 import com.agentforge4j.core.workflow.state.WorkflowStatus;
 import com.agentforge4j.core.workflow.step.StepDefinition;
 import com.agentforge4j.core.workflow.step.StepTransition;
@@ -188,6 +191,29 @@ class WorkflowRuntimeDriveIT {
     assertThat(runtime.getState(runId).getPendingArtifact()).isNotNull();
     assertThat(runtime.getState(runId).getPendingArtifact().items().get(0).id()).isEqualTo(
         "nestedField");
+  }
+
+  @Test
+  void submitInput_stamps_artifact_answer_as_user_supplied() {
+    ArtifactDefinition artifact = new ArtifactDefinition(
+        "form1", List.of(new TextArtifactItem("field1", "Field", true, null)));
+    StepDefinition inputStep = StepDefinition.builder()
+        .withStepId("input")
+        .withName("input")
+        .withBehaviour(new InputBehaviour("form1", StepTransition.AUTO))
+        .build();
+    WorkflowDefinition wf = workflow(
+        "wf-artifact-answer", Map.of(), Map.of("form1", artifact), List.of(inputStep));
+    WorkflowRuntime runtime = runtime(Map.of(wf.id(), wf));
+
+    String runId = runtime.start(wf.id());
+    assertThat(runtime.getState(runId).getStatus()).isEqualTo(WorkflowStatus.AWAITING_INPUT);
+
+    runtime.submitInput(runId, Map.of("field1", "the answer"), "user");
+
+    WorkflowState state = runtime.getState(runId);
+    ContextValue answer = state.getContextValue("form1.field1").orElseThrow();
+    assertThat(answer.provenance()).isEqualTo(ContextProvenance.USER_SUPPLIED);
   }
 
   private static WorkflowRuntime runtime(Map<String, WorkflowDefinition> workflows) {

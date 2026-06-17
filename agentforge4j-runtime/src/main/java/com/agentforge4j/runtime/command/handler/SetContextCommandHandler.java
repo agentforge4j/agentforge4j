@@ -2,6 +2,8 @@
 package com.agentforge4j.runtime.command.handler;
 
 import com.agentforge4j.core.command.SetContextCommand;
+import com.agentforge4j.core.workflow.context.ContextProvenance;
+import com.agentforge4j.core.workflow.context.UntrustedInputEnvelope;
 import com.agentforge4j.core.workflow.event.WorkflowEventType;
 import com.agentforge4j.runtime.command.CommandApplicationRequest;
 import com.agentforge4j.runtime.command.CommandApplicationResult;
@@ -42,7 +44,16 @@ public final class SetContextCommandHandler implements CommandHandler<SetContext
   public CommandApplicationResult apply(SetContextCommand cmd, CommandApplicationRequest request) {
     LOG.log(System.Logger.Level.DEBUG, "SetContext command key={0}", cmd.key());
     CommandHandler.ensureContextOutputKeyAllowed(cmd.key(), request.contextMapping(), request.agentId());
-    request.state().putContextValue(cmd.key(), cmd.value());
+    // Reject the reserved render-envelope key at the write path so an injection-influenced SET_CONTEXT
+    // fails fast and attributably here, rather than poisoning every later render (the renderer keeps its
+    // own collision guard as a backstop).
+    Validate.isTrue(!UntrustedInputEnvelope.KEY.equals(cmd.key()),
+        "Context key '%s' is reserved for the untrusted-input render envelope and cannot be written"
+            .formatted(UntrustedInputEnvelope.KEY));
+    // Re-stamp the LLM-supplied value's provenance authoritatively: the value content comes from LLM
+    // command JSON, but provenance must never be honoured from that JSON (an LLM could otherwise emit
+    // "provenance":"SYSTEM_GENERATED" to launder its content into the trusted partition).
+    request.state().putContextValue(cmd.key(), cmd.value().withProvenance(ContextProvenance.LLM_GENERATED));
     request.state().putContextKeyWrittenAtUid(cmd.key(), request.currentStepUid());
     eventRecorder.record(request.state().getRunId(), request.state().getCurrentStepId(),
         WorkflowEventType.CONTEXT_UPDATED, "set context key: %s".formatted(cmd.key()),

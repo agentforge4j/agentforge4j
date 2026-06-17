@@ -8,6 +8,7 @@ import com.agentforge4j.core.workflow.context.ContextValueList;
 import com.agentforge4j.core.workflow.context.JsonContextValue;
 import com.agentforge4j.core.workflow.context.NumberContextValue;
 import com.agentforge4j.core.workflow.context.StringContextValue;
+import com.agentforge4j.core.workflow.context.UntrustedInputEnvelope;
 import com.agentforge4j.util.Validate;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -22,8 +23,20 @@ import java.util.Map;
  *
  * <p>An empty {@code inputKeys} list means no filtering is applied and all
  * context values are rendered.
+ *
+ * <p>Entries are partitioned by provenance: trusted entries
+ * ({@link com.agentforge4j.core.workflow.context.ContextProvenance#isTrusted()}) render at the JSON root with their
+ * keys unchanged, while untrusted entries (user- or external-tool-supplied) are isolated under a reserved
+ * {@value #UNTRUSTED_USER_INPUT_KEY} object so embedded instructions are structurally separated from trusted content.
+ * The envelope is always emitted (stable shape) even when empty.
  */
 public final class ContextRenderer {
+
+  /**
+   * Reserved root key under which untrusted (user- or external-tool-supplied) context entries are isolated. A trusted
+   * context key that collides with this name is rejected.
+   */
+  public static final String UNTRUSTED_USER_INPUT_KEY = UntrustedInputEnvelope.KEY;
 
   private final ObjectMapper objectMapper;
   private final Map<Class<? extends ContextValue>, ContextValueExtractor<?>> contextRenderValues;
@@ -36,13 +49,27 @@ public final class ContextRenderer {
   public String render(Map<String, ContextValue> context, ContextMapping mapping) {
     Validate.notNull(context, "context must not be null");
     Validate.notNull(mapping, "mapping must not be null");
-    ObjectNode root = objectMapper.createObjectNode();
     List<String> inputKeys = mapping.inputKeys();
     Validate.notNull(inputKeys, "inputKeys must not be null");
+    ObjectNode root = objectMapper.createObjectNode();
+    ObjectNode untrusted = objectMapper.createObjectNode();
     context.entrySet().stream()
         .filter(entry -> inputKeys.isEmpty() || inputKeys.contains(entry.getKey()))
-        .forEach(entry -> root.set(entry.getKey(), renderValue(entry.getValue())));
+        .forEach(entry -> partition(root, untrusted, entry.getKey(), entry.getValue()));
+    // Always emit the untrusted envelope so the rendered shape is stable, even when empty.
+    root.set(UNTRUSTED_USER_INPUT_KEY, untrusted);
     return root.toString();
+  }
+
+  private void partition(ObjectNode root, ObjectNode untrusted, String key, ContextValue value) {
+    if (value.provenance().isTrusted()) {
+      Validate.isTrue(!UNTRUSTED_USER_INPUT_KEY.equals(key),
+          "Trusted context key '%s' collides with the reserved untrusted-input envelope key"
+              .formatted(UNTRUSTED_USER_INPUT_KEY));
+      root.set(key, renderValue(value));
+    } else {
+      untrusted.set(key, renderValue(value));
+    }
   }
 
   private <T extends ContextValue> JsonNode renderValue(T value) {
