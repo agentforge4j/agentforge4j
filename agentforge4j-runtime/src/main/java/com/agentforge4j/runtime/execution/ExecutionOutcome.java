@@ -15,11 +15,6 @@ public enum ExecutionOutcome {
   COMPLETED,
 
   /**
-   * The executable signalled completion of the enclosing loop iteration.
-   */
-  COMPLETED_SIGNAL,
-
-  /**
    * Execution produced a pause — the runtime has transitioned the state to {@code AWAITING_INPUT},
    * {@code AWAITING_APPROVAL}, or {@code PAUSED}. The caller should stop driving the loop until
    * resumed via the command model.

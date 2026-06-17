@@ -5,6 +5,7 @@ import com.agentforge4j.core.workflow.event.WorkflowEventType;
 import com.agentforge4j.core.workflow.state.WorkflowState;
 import com.agentforge4j.core.workflow.state.WorkflowStatus;
 import com.agentforge4j.core.workflow.step.blueprint.BlueprintDefinition;
+import com.agentforge4j.core.workflow.step.loop.LoopConfig;
 import com.agentforge4j.runtime.event.EventRecorder;
 import com.agentforge4j.runtime.execution.ExecutionContext;
 import com.agentforge4j.runtime.execution.ExecutionOutcome;
@@ -16,6 +17,8 @@ import com.agentforge4j.util.Validate;
  * and record iteration events.
  */
 abstract class AbstractLoopStrategy implements LoopStrategy {
+
+  private static final System.Logger LOG = System.getLogger(AbstractLoopStrategy.class.getName());
 
   protected final StepSequenceExecutor stepSequenceExecutor;
   protected final EventRecorder eventRecorder;
@@ -67,5 +70,82 @@ abstract class AbstractLoopStrategy implements LoopStrategy {
     eventRecorder.record(runId, blueprint.blueprintId(),
         WorkflowEventType.LOOP_ITERATION_COMPLETED, payload, "runtime");
     return outcome;
+  }
+
+  /**
+   * Runs a single bounded iteration of the body: advances the loop cursor, logs, and delegates to
+   * {@link #executeIteration}. Shared by the strategies so the per-iteration bookkeeping lives in
+   * one place.
+   */
+  protected ExecutionOutcome runIteration(BlueprintDefinition blueprint, LoopConfig config,
+      ExecutionContext executionContext, int iteration) {
+    markLoopIterationStart(executionContext.getState(), blueprint.blueprintId(), iteration);
+    LOG.log(System.Logger.Level.DEBUG,
+        "Loop iteration start strategy={0}, iteration={1}, maxIterations={2}",
+        strategy(), iteration, config.maxIterations());
+    ExecutionOutcome outcome = executeIteration(blueprint, iteration, executionContext);
+    LOG.log(System.Logger.Level.DEBUG, "Loop iteration complete strategy={0}, iteration={1}, outcome={2}",
+        strategy(), iteration, outcome);
+    return outcome;
+  }
+
+  /**
+   * Runs the body up to {@code maxIterations}, ending early when {@code terminationCheck} signals
+   * after an iteration. Returns immediately on a paused iteration (cursor preserved for resume),
+   * clears the cursor and returns on failure or cancellation, and — on a clean termination signal —
+   * clears the cursor, logs the {@code terminationReason}, and completes. When the iteration ceiling
+   * is reached without a signal, {@link MaxIterationsHandler} decides the outcome.
+   *
+   * <p>Shared by strategies whose termination is decided per iteration (agent signal, evaluator).
+   * The per-iteration agent completion signal is cleared before each iteration so the check observes
+   * only the current iteration's body.
+   */
+  protected ExecutionOutcome iterateUntilSignalled(BlueprintDefinition blueprint, LoopConfig config,
+      ExecutionContext executionContext, IterationTerminationCheck terminationCheck,
+      String terminationReason) {
+    WorkflowState state = executionContext.getState();
+    String blueprintId = blueprint.blueprintId();
+    int start = firstLoopIterationToRun(state, blueprintId);
+    for (int iteration = start; iteration <= config.maxIterations(); iteration++) {
+      executionContext.setAgentCompletionSignalled(false);
+      ExecutionOutcome outcome = runIteration(blueprint, config, executionContext, iteration);
+      if (outcome == ExecutionOutcome.PAUSED) {
+        return outcome;
+      }
+      if (outcome == ExecutionOutcome.FAILED) {
+        clearLoopIterationCursor(state, blueprintId);
+        return outcome;
+      }
+      if (state.getStatus() == WorkflowStatus.CANCELLED) {
+        clearLoopIterationCursor(state, blueprintId);
+        return ExecutionOutcome.PAUSED;
+      }
+      if (terminationCheck.shouldTerminate(iteration)) {
+        clearLoopIterationCursor(state, blueprintId);
+        LOG.log(System.Logger.Level.INFO,
+            "Loop terminated strategy={0}, iterations={1}, reason={2}",
+            strategy(), iteration, terminationReason);
+        return ExecutionOutcome.COMPLETED;
+      }
+    }
+    return handleMaxIterations(blueprint, config, executionContext, state, blueprintId);
+  }
+
+  private ExecutionOutcome handleMaxIterations(BlueprintDefinition blueprint, LoopConfig config,
+      ExecutionContext executionContext, WorkflowState state, String blueprintId) {
+    ExecutionOutcome bounded = maxIterationsHandler.handle(blueprint, config, executionContext);
+    if (bounded == ExecutionOutcome.FAILED) {
+      clearLoopIterationCursor(state, blueprintId);
+    }
+    return bounded;
+  }
+
+  /**
+   * Decides, after an iteration, whether a per-iteration loop should terminate cleanly.
+   */
+  @FunctionalInterface
+  protected interface IterationTerminationCheck {
+
+    boolean shouldTerminate(int iteration);
   }
 }

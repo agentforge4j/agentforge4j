@@ -10,6 +10,7 @@ import java.util.Deque;
 import java.util.List;
 import java.util.Map;
 import lombok.Getter;
+import lombok.Setter;
 import org.apache.commons.lang3.ObjectUtils;
 
 /**
@@ -58,6 +59,24 @@ public final class ExecutionContext {
    */
   private List<String> currentSequenceStepIds = List.of();
   private Map<String, Executable> currentSequenceExecutables = Map.of();
+
+  /**
+   * Transient, per-drive flag set when an agent applies a {@code COMPLETE} command. An
+   * {@code AGENT_SIGNAL} loop reads it after each iteration to detect that the agent signalled clean
+   * loop completion. Not persisted: it is always set and read within the same synchronous drive as
+   * the {@code COMPLETE}, so a pause/resume starts a fresh context with the flag cleared.
+   * -- SETTER --
+   *  Records whether the most recent agent command application signalled completion (a
+   *
+   *  command). Set on every agent step so the value reflects the last agent step of
+   *  an iteration; read by
+   *  loops to decide whether to terminate.
+   *
+   * @param signalled {@code true} when a {@code COMPLETE} command was applied
+
+   */
+  @Setter
+  private boolean agentCompletionSignalled;
 
   public ExecutionContext(WorkflowState state, WorkflowDefinition rootWorkflow,
       int maxNestingDepth) {

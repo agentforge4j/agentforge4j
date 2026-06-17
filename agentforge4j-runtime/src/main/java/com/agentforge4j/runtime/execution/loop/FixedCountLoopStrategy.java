@@ -38,7 +38,7 @@ public final class FixedCountLoopStrategy extends AbstractLoopStrategy {
     String blueprintId = blueprint.blueprintId();
     int start = firstLoopIterationToRun(state, blueprintId);
     for (int iteration = start; iteration <= config.maxIterations(); iteration++) {
-      ExecutionOutcome outcome = execute(blueprint, config, executionContext, iteration);
+      ExecutionOutcome outcome = runIteration(blueprint, config, executionContext, iteration);
       if (outcome == ExecutionOutcome.PAUSED) {
         return outcome;
       }
@@ -50,25 +50,12 @@ public final class FixedCountLoopStrategy extends AbstractLoopStrategy {
         clearLoopIterationCursor(state, blueprintId);
         return ExecutionOutcome.PAUSED;
       }
-      // COMPLETED_SIGNAL is ignored for fixed count — we run to N regardless.
+      // A body-level agent completion signal is ignored for fixed count — we run to N regardless.
     }
     clearLoopIterationCursor(state, blueprintId);
     LOG.log(System.Logger.Level.INFO,
         "Loop terminated strategy={0}, iterations={1}, reason=FIXED_COUNT_REACHED",
         strategy(), config.maxIterations());
     return ExecutionOutcome.COMPLETED;
-  }
-
-  private ExecutionOutcome execute(BlueprintDefinition blueprint, LoopConfig config,
-      ExecutionContext executionContext, int iteration) {
-    markLoopIterationStart(executionContext.getState(), blueprint.blueprintId(), iteration);
-    LOG.log(System.Logger.Level.DEBUG,
-        "Loop iteration start strategy={0}, iteration={1}, maxIterations={2}",
-        strategy(), iteration, config.maxIterations());
-    ExecutionOutcome outcome = executeIteration(blueprint, iteration, executionContext);
-    LOG.log(System.Logger.Level.DEBUG,
-        "Loop iteration complete iteration={0}, terminationSignal={1}",
-        iteration, outcome == ExecutionOutcome.COMPLETED_SIGNAL);
-    return outcome;
   }
 }

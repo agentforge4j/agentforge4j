@@ -131,6 +131,8 @@ public final class SparBehaviourHandler implements BehaviourHandler<SparBehaviou
     LOG.log(System.Logger.Level.INFO,
         "SPAR completed stepId={0}, executedRounds={1}, maxRounds={2}, loopTermination={3}",
         step.stepId(), executedRounds, config.maxRounds(), loopTermination);
+    // Surface a COMPLETE command to an enclosing AGENT_SIGNAL loop without altering the outcome.
+    executionContext.setAgentCompletionSignalled(result == CommandApplicationResult.COMPLETE_SIGNAL);
     return CommandApplicationResults.toExecutionOutcome(result);
   }
 

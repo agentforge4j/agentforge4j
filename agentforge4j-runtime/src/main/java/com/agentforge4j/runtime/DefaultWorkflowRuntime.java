@@ -724,7 +724,7 @@ public final class DefaultWorkflowRuntime implements WorkflowRuntime {
   private void finaliseDrive(WorkflowState state, ExecutionOutcome outcome) {
     state.setLastUpdatedAt(clock.instant());
     switch (outcome) {
-      case COMPLETED, COMPLETED_SIGNAL -> {
+      case COMPLETED -> {
         state.setStatus(WorkflowStatus.COMPLETED);
         eventRecorder.record(state.getRunId(), null,
             WorkflowEventType.RUN_COMPLETED, null, "runtime");

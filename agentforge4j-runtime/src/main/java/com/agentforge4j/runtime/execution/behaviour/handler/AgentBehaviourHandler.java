@@ -60,6 +60,10 @@ public final class AgentBehaviourHandler implements BehaviourHandler<AgentBehavi
       executionContext.getState().putStepOutput(step.stepId(), result.rawResponse());
     }
 
+    // Surface a COMPLETE command to an enclosing AGENT_SIGNAL loop without altering the execution
+    // outcome (which stays COMPLETED so step gating and sequence continuation are unaffected).
+    executionContext.setAgentCompletionSignalled(applicationResult == CommandApplicationResult.COMPLETE_SIGNAL);
+
     return CommandApplicationResults.toExecutionOutcome(applicationResult);
   }
 

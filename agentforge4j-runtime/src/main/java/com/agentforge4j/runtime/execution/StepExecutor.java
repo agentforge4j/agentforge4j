@@ -74,7 +74,7 @@ public final class StepExecutor {
     Validate.notNull(outcome,
         "BehaviourHandler returned null outcome for step: %s".formatted(step.stepId()));
     state.setLastUpdatedAt(clock.instant());
-    if (outcome == ExecutionOutcome.COMPLETED || outcome == ExecutionOutcome.COMPLETED_SIGNAL) {
+    if (outcome == ExecutionOutcome.COMPLETED) {
       eventRecorder.record(state.getRunId(), step.stepId(), WorkflowEventType.STEP_COMPLETED, null,
           "runtime");
       LOG.log(System.Logger.Level.INFO, "STEP_COMPLETED runId={0}, stepId={1}",
