@@ -8,6 +8,7 @@ import com.agentforge4j.core.workflow.event.WorkflowEventLog;
 import com.agentforge4j.core.workflow.repository.WorkflowRepository;
 import com.agentforge4j.core.workflow.repository.WorkflowStateRepository;
 import com.agentforge4j.llm.LlmClientResolver;
+import com.agentforge4j.llm.LlmProviderConfigurationException;
 import com.agentforge4j.llm.RetryingLlmClientResolver;
 import com.agentforge4j.llm.api.LlmRetryPolicy;
 import com.agentforge4j.runtime.command.FileSink;
@@ -434,27 +435,32 @@ class AgentForge4jBootstrapTest {
   }
 
   @Test
-  void withLlmProviderAcceptsMultipleProviderConfigsAndWiresResolver() {
+  void withLlmProviderForMissingPluginFailsFast() {
+    // No provider modules are on the bootstrap test classpath, so a configured provider has no
+    // factory — the wiring must fail fast (decision: missing plugin is an error), listing the
+    // discovered providers. (Provider wiring with real factories is covered by LlmClientWiringTest.)
     LlmProviderConfig openai = LlmProviderConfig.openai().defaults().apiKey("sk-openai").build();
-    LlmProviderConfig claude = LlmProviderConfig.claude().defaults().apiKey("sk-claude").build();
-    AgentForge4j af = AgentForge4jBootstrap.defaults()
+    LlmProviderConfig ollama = LlmProviderConfig.ollama().defaults().build();
+
+    assertThatThrownBy(() -> AgentForge4jBootstrap.defaults()
         .withLlmProvider(openai)
-        .withLlmProvider(claude)
-        .build();
-    assertThat(af.components().llmClientResolver()).isNotNull();
-    assertThat(af.runtime()).isNotNull();
+        .withLlmProvider(ollama)
+        .build())
+        .isInstanceOf(LlmProviderConfigurationException.class)
+        .hasMessageContaining("No LLM provider factory found");
   }
 
   @Test
-  void withLlmProviderLastWriteWinsWithinSameProviderKeyStillBuilds() {
+  void withLlmProviderLastWriteWinsWithinSameProviderKeyThenFailsFastForMissingPlugin() {
     LlmProviderConfig openaiFirst = LlmProviderConfig.openai().defaults().apiKey("sk-one").build();
     LlmProviderConfig openaiSecond = LlmProviderConfig.openai().defaults().apiKey("sk-two").build();
-    AgentForge4j af = AgentForge4jBootstrap.defaults()
+
+    assertThatThrownBy(() -> AgentForge4jBootstrap.defaults()
         .withLlmProvider(openaiFirst)
         .withLlmProvider(openaiSecond)
-        .build();
-    assertThat(af.components().llmClientResolver()).isNotNull();
-    assertThat(af.runtime()).isNotNull();
+        .build())
+        .isInstanceOf(LlmProviderConfigurationException.class)
+        .hasMessageContaining("openai");
   }
 
   @Test

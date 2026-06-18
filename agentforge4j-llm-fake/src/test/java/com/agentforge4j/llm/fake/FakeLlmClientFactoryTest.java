@@ -2,6 +2,9 @@
 package com.agentforge4j.llm.fake;
 
 import com.agentforge4j.llm.LlmClientConfiguration;
+import com.agentforge4j.llm.LlmClientFactoryContext;
+import com.agentforge4j.llm.LlmProviderConfigurationException;
+import com.agentforge4j.llm.LlmSecret;
 import com.agentforge4j.llm.api.LlmClient;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.Duration;
@@ -23,7 +26,9 @@ class FakeLlmClientFactoryTest {
   @Test
   void create_withFakeConfiguration_buildsFakeClientBoundToTheSource() {
     FakeResponseSource source = new RegistryFakeResponseSource(new FakeRunLifecycle());
-    LlmClient client = factory.create(new ObjectMapper(), new FakeConfiguration(source));
+    LlmClientFactoryContext context = new LlmClientFactoryContext(
+        new ObjectMapper(), new FakeConfiguration(source), reference -> new LlmSecret("unused"));
+    LlmClient client = factory.create(context);
 
     assertThat(client).isInstanceOf(FakeLlmClient.class);
     assertThat(client.getProviderName()).isEqualTo("fake");
@@ -48,8 +53,11 @@ class FakeLlmClientFactoryTest {
       }
     };
 
-    assertThatThrownBy(() -> factory.create(new ObjectMapper(), generic))
-        .isInstanceOf(IllegalArgumentException.class)
+    LlmClientFactoryContext context = new LlmClientFactoryContext(
+        new ObjectMapper(), generic, reference -> new LlmSecret("unused"));
+
+    assertThatThrownBy(() -> factory.create(context))
+        .isInstanceOf(LlmProviderConfigurationException.class)
         .hasMessageContaining("FakeConfiguration")
         .hasMessageContaining("withLlmProvider");
   }

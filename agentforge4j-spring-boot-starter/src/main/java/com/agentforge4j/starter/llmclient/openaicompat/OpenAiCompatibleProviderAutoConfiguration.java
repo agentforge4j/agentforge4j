@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package com.agentforge4j.starter.llmclient.openaicompat;
 
+import com.agentforge4j.llm.LlmClientConfiguration;
 import com.agentforge4j.llm.openaicompatible.OpenAiCompatibleConfiguration;
 import com.agentforge4j.starter.BootstrapAutoConfiguration;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
@@ -20,7 +21,7 @@ public class OpenAiCompatibleProviderAutoConfiguration {
 
   @Bean
   @ConditionalOnProperty("agentforge4j.llm.openai-compatible.api-key")
-  OpenAiCompatibleConfiguration openAiCompatibleConfiguration(
+  LlmClientConfiguration openAiCompatibleConfiguration(
       OpenAiCompatibleLlmClientProperties properties) {
     return new OpenAiCompatibleConfigurationAdapter(properties);
   }

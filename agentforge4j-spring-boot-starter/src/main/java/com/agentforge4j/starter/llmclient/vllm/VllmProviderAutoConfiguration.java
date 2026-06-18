@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package com.agentforge4j.starter.llmclient.vllm;
 
+import com.agentforge4j.llm.LlmClientConfiguration;
 import com.agentforge4j.llm.vllm.VllmConfiguration;
 import com.agentforge4j.starter.BootstrapAutoConfiguration;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
@@ -19,7 +20,7 @@ public class VllmProviderAutoConfiguration {
 
   @Bean
   @ConditionalOnProperty("agentforge4j.llm.vllm.url")
-  VllmConfiguration vllmConfiguration(VllmLlmClientProperties properties) {
+  LlmClientConfiguration vllmConfiguration(VllmLlmClientProperties properties) {
     return new VllmConfigurationAdapter(properties);
   }
 }

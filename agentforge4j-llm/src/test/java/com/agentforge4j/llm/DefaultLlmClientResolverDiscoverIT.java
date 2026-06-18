@@ -14,11 +14,12 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
- * Integration tests for {@link DefaultLlmClientResolver#discover} using real
- * {@link java.util.ServiceLoader} wiring (no mocks). Stub factories are registered under
- * {@code META-INF/services}.
+ * Integration tests for {@link DefaultLlmClientResolver#discover} using real {@link java.util.ServiceLoader} wiring (no
+ * mocks). Stub factories are registered under {@code META-INF/services}.
  */
 class DefaultLlmClientResolverDiscoverIT {
+
+  private static final LlmSecretResolver TEST_RESOLVER = reference -> new LlmSecret(reference.literalValue());
 
   @Disabled
   @Test
@@ -27,7 +28,7 @@ class DefaultLlmClientResolverDiscoverIT {
     Collection<LlmClientConfiguration> configs = List.of(
         TestFixtures.testConfig(ServiceLoaderStubLlmClientFactory.PROVIDER, "stub-model"));
 
-    DefaultLlmClientResolver resolver = DefaultLlmClientResolver.discover(mapper, configs);
+    DefaultLlmClientResolver resolver = DefaultLlmClientResolver.discover(mapper, configs, TEST_RESOLVER);
 
     LlmClient client = resolver.resolve(ServiceLoaderStubLlmClientFactory.PROVIDER);
     assertThat(client.getProviderName()).isEqualTo(ServiceLoaderStubLlmClientFactory.PROVIDER);
@@ -47,7 +48,7 @@ class DefaultLlmClientResolverDiscoverIT {
     Collection<LlmClientConfiguration> configs = List.of(
         TestFixtures.testConfig(ServiceLoaderStubLlmClientFactory.PROVIDER, "stub-model"));
 
-    DefaultLlmClientResolver resolver = DefaultLlmClientResolver.discover(mapper, configs);
+    DefaultLlmClientResolver resolver = DefaultLlmClientResolver.discover(mapper, configs, TEST_RESOLVER);
 
     assertThatThrownBy(() -> resolver.resolve(OrphanDiscoverLlmClientFactory.PROVIDER))
         .isInstanceOf(IllegalArgumentException.class)

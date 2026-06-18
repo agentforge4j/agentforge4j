@@ -83,8 +83,8 @@ public final class TestFixtures {
     }
 
     @Override
-    public LlmClient create(ObjectMapper objectMapper, LlmClientConfiguration config) {
-      return new TestLlmClient(config.getProviderName());
+    public LlmClient create(LlmClientFactoryContext context) {
+      return new TestLlmClient(context.configuration().getProviderName());
     }
   }
 }

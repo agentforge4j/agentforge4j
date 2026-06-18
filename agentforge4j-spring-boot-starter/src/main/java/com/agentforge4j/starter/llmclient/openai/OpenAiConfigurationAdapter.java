@@ -1,15 +1,24 @@
 // SPDX-License-Identifier: Apache-2.0
 package com.agentforge4j.starter.llmclient.openai;
 
-import com.agentforge4j.llm.openai.OpenAiConfiguration;
+import com.agentforge4j.llm.LlmClientConfiguration;
+import com.agentforge4j.llm.LlmProviderOptions;
+import com.agentforge4j.llm.LlmSecretReference;
+import com.agentforge4j.starter.llmclient.NeutralOptions;
 import java.time.Duration;
+import java.util.Optional;
 
+/**
+ * Adapts {@link OpenAiLlmClientProperties} to the neutral {@link LlmClientConfiguration} SPI. The Spring-resolved API
+ * key is wrapped as a literal credential reference; provider-specific settings are emitted as canonical dotted options
+ * consumed by the provider's factory.
+ */
 record OpenAiConfigurationAdapter(OpenAiLlmClientProperties properties)
-    implements OpenAiConfiguration {
+    implements LlmClientConfiguration {
 
   @Override
-  public String getApiKey() {
-    return properties.apiKey();
+  public String getProviderName() {
+    return "openai";
   }
 
   @Override
@@ -18,17 +27,24 @@ record OpenAiConfigurationAdapter(OpenAiLlmClientProperties properties)
   }
 
   @Override
-  public String getUrl() {
-    return properties.url();
-  }
-
-  @Override
   public Duration getConnectTimeout() {
     return properties.connectTimeout();
   }
 
   @Override
-  public Duration getRequestTimeout() {
-    return properties.requestTimeout();
+  public String getBaseUrl() {
+    return properties.url();
+  }
+
+  @Override
+  public Optional<LlmSecretReference> getApiKeyReference() {
+    return Optional.of(LlmSecretReference.literal(properties.apiKey()));
+  }
+
+  @Override
+  public LlmProviderOptions getOptions() {
+    return LlmProviderOptions.of("openai", NeutralOptions.create()
+        .duration("request.timeout", properties.requestTimeout())
+        .toMap());
   }
 }

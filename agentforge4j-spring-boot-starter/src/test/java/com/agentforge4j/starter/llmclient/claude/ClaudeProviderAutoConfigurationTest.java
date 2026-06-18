@@ -3,7 +3,7 @@ package com.agentforge4j.starter.llmclient.claude;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.agentforge4j.llm.claude.ClaudeConfiguration;
+import com.agentforge4j.llm.LlmClientConfiguration;
 import java.time.Duration;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
@@ -17,12 +17,12 @@ class ClaudeProviderAutoConfigurationTest {
   @Test
   void registersWhenApiKeySet() {
     runner.withPropertyValues("agentforge4j.llm.claude.api-key=test-key")
-        .run(ctx -> assertThat(ctx).hasSingleBean(ClaudeConfiguration.class));
+        .run(ctx -> assertThat(ctx).hasSingleBean(LlmClientConfiguration.class));
   }
 
   @Test
   void skipsWhenApiKeyMissing() {
-    runner.run(ctx -> assertThat(ctx).doesNotHaveBean(ClaudeConfiguration.class));
+    runner.run(ctx -> assertThat(ctx).doesNotHaveBean(LlmClientConfiguration.class));
   }
 
   @Test
@@ -34,11 +34,13 @@ class ClaudeProviderAutoConfigurationTest {
         "agentforge4j.llm.claude.url=https://api.anthropic.test/v1/messages",
         "agentforge4j.llm.claude.max-token-size=4096")
         .run(ctx -> {
-          ClaudeConfiguration cfg = ctx.getBean(ClaudeConfiguration.class);
+          LlmClientConfiguration cfg = ctx.getBean(LlmClientConfiguration.class);
           assertThat(cfg.getDefaultModel()).isEqualTo("claude-3-5-haiku");
-          assertThat(cfg.getMaxTokenSize()).isEqualTo(4096);
+          assertThat(cfg.getOptions().requireString("api.version")).isEqualTo("2023-06-01");
+          assertThat(cfg.getOptions().requireInteger("max.token.size")).isEqualTo(4096);
           assertThat(cfg.getConnectTimeout()).isEqualTo(Duration.ofSeconds(10));
-          assertThat(cfg.getRequestTimeout()).isEqualTo(Duration.ofMinutes(2));
+          assertThat(cfg.getOptions().requireDuration("request.timeout"))
+              .isEqualTo(Duration.ofMinutes(2));
           assertThat(cfg.getProviderName()).isEqualTo("claude");
         });
   }

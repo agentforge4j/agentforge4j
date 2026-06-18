@@ -255,7 +255,7 @@ class AzureOpenAiLlmClientIT {
       var config = FixedAzureOpenAiConfiguration.builder()
           .endpoint(http.baseEndpoint().toString())
           .build();
-      var client = new AzureOpenAiLlmClientFactory().create(new ObjectMapper(), config);
+      AzureOpenAiLlmClient client = new AzureOpenAiLlmClient(new ObjectMapper(), config);
       LlmExecutionRequest request =
           new LlmExecutionRequest("azure-openai", null, "system", "user", null, null, null);
 

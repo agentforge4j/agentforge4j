@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package com.agentforge4j.starter.llmclient.fake;
 
+import com.agentforge4j.llm.LlmClientFactoryContext;
+import com.agentforge4j.llm.LlmSecret;
 import com.agentforge4j.llm.api.LlmClient;
 import com.agentforge4j.llm.api.LlmExecutionRequest;
 import com.agentforge4j.llm.api.LlmExecutionResponse;
@@ -53,7 +55,8 @@ class FakeProviderAutoConfigurationTest {
       // Register against the lifecycle bean; resolve through a client built from the configuration.
       lifecycle.register("run-1", new FakeScript(1, Map.of(
           new FakeScriptKey("wf", "s1", "a1", 0), new FakeResponse("scripted", null))));
-      LlmClient client = new FakeLlmClientFactory().create(new ObjectMapper(), configuration);
+      LlmClient client = new FakeLlmClientFactory().create(new LlmClientFactoryContext(
+          new ObjectMapper(), configuration, reference -> new LlmSecret("unused")));
 
       LlmExecutionResponse response = client.execute(new LlmExecutionRequest(
           "fake", null, "system", "user", null, null,

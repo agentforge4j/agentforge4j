@@ -1,11 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 package com.agentforge4j.llm.vllm;
 
-import com.agentforge4j.llm.LlmClientConfiguration;
 import com.agentforge4j.llm.LlmClientFactory;
+import com.agentforge4j.llm.LlmClientFactoryContext;
 import com.agentforge4j.llm.api.LlmClient;
 import com.agentforge4j.util.Validate;
-import com.fasterxml.jackson.databind.ObjectMapper;
 
 /**
  * Factory for creating vLLM LLM clients.
@@ -30,21 +29,19 @@ public final class VllmLlmClientFactory implements LlmClientFactory {
   }
 
   /**
-   * Creates a vLLM LLM client with the given configuration.
+   * Creates a vLLM client from a neutral {@link LlmClientFactoryContext}: maps the neutral configuration and provider
+   * options into the validated {@link VllmConfiguration}. vLLM requires no credential.
    *
-   * @param objectMapper the JSON mapper for response parsing
-   * @param config       the configuration, must be an instance of {@link VllmConfiguration}
+   * @param context the factory inputs
+   *
    * @return a new vLLM LLM client
-   * @throws IllegalArgumentException if the config is not a VllmConfiguration
+   *
+   * @throws com.agentforge4j.llm.LlmProviderConfigurationException if a required value is missing or invalid
    */
   @Override
-  public LlmClient create(ObjectMapper objectMapper, LlmClientConfiguration config) {
-    Validate.notNull(config, "Vllm configuration must not be null");
-    if (!(config instanceof VllmConfiguration vllmConfig)) {
-      throw new IllegalArgumentException(
-          "VllmLlmClientFactory requires VllmConfiguration but got: %s".formatted(
-              config.getClass().getName()));
-    }
-    return new VllmLlmClient(objectMapper, vllmConfig);
+  public LlmClient create(LlmClientFactoryContext context) {
+    Validate.notNull(context, "context must not be null");
+    VllmConfiguration config = VllmNeutralConfiguration.fromNeutral(context.configuration());
+    return new VllmLlmClient(context.objectMapper(), config);
   }
 }

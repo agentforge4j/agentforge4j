@@ -3,7 +3,7 @@ package com.agentforge4j.starter.llmclient.ollama;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.agentforge4j.llm.ollama.OllamaConfiguration;
+import com.agentforge4j.llm.LlmClientConfiguration;
 import java.time.Duration;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
@@ -18,23 +18,26 @@ class OllamaProviderAutoConfigurationTest {
   void registersWhenEnabled() {
     runner.withPropertyValues(
             "agentforge4j.llm.ollama.enabled=true")
-        .run(ctx -> assertThat(ctx).hasSingleBean(OllamaConfiguration.class));
+        .run(ctx -> assertThat(ctx).hasSingleBean(LlmClientConfiguration.class));
   }
 
   @Test
   void skipsWhenNotEnabled() {
-    runner.run(ctx -> assertThat(ctx).doesNotHaveBean(OllamaConfiguration.class));
+    runner.run(ctx -> assertThat(ctx).doesNotHaveBean(LlmClientConfiguration.class));
   }
 
   @Test
   void appliesTimeoutsWhenEnabledAndForwardsUnsetModelAndUrlFromProperties() {
     runner.withPropertyValues("agentforge4j.llm.ollama.enabled=true")
         .run(ctx -> {
-          var cfg = ctx.getBean(OllamaConfiguration.class);
+          LlmClientConfiguration cfg = ctx.getBean(LlmClientConfiguration.class);
+          assertThat(cfg.getProviderName()).isEqualTo("ollama");
           assertThat(cfg.getDefaultModel()).isNull();
-          assertThat(cfg.getUrl()).isNull();
+          assertThat(cfg.getBaseUrl()).isNull();
+          assertThat(cfg.getApiKeyReference()).isEmpty();
           assertThat(cfg.getConnectTimeout()).isEqualTo(Duration.ofSeconds(10));
-          assertThat(cfg.getRequestTimeout()).isEqualTo(Duration.ofMinutes(5));
+          assertThat(cfg.getOptions().requireDuration("request.timeout"))
+              .isEqualTo(Duration.ofMinutes(5));
         });
   }
 }

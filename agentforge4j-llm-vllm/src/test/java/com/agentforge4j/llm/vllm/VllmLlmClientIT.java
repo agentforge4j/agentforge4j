@@ -308,7 +308,7 @@ class VllmLlmClientIT {
       var config = FixedVllmConfiguration.builder()
           .url(http.baseUri().toString())
           .build();
-      var client = new VllmLlmClientFactory().create(new ObjectMapper(), config);
+      VllmLlmClient client = new VllmLlmClient(new ObjectMapper(), config);
       LlmExecutionRequest request =
           new LlmExecutionRequest("vllm", null, "system", "user", null, null, null);
 

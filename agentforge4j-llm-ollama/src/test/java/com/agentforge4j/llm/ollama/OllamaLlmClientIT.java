@@ -376,9 +376,8 @@ class OllamaLlmClientIT {
   @Test
   void factory_create_produces_client_end_to_end() throws Exception {
     try (LoopbackHttpServer http = new LoopbackHttpServer(200, VALID_CHAT_JSON)) {
-      OllamaLlmClientFactory factory = new OllamaLlmClientFactory();
       OllamaConfiguration config = configForUrl(http.chatUrl(), java.time.Duration.ofSeconds(30));
-      var client = factory.create(new ObjectMapper(), config);
+      OllamaLlmClient client = new OllamaLlmClient(new ObjectMapper(), config);
 
       assertThat(client.execute(new LlmExecutionRequest("ollama", null, "a", "b", null, null, null)).text())
           .isEqualTo("Hello from loopback");

@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 package com.agentforge4j.llm.openaicompatible;
 
-import com.agentforge4j.llm.LlmClientConfiguration;
 import com.agentforge4j.llm.LlmClientFactory;
+import com.agentforge4j.llm.LlmClientFactoryContext;
+import com.agentforge4j.llm.LlmSecret;
 import com.agentforge4j.llm.api.LlmClient;
 import com.agentforge4j.util.Validate;
-import com.fasterxml.jackson.databind.ObjectMapper;
 
 /**
  * Factory for creating OpenAI-compatible LLM clients.
@@ -25,22 +25,22 @@ public final class OpenAiCompatibleLlmClientFactory implements LlmClientFactory 
   }
 
   /**
-   * Creates an OpenAI-compatible LLM client with the given configuration.
+   * Creates an OpenAI-compatible client from a neutral {@link LlmClientFactoryContext}: resolves the credential
+   * reference, maps the neutral configuration and provider options into the validated
+   * {@link OpenAiCompatibleConfiguration}, and constructs the client.
    *
-   * @param objectMapper the JSON mapper for response parsing
-   * @param config       the configuration, must be an instance of
-   *                     {@link OpenAiCompatibleConfiguration}
+   * @param context the factory inputs
+   *
    * @return a new OpenAI-compatible LLM client
-   * @throws IllegalArgumentException if the config is not an OpenAiCompatibleConfiguration
+   *
+   * @throws com.agentforge4j.llm.LlmProviderConfigurationException if a required value is missing or invalid
    */
   @Override
-  public LlmClient create(ObjectMapper objectMapper, LlmClientConfiguration config) {
-    Validate.notNull(config, "OpenAiCompatible configuration must not be null");
-    if (!(config instanceof OpenAiCompatibleConfiguration compatibleConfig)) {
-      throw new IllegalArgumentException(
-          "OpenAiCompatibleLlmClientFactory requires OpenAiCompatibleConfiguration but got: %s"
-              .formatted(config.getClass().getName()));
-    }
-    return new OpenAiCompatibleLlmClient(objectMapper, compatibleConfig);
+  public LlmClient create(LlmClientFactoryContext context) {
+    Validate.notNull(context, "context must not be null");
+    LlmSecret apiKey = context.requireApiKey();
+    OpenAiCompatibleConfiguration config =
+        OpenAiCompatibleNeutralConfiguration.fromNeutral(context.configuration(), apiKey);
+    return new OpenAiCompatibleLlmClient(context.objectMapper(), config);
   }
 }

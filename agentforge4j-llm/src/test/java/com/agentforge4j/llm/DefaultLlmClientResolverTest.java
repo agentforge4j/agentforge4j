@@ -18,6 +18,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class DefaultLlmClientResolverTest {
 
+  private static final LlmSecretResolver TEST_RESOLVER = reference -> new LlmSecret(reference.literalValue());
+
   @Nested
   class ConstructorTests {
 
@@ -246,7 +248,7 @@ class DefaultLlmClientResolverTest {
       Collection<LlmClientConfiguration> configs = new ArrayList<>();
 
       assertThrows(IllegalStateException.class, () -> {
-        DefaultLlmClientResolver.discover(mapper, configs);
+        DefaultLlmClientResolver.discover(mapper, configs, TEST_RESOLVER);
       });
     }
 
@@ -256,7 +258,7 @@ class DefaultLlmClientResolverTest {
       Collection<LlmClientConfiguration> configs = new ArrayList<>();
 
       Exception exception = assertThrows(IllegalStateException.class, () -> {
-        DefaultLlmClientResolver.discover(mapper, configs);
+        DefaultLlmClientResolver.discover(mapper, configs, TEST_RESOLVER);
       });
 
       assertTrue(exception.getMessage().contains("No LLM clients could be created"));
@@ -268,7 +270,7 @@ class DefaultLlmClientResolverTest {
           List.of(TestFixtures.testConfig("openai", "gpt-4"));
 
       assertThrows(IllegalArgumentException.class, () -> {
-        DefaultLlmClientResolver.discover(null, configs);
+        DefaultLlmClientResolver.discover(null, configs, TEST_RESOLVER);
       });
     }
 
@@ -277,7 +279,7 @@ class DefaultLlmClientResolverTest {
       ObjectMapper mapper = new ObjectMapper();
 
       assertThrows(IllegalArgumentException.class, () -> {
-        DefaultLlmClientResolver.discover(mapper, null);
+        DefaultLlmClientResolver.discover(mapper, null, TEST_RESOLVER);
       });
     }
 
@@ -289,7 +291,7 @@ class DefaultLlmClientResolverTest {
       configs.add(null);
 
       assertThrows(IllegalArgumentException.class, () -> {
-        DefaultLlmClientResolver.discover(mapper, configs);
+        DefaultLlmClientResolver.discover(mapper, configs, TEST_RESOLVER);
       });
     }
 
@@ -302,8 +304,49 @@ class DefaultLlmClientResolverTest {
       );
 
       assertThrows(IllegalArgumentException.class, () -> {
-        DefaultLlmClientResolver.discover(mapper, configs);
+        DefaultLlmClientResolver.discover(mapper, configs, TEST_RESOLVER);
       });
+    }
+
+    @Test
+    void build_constructs_client_for_matched_config() {
+      ObjectMapper mapper = new ObjectMapper();
+      DefaultLlmClientResolver resolver = DefaultLlmClientResolver.build(
+          mapper,
+          List.of(TestFixtures.testConfig("openai", "gpt-4")),
+          TEST_RESOLVER,
+          List.of(new TestFixtures.TestLlmClientFactory("openai")));
+
+      assertTrue(resolver.isProviderAvailable("openai"));
+    }
+
+    @Test
+    void build_fails_fast_on_config_with_no_matching_factory() {
+      ObjectMapper mapper = new ObjectMapper();
+
+      LlmProviderConfigurationException exception = assertThrows(
+          LlmProviderConfigurationException.class, () -> DefaultLlmClientResolver.build(
+              mapper,
+              List.of(TestFixtures.testConfig("unmatched-provider", "m")),
+              TEST_RESOLVER,
+              List.of(new TestFixtures.TestLlmClientFactory("openai"))));
+
+      assertTrue(exception.getMessage().contains("unmatched-provider"));
+    }
+
+    @Test
+    void build_fails_fast_on_duplicate_factory() {
+      ObjectMapper mapper = new ObjectMapper();
+
+      LlmProviderConfigurationException exception = assertThrows(
+          LlmProviderConfigurationException.class, () -> DefaultLlmClientResolver.build(
+              mapper,
+              List.of(),
+              TEST_RESOLVER,
+              List.of(new TestFixtures.TestLlmClientFactory("openai"),
+                  new TestFixtures.TestLlmClientFactory("openai"))));
+
+      assertTrue(exception.getMessage().contains("Duplicate"));
     }
   }
 }

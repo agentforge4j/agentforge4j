@@ -3,7 +3,7 @@ package com.agentforge4j.starter.llmclient.azureopenai;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.agentforge4j.llm.azureopenai.AzureOpenAiConfiguration;
+import com.agentforge4j.llm.LlmClientConfiguration;
 import java.time.Duration;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
@@ -21,7 +21,7 @@ class AzureOpenAiProviderAutoConfigurationTest {
         "agentforge4j.llm.azure-openai.deployment-name=gpt-deployment",
         "agentforge4j.llm.azure-openai.endpoint=https://example.openai.azure.com",
         "agentforge4j.llm.azure-openai.api-version=2024-06-01")
-        .run(ctx -> assertThat(ctx).hasSingleBean(AzureOpenAiConfiguration.class));
+        .run(ctx -> assertThat(ctx).hasSingleBean(LlmClientConfiguration.class));
   }
 
   @Test
@@ -30,7 +30,7 @@ class AzureOpenAiProviderAutoConfigurationTest {
         "agentforge4j.llm.azure-openai.deployment-name=gpt-deployment",
         "agentforge4j.llm.azure-openai.endpoint=https://example.openai.azure.com",
         "agentforge4j.llm.azure-openai.api-version=2024-06-01")
-        .run(ctx -> assertThat(ctx).doesNotHaveBean(AzureOpenAiConfiguration.class));
+        .run(ctx -> assertThat(ctx).doesNotHaveBean(LlmClientConfiguration.class));
   }
 
   @Test
@@ -41,11 +41,12 @@ class AzureOpenAiProviderAutoConfigurationTest {
         "agentforge4j.llm.azure-openai.endpoint=https://example.openai.azure.com",
         "agentforge4j.llm.azure-openai.api-version=v1")
         .run(ctx -> {
-          AzureOpenAiConfiguration cfg = ctx.getBean(AzureOpenAiConfiguration.class);
-          assertThat(cfg.getDeploymentName()).isEqualTo("my-deploy");
+          LlmClientConfiguration cfg = ctx.getBean(LlmClientConfiguration.class);
+          assertThat(cfg.getOptions().requireString("deployment")).isEqualTo("my-deploy");
           assertThat(cfg.getDefaultModel()).isEqualTo("my-deploy");
           assertThat(cfg.getConnectTimeout()).isEqualTo(Duration.ofSeconds(10));
-          assertThat(cfg.getRequestTimeout()).isEqualTo(Duration.ofMinutes(2));
+          assertThat(cfg.getOptions().requireDuration("request.timeout"))
+              .isEqualTo(Duration.ofMinutes(2));
           assertThat(cfg.getProviderName()).isEqualTo("azure-openai");
         });
   }

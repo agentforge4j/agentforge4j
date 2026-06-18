@@ -4,7 +4,6 @@ package com.agentforge4j.llm;
 import com.agentforge4j.llm.api.LlmClient;
 import com.agentforge4j.llm.api.LlmExecutionRequest;
 import com.agentforge4j.llm.api.LlmExecutionResponse;
-import com.fasterxml.jackson.databind.ObjectMapper;
 
 /**
  * Test {@link LlmClientFactory} registered for {@link java.util.ServiceLoader} coverage. Must have
@@ -26,11 +25,11 @@ public final class ServiceLoaderStubLlmClientFactory implements LlmClientFactory
   }
 
   @Override
-  public LlmClient create(ObjectMapper objectMapper, LlmClientConfiguration config) {
+  public LlmClient create(LlmClientFactoryContext context) {
     return new LlmClient() {
       @Override
       public String getProviderName() {
-        return config.getProviderName();
+        return context.configuration().getProviderName();
       }
 
       @Override

@@ -1,11 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 package com.agentforge4j.llm.bedrock;
 
-import com.agentforge4j.llm.LlmClientConfiguration;
 import com.agentforge4j.llm.LlmClientFactory;
+import com.agentforge4j.llm.LlmClientFactoryContext;
 import com.agentforge4j.llm.api.LlmClient;
 import com.agentforge4j.util.Validate;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import software.amazon.awssdk.services.bedrockruntime.BedrockRuntimeClient;
 
 /**
@@ -26,22 +25,31 @@ public final class BedrockLlmClientFactory implements LlmClientFactory {
   }
 
   /**
-   * Creates a Bedrock LLM client with the given configuration.
+   * Bedrock authenticates through the AWS SDK (default credentials chain), not a bearer API key.
    *
-   * @param objectMapper the JSON mapper for response parsing
-   * @param config       the configuration, must be an instance of {@link BedrockConfiguration}
-   * @return a new Bedrock LLM client
-   * @throws IllegalArgumentException if the config is not a BedrockConfiguration
+   * @return {@code false}
    */
   @Override
-  public LlmClient create(ObjectMapper objectMapper, LlmClientConfiguration config) {
-    Validate.notNull(config, "Bedrock configuration must not be null");
-    if (!(config instanceof BedrockConfiguration bedrockConfig)) {
-      throw new IllegalArgumentException(
-          "BedrockLlmClientFactory requires BedrockConfiguration but got: %s".formatted(
-              config.getClass().getName()));
-    }
-    BedrockRuntimeClient client = BedrockRuntimeClientFactory.create(bedrockConfig);
-    return new BedrockLlmClient(objectMapper, bedrockConfig, client);
+  public boolean requiresApiKey() {
+    return false;
+  }
+
+  /**
+   * Creates a Bedrock client from a neutral {@link LlmClientFactoryContext}: maps the neutral
+   * configuration and provider options into the validated {@link BedrockConfiguration}. No credential
+   * is resolved — Bedrock uses the AWS default credentials chain and the standard regional endpoint
+   * (endpoint/credential overrides are available only to direct programmatic wiring).
+   *
+   * @param context the factory inputs
+   * @return a new Bedrock LLM client
+   * @throws com.agentforge4j.llm.LlmProviderConfigurationException if a required value is missing or
+   *                                                               invalid
+   */
+  @Override
+  public LlmClient create(LlmClientFactoryContext context) {
+    Validate.notNull(context, "context must not be null");
+    BedrockConfiguration config = BedrockNeutralConfiguration.fromNeutral(context.configuration());
+    BedrockRuntimeClient client = BedrockRuntimeClientFactory.create(config);
+    return new BedrockLlmClient(context.objectMapper(), config, client);
   }
 }

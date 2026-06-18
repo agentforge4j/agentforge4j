@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package com.agentforge4j.starter.llmclient.gemini;
 
+import com.agentforge4j.llm.LlmClientConfiguration;
 import com.agentforge4j.llm.gemini.GeminiConfiguration;
 import com.agentforge4j.starter.BootstrapAutoConfiguration;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
@@ -20,7 +21,7 @@ public class GeminiProviderAutoConfiguration {
 
   @Bean
   @ConditionalOnProperty("agentforge4j.llm.gemini.api-key")
-  GeminiConfiguration geminiConfiguration(GeminiLlmClientProperties properties) {
+  LlmClientConfiguration geminiConfiguration(GeminiLlmClientProperties properties) {
     return new GeminiConfigurationAdapter(properties);
   }
 }

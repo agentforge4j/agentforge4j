@@ -3,7 +3,7 @@ package com.agentforge4j.starter.llmclient.vllm;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.agentforge4j.llm.vllm.VllmConfiguration;
+import com.agentforge4j.llm.LlmClientConfiguration;
 import java.time.Duration;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
@@ -17,22 +17,25 @@ class VllmProviderAutoConfigurationTest {
   @Test
   void registersWhenUrlSet() {
     runner.withPropertyValues("agentforge4j.llm.vllm.url=http://127.0.0.1:8000/v1/chat/completions")
-        .run(ctx -> assertThat(ctx).hasSingleBean(VllmConfiguration.class));
+        .run(ctx -> assertThat(ctx).hasSingleBean(LlmClientConfiguration.class));
   }
 
   @Test
   void skipsWhenUrlMissing() {
-    runner.run(ctx -> assertThat(ctx).doesNotHaveBean(VllmConfiguration.class));
+    runner.run(ctx -> assertThat(ctx).doesNotHaveBean(LlmClientConfiguration.class));
   }
 
   @Test
   void appliesDefaultsWhenUrlSet() {
     runner.withPropertyValues("agentforge4j.llm.vllm.url=http://127.0.0.1:8000/v1/chat/completions")
         .run(ctx -> {
-          var cfg = ctx.getBean(VllmConfiguration.class);
+          LlmClientConfiguration cfg = ctx.getBean(LlmClientConfiguration.class);
+          assertThat(cfg.getProviderName()).isEqualTo("vllm");
           assertThat(cfg.getDefaultModel()).isEmpty();
+          assertThat(cfg.getApiKeyReference()).isEmpty();
           assertThat(cfg.getConnectTimeout()).isEqualTo(Duration.ofSeconds(10));
-          assertThat(cfg.getRequestTimeout()).isEqualTo(Duration.ofMinutes(5));
+          assertThat(cfg.getOptions().requireDuration("request.timeout"))
+              .isEqualTo(Duration.ofMinutes(5));
         });
   }
 }

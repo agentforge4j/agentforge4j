@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 package com.agentforge4j.llm.azureopenai;
 
-import com.agentforge4j.llm.LlmClientConfiguration;
 import com.agentforge4j.llm.LlmClientFactory;
+import com.agentforge4j.llm.LlmClientFactoryContext;
+import com.agentforge4j.llm.LlmSecret;
 import com.agentforge4j.llm.api.LlmClient;
 import com.agentforge4j.util.Validate;
-import com.fasterxml.jackson.databind.ObjectMapper;
 
 /**
  * Factory for creating Azure OpenAI LLM clients.
@@ -25,21 +25,20 @@ public final class AzureOpenAiLlmClientFactory implements LlmClientFactory {
   }
 
   /**
-   * Creates an Azure OpenAI LLM client with the given configuration.
+   * Creates an Azure OpenAI client from a neutral {@link LlmClientFactoryContext}: resolves the credential reference
+   * and maps the neutral configuration and provider options into the validated {@link AzureOpenAiConfiguration}.
    *
-   * @param objectMapper the JSON mapper for response parsing
-   * @param config       the configuration, must be an instance of {@link AzureOpenAiConfiguration}
+   * @param context the factory inputs
+   *
    * @return a new Azure OpenAI LLM client
-   * @throws IllegalArgumentException if the config is not an AzureOpenAiConfiguration
+   *
+   * @throws com.agentforge4j.llm.LlmProviderConfigurationException if a required value is missing or invalid
    */
   @Override
-  public LlmClient create(ObjectMapper objectMapper, LlmClientConfiguration config) {
-    Validate.notNull(config, "LLM client configuration must not be null");
-    if (!(config instanceof AzureOpenAiConfiguration azureConfig)) {
-      throw new IllegalArgumentException(
-          "AzureOpenAiLlmClientFactory requires AzureOpenAiConfiguration but got: %s"
-              .formatted(config.getClass().getName()));
-    }
-    return new AzureOpenAiLlmClient(objectMapper, azureConfig);
+  public LlmClient create(LlmClientFactoryContext context) {
+    Validate.notNull(context, "context must not be null");
+    LlmSecret apiKey = context.requireApiKey();
+    AzureOpenAiConfiguration config = AzureOpenAiNeutralConfiguration.fromNeutral(context.configuration(), apiKey);
+    return new AzureOpenAiLlmClient(context.objectMapper(), config);
   }
 }

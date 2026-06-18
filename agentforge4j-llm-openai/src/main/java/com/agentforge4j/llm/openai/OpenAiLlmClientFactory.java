@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 package com.agentforge4j.llm.openai;
 
-import com.agentforge4j.llm.LlmClientConfiguration;
 import com.agentforge4j.llm.LlmClientFactory;
+import com.agentforge4j.llm.LlmClientFactoryContext;
+import com.agentforge4j.llm.LlmSecret;
 import com.agentforge4j.llm.api.LlmClient;
 import com.agentforge4j.util.Validate;
-import com.fasterxml.jackson.databind.ObjectMapper;
 
 /**
  * Factory for creating OpenAI LLM clients.
@@ -25,21 +25,20 @@ public final class OpenAiLlmClientFactory implements LlmClientFactory {
   }
 
   /**
-   * Creates an OpenAI LLM client with the given configuration.
+   * Creates an OpenAI client from a neutral {@link LlmClientFactoryContext}: resolves the credential reference and maps
+   * the neutral configuration and provider options into the validated {@link OpenAiConfiguration}.
    *
-   * @param objectMapper the JSON mapper for response parsing
-   * @param config       the configuration, must be an instance of {@link OpenAiConfiguration}
+   * @param context the factory inputs
+   *
    * @return a new OpenAI LLM client
-   * @throws IllegalArgumentException if the config is not an OpenAiConfiguration
+   *
+   * @throws com.agentforge4j.llm.LlmProviderConfigurationException if a required value is missing or invalid
    */
   @Override
-  public LlmClient create(ObjectMapper objectMapper, LlmClientConfiguration config) {
-    Validate.notNull(config, "OpenAi configuration must not be null");
-    if (!(config instanceof OpenAiConfiguration openAiConfig)) {
-      throw new IllegalArgumentException(
-          "OpenAiLlmClientFactory requires OpenAiConfiguration but got: %s".formatted(
-              config.getClass().getName()));
-    }
-    return new OpenAiLlmClient(objectMapper, openAiConfig);
+  public LlmClient create(LlmClientFactoryContext context) {
+    Validate.notNull(context, "context must not be null");
+    LlmSecret apiKey = context.requireApiKey();
+    OpenAiConfiguration config = OpenAiNeutralConfiguration.fromNeutral(context.configuration(), apiKey);
+    return new OpenAiLlmClient(context.objectMapper(), config);
   }
 }

@@ -25,15 +25,16 @@ import com.agentforge4j.core.workflow.requirement.RequirementResolver;
 import com.agentforge4j.llm.ConfigModelTierResolver;
 import com.agentforge4j.llm.DefaultLlmClientResolver;
 import com.agentforge4j.llm.LlmClientResolver;
+import com.agentforge4j.llm.LlmSecretResolver;
 import com.agentforge4j.llm.RetryingLlmClientResolver;
 import com.agentforge4j.llm.api.LlmClient;
 import com.agentforge4j.llm.api.LlmRetryPolicy;
 import com.agentforge4j.llm.api.ModelTier;
 import com.agentforge4j.llm.api.ModelTierResolver;
 import com.agentforge4j.runtime.WorkflowRuntimeBuilder;
-import com.agentforge4j.runtime.interceptor.RunExecutionInterceptor;
 import com.agentforge4j.runtime.command.FileSink;
 import com.agentforge4j.runtime.event.EventRecorder;
+import com.agentforge4j.runtime.interceptor.RunExecutionInterceptor;
 import com.agentforge4j.runtime.llm.AgentInvoker;
 import com.agentforge4j.runtime.llm.ContextRenderer;
 import com.agentforge4j.runtime.llm.FirstAvailableProviderSelectionStrategy;
@@ -126,6 +127,7 @@ public final class AgentForge4jBootstrap {
     private MutableIntegrationRepository integrationRepository;
     private ToolProviderFactory toolProviderFactory;
     private SecretResolver secretResolver;
+    private LlmSecretResolver llmSecretResolver;
 
     private boolean cacheEnabled = false;
     private boolean cacheEnabledSet = false;
@@ -189,8 +191,7 @@ public final class AgentForge4jBootstrap {
      * @return this builder
      */
     public Builder withWorkflowRepository(WorkflowRepository workflowRepository) {
-      this.workflowRepository = Validate.notNull(workflowRepository,
-          "workflowRepository must not be null");
+      this.workflowRepository = Validate.notNull(workflowRepository, "workflowRepository must not be null");
       return this;
     }
 
@@ -215,8 +216,7 @@ public final class AgentForge4jBootstrap {
      * @return this builder
      */
     public Builder withWorkflowEventLog(WorkflowEventLog workflowEventLog) {
-      this.workflowEventLog = Validate.notNull(workflowEventLog,
-          "workflowEventLog must not be null");
+      this.workflowEventLog = Validate.notNull(workflowEventLog, "workflowEventLog must not be null");
       return this;
     }
 
@@ -228,8 +228,7 @@ public final class AgentForge4jBootstrap {
      * @return this builder
      */
     public Builder withLlmClientResolver(LlmClientResolver llmClientResolver) {
-      this.llmClientResolver = Validate.notNull(llmClientResolver,
-          "llmClientResolver must not be null");
+      this.llmClientResolver = Validate.notNull(llmClientResolver, "llmClientResolver must not be null");
       return this;
     }
 
@@ -273,8 +272,7 @@ public final class AgentForge4jBootstrap {
      * @return this builder
      */
     public Builder withLlmCommandParser(LlmCommandParser llmCommandParser) {
-      this.llmCommandParser = Validate.notNull(llmCommandParser,
-          "llmCommandParser must not be null");
+      this.llmCommandParser = Validate.notNull(llmCommandParser, "llmCommandParser must not be null");
       return this;
     }
 
@@ -310,8 +308,7 @@ public final class AgentForge4jBootstrap {
      * @return this builder
      */
     public Builder withFileSinkPath(Path fileSinkPath) {
-      this.fileSinkPath = Validate.requireDirectory(fileSinkPath,
-          "fileSinkPath must be a directory");
+      this.fileSinkPath = Validate.requireDirectory(fileSinkPath, "fileSinkPath must be a directory");
       return this;
     }
 
@@ -352,17 +349,16 @@ public final class AgentForge4jBootstrap {
     }
 
     /**
-     * Registers a control interceptor fired before a run enters main execution and before each LLM
-     * call. Either hook may throw {@link com.agentforge4j.runtime.interceptor.ExecutionBlockedException}
-     * to block. Defaults to a no-op, so behaviour is unchanged when not set.
+     * Registers a control interceptor fired before a run enters main execution and before each LLM call. Either hook
+     * may throw {@link com.agentforge4j.runtime.interceptor.ExecutionBlockedException} to block. Defaults to a no-op,
+     * so behaviour is unchanged when not set.
      *
      * @param runExecutionInterceptor interceptor instance; must not be {@code null}
      *
      * @return this builder
      */
     public Builder withRunExecutionInterceptor(RunExecutionInterceptor runExecutionInterceptor) {
-      this.runExecutionInterceptor = Validate.notNull(runExecutionInterceptor,
-          "runExecutionInterceptor must not be null");
+      this.runExecutionInterceptor = Validate.notNull(runExecutionInterceptor, "runExecutionInterceptor must not be null");
       return this;
     }
 
@@ -376,8 +372,7 @@ public final class AgentForge4jBootstrap {
      * @return this builder
      */
     public Builder withModelTierResolver(ModelTierResolver modelTierResolver) {
-      this.modelTierResolver = Validate.notNull(modelTierResolver,
-          "modelTierResolver must not be null");
+      this.modelTierResolver = Validate.notNull(modelTierResolver, "modelTierResolver must not be null");
       return this;
     }
 
@@ -392,8 +387,7 @@ public final class AgentForge4jBootstrap {
      * @return this builder
      */
     public Builder withRequirementResolver(RequirementResolver requirementResolver) {
-      this.requirementResolver = Validate.notNull(requirementResolver,
-          "requirementResolver must not be null");
+      this.requirementResolver = Validate.notNull(requirementResolver, "requirementResolver must not be null");
       return this;
     }
 
@@ -412,23 +406,20 @@ public final class AgentForge4jBootstrap {
      * @return this builder
      */
     public Builder withToolProviders(List<ToolProvider> toolProviders) {
-      this.toolProviders = List.copyOf(
-          Validate.notNull(toolProviders, "toolProviders must not be null"));
+      this.toolProviders = List.copyOf(Validate.notNull(toolProviders, "toolProviders must not be null"));
       return this;
     }
 
     /**
      * Overrides the capability resolver (for example a binding-aware resolver supplied by the embedding application).
-     * When set, it is the sole
-     * resolver and {@link #withToolProviders(List)} is not used to build one.
+     * When set, it is the sole resolver and {@link #withToolProviders(List)} is not used to build one.
      *
      * @param toolProviderResolver resolver instance; must not be {@code null}
      *
      * @return this builder
      */
     public Builder withToolProviderResolver(ToolProviderResolver toolProviderResolver) {
-      this.toolProviderResolver =
-          Validate.notNull(toolProviderResolver, "toolProviderResolver must not be null");
+      this.toolProviderResolver = Validate.notNull(toolProviderResolver, "toolProviderResolver must not be null");
       return this;
     }
 
@@ -451,11 +442,9 @@ public final class AgentForge4jBootstrap {
      *
      * @return this builder
      */
-    public Builder withPendingToolInvocationStore(
-        PendingToolInvocationStore pendingToolInvocationStore) {
+    public Builder withPendingToolInvocationStore(PendingToolInvocationStore pendingToolInvocationStore) {
       this.pendingToolInvocationStore =
-          Validate.notNull(pendingToolInvocationStore,
-              "pendingToolInvocationStore must not be null");
+          Validate.notNull(pendingToolInvocationStore, "pendingToolInvocationStore must not be null");
       return this;
     }
 
@@ -468,8 +457,7 @@ public final class AgentForge4jBootstrap {
      * @return this builder
      */
     public Builder withToolExecutionOptions(ToolExecutionOptions toolExecutionOptions) {
-      this.toolExecutionOptions =
-          Validate.notNull(toolExecutionOptions, "toolExecutionOptions must not be null");
+      this.toolExecutionOptions = Validate.notNull(toolExecutionOptions, "toolExecutionOptions must not be null");
       return this;
     }
 
@@ -488,8 +476,7 @@ public final class AgentForge4jBootstrap {
      */
     public Builder withIntegrationsDir(Path integrationsDir) {
       Validate.notNull(integrationsDir, "integrationsDir");
-      this.integrationsDir = Validate.requireDirectory(integrationsDir,
-          "integrationsDir must be a valid directory");
+      this.integrationsDir = Validate.requireDirectory(integrationsDir, "integrationsDir must be a valid directory");
       return this;
     }
 
@@ -516,8 +503,7 @@ public final class AgentForge4jBootstrap {
      * @return this builder
      */
     public Builder withIntegrationRepository(MutableIntegrationRepository integrationRepository) {
-      this.integrationRepository = Validate.notNull(integrationRepository,
-          "integrationRepository must not be null");
+      this.integrationRepository = Validate.notNull(integrationRepository, "integrationRepository must not be null");
       return this;
     }
 
@@ -530,8 +516,7 @@ public final class AgentForge4jBootstrap {
      * @return this builder
      */
     public Builder withToolProviderFactory(ToolProviderFactory toolProviderFactory) {
-      this.toolProviderFactory = Validate.notNull(toolProviderFactory,
-          "toolProviderFactory must not be null");
+      this.toolProviderFactory = Validate.notNull(toolProviderFactory, "toolProviderFactory must not be null");
       return this;
     }
 
@@ -558,8 +543,7 @@ public final class AgentForge4jBootstrap {
      * @return this builder
      */
     public Builder withMaxNestingDepth(int maxNestingDepth) {
-      this.maxNestingDepth = Validate.isGreaterThanZero(maxNestingDepth,
-          "maxNestingDepth must not be null").intValue();
+      this.maxNestingDepth = Validate.isGreaterThanZero(maxNestingDepth, "maxNestingDepth must not be null").intValue();
       return this;
     }
 
@@ -585,8 +569,7 @@ public final class AgentForge4jBootstrap {
      */
     public Builder withWorkflowsDir(Path workflowsDir) {
       Validate.notNull(workflowsDir, "workflowsDir");
-      this.workflowsDir = Validate.requireDirectory(workflowsDir,
-          "workflowsDir must be a valid directory");
+      this.workflowsDir = Validate.requireDirectory(workflowsDir, "workflowsDir must be a valid directory");
       return this;
     }
 
@@ -644,6 +627,20 @@ public final class AgentForge4jBootstrap {
     }
 
     /**
+     * Overrides the {@link LlmSecretResolver} used to resolve provider credential references. The default
+     * ({@link EnvSystemPropertyLlmSecretResolver}) passes literal credentials through and resolves
+     * {@code env:}/{@code sysprop:} references from the process environment / system properties.
+     *
+     * @param llmSecretResolver resolver instance; must not be {@code null}
+     *
+     * @return this builder
+     */
+    public Builder withLlmSecretResolver(LlmSecretResolver llmSecretResolver) {
+      this.llmSecretResolver = Validate.notNull(llmSecretResolver, "llmSecretResolver must not be null");
+      return this;
+    }
+
+    /**
      * Builds the {@link AgentForge4j} facade, assembling all components with defaults for any overrides not set.
      *
      * @return immutable facade; never {@code null}
@@ -655,8 +652,7 @@ public final class AgentForge4jBootstrap {
       applyConfig(config);
 
       Clock resolvedClock = ObjectUtils.getIfNull(clock, Clock::systemUTC);
-      ObjectMapper resolvedMapper = ObjectUtils.getIfNull(objectMapper,
-          ConfigurationLoader::defaultObjectMapper);
+      ObjectMapper resolvedMapper = ObjectUtils.getIfNull(objectMapper, ConfigurationLoader::defaultObjectMapper);
 
       LoadedConfiguration loadedConfiguration = ConfigurationLoader.load(
           resolvedMapper, agentsDir, workflowsDir, loadShippedAgents, loadShippedWorkflows);
@@ -676,9 +672,11 @@ public final class AgentForge4jBootstrap {
       FileSink resolvedFileSink = ObjectUtils.getIfNull(fileSink,
           () -> ComponentDefaults.fileSink(fileSinkPath));
 
+      LlmSecretResolver resolvedLlmSecretResolver = ObjectUtils.getIfNull(llmSecretResolver,
+          EnvSystemPropertyLlmSecretResolver::new);
       List<LlmClient> llmClients =
           (llmClientResolver == null) ? LlmClientWiring.buildLlmClients(resolvedMapper,
-              llmProviders) :
+              llmProviders, resolvedLlmSecretResolver) :
               List.of();
 
       LlmClientResolver resolvedResolver = ObjectUtils.getIfNull(llmClientResolver,

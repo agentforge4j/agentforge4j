@@ -2,9 +2,15 @@
 package com.agentforge4j.llm.ollama;
 
 import com.agentforge4j.llm.LlmClientConfiguration;
+import com.agentforge4j.llm.LlmClientFactoryContext;
+import com.agentforge4j.llm.LlmProviderConfigurationException;
+import com.agentforge4j.llm.LlmProviderOptions;
+import com.agentforge4j.llm.LlmSecret;
 import com.agentforge4j.llm.api.LlmClient;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.Duration;
+import java.util.HashMap;
+import java.util.Map;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
@@ -12,29 +18,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class OllamaLlmClientFactoryTest {
-
-  static class TestOllamaConfiguration implements OllamaConfiguration {
-
-    @Override
-    public String getDefaultModel() {
-      return "llama2";
-    }
-
-    @Override
-    public Duration getConnectTimeout() {
-      return Duration.ofSeconds(10);
-    }
-
-    @Override
-    public Duration getRequestTimeout() {
-      return Duration.ofSeconds(30);
-    }
-
-    @Override
-    public String getUrl() {
-      return "http://localhost:11434/api/chat";
-    }
-  }
 
   @Nested
   class GetProviderNameTests {
@@ -47,63 +30,68 @@ class OllamaLlmClientFactoryTest {
   }
 
   @Nested
-  class CreateTests {
+  class CreateFromContextTests {
 
     @Test
-    void shouldCreateOllamaLlmClient() {
-      OllamaLlmClientFactory factory = new OllamaLlmClientFactory();
-      ObjectMapper mapper = new ObjectMapper();
-      OllamaConfiguration config = new TestOllamaConfiguration();
+    void shouldCreateClientFromNeutralContext() {
+      LlmClientFactoryContext context = new LlmClientFactoryContext(
+          new ObjectMapper(), neutralConfig(true, true), reference -> new LlmSecret("unused"));
 
-      LlmClient client = factory.create(mapper, config);
+      LlmClient client = new OllamaLlmClientFactory().create(context);
 
       assertThat(client).isInstanceOf(OllamaLlmClient.class);
       assertThat(client.getProviderName()).isEqualTo("ollama");
     }
 
     @Test
-    void shouldThrowWhenConfigIsNotOllamaConfiguration() {
-      OllamaLlmClientFactory factory = new OllamaLlmClientFactory();
-      ObjectMapper mapper = new ObjectMapper();
-      LlmClientConfiguration invalidConfig = new LlmClientConfiguration() {
+    void shouldThrowWhenBaseUrlMissing() {
+      LlmClientFactoryContext context = new LlmClientFactoryContext(
+          new ObjectMapper(), neutralConfig(false, true), reference -> new LlmSecret("unused"));
+
+      assertThatThrownBy(() -> new OllamaLlmClientFactory().create(context))
+          .isInstanceOf(LlmProviderConfigurationException.class)
+          .hasMessageContaining("ollama")
+          .hasMessageContaining("base URL");
+    }
+
+    @Test
+    void defaultsRequestTimeoutToThirtySecondsWhenAbsent() {
+      OllamaNeutralConfiguration config = OllamaNeutralConfiguration.fromNeutral(neutralConfig(true, false));
+
+      assertThat(config.getRequestTimeout()).isEqualTo(Duration.ofSeconds(30));
+    }
+
+    private static LlmClientConfiguration neutralConfig(boolean withBaseUrl, boolean withTimeout) {
+      Map<String, String> options = new HashMap<>();
+      if (withTimeout) {
+        options.put("request.timeout", "PT30S");
+      }
+      return new LlmClientConfiguration() {
         @Override
         public String getProviderName() {
-          return "invalid";
+          return "ollama";
         }
 
         @Override
         public String getDefaultModel() {
-          return "model";
+          return "llama2";
         }
 
         @Override
         public Duration getConnectTimeout() {
           return Duration.ofSeconds(10);
         }
+
+        @Override
+        public String getBaseUrl() {
+          return withBaseUrl ? "http://localhost:11434/api/chat" : null;
+        }
+
+        @Override
+        public LlmProviderOptions getOptions() {
+          return LlmProviderOptions.of("ollama", options);
+        }
       };
-
-      assertThatThrownBy(() -> factory.create(mapper, invalidConfig))
-          .isInstanceOf(IllegalArgumentException.class)
-          .hasMessageContaining("OllamaLlmClientFactory requires OllamaConfiguration");
-    }
-
-    @Test
-    void shouldThrowWhenConfigurationNull() {
-      OllamaLlmClientFactory factory = new OllamaLlmClientFactory();
-      ObjectMapper mapper = new ObjectMapper();
-
-      assertThatThrownBy(() -> factory.create(mapper, null))
-          .isInstanceOf(IllegalArgumentException.class)
-          .hasMessageContaining("Ollama configuration must not be null");
-    }
-
-    @Test
-    void shouldThrowWhenObjectMapperNull() {
-      OllamaLlmClientFactory factory = new OllamaLlmClientFactory();
-      OllamaConfiguration config = new TestOllamaConfiguration();
-
-      assertThatThrownBy(() -> factory.create(null, config))
-          .isInstanceOf(IllegalArgumentException.class);
     }
   }
 }

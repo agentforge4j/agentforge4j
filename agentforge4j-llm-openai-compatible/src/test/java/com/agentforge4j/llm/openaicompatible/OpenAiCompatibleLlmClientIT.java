@@ -385,7 +385,7 @@ class OpenAiCompatibleLlmClientIT {
       var config = FixedOpenAiCompatibleConfiguration.builder()
           .baseUrl(http.baseUri().toString())
           .build();
-      var client = new OpenAiCompatibleLlmClientFactory().create(new ObjectMapper(), config);
+      OpenAiCompatibleLlmClient client = new OpenAiCompatibleLlmClient(new ObjectMapper(), config);
       LlmExecutionRequest request =
           new LlmExecutionRequest("openai-compatible", null, "system", "user", null, null, null);
 

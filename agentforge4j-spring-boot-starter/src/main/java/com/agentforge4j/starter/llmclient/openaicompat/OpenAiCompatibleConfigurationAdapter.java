@@ -1,15 +1,24 @@
 // SPDX-License-Identifier: Apache-2.0
 package com.agentforge4j.starter.llmclient.openaicompat;
 
-import com.agentforge4j.llm.openaicompatible.OpenAiCompatibleConfiguration;
+import com.agentforge4j.llm.LlmClientConfiguration;
+import com.agentforge4j.llm.LlmProviderOptions;
+import com.agentforge4j.llm.LlmSecretReference;
+import com.agentforge4j.starter.llmclient.NeutralOptions;
 import java.time.Duration;
+import java.util.Optional;
 
+/**
+ * Adapts {@link OpenAiCompatibleLlmClientProperties} to the neutral {@link LlmClientConfiguration} SPI. The
+ * Spring-resolved API key is wrapped as a literal credential reference; provider-specific settings are emitted as
+ * canonical dotted options consumed by the provider's factory.
+ */
 record OpenAiCompatibleConfigurationAdapter(OpenAiCompatibleLlmClientProperties properties)
-    implements OpenAiCompatibleConfiguration {
+    implements LlmClientConfiguration {
 
   @Override
-  public String getApiKey() {
-    return properties.apiKey();
+  public String getProviderName() {
+    return "openai-compatible";
   }
 
   @Override
@@ -18,32 +27,27 @@ record OpenAiCompatibleConfigurationAdapter(OpenAiCompatibleLlmClientProperties 
   }
 
   @Override
-  public String getBaseUrl() {
-    return properties.baseUrl();
-  }
-
-  @Override
   public Duration getConnectTimeout() {
     return properties.connectTimeout();
   }
 
   @Override
-  public Duration getRequestTimeout() {
-    return properties.requestTimeout();
+  public String getBaseUrl() {
+    return properties.baseUrl();
   }
 
   @Override
-  public String getAuthHeaderName() {
-    return properties.authHeaderName();
+  public Optional<LlmSecretReference> getApiKeyReference() {
+    return Optional.of(LlmSecretReference.literal(properties.apiKey()));
   }
 
   @Override
-  public String getAuthHeaderPrefix() {
-    return properties.authHeaderPrefix();
-  }
-
-  @Override
-  public String getResponsesPath() {
-    return properties.responsesPath();
+  public LlmProviderOptions getOptions() {
+    return LlmProviderOptions.of("openai-compatible", NeutralOptions.create()
+        .string("auth.header.name", properties.authHeaderName())
+        .string("auth.header.prefix", properties.authHeaderPrefix())
+        .string("responses.path", properties.responsesPath())
+        .duration("request.timeout", properties.requestTimeout())
+        .toMap());
   }
 }

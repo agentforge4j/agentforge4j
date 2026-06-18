@@ -1,43 +1,52 @@
 // SPDX-License-Identifier: Apache-2.0
 package com.agentforge4j.bootstrap;
 
+import com.agentforge4j.llm.LlmSecretReference;
 import com.agentforge4j.util.Validate;
 import java.time.Duration;
+import java.util.LinkedHashMap;
+import java.util.Map;
 
 /**
  * Immutable configuration for a single LLM provider, used by
  * {@link AgentForge4jBootstrap.Builder#withLlmProvider(LlmProviderConfig)}.
  *
- * <p>Construct via the per-provider static factory methods:
+ * <p>Construct via the per-provider static factory methods, supplying the credential and any
+ * provider-specific options the provider requires:
  * <pre>{@code
  * LlmProviderConfig config = LlmProviderConfig.openai()
  *     .defaults()
  *     .apiKey("sk-...")
+ *     .option("request.timeout", "PT30S")
  *     .build();
  * }</pre>
  *
- * <p>All fields except {@code provider} are nullable. A null {@code apiKey} means
- * "not configured at this layer; resolved from environment or system properties later." A null
- * {@code baseUrl} or {@code defaultModel} means "use the provider module's own default."
+ * <p>All fields except {@code provider} are nullable/empty. A null {@code apiKeyReference} means
+ * "no credential configured at this layer." A null {@code baseUrl} or {@code defaultModel} means "use the provider
+ * module's own default." {@code options} carries provider-specific settings (keyed in the canonical dotted form, e.g.
+ * {@code request.timeout}, {@code auth.header.name}) consumed via {@link com.agentforge4j.llm.LlmProviderOptions}.
  *
- * @param provider       non-blank provider id
- * @param apiKey         optional API key for this layer
- * @param baseUrl        optional base URL; null uses the provider module default
- * @param defaultModel   optional default model; null uses the provider module default
- * @param connectTimeout optional connect timeout; null uses the provider module default
+ * @param provider        non-blank provider id
+ * @param apiKeyReference optional credential reference for this layer (never a raw value in a {@code toString})
+ * @param baseUrl         optional base URL; null uses the provider module default
+ * @param defaultModel    optional default model; null uses the provider module default
+ * @param connectTimeout  optional connect timeout; null uses the provider module default
+ * @param options         provider-specific option key/values; never {@code null} (empty when none)
  */
 public record LlmProviderConfig(
     String provider,
-    String apiKey,
+    LlmSecretReference apiKeyReference,
     String baseUrl,
     String defaultModel,
-    Duration connectTimeout) {
+    Duration connectTimeout,
+    Map<String, String> options) {
 
   /**
-   * Validates {@code provider} is non-blank.
+   * Validates {@code provider} is non-blank and defensively copies {@code options}.
    */
   public LlmProviderConfig {
     Validate.notBlank(provider, "provider cannot be blank");
+    options = options == null ? Map.of() : Map.copyOf(options);
   }
 
   /**
@@ -119,8 +128,8 @@ public record LlmProviderConfig(
   }
 
   /**
-   * Returns a builder for Azure OpenAI. {@code baseUrl} and {@code defaultModel} are {@code null}
-   * by default — both are deployment-specific and must be set by the caller.
+   * Returns a builder for Azure OpenAI. {@code baseUrl} and {@code defaultModel} are {@code null} by default — both are
+   * deployment-specific and must be set by the caller.
    *
    * @return builder for Azure OpenAI configuration
    */
@@ -133,8 +142,8 @@ public record LlmProviderConfig(
   }
 
   /**
-   * Returns a builder for any OpenAI-compatible endpoint. {@code baseUrl} and {@code defaultModel}
-   * are {@code null} by default — both are deployment-specific and must be set by the caller.
+   * Returns a builder for any OpenAI-compatible endpoint. {@code baseUrl} and {@code defaultModel} are {@code null} by
+   * default — both are deployment-specific and must be set by the caller.
    *
    * @return builder for OpenAI-compatible configuration
    */
@@ -147,8 +156,8 @@ public record LlmProviderConfig(
   }
 
   /**
-   * Returns a builder for AWS Bedrock. {@code baseUrl} and {@code defaultModel} are {@code null} by
-   * default — both are deployment-specific and must be set by the caller.
+   * Returns a builder for AWS Bedrock. {@code baseUrl} and {@code defaultModel} are {@code null} by default — both are
+   * deployment-specific and must be set by the caller.
    *
    * @return builder for Bedrock configuration
    */
@@ -161,16 +170,16 @@ public record LlmProviderConfig(
   }
 
   /**
-   * Builder for {@link LlmProviderConfig}. Obtain via {@link LlmProviderConfig#openai()},
-   * {@link #claude()}, etc.
+   * Builder for {@link LlmProviderConfig}. Obtain via {@link LlmProviderConfig#openai()}, {@link #claude()}, etc.
    */
   public static final class ProviderBuilder {
 
     private final String provider;
-    private String apiKey;
+    private LlmSecretReference apiKeyReference;
     private String baseUrl;
     private String defaultModel;
     private Duration connectTimeout;
+    private final Map<String, String> options = new LinkedHashMap<>();
 
     private ProviderBuilder(
         String provider,
@@ -184,10 +193,9 @@ public record LlmProviderConfig(
     }
 
     /**
-     * Pre-populates this builder with the provider's recommended defaults ({@code baseUrl},
-     * {@code defaultModel}, {@code connectTimeout}). The builder is already pre-populated on
-     * construction; this method exists for readability:
-     * {@code openai().defaults().apiKey(...).build()}.
+     * Pre-populates this builder with the provider's recommended defaults ({@code baseUrl}, {@code defaultModel},
+     * {@code connectTimeout}). The builder is already pre-populated on construction; this method exists for
+     * readability: {@code openai().defaults().apiKey(...).build()}.
      *
      * @return {@code this} for chaining
      */
@@ -199,11 +207,39 @@ public record LlmProviderConfig(
      * Sets the API key.
      *
      * @param apiKey the API key; must not be blank
+     *
      * @return {@code this} for chaining
      */
     public ProviderBuilder apiKey(String apiKey) {
-      Validate.notBlank(apiKey, "apiKey");
-      this.apiKey = apiKey;
+      Validate.notBlank(apiKey, "apiKey cannot be blank");
+      this.apiKeyReference = LlmSecretReference.parse(apiKey);
+      return this;
+    }
+
+    /**
+     * Sets the credential as a reference (literal or {@code env:}/{@code sysprop:} indirect).
+     *
+     * @param apiKeyReference the credential reference; must not be {@code null}
+     *
+     * @return {@code this} for chaining
+     */
+    public ProviderBuilder apiKeyReference(LlmSecretReference apiKeyReference) {
+      this.apiKeyReference = Validate.notNull(apiKeyReference, "apiKeyReference cannot be null");
+      return this;
+    }
+
+    /**
+     * Sets a provider-specific option (canonical dotted key, e.g. {@code request.timeout}).
+     *
+     * @param key   the option key; must not be blank
+     * @param value the option value; must not be blank
+     *
+     * @return {@code this} for chaining
+     */
+    public ProviderBuilder option(String key, String value) {
+      Validate.notBlank(key, "option key cannot be blank");
+      Validate.notBlank(value, "option value cannot be blank");
+      this.options.put(key, value);
       return this;
     }
 
@@ -211,10 +247,11 @@ public record LlmProviderConfig(
      * Overrides the provider base URL.
      *
      * @param baseUrl override the provider base URL; must not be blank
+     *
      * @return {@code this} for chaining
      */
     public ProviderBuilder baseUrl(String baseUrl) {
-      Validate.notBlank(baseUrl, "baseUrl");
+      Validate.notBlank(baseUrl, "baseUrl cannot be blank");
       this.baseUrl = baseUrl;
       return this;
     }
@@ -223,10 +260,11 @@ public record LlmProviderConfig(
      * Overrides the provider default model.
      *
      * @param defaultModel override the provider default model; must not be blank
+     *
      * @return {@code this} for chaining
      */
     public ProviderBuilder defaultModel(String defaultModel) {
-      Validate.notBlank(defaultModel, "defaultModel");
+      Validate.notBlank(defaultModel, "defaultModel cannot be blank");
       this.defaultModel = defaultModel;
       return this;
     }
@@ -235,10 +273,11 @@ public record LlmProviderConfig(
      * Overrides the provider connect timeout.
      *
      * @param connectTimeout override the provider connect timeout; must not be null
+     *
      * @return {@code this} for chaining
      */
     public ProviderBuilder connectTimeout(Duration connectTimeout) {
-      Validate.notNull(connectTimeout, "connectTimeout");
+      Validate.notNull(connectTimeout, "connectTimeout cannot be null");
       this.connectTimeout = connectTimeout;
       return this;
     }
@@ -249,7 +288,7 @@ public record LlmProviderConfig(
      * @return immutable config; never {@code null}
      */
     public LlmProviderConfig build() {
-      return new LlmProviderConfig(provider, apiKey, baseUrl, defaultModel, connectTimeout);
+      return new LlmProviderConfig(provider, apiKeyReference, baseUrl, defaultModel, connectTimeout, options);
     }
   }
 }

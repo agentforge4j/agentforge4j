@@ -1,0 +1,79 @@
+// SPDX-License-Identifier: Apache-2.0
+package com.agentforge4j.llm.gemini;
+
+import com.agentforge4j.llm.LlmClientConfiguration;
+import com.agentforge4j.llm.LlmClientFactoryContext;
+import com.agentforge4j.llm.LlmProviderConfigurationException;
+import com.agentforge4j.llm.LlmProviderOptions;
+import com.agentforge4j.llm.LlmSecret;
+import com.agentforge4j.llm.LlmSecretReference;
+import com.agentforge4j.llm.LlmSecretResolver;
+import com.agentforge4j.llm.api.LlmClient;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import java.time.Duration;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.Optional;
+import org.junit.jupiter.api.Test;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
+class GeminiNeutralCreateTest {
+
+  private static final LlmSecretResolver RESOLVER = reference -> new LlmSecret(reference.literalValue());
+
+  @Test
+  void buildsClientFromNeutralContext() {
+    LlmClient client = new GeminiLlmClientFactory().create(
+        new LlmClientFactoryContext(new ObjectMapper(), neutral(true), RESOLVER));
+
+    assertThat(client).isInstanceOf(GeminiLlmClient.class);
+    assertThat(client.getProviderName()).isEqualTo("gemini");
+  }
+
+  @Test
+  void failsWhenBaseUrlMissing() {
+    assertThatThrownBy(() -> new GeminiLlmClientFactory().create(
+        new LlmClientFactoryContext(new ObjectMapper(), neutral(false), RESOLVER)))
+        .isInstanceOf(LlmProviderConfigurationException.class)
+        .hasMessageContaining("gemini")
+        .hasMessageContaining("base URL");
+  }
+
+  private static LlmClientConfiguration neutral(boolean withBaseUrl) {
+    Map<String, String> options = new HashMap<>();
+    options.put("request.timeout", "PT30S");
+    return new LlmClientConfiguration() {
+      @Override
+      public String getProviderName() {
+        return "gemini";
+      }
+
+      @Override
+      public String getDefaultModel() {
+        return "gemini-1.5-pro";
+      }
+
+      @Override
+      public Duration getConnectTimeout() {
+        return Duration.ofSeconds(10);
+      }
+
+      @Override
+      public String getBaseUrl() {
+        return withBaseUrl ? "https://generativelanguage.googleapis.com" : null;
+      }
+
+      @Override
+      public Optional<LlmSecretReference> getApiKeyReference() {
+        return Optional.of(LlmSecretReference.literal("gm-test"));
+      }
+
+      @Override
+      public LlmProviderOptions getOptions() {
+        return LlmProviderOptions.of("gemini", options);
+      }
+    };
+  }
+}

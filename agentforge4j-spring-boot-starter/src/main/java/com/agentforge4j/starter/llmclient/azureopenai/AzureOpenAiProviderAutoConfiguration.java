@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package com.agentforge4j.starter.llmclient.azureopenai;
 
+import com.agentforge4j.llm.LlmClientConfiguration;
 import com.agentforge4j.llm.azureopenai.AzureOpenAiConfiguration;
 import com.agentforge4j.starter.BootstrapAutoConfiguration;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
@@ -20,7 +21,7 @@ public class AzureOpenAiProviderAutoConfiguration {
 
   @Bean
   @ConditionalOnProperty("agentforge4j.llm.azure-openai.api-key")
-  AzureOpenAiConfiguration azureOpenAiConfiguration(AzureOpenAiLlmClientProperties properties) {
+  LlmClientConfiguration azureOpenAiConfiguration(AzureOpenAiLlmClientProperties properties) {
     return new AzureOpenAiConfigurationAdapter(properties);
   }
 }

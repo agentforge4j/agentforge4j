@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package com.agentforge4j.bootstrap;
 
+import com.agentforge4j.llm.LlmSecretReference;
 import java.time.Duration;
 import org.junit.jupiter.api.Test;
 
@@ -16,7 +17,7 @@ class LlmProviderConfigTest {
     assertThat(config.baseUrl()).isNotNull();
     assertThat(config.defaultModel()).isNotNull();
     assertThat(config.connectTimeout()).isNotNull();
-    assertThat(config.apiKey()).isNull();
+    assertThat(config.apiKeyReference()).isNull();
   }
 
   @Test
@@ -26,7 +27,7 @@ class LlmProviderConfigTest {
     assertThat(config.baseUrl()).isNotNull();
     assertThat(config.defaultModel()).isNotNull();
     assertThat(config.connectTimeout()).isNotNull();
-    assertThat(config.apiKey()).isNull();
+    assertThat(config.apiKeyReference()).isNull();
   }
 
   @Test
@@ -36,7 +37,7 @@ class LlmProviderConfigTest {
     assertThat(config.baseUrl()).isNotNull();
     assertThat(config.defaultModel()).isNotNull();
     assertThat(config.connectTimeout()).isNotNull();
-    assertThat(config.apiKey()).isNull();
+    assertThat(config.apiKeyReference()).isNull();
   }
 
   @Test
@@ -46,7 +47,7 @@ class LlmProviderConfigTest {
     assertThat(config.baseUrl()).isEqualTo("http://localhost:8000");
     assertThat(config.defaultModel()).isNull();
     assertThat(config.connectTimeout()).isNotNull();
-    assertThat(config.apiKey()).isNull();
+    assertThat(config.apiKeyReference()).isNull();
   }
 
   @Test
@@ -56,7 +57,7 @@ class LlmProviderConfigTest {
     assertThat(config.baseUrl()).isNotNull();
     assertThat(config.defaultModel()).isNotNull();
     assertThat(config.connectTimeout()).isNotNull();
-    assertThat(config.apiKey()).isNull();
+    assertThat(config.apiKeyReference()).isNull();
   }
 
   @Test
@@ -66,7 +67,7 @@ class LlmProviderConfigTest {
     assertThat(config.baseUrl()).isNotNull();
     assertThat(config.defaultModel()).isNotNull();
     assertThat(config.connectTimeout()).isNotNull();
-    assertThat(config.apiKey()).isNull();
+    assertThat(config.apiKeyReference()).isNull();
   }
 
   @Test
@@ -76,7 +77,7 @@ class LlmProviderConfigTest {
     assertThat(config.baseUrl()).isNull();
     assertThat(config.defaultModel()).isNull();
     assertThat(config.connectTimeout()).isNotNull();
-    assertThat(config.apiKey()).isNull();
+    assertThat(config.apiKeyReference()).isNull();
   }
 
   @Test
@@ -86,7 +87,7 @@ class LlmProviderConfigTest {
     assertThat(config.baseUrl()).isNull();
     assertThat(config.defaultModel()).isNull();
     assertThat(config.connectTimeout()).isNotNull();
-    assertThat(config.apiKey()).isNull();
+    assertThat(config.apiKeyReference()).isNull();
   }
 
   @Test
@@ -96,13 +97,13 @@ class LlmProviderConfigTest {
     assertThat(config.baseUrl()).isNull();
     assertThat(config.defaultModel()).isNull();
     assertThat(config.connectTimeout()).isNotNull();
-    assertThat(config.apiKey()).isNull();
+    assertThat(config.apiKeyReference()).isNull();
   }
 
   @Test
   void apiKeyOverrideIsApplied() {
     LlmProviderConfig config = LlmProviderConfig.openai().defaults().apiKey("test-key").build();
-    assertThat(config.apiKey()).isEqualTo("test-key");
+    assertThat(config.apiKeyReference()).isEqualTo(LlmSecretReference.literal("test-key"));
   }
 
   @Test

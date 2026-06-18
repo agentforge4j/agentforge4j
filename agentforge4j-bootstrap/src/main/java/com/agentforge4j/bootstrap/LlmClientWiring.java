@@ -1,185 +1,266 @@
 // SPDX-License-Identifier: Apache-2.0
 package com.agentforge4j.bootstrap;
 
-import com.agentforge4j.llm.DefaultLlmClientResolver;
-import com.agentforge4j.llm.LlmClientConfiguration;
 import com.agentforge4j.llm.LlmClientFactory;
+import com.agentforge4j.llm.LlmClientFactoryContext;
+import com.agentforge4j.llm.LlmProviderConfigurationException;
+import com.agentforge4j.llm.LlmSecretReference;
+import com.agentforge4j.llm.LlmSecretResolver;
 import com.agentforge4j.llm.api.LlmClient;
+import com.agentforge4j.util.Validate;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.Duration;
+import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.ServiceLoader;
+import java.util.Set;
+import java.util.TreeSet;
+import org.apache.commons.lang3.StringUtils;
 
 /**
- * Assembles the list of {@link com.agentforge4j.llm.api.LlmClient} instances from programmatic
- * {@link LlmProviderConfig} overrides and environment / system-property auto-discovery.
+ * Assembles {@link LlmClient} instances from programmatic {@link LlmProviderConfig} overrides and environment /
+ * system-property auto-discovery, passing each provider factory a neutral {@link LlmClientFactoryContext}.
+ *
+ * <h2>Configuration keys</h2>
+ * Auto-discovery reads keys under {@code agentforge4j.llm.<provider>.} in the canonical
+ * <b>lowercase, dot-separated</b> form: {@code api.key} (credential — a literal value or an
+ * {@code ${env:NAME}}/{@code ${sysprop:name}} reference), {@code base.url}, {@code default.model},
+ * {@code connect.timeout} (ISO-8601, e.g. {@code PT30S}). Every other {@code agentforge4j.llm.<provider>.*} key is a
+ * provider-specific option (for example {@code request.timeout}, {@code auth.header.name}, {@code api.version}).
+ *
+ * <p>Environment variables map by {@code AGENTFORGE4J_LLM_<PROVIDER>_<KEY>} with {@code _} normalised
+ * to {@code .} (see {@code ConfigReader}). That normalisation also collapses the separator inside a hyphenated provider
+ * id, so <b>hyphenated provider ids ({@code azure-openai}, {@code openai-compatible}) cannot be configured via
+ * environment variables</b> — use system properties (which preserve the hyphen) or programmatic
+ * {@code withLlmProvider(...)}. Disambiguating hyphenated provider names from environment variables needs
+ * provider-boundary normalization, tracked under issue #99.
+ *
+ * <p>Precedence per provider, highest to lowest: programmatic {@code withLlmProvider} &gt; system
+ * property &gt; environment variable.
  *
  * <p>Internal — not part of the public API.
  */
 final class LlmClientWiring {
 
-  private static final System.Logger LOGGER =
-      System.getLogger(LlmClientWiring.class.getName());
+  private static final String KEY_PREFIX = "agentforge4j.llm.";
+  private static final String API_KEY = "api.key";
+  private static final String BASE_URL = "base.url";
+  private static final String DEFAULT_MODEL = "default.model";
+  private static final String CONNECT_TIMEOUT = "connect.timeout";
+  private static final Duration DEFAULT_CONNECT_TIMEOUT = Duration.ofSeconds(30);
 
   private LlmClientWiring() {
     throw new UnsupportedOperationException("static utility");
   }
 
   /**
-   * Assembles LLM clients from programmatic overrides and environment / system-property
-   * auto-discovery. Providers are discovered dynamically via {@link ServiceLoader} — adding a new
-   * provider module to the classpath is sufficient; no code changes required.
-   *
-   * <p>Precedence per provider (highest to lowest):
-   * <ol>
-   *   <li>Programmatic {@code withLlmProvider(LlmProviderConfig)} override.
-   *   <li>System properties ({@code agentforge4j.llm.<provider>.*}).
-   *   <li>Environment variables ({@code AGENTFORGE4J_LLM_<PROVIDER>_*}, normalised).
-   * </ol>
+   * Assembles LLM clients. Fails fast with {@link LlmProviderConfigurationException} on a configured provider with no
+   * factory, a duplicate factory contributor, or an invalid/unresolvable provider configuration. A factory present
+   * without configuration is simply not constructed; an empty result is valid.
    *
    * @param objectMapper          mapper used by provider factories
    * @param programmaticProviders providers set via {@code withLlmProvider}
-   * @return list of configured clients; empty if none are available
+   * @param secretResolver        resolver for credential references
+   *
+   * @return list of configured clients; possibly empty
    */
   static List<LlmClient> buildLlmClients(
       ObjectMapper objectMapper,
-      Map<String, LlmProviderConfig> programmaticProviders) {
-
-    Map<String, String> envConfig = ConfigReader.read();
-    validateEnvConnectTimeouts(envConfig);
-    List<LlmClientConfiguration> configurations = new ArrayList<>();
-
-    ServiceLoader<LlmClientFactory> factories = ServiceLoader.load(LlmClientFactory.class);
-
-    for (LlmClientFactory factory : factories) {
-      LlmProviderConfig config = resolveProviderConfig(
-          factory.getProviderName(), factory.requiresApiKey(), programmaticProviders, envConfig);
-      if (config != null) {
-        configurations.add(new ProviderConfigAdapter(config));
-      }
-    }
-
-    if (configurations.isEmpty()) {
-      return List.of();
-    }
-
-    try {
-      DefaultLlmClientResolver resolver = DefaultLlmClientResolver.discover(objectMapper,
-          configurations);
-      return resolver.listAvailableClients().stream().map(resolver::resolve).toList();
-    } catch (IllegalStateException exception) {
-      LOGGER.log(System.Logger.Level.WARNING,
-          "LLM client discovery failed; no providers will be available at runtime: {0}",
-          exception.getMessage());
-      return List.of();
-    }
+      Map<String, LlmProviderConfig> programmaticProviders,
+      LlmSecretResolver secretResolver) {
+    return assembleClients(objectMapper, programmaticProviders, secretResolver, discoverFactories());
   }
 
   /**
-   * Resolves the effective {@link LlmProviderConfig} for a provider, applying precedence rules:
-   * programmatic > env/sys-prop > default (for no-api-key providers).
-   *
-   * @param provider              provider name from {@link LlmClientFactory#getProviderName()}
-   * @param requiresApiKey        whether this provider requires an API key
-   * @param programmaticProviders providers set via {@code withLlmProvider}
-   * @param configMap             merged env/sys-prop map from {@link ConfigReader#read()}
-   * @return config to use, or {@code null} if provider should be skipped
+   * Assembly core, separated from {@link ServiceLoader} discovery so it can be driven with an explicit factory list in
+   * tests. Detects duplicate contributors, fails fast on a configured programmatic provider with no factory, and builds
+   * each configured provider via {@code create(context)}.
    */
+  static List<LlmClient> assembleClients(
+      ObjectMapper objectMapper,
+      Map<String, LlmProviderConfig> programmaticProviders,
+      LlmSecretResolver secretResolver,
+      List<LlmClientFactory> discoveredFactories) {
+    Validate.notNull(objectMapper, "objectMapper must not be null");
+    Validate.notNull(programmaticProviders, "programmaticProviders must not be null");
+    Validate.notNull(secretResolver, "secretResolver must not be null");
+    Validate.notNull(discoveredFactories, "discoveredFactories must not be null");
+
+    Map<String, String> envConfig = ConfigReader.read();
+    Map<String, LlmProviderConfig> programmaticByProvider = normalizeProgrammatic(programmaticProviders);
+    Map<String, LlmClientFactory> factoriesByProvider = indexFactories(discoveredFactories);
+
+    validateProviders(programmaticByProvider, factoriesByProvider, envConfig);
+
+    List<LlmClient> clients = resolveClients(objectMapper, secretResolver,
+        factoriesByProvider, programmaticByProvider, envConfig);
+    return List.copyOf(clients);
+  }
+
+  private static List<LlmClient> resolveClients(ObjectMapper objectMapper, LlmSecretResolver secretResolver,
+      Map<String, LlmClientFactory> factoriesByProvider, Map<String, LlmProviderConfig> programmaticByProvider,
+      Map<String, String> envConfig) {
+    List<LlmClient> clients = new ArrayList<>();
+    for (LlmClientFactory factory : factoriesByProvider.values()) {
+      LlmProviderConfig config = resolveProviderConfig(
+          factory.getProviderName(), factory.requiresApiKey(), programmaticByProvider, envConfig);
+      if (config != null) {
+        LlmClientFactoryContext context = new LlmClientFactoryContext(
+            objectMapper, new NeutralLlmClientConfiguration(config), secretResolver);
+        clients.add(factory.create(context));
+      }
+    }
+    return clients;
+  }
+
+  private static void validateProviders(Map<String, LlmProviderConfig> programmaticByProvider,
+      Map<String, LlmClientFactory> factoriesByProvider, Map<String, String> envConfig) {
+    for (String provider : programmaticByProvider.keySet()) {
+      Validate.isTrue(factoriesByProvider.containsKey(provider), () -> new LlmProviderConfigurationException(
+          "No LLM provider factory found for configured provider '%s'. Available providers: %s"
+              .formatted(provider, factoriesByProvider.keySet())));
+    }
+    failOnUnknownEnvProviders(envConfig, factoriesByProvider.keySet());
+  }
+
+  private static Map<String, LlmProviderConfig> normalizeProgrammatic(
+      Map<String, LlmProviderConfig> programmaticProviders) {
+    Map<String, LlmProviderConfig> byProvider = new LinkedHashMap<>();
+    for (LlmProviderConfig config : programmaticProviders.values()) {
+      byProvider.put(normalize(config.provider()), config);
+    }
+    return byProvider;
+  }
+
+  private static List<LlmClientFactory> discoverFactories() {
+    List<LlmClientFactory> discovered = new ArrayList<>();
+    ServiceLoader.load(LlmClientFactory.class, Thread.currentThread().getContextClassLoader()).forEach(discovered::add);
+    return discovered;
+  }
+
+  private static Map<String, LlmClientFactory> indexFactories(List<LlmClientFactory> factories) {
+    Map<String, LlmClientFactory> byProvider = new LinkedHashMap<>();
+    for (LlmClientFactory factory : factories) {
+      String provider = normalize(factory.getProviderName());
+      LlmClientFactory existing = byProvider.putIfAbsent(provider, factory);
+      Validate.isTrue(existing == null, () -> new LlmProviderConfigurationException(
+          "Duplicate LLM provider factory for '%s': %s and %s".formatted(
+              provider, existing.getClass().getName(), factory.getClass().getName())));
+    }
+    return byProvider;
+  }
+
   private static LlmProviderConfig resolveProviderConfig(
       String provider,
       boolean requiresApiKey,
-      Map<String, LlmProviderConfig> programmaticProviders,
+      Map<String, LlmProviderConfig> programmaticByProvider,
       Map<String, String> configMap) {
-
-    // 1. Programmatic override wins entirely
-    if (programmaticProviders.containsKey(provider)) {
-      return programmaticProviders.get(provider);
+    LlmProviderConfig programmatic = programmaticByProvider.get(normalize(provider));
+    if (programmatic != null) {
+      return programmatic;
     }
-
-    // 2. Env / sys-prop config
-    LlmProviderConfig config = buildLlmProviderConfigFromEnv(provider, requiresApiKey, configMap);
-    if (config != null) {
-      return config;
-    }
-
-    // 3. No-api-key providers get defaults when nothing is configured
-    if (!requiresApiKey) {
-      return buildDefaultConfig(provider);
-    }
-
-    return null;
+    return buildFromEnv(provider, requiresApiKey, configMap);
   }
 
-  private static void validateEnvConnectTimeouts(Map<String, String> envConfig) {
-    String keyPrefix = "agentforge4j.llm.";
-    String keySuffix = ".connect-timeout-seconds";
-    for (Map.Entry<String, String> entry : envConfig.entrySet()) {
-      String key = entry.getKey();
-      if (!key.startsWith(keyPrefix) || !key.endsWith(keySuffix)) {
-        continue;
-      }
-      String provider = key.substring(keyPrefix.length(), key.length() - keySuffix.length());
-      parseConnectTimeoutSeconds(provider, entry.getValue());
-    }
-  }
-
-  private static Duration parseConnectTimeoutSeconds(String provider, String timeoutStr) {
-    if (timeoutStr == null) {
-      return null;
-    }
-    try {
-      return Duration.ofSeconds(Long.parseLong(timeoutStr));
-    } catch (NumberFormatException exception) {
-      throw new IllegalStateException(
-          "Invalid value for agentforge4j.llm.%s.connect-timeout-seconds: '%s' — expected a whole number of seconds."
-              .formatted(provider, timeoutStr),
-          exception);
-    }
-  }
-
-  private static LlmProviderConfig buildLlmProviderConfigFromEnv(
+  private static LlmProviderConfig buildFromEnv(
       String provider,
       boolean requiresApiKey,
       Map<String, String> configMap) {
+    String prefix = KEY_PREFIX + provider + ".";
+    String apiKey = configMap.get(prefix + API_KEY);
+    String baseUrl = configMap.get(prefix + BASE_URL);
+    String defaultModel = configMap.get(prefix + DEFAULT_MODEL);
+    String connectTimeoutValue = configMap.get(prefix + CONNECT_TIMEOUT);
+    Map<String, String> options = collectOptions(prefix, configMap);
 
-    String prefix = "agentforge4j.llm." + provider + ".";
-    String apiKey = configMap.get(prefix + "api-key");
-    String baseUrl = configMap.get(prefix + "base-url");
-    String defaultModel = configMap.get(prefix + "default-model");
-    String timeoutStr = configMap.get(prefix + "connect-timeout-seconds");
-
-    Duration connectTimeout = parseConnectTimeoutSeconds(provider, timeoutStr);
-
-    boolean hasAnyConfig = isHasAnyConfig(apiKey, baseUrl, defaultModel, timeoutStr);
-
+    boolean hasAnyConfig = apiKey != null || baseUrl != null || defaultModel != null
+        || connectTimeoutValue != null || !options.isEmpty();
+    if (!hasAnyConfig) {
+      // Provider not configured at this layer — not an error; simply not constructed.
+      return null;
+    }
     if (requiresApiKey && apiKey == null) {
-      return null;
-    }
-    if (!requiresApiKey && !hasAnyConfig) {
-      // No env config — let resolveProviderConfig fall through to defaults
-      return null;
+      // Explicitly configured but missing its required credential — fail fast, do not skip.
+      String apiKeyKey = KEY_PREFIX + provider + "." + API_KEY;
+      throw new LlmProviderConfigurationException(
+          "Provider '%s' is configured but is missing the required API key '%s'"
+              .formatted(provider, apiKeyKey));
     }
 
-    return new LlmProviderConfig(provider, apiKey, baseUrl, defaultModel, connectTimeout);
-  }
-
-  private static boolean isHasAnyConfig(String apiKey, String baseUrl, String defaultModel,
-      String timeoutStr) {
-    return apiKey != null || baseUrl != null
-        || defaultModel != null || timeoutStr != null;
+    LlmSecretReference apiKeyReference = apiKey == null ? null : LlmSecretReference.parse(apiKey);
+    Duration connectTimeout = parseConnectTimeout(provider, connectTimeoutValue);
+    return new LlmProviderConfig(provider, apiKeyReference, baseUrl, defaultModel, connectTimeout,
+        options);
   }
 
   /**
-   * Builds a default {@link LlmProviderConfig} for providers that do not require an API key. Uses
-   * the provider name only; callers supply their own defaults via {@link LlmProviderConfig}'s
-   * per-provider builders when needed.
-   *
-   * @param provider provider name
-   * @return minimal config with no credentials
+   * Fails fast when the configuration names an LLM provider that has no discovered factory. A provider is recognised by
+   * a definitive credential/endpoint key ({@code .api.key} / {@code .base.url}) under
+   * {@code agentforge4j.llm.<provider>.} — this deliberately ignores non-provider namespaces such as
+   * {@code agentforge4j.llm.cache.*} and {@code agentforge4j.llm.model-tiers.*}. A collapsed hyphenated provider (e.g.
+   * {@code azure-openai} arriving from an env var as {@code azure.openai}) therefore surfaces here as an unknown
+   * provider rather than being silently dropped (#99).
    */
-  private static LlmProviderConfig buildDefaultConfig(String provider) {
-    return new LlmProviderConfig(provider, null, null, null, null);
+  private static void failOnUnknownEnvProviders(Map<String, String> configMap,
+      Set<String> knownProviders) {
+    Set<String> unknown = new TreeSet<>();
+    for (String key : configMap.keySet()) {
+      String provider = providerFromMarkerKey(key);
+      if (provider != null && !knownProviders.contains(normalize(provider))) {
+        unknown.add(provider);
+      }
+    }
+    Validate.isTrue(unknown.isEmpty(), () -> new LlmProviderConfigurationException(
+        "Configuration references unknown LLM provider(s) %s. Available providers: %s"
+            .formatted(unknown, knownProviders)));
+  }
+
+  private static String providerFromMarkerKey(String key) {
+    if (!key.startsWith(KEY_PREFIX)) {
+      return null;
+    }
+    for (String marker : List.of("." + API_KEY, "." + BASE_URL)) {
+      if (key.endsWith(marker) && key.length() > KEY_PREFIX.length() + marker.length()) {
+        return key.substring(KEY_PREFIX.length(), key.length() - marker.length());
+      }
+    }
+    return null;
+  }
+
+  private static Map<String, String> collectOptions(String prefix, Map<String, String> configMap) {
+    Map<String, String> options = new LinkedHashMap<>();
+    for (Map.Entry<String, String> entry : configMap.entrySet()) {
+      String key = entry.getKey();
+      if (!key.startsWith(prefix)) {
+        continue;
+      }
+      String suffix = key.substring(prefix.length());
+      if (suffix.equals(API_KEY) || suffix.equals(BASE_URL) || suffix.equals(DEFAULT_MODEL)
+          || suffix.equals(CONNECT_TIMEOUT)) {
+        continue;
+      }
+      options.put(suffix, entry.getValue());
+    }
+    return options;
+  }
+
+  private static Duration parseConnectTimeout(String provider, String value) {
+    if (StringUtils.isBlank(value)) {
+      return DEFAULT_CONNECT_TIMEOUT;
+    }
+    try {
+      return Duration.parse(value);
+    } catch (DateTimeParseException cause) {
+      throw new LlmProviderConfigurationException(
+          "Provider '%s' option '%s' is not an ISO-8601 duration (e.g. PT30S)".formatted(
+              provider, CONNECT_TIMEOUT), cause);
+    }
+  }
+
+  private static String normalize(String provider) {
+    return StringUtils.lowerCase(StringUtils.trimToEmpty(provider));
   }
 }

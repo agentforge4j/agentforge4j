@@ -3,6 +3,7 @@ package com.agentforge4j.starter;
 
 import com.agentforge4j.bootstrap.AgentForge4j;
 import com.agentforge4j.bootstrap.AgentForge4jBootstrap;
+import com.agentforge4j.bootstrap.EnvSystemPropertyLlmSecretResolver;
 import com.agentforge4j.llm.ConfigModelTierResolver;
 import com.agentforge4j.core.spi.integration.IntegrationConfigLoader;
 import com.agentforge4j.core.spi.integration.MutableIntegrationRepository;
@@ -85,7 +86,8 @@ public class BootstrapAutoConfiguration {
     List<LlmClientConfiguration> configurations = llmConfigurations.getIfAvailable(List::of);
     if (!configurations.isEmpty()) {
       ObjectMapper mapper = objectMapperProvider.getIfAvailable(ObjectMapper::new);
-      builder.withLlmClientResolver(DefaultLlmClientResolver.discover(mapper, configurations));
+      builder.withLlmClientResolver(DefaultLlmClientResolver.discover(mapper, configurations,
+          new EnvSystemPropertyLlmSecretResolver()));
     } else {
       builder.withLlmClientResolver(new DefaultLlmClientResolver(List.of()));
     }

@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 package com.agentforge4j.llm.mistral;
 
-import com.agentforge4j.llm.LlmClientConfiguration;
 import com.agentforge4j.llm.api.LlmClient;
 import com.agentforge4j.llm.api.LlmExecutionRequest;
 import com.agentforge4j.llm.api.LlmExecutionResponse;
@@ -423,37 +422,11 @@ class MistralLlmClientTest {
       ObjectMapper mapper = new ObjectMapper();
       MistralLlmClientFactory factory = new MistralLlmClientFactory();
 
-      LlmClient client = factory.create(mapper, FixedMistralConfiguration.defaults());
+      LlmClient client = new MistralLlmClient(mapper, FixedMistralConfiguration.defaults());
 
       assertThat(client).isInstanceOf(MistralLlmClient.class);
       assertThat(client.getProviderName()).isEqualTo("mistral");
       assertThat(factory.getProviderName()).isEqualTo("mistral");
-    }
-
-    @Test
-    void should_throw_when_configuration_is_not_mistral() {
-      ObjectMapper mapper = new ObjectMapper();
-      MistralLlmClientFactory factory = new MistralLlmClientFactory();
-      LlmClientConfiguration other = new LlmClientConfiguration() {
-        @Override
-        public String getProviderName() {
-          return "openai";
-        }
-
-        @Override
-        public String getDefaultModel() {
-          return "gpt-4";
-        }
-
-        @Override
-        public Duration getConnectTimeout() {
-          return Duration.ofSeconds(1);
-        }
-      };
-
-      assertThatThrownBy(() -> factory.create(mapper, other))
-          .isInstanceOf(IllegalArgumentException.class)
-          .hasMessageContaining("MistralLlmClientFactory requires MistralConfiguration");
     }
   }
 

@@ -61,8 +61,8 @@ class BedrockLlmClientFactoryIT {
     try {
       int port = server.getAddress().getPort();
       BedrockConfiguration cfg = localConfig(port);
-      BedrockLlmClientFactory factory = new BedrockLlmClientFactory();
-      LlmClient client = factory.create(new ObjectMapper(), cfg);
+      LlmClient client =
+          new BedrockLlmClient(new ObjectMapper(), cfg, BedrockRuntimeClientFactory.create(cfg));
       String out = client.execute(new LlmExecutionRequest(
           "bedrock", null, "You are concise.", "Say hello.", null, null, null)).text();
       assertThat(out).isEqualTo("from-factory-it");
@@ -89,8 +89,8 @@ class BedrockLlmClientFactoryIT {
           .connectTimeout(Duration.ofSeconds(5))
           .requestTimeout(Duration.ofSeconds(5))
           .build();
-      BedrockLlmClientFactory factory = new BedrockLlmClientFactory();
-      LlmClient client = factory.create(new ObjectMapper(), cfg);
+      LlmClient client =
+          new BedrockLlmClient(new ObjectMapper(), cfg, BedrockRuntimeClientFactory.create(cfg));
       String out = client.execute(new LlmExecutionRequest(
           "bedrock", null, "You are concise.", "Say hello.", null, null, null)).text();
       assertThat(out).isEqualTo("from-converse-it");
@@ -113,8 +113,8 @@ class BedrockLlmClientFactoryIT {
           .connectTimeout(Duration.ofSeconds(2))
           .requestTimeout(Duration.ofMillis(600))
           .build();
-      BedrockLlmClientFactory factory = new BedrockLlmClientFactory();
-      LlmClient client = factory.create(new ObjectMapper(), cfg);
+      LlmClient client =
+          new BedrockLlmClient(new ObjectMapper(), cfg, BedrockRuntimeClientFactory.create(cfg));
       assertThatThrownBy(() -> client.execute(
           new LlmExecutionRequest("bedrock", null, "s", "u", null, null, null)))
           .isInstanceOf(SdkClientException.class);

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package com.agentforge4j.starter.llmclient.ollama;
 
+import com.agentforge4j.llm.LlmClientConfiguration;
 import com.agentforge4j.llm.ollama.OllamaConfiguration;
 import com.agentforge4j.starter.BootstrapAutoConfiguration;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
@@ -21,7 +22,7 @@ public class OllamaProviderAutoConfiguration {
   @Bean
   @ConditionalOnProperty(
       name = "agentforge4j.llm.ollama.enabled", havingValue = "true")
-  OllamaConfiguration ollamaConfiguration(OllamaLlmClientProperties properties) {
+  LlmClientConfiguration ollamaConfiguration(OllamaLlmClientProperties properties) {
     return new OllamaConfigurationAdapter(properties);
   }
 }

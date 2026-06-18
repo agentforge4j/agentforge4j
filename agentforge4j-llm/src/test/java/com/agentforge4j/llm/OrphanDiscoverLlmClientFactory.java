@@ -2,7 +2,6 @@
 package com.agentforge4j.llm;
 
 import com.agentforge4j.llm.api.LlmClient;
-import com.fasterxml.jackson.databind.ObjectMapper;
 
 /**
  * SPI factory deliberately absent from resolver configuration in discover ITs. Must never be
@@ -21,7 +20,7 @@ public final class OrphanDiscoverLlmClientFactory implements LlmClientFactory {
   }
 
   @Override
-  public LlmClient create(ObjectMapper objectMapper, LlmClientConfiguration config) {
+  public LlmClient create(LlmClientFactoryContext context) {
     throw new AssertionError("Orphan factory must not be instantiated without configuration");
   }
 }

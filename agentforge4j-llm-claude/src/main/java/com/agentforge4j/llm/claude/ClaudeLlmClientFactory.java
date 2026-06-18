@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 package com.agentforge4j.llm.claude;
 
-import com.agentforge4j.llm.LlmClientConfiguration;
 import com.agentforge4j.llm.LlmClientFactory;
+import com.agentforge4j.llm.LlmClientFactoryContext;
+import com.agentforge4j.llm.LlmSecret;
 import com.agentforge4j.llm.api.LlmClient;
 import com.agentforge4j.util.Validate;
-import com.fasterxml.jackson.databind.ObjectMapper;
 
 /**
  * Factory for creating Claude LLM clients.
@@ -25,21 +25,20 @@ public final class ClaudeLlmClientFactory implements LlmClientFactory {
   }
 
   /**
-   * Creates a Claude LLM client with the given configuration.
+   * Creates a Claude client from a neutral {@link LlmClientFactoryContext}: resolves the credential reference and maps
+   * the neutral configuration and provider options into the validated {@link ClaudeConfiguration}.
    *
-   * @param objectMapper the JSON mapper for response parsing
-   * @param config       the configuration, must be an instance of {@link ClaudeConfiguration}
+   * @param context the factory inputs
+   *
    * @return a new Claude LLM client
-   * @throws IllegalArgumentException if the config is not a ClaudeConfiguration
+   *
+   * @throws com.agentforge4j.llm.LlmProviderConfigurationException if a required value is missing or invalid
    */
   @Override
-  public LlmClient create(ObjectMapper objectMapper, LlmClientConfiguration config) {
-    Validate.notNull(config, "Claude configuration must not be null");
-    if (!(config instanceof ClaudeConfiguration claudeConfig)) {
-      throw new IllegalArgumentException(
-          "ClaudeLlmClientFactory requires ClaudeConfiguration but got: %s".formatted(
-              config.getClass().getName()));
-    }
-    return new ClaudeLlmClient(objectMapper, claudeConfig);
+  public LlmClient create(LlmClientFactoryContext context) {
+    Validate.notNull(context, "context must not be null");
+    LlmSecret apiKey = context.requireApiKey();
+    ClaudeConfiguration config = ClaudeNeutralConfiguration.fromNeutral(context.configuration(), apiKey);
+    return new ClaudeLlmClient(context.objectMapper(), config);
   }
 }

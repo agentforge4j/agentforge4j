@@ -340,7 +340,7 @@ class GeminiLlmClientIT {
       var config = FixedGeminiConfiguration.builder()
           .baseUrl(http.baseUri().toString())
           .build();
-      var client = new GeminiLlmClientFactory().create(new ObjectMapper(), config);
+      GeminiLlmClient client = new GeminiLlmClient(new ObjectMapper(), config);
       LlmExecutionRequest request =
           new LlmExecutionRequest("gemini", null, "system", "user", null, null, null);
 

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package com.agentforge4j.starter.llmclient.mistral;
 
+import com.agentforge4j.llm.LlmClientConfiguration;
 import com.agentforge4j.llm.mistral.MistralConfiguration;
 import com.agentforge4j.starter.BootstrapAutoConfiguration;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
@@ -19,7 +20,7 @@ public class MistralProviderAutoConfiguration {
 
   @Bean
   @ConditionalOnProperty("agentforge4j.llm.mistral.api-key")
-  MistralConfiguration mistralConfiguration(MistralLlmClientProperties properties) {
+  LlmClientConfiguration mistralConfiguration(MistralLlmClientProperties properties) {
     return new MistralConfigurationAdapter(properties);
   }
 }

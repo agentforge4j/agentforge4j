@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package com.agentforge4j.starter.llmclient.bedrock;
 
+import com.agentforge4j.llm.LlmClientConfiguration;
 import com.agentforge4j.llm.bedrock.BedrockConfiguration;
 import com.agentforge4j.starter.BootstrapAutoConfiguration;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
@@ -20,7 +21,7 @@ public class BedrockProviderAutoConfiguration {
   @Bean
   @ConditionalOnProperty(
       name = "agentforge4j.llm.bedrock.enabled", havingValue = "true")
-  BedrockConfiguration bedrockConfiguration(BedrockLlmClientProperties properties) {
+  LlmClientConfiguration bedrockConfiguration(BedrockLlmClientProperties properties) {
     return new BedrockConfigurationAdapter(properties);
   }
 }

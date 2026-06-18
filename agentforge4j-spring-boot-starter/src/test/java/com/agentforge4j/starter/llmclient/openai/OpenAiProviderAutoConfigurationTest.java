@@ -3,7 +3,7 @@ package com.agentforge4j.starter.llmclient.openai;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.agentforge4j.llm.openai.OpenAiConfiguration;
+import com.agentforge4j.llm.LlmClientConfiguration;
 import java.time.Duration;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
@@ -17,12 +17,12 @@ class OpenAiProviderAutoConfigurationTest {
   @Test
   void registersOpenAiConfigurationWhenApiKeySet() {
     runner.withPropertyValues("agentforge4j.llm.openai.api-key=sk-test")
-        .run(ctx -> assertThat(ctx).hasSingleBean(OpenAiConfiguration.class));
+        .run(ctx -> assertThat(ctx).hasSingleBean(LlmClientConfiguration.class));
   }
 
   @Test
   void skipsOpenAiConfigurationWhenApiKeyMissing() {
-    runner.run(ctx -> assertThat(ctx).doesNotHaveBean(OpenAiConfiguration.class));
+    runner.run(ctx -> assertThat(ctx).doesNotHaveBean(LlmClientConfiguration.class));
   }
 
   @Test
@@ -31,11 +31,13 @@ class OpenAiProviderAutoConfigurationTest {
         "agentforge4j.llm.openai.api-key=sk-test",
         "agentforge4j.llm.openai.connect-timeout=15s")
         .run(ctx -> {
-          var cfg = ctx.getBean(OpenAiConfiguration.class);
+          LlmClientConfiguration cfg = ctx.getBean(LlmClientConfiguration.class);
+          assertThat(cfg.getProviderName()).isEqualTo("openai");
           assertThat(cfg.getDefaultModel()).isNull();
-          assertThat(cfg.getUrl()).isNull();
+          assertThat(cfg.getBaseUrl()).isNull();
           assertThat(cfg.getConnectTimeout()).isEqualTo(Duration.ofSeconds(15));
-          assertThat(cfg.getRequestTimeout()).isEqualTo(Duration.ofMinutes(2));
+          assertThat(cfg.getOptions().requireDuration("request.timeout"))
+              .isEqualTo(Duration.ofMinutes(2));
         });
   }
 }
