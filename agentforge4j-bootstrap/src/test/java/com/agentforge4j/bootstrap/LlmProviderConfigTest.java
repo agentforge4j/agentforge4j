@@ -189,4 +189,22 @@ class LlmProviderConfigTest {
     LlmProviderConfig twice = LlmProviderConfig.openai().defaults().defaults().build();
     assertThat(twice).isEqualTo(once);
   }
+
+  @Test
+  void toStringRedactsCredentialAndOptionValues() {
+    LlmProviderConfig config = LlmProviderConfig.openAiCompatible()
+        .apiKey("sk-secret-value")
+        .baseUrl("https://api.example.com")
+        .option("auth.token", "super-secret-token")
+        .build();
+
+    String rendered = config.toString();
+
+    assertThat(rendered)
+        .doesNotContain("sk-secret-value")
+        .doesNotContain("super-secret-token")
+        .contains("REDACTED")
+        .contains("auth.token")
+        .contains("https://api.example.com");
+  }
 }

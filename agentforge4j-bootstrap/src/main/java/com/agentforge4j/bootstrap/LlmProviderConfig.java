@@ -50,6 +50,20 @@ public record LlmProviderConfig(
   }
 
   /**
+   * Renders without exposing credentials: {@code apiKeyReference} already redacts itself, and only option
+   * <em>keys</em> are shown because an option <em>value</em> may carry a provider secret. Replaces the record's
+   * generated {@code toString}, which would print option values verbatim.
+   *
+   * @return a secret-safe string representation
+   */
+  @Override
+  public String toString() {
+    return ("LlmProviderConfig[provider=%s, apiKeyReference=%s, baseUrl=%s, defaultModel=%s, "
+        + "connectTimeout=%s, optionKeys=%s]").formatted(
+        provider, apiKeyReference, baseUrl, defaultModel, connectTimeout, options.keySet());
+  }
+
+  /**
    * Returns a builder pre-populated with OpenAI defaults.
    *
    * @return builder for OpenAI configuration
