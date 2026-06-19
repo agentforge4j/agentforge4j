@@ -57,8 +57,8 @@ Spring starter translate their configuration into builder calls.
 requires agentforge4j.runtime;
 ```
 
-Exports `com.agentforge4j.runtime` and its `.command`, `.command.handler`, `.event`, `.repository`,
-`.tool`, `.llm`, and `.interceptor` sub-packages.
+Exports `com.agentforge4j.runtime` and its `.command`, `.event`, `.repository`, `.tool`, `.llm`, and
+`.interceptor` sub-packages.
 
 ## Licence
 

@@ -22,14 +22,20 @@ module agentforge4j.runtime {
   requires com.fasterxml.jackson.core;
   requires org.apache.commons.lang3;
 
+  // PUBLIC API + SPI: WorkflowRuntimeBuilder entry point and the RunContextManager SPI.
   exports com.agentforge4j.runtime;
+  // PUBLIC: command-application wiring types (FileSink and its implementations).
   exports com.agentforge4j.runtime.command;
-  exports com.agentforge4j.runtime.command.handler;
+  // SPI/infra: EventRecorder, consumed by bootstrap assembly.
   exports com.agentforge4j.runtime.event;
+  // PUBLIC: in-memory default persistence implementations.
   exports com.agentforge4j.runtime.repository;
+  // PUBLIC: tool-execution wiring and default implementations.
   exports com.agentforge4j.runtime.tool;
 
+  // PUBLIC + SPI: LLM provider-selection strategy, AgentInvoker, and call observation.
   exports com.agentforge4j.runtime.llm;
+  // PUBLIC SPI: run-execution interceptor seam (also consumed cross-repo by the platform).
   exports com.agentforge4j.runtime.interceptor;
 
   opens com.agentforge4j.runtime.llm to com.fasterxml.jackson.databind;
