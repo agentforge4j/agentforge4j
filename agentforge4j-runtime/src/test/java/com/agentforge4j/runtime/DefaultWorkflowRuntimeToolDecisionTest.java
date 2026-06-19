@@ -24,7 +24,6 @@ import com.agentforge4j.core.workflow.step.StepDefinition;
 import com.agentforge4j.core.workflow.step.StepTransition;
 import com.agentforge4j.core.workflow.step.behaviour.ResourceBehaviour;
 import com.agentforge4j.runtime.event.EventRecorder;
-import com.agentforge4j.runtime.execution.ExecutableExecutor;
 import com.agentforge4j.runtime.execution.ExecutionOutcome;
 import com.agentforge4j.runtime.execution.StepSequenceExecutor;
 import com.agentforge4j.runtime.execution.TransitionGate;
@@ -182,7 +181,6 @@ class DefaultWorkflowRuntimeToolDecisionTest {
         new InMemoryWorkflowRepository(Map.of("wf-1", workflow())),
         stateRepo,
         stepSequenceExecutor,
-        mock(ExecutableExecutor.class),
         eventRecorder,
         CLOCK,
         RunContextManager.NO_OP,
@@ -239,7 +237,6 @@ class DefaultWorkflowRuntimeToolDecisionTest {
         new InMemoryWorkflowRepository(Map.of("wf-1", workflowWith(transition))),
         stateRepo,
         stepSequenceExecutor,
-        mock(ExecutableExecutor.class),
         eventRecorder,
         CLOCK,
         RunContextManager.NO_OP,

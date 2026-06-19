@@ -168,7 +168,7 @@ class BranchContinuationRuntimeTest {
   }
 
   @Test
-  void retry_can_target_continuation_branch_step() {
+  void retry_redrives_from_top_level_branch_so_downstream_reexecutes() {
     StepDefinition selector = resourceStep("selector", "/examples/branch-miss.txt", "route");
     StepDefinition branch = branchStep("branch",
         "route",
@@ -187,7 +187,16 @@ class BranchContinuationRuntimeTest {
     assertThat(fixture.runtime().getState(runId).getStatus()).isEqualTo(WorkflowStatus.FAILED);
 
     fixture.runtime().retry(runId, "branch", "user");
-    assertThat(fixture.runtime().getState(runId).getStatus()).isEqualTo(WorkflowStatus.COMPLETED);
+
+    // Path A: retry re-drives from the top-level branch, so the branch is re-evaluated and the
+    // downstream terminal fail step runs again — the run fails again on the real downstream outcome.
+    // The pre-fix defect finalised COMPLETED after executing the branch alone, so a RUN_COMPLETED
+    // event must never be emitted here.
+    assertThat(fixture.runtime().getState(runId).getStatus()).isEqualTo(WorkflowStatus.FAILED);
+    long runCompleted = fixture.eventLog().getEvents(runId).stream()
+        .filter(event -> event.eventType() == WorkflowEventType.RUN_COMPLETED)
+        .count();
+    assertThat(runCompleted).isZero();
   }
 
   @Test

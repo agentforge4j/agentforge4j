@@ -26,7 +26,6 @@ import com.agentforge4j.core.workflow.state.WorkflowState;
 import com.agentforge4j.core.workflow.state.WorkflowStatus;
 import com.agentforge4j.core.workflow.step.StepDefinition;
 import com.agentforge4j.runtime.event.EventRecorder;
-import com.agentforge4j.runtime.execution.ExecutableExecutor;
 import com.agentforge4j.runtime.execution.ExecutionContext;
 import com.agentforge4j.runtime.execution.ExecutionOutcome;
 import com.agentforge4j.runtime.execution.RequirementCheckpoint;
@@ -69,7 +68,6 @@ public final class DefaultWorkflowRuntime implements WorkflowRuntime {
   private final WorkflowRepository workflowRepository;
   private final WorkflowStateRepository workflowStateRepository;
   private final StepSequenceExecutor stepSequenceExecutor;
-  private final ExecutableExecutor executableExecutor;
   private final EventRecorder eventRecorder;
   private final Clock clock;
   private final RunContextManager runContextManager;
@@ -86,7 +84,6 @@ public final class DefaultWorkflowRuntime implements WorkflowRuntime {
   DefaultWorkflowRuntime(WorkflowRepository workflowRepository,
       WorkflowStateRepository workflowStateRepository,
       StepSequenceExecutor stepSequenceExecutor,
-      ExecutableExecutor executableExecutor,
       EventRecorder eventRecorder,
       Clock clock,
       RunContextManager runContextManager,
@@ -102,8 +99,6 @@ public final class DefaultWorkflowRuntime implements WorkflowRuntime {
         "workflowStateRepository must not be null");
     this.stepSequenceExecutor = Validate.notNull(stepSequenceExecutor,
         "stepSequenceExecutor must not be null");
-    this.executableExecutor = Validate.notNull(executableExecutor,
-        "executableExecutor must not be null");
     this.eventRecorder = Validate.notNull(eventRecorder, "eventRecorder must not be null");
     this.clock = Validate.notNull(clock, "clock must not be null");
     this.runContextManager = Validate.notNull(runContextManager,
@@ -175,7 +170,12 @@ public final class DefaultWorkflowRuntime implements WorkflowRuntime {
    * @throws ExecutionNotFoundException if no state exists for {@code runId}
    * @throws IllegalArgumentException   if {@code stepId} is blank, the run is cancelled, status is not
    *                                    {@link WorkflowStatus#FAILED} or {@link WorkflowStatus#PAUSED}, {@code stepId}
-   *                                    is not present in the workflow definition, or {@code runId} is blank
+   *                                    does not identify a top-level step in the workflow definition, or {@code runId}
+   *                                    is blank
+   * @implSpec {@code retry} is a top-level-step contract: {@code stepId} must name a step that appears directly in the
+   * workflow's top-level sequence. The run is repositioned at that step and the enclosing sequence is re-driven, so the
+   * target and every downstream step execute again and the run finalises on the real downstream outcome. A step that
+   * exists only nested inside a blueprint or sub-workflow is rejected (retry its enclosing top-level step instead).
    */
   @Override
   public void retry(String runId, String stepId, String actorId) {
@@ -192,25 +192,45 @@ public final class DefaultWorkflowRuntime implements WorkflowRuntime {
         stepId, null)) {
       LOG.log(System.Logger.Level.INFO, "Retry requested runId={0}, stepId={1}", runId, stepId);
       WorkflowDefinition workflow = workflowRepository.get(state.getWorkflowId());
-      Executable target = stepTreeSearcher.findStep(workflow, stepId);
-      eventRecorder.record(runId, stepId, WorkflowEventType.STEP_RETRIED, null, actorId);
+      StepDefinition target = resolveTopLevelRetryTarget(workflow, stepId);
 
+      // Reposition the run at the target: clear the target's output and everything that ran at or
+      // after it, so the re-drive re-executes the target and all downstream steps rather than
+      // reusing stale outputs. Reserved (__-prefixed) context keys are preserved by
+      // clearEntriesFromUid; a target that never executed has no uid and nothing to clear.
+      state.getStepExecutionUid(target.stepId()).ifPresent(state::clearEntriesFromUid);
+      // A PAUSED run carries pending suspension state for the step it paused on; clear it so the
+      // re-drive starts the target cleanly instead of re-entering the previous pause.
+      state.setPendingArtifact(null);
+      state.setPendingUserPrompt(null);
       state.setStatus(WorkflowStatus.RUNNING);
-      state.setCurrentStepId(stepId);
+      state.setCurrentStepId(target.stepId());
       state.setLastUpdatedAt(clock.instant());
+      eventRecorder.record(runId, target.stepId(), WorkflowEventType.STEP_RETRIED, null, actorId);
 
-      ExecutionContext executionContext = newExecutionContext(state, workflow);
-      executionContext.enterWorkflow(workflow);
-      try {
-        ExecutionOutcome outcome = executableExecutor.execute(target, executionContext);
-        finaliseDrive(state, outcome);
-      } catch (RuntimeException throwable) {
-        failRun(state, stepId, throwable);
-      } finally {
-        executionContext.exitWorkflow();
-        workflowStateRepository.save(state);
-      }
+      // Re-drive the enclosing top-level sequence: StepSequenceExecutor replays from the start,
+      // skips steps that still have outputs, re-runs the target and its downstream continuation,
+      // and finalises through the normal terminal path (COMPLETED, a pause, or FAILED).
+      drive(state, workflow);
     }
+  }
+
+  /**
+   * Resolves {@code stepId} to a top-level {@link StepDefinition} retry target. Only a step that appears directly in
+   * {@code workflow.steps()} is a valid target, because {@code retry} repositions the run by re-driving the top-level
+   * sequence. A step that exists only nested inside a blueprint or sub-workflow is rejected with the id of its
+   * enclosing top-level entry; an unknown step is rejected as not found.
+   */
+  private StepDefinition resolveTopLevelRetryTarget(WorkflowDefinition workflow, String stepId) {
+    StepDefinition target = stepTreeSearcher.findTopLevelStep(workflow, stepId);
+    if (target != null) {
+      return target;
+    }
+    String enclosing = stepTreeSearcher.findEnclosingTopLevelId(workflow, stepId);
+    Validate.isTrue(enclosing == null,
+        "Step '%s' is not a top-level retry target; retry the enclosing step '%s'".formatted(stepId, enclosing));
+    throw new IllegalArgumentException(
+        "Step '%s' not found in workflow '%s'".formatted(stepId, workflow.id()));
   }
 
   /**
@@ -684,7 +704,7 @@ public final class DefaultWorkflowRuntime implements WorkflowRuntime {
       // runs; it is raised outside the try below so it propagates cleanly rather than failing the run.
       // The interceptor receives a defensive snapshot, so it cannot mutate live run state.
       try {
-        runExecutionInterceptor.beforeMainExecution( new RunExecutionContext(state.getRunId(), state.snapshot()));
+        runExecutionInterceptor.beforeMainExecution(new RunExecutionContext(state.getRunId(), state.snapshot()));
       } catch (ExecutionBlockedException blocked) {
         recordRunBlocked(state, null);
         throw blocked;

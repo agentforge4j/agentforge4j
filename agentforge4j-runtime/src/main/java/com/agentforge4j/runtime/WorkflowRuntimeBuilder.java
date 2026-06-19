@@ -353,7 +353,6 @@ public final class WorkflowRuntimeBuilder {
         workflowRepository,
         workflowStateRepository,
         stepSequenceExecutor,
-        executableExecutor,
         resolvedEventRecorder,
         resolvedClock,
         runContextManager,

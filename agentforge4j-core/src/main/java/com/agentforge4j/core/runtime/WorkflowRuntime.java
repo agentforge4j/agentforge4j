@@ -43,8 +43,14 @@ public interface WorkflowRuntime {
   /**
    * Retry the given step on the given run. Honours the step's {@code RetryPolicy}.
    *
+   * <p>{@code stepId} must name a <strong>top-level</strong> step — one that appears directly in the
+   * workflow's top-level sequence. The run is repositioned at that step and the sequence is re-driven, so the target
+   * and every step after it execute again and the run finalises on the real downstream outcome (it may complete, pause,
+   * or fail). A step that exists only nested inside a blueprint or sub-workflow is rejected; retry its enclosing
+   * top-level step instead.
+   *
    * @param runId   id of the run
-   * @param stepId  id of the step to retry
+   * @param stepId  id of the top-level step to retry
    * @param actorId Opaque identifier supplied by the embedding application representing the entity responsible for the
    *                action. AgentForge4j treats the value as opaque and does not interpret its structure or meaning.
    */

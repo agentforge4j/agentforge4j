@@ -19,7 +19,6 @@ import com.agentforge4j.core.workflow.step.StepDefinition;
 import com.agentforge4j.core.workflow.step.StepTransition;
 import com.agentforge4j.core.workflow.step.behaviour.ResourceBehaviour;
 import com.agentforge4j.runtime.event.EventRecorder;
-import com.agentforge4j.runtime.execution.ExecutableExecutor;
 import com.agentforge4j.runtime.execution.ExecutionContext;
 import com.agentforge4j.runtime.execution.StepSequenceExecutor;
 import com.agentforge4j.runtime.execution.TransitionGate;
@@ -100,7 +99,6 @@ class DefaultWorkflowRuntimeFailureTest {
         new InMemoryWorkflowRepository(Map.of(workflow.id(), workflow)),
         new InMemoryWorkflowStateRepository(),
         stepSequenceExecutor,
-        mock(ExecutableExecutor.class),
         eventRecorder,
         Clock.fixed(Instant.parse("2026-05-01T12:00:00Z"), ZoneOffset.UTC),
         RunContextManager.NO_OP,
