@@ -2,6 +2,10 @@
 
 The `agentforge4j-bootstrap` module is the framework-agnostic entry point for assembling a fully wired [AgentForge4j](src/main/java/com/agentforge4j/bootstrap/AgentForge4j.java) runtime. It solves the problem of wiring repositories, LLM clients, file sinks, and workflow loaders without Spring or any other container. Use it in plain Java applications, unit and integration tests, CLI tools, Quarkus extensions, or anywhere you are not using the Spring Boot starter.
 
+## How it fits
+
+Bootstrap sits at the top of the plain-Java dependency chain: it depends on the core, llm, config-loader, runtime, schema, and workflows modules and composes them into the `AgentForge4j` facade. Providers are discovered separately via `ServiceLoader<LlmClientFactory>`. The [Spring Boot starter](../agentforge4j-spring-boot-starter/README.md) is a thin adapter that delegates assembly to this module.
+
 ---
 
 ## Quick start
@@ -50,7 +54,9 @@ Programmatic `with*` calls on `AgentForge4jBootstrap.Builder` always win over en
 
 ## LLM provider configuration
 
-Nine static factories on [`LlmProviderConfig`](src/main/java/com/agentforge4j/bootstrap/LlmProviderConfig.java) each return a `ProviderBuilder`: `defaults()`, `apiKey(...)`, `baseUrl(...)`, `defaultModel(...)`, `connectTimeout(...)`, and `build()`.
+Nine static factories on [`LlmProviderConfig`](src/main/java/com/agentforge4j/bootstrap/LlmProviderConfig.java) each return a `ProviderBuilder`: `defaults()`, `apiKey(...)`, `apiKeyReference(...)`, `baseUrl(...)`, `defaultModel(...)`, `connectTimeout(...)`, `option(key, value)`, and `build()`.
+
+These cover only the **common** fields plus an open options map. Provider-specific settings are supplied through `option(key, value)` using the canonical dotted keys the provider consumes — for example `deployment` and `api.version` (Azure OpenAI); `region` and `anthropic.version` (Bedrock); `auth.header.name`, `auth.header.prefix`, and `responses.path` (openai-compatible). The common methods alone are **not** sufficient for those providers. Each provider's README lists its keys; the same settings can instead be configured through the Spring Boot starter's per-provider properties.
 
 Providers are discovered at runtime via `ServiceLoader<LlmClientFactory>`. Add the provider module JARs you need to the classpath; bootstrap wires every factory it finds.
 
@@ -63,13 +69,16 @@ Require an API key (or env/sys-prop equivalent) unless configured programmatical
 - `gemini()`
 - `mistral()`
 
-### Deployment-specific
+### Deployment-specific (base URL + options)
 
-`baseUrl` and `defaultModel` are `null` by default — set both for your deployment:
+`baseUrl` and `defaultModel` are `null` by default — set them for your deployment, plus the provider-specific `option(...)` keys:
 
-- `azureOpenAi()`
-- `openAiCompatible()`
-- `bedrock()`
+- `azureOpenAi()` — the resource endpoint is the base URL; also set the `deployment` and `api.version` options.
+- `openAiCompatible()` — set the base URL plus `auth.header.name`, `auth.header.prefix`, and `responses.path` options.
+
+### AWS Bedrock
+
+`bedrock()` uses neither a base URL nor an API key. It authenticates with AWS credentials (the default AWS credentials chain) and SigV4 signing; set the `region` and `anthropic.version` options. See the [Bedrock provider README](../agentforge4j-llm-bedrock/README.md).
 
 ### Local / no API key
 
@@ -223,3 +232,15 @@ When using the Spring Boot starter, registering a standalone `@Bean FileSink` do
 ```
 
 Add LLM provider modules (for example `agentforge4j-llm-openai`, `agentforge4j-llm-ollama`) to the classpath for the providers you want `ServiceLoader` to discover.
+
+## JPMS module name
+
+```java
+requires agentforge4j.bootstrap;
+```
+
+Exports `com.agentforge4j.bootstrap` and declares `uses com.agentforge4j.llm.LlmClientFactory` and `uses com.agentforge4j.core.spi.integration.IntegrationToolProviderFactory`.
+
+## Licence
+
+Apache 2.0. See the root [LICENSE](../LICENSE) and the [project README](../README.md).
