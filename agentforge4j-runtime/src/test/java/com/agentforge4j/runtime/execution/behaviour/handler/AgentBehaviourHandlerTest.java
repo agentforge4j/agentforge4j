@@ -7,6 +7,7 @@ import com.agentforge4j.core.workflow.WorkflowDefinition;
 import com.agentforge4j.core.workflow.WorkflowLifecycle;
 import com.agentforge4j.core.workflow.WorkflowSource;
 import com.agentforge4j.core.workflow.context.ContextMapping;
+import com.agentforge4j.core.workflow.context.ContextProvenance;
 import com.agentforge4j.core.workflow.context.StringContextValue;
 import com.agentforge4j.core.workflow.state.WorkflowState;
 import com.agentforge4j.core.workflow.step.StepDefinition;
@@ -88,7 +89,8 @@ class AgentBehaviourHandlerTest {
   void continue_command_clears_agent_completion_signal() {
     // Stale signal from an earlier step must be cleared when this step does not signal completion.
     executionContext.setAgentCompletionSignalled(true);
-    stubAgentResponse(new SetContextCommand("key", new StringContextValue("value")));
+    stubAgentResponse(new SetContextCommand("key",
+        new StringContextValue("value", ContextProvenance.LLM_GENERATED)));
     when(commandApplier.apply(any(), any(), any(), any(), anyInt())).thenReturn(CommandApplicationResult.CONTINUE);
 
     ExecutionOutcome outcome = handler.handle(step, (AgentBehaviour) step.behaviour(), executionContext);
