@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <parent>
+    <groupId>org.agentforge4j.examples</groupId>
+    <artifactId>agentforge4j-examples</artifactId>
+    <version>0.0.1-SNAPSHOT</version>
+    <relativePath>../pom.xml</relativePath>
+  </parent>
+
+  <artifactId>agentforge4j-framework-examples</artifactId>
+  <packaging>pom</packaging>
+  <name>AgentForge4j Framework Examples</name>
+  <description>Examples that exercise the AgentForge4j framework directly (bootstrap, suspend/resume,
+    Spring Boot starter, HTTP tools, MCP). Leaf modules are added per example in later batches.</description>
+
+  <licenses>
+    <license>
+      <name>Apache License, Version 2.0</name>
+      <url>https://www.apache.org/licenses/LICENSE-2.0</url>
+      <distribution>repo</distribution>
+    </license>
+  </licenses>
+
+  <modules>
+    <!-- Leaf example modules (quick-start, human-approval, spring-boot, tools-http, mcp) are added
+         here as each lands in Batches 2-3. -->
+  </modules>
+</project>

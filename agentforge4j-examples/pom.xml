@@ -1,0 +1,85 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <groupId>org.agentforge4j.examples</groupId>
+  <artifactId>agentforge4j-examples</artifactId>
+  <version>0.0.1-SNAPSHOT</version>
+
+  <packaging>pom</packaging>
+  <name>AgentForge4j Examples</name>
+  <description>Standalone, runnable examples that consume the published AgentForge4j artifacts the
+    way a third-party application would. Built independently of the OSS reactor.</description>
+
+  <licenses>
+    <license>
+      <name>Apache License, Version 2.0</name>
+      <url>https://www.apache.org/licenses/LICENSE-2.0</url>
+      <distribution>repo</distribution>
+    </license>
+  </licenses>
+
+  <properties>
+    <release>17</release>
+    <java.version>17</java.version>
+    <maven.compiler.release>${java.version}</maven.compiler.release>
+    <maven.compiler.source>${java.version}</maven.compiler.source>
+    <maven.compiler.target>${java.version}</maven.compiler.target>
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    <!-- Single retarget point for the whole examples tree. Pre-0.1.0 the examples resolve the
+         SNAPSHOT from the local .m2 (run `./mvnw install -DskipTests` on the OSS reactor first);
+         bump to 0.1.0 once published to Central. -->
+    <agentforge4j.version>0.0.1-SNAPSHOT</agentforge4j.version>
+    <license-maven-plugin.version>5.0.0</license-maven-plugin.version>
+    <!-- Resolved from this tree's reactor root so the header file is found from every module. -->
+    <config.dir>${maven.multiModuleProjectDirectory}/config</config.dir>
+  </properties>
+
+  <modules>
+    <module>framework-examples</module>
+  </modules>
+
+  <build>
+    <plugins>
+      <!-- License headers: GATING. Enforces (check, bound to verify) the bare SPDX identifier line
+           on every Java source. SINGLE_LINE_DOUBLESLASH_STYLE renders the one-line template as
+           exactly "// SPDX-License-Identifier: Apache-2.0" (overriding the default SLASHSTAR block
+           style); includes restrict the sweep to *.java, and target/ (generated sources) is
+           excluded. Mirrors the OSS reactor convention; the header file is copied into this tree
+           because a standalone parent does not inherit the OSS reactor's config/ directory. -->
+      <plugin>
+        <groupId>com.mycila</groupId>
+        <artifactId>license-maven-plugin</artifactId>
+        <version>${license-maven-plugin.version}</version>
+        <configuration>
+          <licenseSets>
+            <licenseSet>
+              <header>${config.dir}/license/spdx-apache-2.0.txt</header>
+              <includes>
+                <include>**/*.java</include>
+              </includes>
+              <excludes>
+                <exclude>**/target/**</exclude>
+              </excludes>
+            </licenseSet>
+          </licenseSets>
+          <mapping>
+            <java>SINGLE_LINE_DOUBLESLASH_STYLE</java>
+          </mapping>
+          <strictCheck>true</strictCheck>
+        </configuration>
+        <executions>
+          <execution>
+            <id>license-check</id>
+            <phase>verify</phase>
+            <goals>
+              <goal>check</goal>
+            </goals>
+          </execution>
+        </executions>
+      </plugin>
+    </plugins>
+  </build>
+</project>
