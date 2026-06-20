@@ -20,6 +20,17 @@ reactor** (this tree is not a module of the OSS build).
 
 ---
 
+## Framework examples
+
+| Example | What it teaches |
+|---|---|
+| [`quick-start`](framework-examples/quick-start) | Assemble the framework and run a workflow to completion — the shortest runnable program. |
+| [`human-approval`](framework-examples/human-approval) | Suspend a run at a `HUMAN_APPROVAL` gate, then approve or reject it. |
+
+More framework examples (Spring Boot starter, HTTP tools, MCP) land in later batches.
+
+---
+
 ## Prerequisite — install the framework into your local repository
 
 Until AgentForge4j publishes `0.1.0` to Maven Central, the examples resolve

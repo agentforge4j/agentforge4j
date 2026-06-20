@@ -1,0 +1,18 @@
+{
+  "kind": "WORKFLOW",
+  "id": "human-approval",
+  "name": "Human Approval",
+  "description": "A single agent step gated by HUMAN_APPROVAL — the run suspends until a person approves or rejects it.",
+  "steps": [
+    {
+      "kind": "STEP",
+      "stepId": "propose",
+      "name": "Propose",
+      "behaviour": {
+        "type": "AGENT",
+        "agentRef": "human-approval-agent",
+        "transition": "HUMAN_APPROVAL"
+      }
+    }
+  ]
+}

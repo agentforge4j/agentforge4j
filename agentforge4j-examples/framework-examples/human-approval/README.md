@@ -1,33 +1,53 @@
 # Human Approval
 
-> **Status: implementation pending (Batch 2).** This README describes the intended example; the
-> Maven module and sources land in Batch 2.
-
 ## What this teaches
 
 How a workflow suspends to wait for a human decision and then resumes — the core of any
-human-in-the-loop process. The example pauses at an approval point, then continues once the
-decision is supplied.
+human-in-the-loop process. The run pauses at an approval gate; approving it completes the run,
+rejecting it fails the run. No Spring, no real LLM keys, no network.
 
 ## AgentForge4j capability demonstrated
 
-Workflow suspend/resume: the run reaches an `AWAITING_*` state and is driven forward by a resume
-call. (The exact suspend kind and resume verb are finalized against live source in Batch 2.)
+Suspend/resume via a `HUMAN_APPROVAL` step gate. The agent finishes its step (a scripted `COMPLETE`
+from the deterministic fake provider, `agentforge4j-llm-fake`), the run suspends at
+`AWAITING_STEP_APPROVAL`, and `WorkflowRuntime.decideStepApproval(...)` drives it forward:
+`Approve` → `COMPLETED`, `Reject` → `FAILED` (with a `StepRejectionFailure`). The deciding actor is
+carried inside the decision.
 
 ## How to run
+
+From the examples root (`agentforge4j-examples/`), after installing the framework into your local
+`.m2` (`./mvnw install -DskipTests` in the OSS reactor):
 
 ```bash
 ./mvnw -pl framework-examples/human-approval -am verify
 ```
 
-(plus the `main()` entry point, once implemented).
+`verify` runs the deterministic tests, which assert the suspend, the approved outcome, and the
+rejected outcome. To watch both paths print, run `HumanApprovalExample.main` from your IDE.
 
 ## Expected behaviour / output
 
-The workflow suspends at the approval gate, then — once approval is supplied — resumes and reaches
-its terminal `WorkflowStatus`; the bundled test asserts both the suspended and terminal states
-deterministically.
+The run suspends at `AWAITING_STEP_APPROVAL`; approving reaches `COMPLETED`, rejecting reaches
+`FAILED`. `main` runs both paths and prints, for example:
+
+```text
+approve path — after start: AWAITING_STEP_APPROVAL
+approve path — after approve: COMPLETED
+reject path — after start: AWAITING_STEP_APPROVAL
+reject path — after reject: FAILED
+  failure reason: Needs rework
+```
+
+The bundled test asserts the suspended and both terminal states deterministically.
 
 ## Files to read first
 
-*Pending implementation (Batch 2).*
+1. `src/main/java/.../HumanApprovalExample.java` — the start → suspend → decide flow for both the
+   approve and reject paths.
+2. `src/main/resources/workflows/human-approval.workflow/workflow.json` — the step gated with
+   `HUMAN_APPROVAL`.
+3. `src/main/resources/agents/human-approval-agent.agent/agent.json` — the agent that routes to the
+   `fake` provider.
+4. `src/test/java/.../HumanApprovalExampleTest.java` — the deterministic assertions for both
+   outcomes.
