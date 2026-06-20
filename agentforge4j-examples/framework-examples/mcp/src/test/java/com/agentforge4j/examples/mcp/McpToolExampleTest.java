@@ -24,5 +24,7 @@ class McpToolExampleTest {
 
     assertThat(state.getStatus()).isEqualTo(WorkflowStatus.COMPLETED);
     assertThat(state.getContext()).containsKey(McpToolExample.TOOL_CONTEXT_KEY);
+    assertThat(state.getContext().get(McpToolExample.TOOL_CONTEXT_KEY).toString())
+        .contains("hello from MCP");
   }
 }
