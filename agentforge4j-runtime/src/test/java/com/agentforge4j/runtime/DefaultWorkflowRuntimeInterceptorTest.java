@@ -27,6 +27,7 @@ import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicBoolean;
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -87,8 +88,63 @@ class DefaultWorkflowRuntimeInterceptorTest {
 
     WorkflowState persisted = stateRepo.findAll().get(0);
     assertThat(blockedEventCount(persisted.getRunId())).isEqualTo(1L);   // neutral audit recorded
-    assertThat(persisted.getStatus())                                    // run left non-terminal
-        .isNotIn(WorkflowStatus.COMPLETED, WorkflowStatus.FAILED, WorkflowStatus.CANCELLED);
+    assertThat(persisted.getStatus())                                    // resumable, not stranded
+        .isEqualTo(WorkflowStatus.PAUSED);
+  }
+
+  @Test
+  void blockBeforeFirstStepPausesAndIsResumableOnceCleared() {
+    when(stepSequenceExecutor.executeAll(anyList(), any())).thenReturn(ExecutionOutcome.COMPLETED);
+    AtomicBoolean blocking = new AtomicBoolean(true);
+    RunExecutionInterceptor gate = new RunExecutionInterceptor() {
+      @Override
+      public void beforeMainExecution(RunExecutionContext context) {
+        if (blocking.get()) {
+          throw new ExecutionBlockedException("insufficient credits");
+        }
+      }
+    };
+    DefaultWorkflowRuntime runtime = runtime(gate);
+
+    assertThatThrownBy(() -> runtime.start("wf-1"))
+        .isInstanceOf(ExecutionBlockedException.class);
+    WorkflowState blocked = stateRepo.findAll().get(0);
+    assertThat(blocked.getStatus()).isEqualTo(WorkflowStatus.PAUSED);   // resumable, not RUNNING
+
+    // Resolve the veto and resume: continueRun accepts PAUSED, re-fires before-main, completes.
+    blocking.set(false);
+    runtime.continueRun(blocked.getRunId(), "user");
+
+    assertThat(stateRepo.findById(blocked.getRunId()).orElseThrow().getStatus())
+        .isEqualTo(WorkflowStatus.COMPLETED);
+  }
+
+  @Test
+  void blockMidRunPausesAndIsResumableOnceCleared() {
+    AtomicBoolean blocking = new AtomicBoolean(true);
+    when(stepSequenceExecutor.executeAll(anyList(), any())).thenAnswer(inv -> {
+      if (blocking.get()) {
+        throw new ExecutionBlockedException("budget exhausted mid-run");
+      }
+      return ExecutionOutcome.COMPLETED;
+    });
+    WorkflowState resumed = new WorkflowState("run-blk2", "wf-1", null, CLOCK.instant());
+    resumed.setStatus(WorkflowStatus.PAUSED);
+    resumed.putStepExecutionUid("s1", 1);   // a step already executed → before-main skipped, block is mid-run
+    stateRepo.save(resumed);
+    DefaultWorkflowRuntime runtime = runtime(RunExecutionInterceptor.NO_OP);
+
+    assertThatThrownBy(() -> runtime.continueRun("run-blk2", "user"))
+        .isInstanceOf(ExecutionBlockedException.class);
+    assertThat(stateRepo.findById("run-blk2").orElseThrow().getStatus())
+        .isEqualTo(WorkflowStatus.PAUSED);   // mid-run block left it resumable, not RUNNING
+
+    // Resolve the veto and resume from where it blocked.
+    blocking.set(false);
+    runtime.continueRun("run-blk2", "user");
+
+    assertThat(stateRepo.findById("run-blk2").orElseThrow().getStatus())
+        .isEqualTo(WorkflowStatus.COMPLETED);
   }
 
   @Test
@@ -105,7 +161,7 @@ class DefaultWorkflowRuntimeInterceptorTest {
         .hasMessageContaining("budget exhausted");
 
     WorkflowState after = stateRepo.findById("run-blk").orElseThrow();
-    assertThat(after.getStatus()).isNotEqualTo(WorkflowStatus.FAILED);
+    assertThat(after.getStatus()).isEqualTo(WorkflowStatus.PAUSED);   // resumable, never FAILED
     assertThat(after.getRunFailure()).isNull();
     assertThat(blockedEventCount("run-blk")).isEqualTo(1L);   // neutral block audit recorded
   }

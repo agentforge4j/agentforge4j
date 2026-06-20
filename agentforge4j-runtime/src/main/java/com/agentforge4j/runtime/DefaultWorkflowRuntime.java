@@ -707,6 +707,9 @@ public final class DefaultWorkflowRuntime implements WorkflowRuntime {
         runExecutionInterceptor.beforeMainExecution(new RunExecutionContext(state.getRunId(), state.snapshot()));
       } catch (ExecutionBlockedException blocked) {
         recordRunBlocked(state, null);
+        // This catch sits outside the try/finally below, so it must persist the PAUSED
+        // transition itself — nothing downstream saves the state on this path.
+        workflowStateRepository.save(state);
         throw blocked;
       }
     }
@@ -718,7 +721,7 @@ public final class DefaultWorkflowRuntime implements WorkflowRuntime {
       finaliseDrive(state, outcome);
     } catch (ExecutionBlockedException blocked) {
       // A deliberate control veto (e.g. budget block) — record a neutral block event and propagate.
-      // The run status is left unchanged (non-terminal); never the failRun path.
+      // recordRunBlocked marks the run PAUSED (resumable); the finally below persists it. Never failRun.
       recordRunBlocked(state, state.getCurrentStepId());
       throw blocked;
     } catch (RuntimeException throwable) {
@@ -730,11 +733,14 @@ public final class DefaultWorkflowRuntime implements WorkflowRuntime {
   }
 
   /**
-   * Records a neutral {@link WorkflowEventType#RUN_BLOCKED} audit event when a registered interceptor vetoes the run.
-   * The run status is deliberately left unchanged so the embedding application can resolve the block (resume or
-   * cancel); OSS performs no terminal transition.
+   * Records a neutral {@link WorkflowEventType#RUN_BLOCKED} audit event when a registered interceptor vetoes the run,
+   * and marks the run {@link WorkflowStatus#PAUSED} so the embedding application can resume it via {@code continueRun}
+   * once the block is resolved (credits restored, policy lifted) — or cancel it. The {@code RUN_BLOCKED} event is the
+   * durable record of <em>why</em> the run paused; OSS performs no terminal transition and sets no {@link RunFailure}.
    */
   private void recordRunBlocked(WorkflowState state, String stepId) {
+    state.setStatus(WorkflowStatus.PAUSED);
+    state.setLastUpdatedAt(clock.instant());
     eventRecorder.record(state.getRunId(), stepId, WorkflowEventType.RUN_BLOCKED, null, "runtime");
   }
 
