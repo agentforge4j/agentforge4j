@@ -298,12 +298,14 @@ class WorkflowStateTest {
     original.incrementUserPromptPauseCountForStep("s1");
     original.setLoopIterationCursor("bp-a", 2);
     original.setForEachListFingerprint("bp-a", "abc123");
+    original.markLoopCompleted("bp-done", 6);
 
     WorkflowState copy = original.snapshot();
     assertThat(copy).isNotSameAs(original);
     assertThat(copy.getUserPromptPauseCountForStep("s1")).isEqualTo(1);
     assertThat(copy.getLoopIterationCursor("bp-a")).isEqualTo(2);
     assertThat(copy.getForEachListFingerprint("bp-a")).contains("abc123");
+    assertThat(copy.isLoopCompleted("bp-done")).isTrue();
 
     copy.setStatus(WorkflowStatus.COMPLETED);
     copy.putContextValue("extra", new StringContextValue("x", ContextProvenance.USER_SUPPLIED));
@@ -329,5 +331,54 @@ class WorkflowStateTest {
         .isEqualTo(ContextProvenance.SYSTEM_GENERATED);
     assertThat(copy.getContextValue("untrusted").orElseThrow().provenance())
         .isEqualTo(ContextProvenance.USER_SUPPLIED);
+  }
+
+  @Test
+  void loop_completion_marker_records_is_checked_and_exposes_unmodifiable_view() {
+    WorkflowState state = new WorkflowState("run-1", "wf-1", null, t());
+    assertThat(state.isLoopCompleted("bp-a")).isFalse();
+
+    state.markLoopCompleted("bp-a", 4);
+
+    assertThat(state.isLoopCompleted("bp-a")).isTrue();
+    assertThat(state.getCompletedLoopBlueprintUids()).containsExactly(Map.entry("bp-a", 4));
+    assertThatThrownBy(() -> state.markLoopCompleted(" ", 1))
+        .isInstanceOf(IllegalArgumentException.class);
+    assertThatThrownBy(() -> state.markLoopCompleted("bp-b", -1))
+        .isInstanceOf(IllegalArgumentException.class);
+    assertThatThrownBy(() -> state.isLoopCompleted(null))
+        .isInstanceOf(IllegalArgumentException.class);
+    assertThatThrownBy(() -> state.getCompletedLoopBlueprintUids().put("bp-x", 1))
+        .isInstanceOf(UnsupportedOperationException.class);
+  }
+
+  @Test
+  void replace_completed_loop_blueprint_uids_filters_invalid_and_null_clears() {
+    WorkflowState state = new WorkflowState("run-1", "wf-1", null, t());
+    state.markLoopCompleted("bp-a", 1);
+
+    Map<String, Integer> replacement = new HashMap<>();
+    replacement.put("bp-x", 5);
+    replacement.put("", 2);
+    replacement.put("bp-bad", -1);
+    state.replaceCompletedLoopBlueprintUids(replacement);
+    assertThat(state.getCompletedLoopBlueprintUids()).containsExactly(Map.entry("bp-x", 5));
+
+    state.replaceCompletedLoopBlueprintUids(null);
+    assertThat(state.getCompletedLoopBlueprintUids()).isEmpty();
+  }
+
+  @Test
+  void clearEntriesFromUid_drops_loop_markers_at_or_after_uid_and_retains_earlier_ones() {
+    WorkflowState state = new WorkflowState("run-1", "wf-1", null, t());
+    state.markLoopCompleted("loop-before", 3); // completed before the rewind point
+    state.markLoopCompleted("loop-rewound", 8); // completed within the rewound range
+
+    state.clearEntriesFromUid(5);
+
+    // A rewind to uid 5 invalidates the loop that completed at/after 5, so it re-runs; the earlier
+    // loop's completion survives.
+    assertThat(state.isLoopCompleted("loop-rewound")).isFalse();
+    assertThat(state.isLoopCompleted("loop-before")).isTrue();
   }
 }

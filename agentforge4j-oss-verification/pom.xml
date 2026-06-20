@@ -1,0 +1,157 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <parent>
+    <groupId>org.agentforge4j</groupId>
+    <artifactId>agentforge4j</artifactId>
+    <version>0.0.1-SNAPSHOT</version>
+    <relativePath>../pom.xml</relativePath>
+  </parent>
+
+  <artifactId>agentforge4j-oss-verification</artifactId>
+  <name>AgentForge4J OSS Verification</name>
+  <description>Non-published, black-box behavioural verification suite for the OSS framework: drives
+    the real shipped workflow catalog and hand-crafted fixtures through the testkit harness. Spring-,
+    database- and cloud-free; all sources are test scope.</description>
+
+  <licenses>
+    <license>
+      <name>Apache License, Version 2.0</name>
+      <url>https://www.apache.org/licenses/LICENSE-2.0</url>
+      <distribution>repo</distribution>
+    </license>
+  </licenses>
+
+  <properties>
+    <!-- Non-published verification module. -->
+    <maven.deploy.skip>true</maven.deploy.skip>
+    <!--
+      junit-pioneer supplies @SetEnvironmentVariable for the env/system-property precedence test.
+      2.3.0 is the latest release (no JUnit-6-specific line exists); it declares junit-bom 5.11.2 but
+      the parent's managed junit-bom 6.0.3 overrides its transitive JUnit, so it runs against the
+      project's JUnit 6 — verified by the precedence test executing green. Test scope, this module
+      only.
+    -->
+    <junit-pioneer.version>2.3.0</junit-pioneer.version>
+  </properties>
+
+  <dependencies>
+    <dependency>
+      <groupId>org.agentforge4j</groupId>
+      <artifactId>agentforge4j-testkit</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.agentforge4j</groupId>
+      <artifactId>agentforge4j-llm-fake</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.agentforge4j</groupId>
+      <artifactId>agentforge4j-core</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.agentforge4j</groupId>
+      <artifactId>agentforge4j-runtime</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.agentforge4j</groupId>
+      <artifactId>agentforge4j-config-loader</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.agentforge4j</groupId>
+      <artifactId>agentforge4j-workflows</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.agentforge4j</groupId>
+      <artifactId>agentforge4j-util</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.agentforge4j</groupId>
+      <artifactId>agentforge4j-llm</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.agentforge4j</groupId>
+      <artifactId>agentforge4j-llm-api</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.agentforge4j</groupId>
+      <artifactId>agentforge4j-llm-openai-compatible</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.agentforge4j</groupId>
+      <artifactId>agentforge4j-mcp</artifactId>
+      <scope>test</scope>
+    </dependency>
+
+    <dependency>
+      <groupId>com.fasterxml.jackson.core</groupId>
+      <artifactId>jackson-databind</artifactId>
+      <scope>test</scope>
+    </dependency>
+
+    <dependency>
+      <groupId>org.junit.jupiter</groupId>
+      <artifactId>junit-jupiter</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.assertj</groupId>
+      <artifactId>assertj-core</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>com.tngtech.archunit</groupId>
+      <artifactId>archunit-junit5</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.junit-pioneer</groupId>
+      <artifactId>junit-pioneer</artifactId>
+      <version>${junit-pioneer.version}</version>
+      <scope>test</scope>
+    </dependency>
+    <!-- 2.0.x line (Jackson 2), matching agentforge4j-schema; used only to validate testkit
+         scenario fixtures against the testkit-hosted scenario schema. -->
+    <dependency>
+      <groupId>com.networknt</groupId>
+      <artifactId>json-schema-validator</artifactId>
+      <version>2.0.1</version>
+      <scope>test</scope>
+    </dependency>
+  </dependencies>
+
+  <build>
+    <plugins>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-surefire-plugin</artifactId>
+        <configuration>
+          <!--
+            Classpath, not the JPMS module path. This is the standing posture: the module is a
+            non-published, black-box verification suite with no module-info, so it is a classpath
+            (not a named-module) artifact. This is by design, not a workaround — there is no split
+            package to avoid (the llm-fake schema resource was relocated under its own package).
+          -->
+          <useModulePath>false</useModulePath>
+          <!--
+            junit-pioneer's @SetEnvironmentVariable mutates the process environment map by reflection,
+            which requires opening java.util and java.lang on JDK 17+.
+          -->
+          <argLine>--add-opens java.base/java.util=ALL-UNNAMED --add-opens java.base/java.lang=ALL-UNNAMED</argLine>
+        </configuration>
+      </plugin>
+    </plugins>
+  </build>
+</project>

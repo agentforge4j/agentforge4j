@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <parent>
+    <groupId>org.agentforge4j</groupId>
+    <artifactId>agentforge4j</artifactId>
+    <version>0.0.1-SNAPSHOT</version>
+    <relativePath>../pom.xml</relativePath>
+  </parent>
+
+  <artifactId>agentforge4j-starter-verification</artifactId>
+  <name>AgentForge4J Starter Verification</name>
+  <description>Non-published, Spring-scoped verification of the Spring Boot starter: boots the
+    auto-configuration via ApplicationContextRunner and drives a workflow end-to-end through the
+    Spring-wired facade with the deterministic fake provider. Isolated from the Spring-free
+    oss-verification suite (which forbids Spring); all sources are test scope.</description>
+
+  <licenses>
+    <license>
+      <name>Apache License, Version 2.0</name>
+      <url>https://www.apache.org/licenses/LICENSE-2.0</url>
+      <distribution>repo</distribution>
+    </license>
+  </licenses>
+
+  <properties>
+    <!-- Non-published verification module. -->
+    <maven.deploy.skip>true</maven.deploy.skip>
+  </properties>
+
+  <dependencies>
+    <dependency>
+      <groupId>org.agentforge4j</groupId>
+      <artifactId>agentforge4j-spring-boot-starter</artifactId>
+      <version>${project.version}</version>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.agentforge4j</groupId>
+      <artifactId>agentforge4j-llm-fake</artifactId>
+      <scope>test</scope>
+    </dependency>
+
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-test</artifactId>
+      <scope>test</scope>
+    </dependency>
+  </dependencies>
+
+  <build>
+    <plugins>
+      <!-- Preload Mockito as a launch-time Java agent (its jar carries a Premain-Class) so the inline
+           mock maker finds instrumentation already installed and never self-attaches. Self-attach hangs
+           indefinitely on Windows + MS-OpenJDK 17, wedging any ApplicationContextRunner fork; mirrors the
+           starter module's surefire configuration. @{argLine} keeps JaCoCo's prepare-agent contribution. -->
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-surefire-plugin</artifactId>
+        <configuration>
+          <argLine>@{argLine} -javaagent:${settings.localRepository}/org/mockito/mockito-core/${mockito-core.version}/mockito-core-${mockito-core.version}.jar</argLine>
+        </configuration>
+      </plugin>
+    </plugins>
+  </build>
+</project>

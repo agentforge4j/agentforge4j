@@ -30,7 +30,8 @@ public final class FakeScriptParser {
    */
   public static final int SUPPORTED_SCHEMA_VERSION = 1;
 
-  private static final String SCHEMA_RESOURCE = "/schema/fake-llm-script.schema.json";
+  private static final String SCHEMA_RESOURCE =
+      "/com/agentforge4j/llm/fake/schema/fake-llm-script.schema.json";
 
   private final ObjectMapper objectMapper;
   private final Schema schema;

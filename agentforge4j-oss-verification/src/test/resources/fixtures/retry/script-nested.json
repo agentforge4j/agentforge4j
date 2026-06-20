@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "responses": [
+    {
+      "workflowId": "retry-nested-loop",
+      "stepId": "loop-body",
+      "agentId": "retry-agent",
+      "ordinal": 0,
+      "responseText": "[{\"type\":\"COMPLETE\"}]"
+    },
+    {
+      "workflowId": "retry-nested-loop",
+      "stepId": "loop-body",
+      "agentId": "retry-agent",
+      "ordinal": 1,
+      "responseText": "[{\"type\":\"COMPLETE\"}]"
+    },
+    {
+      "workflowId": "retry-nested-loop",
+      "stepId": "done",
+      "agentId": "retry-agent",
+      "ordinal": 0,
+      "responseText": "[{\"type\":\"COMPLETE\"}]"
+    }
+  ]
+}

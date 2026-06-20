@@ -1,0 +1,5 @@
+{
+  "kind": "WORKFLOW",
+  "id": "broken",
+  "name": "Broken JSON",
+  "steps": [

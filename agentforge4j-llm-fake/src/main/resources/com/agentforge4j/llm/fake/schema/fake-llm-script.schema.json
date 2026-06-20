@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://agentforge4j.org/schema/fake-llm-script.schema.json",
+  "$id": "https://agentforge4j.org/llm/fake/schema/fake-llm-script.schema.json",
   "title": "Fake LLM Script",
   "description": "Pre-scripted responses replayed by the agentforge4j-llm-fake provider, keyed by workflow/step/agent and call ordinal.",
   "type": "object",

@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "responses": [
+    {
+      "workflowId": "agent-tier",
+      "stepId": "run",
+      "agentId": "tier-agent",
+      "ordinal": 0,
+      "responseText": "[{\"type\":\"COMPLETE\",\"summary\":\"Done.\"}]"
+    },
+    {
+      "workflowId": "step-tier",
+      "stepId": "run",
+      "agentId": "tier-agent",
+      "ordinal": 0,
+      "responseText": "[{\"type\":\"COMPLETE\",\"summary\":\"Done.\"}]"
+    }
+  ]
+}

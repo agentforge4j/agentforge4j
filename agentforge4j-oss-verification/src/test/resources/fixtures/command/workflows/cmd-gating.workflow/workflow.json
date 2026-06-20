@@ -1,0 +1,17 @@
+{
+  "kind": "WORKFLOW",
+  "id": "cmd-gating",
+  "name": "Command Gating",
+  "steps": [
+    {
+      "kind": "STEP",
+      "stepId": "run",
+      "name": "Run Restricted Agent",
+      "behaviour": {
+        "type": "AGENT",
+        "agentRef": "restricted-agent",
+        "transition": "AUTO"
+      }
+    }
+  ]
+}

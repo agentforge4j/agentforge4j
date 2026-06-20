@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "responses": [
+    {
+      "workflowId": "tr-review",
+      "stepId": "run",
+      "agentId": "gate-agent",
+      "ordinal": 0,
+      "responseText": "[{\"type\":\"COMPLETE\"}]"
+    },
+    {
+      "workflowId": "tr-approval",
+      "stepId": "run",
+      "agentId": "gate-agent",
+      "ordinal": 0,
+      "responseText": "[{\"type\":\"COMPLETE\"}]"
+    }
+  ]
+}

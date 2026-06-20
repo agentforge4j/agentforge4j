@@ -1,0 +1,11 @@
+{
+  "id": "anchor-form-nested",
+  "items": [
+    {
+      "type": "TEXT",
+      "id": "go",
+      "label": "Proceed",
+      "required": true
+    }
+  ]
+}

@@ -1,0 +1,10 @@
+{
+  "id": "nested-agent",
+  "name": "Nested Workflow Agent",
+  "locality": "CLOUD",
+  "enabled": true,
+  "version": "1.0.0",
+  "providerPreferences": [
+    { "provider": "openai", "model": null }
+  ]
+}

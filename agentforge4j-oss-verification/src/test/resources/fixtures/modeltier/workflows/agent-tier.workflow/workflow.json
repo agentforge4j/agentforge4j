@@ -1,0 +1,17 @@
+{
+  "kind": "WORKFLOW",
+  "id": "agent-tier",
+  "name": "Agent Tier Resolution",
+  "steps": [
+    {
+      "kind": "STEP",
+      "stepId": "run",
+      "name": "Run Agent",
+      "behaviour": {
+        "type": "AGENT",
+        "agentRef": "tier-agent",
+        "transition": "AUTO"
+      }
+    }
+  ]
+}

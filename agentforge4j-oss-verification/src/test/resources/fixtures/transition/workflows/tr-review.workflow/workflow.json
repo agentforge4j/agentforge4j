@@ -1,0 +1,17 @@
+{
+  "kind": "WORKFLOW",
+  "id": "tr-review",
+  "name": "Human Review Transition",
+  "steps": [
+    {
+      "kind": "STEP",
+      "stepId": "run",
+      "name": "Run Agent",
+      "behaviour": {
+        "type": "AGENT",
+        "agentRef": "gate-agent",
+        "transition": "HUMAN_REVIEW"
+      }
+    }
+  ]
+}

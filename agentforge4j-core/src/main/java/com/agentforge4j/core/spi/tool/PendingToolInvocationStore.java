@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package com.agentforge4j.core.spi.tool;
 
+import java.util.List;
+
 /**
  * Run-scoped store of {@link PendingToolInvocation}s awaiting approval.
  *
@@ -27,6 +29,18 @@ public interface PendingToolInvocationStore {
    * gone
    */
   PendingToolInvocation find(String runId, String toolInvocationId);
+
+  /**
+   * Returns every pending invocation currently awaiting resolution for {@code runId}. The result is
+   * scoped to the run — invocations belonging to other runs are never included — and is empty when
+   * the run has none pending. Used to resolve the single current pending invocation when a scripted
+   * approve/deny/retry/continue does not name an id; callers fail closed when the count is not one.
+   *
+   * @param runId owning run id
+   *
+   * @return the run's pending invocations, in no guaranteed order; never {@code null}
+   */
+  List<PendingToolInvocation> findByRun(String runId);
 
   /**
    * Removes a pending invocation; a no-op if it is absent.

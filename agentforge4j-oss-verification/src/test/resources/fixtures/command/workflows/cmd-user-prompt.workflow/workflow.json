@@ -1,0 +1,17 @@
+{
+  "kind": "WORKFLOW",
+  "id": "cmd-user-prompt",
+  "name": "User Prompt Command",
+  "steps": [
+    {
+      "kind": "STEP",
+      "stepId": "run",
+      "name": "Run Agent",
+      "behaviour": {
+        "type": "AGENT",
+        "agentRef": "cmd-agent",
+        "transition": "AUTO"
+      }
+    }
+  ]
+}

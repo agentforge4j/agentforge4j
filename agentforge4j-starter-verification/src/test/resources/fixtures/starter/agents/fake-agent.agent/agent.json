@@ -1,0 +1,10 @@
+{
+  "id": "fake-agent",
+  "name": "Fake Agent",
+  "locality": "CLOUD",
+  "enabled": true,
+  "version": "1.0.0",
+  "providerPreferences": [
+    { "provider": "fake", "model": "fake-model" }
+  ]
+}

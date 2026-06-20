@@ -1,0 +1,54 @@
+{
+  "schemaVersion": 1,
+  "responses": [
+    {
+      "workflowId": "cmd-set-context",
+      "stepId": "run",
+      "agentId": "cmd-agent",
+      "ordinal": 0,
+      "responseText": "[{\"type\":\"SET_CONTEXT\",\"key\":\"greeting\",\"value\":{\"type\":\"STRING\",\"value\":\"hello\"}},{\"type\":\"COMPLETE\"}]"
+    },
+    {
+      "workflowId": "cmd-create-file",
+      "stepId": "run",
+      "agentId": "cmd-agent",
+      "ordinal": 0,
+      "responseText": "[{\"type\":\"CREATE_FILE\",\"path\":\"out/result.txt\",\"content\":\"file-body\"},{\"type\":\"COMPLETE\"}]"
+    },
+    {
+      "workflowId": "cmd-user-prompt",
+      "stepId": "run",
+      "agentId": "cmd-agent",
+      "ordinal": 0,
+      "responseText": "[{\"type\":\"USER_PROMPT\",\"message\":\"FYI\"},{\"type\":\"COMPLETE\"}]"
+    },
+    {
+      "workflowId": "cmd-escalate",
+      "stepId": "run",
+      "agentId": "cmd-agent",
+      "ordinal": 0,
+      "responseText": "[{\"type\":\"ESCALATE\",\"reason\":\"need human\"}]"
+    },
+    {
+      "workflowId": "cmd-generate-questions",
+      "stepId": "run",
+      "agentId": "cmd-agent",
+      "ordinal": 0,
+      "responseText": "[{\"type\":\"GENERATE_QUESTIONS\",\"questions\":[{\"type\":\"TEXT\",\"id\":\"q1\",\"label\":\"Your name\",\"required\":true}]}]"
+    },
+    {
+      "workflowId": "cmd-run-command",
+      "stepId": "run",
+      "agentId": "cmd-agent",
+      "ordinal": 0,
+      "responseText": "[{\"type\":\"RUN_COMMAND\",\"command\":\"echo hi\"},{\"type\":\"COMPLETE\"}]"
+    },
+    {
+      "workflowId": "cmd-gating",
+      "stepId": "run",
+      "agentId": "restricted-agent",
+      "ordinal": 0,
+      "responseText": "[{\"type\":\"SET_CONTEXT\",\"key\":\"x\",\"value\":{\"type\":\"STRING\",\"value\":\"y\"}}]"
+    }
+  ]
+}

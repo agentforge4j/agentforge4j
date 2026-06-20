@@ -1,0 +1,17 @@
+{
+  "kind": "WORKFLOW",
+  "id": "starter-smoke",
+  "name": "Starter Smoke",
+  "steps": [
+    {
+      "kind": "STEP",
+      "stepId": "run",
+      "name": "Run Agent",
+      "behaviour": {
+        "type": "AGENT",
+        "agentRef": "fake-agent",
+        "transition": "AUTO"
+      }
+    }
+  ]
+}

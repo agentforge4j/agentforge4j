@@ -1,0 +1,21 @@
+{
+  "kind": "WORKFLOW",
+  "id": "foreach-loop",
+  "name": "For Each Loop",
+  "steps": [
+    {
+      "kind": "STEP",
+      "stepId": "seed",
+      "name": "Seed List",
+      "behaviour": {
+        "type": "AGENT",
+        "agentRef": "seed-agent",
+        "transition": "AUTO"
+      }
+    },
+    {
+      "kind": "BLUEPRINT_REF",
+      "blueprintId": "foreach-body"
+    }
+  ]
+}

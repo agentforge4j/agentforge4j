@@ -72,7 +72,10 @@ public interface WorkflowRuntime {
    * Submit answers to the pending artifact on a run in {@code AWAITING_INPUT} status.
    *
    * <p>Keys are artifact item ids; values are the raw answers. The runtime writes
-   * each answer to the shared context under the key {@code artifactId.itemId}.
+   * each answer to the shared context under the namespaced key {@code artifactId.itemId}.
+   * Additionally, when an answer's item id is one of the current INPUT step's declared output keys,
+   * the value is also written under that bare key, so downstream steps and branches that read the
+   * declared output key resolve it.
    *
    * @param runId   id of the run
    * @param answers map of artifact item id to user-provided answer

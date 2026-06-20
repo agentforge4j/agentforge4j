@@ -1,0 +1,11 @@
+{
+  "id": "dup",
+  "name": "Dup Agent (agents dir)",
+  "locality": "CLOUD",
+  "enabled": true,
+  "version": "1.0.0",
+  "providerPreferences": [
+    { "provider": "openai", "model": "gpt-4o-mini" }
+  ],
+  "supportedCommands": ["COMPLETE"]
+}

@@ -1,0 +1,17 @@
+{
+  "kind": "WORKFLOW",
+  "id": "beh-input",
+  "name": "Input Behaviour",
+  "steps": [
+    {
+      "kind": "STEP",
+      "stepId": "collect",
+      "name": "Collect Input",
+      "behaviour": {
+        "type": "INPUT",
+        "artifactId": "user-form",
+        "transition": "AUTO"
+      }
+    }
+  ]
+}

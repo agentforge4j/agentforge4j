@@ -1,0 +1,19 @@
+{
+  "kind": "BLUEPRINT",
+  "blueprintId": "outer-loop-bp",
+  "name": "Signal Loop With Nested Body",
+  "behaviour": {
+    "loopConfig": {
+      "terminationStrategy": "AGENT_SIGNAL",
+      "maxIterations": 5,
+      "maxIterationsAction": "FAIL"
+    },
+    "transition": "AUTO"
+  },
+  "steps": [
+    {
+      "kind": "BLUEPRINT_REF",
+      "blueprintId": "inner-bp"
+    }
+  ]
+}

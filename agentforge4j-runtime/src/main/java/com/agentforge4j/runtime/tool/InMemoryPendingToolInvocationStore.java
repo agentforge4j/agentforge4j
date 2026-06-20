@@ -4,6 +4,7 @@ package com.agentforge4j.runtime.tool;
 import com.agentforge4j.core.spi.tool.PendingToolInvocation;
 import com.agentforge4j.core.spi.tool.PendingToolInvocationStore;
 import com.agentforge4j.util.Validate;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -26,6 +27,14 @@ public final class InMemoryPendingToolInvocationStore implements PendingToolInvo
     Validate.notBlank(runId, "runId must not be blank");
     Validate.notBlank(toolInvocationId, "toolInvocationId must not be blank");
     return byRunAndId.get(key(runId, toolInvocationId));
+  }
+
+  @Override
+  public List<PendingToolInvocation> findByRun(String runId) {
+    Validate.notBlank(runId, "runId must not be blank");
+    return byRunAndId.values().stream()
+        .filter(pending -> runId.equals(pending.runId()))
+        .toList();
   }
 
   @Override

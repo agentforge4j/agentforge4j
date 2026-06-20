@@ -1,0 +1,62 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Scenario",
+  "description": "Contract for a testkit catalog scenario (expected-result.json): the workflow to drive, the ordered human gate responses, and the assertions to project onto the captured run. The runtime loaders parse scenarios leniently; this schema is the test-only validation gate.",
+  "type": "object",
+  "required": ["workflowId"],
+  "additionalProperties": false,
+  "patternProperties": {
+    "^_": { "description": "Underscore-prefixed keys (e.g. _note) are author comments; ignored by the lenient loader." }
+  },
+  "properties": {
+    "workflowId": { "type": "string", "minLength": 1 },
+    "gates": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/Gate" }
+    },
+    "expect": { "$ref": "#/$defs/Expect" }
+  },
+  "$defs": {
+    "Gate": {
+      "type": "object",
+      "required": ["type"],
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "type": "string",
+          "description": "The human-gate verb. input/review/stepApproval/escalation resume the standard pauses; toolApprove/toolReject resolve an AWAITING_TOOL_APPROVAL pause; toolContinue/toolRetry resolve an AWAITING_TOOL_DECISION pause.",
+          "enum": [
+            "input", "review", "stepApproval", "escalation",
+            "toolApprove", "toolReject", "toolContinue", "toolRetry"
+          ]
+        },
+        "answers": {
+          "type": "object",
+          "additionalProperties": { "type": "string" }
+        },
+        "approve": { "type": "boolean" },
+        "note": { "type": "string" },
+        "toolInvocationId": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Optional explicit pending tool-invocation id for a tool gate; when omitted the harness auto-targets the run's single current pending invocation (failing closed when there is not exactly one)."
+        }
+      }
+    },
+    "Expect": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "status": { "type": "string", "minLength": 1 },
+        "context": {
+          "type": "object",
+          "additionalProperties": { "type": "string" }
+        },
+        "visitedSteps": { "type": "array", "items": { "type": "string" } },
+        "notVisitedSteps": { "type": "array", "items": { "type": "string" } },
+        "emittedEvents": { "type": "array", "items": { "type": "string" } },
+        "createdFiles": { "type": "array", "items": { "type": "string" } }
+      }
+    }
+  }
+}

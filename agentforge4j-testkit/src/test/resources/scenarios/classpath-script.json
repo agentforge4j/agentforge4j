@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "responses": [
+    {
+      "workflowId": "wf",
+      "stepId": "s",
+      "agentId": "a",
+      "ordinal": 0,
+      "responseText": "[{\"type\":\"COMPLETE\"}]"
+    }
+  ]
+}

@@ -62,6 +62,16 @@ public final class WorkflowState {
    * {@code forEachContextKey}, keyed by blueprint id.
    */
   private final Map<String, String> forEachListFingerprintByBlueprintId;
+  /**
+   * Signal-terminated looped blueprints that have already run to terminal completion in this run,
+   * keyed by blueprint id to the execution uid the loop body completed at (the highest
+   * {@code stepExecutionUid} among its body steps). A resume re-drives the workflow from the start;
+   * a completed loop here is skipped on re-entry (mirroring how a completed step is skipped via
+   * {@link #stepOutputs}), so it is not re-entered and spun to {@code maxIterations}. The stored uid
+   * lets {@link #clearEntriesFromUid(int)} drop the marker when a retry/rewind clears the loop's
+   * execution range, so a completed marker never survives a rewind to at or before the loop.
+   */
+  private final Map<String, Integer> completedLoopBlueprintUids;
 
   /**
    * Creates a new run in {@link WorkflowStatus#RUNNING} with empty context and step output maps.
@@ -90,6 +100,7 @@ public final class WorkflowState {
     this.userPromptPauseCountByStepId = new HashMap<>();
     this.loopIterationCursorByBlueprintId = new HashMap<>();
     this.forEachListFingerprintByBlueprintId = new HashMap<>();
+    this.completedLoopBlueprintUids = new HashMap<>();
     this.lastUpdatedAt = startedAt;
   }
 
@@ -151,6 +162,10 @@ public final class WorkflowState {
 
   public Map<String, String> getForEachListFingerprintByBlueprintId() {
     return Collections.unmodifiableMap(forEachListFingerprintByBlueprintId);
+  }
+
+  public Map<String, Integer> getCompletedLoopBlueprintUids() {
+    return Collections.unmodifiableMap(completedLoopBlueprintUids);
   }
 
   /**
@@ -221,6 +236,45 @@ public final class WorkflowState {
                 && entry.getValue() != null
                 && entry.getValue() >= 1)
         .forEach(entry -> loopIterationCursorByBlueprintId.put(entry.getKey(), entry.getValue()));
+  }
+
+  /**
+   * Records that a signal-terminated looped blueprint ran to terminal completion at execution uid
+   * {@code completionUid} (the highest body-step uid), so a resume re-drive skips it rather than
+   * re-entering and spinning it to {@code maxIterations}. The uid lets a later rewind invalidate the
+   * marker via {@link #clearEntriesFromUid(int)}.
+   *
+   * @param blueprintId   the completed loop's blueprint id; must not be blank
+   * @param completionUid the execution uid the loop body completed at; must not be negative
+   */
+  public void markLoopCompleted(String blueprintId, int completionUid) {
+    Validate.isNotNegative(completionUid, "completionUid must not be negative");
+    completedLoopBlueprintUids.put(
+        Validate.notBlank(blueprintId, "blueprintId must not be blank"), completionUid);
+  }
+
+  /**
+   * Returns whether a looped blueprint already ran to terminal completion in this run.
+   */
+  public boolean isLoopCompleted(String blueprintId) {
+    return completedLoopBlueprintUids.containsKey(
+        Validate.notBlank(blueprintId, "blueprintId must not be blank"));
+  }
+
+  /**
+   * Replaces the completed-loop blueprint markers when loading persisted snapshot state.
+   */
+  public void replaceCompletedLoopBlueprintUids(Map<String, Integer> markers) {
+    completedLoopBlueprintUids.clear();
+    if (markers == null) {
+      return;
+    }
+    markers.entrySet().stream()
+        .filter(entry ->
+            StringUtils.isNotBlank(entry.getKey())
+                && entry.getValue() != null
+                && entry.getValue() >= 0)
+        .forEach(entry -> completedLoopBlueprintUids.put(entry.getKey(), entry.getValue()));
   }
 
   public int getUserPromptPauseCountForStep(String stepId) {
@@ -310,6 +364,10 @@ public final class WorkflowState {
    * such as {@code __retry_*} attempt keys and {@code __llm_tokens_total} from being wiped by a
    * retry.
    *
+   * <p>Completed-loop markers ({@link #markLoopCompleted(String, int)}) whose completion uid is at or
+   * after {@code retryUid} are also dropped: a rewind to at or before such a loop clears its body's
+   * execution range, so its completion must not survive and the loop re-executes.
+   *
    * @param retryUid the uid threshold; entries with uid &gt;= this value are cleared
    */
   public void clearEntriesFromUid(int retryUid) {
@@ -334,6 +392,8 @@ public final class WorkflowState {
         contextUidIterator.remove();
       }
     }
+
+    completedLoopBlueprintUids.values().removeIf(completionUid -> completionUid >= retryUid);
   }
 
   /**
@@ -377,6 +437,8 @@ public final class WorkflowState {
         forEachListFingerprintByBlueprintId.isEmpty()
             ? null
             : Map.copyOf(forEachListFingerprintByBlueprintId));
+    copy.replaceCompletedLoopBlueprintUids(
+        completedLoopBlueprintUids.isEmpty() ? null : Map.copyOf(completedLoopBlueprintUids));
     return copy;
   }
 }

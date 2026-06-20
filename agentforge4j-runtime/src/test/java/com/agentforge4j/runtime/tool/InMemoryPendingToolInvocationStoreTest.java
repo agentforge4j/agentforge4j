@@ -88,6 +88,32 @@ class InMemoryPendingToolInvocationStoreTest {
         .isInstanceOf(IllegalArgumentException.class);
   }
 
+  @Test
+  void findByRunReturnsOnlyThatRunsPendingInvocations() {
+    PendingToolInvocation a = pending("run-1", "tool-a");
+    PendingToolInvocation b = pending("run-1", "tool-b");
+    store.save(a);
+    store.save(b);
+    store.save(pending("run-2", "tool-c"));
+
+    assertThat(store.findByRun("run-1")).containsExactlyInAnyOrder(a, b);
+    assertThat(store.findByRun("run-2")).extracting(PendingToolInvocation::toolInvocationId)
+        .containsExactly("tool-c");
+  }
+
+  @Test
+  void findByRunIsEmptyForARunWithNonePending() {
+    store.save(pending("run-1", "tool-a"));
+
+    assertThat(store.findByRun("run-2")).isEmpty();
+  }
+
+  @Test
+  void findByRunRejectsBlankRunId() {
+    assertThatThrownBy(() -> store.findByRun(" "))
+        .isInstanceOf(IllegalArgumentException.class);
+  }
+
   private static PendingToolInvocation pending(String runId, String toolInvocationId) {
     return new PendingToolInvocation(toolInvocationId, runId, "7", "agent-1", "wf-1",
         "github.create_pull_request", "{\"title\":\"x\"}", "because", "needs review", "OPERATOR",

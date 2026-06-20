@@ -10,12 +10,14 @@ import com.agentforge4j.core.workflow.WorkflowLifecycle;
 import com.agentforge4j.core.workflow.WorkflowSource;
 import com.agentforge4j.core.workflow.artifact.ArtifactDefinition;
 import com.agentforge4j.core.workflow.artifact.TextArtifactItem;
+import com.agentforge4j.core.workflow.context.ContextMapping;
 import com.agentforge4j.core.workflow.event.WorkflowEvent;
 import com.agentforge4j.core.workflow.event.WorkflowEventType;
 import com.agentforge4j.core.workflow.state.RunFailure;
 import com.agentforge4j.core.workflow.state.WorkflowStatus;
 import com.agentforge4j.core.workflow.step.StepDefinition;
 import com.agentforge4j.core.workflow.step.StepTransition;
+import com.agentforge4j.core.workflow.step.behaviour.BranchBehaviour;
 import com.agentforge4j.core.workflow.step.behaviour.FailBehaviour;
 import com.agentforge4j.core.workflow.step.behaviour.InputBehaviour;
 import com.agentforge4j.core.workflow.step.behaviour.ResourceBehaviour;
@@ -318,6 +320,45 @@ class TransitionGateRuntimeIT {
 
     assertThat(runtime.getState(runId).getStatus()).isEqualTo(WorkflowStatus.COMPLETED);
     assertThat(stepStartedCount(runId, "inner")).isEqualTo(1L); // nested body not re-run on resume
+  }
+
+  @Test
+  void nestedWorkflowInputProjectsDeclaredOutputKeysForADownstreamBranch() {
+    // Sub-workflow: an INPUT step declaring outputKeys=[confirmed], then a BRANCH that reads the
+    // bare context key "confirmed". The INPUT step lives in a nested sub-workflow frame, not the
+    // root — its declared output keys must still be resolved and the answer projected under the
+    // bare key, or the branch fails with "requires context key 'confirmed' but it is missing".
+    ArtifactDefinition form = new ArtifactDefinition(
+        "form", List.of(new TextArtifactItem("confirmed", "Confirmed", true, null)));
+    StepDefinition collect = StepDefinition.builder()
+        .withStepId("collect")
+        .withName("collect")
+        .withBehaviour(new InputBehaviour("form", StepTransition.AUTO))
+        .withContextMapping(new ContextMapping(List.of(), List.of("confirmed")))
+        .build();
+    StepDefinition rejected = StepDefinition.builder()
+        .withStepId("rejected").withName("rejected")
+        .withBehaviour(new FailBehaviour("not confirmed")).build();
+    StepDefinition gate = StepDefinition.builder()
+        .withStepId("gate").withName("gate")
+        .withBehaviour(new BranchBehaviour("confirmed", Map.of("false", rejected), null))
+        .build();
+    WorkflowDefinition sub = new WorkflowDefinition("wf-sub", "wf-sub", null, null, null, null, null,
+        WorkflowSource.CUSTOM, WorkflowLifecycle.ACTIVE, Map.of("form", form), Map.of(),
+        List.of(collect, gate));
+    StepDefinition invoke = StepDefinition.builder()
+        .withStepId("invoke").withName("invoke")
+        .withBehaviour(new WorkflowBehaviour("wf-sub", StepTransition.AUTO)).build();
+    WorkflowDefinition parent = workflow("wf-parent", invoke);
+    WorkflowRuntime runtime = runtime(Map.of(parent.id(), parent, sub.id(), sub));
+
+    String runId = runtime.start("wf-parent");
+    assertThat(runtime.getState(runId).getStatus()).isEqualTo(WorkflowStatus.AWAITING_INPUT);
+
+    runtime.submitInput(runId, Map.of("confirmed", "true"), "tester");
+
+    assertThat(runtime.getState(runId).getStatus()).isEqualTo(WorkflowStatus.COMPLETED);
+    assertThat(runtime.getState(runId).getContext()).containsKey("confirmed");
   }
 
   private long countEvents(String runId, WorkflowEventType type) {

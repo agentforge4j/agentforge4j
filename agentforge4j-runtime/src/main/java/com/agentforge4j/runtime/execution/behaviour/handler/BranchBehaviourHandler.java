@@ -58,14 +58,30 @@ public final class BranchBehaviourHandler implements BehaviourHandler<BranchBeha
         step.stepId(), behaviour.contextKey(), resolvedKey, resolvedSelected.selectedBranch());
 
     recordStepStarted(step, resolvedKey, resolvedSelected.selectedBranch(), state);
-    if (resolvedSelected.selected() == null) {
+    Executable selected = resolvedSelected.selected();
+    if (selected == null) {
       LOG.log(System.Logger.Level.INFO,
           "Branch selected continuation stepId={0}, contextKey={1}, value={2}",
           step.stepId(), behaviour.contextKey(), resolvedKey);
       return ExecutionOutcome.COMPLETED;
     }
+    if (selected instanceof StepDefinition selectedStep) {
+      if (state.getStepOutputs().containsKey(selectedStep.stepId())) {
+        // A resume re-drives the workflow and re-evaluates this branch. Its selected step already
+        // ran on the prior drive, so skip it rather than re-running its side effects (mirrors the
+        // StepSequenceExecutor stepOutputs skip). Otherwise a selected AGENT step is re-invoked.
+        LOG.log(System.Logger.Level.DEBUG,
+            "Branch-selected step already completed, skipping stepId={0}", selectedStep.stepId());
+        return ExecutionOutcome.COMPLETED;
+      }
+      // A branch-selected step is dispatched directly through the ExecutableExecutor rather than the
+      // StepSequenceExecutor, so it must be assigned its execution uid here — otherwise a selected
+      // AGENT step's command application fails on a null currentStepUid.
+      state.putStepExecutionUid(selectedStep.stepId(),
+          executionContext.allocateStepSequenceUid());
+    }
     return Validate.notNull(executableExecutor, "executableExecutor must be configured")
-        .execute(resolvedSelected.selected(), executionContext);
+        .execute(selected, executionContext);
   }
 
   private static ResolvedSelected resolveSelected(BranchBehaviour behaviour, String resolvedKey) {

@@ -1,0 +1,17 @@
+{
+  "kind": "WORKFLOW",
+  "id": "needs-agent",
+  "name": "Needs Missing Agent",
+  "steps": [
+    {
+      "kind": "STEP",
+      "stepId": "run",
+      "name": "Run Agent",
+      "behaviour": {
+        "type": "AGENT",
+        "agentRef": "missing-agent",
+        "transition": "AUTO"
+      }
+    }
+  ]
+}

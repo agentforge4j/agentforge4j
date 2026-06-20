@@ -1,0 +1,17 @@
+{
+  "kind": "WORKFLOW",
+  "id": "cyc",
+  "name": "Self-Referencing Workflow",
+  "steps": [
+    {
+      "kind": "STEP",
+      "stepId": "loop",
+      "name": "Call Self",
+      "behaviour": {
+        "type": "WORKFLOW",
+        "workflowRef": "cyc",
+        "transition": "AUTO"
+      }
+    }
+  ]
+}

@@ -1,0 +1,11 @@
+{
+  "kind": "WORKFLOW",
+  "id": "agent-signal-loop",
+  "name": "Agent Signal Loop",
+  "steps": [
+    {
+      "kind": "BLUEPRINT_REF",
+      "blueprintId": "agent-signal-body"
+    }
+  ]
+}

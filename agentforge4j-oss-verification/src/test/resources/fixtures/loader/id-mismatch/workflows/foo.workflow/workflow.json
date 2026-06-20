@@ -1,0 +1,17 @@
+{
+  "kind": "WORKFLOW",
+  "id": "bar",
+  "name": "Id Mismatches Directory",
+  "steps": [
+    {
+      "kind": "STEP",
+      "stepId": "run",
+      "name": "Run Agent",
+      "behaviour": {
+        "type": "AGENT",
+        "agentRef": "bar-agent",
+        "transition": "AUTO"
+      }
+    }
+  ]
+}

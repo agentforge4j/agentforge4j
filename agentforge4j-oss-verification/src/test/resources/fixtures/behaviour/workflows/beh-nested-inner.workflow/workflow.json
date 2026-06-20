@@ -1,0 +1,17 @@
+{
+  "kind": "WORKFLOW",
+  "id": "beh-nested-inner",
+  "name": "Nested Inner",
+  "steps": [
+    {
+      "kind": "STEP",
+      "stepId": "work",
+      "name": "Work",
+      "behaviour": {
+        "type": "AGENT",
+        "agentRef": "nested-agent",
+        "transition": "AUTO"
+      }
+    }
+  ]
+}

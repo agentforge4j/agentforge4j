@@ -47,26 +47,37 @@ public final class StepSequenceExecutor {
     for (Executable executable : executables) {
       addStepDefinition(executable, executeHelper);
     }
+    // A nested sequence (a loop body, a sub-workflow) overwrites the context's current sequence;
+    // capture the caller's sequence and restore it on exit so a later step in the enclosing sequence
+    // (for example a RETRY_PREVIOUS placed after a loop) still resolves its target against that
+    // sequence rather than against the loop body that happened to run last.
+    List<String> priorStepIds = executionContext.getCurrentSequenceStepIds();
+    Map<String, Executable> priorExecutables = executionContext.getCurrentSequenceExecutables();
     executionContext.setCurrentSequenceStepIds(executeHelper.orderedStepIds());
     executionContext.setCurrentSequenceExecutables(executeHelper.executableById());
     LOG.log(System.Logger.Level.DEBUG, "Executing step sequence count={0}, stepIds={1}",
         executeHelper.orderedStepIds().size(), executeHelper.orderedStepIds());
 
-    for (Executable executable : executables) {
-      if (executionContext.getState().getStatus() == WorkflowStatus.CANCELLED) {
-        return ExecutionOutcome.PAUSED;
+    try {
+      for (Executable executable : executables) {
+        if (executionContext.getState().getStatus() == WorkflowStatus.CANCELLED) {
+          return ExecutionOutcome.PAUSED;
+        }
+        logStepDefinitionResumeCheck(executable, executeHelper);
+        if (shouldSkip(executable, executeHelper.stepOutputs())) {
+          logSkipping(executable);
+          continue;
+        }
+        ExecutionOutcome outcome = execute(executionContext, executable);
+        if (outcome != ExecutionOutcome.COMPLETED) {
+          return outcome;
+        }
       }
-      logStepDefinitionResumeCheck(executable, executeHelper);
-      if (shouldSkip(executable, executeHelper.stepOutputs())) {
-        logSkipping(executable);
-        continue;
-      }
-      ExecutionOutcome outcome = execute(executionContext, executable);
-      if (outcome != ExecutionOutcome.COMPLETED) {
-        return outcome;
-      }
+      return ExecutionOutcome.COMPLETED;
+    } finally {
+      executionContext.setCurrentSequenceStepIds(priorStepIds);
+      executionContext.setCurrentSequenceExecutables(priorExecutables);
     }
-    return ExecutionOutcome.COMPLETED;
   }
 
   private static void logSkipping(Executable executable) {

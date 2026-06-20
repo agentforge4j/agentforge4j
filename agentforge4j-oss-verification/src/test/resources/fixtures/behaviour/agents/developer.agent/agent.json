@@ -1,0 +1,10 @@
+{
+  "id": "developer",
+  "name": "Developer Agent",
+  "locality": "CLOUD",
+  "enabled": true,
+  "version": "1.0.0",
+  "providerPreferences": [
+    { "provider": "openai", "model": null }
+  ]
+}

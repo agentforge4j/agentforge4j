@@ -1,0 +1,47 @@
+{
+  "schemaVersion": 1,
+  "responses": [
+    {
+      "workflowId": "beh-branch-match",
+      "stepId": "decide",
+      "agentId": "branch-agent",
+      "ordinal": 0,
+      "responseText": "[{\"type\":\"SET_CONTEXT\",\"key\":\"decision\",\"value\":{\"type\":\"STRING\",\"value\":\"go\"}}]"
+    },
+    {
+      "workflowId": "beh-branch-default",
+      "stepId": "decide",
+      "agentId": "branch-agent",
+      "ordinal": 0,
+      "responseText": "[{\"type\":\"SET_CONTEXT\",\"key\":\"decision\",\"value\":{\"type\":\"STRING\",\"value\":\"other\"}}]"
+    },
+    {
+      "workflowId": "beh-spar",
+      "stepId": "review",
+      "agentId": "architect",
+      "ordinal": 0,
+      "responseText": "[{\"type\":\"CONTINUE\"}]"
+    },
+    {
+      "workflowId": "beh-spar",
+      "stepId": "review",
+      "agentId": "developer",
+      "ordinal": 0,
+      "responseText": "[{\"type\":\"CONTINUE\"}]"
+    },
+    {
+      "workflowId": "beh-spar",
+      "stepId": "review",
+      "agentId": "architect",
+      "ordinal": 1,
+      "responseText": "[{\"type\":\"COMPLETE\"}]"
+    },
+    {
+      "workflowId": "beh-nested-inner",
+      "stepId": "work",
+      "agentId": "nested-agent",
+      "ordinal": 0,
+      "responseText": "[{\"type\":\"COMPLETE\"}]"
+    }
+  ]
+}

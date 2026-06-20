@@ -16,6 +16,7 @@ import com.agentforge4j.core.workflow.step.loop.LoopConfig;
 import com.agentforge4j.core.workflow.step.loop.LoopTerminationStrategy;
 import com.agentforge4j.runtime.event.EventRecorder;
 import com.agentforge4j.runtime.execution.loop.FixedCountLoopStrategy;
+import com.agentforge4j.runtime.execution.loop.LoopStrategy;
 import java.time.Instant;
 import java.util.ArrayDeque;
 import java.util.Deque;
@@ -42,6 +43,8 @@ class BlueprintExecutorTest {
   private BlueprintExecutor blueprintExecutor;
   private StepSequenceExecutor stepSequenceExecutor;
   private FixedCountLoopStrategy fixedCountLoopStrategy;
+  private LoopStrategy agentSignalLoopStrategy;
+  private LoopStrategy forEachLoopStrategy;
   private WorkflowState state;
   private ExecutionContext executionContext;
 
@@ -51,8 +54,13 @@ class BlueprintExecutorTest {
     stepSequenceExecutor = mock(StepSequenceExecutor.class);
     fixedCountLoopStrategy = mock(FixedCountLoopStrategy.class);
     when(fixedCountLoopStrategy.strategy()).thenReturn(LoopTerminationStrategy.FIXED_COUNT);
+    agentSignalLoopStrategy = mock(LoopStrategy.class);
+    when(agentSignalLoopStrategy.strategy()).thenReturn(LoopTerminationStrategy.AGENT_SIGNAL);
+    forEachLoopStrategy = mock(LoopStrategy.class);
+    when(forEachLoopStrategy.strategy()).thenReturn(LoopTerminationStrategy.FOR_EACH);
     blueprintExecutor.setStepSequenceExecutor(stepSequenceExecutor);
-    blueprintExecutor.setLoopStrategies(List.of(fixedCountLoopStrategy));
+    blueprintExecutor.setLoopStrategies(
+        List.of(fixedCountLoopStrategy, agentSignalLoopStrategy, forEachLoopStrategy));
     blueprintExecutor.setTransitionGate(new TransitionGate(mock(EventRecorder.class)));
     when(stepSequenceExecutor.executeAll(anyList(), any())).thenReturn(ExecutionOutcome.COMPLETED);
 
@@ -131,6 +139,76 @@ class BlueprintExecutorTest {
 
     verify(fixedCountLoopStrategy).iterate(bp, loopConfig, executionContext);
     verify(stepSequenceExecutor, never()).executeAll(anyList(), any());
+  }
+
+  @Test
+  void signal_loop_completed_is_skipped_on_resume() {
+    LoopConfig loopConfig = LoopConfig.withDefaults(
+        LoopTerminationStrategy.AGENT_SIGNAL, null, null, 5, null);
+    BlueprintDefinition bp = blueprint(BP_ID, List.of(resourceStep("body", "ctx")), loopConfig);
+    WorkflowDefinition root = workflow("wf-root", Map.of(BP_ID, bp),
+        List.of(resourceStep("holder", "holder")));
+    executionContext = contextWithStack(root);
+    state.markLoopCompleted(BP_ID, 3); // completed on a prior drive
+
+    ExecutionOutcome outcome = blueprintExecutor.execute(new BlueprintRef(BP_ID), executionContext);
+
+    assertThat(outcome).isEqualTo(ExecutionOutcome.COMPLETED);
+    verify(agentSignalLoopStrategy, never()).iterate(any(), any(), any());
+  }
+
+  @Test
+  void signal_loop_runs_when_marker_absent_eg_after_a_rewind_cleared_it() {
+    LoopConfig loopConfig = LoopConfig.withDefaults(
+        LoopTerminationStrategy.AGENT_SIGNAL, null, null, 5, null);
+    BlueprintDefinition bp = blueprint(BP_ID, List.of(resourceStep("body", "ctx")), loopConfig);
+    WorkflowDefinition root = workflow("wf-root", Map.of(BP_ID, bp),
+        List.of(resourceStep("holder", "holder")));
+    executionContext = contextWithStack(root);
+    // No marker (e.g. a retry/rewind cleared it via clearEntriesFromUid) — the loop must run again.
+    when(agentSignalLoopStrategy.iterate(eq(bp), eq(loopConfig), eq(executionContext)))
+        .thenReturn(ExecutionOutcome.COMPLETED);
+
+    blueprintExecutor.execute(new BlueprintRef(BP_ID), executionContext);
+
+    verify(agentSignalLoopStrategy).iterate(bp, loopConfig, executionContext);
+  }
+
+  @Test
+  void signal_loop_completion_is_recorded_keyed_on_the_body_completion_uid() {
+    LoopConfig loopConfig = LoopConfig.withDefaults(
+        LoopTerminationStrategy.AGENT_SIGNAL, null, null, 5, null);
+    BlueprintDefinition bp = blueprint(BP_ID, List.of(resourceStep("body", "ctx")), loopConfig);
+    WorkflowDefinition root = workflow("wf-root", Map.of(BP_ID, bp),
+        List.of(resourceStep("holder", "holder")));
+    executionContext = contextWithStack(root);
+    state.putStepExecutionUid("body", 7); // body completed at uid 7
+    when(agentSignalLoopStrategy.iterate(eq(bp), eq(loopConfig), eq(executionContext)))
+        .thenReturn(ExecutionOutcome.COMPLETED);
+
+    blueprintExecutor.execute(new BlueprintRef(BP_ID), executionContext);
+
+    assertThat(state.isLoopCompleted(BP_ID)).isTrue();
+    assertThat(state.getCompletedLoopBlueprintUids()).containsEntry(BP_ID, 7);
+  }
+
+  @Test
+  void for_each_loop_is_never_skipped_so_its_list_change_fingerprint_still_applies() {
+    LoopConfig loopConfig = LoopConfig.withDefaults(
+        LoopTerminationStrategy.FOR_EACH, "items", null, 50, null);
+    BlueprintDefinition bp = blueprint(BP_ID, List.of(resourceStep("body", "ctx")), loopConfig);
+    WorkflowDefinition root = workflow("wf-root", Map.of(BP_ID, bp),
+        List.of(resourceStep("holder", "holder")));
+    executionContext = contextWithStack(root);
+    // Even with a completion marker present, a FOR_EACH loop must still re-enter its own strategy on
+    // a re-drive so its fingerprint / list-change check runs; it is never skipped here.
+    state.markLoopCompleted(BP_ID, 3);
+    when(forEachLoopStrategy.iterate(eq(bp), eq(loopConfig), eq(executionContext)))
+        .thenReturn(ExecutionOutcome.COMPLETED);
+
+    blueprintExecutor.execute(new BlueprintRef(BP_ID), executionContext);
+
+    verify(forEachLoopStrategy).iterate(bp, loopConfig, executionContext);
   }
 
   @Test

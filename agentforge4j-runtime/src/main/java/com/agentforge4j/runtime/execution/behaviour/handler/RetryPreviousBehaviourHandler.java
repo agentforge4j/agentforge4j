@@ -66,7 +66,7 @@ public final class RetryPreviousBehaviourHandler implements
           "maxAttempts %d reached for retryStepId '%s', executing fallback"
               .formatted(behaviour.maxAttempts(), behaviour.retryStepId()),
           "runtime");
-      return executableExecutor.execute(behaviour.fallback(), executionContext);
+      return executeStep(behaviour.fallback(), executionContext);
     }
 
     Integer retryUid = state.getStepExecutionUid().get(behaviour.retryStepId());
@@ -133,6 +133,21 @@ public final class RetryPreviousBehaviourHandler implements
       }
     }
     return last;
+  }
+
+  /**
+   * Executes the fallback executable, allocating a fresh step-execution uid for a
+   * {@link StepDefinition} first. The fallback runs outside {@code StepSequenceExecutor}, which is
+   * where a step's uid is normally allocated, so without this an AGENT (or any uid-dependent)
+   * fallback step would see a {@code null} current-step uid. Mirrors the uid allocation
+   * {@code BranchBehaviourHandler} performs for a directly executed branch step.
+   */
+  private ExecutionOutcome executeStep(Executable executable, ExecutionContext executionContext) {
+    if (executable instanceof StepDefinition stepDefinition) {
+      executionContext.getState().putStepExecutionUid(stepDefinition.stepId(),
+          executionContext.allocateStepSequenceUid());
+    }
+    return executableExecutor.execute(executable, executionContext);
   }
 
   private Executable resolveExecutable(String stepId,

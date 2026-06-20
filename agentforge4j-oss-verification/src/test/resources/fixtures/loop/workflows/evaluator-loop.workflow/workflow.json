@@ -1,0 +1,11 @@
+{
+  "kind": "WORKFLOW",
+  "id": "evaluator-loop",
+  "name": "Evaluator Loop",
+  "steps": [
+    {
+      "kind": "BLUEPRINT_REF",
+      "blueprintId": "evaluator-body"
+    }
+  ]
+}

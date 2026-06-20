@@ -1,0 +1,40 @@
+{
+  "schemaVersion": 1,
+  "responses": [
+    {
+      "workflowId": "epic-implementation",
+      "stepId": "understand-epic",
+      "agentId": "epic-developer-agent",
+      "ordinal": 0,
+      "responseText": "[{\"type\":\"SET_CONTEXT\",\"key\":\"epicScope\",\"value\":{\"type\":\"STRING\",\"value\":\"Scope: add a hello endpoint.\"}},{\"type\":\"COMPLETE\"}]"
+    },
+    {
+      "workflowId": "epic-implementation",
+      "stepId": "implement-epic",
+      "agentId": "epic-developer-agent",
+      "ordinal": 0,
+      "responseText": "[{\"type\":\"SET_CONTEXT\",\"key\":\"generatedFiles\",\"value\":{\"type\":\"STRING\",\"value\":\"Hello.java\"}},{\"type\":\"COMPLETE\"}]"
+    },
+    {
+      "workflowId": "epic-implementation",
+      "stepId": "generate-tests",
+      "agentId": "epic-tester-agent",
+      "ordinal": 0,
+      "responseText": "[{\"type\":\"SET_CONTEXT\",\"key\":\"generatedTests\",\"value\":{\"type\":\"STRING\",\"value\":\"HelloTest.java\"}},{\"type\":\"COMPLETE\"}]"
+    },
+    {
+      "workflowId": "epic-implementation",
+      "stepId": "validate-epic",
+      "agentId": "epic-validator-agent",
+      "ordinal": 0,
+      "responseText": "[{\"type\":\"SET_CONTEXT\",\"key\":\"epicStatus\",\"value\":{\"type\":\"STRING\",\"value\":\"SUCCESS\"}},{\"type\":\"SET_CONTEXT\",\"key\":\"epicNotes\",\"value\":{\"type\":\"STRING\",\"value\":\"All acceptance criteria met.\"}},{\"type\":\"COMPLETE\"}]"
+    },
+    {
+      "workflowId": "epic-implementation",
+      "stepId": "mark-epic-failed",
+      "agentId": "epic-validator-agent",
+      "ordinal": 0,
+      "responseText": "[{\"type\":\"SET_CONTEXT\",\"key\":\"epicStatus\",\"value\":{\"type\":\"STRING\",\"value\":\"FAILED\"}},{\"type\":\"SET_CONTEXT\",\"key\":\"epicNotes\",\"value\":{\"type\":\"STRING\",\"value\":\"Marked failed after retries.\"}},{\"type\":\"COMPLETE\"}]"
+    }
+  ]
+}

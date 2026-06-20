@@ -1,0 +1,82 @@
+{
+  "schemaVersion": 1,
+  "responses": [
+    {
+      "workflowId": "fixed-count-loop",
+      "stepId": "body",
+      "agentId": "loop-agent",
+      "ordinal": 0,
+      "responseText": "[{\"type\":\"COMPLETE\"}]"
+    },
+    {
+      "workflowId": "fixed-count-loop",
+      "stepId": "body",
+      "agentId": "loop-agent",
+      "ordinal": 1,
+      "responseText": "[{\"type\":\"COMPLETE\"}]"
+    },
+    {
+      "workflowId": "fixed-count-loop",
+      "stepId": "body",
+      "agentId": "loop-agent",
+      "ordinal": 2,
+      "responseText": "[{\"type\":\"COMPLETE\"}]"
+    },
+    {
+      "workflowId": "foreach-loop",
+      "stepId": "seed",
+      "agentId": "seed-agent",
+      "ordinal": 0,
+      "responseText": "[{\"type\":\"SET_CONTEXT\",\"key\":\"items\",\"value\":{\"type\":\"LIST\",\"values\":[{\"type\":\"STRING\",\"value\":\"a\"},{\"type\":\"STRING\",\"value\":\"b\"}]}}]"
+    },
+    {
+      "workflowId": "foreach-loop",
+      "stepId": "body",
+      "agentId": "loop-agent",
+      "ordinal": 0,
+      "responseText": "[{\"type\":\"COMPLETE\"}]"
+    },
+    {
+      "workflowId": "foreach-loop",
+      "stepId": "body",
+      "agentId": "loop-agent",
+      "ordinal": 1,
+      "responseText": "[{\"type\":\"COMPLETE\"}]"
+    },
+    {
+      "workflowId": "evaluator-loop",
+      "stepId": "body",
+      "agentId": "loop-agent",
+      "ordinal": 0,
+      "responseText": "[{\"type\":\"COMPLETE\"}]"
+    },
+    {
+      "workflowId": "evaluator-loop",
+      "stepId": "body",
+      "agentId": "loop-agent",
+      "ordinal": 1,
+      "responseText": "[{\"type\":\"COMPLETE\"}]"
+    },
+    {
+      "workflowId": "evaluator-loop",
+      "stepId": "body",
+      "agentId": "eval-agent",
+      "ordinal": 0,
+      "responseText": "[{\"type\":\"CONTINUE\"}]"
+    },
+    {
+      "workflowId": "evaluator-loop",
+      "stepId": "body",
+      "agentId": "eval-agent",
+      "ordinal": 1,
+      "responseText": "[{\"type\":\"COMPLETE\"}]"
+    },
+    {
+      "workflowId": "agent-signal-loop",
+      "stepId": "body",
+      "agentId": "loop-agent",
+      "ordinal": 0,
+      "responseText": "[{\"type\":\"COMPLETE\"}]"
+    }
+  ]
+}

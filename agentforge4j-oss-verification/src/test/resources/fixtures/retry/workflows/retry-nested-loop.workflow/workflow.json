@@ -1,0 +1,42 @@
+{
+  "kind": "WORKFLOW",
+  "id": "retry-nested-loop",
+  "name": "Retry Previous Nested Loop",
+  "steps": [
+    {
+      "kind": "STEP",
+      "stepId": "anchor",
+      "name": "Anchor Input",
+      "behaviour": {
+        "type": "INPUT",
+        "artifactId": "anchor-form-nested",
+        "transition": "AUTO"
+      }
+    },
+    {
+      "kind": "BLUEPRINT_REF",
+      "blueprintId": "outer-loop-bp"
+    },
+    {
+      "kind": "STEP",
+      "stepId": "retry",
+      "name": "Retry Previous",
+      "behaviour": {
+        "type": "RETRY_PREVIOUS",
+        "retryStepId": "anchor",
+        "retryMode": "FROM_STEP",
+        "maxAttempts": 1,
+        "fallback": {
+          "kind": "STEP",
+          "stepId": "done",
+          "name": "Done",
+          "behaviour": {
+            "type": "AGENT",
+            "agentRef": "retry-agent",
+            "transition": "AUTO"
+          }
+        }
+      }
+    }
+  ]
+}

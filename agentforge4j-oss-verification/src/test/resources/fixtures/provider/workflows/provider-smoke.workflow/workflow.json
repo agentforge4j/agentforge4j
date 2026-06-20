@@ -1,0 +1,17 @@
+{
+  "kind": "WORKFLOW",
+  "id": "provider-smoke",
+  "name": "Provider Smoke",
+  "steps": [
+    {
+      "kind": "STEP",
+      "stepId": "run",
+      "name": "Run Agent",
+      "behaviour": {
+        "type": "AGENT",
+        "agentRef": "smoke-agent",
+        "transition": "AUTO"
+      }
+    }
+  ]
+}

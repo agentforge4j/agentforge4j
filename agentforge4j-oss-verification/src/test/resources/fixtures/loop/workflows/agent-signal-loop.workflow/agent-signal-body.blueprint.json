@@ -1,0 +1,25 @@
+{
+  "kind": "BLUEPRINT",
+  "blueprintId": "agent-signal-body",
+  "name": "Agent Signal Body",
+  "behaviour": {
+    "loopConfig": {
+      "terminationStrategy": "AGENT_SIGNAL",
+      "maxIterations": 5,
+      "maxIterationsAction": "FAIL"
+    },
+    "transition": "AUTO"
+  },
+  "steps": [
+    {
+      "kind": "STEP",
+      "stepId": "body",
+      "name": "Loop Body",
+      "behaviour": {
+        "type": "AGENT",
+        "agentRef": "loop-agent",
+        "transition": "AUTO"
+      }
+    }
+  ]
+}

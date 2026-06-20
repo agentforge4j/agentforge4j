@@ -1,0 +1,17 @@
+{
+  "kind": "WORKFLOW",
+  "id": "negative-run",
+  "name": "Negative Path",
+  "steps": [
+    {
+      "kind": "STEP",
+      "stepId": "run",
+      "name": "Run Agent",
+      "behaviour": {
+        "type": "AGENT",
+        "agentRef": "neg-agent",
+        "transition": "AUTO"
+      }
+    }
+  ]
+}

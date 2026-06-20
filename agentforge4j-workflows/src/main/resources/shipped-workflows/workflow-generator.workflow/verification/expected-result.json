@@ -1,0 +1,15 @@
+{
+  "workflowId": "workflow-generator",
+  "gates": [
+    {
+      "type": "input",
+      "answers": {
+        "workflow-idea": "A blog-post generator."
+      }
+    }
+  ],
+  "expect": {
+    "status": "COMPLETED",
+    "visitedSteps": ["start-conversation", "interactive-design", "generate-workflow"]
+  }
+}

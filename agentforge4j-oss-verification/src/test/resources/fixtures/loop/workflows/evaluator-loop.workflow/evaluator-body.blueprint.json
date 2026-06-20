@@ -1,0 +1,26 @@
+{
+  "kind": "BLUEPRINT",
+  "blueprintId": "evaluator-body",
+  "name": "Evaluator Body",
+  "behaviour": {
+    "loopConfig": {
+      "terminationStrategy": "EVALUATOR",
+      "evaluatorAgentId": "eval-agent",
+      "maxIterations": 10,
+      "maxIterationsAction": "FAIL"
+    },
+    "transition": "AUTO"
+  },
+  "steps": [
+    {
+      "kind": "STEP",
+      "stepId": "body",
+      "name": "Loop Body",
+      "behaviour": {
+        "type": "AGENT",
+        "agentRef": "loop-agent",
+        "transition": "AUTO"
+      }
+    }
+  ]
+}

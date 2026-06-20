@@ -136,6 +136,33 @@ class BranchBehaviourHandlerTest {
   }
 
   @Test
+  void selected_branch_step_is_assigned_an_execution_uid() {
+    StepDefinition target = resourceStep("target");
+    putRoute("go");
+    StepDefinition branchStep = branchStep(Map.of("go", target), null);
+
+    handler.handle(branchStep, (BranchBehaviour) branchStep.behaviour(), executionContext);
+
+    // A branch-selected step bypasses the StepSequenceExecutor, so the handler must assign its uid;
+    // otherwise a selected AGENT step's command application fails on a null currentStepUid.
+    assertThat(state.getStepExecutionUid()).containsKey("target");
+    verify(executableExecutor).execute(eq(target), eq(executionContext));
+  }
+
+  @Test
+  void already_completed_selected_step_is_skipped_on_resume_redrive() {
+    StepDefinition target = resourceStep("target");
+    putRoute("go");
+    StepDefinition branchStep = branchStep(Map.of("go", target), null);
+    // Simulate the step having run on a prior drive: a resume re-drives and re-evaluates the branch.
+    state.putStepOutput("target", "already-ran");
+
+    assertThat(handler.handle(branchStep, (BranchBehaviour) branchStep.behaviour(), executionContext))
+        .isEqualTo(ExecutionOutcome.COMPLETED);
+    verify(executableExecutor, times(0)).execute(any(), any());
+  }
+
+  @Test
   void branch_outcome_is_propagated() {
     StepDefinition target = resourceStep("target");
     putRoute("go");

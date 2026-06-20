@@ -1,0 +1,17 @@
+{
+  "kind": "WORKFLOW",
+  "id": "tool-run",
+  "name": "Tool Invocation",
+  "steps": [
+    {
+      "kind": "STEP",
+      "stepId": "run",
+      "name": "Run Tool Agent",
+      "behaviour": {
+        "type": "AGENT",
+        "agentRef": "tool-agent",
+        "transition": "AUTO"
+      }
+    }
+  ]
+}

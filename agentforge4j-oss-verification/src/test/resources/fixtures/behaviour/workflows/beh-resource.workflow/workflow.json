@@ -1,0 +1,18 @@
+{
+  "kind": "WORKFLOW",
+  "id": "beh-resource",
+  "name": "Resource Behaviour",
+  "steps": [
+    {
+      "kind": "STEP",
+      "stepId": "load",
+      "name": "Load Resource",
+      "behaviour": {
+        "type": "RESOURCE",
+        "resourcePath": "/workflow-resources/info.txt",
+        "contextKey": "res.out",
+        "transition": "AUTO"
+      }
+    }
+  ]
+}

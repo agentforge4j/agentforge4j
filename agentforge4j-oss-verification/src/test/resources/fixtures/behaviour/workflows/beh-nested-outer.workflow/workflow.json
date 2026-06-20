@@ -1,0 +1,17 @@
+{
+  "kind": "WORKFLOW",
+  "id": "beh-nested-outer",
+  "name": "Nested Outer",
+  "steps": [
+    {
+      "kind": "STEP",
+      "stepId": "call",
+      "name": "Call Nested",
+      "behaviour": {
+        "type": "WORKFLOW",
+        "workflowRef": "beh-nested-inner",
+        "transition": "AUTO"
+      }
+    }
+  ]
+}

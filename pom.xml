@@ -79,7 +79,11 @@
     <module>agentforge4j-config-loader</module>
     <module>agentforge4j-runtime</module>
     <module>agentforge4j-bootstrap</module>
+    <module>agentforge4j-testkit</module>
+    <module>agentforge4j-testkit-consumer-verification</module>
+    <module>agentforge4j-oss-verification</module>
     <module>agentforge4j-spring-boot-starter</module>
+    <module>agentforge4j-starter-verification</module>
   </modules>
 
   <dependencyManagement>
@@ -212,6 +216,11 @@
       <dependency>
         <groupId>org.agentforge4j</groupId>
         <artifactId>agentforge4j-bootstrap</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>org.agentforge4j</groupId>
+        <artifactId>agentforge4j-testkit</artifactId>
         <version>${project.version}</version>
       </dependency>
 

@@ -1,0 +1,11 @@
+{
+  "id": "anchor-form",
+  "items": [
+    {
+      "type": "TEXT",
+      "id": "go",
+      "label": "Proceed",
+      "required": true
+    }
+  ]
+}

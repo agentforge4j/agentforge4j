@@ -37,6 +37,7 @@ import com.agentforge4j.runtime.interceptor.RunExecutionInterceptor;
 import com.agentforge4j.runtime.tool.ToolResultApplier;
 import com.agentforge4j.util.Validate;
 import java.time.Clock;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import org.apache.commons.lang3.StringUtils;
@@ -587,8 +588,11 @@ public final class DefaultWorkflowRuntime implements WorkflowRuntime {
     if (stepId == null) {
       return false;
     }
-    Executable target = stepTreeSearcher.findStep(workflow, stepId);
-    if (!(target instanceof StepDefinition step)) {
+    // Resolve against the reachable workflow graph (root + sub-workflow frames) so a completed step
+    // inside a nested sub-workflow is found, not only the root's own steps.
+    StepDefinition step =
+        stepTreeSearcher.findStepAcrossWorkflows(workflow, stepId, workflowRepository);
+    if (step == null) {
       return false;
     }
     if (transitionGate.suspendIfGated(step, state)) {
@@ -647,7 +651,9 @@ public final class DefaultWorkflowRuntime implements WorkflowRuntime {
       ArtifactDefinition pending, String actorId) {
     LOG.log(System.Logger.Level.INFO, "Submitting input runId={0}, keys={1}", runId,
         answers.keySet());
-    writeAnswersToContext(state, pending, answers);
+    WorkflowDefinition workflow = workflowRepository.get(state.getWorkflowId());
+    writeAnswersToContext(state, pending, answers,
+        currentStepOutputKeys(workflow, state.getCurrentStepId()));
     eventRecorder.record(runId, state.getCurrentStepId(),
         WorkflowEventType.CONTEXT_UPDATED,
         "submitted input for artifact " + pending.id(), actorId);
@@ -660,7 +666,6 @@ public final class DefaultWorkflowRuntime implements WorkflowRuntime {
       state.putStepOutput(state.getCurrentStepId(), "submitted");
     }
 
-    WorkflowDefinition workflow = workflowRepository.get(state.getWorkflowId());
     LOG.log(System.Logger.Level.INFO,
         "After submitInput runId={0}, currentStepId={1}, status={2}, pendingArtifact={3}, stepOutputs={4}, contextKeys={5}",
         runId,
@@ -812,18 +817,53 @@ public final class DefaultWorkflowRuntime implements WorkflowRuntime {
 
   private static void writeAnswersToContext(WorkflowState state,
       ArtifactDefinition pending,
-      Map<String, String> answers) {
+      Map<String, String> answers,
+      List<String> outputKeys) {
     for (Map.Entry<String, String> entry : answers.entrySet()) {
       Validate.notBlank(entry.getKey(), "answer key must not be blank");
     }
     for (Map.Entry<String, String> entry : answers.entrySet()) {
-      String key = "%s.%s".formatted(pending.id(), entry.getKey());
+      String namespacedKey = "%s.%s".formatted(pending.id(), entry.getKey());
+      boolean declaredOutput = outputKeys.contains(entry.getKey());
       String value = entry.getValue();
       if (value == null) {
-        state.removeContextValue(key);
+        state.removeContextValue(namespacedKey);
+        if (declaredOutput) {
+          state.removeContextValue(entry.getKey());
+        }
         continue;
       }
-      state.putContextValue(key, new StringContextValue(value, ContextProvenance.USER_SUPPLIED));
+      state.putContextValue(namespacedKey,
+          new StringContextValue(value, ContextProvenance.USER_SUPPLIED));
+      // Honour the INPUT step's declared outputKeys: when an answer's item id is a declared output
+      // key, also expose the value under that bare key so downstream steps and branches that read
+      // the declared key resolve it. The namespaced artifactId.itemId form is kept for callers that
+      // rely on it. The value carries the same USER_SUPPLIED provenance as the namespaced write.
+      if (declaredOutput) {
+        state.putContextValue(entry.getKey(),
+            new StringContextValue(value, ContextProvenance.USER_SUPPLIED));
+      }
     }
+  }
+
+  /**
+   * Returns the declared output keys of the run's current step, or an empty list when the step
+   * cannot be resolved or declares no context mapping.
+   *
+   * <p>The step is resolved against the reachable workflow graph — the root workflow and any
+   * sub-workflow frames reachable through {@code WORKFLOW} steps — so a paused INPUT step inside a
+   * nested sub-workflow still has its declared {@code outputKeys} found and projected, not only the
+   * root workflow's steps.
+   */
+  private List<String> currentStepOutputKeys(WorkflowDefinition workflow, String currentStepId) {
+    if (currentStepId == null) {
+      return List.of();
+    }
+    StepDefinition step =
+        stepTreeSearcher.findStepAcrossWorkflows(workflow, currentStepId, workflowRepository);
+    if (step != null && step.contextMapping() != null) {
+      return step.contextMapping().outputKeys();
+    }
+    return List.of();
   }
 }

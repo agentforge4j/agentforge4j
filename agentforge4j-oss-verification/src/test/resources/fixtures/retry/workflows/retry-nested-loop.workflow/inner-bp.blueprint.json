@@ -1,0 +1,20 @@
+{
+  "kind": "BLUEPRINT",
+  "blueprintId": "inner-bp",
+  "name": "Inner Body",
+  "behaviour": {
+    "transition": "AUTO"
+  },
+  "steps": [
+    {
+      "kind": "STEP",
+      "stepId": "loop-body",
+      "name": "Loop Body",
+      "behaviour": {
+        "type": "AGENT",
+        "agentRef": "retry-agent",
+        "transition": "AUTO"
+      }
+    }
+  ]
+}

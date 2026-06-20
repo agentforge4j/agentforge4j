@@ -1,0 +1,17 @@
+{
+  "kind": "WORKFLOW",
+  "id": "sample",
+  "name": "Sample Workflow",
+  "steps": [
+    {
+      "kind": "STEP",
+      "stepId": "run",
+      "name": "Run Agent",
+      "behaviour": {
+        "type": "AGENT",
+        "agentRef": "dup",
+        "transition": "AUTO"
+      }
+    }
+  ]
+}

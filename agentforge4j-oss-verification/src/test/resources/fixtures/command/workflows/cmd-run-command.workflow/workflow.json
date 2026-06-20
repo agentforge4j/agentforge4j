@@ -1,0 +1,17 @@
+{
+  "kind": "WORKFLOW",
+  "id": "cmd-run-command",
+  "name": "Run Command Command",
+  "steps": [
+    {
+      "kind": "STEP",
+      "stepId": "run",
+      "name": "Run Agent",
+      "behaviour": {
+        "type": "AGENT",
+        "agentRef": "cmd-agent",
+        "transition": "AUTO"
+      }
+    }
+  ]
+}

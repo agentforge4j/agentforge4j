@@ -1,0 +1,17 @@
+{
+  "kind": "WORKFLOW",
+  "id": "cmd-generate-questions",
+  "name": "Generate Questions Command",
+  "steps": [
+    {
+      "kind": "STEP",
+      "stepId": "run",
+      "name": "Run Agent",
+      "behaviour": {
+        "type": "AGENT",
+        "agentRef": "cmd-agent",
+        "transition": "AUTO"
+      }
+    }
+  ]
+}

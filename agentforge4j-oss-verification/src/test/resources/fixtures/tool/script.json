@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "responses": [
+    {
+      "workflowId": "tool-run",
+      "stepId": "run",
+      "agentId": "tool-agent",
+      "ordinal": 0,
+      "responseText": "[{\"type\":\"TOOL_INVOCATION\",\"capability\":\"test.echo\",\"arguments\":{\"message\":\"hi\"},\"toolInvocationId\":\"tool-1\"}]"
+    }
+  ]
+}

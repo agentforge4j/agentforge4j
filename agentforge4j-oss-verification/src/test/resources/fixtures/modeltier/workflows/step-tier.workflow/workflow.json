@@ -1,0 +1,18 @@
+{
+  "kind": "WORKFLOW",
+  "id": "step-tier",
+  "name": "Step Tier Override",
+  "steps": [
+    {
+      "kind": "STEP",
+      "stepId": "run",
+      "name": "Run Agent",
+      "modelTier": "POWERFUL",
+      "behaviour": {
+        "type": "AGENT",
+        "agentRef": "tier-agent",
+        "transition": "AUTO"
+      }
+    }
+  ]
+}
