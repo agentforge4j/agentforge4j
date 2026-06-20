@@ -9,6 +9,7 @@ import java.util.Objects;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 
@@ -17,8 +18,12 @@ import static org.assertj.core.api.Assertions.assertThat;
 /**
  * Boots the full Spring context (starter auto-configuration + the example's fake bean) and proves the auto-configured
  * {@link AgentForge4j} runs the workflow to {@code COMPLETED} deterministically.
+ *
+ * <p>Runs under the {@code test} profile so the startup {@code CommandLineRunner} is excluded and
+ * this test is the single run — keeping the scripted fake's invocation count unambiguous.
  */
 @SpringBootTest
+@ActiveProfiles("test")
 class SpringBootExampleApplicationTest {
 
   @DynamicPropertySource

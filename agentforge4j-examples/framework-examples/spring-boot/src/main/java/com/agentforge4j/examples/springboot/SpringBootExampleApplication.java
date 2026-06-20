@@ -16,6 +16,7 @@ import org.springframework.boot.CommandLineRunner;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Profile;
 
 /**
  * A Spring Boot application that uses the AgentForge4j Spring Boot starter. The starter auto-configures the
@@ -98,13 +99,16 @@ public class SpringBootExampleApplication {
   }
 
   /**
-   * Runs the workflow once on startup and prints its terminal status.
+   * Runs the workflow once on startup and prints its terminal status. Excluded from the {@code test}
+   * profile so the {@code @SpringBootTest} starts exactly one run (the test drives it explicitly)
+   * rather than this runner racing it on context boot.
    *
    * @param agentForge4j the auto-configured framework facade
    *
    * @return the startup runner
    */
   @Bean
+  @Profile("!test")
   CommandLineRunner runWorkflow(AgentForge4j agentForge4j) {
     return args -> {
       String runId = agentForge4j.start(WORKFLOW_ID);
