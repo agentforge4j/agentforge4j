@@ -26,8 +26,9 @@ reactor** (this tree is not a module of the OSS build).
 |---|---|
 | [`quick-start`](framework-examples/quick-start) | Assemble the framework and run a workflow to completion — the shortest runnable program. |
 | [`human-approval`](framework-examples/human-approval) | Suspend a run at a `HUMAN_APPROVAL` gate, then approve or reject it. |
-
-More framework examples (Spring Boot starter, HTTP tools, MCP) land in later batches.
+| [`spring-boot`](framework-examples/spring-boot) | Use the Spring Boot starter to auto-configure the framework and run a workflow from a `CommandLineRunner`. |
+| [`tools-http`](framework-examples/tools-http) | Give an agent an HTTP-backed tool, served by the example's own loopback endpoint. |
+| [`mcp`](framework-examples/mcp) | Expose a tool to an agent over the Model Context Protocol, using an in-process transport. |
 
 ---
 
