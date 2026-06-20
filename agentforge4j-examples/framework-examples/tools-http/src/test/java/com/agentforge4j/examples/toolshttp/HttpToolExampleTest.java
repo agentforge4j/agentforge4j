@@ -27,6 +27,8 @@ class HttpToolExampleTest {
 
       assertThat(state.getStatus()).isEqualTo(WorkflowStatus.COMPLETED);
       assertThat(state.getContext()).containsKey(HttpToolExample.TOOL_CONTEXT_KEY);
+      assertThat(state.getContext().get(HttpToolExample.TOOL_CONTEXT_KEY).toString())
+          .contains("London", "Sunny", "18");
     } finally {
       stubServer.stop(0);
     }
