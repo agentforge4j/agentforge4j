@@ -39,9 +39,9 @@
          newer release than the Spring BOM pins). Declared before the Spring BOM import below so this
          version wins over it. Keep aligned with the OSS reactor. -->
     <commons-lang3.version>3.20.0</commons-lang3.version>
-    <!-- Test stack, managed centrally so leaf modules declare these without versions. -->
-    <junit.version>6.1.0</junit.version>
-    <assertj.version>3.27.7</assertj.version>
+    <!-- JUnit and AssertJ versions are governed by the imported Spring Boot BOM below (it manages
+         junit-jupiter and assertj-core), so leaf modules declare those test deps without versions and
+         the whole tree shares one coherent, Spring-verified test stack. -->
     <!-- Resolved from this tree's reactor root so the header file is found from every module. -->
     <config.dir>${maven.multiModuleProjectDirectory}/config</config.dir>
   </properties>
@@ -88,18 +88,6 @@
         <version>${spring-boot.version}</version>
         <type>pom</type>
         <scope>import</scope>
-      </dependency>
-      <dependency>
-        <groupId>org.junit</groupId>
-        <artifactId>junit-bom</artifactId>
-        <version>${junit.version}</version>
-        <type>pom</type>
-        <scope>import</scope>
-      </dependency>
-      <dependency>
-        <groupId>org.assertj</groupId>
-        <artifactId>assertj-core</artifactId>
-        <version>${assertj.version}</version>
       </dependency>
     </dependencies>
   </dependencyManagement>
