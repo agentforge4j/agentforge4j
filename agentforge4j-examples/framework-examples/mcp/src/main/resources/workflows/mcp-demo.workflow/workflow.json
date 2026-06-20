@@ -1,0 +1,18 @@
+{
+  "kind": "WORKFLOW",
+  "id": "mcp-demo",
+  "name": "MCP Demo",
+  "description": "A single agent step that calls an MCP tool and then completes.",
+  "steps": [
+    {
+      "kind": "STEP",
+      "stepId": "call-tool",
+      "name": "Call the MCP tool",
+      "behaviour": {
+        "type": "AGENT",
+        "agentRef": "mcp-agent",
+        "transition": "AUTO"
+      }
+    }
+  ]
+}

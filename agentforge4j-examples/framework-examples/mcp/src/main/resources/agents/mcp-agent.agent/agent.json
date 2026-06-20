@@ -1,0 +1,15 @@
+{
+  "id": "mcp-agent",
+  "name": "MCP Agent",
+  "locality": "CLOUD",
+  "version": "1.0.0",
+  "supportedCommands": [
+    "TOOL_INVOCATION",
+    "COMPLETE"
+  ],
+  "providerPreferences": [
+    {
+      "provider": "fake"
+    }
+  ]
+}

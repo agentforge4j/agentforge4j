@@ -30,6 +30,6 @@
     <module>human-approval</module>
     <module>spring-boot</module>
     <module>tools-http</module>
-    <!-- Further leaf example modules (mcp) are added here as each lands in Batch 3. -->
+    <module>mcp</module>
   </modules>
 </project>
