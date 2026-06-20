@@ -24,14 +24,16 @@ public record ExpectedResult(String workflowId, List<GateSpec> gates, ExpectSpec
    * @param type             the gate kind
    * @param answers          artifact item-id → answer map (for {@code input}); may be {@code null}
    * @param approve          approve/reject flag (for {@code stepApproval}); may be {@code null}
-   * @param note             note or reason recorded on the event (also the {@code toolReject}
-   *                         reason); may be {@code null}
+   * @param note             note recorded on the event (for {@code review} / {@code stepApproval} /
+   *                         {@code escalation}); may be {@code null}
+   * @param reason           rejection reason recorded for a {@code toolReject} gate; may be
+   *                         {@code null}
    * @param toolInvocationId explicit pending tool-invocation id for a tool gate; {@code null}
    *                         auto-targets the run's single current pending invocation
    */
   @JsonIgnoreProperties(ignoreUnknown = true)
   public record GateSpec(String type, Map<String, String> answers, Boolean approve, String note,
-      String toolInvocationId) {
+      String reason, String toolInvocationId) {
   }
 
   /**

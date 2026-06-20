@@ -89,7 +89,7 @@ class ScenarioSchemaContractTest {
           "workflowId": "tool-demo",
           "gates": [
             {"type": "toolApprove"},
-            {"type": "toolReject", "note": "denied by operator"},
+            {"type": "toolReject", "reason": "denied by operator"},
             {"type": "toolContinue"},
             {"type": "toolRetry"},
             {"type": "toolApprove", "toolInvocationId": "tool-1"}

@@ -262,8 +262,8 @@ public final class CatalogScenarios {
           ? GateResponse.toolApprove()
           : GateResponse.toolApprove(toolId);
       case "toolReject" -> toolId == null
-          ? GateResponse.toolReject(spec.note())
-          : GateResponse.toolReject(toolId, spec.note());
+          ? GateResponse.toolReject(spec.reason())
+          : GateResponse.toolReject(toolId, spec.reason());
       case "toolContinue" -> toolId == null
           ? GateResponse.toolContinue()
           : GateResponse.toolContinue(toolId);

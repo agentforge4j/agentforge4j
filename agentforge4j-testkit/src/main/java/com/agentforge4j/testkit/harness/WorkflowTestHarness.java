@@ -100,9 +100,11 @@ public final class WorkflowTestHarness {
   /**
    * Assembles a fake-backed runtime, starts the given workflow, and drives it forward by draining
    * one {@code response} at each human-in-the-loop pause (input / review / step-approval /
-   * escalation) until the run reaches a terminal state or the responses are exhausted. When the
-   * queue is exhausted at a pause, the run is left at that pause so a scenario may assert a
-   * meaningful pending state.
+   * escalation) until the responses are exhausted. When the queue is exhausted at a pause, the run
+   * is left at that pause so a scenario may assert a meaningful pending state. A response left over
+   * after the run has already reached a terminal state is a scripting error — the scenario queued
+   * more responses than the run paused for — and fails loudly rather than being silently dropped,
+   * symmetric with the pause-mismatch check.
    *
    * @param workflowId id of a workflow present in the configured fixtures; must not be blank
    * @param responses  scripted human responses, one consumed per pause in order; must not be
@@ -110,7 +112,9 @@ public final class WorkflowTestHarness {
    *
    * @return the run result: the last observed state plus captured events and files
    *
-   * @throws IllegalStateException if a queued response does not match the pause the run is at
+   * @throws IllegalStateException if a queued response does not match the pause the run is at, or if
+   *                               the run reaches a terminal state while scripted responses remain
+   *                               unconsumed
    */
   public WorkflowRunResult run(String workflowId, List<GateResponse> responses) {
     Validate.notBlank(workflowId, "workflowId must not be blank");
@@ -128,11 +132,14 @@ public final class WorkflowTestHarness {
     WorkflowRuntime runtime = application.runtime();
     String runId = runtime.start(workflowId);
     WorkflowState state = runtime.getState(runId);
-    for (GateResponse response : responses) {
+    for (int i = 0; i < responses.size(); i++) {
       if (isTerminal(state.getStatus())) {
-        break;
+        throw new IllegalStateException(
+            ("Run '%s' reached terminal status %s with %d scripted gate response(s) left "
+                + "unconsumed; the scenario queued more responses than the run paused for")
+                .formatted(runId, state.getStatus(), responses.size() - i));
       }
-      applyResponse(runtime, runId, state, response, pendingStore);
+      applyResponse(runtime, runId, state, responses.get(i), pendingStore);
       state = runtime.getState(runId);
     }
     List<CapturedFile> files =
@@ -227,16 +234,16 @@ public final class WorkflowTestHarness {
         .withLoadShippedAgents(shippedCatalog)
         .withLoadShippedWorkflows(shippedCatalog);
     if (!shippedCatalog) {
-      bootstrap = bootstrap.withWorkflowsDir(workflowsDir);
+      bootstrap.withWorkflowsDir(workflowsDir);
       if (agentsDir != null) {
-        bootstrap = bootstrap.withAgentsDir(agentsDir);
+        bootstrap.withAgentsDir(agentsDir);
       }
     }
     if (!toolProviders.isEmpty()) {
-      bootstrap = bootstrap.withToolProviders(toolProviders);
+      bootstrap.withToolProviders(toolProviders);
     }
     if (toolPolicy != null) {
-      bootstrap = bootstrap.withToolPolicy(toolPolicy);
+      bootstrap.withToolPolicy(toolPolicy);
     }
     return bootstrap.build();
   }

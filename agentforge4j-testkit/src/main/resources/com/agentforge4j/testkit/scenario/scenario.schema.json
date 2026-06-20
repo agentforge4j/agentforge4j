@@ -36,6 +36,10 @@
         },
         "approve": { "type": "boolean" },
         "note": { "type": "string" },
+        "reason": {
+          "type": "string",
+          "description": "Rejection reason recorded for a toolReject gate; ignored by the other gate types, which use note."
+        },
         "toolInvocationId": {
           "type": "string",
           "minLength": 1,

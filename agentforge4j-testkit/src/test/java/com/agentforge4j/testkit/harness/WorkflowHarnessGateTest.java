@@ -78,6 +78,20 @@ class WorkflowHarnessGateTest {
         .hasMessageContaining("AWAITING_INPUT");
   }
 
+  @Test
+  void rejectsResponsesLeftUnconsumedAfterTheRunCompletes(@TempDir Path workflowsDir)
+      throws IOException {
+    WorkflowTestHarness harness = harness(workflowsDir);
+
+    // The first input drives the run to COMPLETED; the surplus response has no pause to resolve.
+    assertThatThrownBy(() -> harness.run("testkit-input", List.of(
+        GateResponse.input(Map.of("name", "Alice")),
+        GateResponse.review("surplus"))))
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessageContaining("unconsumed")
+        .hasMessageContaining("COMPLETED");
+  }
+
   private static WorkflowTestHarness harness(Path workflowsDir) throws IOException {
     Path bundle = workflowsDir.resolve("testkit-input.workflow");
     Files.createDirectories(bundle);
