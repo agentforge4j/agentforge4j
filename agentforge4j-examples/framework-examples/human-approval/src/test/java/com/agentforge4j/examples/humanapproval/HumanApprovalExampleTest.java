@@ -11,10 +11,9 @@ import org.junit.jupiter.api.Test;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * Proves the Human Approval example is deterministic: the run always suspends at
- * {@code AWAITING_STEP_APPROVAL}; an approve advances it to {@code COMPLETED}, and a reject fails it
- * with a {@code StepRejectionFailure} carrying the rejection reason. Public API plus the example's
- * own wiring only — no mocks, no network.
+ * Proves the Human Approval example is deterministic: the run always suspends at {@code AWAITING_STEP_APPROVAL}; an
+ * approve advances it to {@code COMPLETED}, and a reject fails it with a {@code StepRejectionFailure} carrying the
+ * rejection reason. Public API plus the example's own wiring only — no mocks, no network.
  */
 class HumanApprovalExampleTest {
 

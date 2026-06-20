@@ -33,6 +33,12 @@
          bump to 0.1.0 once published to Central. -->
     <agentforge4j.version>0.0.1-SNAPSHOT</agentforge4j.version>
     <license-maven-plugin.version>5.0.0</license-maven-plugin.version>
+    <!-- Spring Boot — managed via its BOM so the spring-boot example declares starters versionless. -->
+    <spring-boot.version>3.5.15</spring-boot.version>
+    <!-- Re-asserts the framework's own commons-lang3 (it calls ObjectUtils.getIfNull, added in a
+         newer release than the Spring BOM pins). Declared before the Spring BOM import below so this
+         version wins over it. Keep aligned with the OSS reactor. -->
+    <commons-lang3.version>3.20.0</commons-lang3.version>
     <!-- Test stack, managed centrally so leaf modules declare these without versions. -->
     <junit.version>6.1.0</junit.version>
     <assertj.version>3.27.7</assertj.version>
@@ -51,8 +57,27 @@
       </dependency>
       <dependency>
         <groupId>org.agentforge4j</groupId>
+        <artifactId>agentforge4j-spring-boot-starter</artifactId>
+        <version>${agentforge4j.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>org.agentforge4j</groupId>
         <artifactId>agentforge4j-llm-fake</artifactId>
         <version>${agentforge4j.version}</version>
+      </dependency>
+      <!-- Pin the framework's commons-lang3 ahead of the Spring BOM (first-declared wins). -->
+      <dependency>
+        <groupId>org.apache.commons</groupId>
+        <artifactId>commons-lang3</artifactId>
+        <version>${commons-lang3.version}</version>
+      </dependency>
+      <!-- Spring Boot BOM: governs spring-boot-starter / spring-boot-starter-test versions. -->
+      <dependency>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-dependencies</artifactId>
+        <version>${spring-boot.version}</version>
+        <type>pom</type>
+        <scope>import</scope>
       </dependency>
       <dependency>
         <groupId>org.junit</groupId>

@@ -1,0 +1,18 @@
+{
+  "kind": "WORKFLOW",
+  "id": "spring-boot-demo",
+  "name": "Spring Boot Demo",
+  "description": "A single agent step that completes immediately, run from a Spring Boot application.",
+  "steps": [
+    {
+      "kind": "STEP",
+      "stepId": "greet",
+      "name": "Greet",
+      "behaviour": {
+        "type": "AGENT",
+        "agentRef": "spring-boot-agent",
+        "transition": "AUTO"
+      }
+    }
+  ]
+}
