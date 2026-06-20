@@ -62,6 +62,11 @@
       </dependency>
       <dependency>
         <groupId>org.agentforge4j</groupId>
+        <artifactId>agentforge4j-tools-http</artifactId>
+        <version>${agentforge4j.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>org.agentforge4j</groupId>
         <artifactId>agentforge4j-llm-fake</artifactId>
         <version>${agentforge4j.version}</version>
       </dependency>

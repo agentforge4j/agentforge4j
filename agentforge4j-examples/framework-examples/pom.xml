@@ -29,6 +29,7 @@
     <module>quick-start</module>
     <module>human-approval</module>
     <module>spring-boot</module>
-    <!-- Further leaf example modules (tools-http, mcp) are added here as each lands in Batch 3. -->
+    <module>tools-http</module>
+    <!-- Further leaf example modules (mcp) are added here as each lands in Batch 3. -->
   </modules>
 </project>

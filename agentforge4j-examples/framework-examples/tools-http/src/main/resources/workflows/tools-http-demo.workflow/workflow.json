@@ -1,0 +1,18 @@
+{
+  "kind": "WORKFLOW",
+  "id": "tools-http-demo",
+  "name": "HTTP Tool Demo",
+  "description": "A single agent step that calls an HTTP tool and then completes.",
+  "steps": [
+    {
+      "kind": "STEP",
+      "stepId": "lookup",
+      "name": "Look up the weather",
+      "behaviour": {
+        "type": "AGENT",
+        "agentRef": "tools-http-agent",
+        "transition": "AUTO"
+      }
+    }
+  ]
+}

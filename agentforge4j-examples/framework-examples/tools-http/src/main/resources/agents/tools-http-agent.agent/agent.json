@@ -1,0 +1,15 @@
+{
+  "id": "tools-http-agent",
+  "name": "HTTP Tool Agent",
+  "locality": "CLOUD",
+  "version": "1.0.0",
+  "supportedCommands": [
+    "TOOL_INVOCATION",
+    "COMPLETE"
+  ],
+  "providerPreferences": [
+    {
+      "provider": "fake"
+    }
+  ]
+}
