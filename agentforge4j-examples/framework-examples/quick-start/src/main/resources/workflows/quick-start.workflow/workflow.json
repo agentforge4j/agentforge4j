@@ -1,0 +1,18 @@
+{
+  "kind": "WORKFLOW",
+  "id": "quick-start",
+  "name": "Quick Start",
+  "description": "A single agent step that completes immediately — the shortest runnable workflow.",
+  "steps": [
+    {
+      "kind": "STEP",
+      "stepId": "greet",
+      "name": "Greet",
+      "behaviour": {
+        "type": "AGENT",
+        "agentRef": "quick-start-agent",
+        "transition": "AUTO"
+      }
+    }
+  ]
+}

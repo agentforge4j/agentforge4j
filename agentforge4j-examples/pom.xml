@@ -33,9 +33,41 @@
          bump to 0.1.0 once published to Central. -->
     <agentforge4j.version>0.0.1-SNAPSHOT</agentforge4j.version>
     <license-maven-plugin.version>5.0.0</license-maven-plugin.version>
+    <!-- Test stack, managed centrally so leaf modules declare these without versions. -->
+    <junit.version>6.1.0</junit.version>
+    <assertj.version>3.27.7</assertj.version>
     <!-- Resolved from this tree's reactor root so the header file is found from every module. -->
     <config.dir>${maven.multiModuleProjectDirectory}/config</config.dir>
   </properties>
+
+  <!-- Coordinates managed once here so leaf example modules declare dependencies without versions.
+       The AgentForge4j artifacts retarget through the single agentforge4j.version property. -->
+  <dependencyManagement>
+    <dependencies>
+      <dependency>
+        <groupId>org.agentforge4j</groupId>
+        <artifactId>agentforge4j-bootstrap</artifactId>
+        <version>${agentforge4j.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>org.agentforge4j</groupId>
+        <artifactId>agentforge4j-llm-fake</artifactId>
+        <version>${agentforge4j.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>org.junit</groupId>
+        <artifactId>junit-bom</artifactId>
+        <version>${junit.version}</version>
+        <type>pom</type>
+        <scope>import</scope>
+      </dependency>
+      <dependency>
+        <groupId>org.assertj</groupId>
+        <artifactId>assertj-core</artifactId>
+        <version>${assertj.version}</version>
+      </dependency>
+    </dependencies>
+  </dependencyManagement>
 
   <modules>
     <module>framework-examples</module>

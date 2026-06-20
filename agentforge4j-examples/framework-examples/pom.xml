@@ -26,7 +26,8 @@
   </licenses>
 
   <modules>
-    <!-- Leaf example modules (quick-start, human-approval, spring-boot, tools-http, mcp) are added
-         here as each lands in Batches 2-3. -->
+    <module>quick-start</module>
+    <!-- Further leaf example modules (human-approval, spring-boot, tools-http, mcp) are added here
+         as each lands in Batches 2-3. -->
   </modules>
 </project>
