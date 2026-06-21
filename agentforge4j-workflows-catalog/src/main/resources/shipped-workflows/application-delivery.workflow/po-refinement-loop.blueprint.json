@@ -1,0 +1,36 @@
+{
+  "kind": "BLUEPRINT",
+  "blueprintId": "po-refinement-loop",
+  "name": "PO Refinement Loop",
+  "behaviour": {
+    "loopConfig": {
+      "terminationStrategy": "AGENT_SIGNAL",
+      "maxIterations": 8,
+      "maxIterationsAction": "AWAIT_USER"
+    },
+    "transition": "AUTO"
+  },
+  "steps": [
+    {
+      "kind": "STEP",
+      "stepId": "po-refinement",
+      "name": "PO Requirements Refinement",
+      "behaviour": {
+        "type": "AGENT",
+        "agentRef": "app-delivery-po-agent",
+        "transition": "AUTO",
+        "retryPolicy": {
+          "allowRetry": true,
+          "allowRetryFromPrevious": false,
+          "allowAgentSwap": false,
+          "allowPromptOverride": true,
+          "maxAttempts": 3
+        }
+      },
+      "contextMapping": {
+        "inputKeys": ["appIdea", "productVision"],
+        "outputKeys": ["productVision"]
+      }
+    }
+  ]
+}

@@ -1,0 +1,82 @@
+{
+  "schemaVersion": 1,
+  "responses": [
+    {
+      "workflowId": "recruitment",
+      "stepId": "intake-iteration",
+      "agentId": "recruitment-intake-agent",
+      "ordinal": 0,
+      "responseText": "[{\"type\":\"SET_CONTEXT\",\"key\":\"recruitmentProfileDraft\",\"value\":{\"type\":\"STRING\",\"value\":\"Draft: Senior Software Engineer, Java, remote.\"}},{\"type\":\"COMPLETE\"}]"
+    },
+    {
+      "workflowId": "recruitment",
+      "stepId": "profile-finalize",
+      "agentId": "recruitment-profile-finalizer-agent",
+      "ordinal": 0,
+      "responseText": "[{\"type\":\"SET_CONTEXT\",\"key\":\"recruitmentProfile\",\"value\":{\"type\":\"STRING\",\"value\":\"Profile: Senior Software Engineer, Java, remote.\"}},{\"type\":\"COMPLETE\"}]"
+    },
+    {
+      "workflowId": "recruitment",
+      "stepId": "job-post-generation",
+      "agentId": "recruitment-job-post-agent",
+      "ordinal": 0,
+      "responseText": "[{\"type\":\"SET_CONTEXT\",\"key\":\"jobPost\",\"value\":{\"type\":\"STRING\",\"value\":\"We are hiring a Senior Software Engineer.\"}},{\"type\":\"COMPLETE\"}]"
+    },
+    {
+      "workflowId": "recruitment",
+      "stepId": "job-post-publish-file",
+      "agentId": "recruitment-job-post-publisher-agent",
+      "ordinal": 0,
+      "responseText": "[{\"type\":\"COMPLETE\",\"summary\":\"Published the job post.\"}]"
+    },
+    {
+      "workflowId": "recruitment",
+      "stepId": "cv-analysis",
+      "agentId": "recruitment-cv-analysis-agent",
+      "ordinal": 0,
+      "responseText": "[{\"type\":\"SET_CONTEXT\",\"key\":\"candidates\",\"value\":{\"type\":\"LIST\",\"values\":[{\"type\":\"STRING\",\"value\":\"Ada Lovelace\"}]}},{\"type\":\"COMPLETE\"}]"
+    },
+    {
+      "workflowId": "recruitment",
+      "stepId": "cv-loop-coordinator",
+      "agentId": "recruitment-cv-loop-coordinator-agent",
+      "ordinal": 0,
+      "responseText": "[{\"type\":\"COMPLETE\"}]"
+    },
+    {
+      "workflowId": "recruitment",
+      "stepId": "candidate-ranking",
+      "agentId": "recruitment-ranking-agent",
+      "ordinal": 0,
+      "responseText": "[{\"type\":\"SET_CONTEXT\",\"key\":\"candidates\",\"value\":{\"type\":\"LIST\",\"values\":[{\"type\":\"STRING\",\"value\":\"Ada Lovelace\"}]}},{\"type\":\"SET_CONTEXT\",\"key\":\"shortlistedCandidates\",\"value\":{\"type\":\"LIST\",\"values\":[{\"type\":\"STRING\",\"value\":\"Ada Lovelace\"}]}},{\"type\":\"SET_CONTEXT\",\"key\":\"rejectedCandidates\",\"value\":{\"type\":\"LIST\",\"values\":[]}},{\"type\":\"SET_CONTEXT\",\"key\":\"rankingRationale\",\"value\":{\"type\":\"STRING\",\"value\":\"Top candidate by score.\"}},{\"type\":\"COMPLETE\"}]"
+    },
+    {
+      "workflowId": "recruitment",
+      "stepId": "rejection-letters-generation",
+      "agentId": "recruitment-rejection-letter-agent",
+      "ordinal": 0,
+      "responseText": "[{\"type\":\"COMPLETE\",\"summary\":\"No rejection letters required.\"}]"
+    },
+    {
+      "workflowId": "recruitment",
+      "stepId": "assessment-generation",
+      "agentId": "recruitment-assessment-generator-agent",
+      "ordinal": 0,
+      "responseText": "[{\"type\":\"SET_CONTEXT\",\"key\":\"currentAssessment\",\"value\":{\"type\":\"STRING\",\"value\":\"Coding exercise: implement an LRU cache.\"}},{\"type\":\"COMPLETE\"}]"
+    },
+    {
+      "workflowId": "recruitment",
+      "stepId": "assessment-evaluation",
+      "agentId": "recruitment-assessment-evaluator-agent",
+      "ordinal": 0,
+      "responseText": "[{\"type\":\"SET_CONTEXT\",\"key\":\"candidates\",\"value\":{\"type\":\"LIST\",\"values\":[{\"type\":\"STRING\",\"value\":\"Ada Lovelace (assessed)\"}]}},{\"type\":\"COMPLETE\"}]"
+    },
+    {
+      "workflowId": "recruitment",
+      "stepId": "final-selection",
+      "agentId": "recruitment-final-selection-agent",
+      "ordinal": 0,
+      "responseText": "[{\"type\":\"SET_CONTEXT\",\"key\":\"finalSelection\",\"value\":{\"type\":\"STRING\",\"value\":\"Selected: Ada Lovelace for interview.\"}},{\"type\":\"COMPLETE\"}]"
+    }
+  ]
+}

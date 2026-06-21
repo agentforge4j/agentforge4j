@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "responses": [
+    {
+      "workflowId": "workflow-cost-estimator",
+      "stepId": "estimate-cost",
+      "agentId": "workflow-cost-estimator-agent",
+      "ordinal": 0,
+      "responseText": "[{\"type\":\"COMPLETE\",\"summary\":\"Estimated min/expected/max credit cost.\"}]"
+    }
+  ]
+}

@@ -82,6 +82,7 @@
     <module>agentforge4j-testkit</module>
     <module>agentforge4j-testkit-consumer-verification</module>
     <module>agentforge4j-oss-verification</module>
+    <module>agentforge4j-workflows-catalog</module>
     <module>agentforge4j-spring-boot-starter</module>
     <module>agentforge4j-starter-verification</module>
   </modules>
@@ -207,6 +208,13 @@
         <groupId>org.agentforge4j</groupId>
         <artifactId>agentforge4j-workflow-fixtures</artifactId>
         <version>${project.version}</version>
+      </dependency>
+      <!-- Independently versioned catalog: pinned to its own version, NOT ${project.version}.
+           No framework module depends on it; consumers pin this version explicitly. -->
+      <dependency>
+        <groupId>org.agentforge4j</groupId>
+        <artifactId>agentforge4j-workflows-catalog</artifactId>
+        <version>0.1.0-SNAPSHOT</version>
       </dependency>
       <dependency>
         <groupId>org.agentforge4j</groupId>

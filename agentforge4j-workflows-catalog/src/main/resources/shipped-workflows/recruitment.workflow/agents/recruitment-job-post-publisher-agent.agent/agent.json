@@ -1,0 +1,25 @@
+{
+  "id": "recruitment-job-post-publisher-agent",
+  "name": "Recruitment Job Post Publisher",
+  "locality": "CLOUD",
+  "enabled": true,
+  "providerPreferences": [
+    {
+      "provider": "openai",
+      "model": "gpt-4o-mini"
+    },
+    {
+      "provider": "claude",
+      "model": "claude-3-5-haiku-20241022"
+    },
+    {
+      "provider": "ollama",
+      "model": "llama3.2"
+    }
+  ],
+  "supportedCommands": [
+    "CREATE_FILE",
+    "COMPLETE"
+  ],
+  "version": "1.0.0"
+}

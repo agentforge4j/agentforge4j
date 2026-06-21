@@ -1,0 +1,29 @@
+{
+  "kind": "BLUEPRINT",
+  "blueprintId": "intake-loop",
+  "name": "AI-driven intake loop",
+  "behaviour": {
+    "loopConfig": {
+      "terminationStrategy": "AGENT_SIGNAL",
+      "maxIterations": 25,
+      "maxIterationsAction": "AWAIT_USER"
+    },
+    "transition": "AUTO"
+  },
+  "steps": [
+    {
+      "kind": "STEP",
+      "stepId": "intake-iteration",
+      "name": "Intake question round",
+      "behaviour": {
+        "type": "AGENT",
+        "agentRef": "recruitment-intake-agent",
+        "transition": "AUTO"
+      },
+      "contextMapping": {
+        "inputKeys": ["rolePrompt", "recruitmentProfileDraft", "intakeUserResponse"],
+        "outputKeys": ["recruitmentProfileDraft", "intakeUserResponse"]
+      }
+    }
+  ]
+}

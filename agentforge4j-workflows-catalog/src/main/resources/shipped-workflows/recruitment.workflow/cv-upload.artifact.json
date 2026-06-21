@@ -1,0 +1,8 @@
+{
+  "id": "cv-upload",
+  "items": [
+    { "type": "TEXT_AREA", "id": "cvText", "label": "Paste CV content (or full path/URL to CV file)", "required": true },
+    { "type": "TEXT", "id": "candidateName", "label": "Candidate name", "required": true },
+    { "type": "BOOLEAN", "id": "moreCvs", "label": "I have more CVs to upload after this one.", "required": true }
+  ]
+}

@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "responses": [
+    {
+      "workflowId": "agent-creator",
+      "stepId": "generate-agent",
+      "agentId": "agent-creator-agent",
+      "ordinal": 0,
+      "responseText": "[{\"type\":\"COMPLETE\",\"summary\":\"Generated the agent bundle.\"}]"
+    }
+  ]
+}

@@ -1,0 +1,3 @@
+agents/workflow-conversation-agent.agent
+agents/workflow-designer-agent.agent
+workflow-ideas.artifact.json

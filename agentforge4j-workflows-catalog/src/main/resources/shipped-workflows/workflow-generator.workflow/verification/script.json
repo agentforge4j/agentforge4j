@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "responses": [
+    {
+      "workflowId": "workflow-generator",
+      "stepId": "interactive-design",
+      "agentId": "workflow-conversation-agent",
+      "ordinal": 0,
+      "responseText": "[{\"type\":\"SET_CONTEXT\",\"key\":\"workflow-design\",\"value\":{\"type\":\"STRING\",\"value\":\"Design: a blog-post generator workflow.\"}},{\"type\":\"COMPLETE\"}]"
+    },
+    {
+      "workflowId": "workflow-generator",
+      "stepId": "generate-workflow",
+      "agentId": "workflow-designer-agent",
+      "ordinal": 0,
+      "responseText": "[{\"type\":\"COMPLETE\",\"summary\":\"Generated the workflow bundle.\"}]"
+    }
+  ]
+}
