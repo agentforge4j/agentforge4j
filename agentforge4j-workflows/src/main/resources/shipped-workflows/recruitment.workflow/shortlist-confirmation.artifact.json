@@ -1,6 +1,0 @@
-{
-  "id": "shortlist-confirmation",
-  "items": [
-    { "type": "BOOLEAN", "id": "shortlistConfirmed", "label": "Approve the proposed shortlist and proceed to assessment generation.", "required": true }
-  ]
-}

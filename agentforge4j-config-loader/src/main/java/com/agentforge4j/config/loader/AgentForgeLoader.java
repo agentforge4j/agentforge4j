@@ -2,6 +2,7 @@
 package com.agentforge4j.config.loader;
 
 import com.agentforge4j.config.loader.agent.ClasspathAgentLoader;
+import com.agentforge4j.config.loader.catalog.CatalogCompatibilityGate;
 import com.agentforge4j.config.loader.validation.WorkflowValidator;
 import com.agentforge4j.config.loader.workflow.ClasspathWorkflowLoader;
 import com.agentforge4j.config.loader.workflow.WorkflowDirectoryLoader;
@@ -47,6 +48,8 @@ public final class AgentForgeLoader {
       Optional<ClasspathWorkflowLoader> classpathWorkflowLoader,
       Map<String, AgentDefinition> agents, Map<String, WorkflowDefinition> workflows) {
     classpathWorkflowLoader.ifPresent(cwl -> {
+      // Fail fast if a shipped catalog is present but incompatible; a no-op when none is present.
+      CatalogCompatibilityGate.defaults().enforce();
       WorkflowDirectoryLoad shipped = cwl.loadWorkflows();
       mergeBundledAgentsStrict(agents, shipped.bundledAgents(),
           "classpath shipped workflow bundles");

@@ -53,10 +53,6 @@
       <artifactId>agentforge4j-schema</artifactId>
     </dependency>
     <dependency>
-      <groupId>org.agentforge4j</groupId>
-      <artifactId>agentforge4j-workflows</artifactId>
-    </dependency>
-    <dependency>
       <groupId>com.fasterxml.jackson.core</groupId>
       <artifactId>jackson-databind</artifactId>
     </dependency>

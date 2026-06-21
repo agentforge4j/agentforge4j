@@ -1,0 +1,17 @@
+{
+  "id": "loader-fixture-agent",
+  "name": "Loader Fixture Agent",
+  "locality": "CLOUD",
+  "enabled": true,
+  "version": "1.0.0",
+  "providerPreferences": [
+    {
+      "provider": "openai",
+      "model": "gpt-4o-mini"
+    }
+  ],
+  "supportedCommands": [
+    "USER_PROMPT",
+    "COMPLETE"
+  ]
+}

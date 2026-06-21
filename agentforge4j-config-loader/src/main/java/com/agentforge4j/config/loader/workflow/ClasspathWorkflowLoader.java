@@ -7,7 +7,6 @@ import com.agentforge4j.config.loader.agent.ClasspathAgentLoader;
 import com.agentforge4j.core.agent.AgentDefinition;
 import com.agentforge4j.core.workflow.WorkflowDefinition;
 import com.agentforge4j.core.workflow.WorkflowSource;
-import com.agentforge4j.workflows.WorkflowBundleLocator;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
 import java.io.InputStream;

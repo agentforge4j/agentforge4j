@@ -3,7 +3,6 @@ package com.agentforge4j.verification.loader;
 
 import com.agentforge4j.bootstrap.AgentForge4jBootstrap;
 import com.agentforge4j.core.exception.DuplicateAgentIdException;
-import com.agentforge4j.core.exception.DuplicateWorkflowIdException;
 import com.agentforge4j.core.exception.UnresolvedAgentReferenceException;
 import com.agentforge4j.verification.support.Fixtures;
 import java.io.UncheckedIOException;
@@ -35,18 +34,10 @@ class LoaderNegativeTest {
         .hasMessageContaining("Duplicate agent id(s):");
   }
 
-  @Test
-  void duplicateWorkflowIdAcrossSourcesIsRejected() {
-    assertThatThrownBy(() -> AgentForge4jBootstrap.defaults()
-        .withLlmClientResolver(Fixtures.noOpLlmResolver())
-        .withWorkflowsDir(Fixtures.dir("/fixtures/loader/dup-workflow/workflows"))
-        .withLoadShippedWorkflows(true)
-        .build())
-        .isInstanceOf(IllegalStateException.class)
-        .cause()
-        .isInstanceOf(DuplicateWorkflowIdException.class)
-        .hasMessageContaining("Duplicate workflow id(s):");
-  }
+  // duplicateWorkflowIdAcrossSourcesIsRejected (filesystem-vs-shipped collision) needs the real
+  // shipped catalog, which no longer ships in this reactor; it is recreated in the catalog module in
+  // Phase 2. The duplicate-workflow-id rejection mechanism itself is covered by
+  // AgentForgeLoaderTest#duplicate* and FileSystemWorkflowLoaderTest in config-loader.
 
   @Test
   void unresolvedAgentReferenceIsRejected() {

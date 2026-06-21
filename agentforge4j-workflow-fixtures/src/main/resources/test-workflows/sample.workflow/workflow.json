@@ -1,0 +1,19 @@
+{
+  "kind": "WORKFLOW",
+  "id": "sample",
+  "uuid": "f1e2d3c4-b5a6-4789-9012-3456789abcde",
+  "name": "Sample Fixture Workflow",
+  "description": "Minimal catalog-shaped fixture used by loader/locator/cross-module tests.",
+  "steps": [
+    {
+      "kind": "STEP",
+      "stepId": "run-sample-agent",
+      "name": "Run Sample Agent",
+      "behaviour": {
+        "type": "AGENT",
+        "agentRef": "sample-agent",
+        "transition": "AUTO"
+      }
+    }
+  ]
+}

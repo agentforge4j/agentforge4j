@@ -36,13 +36,16 @@ class AgentForge4jStarterWiringIT {
           "agentforge4j.llm.openai.url=https://api.openai.com/v1/responses");
 
   @Test
-  void loadsShippedWorkflowsAndWiresRuntime() {
+  void wiresRuntimeWithEmptyDefaultCatalog() {
     runner.run(ctx -> {
       assertThat(ctx.getStartupFailure()).isNull();
       assertThat(ctx).hasSingleBean(AgentForge4j.class);
       AgentForge4j agentForge4j = ctx.getBean(AgentForge4j.class);
       LoadedConfiguration loadedConfiguration = agentForge4j.components().loadedConfiguration();
-      assertThat(loadedConfiguration.workflows()).isNotEmpty();
+      // No workflow catalog is on the starter classpath, so shipped loading (enabled above) yields
+      // zero workflows — the deliberate empty default after decoupling the catalog from the
+      // framework. A catalog jar on the classpath restores loading (covered in config-loader).
+      assertThat(loadedConfiguration.workflows()).isEmpty();
       assertThat(agentForge4j.components().workflowRepository()).isNotNull();
       assertThat(agentForge4j.components().agentRepository()).isNotNull();
       WorkflowRuntime runtime = agentForge4j.runtime();

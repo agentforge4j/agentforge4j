@@ -75,7 +75,7 @@
     <module>agentforge4j-mcp</module>
     <module>agentforge4j-tools-http</module>
     <module>agentforge4j-schema</module>
-    <module>agentforge4j-workflows</module>
+    <module>agentforge4j-workflow-fixtures</module>
     <module>agentforge4j-config-loader</module>
     <module>agentforge4j-runtime</module>
     <module>agentforge4j-bootstrap</module>
@@ -205,7 +205,7 @@
       </dependency>
       <dependency>
         <groupId>org.agentforge4j</groupId>
-        <artifactId>agentforge4j-workflows</artifactId>
+        <artifactId>agentforge4j-workflow-fixtures</artifactId>
         <version>${project.version}</version>
       </dependency>
       <dependency>

@@ -48,13 +48,16 @@ Most AI agent frameworks make runtime decisions about which agent to use, making
 ### Module Structure
 
 All modules live in a single Maven monorepo, versioned and released together (Java 17). Every
-module carries a JPMS `module-info.java` **except** two, which stay classpath-only by necessity:
+module carries a JPMS `module-info.java` **except** three, which stay classpath-only by necessity:
 
 - `agentforge4j-spring-boot-starter` — a Spring Boot auto-configuration library consumed on the
   classpath; by design it declares no module descriptor.
 - `agentforge4j-mcp` — the MCP SDK publishes an invalid `Automatic-Module-Name`
   (`io.modelcontextprotocol.sdk.mcp-core`, which contains a hyphen and is not a legal Java module
   name), so no JPMS module can `requires` it; the module therefore omits `module-info.java`.
+- `agentforge4j-workflow-fixtures` — a resource-only, unpublished (`maven.deploy.skip`) test
+  fixtures jar consumed at test scope on the classpath; it carries no types to export, so it omits
+  `module-info.java` by design rather than as drift.
 
 | Module | Description | Status   |
 |---|---|----------|

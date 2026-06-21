@@ -1,6 +1,0 @@
-{
-  "id": "profile-confirmation",
-  "items": [
-    { "type": "BOOLEAN", "id": "profileConfirmed", "label": "The recruitment profile above is correct and complete. Proceed to job post generation.", "required": true }
-  ]
-}

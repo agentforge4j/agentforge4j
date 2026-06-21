@@ -54,4 +54,26 @@
       <scope>test</scope>
     </dependency>
   </dependencies>
+
+  <build>
+    <resources>
+      <!-- Everything except the version file is copied verbatim; the bundled JSON Schema
+           documents must never be filtered (they contain $-prefixed keys/refs). -->
+      <resource>
+        <directory>src/main/resources</directory>
+        <filtering>false</filtering>
+        <excludes>
+          <exclude>agentforge4j-version.properties</exclude>
+        </excludes>
+      </resource>
+      <!-- Only the version file is filtered, so ${project.version} is substituted into it. -->
+      <resource>
+        <directory>src/main/resources</directory>
+        <filtering>true</filtering>
+        <includes>
+          <include>agentforge4j-version.properties</include>
+        </includes>
+      </resource>
+    </resources>
+  </build>
 </project>

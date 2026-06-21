@@ -2,8 +2,6 @@
 package com.agentforge4j.config.loader.agent;
 
 import com.agentforge4j.util.Validate;
-import com.agentforge4j.workflows.AgentBundleLocator;
-import com.agentforge4j.workflows.WorkflowBundleLocator;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
 import java.io.InputStream;
@@ -91,16 +89,12 @@ public final class ClasspathAgentLoader extends BaseAgentLoader {
     return path + (path.endsWith("/") ? "" : "/");
   }
 
+  // Single classloader lookup: the agent locator, the workflow locator and this loader now share
+  // one module, and the shipped catalog (when present) ships as a separate jar on the same loader,
+  // so one ClassLoader.getResource over the (non-encapsulated, hyphenated) shipped roots resolves
+  // both in-module test bundles and an external catalog. ClassLoader paths carry no leading slash.
   private URL classpathUrlForAgentJson(String classpathPath) {
-    URL url = ClasspathAgentLoader.class.getResource(classpathPath);
-    if (url != null) {
-      return url;
-    }
-    url = AgentBundleLocator.class.getResource(classpathPath);
-    if (url != null) {
-      return url;
-    }
-    url = WorkflowBundleLocator.class.getResource(classpathPath);
-    return url;
+    String resourcePath = classpathPath.startsWith("/") ? classpathPath.substring(1) : classpathPath;
+    return ClasspathAgentLoader.class.getClassLoader().getResource(resourcePath);
   }
 }

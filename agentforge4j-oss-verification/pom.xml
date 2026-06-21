@@ -14,8 +14,9 @@
   <artifactId>agentforge4j-oss-verification</artifactId>
   <name>AgentForge4J OSS Verification</name>
   <description>Non-published, black-box behavioural verification suite for the OSS framework: drives
-    the real shipped workflow catalog and hand-crafted fixtures through the testkit harness. Spring-,
-    database- and cloud-free; all sources are test scope.</description>
+    hand-crafted fixtures through the testkit harness. Spring-, database- and cloud-free; all sources
+    are test scope. Real shipped-catalog conformance/scenario verification lives in the workflow
+    catalog module.</description>
 
   <licenses>
     <license>
@@ -62,11 +63,6 @@
     <dependency>
       <groupId>org.agentforge4j</groupId>
       <artifactId>agentforge4j-config-loader</artifactId>
-      <scope>test</scope>
-    </dependency>
-    <dependency>
-      <groupId>org.agentforge4j</groupId>
-      <artifactId>agentforge4j-workflows</artifactId>
       <scope>test</scope>
     </dependency>
     <dependency>
@@ -120,14 +116,6 @@
       <groupId>org.junit-pioneer</groupId>
       <artifactId>junit-pioneer</artifactId>
       <version>${junit-pioneer.version}</version>
-      <scope>test</scope>
-    </dependency>
-    <!-- 2.0.x line (Jackson 2), matching agentforge4j-schema; used only to validate testkit
-         scenario fixtures against the testkit-hosted scenario schema. -->
-    <dependency>
-      <groupId>com.networknt</groupId>
-      <artifactId>json-schema-validator</artifactId>
-      <version>2.0.1</version>
       <scope>test</scope>
     </dependency>
   </dependencies>

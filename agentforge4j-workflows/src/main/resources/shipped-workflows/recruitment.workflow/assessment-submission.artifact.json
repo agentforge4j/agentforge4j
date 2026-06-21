@@ -1,7 +1,0 @@
-{
-  "id": "assessment-submission",
-  "items": [
-    { "type": "TEXT_AREA", "id": "submission", "label": "Paste the candidate's assessment submission", "required": true },
-    { "type": "BOOLEAN", "id": "submissionReceived", "label": "Submission received and ready to evaluate.", "required": true }
-  ]
-}

@@ -1,0 +1,20 @@
+{
+  "kind": "WORKFLOW",
+  "id": "loader-fixture",
+  "name": "Loader Fixture",
+  "description": "Minimal synthetic shipped workflow for classpath loader/locator tests.",
+  "artifacts": {},
+  "blueprints": {},
+  "steps": [
+    {
+      "kind": "STEP",
+      "stepId": "run-agent",
+      "name": "Run Agent",
+      "behaviour": {
+        "type": "AGENT",
+        "agentRef": "loader-fixture-agent",
+        "transition": "AUTO"
+      }
+    }
+  ]
+}

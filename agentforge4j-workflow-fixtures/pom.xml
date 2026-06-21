@@ -1,0 +1,32 @@
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
+         https://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+  <parent>
+    <groupId>org.agentforge4j</groupId>
+    <artifactId>agentforge4j</artifactId>
+    <version>0.0.1-SNAPSHOT</version>
+  </parent>
+
+  <artifactId>agentforge4j-workflow-fixtures</artifactId>
+  <packaging>jar</packaging>
+  <name>AgentForge4J Workflow Fixtures</name>
+  <description>Unpublished, test-only catalog-shaped fixtures under /test-workflows/ and
+    /test-agents/. Consumed as a test-scope dependency to exercise the classpath locators and to
+    prove cross-module (separate-jar) resource resolution. Not the real shipped catalog and never on
+    a production classpath.</description>
+
+  <licenses>
+    <license>
+      <name>Apache License, Version 2.0</name>
+      <url>https://www.apache.org/licenses/LICENSE-2.0</url>
+      <distribution>repo</distribution>
+    </license>
+  </licenses>
+
+  <properties>
+    <!-- Test-support fixtures: never published. -->
+    <maven.deploy.skip>true</maven.deploy.skip>
+  </properties>
+</project>

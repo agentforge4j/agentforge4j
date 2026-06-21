@@ -1,0 +1,17 @@
+{
+  "id": "sample-standalone-agent",
+  "name": "Sample Standalone Fixture Agent",
+  "locality": "CLOUD",
+  "enabled": true,
+  "providerPreferences": [
+    {
+      "provider": "openai",
+      "model": "gpt-4o-mini"
+    }
+  ],
+  "supportedCommands": [
+    "USER_PROMPT",
+    "COMPLETE"
+  ],
+  "version": "1.0.0"
+}

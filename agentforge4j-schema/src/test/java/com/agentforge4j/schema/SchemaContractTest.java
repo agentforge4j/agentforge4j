@@ -27,10 +27,7 @@ class SchemaContractTest {
   private static final SchemaRegistry SCHEMA_REGISTRY = SchemaRegistries.draft202012();
 
   private static final Path MODULE_ROOT = Path.of(".").toAbsolutePath().normalize();
-  private static final Path REPO_ROOT = MODULE_ROOT.getParent();
   private static final Path SCHEMA_DIR = MODULE_ROOT.resolve("src/main/resources/schema");
-  private static final Path SHIPPED_WORKFLOWS_DIR =
-      REPO_ROOT.resolve("agentforge4j-workflows/src/main/resources/shipped-workflows");
   private static final Path FIXTURES_DIR = MODULE_ROOT.resolve("src/test/resources/fixtures");
 
   private static final Map<String, Path> SCHEMAS = Map.of(
@@ -54,9 +51,10 @@ class SchemaContractTest {
   }
 
   @Test
-  void shipped_and_fixture_resources_validate_against_contract_schemas() throws Exception {
+  void fixture_resources_validate_against_contract_schemas() throws Exception {
+    // Shipped-catalog schema conformance moved to the workflow catalog module (the real catalog no
+    // longer lives in this reactor); this verifies the schema documents and local fixtures.
     List<ResourceValidationCase> cases = new ArrayList<>();
-    cases.addAll(buildShippedCases());
     cases.addAll(buildFixtureCases());
 
     List<String> errors = new ArrayList<>();
@@ -88,19 +86,6 @@ class SchemaContractTest {
     } catch (RuntimeException e) {
       return List.of(e.getMessage());
     }
-  }
-
-  private static List<ResourceValidationCase> buildShippedCases() throws IOException {
-    List<ResourceValidationCase> cases = new ArrayList<>();
-    if (!Files.exists(SHIPPED_WORKFLOWS_DIR)) {
-      return cases;
-    }
-
-    cases.addAll(casesForPattern(SHIPPED_WORKFLOWS_DIR, "*.agent/agent.json", "agent.schema.json"));
-    cases.addAll(casesForPattern(SHIPPED_WORKFLOWS_DIR, "*.workflow/workflow.json", "workflow.schema.json"));
-    cases.addAll(casesForPattern(SHIPPED_WORKFLOWS_DIR, "*.blueprint.json", "blueprint.schema.json"));
-    cases.addAll(casesForPattern(SHIPPED_WORKFLOWS_DIR, "*.artifact.json", "artifact.schema.json"));
-    return cases;
   }
 
   private static List<ResourceValidationCase> buildFixtureCases() throws IOException {
