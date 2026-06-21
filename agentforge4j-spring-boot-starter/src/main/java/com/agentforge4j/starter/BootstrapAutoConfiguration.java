@@ -14,6 +14,7 @@ import com.agentforge4j.core.spi.tool.ToolProvider;
 import com.agentforge4j.llm.DefaultLlmClientResolver;
 import com.agentforge4j.llm.LlmClientConfiguration;
 import com.agentforge4j.llm.api.ModelTier;
+import com.agentforge4j.starter.mcp.ToolProperties;
 import com.agentforge4j.util.Validate;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.nio.file.Path;
@@ -51,7 +52,7 @@ import org.springframework.context.annotation.Bean;
  */
 @AutoConfiguration(after = JacksonAutoConfiguration.class)
 @EnableConfigurationProperties({AgentForge4jProperties.class, LlmCacheSettings.class,
-    ModelTierProperties.class})
+    ModelTierProperties.class, ToolProperties.class})
 public class BootstrapAutoConfiguration {
 
   /**
@@ -71,6 +72,7 @@ public class BootstrapAutoConfiguration {
       AgentForge4jProperties properties,
       LlmCacheSettings cacheSettings,
       ModelTierProperties modelTierProperties,
+      ToolProperties toolProperties,
       ObjectProvider<ObjectMapper> objectMapperProvider,
       ObjectProvider<List<LlmClientConfiguration>> llmConfigurations,
       ObjectProvider<List<ToolProvider>> toolProviders,
@@ -83,6 +85,7 @@ public class BootstrapAutoConfiguration {
     applyProperties(builder, properties);
     applyModelTiers(builder, modelTierProperties);
     builder.withCacheEnabled(cacheSettings.enabled());
+    builder.withAllowPrivateNetworks(toolProperties.allowPrivateNetworks());
     List<LlmClientConfiguration> configurations = llmConfigurations.getIfAvailable(List::of);
     if (!configurations.isEmpty()) {
       ObjectMapper mapper = objectMapperProvider.getIfAvailable(ObjectMapper::new);

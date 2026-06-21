@@ -12,6 +12,7 @@ import com.agentforge4j.core.spi.tool.ToolProvider;
 import com.agentforge4j.core.spi.tool.ToolResult;
 import com.agentforge4j.core.spi.tool.ToolScope;
 import com.agentforge4j.tools.http.LoopbackHttpServer.Response;
+import com.agentforge4j.util.net.HttpEgressGuard;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.Duration;
 import org.junit.jupiter.api.Test;
@@ -31,8 +32,12 @@ class HttpToolProviderFactoryTest {
   private final ObjectMapper mapper = new ObjectMapper();
   private final SecretResolver secretResolver = reference ->
       "WEATHER_TOKEN".equals(reference) ? "Bearer resolved-token" : null;
+  // allowPrivateNetworks=true: these tests call a LoopbackHttpServer (127.0.0.1), which the
+  // egress guard blocks by default.
   private final ToolProviderFactoryContext context =
-      new ToolProviderFactoryContext(mapper, secretResolver);
+      new ToolProviderFactoryContext(mapper, secretResolver, new HttpEgressGuard(true));
+  private final ToolProviderFactoryContext blockingContext =
+      new ToolProviderFactoryContext(mapper, secretResolver, new HttpEgressGuard(false));
   private final ToolInvocationContext invocation =
       new ToolInvocationContext("run-1", "1", "agent-1", new ToolScope("wf-1", "run-1"));
   private final ToolExecutionOptions noRetry =
@@ -80,6 +85,17 @@ class HttpToolProviderFactoryTest {
       assertThat(server.captured().get(0).headers())
           .containsEntry("Authorization", "Bearer resolved-token");
     }
+  }
+
+  @Test
+  void create_providerBlocksInvokingAnEndpointResolvingToACloudMetadataAddress() {
+    ToolProvider provider = factory.create(
+        definition("meta", endpointConfig("http://169.254.169.254/{city}")), blockingContext);
+    ToolDescriptor descriptor = provider.listTools().get(0);
+
+    ToolResult result = provider.invoke(descriptor, "{\"city\":\"x\"}", invocation, noRetry);
+
+    assertThat(result.success()).isFalse();
   }
 
   @Test

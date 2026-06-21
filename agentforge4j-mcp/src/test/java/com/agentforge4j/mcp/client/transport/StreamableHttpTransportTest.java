@@ -179,6 +179,28 @@ class StreamableHttpTransportTest {
   }
 
   @Test
+  void doesNotFollowRedirectsToAnotherTarget() throws Exception {
+    // The SDK transport's HttpClient must be built with Redirect.NEVER: a 30x from the configured
+    // (egress-validated) URL must not be auto-followed, or it would bypass the egress guard. The stub
+    // 302-redirects /mcp to /redirected; with NEVER the client must never request /redirected.
+    try (RedirectCapturingHttpServer server = new RedirectCapturingHttpServer()) {
+      StreamableHttpTransport transport = new StreamableHttpTransport(
+          server.baseUrl(), TIMEOUT, Map.of(), Map.of(), null, JSON_MAPPER);
+      try {
+        transport.start();
+      } catch (RuntimeException ignored) {
+        // expected: a 302 is not a valid MCP handshake response.
+      } finally {
+        transport.close();
+      }
+
+      assertThat(server.requestedPaths()).isNotEmpty();
+      assertThat(server.requestedPaths())
+          .doesNotContain(RedirectCapturingHttpServer.REDIRECT_TARGET);
+    }
+  }
+
+  @Test
   void sendsNoAuthorizationHeaderWhenNoneConfigured() throws Exception {
     try (HeaderCapturingHttpServer server = new HeaderCapturingHttpServer()) {
       StreamableHttpTransport transport = new StreamableHttpTransport(

@@ -138,7 +138,7 @@ package "runtime.tool" {
        (resume: resolveToolDecision)
   }
   class DefaultToolCatalog
-  class NoOpToolPolicy
+  class SecureDefaultToolPolicy
   class InMemoryPendingToolInvocationStore
   class ToolArgumentValidator
   class ToolInvocationCommandHandler
@@ -151,7 +151,7 @@ DefaultToolExecutionService --> ToolArgumentValidator
 DefaultToolExecutionService --> "core.spi.tool.ToolPolicy"
 DefaultToolExecutionService --> InMemoryPendingToolInvocationStore
 DefaultToolExecutionService ..> ToolResultApplier : apply result, continue
-NoOpToolPolicy ..|> "core.spi.tool.ToolPolicy"
+SecureDefaultToolPolicy ..|> "core.spi.tool.ToolPolicy"
 DefaultToolCatalog ..|> "core.spi.tool.ToolCatalog"
 
 '------------------------------- transition gate ------------------------------

@@ -11,6 +11,7 @@ import com.agentforge4j.core.spi.tool.ToolResult;
 import com.agentforge4j.core.spi.tool.ToolRiskMetadata;
 import com.agentforge4j.core.spi.tool.ToolScope;
 import com.agentforge4j.core.spi.tool.ToolSource;
+import com.agentforge4j.core.spi.tool.ToolSourceKind;
 import com.agentforge4j.mcp.client.transport.McpTransport;
 import com.agentforge4j.mcp.client.transport.RemoteTool;
 import com.agentforge4j.mcp.client.transport.RemoteToolResult;
@@ -22,7 +23,8 @@ class McpToolProviderTest {
   private final ScriptedTransport transport = new ScriptedTransport();
   private final McpServerConnection connection =
       new McpServerConnection("mcp:test", transport);
-  private final McpToolProvider provider = new McpToolProvider("mcp:test", connection);
+  private final McpToolProvider provider =
+      new McpToolProvider("mcp:test", connection, ToolSourceKind.REMOTE_HTTP);
 
   private final ToolInvocationContext context =
       new ToolInvocationContext("run-1", "1", "agent-1", new ToolScope("wf-1", "run-1"));
@@ -83,7 +85,8 @@ class McpToolProviderTest {
 
   private static ToolDescriptor descriptorFor(String remoteToolName) {
     return new ToolDescriptor(remoteToolName, remoteToolName, null, null, null,
-        new ToolSource("mcp:test", remoteToolName), ToolRiskMetadata.conservative());
+        new ToolSource("mcp:test", remoteToolName, ToolSourceKind.REMOTE_HTTP),
+        ToolRiskMetadata.conservative());
   }
 
   private static final class ScriptedTransport implements McpTransport {

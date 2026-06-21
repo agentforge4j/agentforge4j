@@ -3,7 +3,9 @@ package com.agentforge4j.examples.mcp;
 
 import com.agentforge4j.bootstrap.AgentForge4j;
 import com.agentforge4j.bootstrap.AgentForge4jBootstrap;
+import com.agentforge4j.core.spi.tool.ToolPolicy;
 import com.agentforge4j.core.spi.tool.ToolProvider;
+import com.agentforge4j.core.spi.tool.ToolSourceKind;
 import com.agentforge4j.core.workflow.state.WorkflowState;
 import com.agentforge4j.llm.DefaultLlmClientResolver;
 import com.agentforge4j.llm.api.LlmClient;
@@ -104,8 +106,11 @@ public final class McpToolExample {
         new FakeResponse(SCRIPTED_TOOL_THEN_COMPLETE, null)));
     LlmClient fakeLlmClient = new FakeLlmClient(new StaticFakeResponseSource(script));
 
+    // REMOTE_HTTP is the structural kind for an MCP server reached over the network (streamable
+    // HTTP); the in-process stub stands in for such a server, so it carries the same kind.
     ToolProvider mcpToolProvider = new McpToolProvider(
-        SERVER_ID, new McpServerConnection(SERVER_ID, new StubMcpTransport()));
+        SERVER_ID, new McpServerConnection(SERVER_ID, new StubMcpTransport()),
+        ToolSourceKind.REMOTE_HTTP);
 
     return AgentForge4jBootstrap.defaults()
         .withWorkflowsDir(resourceDirectory("/workflows"))
@@ -114,6 +119,10 @@ public final class McpToolExample {
         .withLoadShippedAgents(false)
         .withLlmClientResolver(new DefaultLlmClientResolver(List.of(fakeLlmClient)))
         .withToolProviders(List.of(mcpToolProvider))
+        // The secure default policy denies REMOTE_HTTP tools (the MCP source kind here); this
+        // self-contained demo trusts its own in-process stub server, so it opts in with allowAll().
+        // Production code must use a policy that reflects its actual trust boundary.
+        .withToolPolicy(ToolPolicy.allowAll())
         .build();
   }
 

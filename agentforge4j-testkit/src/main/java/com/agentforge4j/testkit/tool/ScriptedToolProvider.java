@@ -9,6 +9,7 @@ import com.agentforge4j.core.spi.tool.ToolProvider;
 import com.agentforge4j.core.spi.tool.ToolResult;
 import com.agentforge4j.core.spi.tool.ToolRiskMetadata;
 import com.agentforge4j.core.spi.tool.ToolSource;
+import com.agentforge4j.core.spi.tool.ToolSourceKind;
 import com.agentforge4j.util.Validate;
 import java.util.List;
 
@@ -110,7 +111,8 @@ public final class ScriptedToolProvider implements ToolProvider {
   @Override
   public List<ToolDescriptor> listTools() {
     return List.of(new ToolDescriptor(capability, capability, "Scripted test tool", inputSchema,
-        null, new ToolSource(providerId, capability), ToolRiskMetadata.conservative()));
+        null, new ToolSource(providerId, capability, ToolSourceKind.IN_PROCESS),
+        ToolRiskMetadata.conservative()));
   }
 
   @Override

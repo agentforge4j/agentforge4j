@@ -12,6 +12,7 @@ import com.agentforge4j.core.spi.tool.ToolProviderResolver;
 import com.agentforge4j.core.spi.tool.ToolRiskMetadata;
 import com.agentforge4j.core.spi.tool.ToolScope;
 import com.agentforge4j.core.spi.tool.ToolSource;
+import com.agentforge4j.core.spi.tool.ToolSourceKind;
 import com.agentforge4j.runtime.tool.InMemoryIntegrationRepository;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -117,7 +118,8 @@ class IntegrationWiringTest {
     when(preBuilt.providerId()).thenReturn("http:tickets");
     when(preBuilt.listTools()).thenReturn(List.of(new ToolDescriptor(
         "tickets.create", "tickets.create", null, null, null,
-        new ToolSource("http:tickets", "create"), ToolRiskMetadata.conservative())));
+        new ToolSource("http:tickets", "create", ToolSourceKind.REMOTE_HTTP),
+        ToolRiskMetadata.conservative())));
 
     AgentForge4j af = AgentForge4jBootstrap.defaults()
         .withIntegrationsDir(integrationsDir)
@@ -139,7 +141,8 @@ class IntegrationWiringTest {
     when(mcpProvider.providerId()).thenReturn("mcp:github");
     when(mcpProvider.listTools()).thenReturn(List.of(new ToolDescriptor(
         "github.create_issue", "github.create_issue", null, null, null,
-        new ToolSource("mcp:github", "create_issue"), ToolRiskMetadata.conservative())));
+        new ToolSource("mcp:github", "create_issue", ToolSourceKind.REMOTE_HTTP),
+        ToolRiskMetadata.conservative())));
 
     AgentForge4j af = AgentForge4jBootstrap.defaults()
         .withToolProviders(List.of(mcpProvider))
@@ -197,7 +200,8 @@ class IntegrationWiringTest {
     when(preBuilt.providerId()).thenReturn("http:dup");
     when(preBuilt.listTools()).thenReturn(List.of(new ToolDescriptor(
         "github.create_issue", "github.create_issue", null, null, null,
-        new ToolSource("http:dup", "create_issue"), ToolRiskMetadata.conservative())));
+        new ToolSource("http:dup", "create_issue", ToolSourceKind.REMOTE_HTTP),
+        ToolRiskMetadata.conservative())));
 
     assertThatThrownBy(() -> AgentForge4jBootstrap.defaults()
         .withIntegrationsDir(integrationsDir)
@@ -289,7 +293,8 @@ class IntegrationWiringTest {
       ToolProvider provider = mock(ToolProvider.class);
       when(provider.listTools()).thenReturn(List.of(new ToolDescriptor(
           "github.create_issue", "github.create_issue", null, null, null,
-          new ToolSource("mcp:%s".formatted(definition.id()), "create_issue"),
+          new ToolSource("mcp:%s".formatted(definition.id()), "create_issue",
+              ToolSourceKind.REMOTE_HTTP),
           ToolRiskMetadata.conservative())));
       return provider;
     }

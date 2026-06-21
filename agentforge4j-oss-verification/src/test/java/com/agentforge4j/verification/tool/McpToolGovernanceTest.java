@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 package com.agentforge4j.verification.tool;
 
+import com.agentforge4j.core.spi.tool.ToolPolicy;
 import com.agentforge4j.core.spi.tool.ToolProvider;
+import com.agentforge4j.core.spi.tool.ToolSourceKind;
 import com.agentforge4j.llm.fake.FakeScript;
 import com.agentforge4j.llm.fake.FakeScriptParser;
 import com.agentforge4j.mcp.client.McpServerConnection;
@@ -38,13 +40,17 @@ class McpToolGovernanceTest {
   @Test
   void mcpToolResolvesAndInvokesThroughTheGovernanceChokepoint() {
     ToolProvider provider = new McpToolProvider(
-        "mcp:test", new McpServerConnection("test-server", new ScriptedMcpTransport()));
+        "mcp:test", new McpServerConnection("test-server", new ScriptedMcpTransport()),
+        ToolSourceKind.REMOTE_HTTP);
 
     WorkflowRunResult result = WorkflowTestHarness.builder()
         .workflowsDir(Fixtures.dir("/fixtures/tool/workflows"))
         .agentsDir(Fixtures.dir("/fixtures/tool/agents"))
         .script(script())
         .toolProviders(List.of(provider))
+        // MCP tools are remote, so the secure default policy denies them; this test verifies the
+        // governance-chokepoint mechanics (resolve → invoke), not the deny, so opt in explicitly.
+        .toolPolicy(ToolPolicy.allowAll())
         .build()
         .run("tool-run");
 

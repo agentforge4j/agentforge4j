@@ -16,6 +16,7 @@ import com.agentforge4j.core.spi.tool.ToolResult;
 import com.agentforge4j.core.spi.tool.ToolRiskMetadata;
 import com.agentforge4j.core.spi.tool.ToolScope;
 import com.agentforge4j.core.spi.tool.ToolSource;
+import com.agentforge4j.core.spi.tool.ToolSourceKind;
 import com.agentforge4j.core.workflow.event.WorkflowEvent;
 import com.agentforge4j.core.workflow.event.WorkflowEventLog;
 import com.agentforge4j.core.workflow.event.WorkflowEventType;
@@ -239,13 +240,13 @@ class DefaultToolExecutionServiceTest {
   }
 
   @Test
-  void defaultNoOpPolicyIgnoresRiskSignalAndExecutes() {
+  void allowAllPolicyIgnoresRiskSignalAndExecutes() {
     provider.result = ToolResult.success("{\"ok\":true}", 1L);
 
     ToolExecutionOutcome outcome =
-        service(new NoOpToolPolicy()).execute(command(Map.of("title", "x")), ctx);
+        service(ToolPolicy.allowAll()).execute(command(Map.of("title", "x")), ctx);
 
-    // The conservative (mutating) signal is present but the default policy does not consume it.
+    // The conservative (mutating) signal is present but the allow-all policy does not consume it.
     assertThat(outcome.status()).isEqualTo(ToolExecutionOutcome.Status.EXECUTED);
   }
 
@@ -323,7 +324,7 @@ class DefaultToolExecutionServiceTest {
     public List<ToolDescriptor> listTools() {
       return List.of(
           new ToolDescriptor("github.create_pull_request", "Create PR", null, SCHEMA, null,
-              new ToolSource("mcp:test", "create_pull_request"), risk));
+              new ToolSource("mcp:test", "create_pull_request", ToolSourceKind.REMOTE_HTTP), risk));
     }
 
     @Override

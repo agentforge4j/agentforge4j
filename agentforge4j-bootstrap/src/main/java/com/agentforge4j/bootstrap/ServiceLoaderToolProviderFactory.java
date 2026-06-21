@@ -9,6 +9,7 @@ import com.agentforge4j.core.spi.integration.ToolProviderFactory;
 import com.agentforge4j.core.spi.integration.ToolProviderFactoryContext;
 import com.agentforge4j.core.spi.tool.ToolProvider;
 import com.agentforge4j.util.Validate;
+import com.agentforge4j.util.net.HttpEgressGuard;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -22,7 +23,7 @@ import java.util.ServiceLoader;
  * {@link ToolProviderFactory} that routes each {@link IntegrationDefinition} to the
  * {@link IntegrationToolProviderFactory} contribution matching its {@link IntegrationType}.
  * <p>
- * {@link #discover(ObjectMapper, SecretResolver)} loads contributions via {@link ServiceLoader} (mirroring
+ * {@link #discover(ObjectMapper, SecretResolver, HttpEgressGuard)} loads contributions via {@link ServiceLoader} (mirroring
  * {@code DefaultLlmClientResolver}'s {@code LlmClientFactory} discovery), so provider modules such as
  * {@code agentforge4j-mcp} plug in by being on the classpath — this module declares no concrete provider dependency.
  * Two contributions claiming the same type fail construction; a definition whose type has no contribution fails
@@ -42,15 +43,16 @@ public final class ServiceLoaderToolProviderFactory implements ToolProviderFacto
    * @param contributions  no null elements, at most one contribution per {@link IntegrationType}
    * @param objectMapper   the single shared Jackson mapper threaded into each contribution; must not be {@code null}
    * @param secretResolver the secret-reference resolver threaded into each contribution; must not be {@code null}
+   * @param egressGuard    the outbound-egress guard threaded into each contribution; must not be {@code null}
    *
    * @throws IllegalStateException if two contributions claim the same type
    */
   public ServiceLoaderToolProviderFactory(
       Collection<IntegrationToolProviderFactory> contributions, ObjectMapper objectMapper,
-      SecretResolver secretResolver) {
+      SecretResolver secretResolver, HttpEgressGuard egressGuard) {
     this.contributionsByType = buildContributionMap(
         Validate.notNull(contributions, "contributions must not be null"));
-    this.context = new ToolProviderFactoryContext(objectMapper, secretResolver);
+    this.context = new ToolProviderFactoryContext(objectMapper, secretResolver, egressGuard);
   }
 
   /**
@@ -61,17 +63,19 @@ public final class ServiceLoaderToolProviderFactory implements ToolProviderFacto
    *
    * @param objectMapper   the single shared Jackson mapper threaded into each contribution; must not be {@code null}
    * @param secretResolver the secret-reference resolver threaded into each contribution; must not be {@code null}
+   * @param egressGuard    the outbound-egress guard threaded into each contribution; must not be {@code null}
    *
    * @return aggregator over all discovered contributions
    */
-  public static ServiceLoaderToolProviderFactory discover(ObjectMapper objectMapper, SecretResolver secretResolver) {
+  public static ServiceLoaderToolProviderFactory discover(ObjectMapper objectMapper,
+      SecretResolver secretResolver, HttpEgressGuard egressGuard) {
     List<IntegrationToolProviderFactory> contributions = new ArrayList<>();
     ServiceLoader<IntegrationToolProviderFactory> loader = ServiceLoader.load(
         IntegrationToolProviderFactory.class, Thread.currentThread().getContextClassLoader());
     loader.forEach(contributions::add);
     LOG.log(System.Logger.Level.INFO,
         "Discovered {0} integration tool provider factory contribution(s)", contributions.size());
-    return new ServiceLoaderToolProviderFactory(contributions, objectMapper, secretResolver);
+    return new ServiceLoaderToolProviderFactory(contributions, objectMapper, secretResolver, egressGuard);
   }
 
   @Override

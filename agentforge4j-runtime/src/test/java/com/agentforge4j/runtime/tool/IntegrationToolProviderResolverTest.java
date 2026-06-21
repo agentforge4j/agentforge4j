@@ -18,6 +18,7 @@ import com.agentforge4j.core.spi.tool.ToolResult;
 import com.agentforge4j.core.spi.tool.ToolRiskMetadata;
 import com.agentforge4j.core.spi.tool.ToolScope;
 import com.agentforge4j.core.spi.tool.ToolSource;
+import com.agentforge4j.core.spi.tool.ToolSourceKind;
 import java.util.Arrays;
 import java.util.List;
 import org.junit.jupiter.api.Test;
@@ -163,7 +164,7 @@ class IntegrationToolProviderResolverTest {
   private static ToolProvider provider(String providerId, String... capabilities) {
     List<ToolDescriptor> descriptors = Arrays.stream(capabilities)
         .map(capability -> new ToolDescriptor(capability, capability,
-            null, null, null, new ToolSource(providerId, capability),
+            null, null, null, new ToolSource(providerId, capability, ToolSourceKind.REMOTE_HTTP),
             ToolRiskMetadata.conservative()))
         .toList();
     return new ToolProvider() {

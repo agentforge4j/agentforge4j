@@ -4,6 +4,7 @@ package com.agentforge4j.examples.toolshttp;
 import com.agentforge4j.bootstrap.AgentForge4j;
 import com.agentforge4j.bootstrap.AgentForge4jBootstrap;
 import com.agentforge4j.core.spi.tool.ToolExecutionOptions;
+import com.agentforge4j.core.spi.tool.ToolPolicy;
 import com.agentforge4j.core.spi.tool.ToolProvider;
 import com.agentforge4j.core.workflow.state.WorkflowState;
 import com.agentforge4j.llm.DefaultLlmClientResolver;
@@ -17,6 +18,7 @@ import com.agentforge4j.tools.http.BodyMode;
 import com.agentforge4j.tools.http.HttpEndpointDefinition;
 import com.agentforge4j.tools.http.HttpMethod;
 import com.agentforge4j.tools.http.HttpToolProvider;
+import com.agentforge4j.util.net.HttpEgressGuard;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -128,6 +130,10 @@ public final class HttpToolExample {
         .withLoadShippedAgents(false)
         .withLlmClientResolver(new DefaultLlmClientResolver(List.of(fakeLlmClient)))
         .withToolProviders(List.of(httpToolProvider(stubPort)))
+        // The secure default policy denies REMOTE_HTTP tools; this self-contained demo trusts its
+        // own loopback tool, so it opts in with allowAll(). Production code must use a policy that
+        // reflects its actual trust boundary, not a blanket allow.
+        .withToolPolicy(ToolPolicy.allowAll())
         .build();
   }
 
@@ -159,9 +165,18 @@ public final class HttpToolExample {
         CAPABILITY, "Weather lookup", "Reads the current weather for a city", false, HttpMethod.GET,
         "http://127.0.0.1:%d/weather/{city}".formatted(stubPort), citySchema(), null,
         Set.of(), BodyMode.NONE, Map.of(), Map.of(), null, -1, false, null);
+    // The endpoint is this example's own in-process loopback server (127.0.0.1). The fail-closed
+    // egress guard blocks loopback and private addresses by default, so this deterministic local
+    // demo opts into private-network egress with new HttpEgressGuard(true). This is a local-demo
+    // exception only — production wiring must keep the default fail-closed guard.
+    // Never follow redirects: a 30x to a private/metadata host would bypass the egress guard, which
+    // validates only the originally mapped URL. Templates should always set Redirect.NEVER.
+    HttpClient httpClient = HttpClient.newBuilder()
+        .followRedirects(HttpClient.Redirect.NEVER)
+        .build();
     return new HttpToolProvider("demo", List.of(endpoint), reference -> null,
-        HttpClient.newHttpClient(), new ToolExecutionOptions(Duration.ofSeconds(5), 0, Duration.ZERO),
-        65_536L, MAPPER);
+        httpClient, new HttpEgressGuard(true),
+        new ToolExecutionOptions(Duration.ofSeconds(5), 0, Duration.ZERO), 65_536L, MAPPER);
   }
 
   private static JsonNode citySchema() {

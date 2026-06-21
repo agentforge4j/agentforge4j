@@ -5,6 +5,7 @@ import com.agentforge4j.util.Validate;
 import io.modelcontextprotocol.client.transport.HttpClientStreamableHttpTransport;
 import io.modelcontextprotocol.json.McpJsonMapper;
 import io.modelcontextprotocol.spec.McpClientTransport;
+import java.net.http.HttpClient;
 import java.time.Duration;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -58,7 +59,11 @@ public final class StreamableHttpTransport extends AbstractSdkMcpTransport {
   protected McpClientTransport createSdkTransport() {
     Map<String, String> headers = resolveHeaders();
     HttpClientStreamableHttpTransport.Builder builder =
-        HttpClientStreamableHttpTransport.builder(url).jsonMapper(jsonMapper());
+        HttpClientStreamableHttpTransport.builder(url).jsonMapper(jsonMapper())
+            // Never follow redirects: the configured URL is egress-validated before connect, but the
+            // SDK owns the socket, so a 30x from that URL to a private/cloud-metadata host would
+            // otherwise be followed and bypass the guard. Mirrors HttpToolProviderFactory's client.
+            .customizeClient(client -> client.followRedirects(HttpClient.Redirect.NEVER));
     if (!headers.isEmpty()) {
       builder.httpRequestCustomizer(
           (requestBuilder, httpMethod, uri, body, context) ->

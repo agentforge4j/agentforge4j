@@ -21,7 +21,7 @@ class ToolRiskMetadataTest {
 
   @Test
   void descriptorRejectsNullRiskMetadata() {
-    ToolSource toolSource = new ToolSource("provider:test", "do_thing");
+    ToolSource toolSource = new ToolSource("provider:test", "do_thing", ToolSourceKind.IN_PROCESS);
     assertThatThrownBy(() -> new ToolDescriptor(
         "domain.do_thing", null, null, null, null,
         toolSource, null))

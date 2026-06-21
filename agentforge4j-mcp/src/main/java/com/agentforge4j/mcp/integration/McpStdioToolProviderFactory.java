@@ -6,6 +6,7 @@ import com.agentforge4j.core.spi.integration.IntegrationToolProviderFactory;
 import com.agentforge4j.core.spi.integration.IntegrationType;
 import com.agentforge4j.core.spi.integration.ToolProviderFactoryContext;
 import com.agentforge4j.core.spi.tool.ToolProvider;
+import com.agentforge4j.core.spi.tool.ToolSourceKind;
 import com.agentforge4j.mcp.client.transport.StdioTransport;
 import com.agentforge4j.util.Validate;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -45,7 +46,7 @@ public final class McpStdioToolProviderFactory implements IntegrationToolProvide
     String command = McpIntegrations.requiredText(config, "command", definition);
     StdioTransport transport = new StdioTransport(command, args(config), env(config),
         McpIntegrations.requestTimeout(config, definition), McpIntegrations.mcpJsonMapper(mapper));
-    return McpIntegrations.toProvider(definition, transport);
+    return McpIntegrations.toProvider(definition, transport, ToolSourceKind.LOCAL_PROCESS);
   }
 
   private static List<String> args(JsonNode config) {

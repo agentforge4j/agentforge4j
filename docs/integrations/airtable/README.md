@@ -34,11 +34,25 @@ Wire it through the bootstrap tool-provider hook (the API token is resolved at i
 ```java
 List<HttpEndpointDefinition> endpoints = loadFrom("http-endpoints.json"); // map JSON -> records
 AgentForge4j af = AgentForge4jBootstrap.defaults()
+    // HTTP tools are remote, so the secure-default policy denies them unless you opt in with
+    // ToolPolicy.allowAll() or a custom policy:
+    .withToolPolicy(ToolPolicy.allowAll())
     .withToolProviders(List.of(new HttpToolProvider(
-        "airtable", endpoints, secretResolver, HttpClient.newHttpClient(),
-        ToolExecutionOptions.defaults(), 1_048_576L)))
+        "airtable", endpoints, secretResolver,
+        // Never follow redirects: a 30x to a private/metadata host would bypass the egress guard,
+        // which only validates the originally mapped URL. The factory's default client already does
+        // this; when you construct your own client you must set it yourself.
+        HttpClient.newBuilder().followRedirects(HttpClient.Redirect.NEVER).build(),
+        new HttpEgressGuard(false), ToolExecutionOptions.defaults(), 1_048_576L,
+        new ObjectMapper())))
     .build();
 ```
+
+The `HttpEgressGuard(false)` argument refuses requests to private, loopback, link-local, and
+cloud-metadata addresses (SSRF protection); pass `true` only in development. When you bypass the
+factory and build your own `HttpClient`, it **must not** follow redirects (`Redirect.NEVER`) —
+otherwise a redirect to a private or cloud-metadata host defeats the egress guard, which validates
+only the originally mapped URL.
 
 ## Secrets
 

@@ -3,6 +3,7 @@ package com.agentforge4j.mcp.integration;
 
 import com.agentforge4j.core.spi.integration.IntegrationDefinition;
 import com.agentforge4j.core.spi.tool.ToolProvider;
+import com.agentforge4j.core.spi.tool.ToolSourceKind;
 import com.agentforge4j.mcp.client.McpServerConnection;
 import com.agentforge4j.mcp.client.McpToolProvider;
 import com.agentforge4j.mcp.client.transport.McpTransport;
@@ -68,12 +69,14 @@ final class McpIntegrations {
    *
    * @param definition the integration being realised
    * @param transport  the transport built from the definition's config
+   * @param kind       the transport's structural kind, set by the calling factory
    *
    * @return the tool provider over a fresh connection
    */
-  static ToolProvider toProvider(IntegrationDefinition definition, McpTransport transport) {
+  static ToolProvider toProvider(IntegrationDefinition definition, McpTransport transport,
+      ToolSourceKind kind) {
     McpServerConnection connection = new McpServerConnection(definition.id(), transport);
-    return new McpToolProvider("mcp:%s".formatted(definition.id()), connection);
+    return new McpToolProvider("mcp:%s".formatted(definition.id()), connection, kind);
   }
 
   /**

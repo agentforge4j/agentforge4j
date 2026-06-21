@@ -10,4 +10,5 @@ module agentforge4j.util {
   requires static com.github.spotbugs.annotations;
 
   exports com.agentforge4j.util;
+  exports com.agentforge4j.util.net;
 }

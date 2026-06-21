@@ -52,10 +52,14 @@ public final class HttpToolProviderFactory implements IntegrationToolProviderFac
     ObjectMapper mapper = context.objectMapper();
     List<HttpEndpointDefinition> endpoints = HttpIntegrations.parseEndpoints(definition, mapper);
     return new HttpToolProvider(definition.id(), endpoints, context.secretResolver()::resolve,
-        defaultHttpClient(), ToolExecutionOptions.defaults(), DEFAULT_MAX_RESPONSE_BYTES, mapper);
+        defaultHttpClient(), context.egressGuard(), ToolExecutionOptions.defaults(),
+        DEFAULT_MAX_RESPONSE_BYTES, mapper);
   }
 
   private static HttpClient defaultHttpClient() {
-    return HttpClient.newBuilder().connectTimeout(CONNECT_TIMEOUT).build();
+    // Never follow redirects: a 30x to a private/metadata host would bypass the egress guard, which
+    // validates only the originally mapped URL.
+    return HttpClient.newBuilder().connectTimeout(CONNECT_TIMEOUT)
+        .followRedirects(HttpClient.Redirect.NEVER).build();
   }
 }

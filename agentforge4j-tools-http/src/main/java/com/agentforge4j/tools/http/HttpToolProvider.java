@@ -9,6 +9,9 @@ import com.agentforge4j.core.spi.tool.ToolProvider;
 import com.agentforge4j.core.spi.tool.ToolResult;
 import com.agentforge4j.core.spi.tool.ToolRiskMetadata;
 import com.agentforge4j.core.spi.tool.ToolSource;
+import com.agentforge4j.core.spi.tool.ToolSourceKind;
+import com.agentforge4j.util.net.EgressCheckResult;
+import com.agentforge4j.util.net.OutboundEgressGuard;
 import com.agentforge4j.util.Validate;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -61,6 +64,7 @@ public final class HttpToolProvider implements ToolProvider {
   private final List<ToolDescriptor> descriptors;
   private final Function<String, String> secretResolver;
   private final HttpClient httpClient;
+  private final OutboundEgressGuard egressGuard;
   private final ToolExecutionOptions defaultOptions;
   private final long defaultMaxResponseBytes;
   private final ObjectMapper objectMapper;
@@ -72,13 +76,14 @@ public final class HttpToolProvider implements ToolProvider {
    * @param definitions             endpoint definitions; non-null, each validated (§2.8)
    * @param secretResolver          secret-reference key to value resolver, used at invoke time
    * @param httpClient              the JDK HTTP client used for all calls
+   * @param egressGuard             SSRF egress guard consulted against each mapped URL before the call
    * @param defaultOptions          fallback execution options when none are supplied at invoke
    * @param defaultMaxResponseBytes response body read cap for definitions that do not set one
    *
    * @throws IllegalArgumentException if the name is blank or any definition is invalid
    */
   public HttpToolProvider(String configuredName, List<HttpEndpointDefinition> definitions,
-      Function<String, String> secretResolver, HttpClient httpClient,
+      Function<String, String> secretResolver, HttpClient httpClient, OutboundEgressGuard egressGuard,
       ToolExecutionOptions defaultOptions, long defaultMaxResponseBytes,
       ObjectMapper objectMapper) {
     Validate.notBlank(configuredName, "configuredName must not be blank");
@@ -86,6 +91,7 @@ public final class HttpToolProvider implements ToolProvider {
     Validate.notNull(definitions, "definitions must not be null");
     this.secretResolver = Validate.notNull(secretResolver, "secretResolver must not be null");
     this.httpClient = Validate.notNull(httpClient, "httpClient must not be null");
+    this.egressGuard = Validate.notNull(egressGuard, "egressGuard must not be null");
     this.defaultOptions = Validate.notNull(defaultOptions, "defaultOptions must not be null");
     Validate.isGreaterThanZero(defaultMaxResponseBytes,
         "defaultMaxResponseBytes must be greater than zero");
@@ -119,6 +125,10 @@ public final class HttpToolProvider implements ToolProvider {
               .formatted(descriptor.source().remoteToolName())));
       ObjectNode args = parseArguments(arguments);
       PreparedRequest prepared = mapRequest(definition, args);
+      EgressCheckResult egress = egressGuard.check(prepared.uri());
+      if (!egress.allowed()) {
+        return ToolResult.failure(egress.reason(), latencyMillis(startNanos));
+      }
       Duration effectiveTimeout = effectiveTimeout(definition, effectiveOptions);
       int effectiveRetries = effectiveMaxRetries(definition, effectiveOptions);
       HttpRequest request = buildHttpRequest(definition, prepared, effectiveTimeout);
@@ -264,7 +274,7 @@ public final class HttpToolProvider implements ToolProvider {
           definition.description(),
           writeJson(definition.inputSchema()),
           definition.outputSchema() != null ? writeJson(definition.outputSchema()) : null,
-          new ToolSource(providerId, definition.capability()),
+          new ToolSource(providerId, definition.capability(), ToolSourceKind.REMOTE_HTTP),
           new ToolRiskMetadata(definition.mutating())));
     }
     return List.copyOf(result);

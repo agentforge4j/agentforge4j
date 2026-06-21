@@ -4,6 +4,7 @@ package com.agentforge4j.bootstrap;
 import com.agentforge4j.config.loader.LoadedConfiguration;
 import com.agentforge4j.core.agent.AgentRepository;
 import com.agentforge4j.core.spi.integration.IntegrationRepository;
+import com.agentforge4j.core.spi.tool.ToolExecutionService;
 import com.agentforge4j.core.spi.tool.ToolProviderResolver;
 import com.agentforge4j.core.workflow.event.WorkflowEventLog;
 import com.agentforge4j.core.workflow.repository.WorkflowRepository;
@@ -28,10 +29,10 @@ import java.time.Clock;
  * <p>The Spring starter uses this record to register individual Spring beans without
  * duplicating bootstrap's default-wiring logic.
  *
- * <p>Tool support is opt-in, so {@code integrationRepository} and {@code toolProviderResolver} are
- * {@code null} unless an integrations source (or explicit resolver / providers) was configured;
- * {@code integrationRepository} is non-null only on the integrations path, where it is the
- * repository feeding the resolver. All other components are never {@code null}.
+ * <p>Tool support is opt-in, so {@code integrationRepository}, {@code toolProviderResolver}, and
+ * {@code toolExecutionService} are {@code null} unless an integrations source (or explicit resolver / providers) was
+ * configured; {@code integrationRepository} is non-null only on the integrations path, where it is the repository
+ * feeding the resolver. All other components are never {@code null}.
  */
 public record BootstrapComponents(
     AgentRepository agentRepository,
@@ -46,6 +47,7 @@ public record BootstrapComponents(
     LlmProviderSelectionStrategy llmProviderSelectionStrategy,
     IntegrationRepository integrationRepository,
     ToolProviderResolver toolProviderResolver,
+    ToolExecutionService toolExecutionService,
     ObjectMapper objectMapper,
     Clock clock,
     AgentInvoker agentInvoker,

@@ -13,6 +13,7 @@ import com.agentforge4j.core.spi.tool.ToolProvider;
 import com.agentforge4j.core.spi.tool.ToolResult;
 import com.agentforge4j.core.spi.tool.ToolRiskMetadata;
 import com.agentforge4j.core.spi.tool.ToolSource;
+import com.agentforge4j.core.spi.tool.ToolSourceKind;
 import com.agentforge4j.core.workflow.context.ContextMapping;
 import com.agentforge4j.core.workflow.state.WorkflowState;
 import com.agentforge4j.core.workflow.state.WorkflowStatus;
@@ -174,7 +175,8 @@ class ToolInvocationCommandHandlerTest {
     @Override
     public List<ToolDescriptor> listTools() {
       return List.of(new ToolDescriptor(CAPABILITY, "Create PR", null, SCHEMA, null,
-          new ToolSource("mcp:test", "create_pull_request"), ToolRiskMetadata.conservative()));
+          new ToolSource("mcp:test", "create_pull_request", ToolSourceKind.REMOTE_HTTP),
+          ToolRiskMetadata.conservative()));
     }
 
     @Override

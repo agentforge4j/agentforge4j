@@ -9,6 +9,7 @@ import com.agentforge4j.core.spi.tool.ToolProvider;
 import com.agentforge4j.core.spi.tool.ToolResult;
 import com.agentforge4j.core.spi.tool.ToolRiskMetadata;
 import com.agentforge4j.core.spi.tool.ToolSource;
+import com.agentforge4j.core.spi.tool.ToolSourceKind;
 import com.agentforge4j.mcp.client.transport.RemoteTool;
 import com.agentforge4j.mcp.client.transport.RemoteToolResult;
 import com.agentforge4j.util.Validate;
@@ -29,16 +30,21 @@ public final class McpToolProvider implements ToolProvider {
 
   private final String providerId;
   private final McpServerConnection connection;
+  private final ToolSourceKind kind;
 
   /**
    * Creates a provider over a single MCP server connection.
    *
    * @param providerId non-blank provider id, for example {@code "mcp:github-official"}
    * @param connection the connection to the backing MCP server
+   * @param kind       the transport's structural kind ({@link ToolSourceKind#LOCAL_PROCESS} for
+   *                   stdio, {@link ToolSourceKind#REMOTE_HTTP} for streamable HTTP), set by the
+   *                   provider factory that chose the transport
    */
-  public McpToolProvider(String providerId, McpServerConnection connection) {
+  public McpToolProvider(String providerId, McpServerConnection connection, ToolSourceKind kind) {
     this.providerId = Validate.notBlank(providerId, "providerId must not be blank");
     this.connection = Validate.notNull(connection, "connection must not be null");
+    this.kind = Validate.notNull(kind, "kind must not be null");
   }
 
   @Override
@@ -56,7 +62,7 @@ public final class McpToolProvider implements ToolProvider {
           tool.description(),
           tool.inputSchemaJson(),
           null,
-          new ToolSource(providerId, tool.name()),
+          new ToolSource(providerId, tool.name(), kind),
           ToolRiskMetadata.conservative()));
     }
     return List.copyOf(descriptors);

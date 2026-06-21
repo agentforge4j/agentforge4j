@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package com.agentforge4j.starter;
 
+import com.agentforge4j.starter.mcp.ToolProperties;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 
@@ -16,7 +17,7 @@ class ConfigLoaderAutoConfigurationBillingTest {
     assertThat(annotation).isNotNull();
     assertThat(annotation.value())
         .containsExactlyInAnyOrder(AgentForge4jProperties.class, LlmCacheSettings.class,
-            ModelTierProperties.class);
+            ModelTierProperties.class, ToolProperties.class);
   }
 
   @Test

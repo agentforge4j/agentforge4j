@@ -7,6 +7,7 @@ import com.agentforge4j.core.spi.integration.SecretResolver;
 import com.agentforge4j.core.spi.integration.ToolProviderFactoryContext;
 import com.agentforge4j.core.spi.tool.ToolProvider;
 import com.agentforge4j.mcp.client.McpToolProvider;
+import com.agentforge4j.util.net.HttpEgressGuard;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 
@@ -18,8 +19,11 @@ class McpStreamableHttpToolProviderFactoryTest {
   private final McpStreamableHttpToolProviderFactory factory =
       new McpStreamableHttpToolProviderFactory();
   private final SecretResolver secretResolver = reference -> reference;
+  // allowPrivateNetworks=true so the example URLs in the construction tests skip DNS resolution.
   private final ToolProviderFactoryContext context =
-      new ToolProviderFactoryContext(new ObjectMapper(), secretResolver);
+      new ToolProviderFactoryContext(new ObjectMapper(), secretResolver, new HttpEgressGuard(true));
+  private final ToolProviderFactoryContext blockingContext =
+      new ToolProviderFactoryContext(new ObjectMapper(), secretResolver, new HttpEgressGuard(false));
 
   @Test
   void supportedType_isMcpStreamableHttp() {
@@ -36,6 +40,18 @@ class McpStreamableHttpToolProviderFactoryTest {
 
     assertThat(provider).isInstanceOf(McpToolProvider.class);
     assertThat(provider.providerId()).isEqualTo("mcp:jira");
+  }
+
+  @Test
+  void create_deniesAServerUrlResolvingToACloudMetadataAddress() {
+    IntegrationDefinition definition = definition("jira", """
+        { "url": "http://169.254.169.254/mcp" }
+        """);
+
+    assertThatThrownBy(() -> factory.create(definition, blockingContext))
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessageContaining("169.254.169.254")
+        .hasMessageContaining("egress");
   }
 
   @Test

@@ -13,6 +13,8 @@ import com.agentforge4j.core.spi.tool.ToolResult;
 import com.agentforge4j.core.spi.tool.ToolRiskMetadata;
 import com.agentforge4j.core.spi.tool.ToolScope;
 import com.agentforge4j.core.spi.tool.ToolSource;
+import com.agentforge4j.core.spi.tool.ToolSourceKind;
+import com.agentforge4j.util.net.HttpEgressGuard;
 import com.agentforge4j.runtime.tool.InMemoryIntegrationRepository;
 import com.agentforge4j.runtime.tool.IntegrationToolProviderResolver;
 import com.agentforge4j.tools.http.LoopbackHttpServer.Captured;
@@ -104,6 +106,81 @@ class HttpToolProviderTest {
       assertThat(request.method()).isEqualTo("GET");
       assertThat(request.target()).isEqualTo("/items/a%2Fb%20c?q=x+y");
     }
+  }
+
+  @Test
+  void pathArgumentCannotInjectAuthorityViaAtSign() throws Exception {
+    // An '@' in a value must not become userinfo@host: it is percent-encoded into the path, so the
+    // request still reaches the configured (loopback) host the egress guard validated, never the
+    // injected one. This is the parser-differential / argument-injection SSRF regression guard.
+    try (LoopbackHttpServer server = new LoopbackHttpServer(Response.json(200, "{\"ok\":true}"))) {
+      HttpEndpointDefinition definition = new HttpEndpointDefinition(
+          "items.get", "items", null, false, HttpMethod.GET, server.baseUri() + "/items/{id}",
+          objectSchema("id"), null, Set.of(), BodyMode.NONE, Map.of(), Map.of(), null, -1, false,
+          null);
+      HttpToolProvider provider = provider(definition);
+
+      ToolResult result = provider.invoke(descriptor(provider, "items.get"),
+          "{\"id\":\"evil@169.254.169.254\"}", ctx, noRetry);
+
+      assertThat(result.success()).isTrue();
+      assertThat(server.captured().get(0).target()).isEqualTo("/items/evil%40169.254.169.254");
+    }
+  }
+
+  @Test
+  void pathArgumentEncodesPercentAndSlashRatherThanTraversing() throws Exception {
+    try (LoopbackHttpServer server = new LoopbackHttpServer(Response.json(200, "{\"ok\":true}"))) {
+      HttpEndpointDefinition definition = new HttpEndpointDefinition(
+          "items.get", "items", null, false, HttpMethod.GET, server.baseUri() + "/items/{id}",
+          objectSchema("id"), null, Set.of(), BodyMode.NONE, Map.of(), Map.of(), null, -1, false,
+          null);
+      HttpToolProvider provider = provider(definition);
+
+      ToolResult result = provider.invoke(descriptor(provider, "items.get"),
+          "{\"id\":\"..%2f..%2fadmin\"}", ctx, noRetry);
+
+      assertThat(result.success()).isTrue();
+      // The literal '%' is itself encoded to %25, so no decoded '../' traversal reaches the server.
+      assertThat(server.captured().get(0).target()).isEqualTo("/items/..%252f..%252fadmin");
+    }
+  }
+
+  @Test
+  void pathArgumentEncodesCrlfRatherThanInjectingIt() throws Exception {
+    try (LoopbackHttpServer server = new LoopbackHttpServer(Response.json(200, "{\"ok\":true}"))) {
+      HttpEndpointDefinition definition = new HttpEndpointDefinition(
+          "items.get", "items", null, false, HttpMethod.GET, server.baseUri() + "/items/{id}",
+          objectSchema("id"), null, Set.of(), BodyMode.NONE, Map.of(), Map.of(), null, -1, false,
+          null);
+      HttpToolProvider provider = provider(definition);
+
+      ToolResult result = provider.invoke(descriptor(provider, "items.get"),
+          "{\"id\":\"x\\r\\nHost: evil\"}", ctx, noRetry);
+
+      assertThat(result.success()).isTrue();
+      String target = server.captured().get(0).target();
+      assertThat(target).contains("%0D%0A");
+      assertThat(target).doesNotContain("\r").doesNotContain("\n");
+    }
+  }
+
+  @Test
+  void invocationWhoseMappedHostIsBlockedIsRefusedByTheEgressGuard() {
+    // With the fail-closed guard, a mapped URL whose host resolves to a blocked address is refused
+    // before any connection — surfaced as a tool failure naming the blocked host.
+    HttpEndpointDefinition definition = new HttpEndpointDefinition(
+        "meta.get", "meta", null, false, HttpMethod.GET, "http://169.254.169.254/latest/{path}",
+        objectSchema("path"), null, Set.of(), BodyMode.NONE, Map.of(), Map.of(), null, -1, false,
+        null);
+    HttpToolProvider provider = new HttpToolProvider("test", List.of(definition), secrets::get,
+        httpClient, new HttpEgressGuard(false), noRetry, 1_048_576L, new ObjectMapper());
+
+    ToolResult result = provider.invoke(descriptor(provider, "meta.get"),
+        "{\"path\":\"meta-data\"}", ctx, noRetry);
+
+    assertThat(result.success()).isFalse();
+    assertThat(result.errorMessage()).contains("169.254.169.254", "non-public");
   }
 
   @Test
@@ -446,8 +523,8 @@ class HttpToolProviderTest {
   }
 
   private HttpToolProvider provider(HttpEndpointDefinition... definitions) {
-    return new HttpToolProvider("test", List.of(definitions), secrets::get, httpClient, noRetry,
-        1_048_576L, new ObjectMapper());
+    return new HttpToolProvider("test", List.of(definitions), secrets::get, httpClient,
+        new HttpEgressGuard(true), noRetry, 1_048_576L, new ObjectMapper());
   }
 
   private ToolResult invokeSimpleGet(LoopbackHttpServer server, String arguments) {
@@ -505,7 +582,8 @@ class HttpToolProviderTest {
     @Override
     public List<ToolDescriptor> listTools() {
       return List.of(new ToolDescriptor(capability, capability, null, null, null,
-          new ToolSource(id, capability), ToolRiskMetadata.conservative()));
+          new ToolSource(id, capability, ToolSourceKind.REMOTE_HTTP),
+          ToolRiskMetadata.conservative()));
     }
 
     @Override

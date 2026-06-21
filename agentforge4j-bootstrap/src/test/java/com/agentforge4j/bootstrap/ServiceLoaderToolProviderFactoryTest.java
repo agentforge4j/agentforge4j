@@ -7,6 +7,7 @@ import com.agentforge4j.core.spi.integration.IntegrationType;
 import com.agentforge4j.core.spi.integration.SecretResolver;
 import com.agentforge4j.core.spi.integration.ToolProviderFactoryContext;
 import com.agentforge4j.core.spi.tool.ToolProvider;
+import com.agentforge4j.util.net.HttpEgressGuard;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.List;
 import org.junit.jupiter.api.Test;
@@ -19,6 +20,7 @@ class ServiceLoaderToolProviderFactoryTest {
 
   private final ObjectMapper objectMapper = new ObjectMapper();
   private final SecretResolver secretResolver = reference -> reference;
+  private final HttpEgressGuard egressGuard = new HttpEgressGuard(false);
 
   @Test
   void create_routesDefinitionToContributionMatchingItsType() {
@@ -27,7 +29,7 @@ class ServiceLoaderToolProviderFactoryTest {
     ServiceLoaderToolProviderFactory factory = new ServiceLoaderToolProviderFactory(List.of(
         new FixedContribution(IntegrationType.MCP_STDIO, stdioProvider),
         new FixedContribution(IntegrationType.MCP_STREAMABLE_HTTP, httpProvider)),
-        objectMapper, secretResolver);
+        objectMapper, secretResolver, egressGuard);
 
     assertThat(factory.create(definition("github", IntegrationType.MCP_STDIO)))
         .isSameAs(stdioProvider);
@@ -39,20 +41,21 @@ class ServiceLoaderToolProviderFactoryTest {
   void create_passesTheSharedMapperAndSecretResolverToTheContributionContext() {
     CapturingContribution contribution = new CapturingContribution();
     ServiceLoaderToolProviderFactory factory =
-        new ServiceLoaderToolProviderFactory(List.of(contribution), objectMapper, secretResolver);
+        new ServiceLoaderToolProviderFactory(List.of(contribution), objectMapper, secretResolver, egressGuard);
 
     factory.create(definition("github", IntegrationType.MCP_STDIO));
 
     assertThat(contribution.seenContext).isNotNull();
     assertThat(contribution.seenContext.objectMapper()).isSameAs(objectMapper);
     assertThat(contribution.seenContext.secretResolver()).isSameAs(secretResolver);
+    assertThat(contribution.seenContext.egressGuard()).isSameAs(egressGuard);
   }
 
   @Test
   void create_failsFastNamingTypeAndIntegrationWhenNoContributionIsRegistered() {
     ServiceLoaderToolProviderFactory factory = new ServiceLoaderToolProviderFactory(List.of(
         new FixedContribution(IntegrationType.MCP_STDIO, mock(ToolProvider.class))),
-        objectMapper, secretResolver);
+        objectMapper, secretResolver, egressGuard);
 
     assertThatThrownBy(() -> factory.create(definition("airtable", IntegrationType.HTTP_TOOL)))
         .isInstanceOf(IllegalStateException.class)
@@ -67,7 +70,7 @@ class ServiceLoaderToolProviderFactoryTest {
     OtherStdioContribution second = new OtherStdioContribution();
 
     assertThatThrownBy(() -> new ServiceLoaderToolProviderFactory(List.of(first, second),
-        objectMapper, secretResolver))
+        objectMapper, secretResolver, egressGuard))
         .isInstanceOf(IllegalStateException.class)
         .hasMessageContaining("MCP_STDIO")
         .hasMessageContaining(FixedContribution.class.getName())
@@ -80,7 +83,7 @@ class ServiceLoaderToolProviderFactoryTest {
     // HTTP contributor does not match it) — the aggregator must still construct and only fail when
     // asked to realise that unroutable type.
     ServiceLoaderToolProviderFactory factory =
-        ServiceLoaderToolProviderFactory.discover(objectMapper, secretResolver);
+        ServiceLoaderToolProviderFactory.discover(objectMapper, secretResolver, egressGuard);
 
     assertThatThrownBy(() -> factory.create(definition("github", IntegrationType.MCP_STDIO)))
         .isInstanceOf(IllegalStateException.class)

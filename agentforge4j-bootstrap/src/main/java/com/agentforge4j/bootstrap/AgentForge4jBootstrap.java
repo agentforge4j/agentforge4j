@@ -48,9 +48,10 @@ import com.agentforge4j.runtime.tool.DefaultToolExecutionService;
 import com.agentforge4j.runtime.tool.InMemoryIntegrationRepository;
 import com.agentforge4j.runtime.tool.InMemoryPendingToolInvocationStore;
 import com.agentforge4j.runtime.tool.IntegrationToolProviderResolver;
-import com.agentforge4j.runtime.tool.NoOpToolPolicy;
+import com.agentforge4j.runtime.tool.SecureDefaultToolPolicy;
 import com.agentforge4j.schema.ClasspathSchemaProvider;
 import com.agentforge4j.util.Validate;
+import com.agentforge4j.util.net.HttpEgressGuard;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.nio.file.Path;
 import java.time.Clock;
@@ -122,6 +123,7 @@ public final class AgentForge4jBootstrap {
     private ToolPolicy toolPolicy;
     private PendingToolInvocationStore pendingToolInvocationStore;
     private ToolExecutionOptions toolExecutionOptions;
+    private boolean allowPrivateNetworks;
     private Path integrationsDir;
     private IntegrationConfigLoader integrationConfigLoader;
     private MutableIntegrationRepository integrationRepository;
@@ -358,7 +360,8 @@ public final class AgentForge4jBootstrap {
      * @return this builder
      */
     public Builder withRunExecutionInterceptor(RunExecutionInterceptor runExecutionInterceptor) {
-      this.runExecutionInterceptor = Validate.notNull(runExecutionInterceptor, "runExecutionInterceptor must not be null");
+      this.runExecutionInterceptor = Validate.notNull(runExecutionInterceptor,
+          "runExecutionInterceptor must not be null");
       return this;
     }
 
@@ -401,6 +404,12 @@ public final class AgentForge4jBootstrap {
      * fast. Has no effect if {@link #withToolProviderResolver(ToolProviderResolver)} is set — an explicit resolver is
      * the sole resolver.
      *
+     * <p><strong>Trust boundary.</strong> Providers supplied here are trusted embedder code: the
+     * {@link com.agentforge4j.core.spi.tool.ToolSourceKind} their descriptors declare is taken at face value by the
+     * secure default {@link com.agentforge4j.core.spi.tool.ToolPolicy}, so a provider that declares an in-process
+     * source is allowed by default. Supply a custom {@code ToolPolicy} to gate providers whose declared kind you do
+     * not control.
+     *
      * @param toolProviders providers to expose; must not be {@code null}
      *
      * @return this builder
@@ -424,7 +433,9 @@ public final class AgentForge4jBootstrap {
     }
 
     /**
-     * Overrides the tool policy. Defaults to a no-op allow-all policy.
+     * Overrides the tool policy. Defaults to the secure-by-default policy ({@code SecureDefaultToolPolicy}), which
+     * denies remote-network and local-process tools unless an explicit policy ({@code ToolPolicy.allowAll()} or a
+     * custom one) opts in.
      *
      * @param toolPolicy policy instance; must not be {@code null}
      *
@@ -458,6 +469,21 @@ public final class AgentForge4jBootstrap {
      */
     public Builder withToolExecutionOptions(ToolExecutionOptions toolExecutionOptions) {
       this.toolExecutionOptions = Validate.notNull(toolExecutionOptions, "toolExecutionOptions must not be null");
+      return this;
+    }
+
+    /**
+     * Lifts the outbound-egress guard's private/loopback/link-local/cloud-metadata blocks for HTTP and MCP
+     * streamable-HTTP tools. <strong>Development only</strong> — enabling this disables the cloud-metadata-IP (SSRF)
+     * protection. The {@code http}/{@code https} scheme allowlist still applies. Defaults to {@code false}
+     * (fail-closed).
+     *
+     * @param allowPrivateNetworks whether to allow private/loopback network targets
+     *
+     * @return this builder
+     */
+    public Builder withAllowPrivateNetworks(boolean allowPrivateNetworks) {
+      this.allowPrivateNetworks = allowPrivateNetworks;
       return this;
     }
 
@@ -739,7 +765,8 @@ public final class AgentForge4jBootstrap {
 
       BootstrapComponents components = new BootstrapComponents(resolvedAgentRepo, resolvedWorkflowRepo,
           resolvedStateRepo, resolvedEventLog, resolvedResolver, resolvedRenderer, resolvedParser, resolvedRecorder,
-          resolvedFileSink, resolvedStrategy, toolSupport.integrationRepository(), resolver, resolvedMapper,
+          resolvedFileSink, resolvedStrategy, toolSupport.integrationRepository(), resolver,
+          resolvedToolExecutionService, resolvedMapper,
           resolvedClock, resolvedInvoker, resolvedObserver, loadedConfiguration);
 
       return new AgentForge4j(resolvedRuntime, loadedConfiguration, components);
@@ -820,7 +847,8 @@ public final class AgentForge4jBootstrap {
       }
       SecretResolver resolvedSecretResolver = ObjectUtils.getIfNull(secretResolver,
           EnvironmentSecretResolver::new);
-      return ServiceLoaderToolProviderFactory.discover(resolvedMapper, resolvedSecretResolver);
+      return ServiceLoaderToolProviderFactory.discover(resolvedMapper, resolvedSecretResolver,
+          new HttpEgressGuard(allowPrivateNetworks));
     }
 
     /**
@@ -835,7 +863,7 @@ public final class AgentForge4jBootstrap {
     private ToolExecutionService getResolvedToolExecutionService(ToolProviderResolver resolver,
         PendingToolInvocationStore resolvedPendingStore, EventRecorder resolvedRecorder,
         ObjectMapper resolvedMapper, Clock resolvedClock) {
-      ToolPolicy resolvedPolicy = ObjectUtils.getIfNull(toolPolicy, NoOpToolPolicy::new);
+      ToolPolicy resolvedPolicy = ObjectUtils.getIfNull(toolPolicy, SecureDefaultToolPolicy::new);
       ToolExecutionOptions resolvedOptions = ObjectUtils.getIfNull(toolExecutionOptions,
           ToolExecutionOptions::defaults);
       return new DefaultToolExecutionService(
