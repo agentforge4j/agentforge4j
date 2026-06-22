@@ -191,24 +191,4 @@ class WorkflowAgentRefCollectorTest {
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("maximum nesting depth");
   }
-
-  @Test
-  void inline_blueprint_definition_uses_enclosing_workflow_scope() {
-    var inner = StepDefinition.builder()
-        .withStepId("in")
-        .withName("I")
-        .withBehaviour(new AgentBehaviour("a1", StepTransition.AUTO, null))
-        .build();
-    LoopConfig loop = LoopConfig.withDefaults(
-        LoopTerminationStrategy.AGENT_SIGNAL, null, null, 1, null);
-    BlueprintDefinition bp = new BlueprintDefinition(
-        "bid",
-        "BN",
-        new BlueprintBehaviour(loop, StepTransition.AUTO),
-        List.of(inner));
-    var wf = workflow("root", List.of(bp), Map.of());
-
-    assertThat(WorkflowAgentRefCollector.collect(wf))
-        .containsExactly(new WorkflowAgentRefCollector.AgentRefSite("a1", "root", "in"));
-  }
 }

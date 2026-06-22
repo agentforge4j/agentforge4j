@@ -54,8 +54,7 @@
       "oneOf": [
         { "$ref": "#/$defs/StepDefinition" },
         { "$ref": "#/$defs/BlueprintRef" },
-        { "$ref": "#" },
-        { "$ref": "blueprint.schema.json" }
+        { "$ref": "#" }
       ]
     },
     "StepDefinition": {

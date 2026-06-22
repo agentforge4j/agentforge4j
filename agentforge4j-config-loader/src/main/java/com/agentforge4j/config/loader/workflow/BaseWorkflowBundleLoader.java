@@ -232,9 +232,6 @@ public abstract class BaseWorkflowBundleLoader {
       Map<String, String> loadedStepPrompts) {
     if (executable instanceof StepDefinition step) {
       return StepDefinition.duplicate(step, loadedStepPrompts.get(step.stepId()));
-    } else if (executable instanceof BlueprintDefinition blueprint) {
-      return BlueprintDefinition.duplicate(blueprint,
-          injectStepPrompts(blueprint.steps(), loadedStepPrompts));
     } else if (executable instanceof WorkflowDefinition nested) {
       return WorkflowDefinition.duplicate(nested,
           injectStepPromptsInBlueprintMap(nested.blueprints(), loadedStepPrompts),
@@ -273,8 +270,6 @@ public abstract class BaseWorkflowBundleLoader {
     for (Executable executable : executables) {
       if (executable instanceof StepDefinition step) {
         validateStepBehaviour(step, workflowId);
-      } else if (executable instanceof BlueprintDefinition blueprint) {
-        validateBehaviourConfiguration(blueprint.steps(), workflowId, depth + 1);
       } else if (executable instanceof WorkflowDefinition nested) {
         validateBehaviourConfiguration(nested.steps(), nested.id(), depth + 1);
       } else if (executable instanceof BlueprintRef) {

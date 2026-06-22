@@ -2,10 +2,9 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "BlueprintDefinition",
   "type": "object",
-  "required": ["kind", "blueprintId", "name", "behaviour", "steps"],
+  "required": ["blueprintId", "name", "behaviour", "steps"],
   "additionalProperties": false,
   "properties": {
-    "kind": { "type": "string", "const": "BLUEPRINT" },
     "blueprintId": {
       "type": "string",
       "description": "Unique blueprint identifier (Unique to the workflow). Must match the filename stem."
@@ -68,7 +67,6 @@
       "oneOf": [
         { "$ref": "workflow.schema.json#/$defs/StepDefinition" },
         { "$ref": "#/$defs/BlueprintRef" },
-        { "$ref": "#" },
         { "$ref": "workflow.schema.json" }
       ]
     },

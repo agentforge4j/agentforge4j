@@ -8,7 +8,9 @@ import java.util.List;
 
 /**
  * Reusable subgraph: id, display name, loop and transition behaviour, and an ordered list of child
- * executables.
+ * executables. A blueprint is a standalone definition resolved via {@link BlueprintRef}; it is
+ * deliberately not itself an {@link Executable} and is never embedded inline in a {@code steps()}
+ * array.
  *
  * @param blueprintId non-blank stable id
  * @param name        non-blank human-readable name
@@ -20,7 +22,7 @@ public record BlueprintDefinition(
     String name,
     BlueprintBehaviour behaviour,
     List<Executable> steps
-) implements Executable {
+) {
 
   public BlueprintDefinition {
     Validate.notBlank(blueprintId, "BlueprintDefinition blueprintId must not be blank");

@@ -41,7 +41,6 @@ class BlueprintArtifactSchemaContractTest {
   void blueprintSchema_acceptsAWellFormedLoopBlueprint() throws Exception {
     List<Error> violations = validate(BLUEPRINT_SCHEMA, """
         {
-          "kind": "BLUEPRINT",
           "blueprintId": "loop-bp",
           "name": "Loop",
           "behaviour": { "transition": "AUTO" },
@@ -58,7 +57,6 @@ class BlueprintArtifactSchemaContractTest {
   void blueprintSchema_rejectsAMissingBlueprintId() throws Exception {
     List<Error> violations = validate(BLUEPRINT_SCHEMA, """
         {
-          "kind": "BLUEPRINT",
           "name": "Loop",
           "behaviour": { "transition": "AUTO" },
           "steps": [

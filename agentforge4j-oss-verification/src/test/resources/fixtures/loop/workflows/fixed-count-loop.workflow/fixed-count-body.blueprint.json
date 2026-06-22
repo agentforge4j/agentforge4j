@@ -1,5 +1,4 @@
 {
-  "kind": "BLUEPRINT",
   "blueprintId": "fixed-count-body",
   "name": "Fixed Count Body",
   "behaviour": {

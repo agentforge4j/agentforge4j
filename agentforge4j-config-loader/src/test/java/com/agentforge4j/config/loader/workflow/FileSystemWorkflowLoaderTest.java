@@ -126,7 +126,6 @@ class FileSystemWorkflowLoaderTest {
     Path workflowDir = workflowsRoot.resolve("sample.workflow");
     Files.writeString(workflowDir.resolve("wrong.blueprint.json"), """
         {
-          "kind": "BLUEPRINT",
           "blueprintId": "different",
           "name": "Wrong",
           "behaviour": {

@@ -5,7 +5,6 @@ import com.agentforge4j.core.workflow.Executable;
 import com.agentforge4j.core.workflow.WorkflowDefinition;
 import com.agentforge4j.core.workflow.requirement.RequirementResolver;
 import com.agentforge4j.core.workflow.step.StepDefinition;
-import com.agentforge4j.core.workflow.step.blueprint.BlueprintDefinition;
 import com.agentforge4j.core.workflow.step.blueprint.BlueprintRef;
 import com.agentforge4j.util.Validate;
 
@@ -40,8 +39,6 @@ public final class ExecutableExecutor {
       return blueprintExecutor.execute(ref, executionContext);
     } else if (executable instanceof WorkflowDefinition nested) {
       return workflowExecutor.execute(nested, executionContext);
-    } else if (executable instanceof BlueprintDefinition) {
-      throw new IllegalArgumentException("BlueprintDefinition is not directly executable; use BlueprintRef");
     }
     throw new IllegalStateException("Unhandled Executable type: " + executable.getClass());
   }

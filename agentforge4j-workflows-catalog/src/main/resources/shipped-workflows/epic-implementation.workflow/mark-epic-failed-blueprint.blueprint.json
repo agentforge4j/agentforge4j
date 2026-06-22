@@ -1,5 +1,4 @@
 {
-  "kind": "BLUEPRINT",
   "blueprintId": "mark-epic-failed-blueprint",
   "name": "Mark Epic Failed (retry exhausted)",
   "behaviour": {

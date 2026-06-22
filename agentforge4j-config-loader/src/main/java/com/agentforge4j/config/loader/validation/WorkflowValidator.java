@@ -97,8 +97,6 @@ public final class WorkflowValidator {
         }
       } else if (executable instanceof BlueprintRef) {
         // No workflow refs to validate here.
-      } else if (executable instanceof BlueprintDefinition blueprint) {
-        walkForWorkflowRefExistence(blueprint.steps(), workflow, workflows);
       } else if (executable instanceof WorkflowDefinition nested) {
         walkForWorkflowRefExistence(nested.steps(), nested, workflows);
       }
@@ -124,8 +122,6 @@ public final class WorkflowValidator {
         }
       } else if (executable instanceof BlueprintRef) {
         // No workflow refs to collect here.
-      } else if (executable instanceof BlueprintDefinition blueprint) {
-        collectWorkflowRefs(blueprint.steps(), refs);
       } else if (executable instanceof WorkflowDefinition nested) {
         collectWorkflowRefs(nested.steps(), refs);
       }
@@ -186,8 +182,6 @@ public final class WorkflowValidator {
             "Workflow '%s' contains BlueprintRef to unknown blueprint '%s'"
                 .formatted(workflow.id(), ref.blueprintId()));
         walkForBlueprintRefs(blueprint.steps(), workflow);
-      } else if (executable instanceof BlueprintDefinition blueprint) {
-        walkForBlueprintRefs(blueprint.steps(), workflow);
       } else if (executable instanceof WorkflowDefinition nested) {
         walkForBlueprintRefs(nested.steps(), nested);
       }
@@ -202,8 +196,6 @@ public final class WorkflowValidator {
         }
       } else if (executable instanceof BlueprintRef) {
         // No artifact refs to validate here.
-      } else if (executable instanceof BlueprintDefinition blueprint) {
-        walkForArtifactRefs(blueprint.steps(), workflow);
       } else if (executable instanceof WorkflowDefinition nested) {
         walkForArtifactRefs(nested.steps(), nested);
       }
@@ -236,8 +228,6 @@ public final class WorkflowValidator {
         stepIds.add(step.stepId());
       } else if (executable instanceof BlueprintRef) {
         // No step ids to collect here.
-      } else if (executable instanceof BlueprintDefinition blueprint) {
-        collectStepIds(blueprint.steps(), stepIds);
       } else if (executable instanceof WorkflowDefinition nested) {
         collectStepIds(nested.steps(), stepIds);
       }
@@ -256,8 +246,6 @@ public final class WorkflowValidator {
         }
       } else if (executable instanceof BlueprintRef) {
         // No retry refs to validate here.
-      } else if (executable instanceof BlueprintDefinition blueprint) {
-        walkForRetryStepRefs(blueprint.steps(), workflow, workflowStepIds);
       } else if (executable instanceof WorkflowDefinition nested) {
         Set<String> nestedStepIds = new HashSet<>();
         collectStepIds(nested.steps(), nestedStepIds);

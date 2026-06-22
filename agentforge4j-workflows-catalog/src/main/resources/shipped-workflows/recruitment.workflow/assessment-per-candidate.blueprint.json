@@ -1,5 +1,4 @@
 {
-  "kind": "BLUEPRINT",
   "blueprintId": "assessment-per-candidate",
   "name": "Generate and evaluate assessment for one shortlisted candidate",
   "behaviour": {

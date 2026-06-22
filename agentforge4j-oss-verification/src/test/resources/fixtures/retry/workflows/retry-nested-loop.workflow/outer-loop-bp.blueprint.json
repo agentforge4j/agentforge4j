@@ -1,5 +1,4 @@
 {
-  "kind": "BLUEPRINT",
   "blueprintId": "outer-loop-bp",
   "name": "Signal Loop With Nested Body",
   "behaviour": {

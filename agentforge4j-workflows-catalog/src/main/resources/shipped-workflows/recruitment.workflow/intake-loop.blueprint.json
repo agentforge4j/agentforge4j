@@ -1,5 +1,4 @@
 {
-  "kind": "BLUEPRINT",
   "blueprintId": "intake-loop",
   "name": "AI-driven intake loop",
   "behaviour": {

@@ -1,5 +1,4 @@
 {
-  "kind": "BLUEPRINT",
   "blueprintId": "dev-architect-spar",
   "name": "Developer-Architect Design Review Loop",
   "behaviour": {

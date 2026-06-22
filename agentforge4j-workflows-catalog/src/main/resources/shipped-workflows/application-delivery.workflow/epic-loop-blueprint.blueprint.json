@@ -1,5 +1,4 @@
 {
-  "kind": "BLUEPRINT",
   "blueprintId": "epic-loop-blueprint",
   "name": "Per-Epic Implementation Loop",
   "behaviour": {

@@ -1,5 +1,4 @@
 {
-  "kind": "BLUEPRINT",
   "blueprintId": "foreach-body",
   "name": "For Each Body",
   "behaviour": {

@@ -1,5 +1,4 @@
 {
-  "kind": "BLUEPRINT",
   "blueprintId": "agent-signal-body",
   "name": "Agent Signal Body",
   "behaviour": {

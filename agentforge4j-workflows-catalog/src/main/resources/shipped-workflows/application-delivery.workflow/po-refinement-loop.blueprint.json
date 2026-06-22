@@ -1,5 +1,4 @@
 {
-  "kind": "BLUEPRINT",
   "blueprintId": "po-refinement-loop",
   "name": "PO Refinement Loop",
   "behaviour": {

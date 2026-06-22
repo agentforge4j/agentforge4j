@@ -1,5 +1,4 @@
 {
-  "kind": "BLUEPRINT",
   "blueprintId": "inner-bp",
   "name": "Inner Body",
   "behaviour": {

@@ -1,5 +1,4 @@
 {
-  "kind": "BLUEPRINT",
   "blueprintId": "cv-collection-loop",
   "name": "CV upload and analysis loop",
   "behaviour": {

@@ -83,8 +83,6 @@ public final class WorkflowAgentRefCollector {
           "Workflow '%s' contains BlueprintRef to unknown blueprint '%s'"
               .formatted(scope.id(), ref.blueprintId()));
       walkSteps(blueprint.steps(), scope, out, depth + 1);
-    } else if (executable instanceof BlueprintDefinition blueprint) {
-      walkSteps(blueprint.steps(), scope, out, depth + 1);
     } else if (executable instanceof WorkflowDefinition nested) {
       walkSteps(nested.steps(), nested, out, depth + 1);
     }

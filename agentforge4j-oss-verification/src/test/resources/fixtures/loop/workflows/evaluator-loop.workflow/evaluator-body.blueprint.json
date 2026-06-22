@@ -1,5 +1,4 @@
 {
-  "kind": "BLUEPRINT",
   "blueprintId": "evaluator-body",
   "name": "Evaluator Body",
   "behaviour": {
