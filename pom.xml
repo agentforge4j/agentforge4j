@@ -40,7 +40,7 @@
          Java 21. Keep this on the latest 10.x until the OSS build JDK is raised. -->
     <checkstyle.version>10.26.1</checkstyle.version>
     <dependency-check-maven.version>12.2.2</dependency-check-maven.version>
-    <cyclonedx-maven-plugin.version>2.9.1</cyclonedx-maven-plugin.version>
+    <cyclonedx-maven-plugin.version>2.9.2</cyclonedx-maven-plugin.version>
     <spotbugs-annotations.version>4.10.2</spotbugs-annotations.version>
     <jqwik.version>1.10.1</jqwik.version>
     <jacoco-maven-plugin.version>0.8.15</jacoco-maven-plugin.version>
