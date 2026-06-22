@@ -14,7 +14,7 @@
   },
   "dependencies": {
     "@agentforge4j/workflow-builder-react": "^0.3.0",
-    "lucide-react": "^1.18.0",
+    "lucide-react": "^1.21.0",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
     "react-router-dom": "^6.26.0"
@@ -33,7 +33,7 @@
     "postcss": "^8.4.0",
     "tailwindcss": "^4.2.4",
     "typescript": "^6.0.3",
-    "typescript-eslint": "^8.61.0",
+    "typescript-eslint": "^8.61.1",
     "vite": "^8.0.16"
   }
 }
