@@ -1,0 +1,11 @@
+{
+  "id": "request-form",
+  "items": [
+    {
+      "type": "TEXT",
+      "id": "summary",
+      "label": "Request summary",
+      "required": true
+    }
+  ]
+}

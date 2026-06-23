@@ -1,0 +1,14 @@
+{
+  "id": "reviewer-agent",
+  "name": "Reviewer Agent",
+  "locality": "CLOUD",
+  "version": "1.0.0",
+  "supportedCommands": [
+    "COMPLETE"
+  ],
+  "providerPreferences": [
+    {
+      "provider": "fake"
+    }
+  ]
+}

@@ -1,0 +1,28 @@
+{
+  "kind": "WORKFLOW",
+  "id": "wl-human-in-the-loop",
+  "name": "Human in the Loop",
+  "description": "An INPUT step suspends to collect a request from a person; an agent then reviews it under a HUMAN_APPROVAL gate that suspends for an approve/reject decision. Approving completes the run; rejecting fails it.",
+  "steps": [
+    {
+      "kind": "STEP",
+      "stepId": "collect",
+      "name": "Collect Request",
+      "behaviour": {
+        "type": "INPUT",
+        "artifactId": "request-form",
+        "transition": "AUTO"
+      }
+    },
+    {
+      "kind": "STEP",
+      "stepId": "review",
+      "name": "Review",
+      "behaviour": {
+        "type": "AGENT",
+        "agentRef": "reviewer-agent",
+        "transition": "HUMAN_APPROVAL"
+      }
+    }
+  ]
+}

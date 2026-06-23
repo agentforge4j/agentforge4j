@@ -30,5 +30,6 @@
   <modules>
     <module>wl-branch</module>
     <module>wl-resource</module>
+    <module>wl-human-in-the-loop</module>
   </modules>
 </project>
