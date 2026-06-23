@@ -1,0 +1,14 @@
+{
+  "id": "branch-agent",
+  "name": "Branch Decider Agent",
+  "locality": "CLOUD",
+  "version": "1.0.0",
+  "supportedCommands": [
+    "SET_CONTEXT"
+  ],
+  "providerPreferences": [
+    {
+      "provider": "fake"
+    }
+  ]
+}

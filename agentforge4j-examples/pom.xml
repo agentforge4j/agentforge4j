@@ -94,6 +94,7 @@
 
   <modules>
     <module>framework-examples</module>
+    <module>workflow-language-examples</module>
   </modules>
 
   <build>

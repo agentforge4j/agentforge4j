@@ -1,0 +1,14 @@
+{
+  "id": "approve-agent",
+  "name": "Approval Handler Agent",
+  "locality": "CLOUD",
+  "version": "1.0.0",
+  "supportedCommands": [
+    "COMPLETE"
+  ],
+  "providerPreferences": [
+    {
+      "provider": "fake"
+    }
+  ]
+}

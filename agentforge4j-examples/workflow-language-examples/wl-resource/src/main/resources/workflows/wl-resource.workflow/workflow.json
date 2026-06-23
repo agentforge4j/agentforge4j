@@ -1,0 +1,19 @@
+{
+  "kind": "WORKFLOW",
+  "id": "wl-resource",
+  "name": "Resource Loading",
+  "description": "A single RESOURCE step loads a bundled classpath resource into the workflow context under a chosen key, then the run completes — no agent, no LLM call.",
+  "steps": [
+    {
+      "kind": "STEP",
+      "stepId": "load",
+      "name": "Load Resource",
+      "behaviour": {
+        "type": "RESOURCE",
+        "resourcePath": "/workflow-resources/welcome.txt",
+        "contextKey": "welcome",
+        "transition": "AUTO"
+      }
+    }
+  ]
+}

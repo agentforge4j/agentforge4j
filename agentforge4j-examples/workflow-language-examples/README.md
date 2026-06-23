@@ -1,20 +1,33 @@
 # Workflow Language Examples
 
-> **Reserved — examples land in a later batch.** This category is a placeholder; no runnable
-> modules yet.
+Demonstrations of the declarative AgentForge4j workflow language: how to express control flow and
+structure in workflow definitions (and blueprints) rather than in Java. Each example is a standalone
+Maven module that runs deterministically and offline against the shipped fake LLM provider — no
+network, no API keys — following the same five-section README format as the framework examples.
 
-This category will demonstrate the declarative AgentForge4j workflow language: how to express
-control flow and structure in workflow definitions rather than in Java. Planned coverage, one
-focused example per feature:
+## Examples
 
-- **branch** — conditional routing between steps
-- **loop** — repeating a step or sub-sequence
-- **SPAR** — the structured plan/act/reflect pattern
-- **input** — supplying and consuming workflow inputs
-- **approval** — human-approval gates in the language
-- **retry** — re-running a step on failure
-- **resource** — declaring and using resources
-- **agent-signal** — agent-driven signals that steer the workflow
+| Module | Language feature(s) | What it teaches |
+|---|---|---|
+| [`wl-branch`](wl-branch) | `BRANCH`, `FAIL` | Author-controlled deterministic routing on a context value, with `FAIL` as an explicit terminal. |
+| [`wl-resource`](wl-resource) | `RESOURCE` | A deterministic non-AI step that loads a bundled resource into the workflow context — not every step calls the LLM. |
+| `wl-human-in-the-loop` | `INPUT`, `HUMAN_APPROVAL` | _(later batch)_ Suspend/resume and the resume-verb contract. |
+| `wl-retry` | `RETRY_PREVIOUS` | _(later batch)_ Deterministic re-execution of a prior step. |
+| `wl-loop` | blueprint loop (`FIXED_COUNT`, `AGENT_SIGNAL`) | _(later batch)_ Bounded iteration via a looped blueprint; two termination strategies. |
+| `wl-spar` | `SPAR` | _(later batch)_ Two agents in multi-round adversarial review under workflow control. |
 
-Each example will follow the same deterministic, dependency-free approach as the framework examples
-(shipped fake LLM provider, no network) and the same five-section README format.
+`agent-signal` is not a standalone step behaviour — it is the `AGENT_SIGNAL` loop-termination
+strategy, demonstrated as a variant within `wl-loop`.
+
+## Running
+
+These modules consume the published AgentForge4j artifacts the way a third-party application would,
+so install the OSS reactor to your local `.m2` first, then build the examples tree:
+
+```bash
+# from the OSS repository root
+./mvnw install -DskipTests
+
+# then, from agentforge4j-examples/
+./mvnw verify
+```

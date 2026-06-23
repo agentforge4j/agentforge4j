@@ -1,0 +1,48 @@
+{
+  "kind": "WORKFLOW",
+  "id": "wl-branch",
+  "name": "Branch Routing",
+  "description": "An agent step writes a decision into the context; a BRANCH step routes on it — 'approve' runs an agent step to completion, 'reject' ends the run with FAIL.",
+  "steps": [
+    {
+      "kind": "STEP",
+      "stepId": "decide",
+      "name": "Decide",
+      "behaviour": {
+        "type": "AGENT",
+        "agentRef": "branch-agent",
+        "transition": "AUTO"
+      }
+    },
+    {
+      "kind": "STEP",
+      "stepId": "route",
+      "name": "Route",
+      "behaviour": {
+        "type": "BRANCH",
+        "contextKey": "decision",
+        "branches": {
+          "approve": {
+            "kind": "STEP",
+            "stepId": "approved",
+            "name": "Approved",
+            "behaviour": {
+              "type": "AGENT",
+              "agentRef": "approve-agent",
+              "transition": "AUTO"
+            }
+          },
+          "reject": {
+            "kind": "STEP",
+            "stepId": "rejected",
+            "name": "Rejected",
+            "behaviour": {
+              "type": "FAIL",
+              "reason": "Routing rejected the request."
+            }
+          }
+        }
+      }
+    }
+  ]
+}
