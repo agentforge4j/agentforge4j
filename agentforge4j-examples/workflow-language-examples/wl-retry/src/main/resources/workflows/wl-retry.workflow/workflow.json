@@ -1,0 +1,39 @@
+{
+  "kind": "WORKFLOW",
+  "id": "wl-retry",
+  "name": "Retry Previous Step",
+  "description": "An INPUT step collects a note; a RETRY_PREVIOUS step then rewinds to it (FROM_STEP, maxAttempts 1), so the input is requested a second time. Once the single retry attempt is exhausted, the run falls through to the fallback agent step and completes.",
+  "steps": [
+    {
+      "kind": "STEP",
+      "stepId": "request",
+      "name": "Request Note",
+      "behaviour": {
+        "type": "INPUT",
+        "artifactId": "retry-form",
+        "transition": "AUTO"
+      }
+    },
+    {
+      "kind": "STEP",
+      "stepId": "retry",
+      "name": "Retry Request",
+      "behaviour": {
+        "type": "RETRY_PREVIOUS",
+        "retryStepId": "request",
+        "retryMode": "FROM_STEP",
+        "maxAttempts": 1,
+        "fallback": {
+          "kind": "STEP",
+          "stepId": "finalize",
+          "name": "Finalize",
+          "behaviour": {
+            "type": "AGENT",
+            "agentRef": "finalize-agent",
+            "transition": "AUTO"
+          }
+        }
+      }
+    }
+  ]
+}

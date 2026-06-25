@@ -12,7 +12,7 @@ network, no API keys — following the same five-section README format as the fr
 | [`wl-branch`](wl-branch) | `BRANCH`, `FAIL` | Author-controlled deterministic routing on a context value, with `FAIL` as an explicit terminal. |
 | [`wl-resource`](wl-resource) | `RESOURCE` | A deterministic non-AI step that loads a bundled resource into the workflow context — not every step calls the LLM. |
 | [`wl-human-in-the-loop`](wl-human-in-the-loop) | `INPUT`, `HUMAN_APPROVAL` | Suspend/resume human-in-the-loop: an `INPUT` gate then a `HUMAN_APPROVAL` gate, each with its own resume verb (`submitInput`, `decideStepApproval`). |
-| `wl-retry` | `RETRY_PREVIOUS` | _(later batch)_ Deterministic re-execution of a prior step. |
+| [`wl-retry`](wl-retry) | `RETRY_PREVIOUS` | Rewind and re-execute a prior step, bounded by `maxAttempts`, with a fallback once attempts are exhausted. |
 | `wl-loop` | blueprint loop (`FIXED_COUNT`, `AGENT_SIGNAL`) | _(later batch)_ Bounded iteration via a looped blueprint; two termination strategies. |
 | `wl-spar` | `SPAR` | _(later batch)_ Two agents in multi-round adversarial review under workflow control. |
 

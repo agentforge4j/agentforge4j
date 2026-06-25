@@ -31,5 +31,6 @@
     <module>wl-branch</module>
     <module>wl-resource</module>
     <module>wl-human-in-the-loop</module>
+    <module>wl-retry</module>
   </modules>
 </project>

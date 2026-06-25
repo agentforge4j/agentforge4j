@@ -1,0 +1,11 @@
+{
+  "id": "retry-form",
+  "items": [
+    {
+      "type": "TEXT",
+      "id": "note",
+      "label": "Note",
+      "required": true
+    }
+  ]
+}
