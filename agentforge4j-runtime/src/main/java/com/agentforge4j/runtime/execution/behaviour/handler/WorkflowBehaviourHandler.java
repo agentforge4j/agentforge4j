@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package com.agentforge4j.runtime.execution.behaviour.handler;
 
+import com.agentforge4j.core.workflow.WorkflowCapturePathCollector;
 import com.agentforge4j.core.workflow.WorkflowDefinition;
 import com.agentforge4j.core.workflow.repository.WorkflowRepository;
 import com.agentforge4j.core.workflow.step.StepDefinition;
@@ -43,6 +44,9 @@ public final class WorkflowBehaviourHandler implements BehaviourHandler<Workflow
     LOG.log(System.Logger.Level.INFO, "Workflow behaviour start stepId={0}, workflowRef={1}",
         step.stepId(), behaviour.workflowRef());
     WorkflowDefinition nested = workflowRepository.get(behaviour.workflowRef());
+    // Merge the sub-workflow's reachable VALIDATE-declared paths into the run-level capture set before its
+    // steps run, so a CREATE_FILE inside the sub-workflow is captured when (and only when) it validates one.
+    executionContext.getState().mergeCapturedArtifactPaths(WorkflowCapturePathCollector.collect(nested));
     return workflowExecutor.execute(nested, executionContext);
   }
 }

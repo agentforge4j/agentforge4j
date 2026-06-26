@@ -1,11 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 package com.agentforge4j.bootstrap;
 
+import com.agentforge4j.config.loader.agent.AgentBundleArtifactValidator;
 import com.agentforge4j.core.agent.AgentRepository;
 import com.agentforge4j.core.runtime.WorkflowRuntime;
 import com.agentforge4j.core.spi.tool.PendingToolInvocationStore;
 import com.agentforge4j.core.spi.tool.ToolCatalog;
 import com.agentforge4j.core.spi.tool.ToolExecutionService;
+import com.agentforge4j.core.spi.validation.ArtifactValidator;
 import com.agentforge4j.core.workflow.event.WorkflowEventLog;
 import com.agentforge4j.core.workflow.repository.WorkflowRepository;
 import com.agentforge4j.core.workflow.repository.WorkflowStateRepository;
@@ -26,6 +28,7 @@ import com.agentforge4j.runtime.llm.LlmCommandParser;
 import com.agentforge4j.runtime.llm.LlmProviderSelectionStrategy;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.Clock;
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -171,7 +174,15 @@ final class RuntimeAssembler {
       ToolExecutionService toolExecutionService,
       PendingToolInvocationStore pendingToolInvocationStore,
       RequirementResolver requirementResolver,
-      RunExecutionInterceptor runExecutionInterceptor) {
+      RunExecutionInterceptor runExecutionInterceptor,
+      ObjectMapper objectMapper,
+      List<ArtifactValidator> embedderArtifactValidators) {
+    // The built-in agent-bundle validator is always present (so shipped agent-bundle workflows keep working) and
+    // validates through the production agent parse path, reusing the same configured ObjectMapper the agent loaders
+    // use. Embedder-supplied validators are appended; a duplicate validator id fails fast in the runtime.
+    List<ArtifactValidator> artifactValidators = new ArrayList<>();
+    artifactValidators.add(new AgentBundleArtifactValidator(objectMapper));
+    artifactValidators.addAll(embedderArtifactValidators);
     WorkflowRuntimeBuilder runtimeBuilder = new WorkflowRuntimeBuilder()
         .workflowRepository(workflowRepository)
         .workflowStateRepository(workflowStateRepository)
@@ -180,7 +191,8 @@ final class RuntimeAssembler {
         .fileSink(fileSink)
         .agentInvoker(agentInvoker)
         .eventRecorder(eventRecorder)
-        .runExecutionInterceptor(runExecutionInterceptor);
+        .runExecutionInterceptor(runExecutionInterceptor)
+        .artifactValidators(List.copyOf(artifactValidators));
 
     if (maxNestingDepth != null) {
       runtimeBuilder.maxNestingDepth(maxNestingDepth);

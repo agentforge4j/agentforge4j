@@ -341,7 +341,7 @@ class TransitionGateRuntimeIT {
         .withBehaviour(new FailBehaviour("not confirmed")).build();
     StepDefinition gate = StepDefinition.builder()
         .withStepId("gate").withName("gate")
-        .withBehaviour(new BranchBehaviour("confirmed", Map.of("false", rejected), null))
+        .withBehaviour(new BranchBehaviour("confirmed", Map.of("false", rejected), List.of(), null, false))
         .build();
     WorkflowDefinition sub = new WorkflowDefinition("wf-sub", "wf-sub", null, null, null, null, null,
         WorkflowSource.CUSTOM, WorkflowLifecycle.ACTIVE, Map.of("form", form), Map.of(),

@@ -13,6 +13,8 @@ import com.agentforge4j.core.workflow.event.WorkflowEventType;
 import com.agentforge4j.core.workflow.state.WorkflowState;
 import com.agentforge4j.core.workflow.step.StepDefinition;
 import com.agentforge4j.core.workflow.step.behaviour.BranchBehaviour;
+import com.agentforge4j.core.workflow.step.behaviour.BranchPredicate;
+import com.agentforge4j.core.workflow.step.behaviour.BranchPredicateKind;
 import com.agentforge4j.runtime.event.EventRecorder;
 import com.agentforge4j.runtime.execution.ExecutableExecutor;
 import com.agentforge4j.runtime.execution.ExecutionContext;
@@ -49,16 +51,34 @@ public final class BranchBehaviourHandler implements BehaviourHandler<BranchBeha
     LOG.log(System.Logger.Level.DEBUG, "Branch behaviour start stepId={0}, contextKey={1}",
         step.stepId(), behaviour.contextKey());
     WorkflowState state = executionContext.getState();
-    ContextValue contextValue = getContextValue(step, behaviour, state);
+    Optional<ContextValue> contextValue = state.getContextValue(behaviour.contextKey());
 
-    String resolvedKey = resolveAndLogBranchKey(step, behaviour, contextValue);
-    ResolvedSelected resolvedSelected = resolveSelected(behaviour, resolvedKey);
+    final String resolvedKey;
+    final Resolution resolution;
+    if (contextValue.isEmpty()) {
+      // An absent context key is treated as "empty": only an EMPTY predicate may route it; otherwise
+      // it remains the missing-key error (unchanged contract).
+      resolvedKey = "";
+      resolution = resolveAbsent(step, behaviour);
+    } else {
+      resolvedKey = resolveAndLogBranchKey(step, behaviour, contextValue.get());
+      resolution = resolve(behaviour, resolvedKey);
+    }
     LOG.log(System.Logger.Level.INFO,
         "Branch selected stepId={0}, contextKey={1}, value={2}, branch={3}",
-        step.stepId(), behaviour.contextKey(), resolvedKey, resolvedSelected.selectedBranch());
+        step.stepId(), behaviour.contextKey(), resolvedKey, resolution.selectedBranch());
 
-    recordStepStarted(step, resolvedKey, resolvedSelected.selectedBranch(), state);
-    Executable selected = resolvedSelected.selected();
+    recordStepStarted(step, resolvedKey, resolution.selectedBranch(), state);
+    if (!resolution.matched()) {
+      if (behaviour.failOnUnmatched()) {
+        throw new StepExecutionException(
+            ("Step '%s' branch on context key '%s' matched no predicate, branch, or default for value '%s' and"
+                + " failOnUnmatched is set")
+                .formatted(step.stepId(), behaviour.contextKey(), resolvedKey));
+      }
+      return ExecutionOutcome.COMPLETED;
+    }
+    Executable selected = resolution.selected();
     if (selected == null) {
       LOG.log(System.Logger.Level.INFO,
           "Branch selected continuation stepId={0}, contextKey={1}, value={2}",
@@ -84,27 +104,51 @@ public final class BranchBehaviourHandler implements BehaviourHandler<BranchBeha
         .execute(selected, executionContext);
   }
 
-  private static ResolvedSelected resolveSelected(BranchBehaviour behaviour, String resolvedKey) {
-    // Distinguish an explicit match (the key is present in the map, even when mapped to null) from
-    // an unmatched value (the key is absent). Map.get cannot tell these apart, so a key deliberately
-    // mapped to null — "matched, no sub-executable, complete" — must be detected with containsKey and
-    // must never fall through to the default branch. Routing must not depend on map entry ordering.
-    final Executable selected;
-    final String selectedBranch;
-    if (behaviour.branches().containsKey(resolvedKey)) {
-      selected = behaviour.branches().get(resolvedKey);
-      selectedBranch = resolvedKey;
-    } else {
-      // Unmatched value: use the configured default branch. A null default is the documented
-      // "no fallback configured — complete and continue" contract, handled below alongside an
-      // explicit null match.
-      selected = behaviour.defaultBranch();
-      selectedBranch = "default";
+  private static Resolution resolve(BranchBehaviour behaviour, String resolvedKey) {
+    // 1. Ordered predicates: first match wins. A matched predicate routes to its target (which may be
+    // null — a deliberate "matched, complete" route).
+    int index = 0;
+    for (BranchPredicate predicate : behaviour.predicates()) {
+      if (matches(predicate, resolvedKey)) {
+        return new Resolution(true, predicate.target(), "predicate[%d]:%s".formatted(index, predicate.kind()));
+      }
+      index++;
     }
-    return new ResolvedSelected(selected, selectedBranch);
+    // 2. Exact match: containsKey distinguishes an explicit match (even mapped to null —
+    // "matched, complete") from an absent key, and never falls through to the default.
+    if (behaviour.branches().containsKey(resolvedKey)) {
+      return new Resolution(true, behaviour.branches().get(resolvedKey), resolvedKey);
+    }
+    // 3. Default branch when configured.
+    if (behaviour.defaultBranch() != null) {
+      return new Resolution(true, behaviour.defaultBranch(), "default");
+    }
+    // 4. Nothing routed the value: the caller fails closed when failOnUnmatched is set, else completes.
+    // Labelled "default" to preserve the existing branch-decision audit semantics.
+    return new Resolution(false, null, "default");
   }
 
-  private record ResolvedSelected(Executable selected, String selectedBranch) {
+  private static Resolution resolveAbsent(StepDefinition step, BranchBehaviour behaviour) {
+    int index = 0;
+    for (BranchPredicate predicate : behaviour.predicates()) {
+      if (predicate.kind() == BranchPredicateKind.EMPTY) {
+        return new Resolution(true, predicate.target(), "predicate[%d]:EMPTY".formatted(index));
+      }
+      index++;
+    }
+    throw new StepExecutionException(
+        "Step '%s' requires context key '%s' but it is missing"
+            .formatted(step.stepId(), behaviour.contextKey()));
+  }
+
+  private static boolean matches(BranchPredicate predicate, String resolvedKey) {
+    return switch (predicate.kind()) {
+      case MEMBER_OF -> predicate.members().contains(resolvedKey);
+      case EMPTY -> resolvedKey == null || resolvedKey.isBlank();
+    };
+  }
+
+  private record Resolution(boolean matched, Executable selected, String selectedBranch) {
 
   }
 
@@ -115,18 +159,6 @@ public final class BranchBehaviourHandler implements BehaviourHandler<BranchBeha
         "Branch resolved value stepId={0}, contextKey={1}, value={2}",
         step.stepId(), behaviour.contextKey(), resolvedKey);
     return resolvedKey;
-  }
-
-  private static ContextValue getContextValue(StepDefinition step, BranchBehaviour behaviour, WorkflowState state) {
-    return Optional.ofNullable(state.getContext().get(behaviour.contextKey()))
-        .orElseThrow(() -> {
-          LOG.log(System.Logger.Level.WARNING,
-              "Branch context key missing stepId={0}, contextKey={1}",
-              step.stepId(), behaviour.contextKey());
-          return new StepExecutionException(
-              "Step '%s' requires context key '%s' but it is missing"
-                  .formatted(step.stepId(), behaviour.contextKey()));
-        });
   }
 
   private void recordStepStarted(StepDefinition step, String resolvedKey, String selectedBranch, WorkflowState state) {

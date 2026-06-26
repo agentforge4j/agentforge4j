@@ -190,6 +190,7 @@ public final class AgentForgeLoader {
     runValidation("circular refs", () -> validator.validateCircularRefs(workflows));
     runValidation("retry refs", () -> validator.validateRetryStepRefs(workflows));
     runValidation("requirement refs", () -> validator.validateRequirements(workflows));
+    runValidation("validate contracts", () -> validator.validateValidateBehaviourContracts(workflows));
   }
 
   /**

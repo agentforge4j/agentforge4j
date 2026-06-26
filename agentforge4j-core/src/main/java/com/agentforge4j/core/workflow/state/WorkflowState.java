@@ -3,13 +3,19 @@ package com.agentforge4j.core.workflow.state;
 
 import com.agentforge4j.core.workflow.artifact.ArtifactDefinition;
 import com.agentforge4j.core.workflow.context.ContextValue;
+import com.agentforge4j.core.workflow.file.ArtifactDescriptor;
 import com.agentforge4j.util.Validate;
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Iterator;
+import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import lombok.Getter;
 import lombok.Setter;
 import org.apache.commons.lang3.StringUtils;
@@ -72,6 +78,18 @@ public final class WorkflowState {
    * execution range, so a completed marker never survives a rewind to at or before the loop.
    */
   private final Map<String, Integer> completedLoopBlueprintUids;
+  /**
+   * Descriptors of files emitted during the run (path, content hash, producing step, emitting step uid). At most one
+   * descriptor per path (last write wins). Persisted as the durable, content-free record of generated artifacts; the
+   * emitted bytes themselves live only in the transient run-scoped generated-artifact store, never here.
+   */
+  private final List<ArtifactDescriptor> generatedArtifactDescriptors;
+  /**
+   * Run-scoped union of the artifact paths declared by every reachable {@code VALIDATE} step, merged at each workflow
+   * entry. Capture of {@code CREATE_FILE} bytes is gated on this set, so a run with no {@code VALIDATE} step captures
+   * nothing. Repopulated idempotently each drive, so it needs no rewind handling.
+   */
+  private final Set<String> capturedArtifactPaths;
 
   /**
    * Creates a new run in {@link WorkflowStatus#RUNNING} with empty context and step output maps.
@@ -101,6 +119,8 @@ public final class WorkflowState {
     this.loopIterationCursorByBlueprintId = new HashMap<>();
     this.forEachListFingerprintByBlueprintId = new HashMap<>();
     this.completedLoopBlueprintUids = new HashMap<>();
+    this.generatedArtifactDescriptors = new ArrayList<>();
+    this.capturedArtifactPaths = new LinkedHashSet<>();
     this.lastUpdatedAt = startedAt;
   }
 
@@ -166,6 +186,51 @@ public final class WorkflowState {
 
   public Map<String, Integer> getCompletedLoopBlueprintUids() {
     return Collections.unmodifiableMap(completedLoopBlueprintUids);
+  }
+
+  /**
+   * Returns an unmodifiable view of the descriptors of files emitted during this run, in emission order (at most one per
+   * path). Content-free; the emitted bytes are not persisted here.
+   *
+   * @return unmodifiable list of generated-artifact descriptors
+   */
+  public List<ArtifactDescriptor> getGeneratedArtifactDescriptors() {
+    return Collections.unmodifiableList(generatedArtifactDescriptors);
+  }
+
+  /**
+   * Records a descriptor for a file emitted by the current step, last-write-wins: any existing descriptor for the same
+   * {@code path} is replaced, so the list holds at most one descriptor per path and the latest content hash and
+   * emitting-step uid win.
+   *
+   * @param descriptor the descriptor to record; must not be {@code null}
+   */
+  public void addGeneratedArtifactDescriptor(ArtifactDescriptor descriptor) {
+    Validate.notNull(descriptor, "generatedArtifactDescriptor must not be null");
+    generatedArtifactDescriptors.removeIf(existing -> existing.path().equals(descriptor.path()));
+    generatedArtifactDescriptors.add(descriptor);
+  }
+
+  /**
+   * Returns an unmodifiable view of the run-scoped union of {@code VALIDATE}-declared artifact paths.
+   *
+   * @return unmodifiable set of capture-eligible artifact paths
+   */
+  public Set<String> getCapturedArtifactPaths() {
+    return Collections.unmodifiableSet(capturedArtifactPaths);
+  }
+
+  /**
+   * Merges artifact paths into the run-scoped capture set. Idempotent: re-merging the same paths on a resume or rewind
+   * drive is a no-op.
+   *
+   * @param paths paths to add; must not be {@code null} and must contain no blank entries
+   */
+  public void mergeCapturedArtifactPaths(Collection<String> paths) {
+    Validate.notNull(paths, "capturedArtifactPaths must not be null");
+    for (String path : paths) {
+      capturedArtifactPaths.add(Validate.notBlank(path, "captured artifact path must not be blank"));
+    }
   }
 
   /**
@@ -368,6 +433,10 @@ public final class WorkflowState {
    * after {@code retryUid} are also dropped: a rewind to at or before such a loop clears its body's
    * execution range, so its completion must not survive and the loop re-executes.
    *
+   * <p>Generated-artifact descriptors emitted at or after {@code retryUid} are also dropped (consistent with
+   * {@code stepOutputs}), so a rewind past a file-emitting step does not leave a stale descriptor for a path the
+   * re-drive may not re-emit.
+   *
    * @param retryUid the uid threshold; entries with uid &gt;= this value are cleared
    */
   public void clearEntriesFromUid(int retryUid) {
@@ -394,6 +463,8 @@ public final class WorkflowState {
     }
 
     completedLoopBlueprintUids.values().removeIf(completionUid -> completionUid >= retryUid);
+
+    generatedArtifactDescriptors.removeIf(descriptor -> descriptor.stepExecutionUid() >= retryUid);
   }
 
   /**
@@ -439,6 +510,10 @@ public final class WorkflowState {
             : Map.copyOf(forEachListFingerprintByBlueprintId));
     copy.replaceCompletedLoopBlueprintUids(
         completedLoopBlueprintUids.isEmpty() ? null : Map.copyOf(completedLoopBlueprintUids));
+    for (ArtifactDescriptor descriptor : generatedArtifactDescriptors) {
+      copy.addGeneratedArtifactDescriptor(descriptor);
+    }
+    copy.mergeCapturedArtifactPaths(capturedArtifactPaths);
     return copy;
   }
 }

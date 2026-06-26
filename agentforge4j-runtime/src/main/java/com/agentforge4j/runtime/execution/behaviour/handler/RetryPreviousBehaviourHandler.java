@@ -10,8 +10,10 @@ import com.agentforge4j.core.workflow.event.WorkflowEventType;
 import com.agentforge4j.core.workflow.state.WorkflowState;
 import com.agentforge4j.core.workflow.step.StepDefinition;
 import com.agentforge4j.core.workflow.step.behaviour.RetryPreviousBehaviour;
+import com.agentforge4j.runtime.GeneratedArtifactStore;
 import com.agentforge4j.runtime.event.EventRecorder;
 import com.agentforge4j.runtime.execution.ExecutableExecutor;
+import com.agentforge4j.runtime.execution.GeneratedArtifactEviction;
 import com.agentforge4j.runtime.execution.ExecutionContext;
 import com.agentforge4j.runtime.execution.ExecutionOutcome;
 import com.agentforge4j.runtime.execution.behaviour.BehaviourHandler;
@@ -29,10 +31,14 @@ public final class RetryPreviousBehaviourHandler implements
   private static final String RETRY_COUNTER_SUFFIX = "_attempts";
 
   private final EventRecorder eventRecorder;
+  private final GeneratedArtifactStore generatedArtifactStore;
   private ExecutableExecutor executableExecutor;
 
-  public RetryPreviousBehaviourHandler(EventRecorder eventRecorder) {
+  public RetryPreviousBehaviourHandler(EventRecorder eventRecorder,
+      GeneratedArtifactStore generatedArtifactStore) {
     this.eventRecorder = Validate.notNull(eventRecorder, "eventRecorder must not be null");
+    this.generatedArtifactStore =
+        Validate.notNull(generatedArtifactStore, "generatedArtifactStore must not be null");
   }
 
   public void setExecutableExecutor(ExecutableExecutor executableExecutor) {
@@ -78,6 +84,9 @@ public final class RetryPreviousBehaviourHandler implements
     state.putContextValue(attemptKey,
         new StringContextValue(String.valueOf(attempts), ContextProvenance.SYSTEM_GENERATED));
 
+    // Evict captured bytes for artifacts emitted at or after the rewind point before clearing the
+    // descriptors, so a re-emit on the re-drive upserts cleanly and an un-re-emitted path does not linger.
+    GeneratedArtifactEviction.evictFromUid(generatedArtifactStore, state, retryUid);
     state.clearEntriesFromUid(retryUid);
     LOG.log(System.Logger.Level.DEBUG, "Retry clearFromUid retryUid={0}", retryUid);
     LOG.log(System.Logger.Level.DEBUG, "Retry dispatched retryMode={0}, retryStepId={1}",

@@ -3,11 +3,8 @@ package com.agentforge4j.core.workflow;
 
 import com.agentforge4j.core.workflow.step.StepDefinition;
 import com.agentforge4j.core.workflow.step.behaviour.AgentBehaviour;
-import com.agentforge4j.core.workflow.step.behaviour.BranchBehaviour;
 import com.agentforge4j.core.workflow.step.behaviour.SparBehaviour;
 import com.agentforge4j.core.workflow.step.behaviour.StepBehaviour;
-import com.agentforge4j.core.workflow.step.blueprint.BlueprintDefinition;
-import com.agentforge4j.core.workflow.step.blueprint.BlueprintRef;
 import com.agentforge4j.util.Validate;
 
 import java.util.ArrayList;
@@ -20,11 +17,11 @@ import java.util.List;
 public final class WorkflowAgentRefCollector {
 
   /**
-   * Maximum nesting depth traversed before failing fast. Matches the runtime's default workflow
-   * nesting limit, and turns a circular blueprint reference (a blueprint whose steps reference the
-   * blueprint itself) into a clear error instead of a {@link StackOverflowError}.
+   * Maximum nesting depth traversed before failing fast. Mirrors {@link WorkflowTreeWalker#MAX_TRAVERSAL_DEPTH}: a
+   * circular blueprint reference (a blueprint whose steps reference the blueprint itself) fails with a clear error
+   * instead of a {@link StackOverflowError}.
    */
-  public static final int MAX_TRAVERSAL_DEPTH = 32;
+  public static final int MAX_TRAVERSAL_DEPTH = WorkflowTreeWalker.MAX_TRAVERSAL_DEPTH;
 
   /**
    * Records a reference to an agent id within a workflow, including the context for validation.
@@ -53,46 +50,11 @@ public final class WorkflowAgentRefCollector {
   public static List<AgentRefSite> collect(WorkflowDefinition root) {
     Validate.notNull(root, "root must not be null");
     List<AgentRefSite> out = new ArrayList<>();
-    walkSteps(root.steps(), root, out, 0);
+    WorkflowTreeWalker.walk(root, (step, scope) -> collectStepRefs(step, scope, out));
     return List.copyOf(out);
   }
 
-  private static void walkSteps(
-      List<Executable> steps,
-      WorkflowDefinition scope,
-      List<AgentRefSite> out,
-      int depth) {
-    Validate.isTrue(depth <= MAX_TRAVERSAL_DEPTH,
-        "Workflow '%s' exceeds the maximum nesting depth of %s - circular blueprint reference?"
-            .formatted(scope.id(), MAX_TRAVERSAL_DEPTH));
-    for (Executable executable : steps) {
-      walkExecutable(executable, scope, out, depth);
-    }
-  }
-
-  private static void walkExecutable(
-      Executable executable,
-      WorkflowDefinition scope,
-      List<AgentRefSite> out,
-      int depth) {
-    if (executable instanceof StepDefinition step) {
-      walkStepBehaviours(step, scope, out, depth);
-    } else if (executable instanceof BlueprintRef ref) {
-      BlueprintDefinition blueprint = scope.blueprints().get(ref.blueprintId());
-      Validate.notNull(blueprint,
-          "Workflow '%s' contains BlueprintRef to unknown blueprint '%s'"
-              .formatted(scope.id(), ref.blueprintId()));
-      walkSteps(blueprint.steps(), scope, out, depth + 1);
-    } else if (executable instanceof WorkflowDefinition nested) {
-      walkSteps(nested.steps(), nested, out, depth + 1);
-    }
-  }
-
-  private static void walkStepBehaviours(
-      StepDefinition step,
-      WorkflowDefinition scope,
-      List<AgentRefSite> out,
-      int depth) {
+  private static void collectStepRefs(StepDefinition step, WorkflowDefinition scope, List<AgentRefSite> out) {
     String workflowId = scope.id();
     StepBehaviour behaviour = step.behaviour();
     if (behaviour instanceof AgentBehaviour ab) {
@@ -100,11 +62,6 @@ public final class WorkflowAgentRefCollector {
     } else if (behaviour instanceof SparBehaviour sb) {
       out.add(new AgentRefSite(sb.agentRef(), workflowId, step.stepId()));
       out.add(new AgentRefSite(sb.sparConfig().challengerAgentId(), workflowId, step.stepId()));
-    } else if (behaviour instanceof BranchBehaviour bb) {
-      bb.branches().values().forEach(branch -> walkExecutable(branch, scope, out, depth + 1));
-      if (bb.defaultBranch() != null) {
-        walkExecutable(bb.defaultBranch(), scope, out, depth + 1);
-      }
     }
   }
 }

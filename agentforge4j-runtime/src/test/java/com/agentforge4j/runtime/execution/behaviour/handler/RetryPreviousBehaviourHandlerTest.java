@@ -15,6 +15,7 @@ import com.agentforge4j.core.workflow.step.StepTransition;
 import com.agentforge4j.core.workflow.step.behaviour.ResourceBehaviour;
 import com.agentforge4j.core.workflow.step.behaviour.RetryMode;
 import com.agentforge4j.core.workflow.step.behaviour.RetryPreviousBehaviour;
+import com.agentforge4j.runtime.InMemoryGeneratedArtifactStore;
 import com.agentforge4j.runtime.event.EventRecorder;
 import com.agentforge4j.runtime.execution.ExecutionContext;
 import com.agentforge4j.runtime.execution.ExecutionOutcome;
@@ -55,7 +56,7 @@ class RetryPreviousBehaviourHandlerTest {
   void setUp() {
     eventRecorder = mock(EventRecorder.class);
     executableExecutor = mock(ExecutableExecutor.class);
-    handler = new RetryPreviousBehaviourHandler(eventRecorder);
+    handler = new RetryPreviousBehaviourHandler(eventRecorder, new InMemoryGeneratedArtifactStore());
     handler.setExecutableExecutor(executableExecutor);
     when(executableExecutor.execute(any(Executable.class), any())).thenReturn(
         ExecutionOutcome.COMPLETED);
@@ -338,7 +339,8 @@ class RetryPreviousBehaviourHandlerTest {
 
     @Test
     void unwired_handler_throws_illegal_argument_exception() {
-      RetryPreviousBehaviourHandler unwired = new RetryPreviousBehaviourHandler(eventRecorder);
+      RetryPreviousBehaviourHandler unwired =
+          new RetryPreviousBehaviourHandler(eventRecorder, new InMemoryGeneratedArtifactStore());
       TestFixture f = fixture()
           .handler(unwired)
           .retryStepId("s2")

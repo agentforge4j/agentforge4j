@@ -5,6 +5,8 @@ import com.agentforge4j.core.workflow.step.StepDefinition;
 import com.agentforge4j.core.workflow.step.StepTransition;
 import com.agentforge4j.core.workflow.step.behaviour.AgentBehaviour;
 import com.agentforge4j.core.workflow.step.behaviour.BranchBehaviour;
+import com.agentforge4j.core.workflow.step.behaviour.BranchPredicate;
+import com.agentforge4j.core.workflow.step.behaviour.BranchPredicateKind;
 import com.agentforge4j.core.workflow.step.behaviour.FailBehaviour;
 import com.agentforge4j.core.workflow.step.behaviour.SparBehaviour;
 import com.agentforge4j.core.workflow.step.blueprint.BlueprintBehaviour;
@@ -150,7 +152,9 @@ class WorkflowAgentRefCollectorTest {
     var branch = new BranchBehaviour(
         "routeKey",
         Map.of("path-a", branchStep),
-        StepDefinition.builder().withStepId("def").withName("D").withBehaviour(new FailBehaviour("x")).build());
+        List.of(),
+        StepDefinition.builder().withStepId("def").withName("D").withBehaviour(new FailBehaviour("x")).build(),
+        false);
     var step = StepDefinition.builder().withStepId("b1").withName("Branch step").withBehaviour(branch).build();
     var wf = workflow("root", List.of(step), Map.of());
 
@@ -168,12 +172,36 @@ class WorkflowAgentRefCollectorTest {
     var branch = new BranchBehaviour(
         "routeKey",
         Map.of("x", StepDefinition.builder().withStepId("x").withName("X").withBehaviour(new FailBehaviour("r")).build()),
-        defaultStep);
+        List.of(),
+        defaultStep,
+        false);
     var step = StepDefinition.builder().withStepId("b1").withName("Branch step").withBehaviour(branch).build();
     var wf = workflow("root", List.of(step), Map.of());
 
     assertThat(WorkflowAgentRefCollector.collect(wf))
         .containsExactly(new WorkflowAgentRefCollector.AgentRefSite("def-agent", "root", "def"));
+  }
+
+  @Test
+  void collects_agent_on_branch_predicate_target() {
+    var predicateAgentStep = StepDefinition.builder()
+        .withStepId("pred")
+        .withName("P")
+        .withBehaviour(new AgentBehaviour("predicate-agent", StepTransition.AUTO, null))
+        .build();
+    var branch = new BranchBehaviour(
+        "routeKey",
+        Map.of(),
+        List.of(new BranchPredicate(BranchPredicateKind.MEMBER_OF, java.util.Set.of("a"),
+            predicateAgentStep)),
+        null,
+        false);
+    var step = StepDefinition.builder().withStepId("b1").withName("Branch step")
+        .withBehaviour(branch).build();
+    var wf = workflow("root", List.of(step), Map.of());
+
+    assertThat(WorkflowAgentRefCollector.collect(wf))
+        .containsExactly(new WorkflowAgentRefCollector.AgentRefSite("predicate-agent", "root", "pred"));
   }
 
   @Test

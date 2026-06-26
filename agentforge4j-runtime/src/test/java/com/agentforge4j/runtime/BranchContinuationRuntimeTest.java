@@ -244,7 +244,7 @@ class BranchContinuationRuntimeTest {
     return StepDefinition.builder()
         .withStepId(stepId)
         .withName(stepId)
-        .withBehaviour(new BranchBehaviour(contextKey, branches, defaultBranch))
+        .withBehaviour(new BranchBehaviour(contextKey, branches, List.of(), defaultBranch, false))
         .build();
   }
 

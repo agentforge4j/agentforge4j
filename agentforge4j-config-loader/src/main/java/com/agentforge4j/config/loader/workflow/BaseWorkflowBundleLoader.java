@@ -216,8 +216,8 @@ public abstract class BaseWorkflowBundleLoader {
     Validate.notNull(behaviour.branches(),
         "BranchBehaviour branches must not be null in step '%s' of workflow '%s'"
             .formatted(step.stepId(), workflowId));
-    Validate.notEmpty(behaviour.branches().keySet(),
-        "BranchBehaviour branches must not be empty in step '%s' of workflow '%s'"
+    Validate.isTrue(!behaviour.branches().isEmpty() || !behaviour.predicates().isEmpty(),
+        "BranchBehaviour must declare at least one branch or predicate in step '%s' of workflow '%s'"
             .formatted(step.stepId(), workflowId));
   }
 

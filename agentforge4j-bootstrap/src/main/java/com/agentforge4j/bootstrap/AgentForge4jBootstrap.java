@@ -18,6 +18,7 @@ import com.agentforge4j.core.spi.tool.ToolExecutionService;
 import com.agentforge4j.core.spi.tool.ToolPolicy;
 import com.agentforge4j.core.spi.tool.ToolProvider;
 import com.agentforge4j.core.spi.tool.ToolProviderResolver;
+import com.agentforge4j.core.spi.validation.ArtifactValidator;
 import com.agentforge4j.core.workflow.event.WorkflowEventLog;
 import com.agentforge4j.core.workflow.repository.WorkflowRepository;
 import com.agentforge4j.core.workflow.repository.WorkflowStateRepository;
@@ -118,6 +119,7 @@ public final class AgentForge4jBootstrap {
     private RunExecutionInterceptor runExecutionInterceptor;
     private ModelTierResolver modelTierResolver;
     private RequirementResolver requirementResolver;
+    private List<ArtifactValidator> artifactValidators = List.of();
     private List<ToolProvider> toolProviders = List.of();
     private ToolProviderResolver toolProviderResolver;
     private ToolPolicy toolPolicy;
@@ -391,6 +393,21 @@ public final class AgentForge4jBootstrap {
      */
     public Builder withRequirementResolver(RequirementResolver requirementResolver) {
       this.requirementResolver = Validate.notNull(requirementResolver, "requirementResolver must not be null");
+      return this;
+    }
+
+    /**
+     * Registers additional {@link ArtifactValidator}s a {@code VALIDATE} step may select by id. These are appended to
+     * the built-in {@code agent-bundle} validator (which is always present so shipped agent-bundle workflows keep
+     * working); a supplied validator that reuses an already-registered id fails fast at runtime assembly.
+     *
+     * @param artifactValidators validators to add; must not be {@code null}
+     *
+     * @return this builder
+     */
+    public Builder withArtifactValidators(List<ArtifactValidator> artifactValidators) {
+      this.artifactValidators =
+          List.copyOf(Validate.notNull(artifactValidators, "artifactValidators must not be null"));
       return this;
     }
 
@@ -761,7 +778,7 @@ public final class AgentForge4jBootstrap {
           resolvedWorkflowRepo, resolvedStateRepo, resolvedEventLog, resolvedClock,
           resolvedFileSink, resolvedInvoker, resolvedRecorder,
           maxNestingDepth, resolvedToolExecutionService, resolvedPendingStore,
-          requirementResolver, resolvedInterceptor);
+          requirementResolver, resolvedInterceptor, resolvedMapper, artifactValidators);
 
       BootstrapComponents components = new BootstrapComponents(resolvedAgentRepo, resolvedWorkflowRepo,
           resolvedStateRepo, resolvedEventLog, resolvedResolver, resolvedRenderer, resolvedParser, resolvedRecorder,

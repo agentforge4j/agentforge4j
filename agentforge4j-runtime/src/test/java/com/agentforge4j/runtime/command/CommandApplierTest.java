@@ -7,6 +7,7 @@ import com.agentforge4j.core.command.LlmCommand;
 import com.agentforge4j.core.command.RunCommandCommand;
 import com.agentforge4j.core.workflow.context.ContextMapping;
 import com.agentforge4j.core.workflow.state.WorkflowState;
+import com.agentforge4j.runtime.InMemoryGeneratedArtifactStore;
 import com.agentforge4j.runtime.command.handler.CompleteCommandHandler;
 import com.agentforge4j.runtime.command.handler.ContinueCommandHandler;
 import com.agentforge4j.runtime.command.handler.CreateFileCommandHandler;
@@ -114,7 +115,8 @@ class CommandApplierTest {
     return List.of(
         new CompleteCommandHandler(eventRecorder),
         new ContinueCommandHandler(),
-        new CreateFileCommandHandler(eventRecorder, resolvedFileSink),
+        new CreateFileCommandHandler(eventRecorder, resolvedFileSink,
+            new InMemoryGeneratedArtifactStore()),
         new EscalateCommandHandler(eventRecorder, resolvedClock),
         new GeneralQuestionCommandHandler(eventRecorder, resolvedClock),
         new RunCommandHandler(eventRecorder, resolvedShell),

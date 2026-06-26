@@ -102,7 +102,7 @@
       "properties": {
         "type": {
           "type": "string",
-          "enum": ["AGENT", "SPAR", "WORKFLOW", "INPUT", "RESOURCE", "BRANCH", "FAIL", "RETRY_PREVIOUS"]
+          "enum": ["AGENT", "SPAR", "WORKFLOW", "INPUT", "RESOURCE", "BRANCH", "FAIL", "RETRY_PREVIOUS", "VALIDATE", "ASSIGN_CONTEXT"]
         }
       },
       "required": ["type"],
@@ -117,7 +117,9 @@
         { "$ref": "#/$defs/ResourceBehaviour" },
         { "$ref": "#/$defs/BranchBehaviour" },
         { "$ref": "#/$defs/FailBehaviour" },
-        { "$ref": "#/$defs/RetryPreviousBehaviour" }
+        { "$ref": "#/$defs/RetryPreviousBehaviour" },
+        { "$ref": "#/$defs/ValidateBehaviour" },
+        { "$ref": "#/$defs/AssignContextBehaviour" }
       ]
     },
     "AgentBehaviour": {
@@ -195,9 +197,33 @@
             ]
           }
         },
-        "defaultBranch": { "$ref": "#/$defs/Executable" }
+        "predicates": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/BranchPredicate" },
+          "description": "Ordered predicates evaluated before the exact-match branches; first match wins."
+        },
+        "defaultBranch": { "$ref": "#/$defs/Executable" },
+        "failOnUnmatched": {
+          "type": "boolean",
+          "description": "When true, an unmatched value with no defaultBranch fails the run instead of completing."
+        }
       },
-      "required": ["type", "contextKey", "branches"]
+      "required": ["type", "contextKey"]
+    },
+    "BranchPredicate": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "kind": { "type": "string", "enum": ["MEMBER_OF", "EMPTY"] },
+        "members": { "type": "array", "items": { "type": "string" } },
+        "target": {
+          "anyOf": [
+            { "type": "null" },
+            { "$ref": "#/$defs/Executable" }
+          ]
+        }
+      },
+      "required": ["kind"]
     },
     "FailBehaviour": {
       "type": "object",
@@ -219,6 +245,57 @@
         "fallback": { "$ref": "#/$defs/Executable" }
       },
       "required": ["type", "retryStepId", "retryMode", "maxAttempts", "fallback"]
+    },
+    "ValidateBehaviour": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "type": { "const": "VALIDATE" },
+        "validatorId": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Id of the ArtifactValidator applied to the captured artifacts."
+        },
+        "requiredArtifacts": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string" },
+          "description": "Allowlist of artifact paths that must be exactly present (no unexpected files)."
+        },
+        "contextEqualityContracts": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/ContextEqualityContract" }
+        }
+      },
+      "required": ["type", "validatorId", "requiredArtifacts"]
+    },
+    "ContextEqualityContract": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "artifactPath": { "type": "string", "minLength": 1 },
+        "jsonPointer": { "type": "string", "minLength": 1 },
+        "contextKey": { "type": "string", "minLength": 1 }
+      },
+      "required": ["artifactPath", "jsonPointer", "contextKey"]
+    },
+    "AssignContextBehaviour": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "type": { "const": "ASSIGN_CONTEXT" },
+        "contextKey": { "type": "string", "minLength": 1 },
+        "value": { "$ref": "#/$defs/ScalarContextValue" }
+      },
+      "required": ["type", "contextKey", "value"]
+    },
+    "ScalarContextValue": {
+      "type": "object",
+      "required": ["type", "value"],
+      "properties": {
+        "type": { "type": "string", "enum": ["STRING", "NUMBER", "BOOLEAN"] },
+        "value": {}
+      }
     },
     "StepTransition": {
       "type": "string",

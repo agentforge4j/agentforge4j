@@ -10,8 +10,10 @@ import com.agentforge4j.core.workflow.WorkflowDefinition;
 import com.agentforge4j.core.workflow.requirement.WorkflowRequirement;
 import com.agentforge4j.core.workflow.step.StepDefinition;
 import com.agentforge4j.core.workflow.step.behaviour.BranchBehaviour;
+import com.agentforge4j.core.workflow.step.behaviour.ContextEqualityContract;
 import com.agentforge4j.core.workflow.step.behaviour.InputBehaviour;
 import com.agentforge4j.core.workflow.step.behaviour.RetryPreviousBehaviour;
+import com.agentforge4j.core.workflow.step.behaviour.ValidateBehaviour;
 import com.agentforge4j.core.workflow.step.behaviour.WorkflowBehaviour;
 import com.agentforge4j.core.workflow.step.blueprint.BlueprintDefinition;
 import com.agentforge4j.core.workflow.step.blueprint.BlueprintRef;
@@ -94,6 +96,8 @@ public final class WorkflowValidator {
       if (executable instanceof StepDefinition step) {
         if (step.behaviour() instanceof WorkflowBehaviour wb) {
           assertWorkflowExists(wb.workflowRef(), step.stepId(), workflow.id(), workflows);
+        } else if (step.behaviour() instanceof BranchBehaviour bb) {
+          walkForWorkflowRefExistence(bb.childExecutables(), workflow, workflows);
         }
       } else if (executable instanceof BlueprintRef) {
         // No workflow refs to validate here.
@@ -119,6 +123,8 @@ public final class WorkflowValidator {
       if (executable instanceof StepDefinition step) {
         if (step.behaviour() instanceof WorkflowBehaviour wb) {
           refs.add(wb.workflowRef());
+        } else if (step.behaviour() instanceof BranchBehaviour bb) {
+          collectWorkflowRefs(bb.childExecutables(), refs);
         }
       } else if (executable instanceof BlueprintRef) {
         // No workflow refs to collect here.
@@ -170,10 +176,7 @@ public final class WorkflowValidator {
     for (Executable executable : steps) {
       if (executable instanceof StepDefinition step) {
         if (step.behaviour() instanceof BranchBehaviour branchBehaviour) {
-          walkForBlueprintRefs(branchBehaviour.branches().values().stream().toList(), workflow);
-          if (branchBehaviour.defaultBranch() != null) {
-            walkForBlueprintRefs(List.of(branchBehaviour.defaultBranch()), workflow);
-          }
+          walkForBlueprintRefs(branchBehaviour.childExecutables(), workflow);
         }
       } else if (executable instanceof BlueprintRef ref) {
         validateBlueprintExists(ref.blueprintId(), workflow);
@@ -188,11 +191,56 @@ public final class WorkflowValidator {
     }
   }
 
+  /**
+   * Verifies that every {@code VALIDATE} step's context-equality contracts reference an artifact in that step's own
+   * {@code requiredArtifacts} allowlist. A contract pointing at a path outside the allowlist can never be satisfied at
+   * runtime (that artifact is never captured for the step), so it is a config error caught here at load time.
+   *
+   * @param workflows workflows to validate
+   *
+   * @throws IllegalArgumentException when a contract references an artifact outside the step's allowlist
+   */
+  public void validateValidateBehaviourContracts(Map<String, WorkflowDefinition> workflows) {
+    workflows.values().forEach(workflow -> walkForValidateContracts(workflow.steps(), workflow));
+  }
+
+  private void walkForValidateContracts(List<Executable> steps, WorkflowDefinition workflow) {
+    for (Executable executable : steps) {
+      if (executable instanceof StepDefinition step) {
+        if (step.behaviour() instanceof ValidateBehaviour validate) {
+          assertContractsWithinAllowlist(validate, step.stepId(), workflow.id());
+        } else if (step.behaviour() instanceof BranchBehaviour bb) {
+          walkForValidateContracts(bb.childExecutables(), workflow);
+        }
+      } else if (executable instanceof BlueprintRef ref) {
+        BlueprintDefinition blueprint = workflow.blueprints().get(ref.blueprintId());
+        if (blueprint != null) {
+          walkForValidateContracts(blueprint.steps(), workflow);
+        }
+      } else if (executable instanceof WorkflowDefinition nested) {
+        walkForValidateContracts(nested.steps(), nested);
+      }
+    }
+  }
+
+  private static void assertContractsWithinAllowlist(ValidateBehaviour validate, String stepId,
+      String workflowId) {
+    List<String> allowlist = validate.requiredArtifacts();
+    for (ContextEqualityContract contract : validate.contextEqualityContracts()) {
+      Validate.isTrue(allowlist.contains(contract.artifactPath()),
+          ("VALIDATE step '%s' in workflow '%s' has an equality contract on artifact '%s' which is not in its "
+              + "requiredArtifacts allowlist %s")
+              .formatted(stepId, workflowId, contract.artifactPath(), allowlist));
+    }
+  }
+
   private void walkForArtifactRefs(List<Executable> steps, WorkflowDefinition workflow) {
     for (Executable executable : steps) {
       if (executable instanceof StepDefinition step) {
         if (step.behaviour() instanceof InputBehaviour ib) {
           assertArtifactExists(ib.artifactId(), step.stepId(), workflow.id(), workflow);
+        } else if (step.behaviour() instanceof BranchBehaviour bb) {
+          walkForArtifactRefs(bb.childExecutables(), workflow);
         }
       } else if (executable instanceof BlueprintRef) {
         // No artifact refs to validate here.

@@ -4,6 +4,7 @@ package com.agentforge4j.runtime;
 import com.agentforge4j.core.command.LlmCommand;
 import com.agentforge4j.core.runtime.WorkflowRuntime;
 import com.agentforge4j.core.spi.tool.PendingToolInvocationStore;
+import com.agentforge4j.core.spi.validation.ArtifactValidator;
 import com.agentforge4j.core.spi.tool.ToolExecutionService;
 import com.agentforge4j.core.workflow.event.WorkflowEventLog;
 import com.agentforge4j.core.workflow.repository.WorkflowRepository;
@@ -32,12 +33,14 @@ import com.agentforge4j.runtime.execution.TransitionGate;
 import com.agentforge4j.runtime.execution.WorkflowExecutor;
 import com.agentforge4j.runtime.execution.behaviour.BehaviourHandler;
 import com.agentforge4j.runtime.execution.behaviour.handler.AgentBehaviourHandler;
+import com.agentforge4j.runtime.execution.behaviour.handler.AssignContextBehaviourHandler;
 import com.agentforge4j.runtime.execution.behaviour.handler.BranchBehaviourHandler;
 import com.agentforge4j.runtime.execution.behaviour.handler.FailBehaviourHandler;
 import com.agentforge4j.runtime.execution.behaviour.handler.InputBehaviourHandler;
 import com.agentforge4j.runtime.execution.behaviour.handler.ResourceBehaviourHandler;
 import com.agentforge4j.runtime.execution.behaviour.handler.RetryPreviousBehaviourHandler;
 import com.agentforge4j.runtime.execution.behaviour.handler.SparBehaviourHandler;
+import com.agentforge4j.runtime.execution.behaviour.handler.ValidateBehaviourHandler;
 import com.agentforge4j.runtime.execution.behaviour.handler.WorkflowBehaviourHandler;
 import com.agentforge4j.runtime.execution.behaviour.resource.SafeClasspathResourceResolver;
 import com.agentforge4j.runtime.execution.loop.AgentSignalLoopStrategy;
@@ -88,6 +91,8 @@ public final class WorkflowRuntimeBuilder {
   private PendingToolInvocationStore pendingToolInvocationStore;
   private RequirementResolver requirementResolver;
   private RunExecutionInterceptor runExecutionInterceptor = RunExecutionInterceptor.NO_OP;
+  private GeneratedArtifactStore generatedArtifactStore;
+  private List<ArtifactValidator> artifactValidators = List.of();
 
   /**
    * Configures the workflow definition source.
@@ -285,6 +290,34 @@ public final class WorkflowRuntimeBuilder {
   }
 
   /**
+   * Configures the run-scoped store that captures emitted {@code CREATE_FILE} bytes for in-process
+   * artifact validation. Defaults to a retaining {@link InMemoryGeneratedArtifactStore} when omitted.
+   *
+   * @param value generated-artifact store instance
+   *
+   * @return this builder
+   */
+  public WorkflowRuntimeBuilder generatedArtifactStore(GeneratedArtifactStore value) {
+    this.generatedArtifactStore =
+        Validate.notNull(value, "generatedArtifactStore must not be null");
+    return this;
+  }
+
+  /**
+   * Configures the {@link ArtifactValidator}s a {@code VALIDATE} step may select by {@code validatorId}.
+   * Defaults to none; an embedding assembly (for example bootstrap) supplies the defaults.
+   *
+   * @param value validators registered by id (no duplicate ids)
+   *
+   * @return this builder
+   */
+  public WorkflowRuntimeBuilder artifactValidators(List<ArtifactValidator> value) {
+    this.artifactValidators =
+        List.copyOf(Validate.notNull(value, "artifactValidators must not be null"));
+    return this;
+  }
+
+  /**
    * Validates required dependencies, wires executors and handlers, and returns a runnable
    * {@link com.agentforge4j.core.runtime.WorkflowRuntime}.
    *
@@ -298,12 +331,14 @@ public final class WorkflowRuntimeBuilder {
     FileSink resolvedFileSink = getResolvedFileSink();
     ShellCommandRunner resolvedShell = resolveShellCommandRunner();
     RunContextManager runContextManager = resolveRunContextManager();
+    GeneratedArtifactStore resolvedGeneratedArtifactStore = resolveGeneratedArtifactStore();
     EventRecorder resolvedEventRecorder = eventRecorder != null
         ? eventRecorder
         : new EventRecorder(workflowEventLog, resolvedClock);
 
     CommandApplier commandApplier = new CommandApplier(determineCommandHandlers(
-        resolvedEventRecorder, resolvedFileSink, resolvedShell, resolvedClock));
+        resolvedEventRecorder, resolvedFileSink, resolvedShell, resolvedClock,
+        resolvedGeneratedArtifactStore));
 
     LoopEvaluator resolvedEvaluator = resolveLoopEvaluator(agentInvoker);
 
@@ -323,7 +358,7 @@ public final class WorkflowRuntimeBuilder {
     BranchBehaviourHandler branchBehaviourHandler = new BranchBehaviourHandler(
         resolvedEventRecorder);
     RetryPreviousBehaviourHandler retryPreviousBehaviourHandler = new RetryPreviousBehaviourHandler(
-        resolvedEventRecorder);
+        resolvedEventRecorder, resolvedGeneratedArtifactStore);
     TransitionGate transitionGate = new TransitionGate(resolvedEventRecorder);
     StepExecutor stepExecutor = buildStepExecutor(
         agentInvoker,
@@ -333,7 +368,8 @@ public final class WorkflowRuntimeBuilder {
         workflowExecutor,
         branchBehaviourHandler,
         retryPreviousBehaviourHandler,
-        transitionGate);
+        transitionGate,
+        resolvedGeneratedArtifactStore);
 
     ExecutableExecutor executableExecutor =
         new ExecutableExecutor(stepExecutor, blueprintExecutor, workflowExecutor,
@@ -361,7 +397,8 @@ public final class WorkflowRuntimeBuilder {
         pendingToolInvocationStore,
         resolvedRequirementResolver,
         transitionGate,
-        runExecutionInterceptor);
+        runExecutionInterceptor,
+        resolvedGeneratedArtifactStore);
   }
 
   private static void setupBlueprintLoopStrategies(BlueprintExecutor blueprintExecutor,
@@ -377,11 +414,11 @@ public final class WorkflowRuntimeBuilder {
 
   private List<CommandHandler<? extends LlmCommand>> determineCommandHandlers(
       EventRecorder eventRecorder, FileSink resolvedFileSink, ShellCommandRunner resolvedShell,
-      Clock resolvedClock) {
+      Clock resolvedClock, GeneratedArtifactStore resolvedGeneratedArtifactStore) {
     List<CommandHandler<? extends LlmCommand>> handlers = new ArrayList<>(List.of(
         new CompleteCommandHandler(eventRecorder),
         new ContinueCommandHandler(),
-        new CreateFileCommandHandler(eventRecorder, resolvedFileSink),
+        new CreateFileCommandHandler(eventRecorder, resolvedFileSink, resolvedGeneratedArtifactStore),
         new EscalateCommandHandler(eventRecorder, resolvedClock),
         new GeneralQuestionCommandHandler(eventRecorder, resolvedClock),
         new RunCommandHandler(eventRecorder, resolvedShell),
@@ -403,7 +440,8 @@ public final class WorkflowRuntimeBuilder {
       WorkflowExecutor workflowExecutor,
       BranchBehaviourHandler branchBehaviourHandler,
       RetryPreviousBehaviourHandler retryPreviousBehaviourHandler,
-      TransitionGate transitionGate) {
+      TransitionGate transitionGate,
+      GeneratedArtifactStore generatedArtifactStore) {
     List<BehaviourHandler<? extends StepBehaviour>> handlers = List.of(
         new AgentBehaviourHandler(agentInvoker, commandApplier, eventRecorder),
         new SparBehaviourHandler(agentInvoker, commandApplier, eventRecorder),
@@ -412,7 +450,9 @@ public final class WorkflowRuntimeBuilder {
         new ResourceBehaviourHandler(new SafeClasspathResourceResolver()),
         branchBehaviourHandler,
         new FailBehaviourHandler(),
-        retryPreviousBehaviourHandler);
+        retryPreviousBehaviourHandler,
+        new ValidateBehaviourHandler(generatedArtifactStore, artifactValidators, eventRecorder),
+        new AssignContextBehaviourHandler(eventRecorder));
     return new StepExecutor(handlers, eventRecorder, resolvedClock, transitionGate);
   }
 
@@ -434,6 +474,12 @@ public final class WorkflowRuntimeBuilder {
 
   private RunContextManager resolveRunContextManager() {
     return runContextManager != null ? runContextManager : RunContextManager.NO_OP;
+  }
+
+  private GeneratedArtifactStore resolveGeneratedArtifactStore() {
+    return generatedArtifactStore != null
+        ? generatedArtifactStore
+        : new InMemoryGeneratedArtifactStore();
   }
 
   private void validateRequired() {

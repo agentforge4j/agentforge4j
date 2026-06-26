@@ -7,17 +7,18 @@ import org.junit.jupiter.api.Test;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * Guards the {@code StepBehaviour} sealed hierarchy: the transition work adds the {@link TransitionAware} interface to
- * the five carriers without changing the permit set.
+ * Guards the {@code StepBehaviour} sealed hierarchy: {@link TransitionAware} carriers are the five
+ * transition-carrying behaviours, and the permit set is the eight control/agent behaviours plus the
+ * deterministic {@link ValidateBehaviour}.
  */
 class StepBehaviourPermitTest {
 
   @Test
-  void permitSetIsUnchanged() {
+  void permitSetMatchesExpected() {
     assertThat(StepBehaviour.class.getPermittedSubclasses()).containsExactlyInAnyOrder(
         AgentBehaviour.class, SparBehaviour.class, WorkflowBehaviour.class, InputBehaviour.class,
         ResourceBehaviour.class, BranchBehaviour.class, FailBehaviour.class,
-        RetryPreviousBehaviour.class);
+        RetryPreviousBehaviour.class, ValidateBehaviour.class, AssignContextBehaviour.class);
   }
 
   @Test
@@ -29,7 +30,8 @@ class StepBehaviourPermitTest {
 
   @Test
   void nonCarriersAreNotTransitionAware() {
-    assertThat(List.of(BranchBehaviour.class, FailBehaviour.class, RetryPreviousBehaviour.class))
+    assertThat(List.of(BranchBehaviour.class, FailBehaviour.class, RetryPreviousBehaviour.class,
+        ValidateBehaviour.class, AssignContextBehaviour.class))
         .noneMatch(TransitionAware.class::isAssignableFrom);
   }
 }

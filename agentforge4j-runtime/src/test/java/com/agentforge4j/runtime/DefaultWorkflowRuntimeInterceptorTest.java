@@ -206,6 +206,7 @@ class DefaultWorkflowRuntimeInterceptorTest {
         null,
         new DefaultRequirementResolver(),
         new TransitionGate(eventRecorder),
-        interceptor);
+        interceptor,
+        new InMemoryGeneratedArtifactStore());
   }
 }

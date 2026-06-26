@@ -13,8 +13,10 @@ import com.agentforge4j.core.workflow.context.ContextMapping;
 import com.agentforge4j.core.workflow.step.StepDefinition;
 import com.agentforge4j.core.workflow.step.StepTransition;
 import com.agentforge4j.core.workflow.step.behaviour.AgentBehaviour;
+import com.agentforge4j.core.workflow.step.behaviour.ContextEqualityContract;
 import com.agentforge4j.core.workflow.step.behaviour.FailBehaviour;
 import com.agentforge4j.core.workflow.step.behaviour.InputBehaviour;
+import com.agentforge4j.core.workflow.step.behaviour.ValidateBehaviour;
 import com.agentforge4j.core.workflow.step.behaviour.WorkflowBehaviour;
 import com.agentforge4j.core.workflow.step.blueprint.BlueprintRef;
 import org.junit.jupiter.api.Test;
@@ -206,6 +208,38 @@ class WorkflowValidatorTest {
         .withBehaviour(new WorkflowBehaviour(workflowRef, StepTransition.AUTO))
         .withContextMapping(new ContextMapping(List.of(), List.of()))
         .build();
+  }
+
+  @Test
+  void validateValidateBehaviourContracts_rejectsContractPathOutsideAllowlist() {
+    StepDefinition step = StepDefinition.builder()
+        .withStepId("validate")
+        .withName("Validate")
+        .withBehaviour(new ValidateBehaviour("agent-bundle", List.of("agent.json"),
+            List.of(new ContextEqualityContract("other.json", "/modelTier", "recommendedTier"))))
+        .withContextMapping(new ContextMapping(List.of("recommendedTier"), List.of()))
+        .build();
+    WorkflowDefinition wf = wf("wf1", List.of(step));
+
+    assertThatThrownBy(() -> validator.validateValidateBehaviourContracts(Map.of("wf1", wf)))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("other.json")
+        .hasMessageContaining("requiredArtifacts allowlist");
+  }
+
+  @Test
+  void validateValidateBehaviourContracts_acceptsContractPathWithinAllowlist() {
+    StepDefinition step = StepDefinition.builder()
+        .withStepId("validate")
+        .withName("Validate")
+        .withBehaviour(new ValidateBehaviour("agent-bundle", List.of("agent.json"),
+            List.of(new ContextEqualityContract("agent.json", "/modelTier", "recommendedTier"))))
+        .withContextMapping(new ContextMapping(List.of("recommendedTier"), List.of()))
+        .build();
+    WorkflowDefinition wf = wf("wf1", List.of(step));
+
+    assertThatCode(() -> validator.validateValidateBehaviourContracts(Map.of("wf1", wf)))
+        .doesNotThrowAnyException();
   }
 
   private static WorkflowDefinition wf(String id, List<Executable> steps) {

@@ -107,7 +107,8 @@ class DefaultWorkflowRuntimeFailureTest {
         null,
         new DefaultRequirementResolver(),
         new TransitionGate(eventRecorder),
-        com.agentforge4j.runtime.interceptor.RunExecutionInterceptor.NO_OP);
+        com.agentforge4j.runtime.interceptor.RunExecutionInterceptor.NO_OP,
+        new InMemoryGeneratedArtifactStore());
   }
 
 }

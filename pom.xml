@@ -55,6 +55,7 @@
     <config.dir>${maven.multiModuleProjectDirectory}/config</config.dir>
     <!-- Empty by default; CI overrides with -Dnvd.api.key=$NVD_API_KEY for usable NVD rate limits. -->
     <nvd.api.key></nvd.api.key>
+    <json-schema-validator.version>2.0.1</json-schema-validator.version>
   </properties>
 
   <modules>
@@ -276,6 +277,11 @@
         <groupId>net.jqwik</groupId>
         <artifactId>jqwik</artifactId>
         <version>${jqwik.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>com.networknt</groupId>
+        <artifactId>json-schema-validator</artifactId>
+        <version>${json-schema-validator.version}</version>
       </dependency>
     </dependencies>
   </dependencyManagement>

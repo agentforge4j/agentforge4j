@@ -12,6 +12,7 @@ import com.agentforge4j.core.spi.tool.PendingToolInvocationStore;
 import com.agentforge4j.core.spi.tool.ToolDecision;
 import com.agentforge4j.core.spi.tool.ToolExecutionOutcome;
 import com.agentforge4j.core.spi.tool.ToolExecutionService;
+import com.agentforge4j.core.workflow.WorkflowCapturePathCollector;
 import com.agentforge4j.core.workflow.WorkflowDefinition;
 import com.agentforge4j.core.workflow.artifact.ArtifactDefinition;
 import com.agentforge4j.core.workflow.context.ContextProvenance;
@@ -28,6 +29,7 @@ import com.agentforge4j.runtime.event.EventRecorder;
 import com.agentforge4j.runtime.execution.ExecutableExecutor;
 import com.agentforge4j.runtime.execution.ExecutionContext;
 import com.agentforge4j.runtime.execution.ExecutionOutcome;
+import com.agentforge4j.runtime.execution.GeneratedArtifactEviction;
 import com.agentforge4j.runtime.execution.RequirementCheckpoint;
 import com.agentforge4j.runtime.execution.StepSequenceExecutor;
 import com.agentforge4j.runtime.execution.TransitionGate;
@@ -81,6 +83,7 @@ public final class DefaultWorkflowRuntime implements WorkflowRuntime {
   private final RequirementResolver requirementResolver;
   private final TransitionGate transitionGate;
   private final RunExecutionInterceptor runExecutionInterceptor;
+  private final GeneratedArtifactStore generatedArtifactStore;
 
   DefaultWorkflowRuntime(WorkflowRepository workflowRepository,
       WorkflowStateRepository workflowStateRepository,
@@ -93,7 +96,8 @@ public final class DefaultWorkflowRuntime implements WorkflowRuntime {
       PendingToolInvocationStore pendingToolInvocationStore,
       RequirementResolver requirementResolver,
       TransitionGate transitionGate,
-      RunExecutionInterceptor runExecutionInterceptor) {
+      RunExecutionInterceptor runExecutionInterceptor,
+      GeneratedArtifactStore generatedArtifactStore) {
     this.workflowRepository = Validate.notNull(workflowRepository,
         "workflowRepository must not be null");
     this.workflowStateRepository = Validate.notNull(workflowStateRepository,
@@ -116,6 +120,8 @@ public final class DefaultWorkflowRuntime implements WorkflowRuntime {
     this.transitionGate = Validate.notNull(transitionGate, "transitionGate must not be null");
     this.runExecutionInterceptor = Validate.notNull(runExecutionInterceptor,
         "runExecutionInterceptor must not be null");
+    this.generatedArtifactStore = Validate.notNull(generatedArtifactStore,
+        "generatedArtifactStore must not be null");
   }
 
   /**
@@ -198,8 +204,13 @@ public final class DefaultWorkflowRuntime implements WorkflowRuntime {
       // Reposition the run at the target: clear the target's output and everything that ran at or
       // after it, so the re-drive re-executes the target and all downstream steps rather than
       // reusing stale outputs. Reserved (__-prefixed) context keys are preserved by
-      // clearEntriesFromUid; a target that never executed has no uid and nothing to clear.
-      state.getStepExecutionUid(target.stepId()).ifPresent(state::clearEntriesFromUid);
+      // clearEntriesFromUid; a target that never executed has no uid and nothing to clear. Evict the
+      // captured bytes for any artifact emitted at or after the target first, so the re-drive re-emits
+      // cleanly (upsert) rather than leaving a stale capture for a path it may not re-emit.
+      state.getStepExecutionUid(target.stepId()).ifPresent(uid -> {
+        GeneratedArtifactEviction.evictFromUid(generatedArtifactStore, state, uid);
+        state.clearEntriesFromUid(uid);
+      });
       // A PAUSED run carries pending suspension state for the step it paused on; clear it so the
       // re-drive starts the target cleanly instead of re-entering the previous pause.
       state.setPendingArtifact(null);
@@ -703,6 +714,9 @@ public final class DefaultWorkflowRuntime implements WorkflowRuntime {
   }
 
   private void drive(WorkflowState state, WorkflowDefinition workflow) {
+    // Scope artifact capture to the root workflow's reachable VALIDATE-declared paths before any step runs.
+    // Idempotent and re-applied on every drive (start / continue / retry), so a resume stays populated.
+    state.mergeCapturedArtifactPaths(WorkflowCapturePathCollector.collect(workflow));
     if (state.getStepExecutionUid().isEmpty()) {
       // First entry into main execution (on resume at least one step has already executed). A
       // registered interceptor may throw ExecutionBlockedException here to block before any step
@@ -734,7 +748,19 @@ public final class DefaultWorkflowRuntime implements WorkflowRuntime {
     } finally {
       executionContext.exitWorkflow();
       workflowStateRepository.save(state);
+      // Release the run's transient generated-artifact bytes once it reaches a terminal state; the
+      // content-free descriptors on the persisted state remain the durable record. A paused run keeps
+      // its artifacts so a same-drive resume can still read them.
+      if (isTerminal(state.getStatus())) {
+        generatedArtifactStore.clear(state.getRunId());
+      }
     }
+  }
+
+  private static boolean isTerminal(WorkflowStatus status) {
+    return status == WorkflowStatus.COMPLETED
+        || status == WorkflowStatus.FAILED
+        || status == WorkflowStatus.CANCELLED;
   }
 
   /**

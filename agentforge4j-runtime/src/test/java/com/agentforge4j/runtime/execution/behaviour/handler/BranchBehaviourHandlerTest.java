@@ -13,6 +13,8 @@ import com.agentforge4j.core.workflow.state.WorkflowState;
 import com.agentforge4j.core.workflow.step.StepDefinition;
 import com.agentforge4j.core.workflow.step.StepTransition;
 import com.agentforge4j.core.workflow.step.behaviour.BranchBehaviour;
+import com.agentforge4j.core.workflow.step.behaviour.BranchPredicate;
+import com.agentforge4j.core.workflow.step.behaviour.BranchPredicateKind;
 import com.agentforge4j.core.workflow.step.behaviour.ResourceBehaviour;
 import com.agentforge4j.runtime.event.EventRecorder;
 import com.agentforge4j.runtime.execution.ExecutionContext;
@@ -25,6 +27,7 @@ import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -183,15 +186,74 @@ class BranchBehaviourHandlerTest {
         .hasMessageContaining("route");
   }
 
+  @Test
+  void member_of_predicate_routes_to_its_target() {
+    StepDefinition target = resourceStep("tier-target");
+    putRoute("STANDARD");
+    StepDefinition branchStep = predicateBranchStep(Map.of(),
+        List.of(new BranchPredicate(BranchPredicateKind.MEMBER_OF, Set.of("LITE", "STANDARD"), target)),
+        null, true);
+
+    handler.handle(branchStep, (BranchBehaviour) branchStep.behaviour(), executionContext);
+
+    verify(executableExecutor).execute(eq(target), eq(executionContext));
+  }
+
+  @Test
+  void empty_predicate_routes_when_context_key_is_absent() {
+    // A StringContextValue cannot be blank, so "empty" is represented by the key being absent.
+    StepDefinition target = resourceStep("empty-target");
+    StepDefinition branchStep = predicateBranchStep(Map.of(),
+        List.of(new BranchPredicate(BranchPredicateKind.EMPTY, Set.of(), target)), null, true);
+
+    handler.handle(branchStep, (BranchBehaviour) branchStep.behaviour(), executionContext);
+
+    verify(executableExecutor).execute(eq(target), eq(executionContext));
+  }
+
+  @Test
+  void predicate_takes_precedence_over_exact_branch() {
+    StepDefinition predicateTarget = resourceStep("predicate-target");
+    StepDefinition exactTarget = resourceStep("exact-target");
+    putRoute("STANDARD");
+    StepDefinition branchStep = predicateBranchStep(Map.of("STANDARD", exactTarget),
+        List.of(new BranchPredicate(BranchPredicateKind.MEMBER_OF, Set.of("STANDARD"), predicateTarget)),
+        null, false);
+
+    handler.handle(branchStep, (BranchBehaviour) branchStep.behaviour(), executionContext);
+
+    verify(executableExecutor).execute(eq(predicateTarget), eq(executionContext));
+    verify(executableExecutor, times(1)).execute(any(), any());
+  }
+
+  @Test
+  void fail_on_unmatched_fails_the_run_when_nothing_matches() {
+    putRoute("UNKNOWN");
+    StepDefinition branchStep = predicateBranchStep(Map.of("LITE", resourceStep("lite")), List.of(),
+        null, true);
+
+    assertThatThrownBy(() -> handler.handle(branchStep,
+        (BranchBehaviour) branchStep.behaviour(), executionContext))
+        .isInstanceOf(StepExecutionException.class)
+        .hasMessageContaining("failOnUnmatched");
+    verify(executableExecutor, times(0)).execute(any(), any());
+  }
+
   private void putRoute(String value) {
     state.putContextValue("route", new StringContextValue(value, ContextProvenance.USER_SUPPLIED));
   }
 
   private static StepDefinition branchStep(Map<String, Executable> branches, Executable defaultBranch) {
+    return predicateBranchStep(branches, List.of(), defaultBranch, false);
+  }
+
+  private static StepDefinition predicateBranchStep(Map<String, Executable> branches,
+      List<BranchPredicate> predicates, Executable defaultBranch, boolean failOnUnmatched) {
     return StepDefinition.builder()
         .withStepId("branch")
         .withName("branch")
-        .withBehaviour(new BranchBehaviour("route", branches, defaultBranch))
+        .withBehaviour(new BranchBehaviour("route", branches, predicates, defaultBranch,
+            failOnUnmatched))
         .withContextMapping(ContextMapping.none())
         .build();
   }

@@ -3,6 +3,7 @@ package com.agentforge4j.core.workflow.state;
 
 import com.agentforge4j.core.workflow.context.ContextProvenance;
 import com.agentforge4j.core.workflow.context.StringContextValue;
+import com.agentforge4j.core.workflow.file.ArtifactDescriptor;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.NullAndEmptySource;
@@ -10,6 +11,7 @@ import org.junit.jupiter.params.provider.ValueSource;
 
 import java.time.Instant;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -380,5 +382,78 @@ class WorkflowStateTest {
     // loop's completion survives.
     assertThat(state.isLoopCompleted("loop-rewound")).isFalse();
     assertThat(state.isLoopCompleted("loop-before")).isTrue();
+  }
+
+  @Test
+  void generated_artifact_descriptors_append_in_order_and_getter_is_unmodifiable() {
+    WorkflowState state = new WorkflowState("run-1", "wf-1", null, t());
+    ArtifactDescriptor first = new ArtifactDescriptor("agent.json", "h1", "generate", 1);
+    ArtifactDescriptor second = new ArtifactDescriptor("systemprompt.md", "h2", "generate", 1);
+
+    state.addGeneratedArtifactDescriptor(first);
+    state.addGeneratedArtifactDescriptor(second);
+
+    assertThat(state.getGeneratedArtifactDescriptors()).containsExactly(first, second);
+    assertThatThrownBy(() -> state.getGeneratedArtifactDescriptors()
+        .add(new ArtifactDescriptor("x", "h3", "s", 1)))
+        .isInstanceOf(UnsupportedOperationException.class);
+  }
+
+  @Test
+  void add_generated_artifact_descriptor_upserts_by_path_last_write_wins() {
+    WorkflowState state = new WorkflowState("run-1", "wf-1", null, t());
+    state.addGeneratedArtifactDescriptor(new ArtifactDescriptor("agent.json", "h1", "generate", 1));
+    state.addGeneratedArtifactDescriptor(new ArtifactDescriptor("agent.json", "h2", "regen", 3));
+
+    assertThat(state.getGeneratedArtifactDescriptors())
+        .containsExactly(new ArtifactDescriptor("agent.json", "h2", "regen", 3));
+  }
+
+  @Test
+  void clear_entries_from_uid_drops_descriptors_at_or_after_threshold() {
+    WorkflowState state = new WorkflowState("run-1", "wf-1", null, t());
+    state.addGeneratedArtifactDescriptor(new ArtifactDescriptor("kept.json", "h1", "early", 1));
+    state.addGeneratedArtifactDescriptor(new ArtifactDescriptor("dropped.json", "h2", "late", 5));
+
+    state.clearEntriesFromUid(5);
+
+    assertThat(state.getGeneratedArtifactDescriptors())
+        .containsExactly(new ArtifactDescriptor("kept.json", "h1", "early", 1));
+  }
+
+  @Test
+  void add_generated_artifact_descriptor_rejects_null() {
+    WorkflowState state = new WorkflowState("run-1", "wf-1", null, t());
+
+    assertThatThrownBy(() -> state.addGeneratedArtifactDescriptor(null))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("generatedArtifactDescriptor");
+  }
+
+  @Test
+  void snapshot_copies_generated_artifact_descriptors_without_aliasing() {
+    WorkflowState original = new WorkflowState("run-1", "wf-1", null, t());
+    original.addGeneratedArtifactDescriptor(new ArtifactDescriptor("agent.json", "h1", "generate", 1));
+
+    WorkflowState copy = original.snapshot();
+    original.addGeneratedArtifactDescriptor(
+        new ArtifactDescriptor("systemprompt.md", "h2", "generate", 1));
+
+    assertThat(copy.getGeneratedArtifactDescriptors())
+        .containsExactly(new ArtifactDescriptor("agent.json", "h1", "generate", 1));
+  }
+
+  @Test
+  void merge_captured_artifact_paths_is_idempotent_union_and_snapshot_copies_it() {
+    WorkflowState state = new WorkflowState("run-1", "wf-1", null, t());
+    state.mergeCapturedArtifactPaths(List.of("agent.json", "systemprompt.md"));
+    state.mergeCapturedArtifactPaths(List.of("agent.json"));
+
+    assertThat(state.getCapturedArtifactPaths())
+        .containsExactlyInAnyOrder("agent.json", "systemprompt.md");
+
+    WorkflowState copy = state.snapshot();
+    assertThat(copy.getCapturedArtifactPaths())
+        .containsExactlyInAnyOrder("agent.json", "systemprompt.md");
   }
 }
