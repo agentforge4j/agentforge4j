@@ -7,6 +7,9 @@ import com.agentforge4j.core.workflow.Executable;
 import com.agentforge4j.core.workflow.WorkflowAgentRefCollector;
 import com.agentforge4j.core.workflow.WorkflowAgentRefCollector.AgentRefSite;
 import com.agentforge4j.core.workflow.WorkflowDefinition;
+import com.agentforge4j.core.workflow.reachability.AmbiguousStepId;
+import com.agentforge4j.core.workflow.reachability.ReachableStepGraph;
+import com.agentforge4j.core.workflow.reachability.WorkflowRefResolver;
 import com.agentforge4j.core.workflow.requirement.WorkflowRequirement;
 import com.agentforge4j.core.workflow.step.StepDefinition;
 import com.agentforge4j.core.workflow.step.behaviour.BranchBehaviour;
@@ -86,6 +89,39 @@ public final class WorkflowValidator {
       collectStepIds(workflow.steps(), workflowStepIds);
       walkForRetryStepRefs(workflow.steps(), workflow, workflowStepIds);
     });
+  }
+
+  /**
+   * Verifies that, for every workflow treated as a run root, no step id is reachable from more than one structural
+   * location across the reachable graph — the root, the blueprints it references, and the sub-workflows its
+   * {@code WORKFLOW} steps reach. This is the exact graph the runtime resolves a step against at a gate or input
+   * submission; rejecting the ambiguity here turns an otherwise mid-run {@link IllegalStateException} into a load-time
+   * error.
+   *
+   * <p>Validation is per-root: the same id appearing in two <em>different</em> root workflows is fine
+   * (they are separate runs), while a single sub-workflow or blueprint reached by more than one path within one root
+   * collapses to a single location and is not ambiguous.
+   *
+   * @param workflows workflows to validate
+   *
+   * @throws IllegalStateException when a reachable step id resolves to two or more structural locations
+   */
+  public void validateReachableStepIdUniqueness(Map<String, WorkflowDefinition> workflows) {
+    WorkflowRefResolver resolver = workflows::get;
+    for (WorkflowDefinition root : workflows.values()) {
+      List<AmbiguousStepId> ambiguous = ReachableStepGraph.findAmbiguousStepIds(root, resolver);
+      Validate.isTrue(ambiguous.isEmpty(), () -> new IllegalStateException(
+          ("Workflow '%s' has step ids reachable from multiple structural locations; reachable step "
+              + "ids must be unique: %s").formatted(root.id(), describeAmbiguous(ambiguous))));
+    }
+  }
+
+  private static String describeAmbiguous(List<AmbiguousStepId> ambiguous) {
+    List<String> parts = new ArrayList<>();
+    for (AmbiguousStepId entry : ambiguous) {
+      parts.add("step id '%s' at %s".formatted(entry.stepId(), entry.locations()));
+    }
+    return String.join("; ", parts);
   }
 
   private void walkForWorkflowRefExistence(

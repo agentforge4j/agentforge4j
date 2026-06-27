@@ -18,6 +18,8 @@ import com.agentforge4j.core.workflow.step.behaviour.FailBehaviour;
 import com.agentforge4j.core.workflow.step.behaviour.InputBehaviour;
 import com.agentforge4j.core.workflow.step.behaviour.ValidateBehaviour;
 import com.agentforge4j.core.workflow.step.behaviour.WorkflowBehaviour;
+import com.agentforge4j.core.workflow.step.blueprint.BlueprintBehaviour;
+import com.agentforge4j.core.workflow.step.blueprint.BlueprintDefinition;
 import com.agentforge4j.core.workflow.step.blueprint.BlueprintRef;
 import org.junit.jupiter.api.Test;
 
@@ -190,6 +192,82 @@ class WorkflowValidatorTest {
 
     assertThatCode(() -> validator.validateAgentRefs(Map.of("wf1", wf), Map.of("ok-agent", agent)))
         .doesNotThrowAnyException();
+  }
+
+  @Test
+  void validateReachableStepIdUniqueness_rejectsIdReachableFromTwoSubWorkflows() {
+    WorkflowDefinition subA = wf("sub-a", List.of(terminalStep("dup")));
+    WorkflowDefinition subB = wf("sub-b", List.of(terminalStep("dup")));
+    WorkflowDefinition root = wf("root", List.of(
+        workflowRefStep("call-a", "sub-a"), workflowRefStep("call-b", "sub-b")));
+
+    assertThatThrownBy(() -> validator.validateReachableStepIdUniqueness(
+        Map.of("root", root, "sub-a", subA, "sub-b", subB)))
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessageContaining("reachable step ids must be unique")
+        .hasMessageContaining("dup")
+        .hasMessageContaining("wf:sub-a/step:dup")
+        .hasMessageContaining("wf:sub-b/step:dup");
+  }
+
+  @Test
+  void validateReachableStepIdUniqueness_rejectsIdInTwoBlueprints() {
+    BlueprintDefinition first = blueprint("bp-a", terminalStep("dup"));
+    BlueprintDefinition second = blueprint("bp-b", terminalStep("dup"));
+    WorkflowDefinition root = wfWithBlueprints("root",
+        Map.of("bp-a", first, "bp-b", second),
+        List.of(new BlueprintRef("bp-a"), new BlueprintRef("bp-b")));
+
+    assertThatThrownBy(() -> validator.validateReachableStepIdUniqueness(Map.of("root", root)))
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessageContaining("reachable step ids must be unique")
+        .hasMessageContaining("wf:root/bp:bp-a/step:dup")
+        .hasMessageContaining("wf:root/bp:bp-b/step:dup");
+  }
+
+  @Test
+  void validateReachableStepIdUniqueness_collapsesSameSubWorkflowReferencedTwice() {
+    // One sub-workflow reached by two WORKFLOW steps is a single definition reached via two paths;
+    // its container key resets to wf:<sub-id>, so the locations collapse and it is not ambiguous.
+    WorkflowDefinition sub = wf("sub", List.of(terminalStep("dup")));
+    WorkflowDefinition root = wf("root", List.of(
+        workflowRefStep("call-1", "sub"), workflowRefStep("call-2", "sub")));
+
+    assertThatCode(() -> validator.validateReachableStepIdUniqueness(
+        Map.of("root", root, "sub", sub))).doesNotThrowAnyException();
+  }
+
+  @Test
+  void validateReachableStepIdUniqueness_allowsSameIdInTwoDifferentRoots() {
+    // Each workflow is validated as its own run root; a step id shared across two unrelated roots is
+    // two separate runs, never an ambiguity.
+    WorkflowDefinition rootA = wf("root-a", List.of(terminalStep("dup")));
+    WorkflowDefinition rootB = wf("root-b", List.of(terminalStep("dup")));
+
+    assertThatCode(() -> validator.validateReachableStepIdUniqueness(
+        Map.of("root-a", rootA, "root-b", rootB))).doesNotThrowAnyException();
+  }
+
+  @Test
+  void validateReachableStepIdUniqueness_ignoresInlineBlueprintDefinitionCollision() {
+    // An inline BlueprintDefinition is not directly executable, so its steps are unreachable at
+    // runtime; a colliding id inside one must not be flagged (the guard mirrors the runtime searcher).
+    BlueprintDefinition inline = blueprint("inline-bp", terminalStep("dup"));
+    WorkflowDefinition root = wf("root", List.of(terminalStep("dup"), inline));
+
+    assertThatCode(() -> validator.validateReachableStepIdUniqueness(Map.of("root", root)))
+        .doesNotThrowAnyException();
+  }
+
+  private static BlueprintDefinition blueprint(String blueprintId, Executable... steps) {
+    return new BlueprintDefinition(blueprintId, blueprintId,
+        new BlueprintBehaviour(null, StepTransition.AUTO), List.of(steps));
+  }
+
+  private static WorkflowDefinition wfWithBlueprints(String id,
+      Map<String, BlueprintDefinition> blueprints, List<Executable> steps) {
+    return new WorkflowDefinition(id, "W", "d", null, null, null, null,
+        WorkflowSource.CUSTOM, WorkflowLifecycle.ACTIVE, Map.of(), blueprints, steps);
   }
 
   private static StepDefinition terminalStep(String stepId) {

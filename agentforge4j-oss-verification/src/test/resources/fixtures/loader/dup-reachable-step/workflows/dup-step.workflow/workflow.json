@@ -1,0 +1,20 @@
+{
+  "kind": "WORKFLOW",
+  "id": "dup-step",
+  "name": "Duplicate Reachable Step",
+  "steps": [
+    {
+      "kind": "STEP",
+      "stepId": "dup",
+      "name": "Top Dup",
+      "behaviour": {
+        "type": "FAIL",
+        "reason": "stop"
+      }
+    },
+    {
+      "kind": "BLUEPRINT_REF",
+      "blueprintId": "dup-body"
+    }
+  ]
+}

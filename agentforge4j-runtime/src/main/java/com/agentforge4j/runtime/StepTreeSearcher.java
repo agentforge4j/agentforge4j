@@ -3,17 +3,13 @@ package com.agentforge4j.runtime;
 
 import com.agentforge4j.core.workflow.Executable;
 import com.agentforge4j.core.workflow.WorkflowDefinition;
+import com.agentforge4j.core.workflow.reachability.ReachableStepGraph;
 import com.agentforge4j.core.workflow.repository.WorkflowRepository;
 import com.agentforge4j.core.workflow.step.StepDefinition;
-import com.agentforge4j.core.workflow.step.behaviour.WorkflowBehaviour;
 import com.agentforge4j.core.workflow.step.blueprint.BlueprintDefinition;
 import com.agentforge4j.core.workflow.step.blueprint.BlueprintRef;
 import com.agentforge4j.util.Validate;
-import java.util.HashSet;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
-import java.util.Set;
 
 /**
  * Locates {@link Executable} nodes (typically {@link StepDefinition}) within a workflow tree.
@@ -48,59 +44,8 @@ final class StepTreeSearcher {
    */
   StepDefinition findStepAcrossWorkflows(WorkflowDefinition root, String stepId,
       WorkflowRepository repository) {
-    Map<String, StepDefinition> matchesByLocation = new LinkedHashMap<>();
-    collectAcrossWorkflows(root, "wf:" + root.id(), stepId, repository, new HashSet<>(),
-        matchesByLocation);
-    if (matchesByLocation.isEmpty()) {
-      return null;
-    }
-    int matchCount = matchesByLocation.size();
-    Validate.isTrue(matchCount == 1, () -> new IllegalStateException(
-        ("Ambiguous step id '%s' resolves to %d structural locations across the reachable workflow "
-            + "graph from workflow '%s'; reachable step ids must be unique")
-            .formatted(stepId, matchCount, root.id())));
-    return matchesByLocation.values().iterator().next();
-  }
-
-  private void collectAcrossWorkflows(WorkflowDefinition workflow, String containerKey, String stepId,
-      WorkflowRepository repository, Set<String> visited,
-      Map<String, StepDefinition> matchesByLocation) {
-    if (!visited.add(workflow.id())) {
-      return;
-    }
-    collectFromExecutables(workflow.steps(), workflow, containerKey, stepId, repository, visited,
-        matchesByLocation);
-  }
-
-  private void collectFromExecutables(List<Executable> executables, WorkflowDefinition enclosing,
-      String containerKey, String stepId, WorkflowRepository repository, Set<String> visited,
-      Map<String, StepDefinition> matchesByLocation) {
-    for (Executable executable : executables) {
-      if (executable instanceof StepDefinition step) {
-        if (step.stepId().equals(stepId)) {
-          // Key by defining-container path so identical steps in two different workflows stay
-          // distinct (ambiguous) while one definition reached via two refs to the same blueprint
-          // collapses to a single location.
-          matchesByLocation.putIfAbsent(containerKey + "/step:" + step.stepId(), step);
-        }
-        if (step.behaviour() instanceof WorkflowBehaviour workflowBehaviour) {
-          WorkflowDefinition sub = repository.findAll().get(workflowBehaviour.workflowRef());
-          if (sub != null) {
-            collectAcrossWorkflows(sub, "wf:" + sub.id(), stepId, repository, visited,
-                matchesByLocation);
-          }
-        }
-      } else if (executable instanceof BlueprintRef ref) {
-        BlueprintDefinition bp = enclosing.blueprints().get(ref.blueprintId());
-        if (bp != null) {
-          collectFromExecutables(bp.steps(), enclosing, containerKey + "/bp:" + ref.blueprintId(),
-              stepId, repository, visited, matchesByLocation);
-        }
-      } else if (executable instanceof WorkflowDefinition nested) {
-        collectFromExecutables(nested.steps(), nested, "wf:" + nested.id(), stepId, repository,
-            visited, matchesByLocation);
-      }
-    }
+    return ReachableStepGraph.resolveUnique(root, stepId,
+        workflowRef -> repository.findAll().get(workflowRef));
   }
 
   /**

@@ -39,4 +39,5 @@ module agentforge4j.core {
   exports com.agentforge4j.core.workflow.file;
   exports com.agentforge4j.core.workflow.state;
   exports com.agentforge4j.core.workflow.repository;
+  exports com.agentforge4j.core.workflow.reachability;
 }

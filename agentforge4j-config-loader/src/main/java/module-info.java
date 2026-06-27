@@ -9,6 +9,11 @@
  * and compatibility-gate mechanism.
  *
  * <p>Intended consumers: embedding applications, tests, and tooling that prepare bundles for execution.
+ *
+ * <p>Load-time invariant: across the reachable graph of every workflow (the workflow, the blueprints
+ * it references, and the sub-workflows its {@code WORKFLOW} steps reach) each step id must resolve to a
+ * single structural location — <em>reachable step ids must be unique</em>. Bundles that violate it are
+ * rejected at load so the runtime never has to resolve an ambiguous step at a gate.
  */
 module agentforge4j.config.loader {
   requires agentforge4j.util;

@@ -1,0 +1,19 @@
+{
+  "kind": "BLUEPRINT",
+  "blueprintId": "dup-body",
+  "name": "Dup Body",
+  "behaviour": {
+    "transition": "AUTO"
+  },
+  "steps": [
+    {
+      "kind": "STEP",
+      "stepId": "dup",
+      "name": "Blueprint Dup",
+      "behaviour": {
+        "type": "FAIL",
+        "reason": "stop"
+      }
+    }
+  ]
+}

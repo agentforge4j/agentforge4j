@@ -30,7 +30,11 @@ import lombok.RequiredArgsConstructor;
 public abstract class BaseWorkflowBundleLoader {
 
   /**
-   * Maximum definition nesting accepted at load time; aligns with the runtime's default.
+   * Maximum <em>inline</em> definition nesting accepted at load time; aligns with the runtime's default. Distinct from
+   * the reachable-graph traversal bounds (the runtime's configurable {@code DEFAULT_MAX_NESTING_DEPTH} and the
+   * ref-following walks in {@code WorkflowAgentRefCollector} / {@code ReachableStepGraph}): this one bounds only the
+   * static inline-structure walk below and does not follow {@code BlueprintRef}/{@code WORKFLOW} references, so it is
+   * intentionally not single-sourced with them.
    */
   private static final int MAX_NESTING_DEPTH = 32;
 

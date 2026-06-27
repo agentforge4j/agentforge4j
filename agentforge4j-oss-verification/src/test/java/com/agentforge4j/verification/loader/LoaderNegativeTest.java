@@ -80,6 +80,19 @@ class LoaderNegativeTest {
   }
 
   @Test
+  void stepIdReachableFromMultipleLocationsIsRejected() {
+    assertThatThrownBy(() -> AgentForge4jBootstrap.defaults()
+        .withLlmClientResolver(Fixtures.noOpLlmResolver())
+        .withWorkflowsDir(Fixtures.dir("/fixtures/loader/dup-reachable-step/workflows"))
+        .withLoadShippedWorkflows(false)
+        .build())
+        .isInstanceOf(IllegalStateException.class)
+        .cause()
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessageContaining("reachable step ids must be unique");
+  }
+
+  @Test
   void workflowIdMismatchingBundleDirIsRejected() {
     assertThatThrownBy(() -> AgentForge4jBootstrap.defaults()
         .withLlmClientResolver(Fixtures.noOpLlmResolver())
