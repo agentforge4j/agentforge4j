@@ -119,7 +119,12 @@ export function StepConfigPanel({
   return (
     <>
       <div className="wf-inspector__backdrop" role="presentation" onClick={onClose} />
-      <aside className="wf-panel wf-inspector wf-inspector--open" role="dialog" aria-label={title}>
+      <aside
+        className="wf-panel wf-inspector wf-inspector--open"
+        role="dialog"
+        aria-label={title}
+        data-testid="workflow-builder-inspector-panel"
+      >
       <header className="wf-panel__header wf-inspector__header">
         <h2 className="wf-panel__title">{title}</h2>
         <button
@@ -177,6 +182,7 @@ export function StepConfigPanel({
                         className="wf-button wf-button--icon wf-button--ghost wf-inspector__card-remove"
                         aria-label={ACTION_LABELS.removeField}
                         title={ACTION_LABELS.removeField}
+                        data-testid="workflow-builder-inspector-remove-field"
                         onClick={() =>
                           onUpdateNodeData(node.id, {
                             artifactItems: node.data.artifactItems.filter((_, i) => i !== idx),
@@ -228,6 +234,7 @@ export function StepConfigPanel({
                 <button
                   type="button"
                   className="wf-button wf-button--secondary"
+                  data-testid="workflow-builder-inspector-add-field"
                   onClick={() =>
                     onUpdateNodeData(node.id, {
                       artifactItems: [
@@ -280,7 +287,7 @@ export function StepConfigPanel({
           </Section>
 
           {showBehaviorSection ? (
-          <details className="wf-inspector__details" open={behaviorOpen}>
+          <details className="wf-inspector__details" open={behaviorOpen} data-testid="workflow-builder-inspector-behaviour-section">
             <summary className="wf-inspector__details-summary">{ACTION_LABELS.behaviorSection}</summary>
             <div className="wf-inspector__details-body">
               {node.kind === 'AI_STEP' ? (
@@ -562,6 +569,7 @@ function DecisionForm({
               className="wf-button wf-button--icon wf-button--ghost wf-inspector__card-remove"
               aria-label={ACTION_LABELS.removeCase}
               title={ACTION_LABELS.removeCase}
+              data-testid="workflow-builder-inspector-remove-case"
               onClick={() =>
                 onUpdate(node.id, { cases: d.cases.filter((_, i) => i !== idx) } as Partial<NodeData>)
               }
@@ -613,6 +621,7 @@ function DecisionForm({
       <button
         type="button"
         className="wf-button wf-button--secondary"
+        data-testid="workflow-builder-inspector-add-case"
         onClick={() =>
           onUpdate(node.id, {
             cases: [...d.cases, { label: 'New case', value: `case-${d.cases.length + 1}`, targetNodeId: '' }],

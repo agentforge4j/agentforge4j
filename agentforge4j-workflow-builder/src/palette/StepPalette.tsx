@@ -60,6 +60,7 @@ export function StepPalette({ mode, onAddStep, defaultCollapsed = true }: StepPa
         }}
         className={['wf-palette__item', compact ? 'wf-palette__item--compact' : ''].filter(Boolean).join(' ')}
         aria-label={meta.label}
+        data-testid={`workflow-builder-palette-add-${kind.toLowerCase().replace(/_/g, '-')}`}
       >
         <span className="wf-palette__item-icon" aria-hidden>
           {meta.iconGlyph}
@@ -127,6 +128,7 @@ export function StepPalette({ mode, onAddStep, defaultCollapsed = true }: StepPa
           aria-label={ACTION_LABELS.addStep}
           aria-expanded={mobileOpen}
           onClick={() => setMobileOpen((o) => !o)}
+          data-testid="workflow-builder-palette-mobile-trigger"
         >
           + {ACTION_LABELS.addStep}
         </button>

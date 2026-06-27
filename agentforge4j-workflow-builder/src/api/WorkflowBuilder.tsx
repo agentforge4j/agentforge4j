@@ -439,6 +439,7 @@ export function WorkflowBuilder({
           <button
             type="button"
             className={['wf-button', mode === 'guided' ? 'wf-button--primary' : 'wf-button--ghost'].join(' ')}
+            data-testid="workflow-builder-mode-guided"
             onClick={() => setMode('guided')}
           >
             {ACTION_LABELS.guidedMode}
@@ -446,6 +447,7 @@ export function WorkflowBuilder({
           <button
             type="button"
             className={['wf-button', mode === 'advanced' ? 'wf-button--primary' : 'wf-button--ghost'].join(' ')}
+            data-testid="workflow-builder-mode-advanced"
             onClick={() => setMode('advanced')}
           >
             {ACTION_LABELS.advancedMode}

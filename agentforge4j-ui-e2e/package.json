@@ -1,0 +1,19 @@
+{
+  "name": "agentforge4j-ui-e2e",
+  "version": "0.1.0",
+  "private": true,
+  "license": "Apache-2.0",
+  "type": "module",
+  "description": "Playwright UI end-to-end tests for the AgentForge4j workflow builder.",
+  "scripts": {
+    "test:e2e": "playwright test",
+    "test:e2e:builder": "playwright test --project=builder",
+    "playwright:install": "playwright install --with-deps chromium",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.61.1",
+    "@types/node": "^24.10.0",
+    "typescript": "^6.0.3"
+  }
+}
