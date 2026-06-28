@@ -1,0 +1,12 @@
+{
+  "kind": "WORKFLOW",
+  "id": "wl-loop-signal",
+  "name": "Agent Signal Loop",
+  "description": "A looped blueprint that iterates until the agent signals completion (AGENT_SIGNAL) by emitting COMPLETE, bounded by maxIterations. Here the agent signals on its first iteration, so the loop stops well before the ceiling.",
+  "steps": [
+    {
+      "kind": "BLUEPRINT_REF",
+      "blueprintId": "signal-body"
+    }
+  ]
+}

@@ -13,7 +13,7 @@ network, no API keys — following the same five-section README format as the fr
 | [`wl-resource`](wl-resource) | `RESOURCE` | A deterministic non-AI step that loads a bundled resource into the workflow context — not every step calls the LLM. |
 | [`wl-human-in-the-loop`](wl-human-in-the-loop) | `INPUT`, `HUMAN_APPROVAL` | Suspend/resume human-in-the-loop: an `INPUT` gate then a `HUMAN_APPROVAL` gate, each with its own resume verb (`submitInput`, `decideStepApproval`). |
 | [`wl-retry`](wl-retry) | `RETRY_PREVIOUS` | Rewind and re-execute a prior step, bounded by `maxAttempts`, with a fallback once attempts are exhausted. |
-| `wl-loop` | blueprint loop (`FIXED_COUNT`, `AGENT_SIGNAL`) | _(later batch)_ Bounded iteration via a looped blueprint; two termination strategies. |
+| [`wl-loop`](wl-loop) | blueprint loop (`FIXED_COUNT`, `AGENT_SIGNAL`) | Bounded iteration via a looped blueprint, with two termination strategies: a fixed count, and stopping on the agent's signal. |
 | `wl-spar` | `SPAR` | _(later batch)_ Two agents in multi-round adversarial review under workflow control. |
 
 `agent-signal` is not a standalone step behaviour — it is the `AGENT_SIGNAL` loop-termination

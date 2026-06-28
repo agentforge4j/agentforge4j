@@ -1,0 +1,12 @@
+{
+  "kind": "WORKFLOW",
+  "id": "wl-loop-fixed",
+  "name": "Fixed Count Loop",
+  "description": "A looped blueprint that runs its body a fixed number of times (FIXED_COUNT), then completes. Agent completion signals are ignored — the loop runs exactly maxIterations times.",
+  "steps": [
+    {
+      "kind": "BLUEPRINT_REF",
+      "blueprintId": "fixed-body"
+    }
+  ]
+}
