@@ -33,5 +33,6 @@
     <module>wl-human-in-the-loop</module>
     <module>wl-retry</module>
     <module>wl-loop</module>
+    <module>wl-spar</module>
   </modules>
 </project>

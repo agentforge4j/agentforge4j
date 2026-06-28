@@ -1,0 +1,14 @@
+{
+  "id": "developer",
+  "name": "Developer Agent",
+  "locality": "CLOUD",
+  "version": "1.0.0",
+  "supportedCommands": [
+    "CONTINUE"
+  ],
+  "providerPreferences": [
+    {
+      "provider": "fake"
+    }
+  ]
+}

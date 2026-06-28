@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <parent>
+    <groupId>org.agentforge4j.examples</groupId>
+    <artifactId>agentforge4j-workflow-language-examples</artifactId>
+    <version>0.0.1-SNAPSHOT</version>
+    <relativePath>../pom.xml</relativePath>
+  </parent>
+
+  <artifactId>agentforge4j-wl-spar-example</artifactId>
+  <packaging>jar</packaging>
+  <name>AgentForge4j Workflow Language — SPAR Example</name>
+  <description>Two agents reasoning against each other under workflow control (SPAR): a primary and a
+    challenger exchange views over bounded rounds, then the primary resolves. Deterministic and
+    offline — no network, no real API keys.</description>
+
+  <!-- Re-declares the Apache-2.0 licence even though it is inherited from the examples parent. This
+       is intentional, not redundant: each example module is meant to be self-contained and
+       copy-paste-ready, so a reader lifting this single module as a template gets a complete,
+       explicit POM without also having to copy the parent. Kept on every example module. -->
+  <licenses>
+    <license>
+      <name>Apache License, Version 2.0</name>
+      <url>https://www.apache.org/licenses/LICENSE-2.0</url>
+      <distribution>repo</distribution>
+    </license>
+  </licenses>
+
+  <dependencies>
+    <!-- The framework-agnostic entry point; pulls core/runtime/config-loader/workflows transitively. -->
+    <dependency>
+      <groupId>org.agentforge4j</groupId>
+      <artifactId>agentforge4j-bootstrap</artifactId>
+    </dependency>
+    <!-- Deterministic LLM provider: scripted responses, no network or keys. -->
+    <dependency>
+      <groupId>org.agentforge4j</groupId>
+      <artifactId>agentforge4j-llm-fake</artifactId>
+    </dependency>
+
+    <dependency>
+      <groupId>org.junit.jupiter</groupId>
+      <artifactId>junit-jupiter</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.assertj</groupId>
+      <artifactId>assertj-core</artifactId>
+      <scope>test</scope>
+    </dependency>
+  </dependencies>
+</project>

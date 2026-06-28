@@ -1,0 +1,15 @@
+{
+  "id": "architect",
+  "name": "Architect Agent",
+  "locality": "CLOUD",
+  "version": "1.0.0",
+  "supportedCommands": [
+    "CONTINUE",
+    "COMPLETE"
+  ],
+  "providerPreferences": [
+    {
+      "provider": "fake"
+    }
+  ]
+}
