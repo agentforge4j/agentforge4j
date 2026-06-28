@@ -34,9 +34,30 @@ describe('WorkflowBuilder capability contract', () => {
     expect(screen.queryByTestId('workflow-builder-save')).not.toBeInTheDocument();
   });
 
-  it('does not render Run when capabilities.run is false', () => {
-    render(<WorkflowBuilder capabilities={allDisabled} actions={{ run: vi.fn() }} />);
+  it('calls run action with current draft when Run is clicked', async () => {
+    const user = userEvent.setup();
+    const run = vi.fn().mockResolvedValue(undefined);
+    render(
+      <WorkflowBuilder
+        capabilities={{ ...allDisabled, run: true }}
+        actions={{ run }}
+      />,
+    );
+    await user.click(screen.getByTestId('workflow-builder-run'));
+    expect(run).toHaveBeenCalledTimes(1);
+    expect(run.mock.calls[0]?.[0]).toMatchObject({ steps: expect.any(Array) });
+  });
+
+  it('renders Run when capabilities.run is true', () => {
+    render(<WorkflowBuilder capabilities={{ ...allDisabled, run: true }} actions={{ run: vi.fn() }} />);
+    expect(screen.getByTestId('workflow-builder-run')).toBeInTheDocument();
+  });
+
+  it('does not render Run, and never invokes run, when capabilities.run is false', () => {
+    const run = vi.fn();
+    render(<WorkflowBuilder capabilities={allDisabled} actions={{ run }} />);
     expect(screen.queryByTestId('workflow-builder-run')).not.toBeInTheDocument();
+    expect(run).not.toHaveBeenCalled();
   });
 
   it('does not fetch when aiAssist is false', () => {
