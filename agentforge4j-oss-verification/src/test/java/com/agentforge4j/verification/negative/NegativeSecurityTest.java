@@ -3,6 +3,7 @@ package com.agentforge4j.verification.negative;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.agentforge4j.core.workflow.event.WorkflowEventType;
 import com.agentforge4j.llm.fake.FakeResponse;
 import com.agentforge4j.llm.fake.FakeScript;
 import com.agentforge4j.llm.fake.FakeScriptKey;
@@ -52,7 +53,12 @@ class NegativeSecurityTest {
   @Test
   void malformedJsonOutputFailsTheRun() {
     WorkflowRunResult result = harness(bothAttempts("this is not valid json")).build().run("negative-run");
-    WorkflowRunAssert.assertThat(result).isFailed().failedBecause("not valid JSON");
+    WorkflowRunAssert.assertThat(result)
+        .isFailed()
+        .failedBecause("not valid JSON")
+        // The rejection surfaces as a step-level failure (STEP_FAILED) that fails the run
+        // (RUN_FAILED) — the contract is exercised through the harness, not just the final state.
+        .eventsInOrder(WorkflowEventType.STEP_FAILED, WorkflowEventType.RUN_FAILED);
   }
 
   @Test
@@ -73,7 +79,13 @@ class NegativeSecurityTest {
   void missingScriptedResponseFailsClosed() {
     // No entry for the agent's invocation key — the fake never fabricates a default.
     WorkflowRunResult result = harness(new FakeScript(1, Map.of())).build().run("negative-run");
-    WorkflowRunAssert.assertThat(result).isFailed().failedBecause("No fake response for key");
+    WorkflowRunAssert.assertThat(result)
+        .isFailed()
+        .failedBecause("No fake response for key")
+        // The LLM-call exception (LlmInvocationException, non-transient) surfaces as a step-level
+        // failure that fails the run — LLM exception → STEP_FAILED → RUN_FAILED via the existing
+        // event model (no LLM-failure event type exists, and none is added).
+        .eventsInOrder(WorkflowEventType.STEP_FAILED, WorkflowEventType.RUN_FAILED);
   }
 
   @Test

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package com.agentforge4j.verification.behaviour;
 
+import com.agentforge4j.core.workflow.event.WorkflowEventType;
 import com.agentforge4j.core.workflow.state.WorkflowStatus;
 import com.agentforge4j.llm.fake.FakeScript;
 import com.agentforge4j.llm.fake.FakeScriptParser;
@@ -42,7 +43,10 @@ class StepBehaviourTest {
   @Test
   void failBehaviourFailsTheRun() {
     WorkflowRunResult result = harness().run("beh-fail");
-    WorkflowRunAssert.assertThat(result).isFailed();
+    WorkflowRunAssert.assertThat(result)
+        .isFailed()
+        // The throwing step records STEP_FAILED, then the run terminates with RUN_FAILED.
+        .eventsInOrder(WorkflowEventType.STEP_FAILED, WorkflowEventType.RUN_FAILED);
   }
 
   @Test
@@ -97,6 +101,10 @@ class StepBehaviourTest {
         List.of(GateResponse.input(Map.of("name", "Alice"))));
     WorkflowRunAssert.assertThat(result)
         .isCompleted()
-        .contextEquals("user-form.name", "Alice");
+        .contextEquals("user-form.name", "Alice")
+        // The run parks awaiting input and, once supplied, drives through to completion. The event
+        // model carries no distinct input-supplied event, so the resume is observed as the
+        // transition from AWAITING_INPUT to RUN_COMPLETED.
+        .eventsInOrder(WorkflowEventType.AWAITING_INPUT, WorkflowEventType.RUN_COMPLETED);
   }
 }

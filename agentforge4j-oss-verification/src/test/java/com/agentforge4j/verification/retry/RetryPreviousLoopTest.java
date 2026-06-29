@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package com.agentforge4j.verification.retry;
 
+import com.agentforge4j.core.workflow.event.WorkflowEventType;
 import com.agentforge4j.llm.fake.FakeScript;
 import com.agentforge4j.llm.fake.FakeScriptParser;
 import com.agentforge4j.testkit.assertion.WorkflowRunAssert;
@@ -52,7 +53,11 @@ class RetryPreviousLoopTest {
 
     WorkflowRunAssert.assertThat(result)
         .isCompleted()
-        .stepVisitCount("loop-body", 2);
+        .stepVisitCount("loop-body", 2)
+        // The RETRY_PREVIOUS step is entered on both passes — it rewinds on the first and its single
+        // attempt is exhausted on the second — emitting STEP_RETRIED twice.
+        .emittedEvent(WorkflowEventType.STEP_RETRIED)
+        .eventCount(WorkflowEventType.STEP_RETRIED, 2);
   }
 
   /**
@@ -75,6 +80,10 @@ class RetryPreviousLoopTest {
 
     WorkflowRunAssert.assertThat(result)
         .isCompleted()
-        .stepVisitCount("loop-body", 2);
+        .stepVisitCount("loop-body", 2)
+        // The RETRY_PREVIOUS step is entered on both passes — it rewinds on the first and its single
+        // attempt is exhausted on the second — emitting STEP_RETRIED twice.
+        .emittedEvent(WorkflowEventType.STEP_RETRIED)
+        .eventCount(WorkflowEventType.STEP_RETRIED, 2);
   }
 }

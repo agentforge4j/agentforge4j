@@ -4,6 +4,7 @@ package com.agentforge4j.verification.tool;
 import com.agentforge4j.core.spi.tool.ToolPolicy;
 import com.agentforge4j.core.spi.tool.ToolProvider;
 import com.agentforge4j.core.spi.tool.ToolSourceKind;
+import com.agentforge4j.core.workflow.event.WorkflowEventType;
 import com.agentforge4j.llm.fake.FakeScript;
 import com.agentforge4j.llm.fake.FakeScriptParser;
 import com.agentforge4j.mcp.client.McpServerConnection;
@@ -56,6 +57,10 @@ class McpToolGovernanceTest {
 
     WorkflowRunAssert.assertThat(result)
         .isCompleted()
-        .invokedTool(ScriptedMcpTransport.TOOL_NAME);
+        .invokedTool(ScriptedMcpTransport.TOOL_NAME)
+        // The MCP call resolves and invokes through the chokepoint: REQUESTED then COMPLETED.
+        .emittedEvent(WorkflowEventType.TOOL_INVOCATION_COMPLETED)
+        .eventsInOrder(WorkflowEventType.TOOL_INVOCATION_REQUESTED,
+            WorkflowEventType.TOOL_INVOCATION_COMPLETED);
   }
 }

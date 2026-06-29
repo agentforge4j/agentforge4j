@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package com.agentforge4j.verification.transition;
 
+import com.agentforge4j.core.workflow.event.WorkflowEventType;
 import com.agentforge4j.core.workflow.state.WorkflowStatus;
 import com.agentforge4j.llm.fake.FakeScript;
 import com.agentforge4j.llm.fake.FakeScriptParser;
@@ -51,7 +52,11 @@ class TransitionGateTest {
   void humanReviewResumesOnReviewNote() {
     WorkflowRunResult result = harness().run("tr-review",
         List.of(GateResponse.review("looks good")));
-    WorkflowRunAssert.assertThat(result).isCompleted();
+    WorkflowRunAssert.assertThat(result)
+        .isCompleted()
+        // The gate parks awaiting review, resumes on the note, then the run completes — in order.
+        .eventsInOrder(WorkflowEventType.STEP_AWAITING_REVIEW, WorkflowEventType.STEP_REVIEWED,
+            WorkflowEventType.RUN_COMPLETED);
   }
 
   @Test
@@ -68,6 +73,10 @@ class TransitionGateTest {
         List.of(GateResponse.approveStep("approved")));
     WorkflowRunAssert.assertThat(result)
         .isCompleted()
-        .approvalDecision("run", ApprovalOutcome.APPROVED);
+        .approvalDecision("run", ApprovalOutcome.APPROVED)
+        // The gate parks awaiting approval, resumes on the decision, then the run completes — in
+        // order.
+        .eventsInOrder(WorkflowEventType.STEP_AWAITING_APPROVAL, WorkflowEventType.STEP_APPROVED,
+            WorkflowEventType.RUN_COMPLETED);
   }
 }

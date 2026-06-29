@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.agentforge4j.core.spi.tool.PolicyDecision;
 import com.agentforge4j.core.spi.tool.ToolPolicy;
 import com.agentforge4j.core.spi.tool.ToolProvider;
+import com.agentforge4j.core.workflow.event.WorkflowEventType;
 import com.agentforge4j.llm.fake.FakeScript;
 import com.agentforge4j.llm.fake.FakeScriptParser;
 import com.agentforge4j.testkit.assertion.WorkflowRunAssert;
@@ -68,7 +69,13 @@ class ToolGovernanceTest {
         .build()
         .run("tool-run");
 
-    WorkflowRunAssert.assertThat(result).isCompleted().invokedTool(CAPABILITY);
+    WorkflowRunAssert.assertThat(result)
+        .isCompleted()
+        .invokedTool(CAPABILITY)
+        // A successful invocation emits REQUESTED then COMPLETED, in that order.
+        .emittedEvent(WorkflowEventType.TOOL_INVOCATION_COMPLETED)
+        .eventsInOrder(WorkflowEventType.TOOL_INVOCATION_REQUESTED,
+            WorkflowEventType.TOOL_INVOCATION_COMPLETED);
   }
 
   @Test
@@ -79,7 +86,15 @@ class ToolGovernanceTest {
         // No explicit id: auto-target the run's single pending approval (AWAITING_TOOL_APPROVAL).
         .run("tool-run", List.of(GateResponse.toolApprove()));
 
-    WorkflowRunAssert.assertThat(result).isCompleted().invokedTool(CAPABILITY);
+    WorkflowRunAssert.assertThat(result)
+        .isCompleted()
+        .invokedTool(CAPABILITY)
+        // The call suspends for approval (APPROVAL_PENDING) and, once approved, executes (COMPLETED).
+        .emittedEvent(WorkflowEventType.TOOL_INVOCATION_APPROVAL_PENDING)
+        .emittedEvent(WorkflowEventType.TOOL_INVOCATION_COMPLETED)
+        .eventsInOrder(WorkflowEventType.TOOL_INVOCATION_REQUESTED,
+            WorkflowEventType.TOOL_INVOCATION_APPROVAL_PENDING,
+            WorkflowEventType.TOOL_INVOCATION_COMPLETED);
   }
 
   @Test
@@ -89,7 +104,12 @@ class ToolGovernanceTest {
         .build()
         .run("tool-run", List.of(GateResponse.toolReject("rejected by operator")));
 
-    WorkflowRunAssert.assertThat(result).isCompleted();
+    WorkflowRunAssert.assertThat(result)
+        .isCompleted()
+        // The call suspended for approval before the operator rejected it; the rejected call is
+        // never executed.
+        .emittedEvent(WorkflowEventType.TOOL_INVOCATION_APPROVAL_PENDING)
+        .didNotEmitEvent(WorkflowEventType.TOOL_INVOCATION_COMPLETED);
   }
 
   @Test
@@ -100,7 +120,11 @@ class ToolGovernanceTest {
         // Deny suspends in AWAITING_TOOL_DECISION; continue proceeds without a tool result.
         .run("tool-run", List.of(GateResponse.toolContinue()));
 
-    WorkflowRunAssert.assertThat(result).isCompleted();
+    WorkflowRunAssert.assertThat(result)
+        .isCompleted()
+        // Policy denial is recorded and the denied call is never executed.
+        .emittedEvent(WorkflowEventType.TOOL_INVOCATION_DENIED)
+        .didNotEmitEvent(WorkflowEventType.TOOL_INVOCATION_COMPLETED);
   }
 
   @Test
@@ -112,7 +136,11 @@ class ToolGovernanceTest {
             .build()
             .run("tool-run", List.of(GateResponse.toolContinue()));
 
-    WorkflowRunAssert.assertThat(result).isCompleted();
+    WorkflowRunAssert.assertThat(result)
+        .isCompleted()
+        // Validation fails before invoke, so the call fails and never completes.
+        .emittedEvent(WorkflowEventType.TOOL_INVOCATION_FAILED)
+        .didNotEmitEvent(WorkflowEventType.TOOL_INVOCATION_COMPLETED);
   }
 
   @Test
@@ -123,7 +151,11 @@ class ToolGovernanceTest {
             // Invoke failure suspends in AWAITING_TOOL_DECISION; continue proceeds without a result.
             .run("tool-run", List.of(GateResponse.toolContinue()));
 
-    WorkflowRunAssert.assertThat(result).isCompleted();
+    WorkflowRunAssert.assertThat(result)
+        .isCompleted()
+        // The provider error is recorded as a failed invocation; the call never completes.
+        .emittedEvent(WorkflowEventType.TOOL_INVOCATION_FAILED)
+        .didNotEmitEvent(WorkflowEventType.TOOL_INVOCATION_COMPLETED);
   }
 
   @Test
@@ -140,8 +172,14 @@ class ToolGovernanceTest {
     WorkflowRunAssert.assertThat(result)
         .isCompleted()
         .invokedTool(CAPABILITY)
-        // The retried (second) invocation's output is applied under the reserved tool context key —
-        // proving the run advanced on the replayed result, not by continuing past the failure.
+        // The first invocation failed once (one TOOL_INVOCATION_FAILED) before the retry replayed
+        // the call and completed it — proving the run advanced on the replayed result, not by
+        // continuing past the failure.
+        .eventCount(WorkflowEventType.TOOL_INVOCATION_FAILED, 1)
+        .emittedEvent(WorkflowEventType.TOOL_INVOCATION_COMPLETED)
+        .eventsInOrder(WorkflowEventType.TOOL_INVOCATION_FAILED,
+            WorkflowEventType.TOOL_INVOCATION_COMPLETED)
+        // The retried (second) invocation's output is applied under the reserved tool context key.
         .contextEquals("tool." + CAPABILITY, OUTPUT);
     assertThat(provider.invocationCount()).isEqualTo(2);
   }
