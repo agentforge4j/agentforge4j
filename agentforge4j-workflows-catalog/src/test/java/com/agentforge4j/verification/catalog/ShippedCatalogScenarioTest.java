@@ -1,26 +1,25 @@
 // SPDX-License-Identifier: Apache-2.0
 package com.agentforge4j.verification.catalog;
 
-import com.agentforge4j.testkit.capture.WorkflowRunResult;
-import java.util.List;
-import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.MethodSource;
+import static org.assertj.core.api.Assertions.assertThat;
+
+import org.junit.jupiter.api.Test;
 
 /**
  * Drives every data-driven shipped-catalog scenario through the harness and asserts its expected
- * result. Tier 1: proves the genuine shipped workflows are executable end-to-end, not merely
- * loadable.
+ * result (Tier 1: proves the genuine shipped workflows are executable end-to-end, not merely
+ * loadable).
+ *
+ * <p>During the clean-slate window the catalog ships no workflows, so there are no data-driven
+ * scenarios to drive; this asserts the catalog owns none. PR B restores the parameterized
+ * per-scenario execution when it ships a workflow with a verification scenario.
  */
 class ShippedCatalogScenarioTest {
 
-  static List<ScenarioCase> scenarios() {
-    return CatalogScenarios.discover();
-  }
-
-  @ParameterizedTest(name = "{0}")
-  @MethodSource("scenarios")
-  void scenarioReachesExpectedResult(ScenarioCase scenario) {
-    WorkflowRunResult result = CatalogScenarios.run(scenario);
-    CatalogScenarios.assertExpectations(result, scenario.expected().expect());
+  @Test
+  void noShippedScenariosRunDuringCleanSlate() {
+    assertThat(CatalogScenarios.discover())
+        .as("during the clean-slate window no shipped-catalog scenarios are executable")
+        .isEmpty();
   }
 }

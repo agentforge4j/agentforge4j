@@ -45,17 +45,29 @@ class ReachableStepGraphTest {
   }
 
   @Test
-  void walk_descendsBlueprintRefButNotInlineBlueprintDefinition() {
+  void walk_descendsBlueprintRef() {
+    // A BlueprintDefinition is not itself an Executable; it is reached only via a BlueprintRef, whose
+    // referenced body steps are descended.
     BlueprintDefinition referenced = blueprint("ref-bp", step("inner"));
-    BlueprintDefinition inline = blueprint("inline-bp", step("ghost"));
-    WorkflowDefinition root = wf("root", Map.of("ref-bp", referenced),
-        new BlueprintRef("ref-bp"), inline);
+    WorkflowDefinition root = wf("root", Map.of("ref-bp", referenced), new BlueprintRef("ref-bp"));
 
     List<ReachableStep> reached = ReachableStepGraph.walk(root, NO_SUBWORKFLOWS);
 
     assertThat(reached).extracting(ReachableStep::location)
         .containsExactly("wf:root/bp:ref-bp/step:inner");
-    // The inline BlueprintDefinition is not directly executable, so its steps are unreachable.
+  }
+
+  @Test
+  void walk_doesNotDescendUnreferencedBlueprint() {
+    // Under the no-inline-blueprint model a BlueprintDefinition is reachable only through a
+    // BlueprintRef; one present in the workflow's blueprint map but referenced by nothing contributes
+    // no reachable steps. This is the modern replacement for the retired inline-BlueprintDefinition case.
+    BlueprintDefinition unreferenced = blueprint("orphan-bp", step("ghost"));
+    WorkflowDefinition root = wf("root", Map.of("orphan-bp", unreferenced), step("s1"));
+
+    List<ReachableStep> reached = ReachableStepGraph.walk(root, NO_SUBWORKFLOWS);
+
+    assertThat(reached).extracting(ReachableStep::stepId).containsExactly("s1");
     assertThat(reached).extracting(ReachableStep::stepId).doesNotContain("ghost");
   }
 
@@ -78,7 +90,8 @@ class ReachableStepGraphTest {
     StepDefinition branching = StepDefinition.builder()
         .withStepId("router")
         .withName("router")
-        .withBehaviour(new BranchBehaviour("flag", Map.of("yes", new BlueprintRef("branch-bp")), null))
+        .withBehaviour(new BranchBehaviour("flag", Map.of("yes", new BlueprintRef("branch-bp")),
+            List.of(), null, false))
         .withContextMapping(new ContextMapping(List.of(), List.of()))
         .build();
     WorkflowDefinition root = wf("root", Map.of("branch-bp", branchBody), branching);

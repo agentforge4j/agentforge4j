@@ -1,6 +1,0 @@
-{
-  "id": "shortlist-config",
-  "items": [
-    { "type": "NUMBER", "id": "shortlistSize", "label": "How many candidates should be shortlisted? (Leave blank for AI suggestion based on score distribution)", "required": false }
-  ]
-}

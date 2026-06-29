@@ -249,11 +249,13 @@ class WorkflowValidatorTest {
   }
 
   @Test
-  void validateReachableStepIdUniqueness_ignoresInlineBlueprintDefinitionCollision() {
-    // An inline BlueprintDefinition is not directly executable, so its steps are unreachable at
-    // runtime; a colliding id inside one must not be flagged (the guard mirrors the runtime searcher).
-    BlueprintDefinition inline = blueprint("inline-bp", terminalStep("dup"));
-    WorkflowDefinition root = wf("root", List.of(terminalStep("dup"), inline));
+  void validateReachableStepIdUniqueness_ignoresUnreferencedBlueprintCollision() {
+    // Under the no-inline-blueprint model a blueprint is reachable only via a BlueprintRef; one present
+    // in the blueprint map but referenced by nothing is unreachable, so a colliding step id inside it is
+    // not flagged. This replaces the retired inline-BlueprintDefinition-collision case.
+    BlueprintDefinition unreferenced = blueprint("orphan-bp", terminalStep("dup"));
+    WorkflowDefinition root = wfWithBlueprints("root", Map.of("orphan-bp", unreferenced),
+        List.of(terminalStep("dup")));
 
     assertThatCode(() -> validator.validateReachableStepIdUniqueness(Map.of("root", root)))
         .doesNotThrowAnyException();
