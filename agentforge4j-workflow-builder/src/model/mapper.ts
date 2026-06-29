@@ -275,7 +275,7 @@ function loopBodyNodeIds(model: CanvasModel): Set<string> {
   return ids;
 }
 
-function collectBranchNestedIds(model: CanvasModel): Set<string> {
+export function collectBranchNestedIds(model: CanvasModel): Set<string> {
   const nested = new Set<string>();
   for (const n of model.nodes) {
     if (n.kind !== 'DECISION') {

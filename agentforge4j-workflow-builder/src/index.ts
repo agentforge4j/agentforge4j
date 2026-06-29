@@ -9,6 +9,7 @@ export type {
   ExportFormat,
   ValidationIssue,
   ValidationResult,
+  WorkflowBuilderMode,
   WorkflowBuilderProps,
   WorkflowDefinition,
 } from './api/types';

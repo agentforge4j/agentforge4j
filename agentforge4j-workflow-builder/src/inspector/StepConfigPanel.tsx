@@ -11,6 +11,7 @@ import type {
   MaxIterationsActionUi,
   NodeData,
 } from '../model/canvasModel';
+import { getRunsAfterState, START_SENTINEL } from '../model/graphOps';
 import type { NodeKind } from '../model/nodeKinds';
 import { NODE_KIND_META } from '../model/nodeKinds';
 import type { ReactNode } from 'react';
@@ -34,6 +35,10 @@ export type StepConfigPanelProps = {
   onDelete: (id: string) => void;
   onUpdateNodeData: (id: string, partial: Partial<NodeData>) => void;
   agentCatalog?: AgentRef[];
+  /** Read-only posture: hides mutating affordances and disables fields. */
+  readOnly?: boolean;
+  /** Reposition the selected node to run after `afterId` (or START_SENTINEL). */
+  onReposition?: (nodeId: string, afterId: string) => void;
 };
 
 function TransitionField({
@@ -74,6 +79,8 @@ export function StepConfigPanel({
   onDelete,
   onUpdateNodeData,
   agentCatalog,
+  readOnly = false,
+  onReposition,
 }: StepConfigPanelProps) {
   const node = useMemo(() => model.nodes.find((n) => n.id === selectedId) ?? null, [model.nodes, selectedId]);
   const hasAgentCatalog = Boolean(agentCatalog && agentCatalog.length > 0);
@@ -85,6 +92,12 @@ export function StepConfigPanel({
         .map((n) => ({ id: n.id, label: n.data.name || NODE_KIND_META[n.kind].label })),
     [model.nodes, node],
   );
+
+  const runsAfter = useMemo(() => getRunsAfterState(model, node?.id ?? null), [model, node]);
+  const labelForNode = (id: string): string => {
+    const found = model.nodes.find((n) => n.id === id);
+    return found ? found.data.name?.trim() || NODE_KIND_META[found.kind].label : id;
+  };
 
   useEffect(() => {
     if (!node || !selectedId) {
@@ -123,6 +136,7 @@ export function StepConfigPanel({
         className="wf-panel wf-inspector wf-inspector--open"
         role="dialog"
         aria-label={title}
+        aria-readonly={readOnly || undefined}
         data-testid="workflow-builder-inspector-panel"
       >
       <header className="wf-panel__header wf-inspector__header">
@@ -137,10 +151,15 @@ export function StepConfigPanel({
         </button>
       </header>
       <div className="wf-panel__body wf-inspector__body">
-        {insideLoopBody ? (
+        {readOnly ? (
+          <p className="wf-inspector__banner" data-testid="inspector-readonly-banner">
+            {ACTION_LABELS.readOnlyBadgeTitle}
+          </p>
+        ) : null}
+        {!readOnly && insideLoopBody ? (
           <p className="wf-inspector__banner">{ACTION_LABELS.loopBodyReadOnly}</p>
         ) : null}
-        <fieldset disabled={insideLoopBody} className="wf-inspector__fieldset">
+        <fieldset disabled={insideLoopBody || readOnly} className="wf-inspector__fieldset">
           <Section title={ACTION_LABELS.basicsSection}>
             <label className="wf-field">
               <span className="wf-field__label">{ACTION_LABELS.nameField}</span>
@@ -161,6 +180,44 @@ export function StepConfigPanel({
               </label>
             </div>
           </Section>
+
+          {!readOnly && runsAfter.kind !== 'hidden' ? (
+            <Section title={ACTION_LABELS.flowSection}>
+              {runsAfter.kind === 'editable' ? (
+                <label className="wf-field">
+                  <span className="wf-field__label">{ACTION_LABELS.runsAfterField}</span>
+                  <select
+                    className="wf-input wf-select"
+                    data-testid="runs-after-select"
+                    value={runsAfter.current}
+                    onChange={(e) => onReposition?.(node.id, e.target.value)}
+                  >
+                    {runsAfter.targets.map((target) => (
+                      <option key={target.value} value={target.value}>
+                        {target.value === START_SENTINEL
+                          ? ACTION_LABELS.runsAfterStartOption
+                          : labelForNode(target.value)}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              ) : (
+                <label className="wf-field">
+                  <span className="wf-field__label">{ACTION_LABELS.runsAfterField}</span>
+                  <select className="wf-input wf-select" data-testid="runs-after-select" value="" disabled>
+                    <option value="">{ACTION_LABELS.selectPlaceholder}</option>
+                  </select>
+                  <span className="wf-field__hint">
+                    {runsAfter.reason === 'multiplePredecessors'
+                      ? ACTION_LABELS.runsAfterMultiplePredecessors
+                      : runsAfter.reason === 'multipleSuccessors'
+                        ? ACTION_LABELS.runsAfterMultipleSuccessors
+                        : ACTION_LABELS.runsAfterNoTargets}
+                  </span>
+                </label>
+              )}
+            </Section>
+          ) : null}
 
           <Section title={ACTION_LABELS.inputsOutputsSection}>
             {node.kind === 'ASK_USER' ? (
@@ -452,16 +509,18 @@ export function StepConfigPanel({
           </details>
         </fieldset>
       </div>
-      <footer className="wf-inspector__footer">
-        <button
-          type="button"
-          className="wf-button wf-button--destructive"
-          disabled={insideLoopBody}
-          onClick={() => onDelete(node.id)}
-        >
-          {ACTION_LABELS.deleteStep}
-        </button>
-      </footer>
+      {!readOnly ? (
+        <footer className="wf-inspector__footer">
+          <button
+            type="button"
+            className="wf-button wf-button--destructive"
+            disabled={insideLoopBody}
+            onClick={() => onDelete(node.id)}
+          >
+            {ACTION_LABELS.deleteStep}
+          </button>
+        </footer>
+      ) : null}
     </aside>
     </>
   );

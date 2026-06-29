@@ -17,9 +17,8 @@ import java.util.Map;
 import org.junit.jupiter.api.Test;
 
 /**
- * Black-box coverage of the step behaviours (FAIL, BRANCH, RESOURCE, WORKFLOW nesting, INPUT, SPAR).
- * AGENT is exercised throughout the command/loop tiers; RETRY_PREVIOUS is held (see the verification
- * {@code CHANGES.md}). Each behaviour drives a focused fixture and asserts its observable effect.
+ * Black-box coverage of the step behaviours (FAIL, BRANCH, RESOURCE, WORKFLOW nesting, INPUT, SPAR). AGENT is exercised
+ * throughout the command/loop tiers. Each behaviour drives a focused fixture and asserts its observable effect.
  */
 class StepBehaviourTest {
 

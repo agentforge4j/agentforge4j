@@ -16,7 +16,9 @@ import {
   newStepId,
   workflowToCanvas,
 } from '../model/mapper';
+import { isInsertableEdge, pruneReferences, repositionAfter, spliceEdgeWithNode, unreachableNodeIds } from '../model/graphOps';
 import type { NodeKind } from '../model/nodeKinds';
+import { NODE_KIND_META } from '../model/nodeKinds';
 import { StepPalette } from '../palette/StepPalette';
 import { useBuilderState } from '../state/useBuilderState';
 import { ValidationPill } from '../validation-ui/ValidationPill';
@@ -135,12 +137,16 @@ export function WorkflowBuilder({
   theme,
   initialWorkflow,
   agentCatalog = [],
+  mode = 'editable',
 }: WorkflowBuilderProps) {
+  const readOnly = mode === 'readOnly';
   const seed = initialWorkflow ?? emptyWorkflow();
   const { state, dispatch, dirty } = useBuilderState(seed);
   const [pending, setPending] = useState<PendingState>({});
   const [errors, setErrors] = useState<ErrorState>({});
+  const [insertOnEdgeId, setInsertOnEdgeId] = useState<string | null>(null);
   const skipDraftSync = useRef(false);
+  const serializeGuardWarnedRef = useRef(false);
 
   const initialCanvas = useMemo(
     () => (seed.steps.length > 0 ? workflowToCanvas(seed) : createInitialCanvasModel()),
@@ -157,9 +163,9 @@ export function WorkflowBuilder({
     markClean,
     updateNodeData,
     appendNode,
-  } = useCanvasState(initialCanvas);
+  } = useCanvasState(initialCanvas, readOnly);
 
-  const { mode, setMode } = useBuilderMode(model, !initialWorkflow?.id);
+  const { mode: builderMode, setMode: setBuilderMode } = useBuilderMode(model, !initialWorkflow?.id);
   const { buildFromCanvas } = useWorkflowDraft();
 
   const resolvedAdapters = useMemo(
@@ -182,11 +188,38 @@ export function WorkflowBuilder({
 
   useEffect(() => {
     let cancelled = false;
-    void Promise.resolve(resolvedAdapters.validateWorkflow(state.draft)).then((result) => {
-      if (!cancelled) {
-        dispatch({ type: 'SET_VALIDATION', validation: result });
-      }
-    });
+    // Defer the validate call into the promise chain so a SYNCHRONOUS throw from
+    // the (strict) schema serializer becomes a rejection routed to `.catch`,
+    // never an uncaught error that tears down the editor.
+    Promise.resolve()
+      .then(() => resolvedAdapters.validateWorkflow(state.draft))
+      .then((result) => {
+        if (!cancelled) {
+          dispatch({ type: 'SET_VALIDATION', validation: result });
+        }
+      })
+      .catch((err) => {
+        // `serializeStepExecutable` throws on an incomplete routing target (an
+        // unset decision default from a fresh decision or a just-deleted target).
+        // Surface it as a validation error instead of crashing; the strict
+        // serializer stays strict for real export.
+        if (!serializeGuardWarnedRef.current) {
+          console.warn(
+            '[workflow-builder] Could not serialize an incomplete draft for validation; surfacing as a validation error.',
+            err,
+          );
+          serializeGuardWarnedRef.current = true;
+        }
+        if (!cancelled) {
+          dispatch({
+            type: 'SET_VALIDATION',
+            validation: {
+              valid: false,
+              issues: [{ path: 'graph', message: ACTION_LABELS.incompleteRoutingError, severity: 'error' }],
+            },
+          });
+        }
+      });
     return () => {
       cancelled = true;
     };
@@ -195,6 +228,26 @@ export function WorkflowBuilder({
   const clientValidation = useMemo(() => buildFromCanvas(model).validation, [buildFromCanvas, model]);
   const clientIssues = useMemo(() => flattenClientIssues(model, clientValidation), [clientValidation, model]);
 
+  // Scope-aware reachability (Part A §8): unreachable steps surface as warnings.
+  // Joins / multiple predecessors are valid and never warned.
+  const graphIssues = useMemo<DraftValidationIssue[]>(
+    () =>
+      unreachableNodeIds(model).map((id) => {
+        const target = model.nodes.find((n) => n.id === id);
+        const name = target ? target.data.name?.trim() || NODE_KIND_META[target.kind].label : id;
+        return {
+          code: 'graph.warning.unreachable',
+          message: ACTION_LABELS.unreachableWarning(name),
+          stepId: target?.backendStepId,
+        };
+      }),
+    [model],
+  );
+  const validationIssues = useMemo(() => [...clientIssues, ...graphIssues], [clientIssues, graphIssues]);
+
+  // Per-node badges count only clientIssues (schema/cross-ref ERRORS). graphIssues
+  // (unreachable WARNINGS) are intentionally excluded: they surface in the validation
+  // panel only and never as per-node badges, so a warning never blocks or marks a node.
   const issueCountByBackendStepId = useMemo(() => {
     const counts: Record<string, number> = {};
     for (const issue of clientIssues) {
@@ -265,7 +318,6 @@ export function WorkflowBuilder({
 
   const onAddStepFromLibrary = useCallback(
     (kind: NodeKind, options?: { patch?: Record<string, unknown> }) => {
-      const { position, afterNodeId } = nextLibraryStepPosition(model, selectedId);
       const prefix: Record<NodeKind, string> = {
         ASK_USER: 'ask-user',
         AI_STEP: 'ai-step',
@@ -280,13 +332,40 @@ export function WorkflowBuilder({
       };
       const backendStepId = newStepId(prefix[kind]);
       const id = `c-${backendStepId}`;
-      const node = {
-        id,
-        backendStepId,
-        kind,
-        position,
-        data: { ...defaultNodeData(kind), ...options?.patch },
-      } as CanvasNode;
+      const data = { ...defaultNodeData(kind), ...options?.patch };
+
+      // Edge-insert mode (Part A §6): split the chosen linear edge with this node.
+      const activeInsertEdge =
+        insertOnEdgeId && isInsertableEdge(model, insertOnEdgeId) ? insertOnEdgeId : null;
+      if (activeInsertEdge) {
+        const edge = model.edges.find((e) => e.id === activeInsertEdge)!;
+        const source = model.nodes.find((n) => n.id === edge.source) ?? null;
+        const target = model.nodes.find((n) => n.id === edge.target) ?? null;
+        const position =
+          source && target
+            ? { x: (source.position.x + target.position.x) / 2, y: (source.position.y + target.position.y) / 2 }
+            : source
+              ? { x: source.position.x + 280, y: source.position.y }
+              : { x: 80, y: 120 };
+        const node = { id, backendStepId, kind, position, data } as CanvasNode;
+        setModel((m) => ({
+          ...m,
+          nodes: [...m.nodes, node],
+          edges: spliceEdgeWithNode(m.edges, activeInsertEdge, id),
+          startNodeId: m.startNodeId ?? id,
+        }));
+        setInsertOnEdgeId(null);
+        setSelectedId(id);
+        return;
+      }
+
+      // Insert mode was requested but its edge is gone (e.g. deleted); fall back
+      // to an append and clear the stale insert state so the banner does not linger.
+      if (insertOnEdgeId) {
+        setInsertOnEdgeId(null);
+      }
+      const { position, afterNodeId } = nextLibraryStepPosition(model, selectedId);
+      const node = { id, backendStepId, kind, position, data } as CanvasNode;
       setModel((m) => {
         const edge =
           afterNodeId && !m.edges.some((e) => e.source === afterNodeId && e.target === id)
@@ -309,19 +388,42 @@ export function WorkflowBuilder({
       });
       setSelectedId(id);
     },
-    [model, selectedId, setModel, setSelectedId],
+    [insertOnEdgeId, model, selectedId, setModel, setSelectedId],
+  );
+
+  const onReposition = useCallback(
+    (nodeId: string, afterId: string) => {
+      setModel((m) => repositionAfter(m, nodeId, afterId));
+    },
+    [setModel],
+  );
+
+  const onInsertOnEdge = useCallback(
+    (edgeId: string) => {
+      if (readOnly) {
+        return;
+      }
+      setInsertOnEdgeId(edgeId);
+    },
+    [readOnly],
   );
 
   const handleDeleteNode = useCallback(
     (id: string) => {
-      setModel((m) => ({
-        ...m,
-        nodes: m.nodes.filter((node) => node.id !== id),
-        edges: m.edges.filter((edge) => edge.source !== id && edge.target !== id),
-      }));
+      if (readOnly) {
+        return;
+      }
+      setModel((m) => {
+        const nodes = m.nodes.filter((node) => node.id !== id);
+        const edges = m.edges.filter((edge) => edge.source !== id && edge.target !== id);
+        const startNodeId = m.startNodeId === id ? (nodes[0]?.id ?? null) : m.startNodeId;
+        // Scrub node-data references to the deleted node so serialization never
+        // receives a dangling id (Part: delete-cleanup).
+        return pruneReferences({ ...m, nodes, edges, startNodeId }, id);
+      });
       setSelectedId(null);
     },
-    [setModel, setSelectedId],
+    [readOnly, setModel, setSelectedId],
   );
 
   const focusIssue = useCallback(
@@ -401,7 +503,9 @@ export function WorkflowBuilder({
     ? ({ style: theme.variables as React.CSSProperties } as const)
     : undefined;
 
-  const rootClass = ['workflow-builder', theme?.className].filter(Boolean).join(' ');
+  const rootClass = ['workflow-builder', readOnly ? 'workflow-builder--readonly' : '', theme?.className]
+    .filter(Boolean)
+    .join(' ');
   const activeError = Object.values(errors).find((value) => value) ?? null;
   const subtitle = [
     dirty ? ACTION_LABELS.unsavedChanges : ACTION_LABELS.upToDate,
@@ -411,7 +515,12 @@ export function WorkflowBuilder({
     .join(' · ');
 
   return (
-    <div className={rootClass} data-testid="workflow-builder" {...rootStyle}>
+    <div
+      className={rootClass}
+      data-testid="workflow-builder"
+      aria-readonly={readOnly || undefined}
+      {...rootStyle}
+    >
       <header className="workflow-builder__header workflow-builder__toolbar">
         <div className="workflow-builder__title-group">
           <span
@@ -424,6 +533,7 @@ export function WorkflowBuilder({
             value={model.workflowName}
             placeholder={ACTION_LABELS.workflowNamePlaceholder}
             aria-label={ACTION_LABELS.workflowNameLabel}
+            readOnly={readOnly}
             onChange={(e) => setModel((m) => ({ ...m, workflowName: e.target.value }))}
           />
           <input
@@ -431,29 +541,41 @@ export function WorkflowBuilder({
             value={model.workflowId}
             placeholder={ACTION_LABELS.workflowIdPlaceholder}
             aria-label={ACTION_LABELS.workflowIdLabel}
+            readOnly={readOnly}
             onChange={(e) => setModel((m) => ({ ...m, workflowId: e.target.value }))}
           />
+          {readOnly ? (
+            <span
+              className="workflow-builder__readonly-badge"
+              data-testid="workflow-builder-readonly-badge"
+              title={ACTION_LABELS.readOnlyBadgeTitle}
+            >
+              {ACTION_LABELS.readOnlyBadge}
+            </span>
+          ) : null}
         </div>
         <div className="workflow-builder__toolbar-actions">
+        {!readOnly ? (
         <div className="workflow-builder__mode-toggle" role="group" aria-label="Builder mode">
           <button
             type="button"
-            className={['wf-button', mode === 'guided' ? 'wf-button--primary' : 'wf-button--ghost'].join(' ')}
+            className={['wf-button', builderMode === 'guided' ? 'wf-button--primary' : 'wf-button--ghost'].join(' ')}
             data-testid="workflow-builder-mode-guided"
-            onClick={() => setMode('guided')}
+            onClick={() => setBuilderMode('guided')}
           >
             {ACTION_LABELS.guidedMode}
           </button>
           <button
             type="button"
-            className={['wf-button', mode === 'advanced' ? 'wf-button--primary' : 'wf-button--ghost'].join(' ')}
+            className={['wf-button', builderMode === 'advanced' ? 'wf-button--primary' : 'wf-button--ghost'].join(' ')}
             data-testid="workflow-builder-mode-advanced"
-            onClick={() => setMode('advanced')}
+            onClick={() => setBuilderMode('advanced')}
           >
             {ACTION_LABELS.advancedMode}
           </button>
         </div>
-        {capabilities.import ? (
+        ) : null}
+        {!readOnly && capabilities.import ? (
           <button
             type="button"
             className="wf-button wf-button--ghost"
@@ -464,7 +586,7 @@ export function WorkflowBuilder({
             {pending.import ? ACTION_LABELS.importing : ACTION_LABELS.import}
           </button>
         ) : null}
-        <ValidationPill model={model} clientIssues={clientIssues} onFix={focusIssue} />
+        <ValidationPill model={model} clientIssues={validationIssues} onFix={focusIssue} />
         {capabilities.export ? (
           <button
             type="button"
@@ -476,7 +598,7 @@ export function WorkflowBuilder({
             {pending.export ? ACTION_LABELS.exporting : ACTION_LABELS.export}
           </button>
         ) : null}
-        {capabilities.save ? (
+        {!readOnly && capabilities.save ? (
           <button
             type="button"
             className="wf-button wf-button--primary"
@@ -487,7 +609,7 @@ export function WorkflowBuilder({
             {pending.save ? ACTION_LABELS.saving : ACTION_LABELS.save}
           </button>
         ) : null}
-        {capabilities.run ? (
+        {!readOnly && capabilities.run ? (
           <button
             type="button"
             className="wf-button wf-button--secondary"
@@ -498,7 +620,7 @@ export function WorkflowBuilder({
             {pending.run ? ACTION_LABELS.running : ACTION_LABELS.run}
           </button>
         ) : null}
-        {capabilities.publish ? (
+        {!readOnly && capabilities.publish ? (
           <button
             type="button"
             className="wf-button wf-button--primary"
@@ -509,7 +631,7 @@ export function WorkflowBuilder({
             {pending.publish ? ACTION_LABELS.publishing : ACTION_LABELS.publish}
           </button>
         ) : null}
-        {capabilities.aiAssist ? (
+        {!readOnly && capabilities.aiAssist ? (
           <button
             type="button"
             className="wf-button wf-button--secondary"
@@ -536,8 +658,22 @@ export function WorkflowBuilder({
         </div>
       ) : null}
 
+      {!readOnly && insertOnEdgeId ? (
+        <div className="workflow-builder__banner" role="status" data-testid="insert-mode-banner">
+          <p className="workflow-builder__banner-title">{ACTION_LABELS.insertStepHere}</p>
+          <p>{ACTION_LABELS.chooseStepDescription}</p>
+          <button
+            type="button"
+            className="wf-button wf-button--ghost"
+            onClick={() => setInsertOnEdgeId(null)}
+          >
+            {ACTION_LABELS.okShort}
+          </button>
+        </div>
+      ) : null}
+
       <div className="workflow-builder__workspace">
-        {mode === 'guided' ? (
+        {!readOnly && builderMode === 'guided' ? (
           <div className="workflow-builder__guided">
             <GuidedStepper
               stages={guidedStages}
@@ -547,11 +683,13 @@ export function WorkflowBuilder({
           </div>
         ) : null}
 
-        <StepPalette
-          mode={mode}
-          onAddStep={(kind) => onAddStepFromLibrary(kind)}
-          defaultCollapsed={mode !== 'advanced'}
-        />
+        {!readOnly ? (
+          <StepPalette
+            mode={builderMode}
+            onAddStep={(kind) => onAddStepFromLibrary(kind)}
+            defaultCollapsed={builderMode !== 'advanced'}
+          />
+        ) : null}
 
         <div className="workflow-builder__canvas" data-testid="workflow-builder-canvas">
           <WorkflowCanvas
@@ -561,17 +699,21 @@ export function WorkflowBuilder({
             selectedId={selectedId}
             onAppend={appendNode}
             issueCountByBackendStepId={issueCountByBackendStepId}
+            readOnly={readOnly}
+            onInsertOnEdge={onInsertOnEdge}
           />
         </div>
 
         <StepConfigPanel
           model={model}
           selectedId={selectedId}
-          mode={mode}
+          mode={builderMode}
           onClose={() => setSelectedId(null)}
           onDelete={handleDeleteNode}
           onUpdateNodeData={updateNodeData}
           agentCatalog={agentCatalog}
+          readOnly={readOnly}
+          onReposition={onReposition}
         />
       </div>
 

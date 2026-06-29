@@ -145,6 +145,15 @@ export interface BuilderActions {
   publish?: (draft: WorkflowDefinition) => Promise<void>;
 }
 
+/**
+ * Editing posture for the builder. `readOnly` blocks every workflow-graph and
+ * definition mutation regardless of `capabilities` (a hard override for mutating
+ * actions); non-mutating interaction — pan/zoom/select/inspect/validate/export —
+ * stays available. Defaults to `editable`, which preserves prior behaviour and
+ * `capabilities` semantics exactly.
+ */
+export type WorkflowBuilderMode = 'editable' | 'readOnly';
+
 export interface WorkflowBuilderProps {
   capabilities: BuilderCapabilities;
   adapters?: BuilderAdapters;
@@ -153,6 +162,8 @@ export interface WorkflowBuilderProps {
   initialWorkflow?: WorkflowDefinition;
   /** Host-supplied agent catalog for inspector pickers (text fallback when omitted). */
   agentCatalog?: AgentRef[];
+  /** Editing posture; defaults to `editable`. See {@link WorkflowBuilderMode}. */
+  mode?: WorkflowBuilderMode;
 }
 
 export function emptyWorkflow(): WorkflowDefinition {

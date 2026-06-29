@@ -28,7 +28,14 @@ export function createInitialCanvasModel(): CanvasModel {
   };
 }
 
-export function useCanvasState(initialModel: CanvasModel) {
+/** Dev-time guard message when a mutation is rejected in read-only mode. */
+function warnReadOnlyBlocked(operation: string): void {
+  if (typeof console !== 'undefined' && typeof console.warn === 'function') {
+    console.warn(`[workflow-builder] Ignored "${operation}" while in read-only mode.`);
+  }
+}
+
+export function useCanvasState(initialModel: CanvasModel, readOnly = false) {
   const [model, setModel] = useState<CanvasModel>(initialModel);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [isDirty, setIsDirty] = useState(false);
@@ -41,15 +48,32 @@ export function useCanvasState(initialModel: CanvasModel) {
     setIsDirty(false);
   }, []);
 
-  const setModelFromLoad = useCallback((next: CanvasModel | ((prev: CanvasModel) => CanvasModel)) => {
-    setModel((current) => (typeof next === 'function' ? (next as (prev: CanvasModel) => CanvasModel)(current) : next));
-    setIsDirty(false);
-  }, []);
+  // Import-path setter (file-import → fresh model, clears dirty). This is a user
+  // mutation, so it is correctly blocked in read-only mode; initial/host load happens
+  // via the mount-time initial model, not through here.
+  const setModelFromLoad = useCallback(
+    (next: CanvasModel | ((prev: CanvasModel) => CanvasModel)) => {
+      if (readOnly) {
+        warnReadOnlyBlocked('load model');
+        return;
+      }
+      setModel((current) => (typeof next === 'function' ? (next as (prev: CanvasModel) => CanvasModel)(current) : next));
+      setIsDirty(false);
+    },
+    [readOnly],
+  );
 
-  const setModelDirty = useCallback((next: CanvasModel | ((prev: CanvasModel) => CanvasModel)) => {
-    setModel((current) => (typeof next === 'function' ? (next as (prev: CanvasModel) => CanvasModel)(current) : next));
-    setIsDirty(true);
-  }, []);
+  const setModelDirty = useCallback(
+    (next: CanvasModel | ((prev: CanvasModel) => CanvasModel)) => {
+      if (readOnly) {
+        warnReadOnlyBlocked('edit graph');
+        return;
+      }
+      setModel((current) => (typeof next === 'function' ? (next as (prev: CanvasModel) => CanvasModel)(current) : next));
+      setIsDirty(true);
+    },
+    [readOnly],
+  );
 
   const updateNodeData = useCallback(
     (id: string, partial: Partial<NodeData>) => {
@@ -68,6 +92,10 @@ export function useCanvasState(initialModel: CanvasModel) {
 
   const appendNode = useCallback(
     (kind: NodeKind, position: { x: number; y: number }) => {
+      if (readOnly) {
+        warnReadOnlyBlocked('append node');
+        return;
+      }
       const prefix: Record<NodeKind, string> = {
         ASK_USER: 'ask-user',
         AI_STEP: 'ai-step',
@@ -96,7 +124,7 @@ export function useCanvasState(initialModel: CanvasModel) {
       }));
       setSelectedId(id);
     },
-    [setModelDirty],
+    [readOnly, setModelDirty],
   );
 
   return {

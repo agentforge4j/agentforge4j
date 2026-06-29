@@ -142,6 +142,21 @@ export const ACTION_LABELS = {
   behaviourTypeField: 'Behaviour type (wire)',
   behaviourTypeSaveResultNote: 'SAVE_RESULT is a canvas-only step; export maps it via workflow result handling.',
   behaviourTypeRepeatNote: 'REPEAT is a canvas-only loop container; inner steps map to wire behaviours individually.',
+  flowSection: 'Flow',
+  runsAfterField: 'Runs after',
+  runsAfterStartOption: 'Start (first step)',
+  runsAfterMultiplePredecessors:
+    'This step has more than one step leading into it, so its position cannot be changed here. Adjust the connections on the canvas.',
+  runsAfterMultipleSuccessors:
+    'This step leads to more than one step, so its position cannot be changed here. Adjust the connections on the canvas.',
+  runsAfterNoTargets: 'There are no other steps to run this after yet.',
+  insertStepHere: 'Insert a step here',
+  unreachableWarning: (name: string) =>
+    `"${name}" is not connected to the start, so it will not run. Connect it to an earlier step.`,
+  readOnlyBadge: 'Read-only',
+  readOnlyBadgeTitle: 'This workflow is read-only. Steps can be viewed but not changed.',
+  incompleteRoutingError:
+    'This workflow has an incomplete step connection (a decision branch or retry target is unset). Complete the highlighted routing to continue.',
 };
 
 export const PALETTE_GROUP_LABELS = {

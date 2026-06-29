@@ -1,12 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 
-import { EDGE_LABELS } from '../../copy/workflow-terminology';
+import { ACTION_LABELS, EDGE_LABELS } from '../../copy/workflow-terminology';
 import type { StepTransition } from '../../api/types';
 import { BaseEdge, EdgeLabelRenderer, getBezierPath, type EdgeProps } from '@xyflow/react';
-import { Eye, UserCheck } from 'lucide-react';
+import { Eye, Plus, UserCheck } from 'lucide-react';
 
 type FlowEdgeData = {
   transition?: StepTransition | null;
+  insertable?: boolean;
+  onInsert?: (edgeId: string) => void;
 };
 
 export type EdgeVisualVariant = 'default' | 'approval' | 'review';
@@ -59,7 +61,10 @@ export function FlowEdge({
   markerEnd,
   data,
 }: EdgeProps) {
-  const transition = (data as FlowEdgeData | undefined)?.transition ?? null;
+  const edgeData = data as FlowEdgeData | undefined;
+  const transition = edgeData?.transition ?? null;
+  const onInsert = edgeData?.onInsert;
+  const insertable = Boolean(edgeData?.insertable && onInsert);
   const visual = edgeVisual(transition);
   const [path, labelX, labelY] = getBezierPath({
     sourceX,
@@ -106,6 +111,26 @@ export function FlowEdge({
             <Eye className="wf-edge-pill__icon" aria-hidden size={12} strokeWidth={2.25} />
             {visual.label ? <span>{visual.label}</span> : null}
           </div>
+        </EdgeLabelRenderer>
+      ) : null}
+      {insertable ? (
+        <EdgeLabelRenderer>
+          <button
+            type="button"
+            className="wf-edge-insert nodrag nopan"
+            data-testid={`edge-insert-${id}`}
+            aria-label={ACTION_LABELS.insertStepHere}
+            title={ACTION_LABELS.insertStepHere}
+            style={{
+              transform: `translate(-50%, -50%) translate(${labelX}px,${labelY}px)`,
+            }}
+            onClick={(event) => {
+              event.stopPropagation();
+              onInsert?.(id);
+            }}
+          >
+            <Plus aria-hidden size={12} strokeWidth={2.5} />
+          </button>
         </EdgeLabelRenderer>
       ) : null}
     </>

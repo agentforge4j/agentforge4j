@@ -92,9 +92,10 @@ class LlmCommandParserSecurityTest {
 
   @Test
   void oversizedContent_parsesWithoutTruncation() {
-    // The parser enforces no hard size bound on command content. A large payload must parse
-    // cleanly with its content preserved byte-for-byte (no OOM here, no silent truncation). The
-    // absence of an explicit response-size limit is recorded as a security gap in CHANGES.md.
+    // KNOWN GAP (intentional, unbounded here): the parser enforces no hard size bound on
+    // command content, so embedders must impose their own response-size limit upstream. A
+    // large payload must parse cleanly with its content preserved byte-for-byte (no OOM
+    // here, no silent truncation).
     CommandResponseSchema schema = CommandSchemaFactory.build(List.of("CREATE_FILE"), mapper);
     int contentLength = 2_000_000;
     String largeContent = "x".repeat(contentLength);

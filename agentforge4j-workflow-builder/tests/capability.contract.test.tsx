@@ -60,6 +60,22 @@ describe('WorkflowBuilder capability contract', () => {
     expect(run).not.toHaveBeenCalled();
   });
 
+  it('does not render Run, and never invokes run, in read-only mode even when capabilities.run is true', () => {
+    const run = vi.fn();
+    render(
+      <WorkflowBuilder
+        mode="readOnly"
+        capabilities={{ ...allDisabled, run: true, export: true }}
+        actions={{ run }}
+      />,
+    );
+    // Run is side-effecting: hidden/disabled in read-only regardless of capability.
+    expect(screen.queryByTestId('workflow-builder-run')).not.toBeInTheDocument();
+    expect(run).not.toHaveBeenCalled();
+    // Export is a safe, read-only-permitted affordance and stays available.
+    expect(screen.getByTestId('workflow-builder-export')).toBeInTheDocument();
+  });
+
   it('does not fetch when aiAssist is false', () => {
     const fetchSpy = vi.spyOn(globalThis, 'fetch');
     render(<WorkflowBuilder capabilities={allDisabled} />);

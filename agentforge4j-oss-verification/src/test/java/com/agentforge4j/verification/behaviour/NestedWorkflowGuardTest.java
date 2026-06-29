@@ -10,8 +10,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 /**
  * Black-box coverage of the nested-workflow cycle guard: a workflow whose {@code WORKFLOW} behaviour
  * references itself is rejected at load time with a circular-reference error (surfaced as the typed
- * cause of the build wrapper). The {@code maxNestingDepth} runtime guard is held — see the
- * verification {@code CHANGES.md}.
+ * cause of the build wrapper).
  */
 class NestedWorkflowGuardTest {
 

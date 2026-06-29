@@ -9,6 +9,7 @@ import { DecisionNode } from './nodes/DecisionNode';
 import { LoopNode } from './nodes/LoopNode';
 import { StepNode } from './nodes/StepNode';
 import type { CanvasModel, CanvasNode } from '../model/canvasModel';
+import { isInsertableEdge, pruneReferences } from '../model/graphOps';
 import type { NodeKind } from '../model/nodeKinds';
 import { NODE_KIND_META } from '../model/nodeKinds';
 import type { StepTransition } from '../api/types';
@@ -86,6 +87,7 @@ function toFlowNodes(
   model: CanvasModel,
   selectedId: string | null,
   issueCountByBackendStepId: Record<string, number>,
+  readOnly: boolean,
 ): Node[] {
   return model.nodes.map((n) => {
     const loopBodyLabels =
@@ -108,24 +110,30 @@ function toFlowNodes(
         issueCount,
         needsApproval: nodeNeedsApproval(n),
       },
-      draggable: true,
+      draggable: !readOnly,
     };
   });
 }
 
-function toFlowEdges(model: CanvasModel): Edge[] {
+function toFlowEdges(
+  model: CanvasModel,
+  options: { readOnly: boolean; onInsert?: (edgeId: string) => void },
+): Edge[] {
   const byId = new Map(model.nodes.map((n) => [n.id, n] as const));
   return model.edges.map((e) => {
     const source = byId.get(e.source);
     const transition = source ? nodeTransition(source) : null;
     const { markerColor } = edgeVisual(transition);
+    // Scope-safe: only offer the edge-insert "+" on edges that can actually be
+    // split without corrupting loop/branch scope (see isInsertableEdge).
+    const insertable = !options.readOnly && isInsertableEdge(model, e.id);
     return {
       id: e.id,
       source: e.source,
       target: e.target,
       sourceHandle: e.sourceHandle ?? undefined,
       type: 'flow',
-      data: { transition },
+      data: { transition, insertable, onInsert: insertable ? options.onInsert : undefined },
       markerEnd: {
         type: MarkerType.ArrowClosed,
         width: 12,
@@ -146,6 +154,8 @@ type InnerProps = {
   selectedId: string | null;
   onAppend: (kind: NodeKind, position: { x: number; y: number }) => void;
   issueCountByBackendStepId: Record<string, number>;
+  readOnly: boolean;
+  onInsertOnEdge?: (edgeId: string) => void;
 };
 
 function WorkflowCanvasInner({
@@ -155,14 +165,16 @@ function WorkflowCanvasInner({
   selectedId,
   onAppend,
   issueCountByBackendStepId,
+  readOnly,
+  onInsertOnEdge,
 }: InnerProps) {
   const { screenToFlowPosition, setCenter } = useReactFlow();
   const nodesInitialized = useNodesInitialized();
   const showStarterHint = isStarterCanvas(model);
 
   const derivedFlowNodes = useMemo(
-    () => toFlowNodes(model, selectedId, issueCountByBackendStepId),
-    [issueCountByBackendStepId, model, selectedId],
+    () => toFlowNodes(model, selectedId, issueCountByBackendStepId, readOnly),
+    [issueCountByBackendStepId, model, readOnly, selectedId],
   );
   const [flowNodes, setFlowNodes, onFlowNodesChange] = useNodesState(derivedFlowNodes);
   const flowNodesRef = useRef(flowNodes);
@@ -172,7 +184,10 @@ function WorkflowCanvasInner({
     setFlowNodes((current) => mergeModelIntoFlowNodes(current, derivedFlowNodes));
   }, [derivedFlowNodes, setFlowNodes]);
 
-  const flowEdges = useMemo(() => toFlowEdges(model), [model]);
+  const flowEdges = useMemo(
+    () => toFlowEdges(model, { readOnly, onInsert: onInsertOnEdge }),
+    [model, onInsertOnEdge, readOnly],
+  );
 
   useEffect(() => {
     if (!selectedId || !nodesInitialized) {
@@ -197,7 +212,9 @@ function WorkflowCanvasInner({
     (changes: NodeChange[]) => {
       onFlowNodesChange(changes);
 
-      if (!changes.some(nodeChangeUpdatesModel)) {
+      // Read-only: selection/measurement still apply to the flow view above,
+      // but never write structural changes back to the model.
+      if (readOnly || !changes.some(nodeChangeUpdatesModel)) {
         return;
       }
 
@@ -209,11 +226,14 @@ function WorkflowCanvasInner({
       });
       onModelChange({ ...model, nodes: nextNodes });
     },
-    [model, onFlowNodesChange, onModelChange],
+    [model, onFlowNodesChange, onModelChange, readOnly],
   );
 
   const onEdgesChange = useCallback(
     (changes: EdgeChange[]) => {
+      if (readOnly) {
+        return;
+      }
       const nextFlow = applyEdgeChanges(changes, flowEdges);
       onModelChange({
         ...model,
@@ -226,30 +246,40 @@ function WorkflowCanvasInner({
         })),
       });
     },
-    [flowEdges, model, onModelChange],
+    [flowEdges, model, onModelChange, readOnly],
   );
 
   const onNodesDelete = useCallback(
     (deletedNodes: FlowNode[]) => {
-      if (deletedNodes.length === 0) {
+      if (readOnly || deletedNodes.length === 0) {
         return;
       }
       const deletedIds = new Set(deletedNodes.map((node) => node.id));
-      onModelChange({
+      const nodes = model.nodes.filter((node) => !deletedIds.has(node.id));
+      const startNodeId =
+        model.startNodeId && deletedIds.has(model.startNodeId) ? (nodes[0]?.id ?? null) : model.startNodeId;
+      // Scrub node-data references to every deleted node so serialization never
+      // receives a dangling id (Part: delete-cleanup).
+      let next: CanvasModel = {
         ...model,
-        nodes: model.nodes.filter((node) => !deletedIds.has(node.id)),
+        nodes,
         edges: model.edges.filter((edge) => !deletedIds.has(edge.source) && !deletedIds.has(edge.target)),
-      });
+        startNodeId,
+      };
+      for (const deletedId of deletedIds) {
+        next = pruneReferences(next, deletedId);
+      }
+      onModelChange(next);
       if (selectedId && deletedIds.has(selectedId)) {
         onSelectNode(null);
       }
     },
-    [model, onModelChange, onSelectNode, selectedId],
+    [model, onModelChange, onSelectNode, readOnly, selectedId],
   );
 
   const onEdgesDelete = useCallback(
     (deletedEdges: Edge[]) => {
-      if (deletedEdges.length === 0) {
+      if (readOnly || deletedEdges.length === 0) {
         return;
       }
       const deletedIds = new Set(deletedEdges.map((edge) => edge.id));
@@ -258,12 +288,12 @@ function WorkflowCanvasInner({
         edges: model.edges.filter((edge) => !deletedIds.has(edge.id)),
       });
     },
-    [model, onModelChange],
+    [model, onModelChange, readOnly],
   );
 
   const onConnect = useCallback(
     (conn: Connection) => {
-      if (!conn.source || !conn.target) {
+      if (readOnly || !conn.source || !conn.target) {
         return;
       }
       const id = `e-${conn.source}-${conn.target}-${conn.sourceHandle ?? 'src'}`;
@@ -288,17 +318,23 @@ function WorkflowCanvasInner({
         ],
       });
     },
-    [model, onModelChange],
+    [model, onModelChange, readOnly],
   );
 
-  const onDragOver = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    e.dataTransfer.dropEffect = 'copy';
-  }, []);
+  const onDragOver = useCallback(
+    (e: React.DragEvent) => {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = readOnly ? 'none' : 'copy';
+    },
+    [readOnly],
+  );
 
   const onDrop = useCallback(
     (e: React.DragEvent) => {
       e.preventDefault();
+      if (readOnly) {
+        return;
+      }
       const kind = e.dataTransfer.getData('application/agentforge-node-kind') as NodeKind;
       if (!kind) {
         return;
@@ -306,7 +342,7 @@ function WorkflowCanvasInner({
       const pos = screenToFlowPosition({ x: e.clientX, y: e.clientY });
       onAppend(kind, pos);
     },
-    [onAppend, screenToFlowPosition],
+    [onAppend, readOnly, screenToFlowPosition],
   );
 
   const startNode = model.nodes.find((n) => n.id === model.startNodeId) ?? model.nodes[0];
@@ -327,6 +363,11 @@ function WorkflowCanvasInner({
         onConnect={onConnect}
         onNodeClick={(_event, flowNode: Node) => onSelectNode(flowNode.id)}
         onPaneClick={() => onSelectNode(null)}
+        nodesDraggable={!readOnly}
+        nodesConnectable={!readOnly}
+        edgesReconnectable={!readOnly}
+        elementsSelectable
+        deleteKeyCode={readOnly ? null : undefined}
         snapToGrid
         snapGrid={[SNAP, SNAP]}
         fitView
@@ -370,12 +411,22 @@ export type WorkflowCanvasProps = {
   selectedId: string | null;
   onAppend: (kind: NodeKind, position: { x: number; y: number }) => void;
   issueCountByBackendStepId?: Record<string, number>;
+  readOnly?: boolean;
+  onInsertOnEdge?: (edgeId: string) => void;
 };
 
-export function WorkflowCanvas({ issueCountByBackendStepId = {}, ...props }: WorkflowCanvasProps) {
+export function WorkflowCanvas({
+  issueCountByBackendStepId = {},
+  readOnly = false,
+  ...props
+}: WorkflowCanvasProps) {
   return (
     <ReactFlowProvider>
-      <WorkflowCanvasInner {...props} issueCountByBackendStepId={issueCountByBackendStepId} />
+      <WorkflowCanvasInner
+        {...props}
+        issueCountByBackendStepId={issueCountByBackendStepId}
+        readOnly={readOnly}
+      />
     </ReactFlowProvider>
   );
 }

@@ -4,12 +4,30 @@ import { StrictMode, useCallback, useMemo, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { WorkflowBuilder } from '../src/index';
 import { WorkflowCanvas } from '../src/canvas/WorkflowCanvas';
+import type {
+  BuilderAdapters,
+  BuilderCapabilities,
+  WorkflowBuilderMode,
+  WorkflowDefinition,
+} from '../src/api/types';
 import { createGalleryModel } from './sample-gallery-model';
 import { sampleWorkflow } from './sample-workflow';
 
 type DevMode = 'demo' | 'gallery';
 
-const capabilities = {
+/**
+ * Dev-harness-only observation seam for the Playwright e2e suite. The shipped
+ * `WorkflowBuilder` is uncontrolled (no `onChange`); the only host-observable
+ * serialization path is `adapters.exportBundle(draft)`. The harness wires that
+ * adapter to record the serialized {@link WorkflowDefinition} on `window` so a
+ * spec can read the real draft after an interaction. This exists ONLY in the
+ * dev harness (excluded from the published package).
+ */
+type ExportCaptureWindow = Window & {
+  __afbExport?: { count: number; draft: WorkflowDefinition };
+};
+
+const NO_CAPABILITIES: BuilderCapabilities = {
   import: false,
   export: false,
   save: false,
@@ -18,13 +36,60 @@ const capabilities = {
   aiAssist: false,
 };
 
-function readInitialMode(): DevMode {
-  return new URLSearchParams(window.location.search).has('gallery') ? 'gallery' : 'demo';
+const CAPABILITY_KEYS: (keyof BuilderCapabilities)[] = [
+  'import',
+  'export',
+  'save',
+  'run',
+  'publish',
+  'aiAssist',
+];
+
+function readInitialDevMode(params: URLSearchParams): DevMode {
+  return params.has('gallery') ? 'gallery' : 'demo';
+}
+
+/**
+ * Build capabilities from a `?caps=save,export` query param. Absent/empty →
+ * all-false (the default the existing specs depend on). Unknown tokens ignored.
+ */
+function readCapabilities(params: URLSearchParams): BuilderCapabilities {
+  const enabled = new Set(
+    (params.get('caps') ?? '')
+      .split(',')
+      .map((token) => token.trim())
+      .filter(Boolean),
+  );
+  const capabilities: BuilderCapabilities = { ...NO_CAPABILITIES };
+  for (const key of CAPABILITY_KEYS) {
+    capabilities[key] = enabled.has(key);
+  }
+  return capabilities;
+}
+
+/** Editing posture from `?mode=readOnly`; anything else (incl. absent) → editable. */
+function readBuilderMode(params: URLSearchParams): WorkflowBuilderMode {
+  return params.get('mode') === 'readOnly' ? 'readOnly' : 'editable';
 }
 
 function DevHarness() {
-  const [mode, setMode] = useState<DevMode>(readInitialMode);
+  const params = useMemo(() => new URLSearchParams(window.location.search), []);
+  const [mode, setMode] = useState<DevMode>(() => readInitialDevMode(params));
   const galleryModel = useMemo(() => createGalleryModel(), []);
+
+  const builderCapabilities = useMemo(() => readCapabilities(params), [params]);
+  const builderMode = useMemo(() => readBuilderMode(params), [params]);
+
+  // Dev-harness-only: capture the serialized draft for e2e observation.
+  const builderAdapters = useMemo<BuilderAdapters>(
+    () => ({
+      exportBundle: async (draft) => {
+        const target = window as ExportCaptureWindow;
+        target.__afbExport = { count: (target.__afbExport?.count ?? 0) + 1, draft };
+      },
+    }),
+    [],
+  );
 
   const switchMode = useCallback((next: DevMode) => {
     setMode(next);
@@ -62,9 +127,11 @@ function DevHarness() {
       <div style={{ flex: 1, minHeight: 0 }}>
         {mode === 'demo' ? (
           <WorkflowBuilder
-            capabilities={capabilities}
+            capabilities={builderCapabilities}
+            adapters={builderAdapters}
             initialWorkflow={sampleWorkflow()}
             agentCatalog={[{ id: 'agent-demo', name: 'Demo Agent' }]}
+            mode={builderMode}
           />
         ) : (
           <WorkflowCanvas

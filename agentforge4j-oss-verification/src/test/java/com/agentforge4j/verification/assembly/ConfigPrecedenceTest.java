@@ -13,11 +13,10 @@ import org.junit.jupiter.api.Test;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * Black-box proof of the bootstrap config-precedence contract for the {@code agentforge4j.agents.path}
- * key. Live resolution order is {@code programmatic > system-property > env} (the env leg is held — see
- * the verification {@code CHANGES.md}). Each leg is observed through {@link AgentForge4j#agents()}: the
- * agents catalog reflects whichever source won, since the two fixture directories declare distinct agent
- * ids.
+ * Black-box proof of the bootstrap config-precedence contract for the {@code agentforge4j.agents.path} key. Live
+ * resolution order is {@code programmatic > system-property > env}. Each leg is observed through
+ * {@link AgentForge4j#agents()}: the agents catalog reflects whichever source won, since the two fixture directories
+ * declare distinct agent ids.
  */
 class ConfigPrecedenceTest {
 

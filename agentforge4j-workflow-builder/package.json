@@ -1,6 +1,6 @@
 {
   "name": "@agentforge4j/workflow-builder-react",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "private": false,
   "description": "Reusable React workflow builder for AgentForge4j",
   "license": "Apache-2.0",
