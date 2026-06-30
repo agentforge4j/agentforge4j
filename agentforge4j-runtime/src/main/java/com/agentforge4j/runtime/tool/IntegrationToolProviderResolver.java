@@ -22,8 +22,8 @@ import java.util.Map;
  * <ol>
  *   <li>the active {@link IntegrationDefinition}s of an {@link IntegrationRepository}, each
  *   materialized into a {@link ToolProvider} via a {@link ToolProviderFactory}; and</li>
- *   <li>pre-built {@link ToolProvider} instances supplied directly — for example the MCP providers
- *   the Spring starter builds from {@code agentforge4j.mcp.servers}, or providers passed to
+ *   <li>pre-built {@link ToolProvider} instances supplied directly — for example configuration-backed
+ *   MCP providers supplied by the embedding application, or providers passed to
  *   {@code withToolProviders}.</li>
  * </ol>
  *

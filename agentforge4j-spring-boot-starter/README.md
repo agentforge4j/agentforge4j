@@ -27,7 +27,7 @@ an API key is set. Bind the following under `application.yml` / `application.pro
 | `agentforge4j` | `AgentForge4jProperties` | `agents-path`, `workflows-path`, `integrations.dir`, `max-nesting-depth`, `load-shipped-agents`, `load-shipped-workflows` |
 | `agentforge4j.llm.cache` | `LlmCacheSettings` | `enabled` |
 | `agentforge4j.llm.model-tiers` | `ModelTierProperties` | `<provider>.<tier>` overrides of the shipped tier defaults |
-| `agentforge4j.llm.<provider>` | per-provider `*LlmClientProperties` | `api-key`, `default-model`, the endpoint key (`url` for openai/claude/ollama/vllm, `base-url` for gemini/mistral/openai-compatible, `endpoint` for azure-openai; bedrock uses `region`), `connect-timeout`, `request-timeout` (provider-specific extras documented in each provider README) |
+| `agentforge4j.llm.<provider>` | the provider module's `LlmClientConfigurationAdapter` | `api-key`, `default-model`, the endpoint key (`url` for openai/claude/ollama/vllm, `base-url` for gemini/mistral/openai-compatible, `endpoint` for azure-openai; bedrock uses `region`), `connect-timeout`, `request-timeout` (provider-specific extras documented in each provider README) |
 | `agentforge4j.mcp` | `McpProperties` | `servers[].{id, provider-id, transport, command, args, url, env, headers, enabled, request-timeout}` |
 | `agentforge4j.tools` | `ToolProperties` | `timeout`, `max-retries`, `retry-backoff` |
 
@@ -39,24 +39,34 @@ agentforge4j:
   load-shipped-workflows: true
 ```
 
-The configuration metadata is generated, so IDEs offer completion and documentation for these keys.
+Generated configuration metadata (IDE completion/documentation) is available for the framework
+property groups and the `fake` provider. The real LLM providers are bound generically (see below),
+so their individual `agentforge4j.llm.<provider>.*` keys have **no** per-key IDE metadata — the keys
+themselves are unchanged and continue to bind exactly as before.
 
 ### Auto-configuration classes
 
 `BootstrapAutoConfiguration` builds the `AgentForge4j` bean; `SpringRuntimeAutoConfiguration` and
 `InMemoryRuntimePersistenceAutoConfiguration` supply the runtime and default in-memory persistence;
-`McpAutoConfiguration` wires configured MCP servers. Each of the ten providers has a
-`*ProviderAutoConfiguration` that, once the provider module is on the classpath
-(`@ConditionalOnClass`), contributes that provider's `LlmClientConfiguration` when its property gate
-is met:
+`McpAutoConfiguration` wires configured MCP servers.
+
+LLM providers are wired by a single `GenericLlmProviderAutoConfiguration`. Each provider module
+contributes an `LlmClientConfigurationAdapter` (discovered via `ServiceLoader`, alongside its
+`LlmClientFactory`) that owns the mapping from its `agentforge4j.llm.<provider>.*` subtree to the
+neutral `LlmClientConfiguration`; the generic auto-configuration binds the subtree and registers the
+configuration when the adapter reports it is configured. Adding a new `ServiceLoader`-registered
+provider needs no new starter code. Property gates are unchanged and now live in each adapter's
+`isConfigured`:
 
 - **api-key set** (`agentforge4j.llm.<provider>.api-key`) — `openai`, `claude`, `gemini`, `mistral`, `azure-openai`, `openai-compatible`;
-- **`enabled=true`** (`agentforge4j.llm.<provider>.enabled`) — `bedrock`, `ollama`, and the `fake` provider (`agentforge4j.llm.fake.enabled`);
+- **`enabled=true`** (`agentforge4j.llm.<provider>.enabled`) — `bedrock`, `ollama`;
 - **`url` set** (`agentforge4j.llm.vllm.url`) — `vllm`.
 
-The matching `LlmClientFactory` is discovered separately via `ServiceLoader` and bound to that
-configuration during bootstrap assembly. (The `fake` provider additionally defaults a scripted
-response source you can override with your own bean.)
+The matching `LlmClientFactory` is discovered via `ServiceLoader` and bound to that configuration
+during bootstrap assembly. The `fake` provider is the exception: it keeps its own
+`FakeProviderAutoConfiguration` (`agentforge4j.llm.fake.enabled=true`) because it is wired
+programmatically from a scripted response source you can override with your own bean, rather than
+mapped from properties.
 
 ## Maven coordinates
 

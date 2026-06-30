@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
+import com.agentforge4j.llm.LlmClientConfigurationAdapter;
 import com.agentforge4j.llm.LlmClientFactory;
+import com.agentforge4j.llm.openaicompatible.OpenAiCompatibleConfigurationAdapter;
 import com.agentforge4j.llm.openaicompatible.OpenAiCompatibleLlmClientFactory;
 
 /**
@@ -19,4 +21,6 @@ module agentforge4j.llm.openaicompatible {
   uses LlmClientFactory;
   provides LlmClientFactory
     with OpenAiCompatibleLlmClientFactory;
+  provides LlmClientConfigurationAdapter
+    with OpenAiCompatibleConfigurationAdapter;
 }

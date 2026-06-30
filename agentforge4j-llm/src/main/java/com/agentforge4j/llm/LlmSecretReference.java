@@ -15,7 +15,7 @@ import lombok.RequiredArgsConstructor;
  * <p>A reference is either:
  * <ul>
  *   <li><b>literal</b> — a direct credential value supplied programmatically (or already resolved by
- *       an embedding framework such as Spring); or</li>
+ *       the embedding application); or</li>
  *   <li><b>indirect</b> — a {@code scheme:key} pointer (for example {@code env:OPENAI_API_KEY}) that
  *       an {@link LlmSecretResolver} turns into an {@link LlmSecret} at the point of use.</li>
  * </ul>

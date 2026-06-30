@@ -35,16 +35,20 @@ class SpringBootLlmClientConfigurationMetadataTest {
     }
     String merged = String.join("\n", fragments);
 
-    assertThat(merged).contains("agentforge4j.llm.openai.api-key");
-    assertThat(merged).contains("agentforge4j.llm.openai.default-model");
-    assertThat(merged).contains("agentforge4j.llm.claude.api-key");
-    assertThat(merged).contains("agentforge4j.llm.claude.max-token-size");
-    assertThat(merged).contains("agentforge4j.llm.ollama.enabled");
-    assertThat(merged).contains("agentforge4j.llm.vllm.url");
-    assertThat(merged).contains("agentforge4j.llm.openai-compatible.base-url");
-    assertThat(merged).contains("agentforge4j.llm.gemini.api-key");
-    assertThat(merged).contains("agentforge4j.llm.azure-openai.api-key");
-    assertThat(merged).contains("agentforge4j.llm.bedrock.enabled");
-    assertThat(merged).contains("agentforge4j.llm.mistral.api-key");
+    // The fake provider keeps its dedicated @ConfigurationProperties (it is wired programmatically,
+    // not through the generic adapter path), so it still contributes per-key IDE metadata.
+    assertThat(merged).contains("agentforge4j.llm.fake.enabled");
+
+    // Every real provider is migrated to the generic adapter path and therefore contributes no
+    // per-key metadata — the accepted, documented metadata loss.
+    assertThat(merged).doesNotContain("agentforge4j.llm.openai.api-key");
+    assertThat(merged).doesNotContain("agentforge4j.llm.azure-openai.api-key");
+    assertThat(merged).doesNotContain("agentforge4j.llm.bedrock.enabled");
+    assertThat(merged).doesNotContain("agentforge4j.llm.claude.api-key");
+    assertThat(merged).doesNotContain("agentforge4j.llm.ollama.enabled");
+    assertThat(merged).doesNotContain("agentforge4j.llm.vllm.url");
+    assertThat(merged).doesNotContain("agentforge4j.llm.openai-compatible.base-url");
+    assertThat(merged).doesNotContain("agentforge4j.llm.gemini.api-key");
+    assertThat(merged).doesNotContain("agentforge4j.llm.mistral.api-key");
   }
 }

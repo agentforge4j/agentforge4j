@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
+import com.agentforge4j.llm.LlmClientConfigurationAdapter;
 import com.agentforge4j.llm.LlmClientFactory;
+import com.agentforge4j.llm.gemini.GeminiConfigurationAdapter;
 import com.agentforge4j.llm.gemini.GeminiLlmClientFactory;
 
 /**
@@ -21,4 +23,6 @@ module agentforge4j.llm.gemini {
   uses LlmClientFactory;
   provides LlmClientFactory
     with GeminiLlmClientFactory;
+  provides LlmClientConfigurationAdapter
+    with GeminiConfigurationAdapter;
 }

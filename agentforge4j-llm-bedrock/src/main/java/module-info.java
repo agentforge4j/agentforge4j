@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
+import com.agentforge4j.llm.LlmClientConfigurationAdapter;
 import com.agentforge4j.llm.LlmClientFactory;
+import com.agentforge4j.llm.bedrock.BedrockConfigurationAdapter;
 import com.agentforge4j.llm.bedrock.BedrockLlmClientFactory;
 
 /**
@@ -28,4 +30,6 @@ module agentforge4j.llm.bedrock {
   uses LlmClientFactory;
   provides LlmClientFactory
       with BedrockLlmClientFactory;
+  provides LlmClientConfigurationAdapter
+      with BedrockConfigurationAdapter;
 }

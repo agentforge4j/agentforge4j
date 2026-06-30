@@ -6,7 +6,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.agentforge4j.bootstrap.AgentForge4j;
 import com.agentforge4j.config.loader.LoadedConfiguration;
 import com.agentforge4j.core.runtime.WorkflowRuntime;
-import com.agentforge4j.starter.llmclient.openai.OpenAiProviderAutoConfiguration;
+import com.agentforge4j.starter.llmclient.GenericLlmProviderAutoConfiguration;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
@@ -24,7 +24,7 @@ class AgentForge4jStarterWiringIT {
       .withUserConfiguration(ObjectMapperTestConfiguration.class)
       .withConfiguration(AutoConfigurations.of(
           JacksonAutoConfiguration.class,
-          OpenAiProviderAutoConfiguration.class,
+          GenericLlmProviderAutoConfiguration.class,
           BootstrapAutoConfiguration.class,
           SpringRuntimeAutoConfiguration.class,
           InMemoryRuntimePersistenceAutoConfiguration.class))

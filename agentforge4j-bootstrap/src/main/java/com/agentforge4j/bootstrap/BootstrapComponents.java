@@ -26,7 +26,7 @@ import java.time.Clock;
  * <p><strong>Internal — for framework integrators only (Spring starter, Quarkus extension,
  * CLI).</strong> Not part of the public API. Not advertised in the README.
  *
- * <p>The Spring starter uses this record to register individual Spring beans without
+ * <p>A framework integrator uses this record to register the individual components without
  * duplicating bootstrap's default-wiring logic.
  *
  * <p>Tool support is opt-in, so {@code integrationRepository}, {@code toolProviderResolver}, and

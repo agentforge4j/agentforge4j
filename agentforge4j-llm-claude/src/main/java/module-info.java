@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
+import com.agentforge4j.llm.LlmClientConfigurationAdapter;
 import com.agentforge4j.llm.LlmClientFactory;
+import com.agentforge4j.llm.claude.ClaudeConfigurationAdapter;
 import com.agentforge4j.llm.claude.ClaudeLlmClientFactory;
 
 /**
@@ -19,4 +21,6 @@ module agentforge4j.llm.claude {
   opens com.agentforge4j.llm.claude.dto to com.fasterxml.jackson.databind;
   provides LlmClientFactory
       with ClaudeLlmClientFactory;
+  provides LlmClientConfigurationAdapter
+      with ClaudeConfigurationAdapter;
 }

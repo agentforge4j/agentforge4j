@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
+import com.agentforge4j.llm.LlmClientConfigurationAdapter;
 import com.agentforge4j.llm.LlmClientFactory;
+import com.agentforge4j.llm.ollama.OllamaConfigurationAdapter;
 import com.agentforge4j.llm.ollama.OllamaLlmClientFactory;
 
 /**
@@ -19,4 +21,6 @@ module agentforge4j.llm.ollama {
   opens com.agentforge4j.llm.ollama.dto to com.fasterxml.jackson.databind;
   provides LlmClientFactory
     with OllamaLlmClientFactory;
+  provides LlmClientConfigurationAdapter
+    with OllamaConfigurationAdapter;
 }

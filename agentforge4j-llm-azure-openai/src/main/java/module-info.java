@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
+import com.agentforge4j.llm.LlmClientConfigurationAdapter;
 import com.agentforge4j.llm.LlmClientFactory;
+import com.agentforge4j.llm.azureopenai.AzureOpenAiConfigurationAdapter;
 import com.agentforge4j.llm.azureopenai.AzureOpenAiLlmClientFactory;
 
 /**
@@ -19,4 +21,6 @@ module agentforge4j.llm.azureopenai {
   opens com.agentforge4j.llm.azureopenai.dto to com.fasterxml.jackson.databind;
   provides LlmClientFactory
       with AzureOpenAiLlmClientFactory;
+  provides LlmClientConfigurationAdapter
+      with AzureOpenAiConfigurationAdapter;
 }

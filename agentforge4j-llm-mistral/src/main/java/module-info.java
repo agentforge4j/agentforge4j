@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
+import com.agentforge4j.llm.LlmClientConfigurationAdapter;
 import com.agentforge4j.llm.LlmClientFactory;
+import com.agentforge4j.llm.mistral.MistralConfigurationAdapter;
 import com.agentforge4j.llm.mistral.MistralLlmClientFactory;
 
 /**
@@ -19,4 +21,6 @@ module agentforge4j.llm.mistral {
   opens com.agentforge4j.llm.mistral.dto to com.fasterxml.jackson.databind;
   provides LlmClientFactory
     with MistralLlmClientFactory;
+  provides LlmClientConfigurationAdapter
+    with MistralConfigurationAdapter;
 }

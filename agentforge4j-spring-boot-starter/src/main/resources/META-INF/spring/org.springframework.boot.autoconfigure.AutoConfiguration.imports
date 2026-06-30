@@ -1,12 +1,4 @@
-com.agentforge4j.starter.llmclient.openai.OpenAiProviderAutoConfiguration
-com.agentforge4j.starter.llmclient.ollama.OllamaProviderAutoConfiguration
-com.agentforge4j.starter.llmclient.claude.ClaudeProviderAutoConfiguration
-com.agentforge4j.starter.llmclient.vllm.VllmProviderAutoConfiguration
-com.agentforge4j.starter.llmclient.openaicompat.OpenAiCompatibleProviderAutoConfiguration
-com.agentforge4j.starter.llmclient.gemini.GeminiProviderAutoConfiguration
-com.agentforge4j.starter.llmclient.azureopenai.AzureOpenAiProviderAutoConfiguration
-com.agentforge4j.starter.llmclient.bedrock.BedrockProviderAutoConfiguration
-com.agentforge4j.starter.llmclient.mistral.MistralProviderAutoConfiguration
+com.agentforge4j.starter.llmclient.GenericLlmProviderAutoConfiguration
 com.agentforge4j.starter.llmclient.fake.FakeProviderAutoConfiguration
 com.agentforge4j.starter.mcp.McpAutoConfiguration
 com.agentforge4j.starter.BootstrapAutoConfiguration

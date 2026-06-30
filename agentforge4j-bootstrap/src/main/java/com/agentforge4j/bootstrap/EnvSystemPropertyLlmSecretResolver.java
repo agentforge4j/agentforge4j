@@ -18,7 +18,7 @@ import com.agentforge4j.util.Validate;
  * value.
  *
  * <p>Public so framework layers (for example the Spring starter) can reuse it as the default
- * resolver: a Spring-resolved property value is wrapped as a literal reference and passed through.
+ * resolver: an already-resolved property value is wrapped as a literal reference and passed through.
  */
 public final class EnvSystemPropertyLlmSecretResolver implements LlmSecretResolver {
 

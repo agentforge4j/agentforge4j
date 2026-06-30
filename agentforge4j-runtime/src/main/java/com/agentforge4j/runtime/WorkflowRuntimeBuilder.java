@@ -208,8 +208,8 @@ public final class WorkflowRuntimeBuilder {
   }
 
   /**
-   * Configures the {@link AgentInvoker} used for agent and SPAR steps (for example from Spring auto-configuration or
-   * constructed explicitly by non-Spring callers).
+   * Configures the {@link AgentInvoker} used for agent and SPAR steps (for example from framework integration or
+   * constructed explicitly by the embedding application).
    *
    * @param value invoker instance
    *

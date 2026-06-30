@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
+import com.agentforge4j.llm.LlmClientConfigurationAdapter;
 import com.agentforge4j.llm.LlmClientFactory;
+import com.agentforge4j.llm.vllm.VllmConfigurationAdapter;
 import com.agentforge4j.llm.vllm.VllmLlmClientFactory;
 
 /**
@@ -20,4 +22,6 @@ module agentforge4j.llm.vllm {
   opens com.agentforge4j.llm.vllm.dto to com.fasterxml.jackson.databind;
   provides LlmClientFactory
       with VllmLlmClientFactory;
+  provides LlmClientConfigurationAdapter
+      with VllmConfigurationAdapter;
 }

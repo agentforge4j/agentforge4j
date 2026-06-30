@@ -10,7 +10,7 @@ import java.time.Duration;
  * — the shared per-run store that the registration API (test runner / demo flow) also holds — so the
  * {@link FakeLlmClientFactory}-built client and the registration API resolve against one store.
  *
- * <p>Wire this via the Spring Boot starter or programmatic {@code withLlmProvider(...)}; the
+ * <p>Wire this through the embedding application or programmatic {@code withLlmProvider(...)}; the
  * env/system-property bootstrap discovery path supplies a generic configuration and cannot carry a source, so it does
  * not configure the fake provider (the same way Ollama requires its own configuration subtype).
  */
