@@ -7,6 +7,7 @@ import com.agentforge4j.core.workflow.step.behaviour.AgentBehaviour;
 import com.agentforge4j.core.workflow.step.behaviour.BranchBehaviour;
 import com.agentforge4j.core.workflow.step.behaviour.BranchPredicate;
 import com.agentforge4j.core.workflow.step.behaviour.BranchPredicateKind;
+import com.agentforge4j.core.workflow.step.behaviour.CollectionBehaviour;
 import com.agentforge4j.core.workflow.step.behaviour.FailBehaviour;
 import com.agentforge4j.core.workflow.step.behaviour.SparBehaviour;
 import com.agentforge4j.core.workflow.step.blueprint.BlueprintBehaviour;
@@ -103,6 +104,19 @@ class WorkflowAgentRefCollectorTest {
 
     assertThat(WorkflowAgentRefCollector.collect(wf))
         .containsExactly(new WorkflowAgentRefCollector.AgentRefSite("inner-agent", "root", "in"));
+  }
+
+  @Test
+  void collection_step_contributes_no_agent_refs() {
+    var step = StepDefinition.builder()
+        .withStepId("cv-intake")
+        .withName("Collect CVs")
+        .withBehaviour(new CollectionBehaviour(
+            null, 0, null, null, 0, null, null, null, null, null, null, null, StepTransition.AUTO))
+        .build();
+    var wf = workflow("root", List.of(step), Map.of());
+
+    assertThat(WorkflowAgentRefCollector.collect(wf)).isEmpty();
   }
 
   @Test

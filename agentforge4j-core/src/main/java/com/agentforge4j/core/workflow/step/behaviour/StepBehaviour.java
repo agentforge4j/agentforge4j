@@ -19,10 +19,11 @@ import com.fasterxml.jackson.annotation.JsonTypeInfo;
     @JsonSubTypes.Type(value = FailBehaviour.class, name = "FAIL"),
     @JsonSubTypes.Type(value = RetryPreviousBehaviour.class, name = "RETRY_PREVIOUS"),
     @JsonSubTypes.Type(value = ValidateBehaviour.class, name = "VALIDATE"),
-    @JsonSubTypes.Type(value = AssignContextBehaviour.class, name = "ASSIGN_CONTEXT")
+    @JsonSubTypes.Type(value = AssignContextBehaviour.class, name = "ASSIGN_CONTEXT"),
+    @JsonSubTypes.Type(value = CollectionBehaviour.class, name = "COLLECTION")
 })
 public sealed interface StepBehaviour permits AgentBehaviour, SparBehaviour, WorkflowBehaviour,
     InputBehaviour, ResourceBehaviour, BranchBehaviour, FailBehaviour, RetryPreviousBehaviour,
-    ValidateBehaviour, AssignContextBehaviour {
+    ValidateBehaviour, AssignContextBehaviour, CollectionBehaviour {
 
 }

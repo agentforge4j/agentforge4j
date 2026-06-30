@@ -2,6 +2,7 @@
 package com.agentforge4j.core.workflow.state;
 
 import com.agentforge4j.core.workflow.artifact.ArtifactDefinition;
+import com.agentforge4j.core.workflow.collection.CollectionState;
 import com.agentforge4j.core.workflow.context.ContextValue;
 import com.agentforge4j.core.workflow.file.ArtifactDescriptor;
 import com.agentforge4j.util.Validate;
@@ -79,6 +80,12 @@ public final class WorkflowState {
    */
   private final Map<String, Integer> completedLoopBlueprintUids;
   /**
+   * Per-step collection-gate state, keyed by collection step id. Each value is an immutable snapshot
+   * replaced wholesale by collection operations. Intentionally not uid-scoped: a closed collection is
+   * never cleared by {@link #clearEntriesFromUid(int)}, so a retry or rewind does not reopen it.
+   */
+  private final Map<String, CollectionState> collectionStateByStepId;
+  /**
    * Descriptors of files emitted during the run (path, content hash, producing step, emitting step uid). At most one
    * descriptor per path (last write wins). Persisted as the durable, content-free record of generated artifacts; the
    * emitted bytes themselves live only in the transient run-scoped generated-artifact store, never here.
@@ -119,6 +126,7 @@ public final class WorkflowState {
     this.loopIterationCursorByBlueprintId = new HashMap<>();
     this.forEachListFingerprintByBlueprintId = new HashMap<>();
     this.completedLoopBlueprintUids = new HashMap<>();
+    this.collectionStateByStepId = new HashMap<>();
     this.generatedArtifactDescriptors = new ArrayList<>();
     this.capturedArtifactPaths = new LinkedHashSet<>();
     this.lastUpdatedAt = startedAt;
@@ -186,6 +194,47 @@ public final class WorkflowState {
 
   public Map<String, Integer> getCompletedLoopBlueprintUids() {
     return Collections.unmodifiableMap(completedLoopBlueprintUids);
+  }
+
+  public Map<String, CollectionState> getCollectionStateByStepId() {
+    return Collections.unmodifiableMap(collectionStateByStepId);
+  }
+
+  /**
+   * Returns the collection-gate state for a step, or empty when the step has no collection state.
+   */
+  public Optional<CollectionState> getCollectionState(String stepId) {
+    return Optional.ofNullable(collectionStateByStepId.get(
+        Validate.notBlank(stepId, "stepId must not be blank")));
+  }
+
+  /**
+   * Stores (or replaces) the collection-gate state for its step. The state is an immutable snapshot;
+   * callers replace it wholesale.
+   *
+   * @param state the non-null collection state to store, keyed by its own {@code stepId}
+   */
+  public void putCollectionState(CollectionState state) {
+    Validate.notNull(state, "collection state must not be null");
+    collectionStateByStepId.put(state.stepId(), state);
+  }
+
+  /**
+   * Replaces all collection-gate states when loading persisted snapshot state.
+   */
+  public void replaceCollectionStates(Map<String, CollectionState> states) {
+    collectionStateByStepId.clear();
+    if (states == null) {
+      return;
+    }
+    states.entrySet().stream()
+        .filter(entry -> StringUtils.isNotBlank(entry.getKey()) && entry.getValue() != null)
+        .forEach(entry -> {
+          Validate.isTrue(entry.getKey().equals(entry.getValue().stepId()),
+              "collectionState key '%s' does not match value stepId '%s'"
+                  .formatted(entry.getKey(), entry.getValue().stepId()));
+          collectionStateByStepId.put(entry.getKey(), entry.getValue());
+        });
   }
 
   /**
@@ -510,6 +559,8 @@ public final class WorkflowState {
             : Map.copyOf(forEachListFingerprintByBlueprintId));
     copy.replaceCompletedLoopBlueprintUids(
         completedLoopBlueprintUids.isEmpty() ? null : Map.copyOf(completedLoopBlueprintUids));
+    copy.replaceCollectionStates(
+        collectionStateByStepId.isEmpty() ? null : Map.copyOf(collectionStateByStepId));
     for (ArtifactDescriptor descriptor : generatedArtifactDescriptors) {
       copy.addGeneratedArtifactDescriptor(descriptor);
     }

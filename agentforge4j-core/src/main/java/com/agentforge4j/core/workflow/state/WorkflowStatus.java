@@ -44,6 +44,12 @@ public enum WorkflowStatus {
    */
   AWAITING_STEP_APPROVAL,
   /**
+   * Run is suspended at a collection gate ({@code COLLECTION} behaviour), accepting zero or more submissions over time
+   * while it waits to be explicitly closed. Operated via {@code CollectionGateRuntime}; advanced on close (directly, or
+   * via {@code WorkflowRuntime.continueRun} when the gate allows reopening).
+   */
+  AWAITING_COLLECTION,
+  /**
    * All steps finished successfully.
    */
   COMPLETED,

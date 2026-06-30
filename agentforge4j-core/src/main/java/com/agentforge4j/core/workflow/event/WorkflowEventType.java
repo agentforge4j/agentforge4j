@@ -144,5 +144,58 @@ public enum WorkflowEventType {
    * Recorded when a tool invocation fails. Payload fields: {@code capability}, {@code phase} ({@code RESOLVE} /
    * {@code VALIDATE} / {@code INVOKE}), {@code errorMessage}.
    */
-  TOOL_INVOCATION_FAILED
+  TOOL_INVOCATION_FAILED,
+  /**
+   * Recorded when a collection gate is entered and intake opens. Payload fields: {@code stepId} and a config summary.
+   */
+  COLLECTION_OPENED,
+  /**
+   * Recorded when a collection item is accepted. Payload fields: {@code submissionId}, {@code actorId}, and file/inline
+   * metadata only (never item content).
+   */
+  COLLECTION_ITEM_SUBMITTED,
+  /**
+   * Recorded when a collection item is replaced with a new version. Payload fields: {@code submissionId},
+   * {@code version}, {@code actorId}.
+   */
+  COLLECTION_ITEM_REPLACED,
+  /**
+   * Recorded when a collection item slot is withdrawn. Payload fields: {@code submissionId}, {@code actorId}.
+   */
+  COLLECTION_ITEM_WITHDRAWN,
+  /**
+   * Recorded when a submit or replace is refused by a configured constraint (not an authorization denial). Payload
+   * fields: {@code actorId}, {@code action}, {@code reason} ({@code MAX_ITEMS} / {@code PER_ACTOR_CAP} /
+   * {@code OVERSIZE} / {@code DUPLICATE}).
+   */
+  COLLECTION_ITEM_REJECTED,
+  /**
+   * Recorded when a close of a collection gate is requested. Payload fields: {@code actorId}, {@code reason}.
+   */
+  COLLECTION_CLOSE_REQUESTED,
+  /**
+   * Recorded when a close is rejected because a minimum is unmet or the gate is not closable. Payload fields:
+   * {@code actorId}, {@code reason}, {@code itemCount}, {@code minItems}.
+   */
+  COLLECTION_CLOSE_REJECTED,
+  /**
+   * Recorded when a collection gate's intake is closed. Payload fields: {@code actorId}, {@code reason},
+   * {@code finalCount}.
+   */
+  COLLECTION_CLOSED,
+  /**
+   * Recorded when a closed collection gate is reopened (only when the reopen policy allows). Payload field:
+   * {@code actorId}.
+   */
+  COLLECTION_REOPENED,
+  /**
+   * Recorded when any guarded collection operation is denied by authorization. Payload fields: {@code actorId},
+   * {@code action}, {@code reason}.
+   */
+  COLLECTION_AUTHORIZATION_DENIED,
+  /**
+   * Recorded when an external deadline close arrives for a collection gate. Carries the reserved system actor
+   * ({@code "runtime"}) and {@code reason=DEADLINE}.
+   */
+  COLLECTION_DEADLINE_CLOSE_REQUESTED
 }
