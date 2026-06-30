@@ -17,6 +17,7 @@ module agentforge4j.bootstrap {
 
   uses com.agentforge4j.llm.LlmClientFactory;
   uses com.agentforge4j.core.spi.integration.IntegrationToolProviderFactory;
+  uses com.agentforge4j.config.loader.agent.ArtifactValidatorFactory;
 
   exports com.agentforge4j.bootstrap;
 }

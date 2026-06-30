@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package com.agentforge4j.bootstrap;
 
-import com.agentforge4j.config.loader.agent.AgentBundleArtifactValidator;
+import com.agentforge4j.config.loader.agent.ArtifactValidatorFactory;
 import com.agentforge4j.core.agent.AgentRepository;
 import com.agentforge4j.core.runtime.WorkflowRuntime;
 import com.agentforge4j.core.spi.tool.PendingToolInvocationStore;
@@ -30,6 +30,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.Clock;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.ServiceLoader;
 
 /**
  * Assembles the {@link AgentInvoker} and {@link WorkflowRuntime} from resolved components. Internal — not part of the
@@ -177,11 +178,13 @@ final class RuntimeAssembler {
       RunExecutionInterceptor runExecutionInterceptor,
       ObjectMapper objectMapper,
       List<ArtifactValidator> embedderArtifactValidators) {
-    // The built-in agent-bundle validator is always present (so shipped agent-bundle workflows keep working) and
-    // validates through the production agent parse path, reusing the same configured ObjectMapper the agent loaders
-    // use. Embedder-supplied validators are appended; a duplicate validator id fails fast in the runtime.
+    // Built-in ArtifactValidators are discovered via ServiceLoader (the built-in agent-bundle validator stays present
+    // so shipped agent-bundle workflows keep working); each factory receives the same configured ObjectMapper the agent
+    // loaders use, so validation parses in lockstep with production load. Embedder-supplied validators are appended; a
+    // duplicate validator id fails fast in the runtime.
     List<ArtifactValidator> artifactValidators = new ArrayList<>();
-    artifactValidators.add(new AgentBundleArtifactValidator(objectMapper));
+    ServiceLoader.load(ArtifactValidatorFactory.class, Thread.currentThread().getContextClassLoader())
+        .forEach(factory -> artifactValidators.add(factory.create(objectMapper)));
     artifactValidators.addAll(embedderArtifactValidators);
     WorkflowRuntimeBuilder runtimeBuilder = new WorkflowRuntimeBuilder()
         .workflowRepository(workflowRepository)
