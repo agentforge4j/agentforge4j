@@ -74,17 +74,26 @@ public final class TransitionGate {
    * skips it on resume (blueprint refs are otherwise always re-entered); the blueprint's body has already completed, so
    * resume advances past it rather than re-running it.
    *
-   * @param ref       the blueprint reference that completed
-   * @param behaviour the blueprint's behaviour (carrying the post-loop transition)
-   * @param state     the live run state
+   * <p>The marker is uid-scoped at {@code bodyCompletionUid} (the highest execution uid among the
+   * blueprint's body steps), so {@link WorkflowState#clearEntriesFromUid(int)} drops it exactly when a retry/rewind
+   * clears the body's execution range — the re-drive then re-runs and re-gates the blueprint instead of silently
+   * skipping it over wiped body state.
+   *
+   * @param ref               the blueprint reference that completed
+   * @param behaviour         the blueprint's behaviour (carrying the post-loop transition)
+   * @param state             the live run state
+   * @param bodyCompletionUid the highest execution uid among the blueprint's body steps; {@code 0} for a degenerate
+   *                          empty body (the marker is then not uid-scoped — there is no body state a rewind could
+   *                          strand)
    *
    * @return {@code true} when the run was suspended; {@code false} for {@code AUTO}
    */
   public boolean suspendBlueprintIfGated(BlueprintRef ref, BlueprintBehaviour behaviour,
-      WorkflowState state) {
+      WorkflowState state, int bodyCompletionUid) {
     Validate.notNull(ref, "ref must not be null");
     Validate.notNull(behaviour, "behaviour must not be null");
     Validate.notNull(state, "state must not be null");
+    Validate.isNotNegative(bodyCompletionUid, "bodyCompletionUid must not be negative");
     StepTransition transition = behaviour.transition();
     if (transition == StepTransition.AUTO) {
       return false;
@@ -92,6 +101,9 @@ public final class TransitionGate {
     String marker = blueprintGateMarker(ref.blueprintId());
     if (!state.getStepOutputs().containsKey(marker)) {
       state.putStepOutput(marker, "gated:" + transition.name());
+      if (bodyCompletionUid > 0) {
+        state.putStepExecutionUid(marker, bodyCompletionUid);
+      }
     }
     WorkflowStatus status = transition == StepTransition.HUMAN_REVIEW
         ? WorkflowStatus.AWAITING_REVIEW

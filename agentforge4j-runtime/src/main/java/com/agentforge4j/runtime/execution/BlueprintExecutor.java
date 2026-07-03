@@ -77,7 +77,8 @@ public final class BlueprintExecutor {
       return outcome;
     }
     if (transitionGate.suspendBlueprintIfGated(ref, blueprint.behaviour(),
-        executionContext.getState())) {
+        executionContext.getState(),
+        loopBodyCompletionUid(enclosing, blueprint, executionContext.getState()))) {
       return ExecutionOutcome.PAUSED;
     }
     return ExecutionOutcome.COMPLETED;

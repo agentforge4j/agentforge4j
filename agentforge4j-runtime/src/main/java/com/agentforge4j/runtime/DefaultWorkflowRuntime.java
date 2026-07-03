@@ -12,6 +12,7 @@ import com.agentforge4j.core.spi.tool.PendingToolInvocationStore;
 import com.agentforge4j.core.spi.tool.ToolDecision;
 import com.agentforge4j.core.spi.tool.ToolExecutionOutcome;
 import com.agentforge4j.core.spi.tool.ToolExecutionService;
+import com.agentforge4j.core.workflow.Executable;
 import com.agentforge4j.core.workflow.WorkflowCapturePathCollector;
 import com.agentforge4j.core.workflow.WorkflowDefinition;
 import com.agentforge4j.core.workflow.artifact.ArtifactDefinition;
@@ -25,6 +26,9 @@ import com.agentforge4j.core.workflow.state.RunFailure;
 import com.agentforge4j.core.workflow.state.WorkflowState;
 import com.agentforge4j.core.workflow.state.WorkflowStatus;
 import com.agentforge4j.core.workflow.step.StepDefinition;
+import com.agentforge4j.core.workflow.step.behaviour.WorkflowBehaviour;
+import com.agentforge4j.core.workflow.step.blueprint.BlueprintDefinition;
+import com.agentforge4j.core.workflow.step.blueprint.BlueprintRef;
 import com.agentforge4j.runtime.event.EventRecorder;
 import com.agentforge4j.runtime.execution.ExecutableExecutor;
 import com.agentforge4j.runtime.execution.ExecutionContext;
@@ -39,8 +43,10 @@ import com.agentforge4j.runtime.interceptor.RunExecutionInterceptor;
 import com.agentforge4j.runtime.tool.ToolResultApplier;
 import com.agentforge4j.util.Validate;
 import java.time.Clock;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import org.apache.commons.lang3.StringUtils;
 
@@ -203,18 +209,27 @@ public final class DefaultWorkflowRuntime implements WorkflowRuntime {
 
       // Reposition the run at the target: clear the target's output and everything that ran at or
       // after it, so the re-drive re-executes the target and all downstream steps rather than
-      // reusing stale outputs. Reserved (__-prefixed) context keys are preserved by
-      // clearEntriesFromUid; a target that never executed has no uid and nothing to clear. Evict the
-      // captured bytes for any artifact emitted at or after the target first, so the re-drive re-emits
+      // reusing stale outputs. The rewind threshold is the EARLIEST uid found at or after the
+      // target's sequence position (not the target's own latest uid): steps without recorded
+      // outputs re-execute on every resume drive and take fresh, higher uids, so the target's
+      // latest uid can lie past downstream state recorded on an earlier drive — rewinding from it
+      // would strand that state (a gated blueprint's marker, for example) outside the cleared
+      // range. Reserved (__-prefixed) context keys are preserved by clearEntriesFromUid; when
+      // nothing at or after the target ever executed there is nothing to clear. Evict the captured
+      // bytes for any artifact emitted at or after the threshold first, so the re-drive re-emits
       // cleanly (upsert) rather than leaving a stale capture for a path it may not re-emit.
-      state.getStepExecutionUid(target.stepId()).ifPresent(uid -> {
-        GeneratedArtifactEviction.evictFromUid(generatedArtifactStore, state, uid);
-        state.clearEntriesFromUid(uid);
-      });
+      Integer rewindUid = earliestUidAtOrAfter(workflow, target, state);
+      if (rewindUid != null) {
+        GeneratedArtifactEviction.evictFromUid(generatedArtifactStore, state, rewindUid);
+        state.clearEntriesFromUid(rewindUid);
+      }
       // A PAUSED run carries pending suspension state for the step it paused on; clear it so the
-      // re-drive starts the target cleanly instead of re-entering the previous pause.
+      // re-drive starts the target cleanly instead of re-entering the previous pause. The failure
+      // details belong to the attempt being discarded — clear them too, or a re-drive that completes
+      // would report COMPLETED while still carrying the dead attempt's failure reason.
       state.setPendingArtifact(null);
       state.setPendingUserPrompt(null);
+      state.setRunFailure(null);
       state.setStatus(WorkflowStatus.RUNNING);
       state.setCurrentStepId(target.stepId());
       state.setLastUpdatedAt(clock.instant());
@@ -225,6 +240,87 @@ public final class DefaultWorkflowRuntime implements WorkflowRuntime {
       // and finalises through the normal terminal path (COMPLETED, a pause, or FAILED).
       drive(state, workflow);
     }
+  }
+
+  /**
+   * Returns the earliest execution uid recorded for the retry target or anything after it in the workflow's top-level
+   * sequence — descending into blueprint bodies (including their gate markers) and nested workflows — or {@code null}
+   * when nothing at or after the target has ever executed. This is the rewind threshold for
+   * {@link WorkflowState#clearEntriesFromUid(int)}: uid order can diverge from sequence order across resume drives
+   * (output-less steps re-execute and take fresh uids), so the earliest downstream uid, not the target's own latest
+   * uid, bounds the state that repositioning must discard.
+   *
+   * <p>The walk is bounded by visited sets: programmatic definitions can bypass load-time cycle
+   * validation, and while execution fails such a run cleanly at the nesting guard, this definition-graph walk would
+   * otherwise recurse without limit on a cyclic {@code WORKFLOW} or blueprint reference. A node already visited is
+   * skipped — mirroring the execution-time guard's intent that cycles must fail cleanly, never crash the stack.
+   */
+  private Integer earliestUidAtOrAfter(WorkflowDefinition workflow, StepDefinition target,
+      WorkflowState state) {
+    List<Executable> steps = workflow.steps();
+    Set<String> visitedWorkflowIds = new HashSet<>();
+    visitedWorkflowIds.add(workflow.id());
+    Set<String> visitedBlueprintKeys = new HashSet<>();
+    Integer min = null;
+    boolean reached = false;
+    for (Executable executable : steps) {
+      if (!reached
+          && executable instanceof StepDefinition step
+          && step.stepId().equals(target.stepId())) {
+        reached = true;
+      }
+      if (reached) {
+        min = minUid(executable, workflow, state, min, visitedWorkflowIds, visitedBlueprintKeys);
+      }
+    }
+    return min;
+  }
+
+  private Integer minUid(Executable executable, WorkflowDefinition enclosing, WorkflowState state,
+      Integer min, Set<String> visitedWorkflowIds, Set<String> visitedBlueprintKeys) {
+    Integer result = min;
+    if (executable instanceof StepDefinition step) {
+      result = lower(result, state.getStepExecutionUid().get(step.stepId()));
+      if (step.behaviour() instanceof WorkflowBehaviour workflowBehaviour
+          && visitedWorkflowIds.add(workflowBehaviour.workflowRef())) {
+        WorkflowDefinition nested = workflowRepository.get(workflowBehaviour.workflowRef());
+        if (nested != null) {
+          for (Executable inner : nested.steps()) {
+            result = minUid(inner, nested, state, result, visitedWorkflowIds, visitedBlueprintKeys);
+          }
+        }
+      }
+    } else if (executable instanceof BlueprintRef ref) {
+      result = lower(result,
+          state.getStepExecutionUid().get(TransitionGate.blueprintGateMarker(ref.blueprintId())));
+      // Blueprint ids are scoped to their enclosing workflow, so the visited key carries both.
+      if (visitedBlueprintKeys.add(enclosing.id() + ":" + ref.blueprintId())) {
+        BlueprintDefinition blueprint = enclosing.blueprints().get(ref.blueprintId());
+        if (blueprint != null) {
+          for (Executable inner : blueprint.steps()) {
+            result = minUid(inner, enclosing, state, result, visitedWorkflowIds,
+                visitedBlueprintKeys);
+          }
+        }
+      }
+    } else if (executable instanceof WorkflowDefinition nested) {
+      if (visitedWorkflowIds.add(nested.id())) {
+        for (Executable inner : nested.steps()) {
+          result = minUid(inner, nested, state, result, visitedWorkflowIds, visitedBlueprintKeys);
+        }
+      }
+    }
+    return result;
+  }
+
+  private static Integer lower(Integer current, Integer candidate) {
+    if (candidate == null) {
+      return current;
+    }
+    if (current == null || candidate < current) {
+      return candidate;
+    }
+    return current;
   }
 
   /**
@@ -251,6 +347,7 @@ public final class DefaultWorkflowRuntime implements WorkflowRuntime {
    * @throws ExecutionNotFoundException if no state exists for {@code runId}
    * @throws IllegalArgumentException   if {@code stepId} is blank, the run is cancelled, status is not
    *                                    {@link WorkflowStatus#AWAITING_APPROVAL}, or {@code runId} is blank
+   * @throws IllegalStateException      if {@code stepId} does not identify the step the run is suspended on
    */
   @Override
   public void approve(String runId, String stepId, String approverNote, String actorId) {
@@ -268,6 +365,10 @@ public final class DefaultWorkflowRuntime implements WorkflowRuntime {
     }
     Validate.isTrue(state.getStatus() == WorkflowStatus.AWAITING_APPROVAL,
         "Cannot approve run '%s' in status %s".formatted(runId, state.getStatus()));
+    // Same suspended-step identity protection as submitReview/decideStepApproval: the APPROVED
+    // audit event must attribute to the step the run is actually suspended on, never to an
+    // arbitrary caller-supplied id.
+    requireSuspendedStep(state, runId, stepId);
 
     try (RunContextManager.Scope ignored = runContextManager.open(runId, state.getWorkflowId(),
         stepId, null)) {

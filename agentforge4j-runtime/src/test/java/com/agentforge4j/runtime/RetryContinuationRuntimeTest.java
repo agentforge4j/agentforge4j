@@ -4,6 +4,7 @@ package com.agentforge4j.runtime;
 import com.agentforge4j.config.loader.repository.InMemoryWorkflowRepository;
 import com.agentforge4j.core.agent.AgentRepository;
 import com.agentforge4j.core.command.ContinueCommand;
+import com.agentforge4j.core.runtime.StepApprovalDecision;
 import com.agentforge4j.core.runtime.WorkflowRuntime;
 import com.agentforge4j.core.workflow.Executable;
 import com.agentforge4j.core.workflow.WorkflowDefinition;
@@ -14,6 +15,7 @@ import com.agentforge4j.core.workflow.event.WorkflowEvent;
 import com.agentforge4j.core.workflow.event.WorkflowEventLog;
 import com.agentforge4j.core.workflow.event.WorkflowEventType;
 import com.agentforge4j.core.workflow.repository.WorkflowStateRepository;
+import com.agentforge4j.core.workflow.state.RunFailure;
 import com.agentforge4j.core.workflow.state.WorkflowState;
 import com.agentforge4j.core.workflow.state.WorkflowStatus;
 import com.agentforge4j.core.workflow.step.StepDefinition;
@@ -21,6 +23,7 @@ import com.agentforge4j.core.workflow.step.StepTransition;
 import com.agentforge4j.core.workflow.step.behaviour.AgentBehaviour;
 import com.agentforge4j.core.workflow.step.behaviour.FailBehaviour;
 import com.agentforge4j.core.workflow.step.behaviour.ResourceBehaviour;
+import com.agentforge4j.core.workflow.step.behaviour.WorkflowBehaviour;
 import com.agentforge4j.core.workflow.step.blueprint.BlueprintBehaviour;
 import com.agentforge4j.core.workflow.step.blueprint.BlueprintDefinition;
 import com.agentforge4j.core.workflow.step.blueprint.BlueprintRef;
@@ -175,6 +178,137 @@ class RetryContinuationRuntimeTest {
   }
 
   @Test
+  void retry_past_gated_blueprint_reruns_and_regates_the_blueprint() {
+    StepDefinition s1 = resourceStep("s1", "/examples/sample.txt", "k1");
+    StepDefinition b1 = resourceStep("b1", "/workflow-resources/info.txt", "k2");
+    BlueprintDefinition gated = new BlueprintDefinition("bp-gated", "bp-gated",
+        new BlueprintBehaviour(null, StepTransition.HUMAN_APPROVAL), List.of(b1));
+    StepDefinition terminalFail = failStep("fail");
+    WorkflowDefinition workflow = workflow("wf-retry-gated-bp",
+        Map.of("bp-gated", gated),
+        List.of(s1, new BlueprintRef("bp-gated"), terminalFail));
+
+    Fixture fixture = fixture(workflow);
+    String runId = fixture.runtime().start(workflow.id());
+    assertThat(fixture.runtime().getState(runId).getStatus())
+        .isEqualTo(WorkflowStatus.AWAITING_STEP_APPROVAL);
+    fixture.runtime().decideStepApproval(runId, "bp-gated",
+        new StepApprovalDecision.Approve("approver", "ok"));
+    assertThat(fixture.runtime().getState(runId).getStatus()).isEqualTo(WorkflowStatus.FAILED);
+
+    fixture.runtime().retry(runId, "s1", "user");
+
+    // The rewind cleared the blueprint's body state, so the re-drive must re-run and re-gate the
+    // blueprint — the pre-fix defect left the gate marker in place and silently skipped the
+    // blueprint over its wiped body state.
+    WorkflowState after = fixture.runtime().getState(runId);
+    assertThat(after.getStatus()).isEqualTo(WorkflowStatus.AWAITING_STEP_APPROVAL);
+    assertThat(after.getContext()).containsKey("k2");
+    assertThat(countEvents(fixture, runId, "b1", WorkflowEventType.STEP_STARTED)).isEqualTo(2);
+  }
+
+  @Test
+  void retry_that_completes_clears_stale_failure_details() {
+    StepDefinition s1 = resourceStep("s1", "/examples/sample.txt", "k1");
+    StepDefinition s2 = resourceStep("s2", "/workflow-resources/info.txt", "k2");
+    WorkflowDefinition workflow = workflow("wf-retry-clears-failure", Map.of(), List.of(s1, s2));
+
+    Fixture fixture = fixture(workflow);
+    String runId = "failed-with-details";
+    WorkflowState seeded = new WorkflowState(runId, workflow.id(), null,
+        Instant.parse("2026-05-01T12:00:00Z"));
+    seeded.setStatus(WorkflowStatus.FAILED);
+    seeded.setRunFailure(new RunFailure.ExceptionFailure("boom", "s1", "support-1"));
+    fixture.stateRepository().save(seeded);
+
+    fixture.runtime().retry(runId, "s1", "user");
+
+    // The failure details belong to the discarded attempt: a retried run that completes must not
+    // keep reporting the dead attempt's reason/step/supportId.
+    WorkflowState after = fixture.runtime().getState(runId);
+    assertThat(after.getStatus()).isEqualTo(WorkflowStatus.COMPLETED);
+    assertThat(after.getRunFailure()).isNull();
+    assertThat(after.getFailureReason()).isNull();
+  }
+
+  @Test
+  void resume_drive_allocates_uids_above_persisted_ones() {
+    StepDefinition s1 = resourceStep("s1", "/examples/sample.txt", "k1");
+    StepDefinition s2 = resourceStep("s2", "/workflow-resources/info.txt", "k2");
+    WorkflowDefinition workflow = workflow("wf-uid-monotonic", Map.of(), List.of(s1, s2));
+
+    Fixture fixture = fixture(workflow);
+    String runId = "paused-uid-run";
+    WorkflowState seeded = new WorkflowState(runId, workflow.id(), null,
+        Instant.parse("2026-05-01T12:00:00Z"));
+    seeded.putStepOutput("s1", "done");
+    seeded.putStepExecutionUid("s1", 5);
+    seeded.setCurrentStepId("s1");
+    seeded.setStatus(WorkflowStatus.PAUSED);
+    fixture.stateRepository().save(seeded);
+
+    fixture.runtime().continueRun(runId, "user");
+
+    // s2 executed on the resume drive; its uid must continue the run's ordering. Pre-fix the
+    // counter restarted at 1 on every drive, colliding below s1's uid and breaking the rewind
+    // range logic that clearEntriesFromUid applies on retry.
+    WorkflowState after = fixture.runtime().getState(runId);
+    assertThat(after.getStatus()).isEqualTo(WorkflowStatus.COMPLETED);
+    assertThat(after.getStepExecutionUid().get("s2")).isGreaterThan(5);
+  }
+
+  @Test
+  void retry_of_cyclic_workflow_references_is_bounded_and_fails_cleanly() {
+    // Programmatic definitions bypass load-time cycle validation, so a cyclic WORKFLOW reference
+    // pair is constructible. Execution fails the run cleanly at the nesting guard; the retry rewind
+    // walk must be bounded the same way rather than recursing the definition graph without limit.
+    StepDefinition intoB = workflowStep("into-b", "wf-cycle-b");
+    StepDefinition backToA = workflowStep("back-to-a", "wf-cycle-a");
+    WorkflowDefinition wfA = workflow("wf-cycle-a", Map.of(), List.of(intoB));
+    WorkflowDefinition wfB = workflow("wf-cycle-b", Map.of(), List.of(backToA));
+
+    Fixture fixture = fixture(Map.of(wfA.id(), wfA, wfB.id(), wfB), defaultAgentInvoker());
+    String runId = fixture.runtime().start(wfA.id());
+    assertThat(fixture.runtime().getState(runId).getStatus()).isEqualTo(WorkflowStatus.FAILED);
+
+    fixture.runtime().retry(runId, "into-b", "user");
+
+    // The retry completed normally (no StackOverflowError) and the re-drive failed again at the
+    // same execution-time cycle guard.
+    assertThat(fixture.runtime().getState(runId).getStatus()).isEqualTo(WorkflowStatus.FAILED);
+  }
+
+  @Test
+  void retry_with_a_cyclic_blueprint_reference_downstream_is_bounded() {
+    // A self-referential blueprint body is likewise constructible programmatically. Execution
+    // rejects it fail-fast (WorkflowTreeWalker's depth bound fires at the first drive), so a FAILED
+    // run can only exist for such a definition via seeded or restored state — but the retry rewind
+    // walk runs before the drive and must be bounded for it too, never overflowing the stack.
+    StepDefinition s1 = resourceStep("s1", "/examples/sample.txt", "k1");
+    StepDefinition terminalFail = failStep("fail");
+    BlueprintDefinition selfReferential = new BlueprintDefinition(
+        "bp-self", "bp-self",
+        new BlueprintBehaviour(null, StepTransition.AUTO),
+        List.of(new BlueprintRef("bp-self")));
+    WorkflowDefinition workflow = workflow("wf-cyclic-bp",
+        Map.of("bp-self", selfReferential),
+        List.of(s1, terminalFail, new BlueprintRef("bp-self")));
+
+    Fixture fixture = fixture(workflow);
+    assertThatThrownBy(() -> fixture.runtime().start(workflow.id()))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("circular blueprint reference");
+
+    String runId = seedFailedRun(fixture, workflow);
+
+    // The bounded rewind walk completes; the re-drive then rejects the cyclic definition with the
+    // same clean depth-bound error rather than a StackOverflowError.
+    assertThatThrownBy(() -> fixture.runtime().retry(runId, "s1", "user"))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("circular blueprint reference");
+  }
+
+  @Test
   void retry_unknown_step_is_rejected_as_not_found() {
     StepDefinition s1 = resourceStep("s1", "/examples/sample.txt", "k1");
     WorkflowDefinition workflow = workflow("wf-retry-unknown", Map.of(), List.of(s1));
@@ -240,6 +374,14 @@ class RetryContinuationRuntimeTest {
         .build();
   }
 
+  private static StepDefinition workflowStep(String stepId, String workflowRef) {
+    return StepDefinition.builder()
+        .withStepId(stepId)
+        .withName(stepId)
+        .withBehaviour(new WorkflowBehaviour(workflowRef, StepTransition.AUTO))
+        .build();
+  }
+
   private static BlueprintDefinition blueprint(String blueprintId, List<Executable> steps) {
     return new BlueprintDefinition(
         blueprintId,
@@ -276,12 +418,17 @@ class RetryContinuationRuntimeTest {
   }
 
   private static Fixture fixture(WorkflowDefinition workflow, AgentInvoker agentInvoker) {
+    return fixture(Map.of(workflow.id(), workflow), agentInvoker);
+  }
+
+  private static Fixture fixture(Map<String, WorkflowDefinition> workflows,
+      AgentInvoker agentInvoker) {
     WorkflowStateRepository stateRepository = new InMemoryWorkflowStateRepository();
     WorkflowEventLog eventLog = new InMemoryWorkflowEventLog();
     Clock clock = Clock.fixed(Instant.parse("2026-05-01T12:00:00Z"), ZoneOffset.UTC);
 
     WorkflowRuntime runtime = new WorkflowRuntimeBuilder()
-        .workflowRepository(new InMemoryWorkflowRepository(Map.of(workflow.id(), workflow)))
+        .workflowRepository(new InMemoryWorkflowRepository(workflows))
         .workflowStateRepository(stateRepository)
         .workflowEventLog(eventLog)
         .agentInvoker(agentInvoker)
