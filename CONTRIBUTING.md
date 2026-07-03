@@ -28,6 +28,22 @@ you write code.
 - A full `verify` runs the unit tests, integration tests (`*IT`), and the gating SpotBugs,
   Checkstyle, and licence-header checks. Get it green locally before opening a PR.
 
+### Front-end packages
+
+The TypeScript packages (`agentforge4j-workflow-builder`, `agentforge4j-web-ui`,
+`agentforge4j-ui-e2e`) live outside the Maven reactor:
+
+- **Node 24** (see `.nvmrc`) and `npm ci` per package.
+- Builder changes: run `npm run typecheck` and `npm test` in `agentforge4j-workflow-builder`.
+  PRs touching the builder or the E2E package must also pass the `builder` CI check
+  (Playwright end-to-end tests).
+
+### Examples tree
+
+`agentforge4j-examples` is a standalone Maven tree, not a reactor module. It resolves the
+framework SNAPSHOT from your local repository — run `./mvnw install -DskipTests` at the
+repository root first, then `./mvnw verify` inside `agentforge4j-examples`.
+
 ## Pull request workflow
 
 1. **Branch per change** off `main` (e.g. `fix/...`, `feature/...`).

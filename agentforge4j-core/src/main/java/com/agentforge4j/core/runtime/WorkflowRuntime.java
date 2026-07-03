@@ -129,7 +129,7 @@ public interface WorkflowRuntime {
   /**
    * Resume a run suspended awaiting approval of a tool invocation, applying the human decision.
    *
-   * <p>Distinct from {@link #approve(String, String, String)} (which resumes a step and may
+   * <p>Distinct from {@link #approve(String, String, String, String)} (which resumes a step and may
    * re-invoke the agent): this delegates to the tool-execution service's resume path — re-resolving and invoking the
    * exact approved tool without re-invoking the LLM — applies the outcome to state, and advances past the requesting
    * step. Valid only when the run is in

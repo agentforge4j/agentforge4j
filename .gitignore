@@ -3,6 +3,8 @@
 
 ### dotenv ###
 .env
+.env.*
+!.env.example
 
 ### Git ###
 # Created by git for backups. To disable backups in Git:
@@ -265,3 +267,6 @@ changes.diff
 CHANGES.md
 designs/
 design/
+
+### Vitest coverage output ###
+coverage/

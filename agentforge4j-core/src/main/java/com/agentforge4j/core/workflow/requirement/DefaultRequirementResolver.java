@@ -9,7 +9,7 @@ import com.agentforge4j.util.Validate;
  * <p>Never invents a value. A {@code required} requirement with no default therefore resolves to
  * {@code null} and fails fast at the run-start checkpoint — the fail-fast guarantee holds regardless of which resolver
  * is configured. A richer resolver supplied by the embedding application replaces this by being configured on
- * {@link com.agentforge4j.runtime.WorkflowRuntimeBuilder}.
+ * {@code com.agentforge4j.runtime.WorkflowRuntimeBuilder}.
  */
 public final class DefaultRequirementResolver implements RequirementResolver {
 

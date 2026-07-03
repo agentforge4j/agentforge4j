@@ -35,7 +35,7 @@ module agentforge4j.runtime {
 
   // PUBLIC + SPI: LLM provider-selection strategy, AgentInvoker, and call observation.
   exports com.agentforge4j.runtime.llm;
-  // PUBLIC SPI: run-execution interceptor seam (also consumed cross-repo by the platform).
+  // PUBLIC SPI: run-execution interceptor seam for embedding applications.
   exports com.agentforge4j.runtime.interceptor;
 
   opens com.agentforge4j.runtime.llm to com.fasterxml.jackson.databind;

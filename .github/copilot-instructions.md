@@ -22,7 +22,7 @@ The framework is designed to be embedded by other developers across many domains
 
 ## Module Structure
 
-All modules live in a single Maven monorepo. Everything is versioned and released together. **Java 17**, JPMS `module-info.java` in every module. Current version `0.0.1-SNAPSHOT`.
+All modules live in a single Maven monorepo. Everything is versioned and released together (the workflows catalog is independently versioned). **Java 17**, JPMS `module-info.java` in every module **except** `agentforge4j-spring-boot-starter`, `agentforge4j-mcp`, and the resource-only `agentforge4j-workflow-fixtures` / `agentforge4j-workflows-catalog`. Current version `0.0.1-SNAPSHOT`.
 
 | Module | Purpose | Status |
 |---|---|---|
@@ -38,14 +38,21 @@ All modules live in a single Maven monorepo. Everything is versioned and release
 | `agentforge4j-llm-mistral` | Mistral provider | Built |
 | `agentforge4j-llm-azure-openai` | Azure OpenAI provider | Built |
 | `agentforge4j-llm-openai-compatible` | Generic OpenAI-compatible provider | Built |
-| `agentforge4j-llm-bedrock` | AWS Bedrock placeholder (SigV4 deferred) | Built |
-| `agentforge4j-config-loader` | Loads agent and workflow definitions from filesystem/classpath | Built |
+| `agentforge4j-llm-bedrock` | AWS Bedrock provider (Anthropic Claude via InvokeModel, AWS SDK + SigV4) | Built |
+| `agentforge4j-llm-fake` | Deterministic scripted fake provider for tests | Built |
+| `agentforge4j-config-loader` | Loads agent, workflow, and integration definitions from filesystem/classpath | Built |
 | `agentforge4j-schema` | JSON schemas as classpath resources | Built |
-| `agentforge4j-workflows` | Shipped workflows and agents as classpath resources | Built |
-| `agentforge4j-runtime` | Workflow execution state and command model | Built (currently in platform repo, relocation pending) |
+| `agentforge4j-mcp` | MCP client integration (stdio + streamable-HTTP) contributing tool providers | Built |
 | `agentforge4j-tools-http` | HTTP tool provider: governed external HTTP calls as tool-SPI `ToolProvider`s | Built |
-| `agentforge4j-spring-boot-starter` | Spring Boot auto-configuration library | Built (currently in platform repo, relocation pending) |
+| `agentforge4j-runtime` | Workflow execution engine: run state, events, command model | Built |
+| `agentforge4j-bootstrap` | Programmatic assembly of a runnable runtime | Built |
+| `agentforge4j-spring-boot-starter` | Spring Boot auto-configuration library | Built |
+| `agentforge4j-testkit` | Consumer test support (fake-provider scenarios, assertions) | Built |
+| `agentforge4j-workflows-catalog` | Independently versioned resources-only catalog of shipped workflows/agents (ships empty today) | Built |
+| `agentforge4j-workflow-fixtures`, `agentforge4j-testkit-consumer-verification`, `agentforge4j-oss-verification`, `agentforge4j-starter-verification` | Internal fixtures and build-verification modules (never published) | Built |
 | `agentforge4j-quarkus-extension` | Quarkus auto-configuration | Planned |
+
+Outside the reactor: `agentforge4j-workflow-builder` (React component library, npm), `agentforge4j-web-ui`, `agentforge4j-ui-e2e` (Playwright), `agentforge4j-examples` (standalone Maven tree).
 
 ---
 
@@ -55,29 +62,29 @@ Never suggest a dependency that violates this chain:
 
 ```
 util
-  ↑
-core          llm-api
-  ↑             ↑
-config-loader   llm ── llm-openai / llm-ollama / llm-claude / llm-vllm / llm-gemini /
-  ↑             llm-mistral / llm-azure-openai / llm-openai-compatible / llm-bedrock
-schema   workflows   integrations
-  ↑       ↑           ↑
-runtime ────────────────┘
-  ↑
-spring-boot-starter
+ ├── llm-api ── llm ── llm-openai / llm-ollama / llm-claude / llm-vllm / llm-gemini /
+ │              llm-mistral / llm-azure-openai / llm-openai-compatible / llm-bedrock / llm-fake
+ ├── schema
+ └── core
+      ├── mcp
+      ├── tools-http
+      └── config-loader (core + schema + util)
+           └── runtime (core + config-loader + llm-api + llm + schema + util)
+                └── bootstrap (runtime + tools-http + the modules above)
+                     └── spring-boot-starter (bootstrap + the provider modules)
 ```
 
-- `core` never depends on `config-loader`
+- `core` never depends on `config-loader`, and never on `llm-api`/`llm` — the model tier on agent/step definitions is an opaque `String`
 - `config-loader` never depends on `runtime`
 - `llm-api` and `llm` have no workflow knowledge — they must not import anything from `core` or `config-loader`
 - `util` has no dependencies beyond the JDK and `commons-lang3`
-- `schema` has no dependencies beyond the JDK
-- `workflows` has no dependencies beyond the JDK
-- `integrations` depends on `util` only
-- `runtime` depends on `core`, `config-loader`, `llm`, `integrations`, `schema`, `util`
-- `spring-boot-starter` depends on `runtime`, `core`, `llm`, `config-loader`, `integrations`, `util`, and Spring Boot autoconfigure (library, not a runnable app)
-- The starter never depends on `api`
-- Spring, databases, and file IO never appear in `util`, `core`, `llm-api`, `llm`, `schema`, or `workflows`
+- `schema` depends on `util` only
+- The integration SPI lives in `core` (`com.agentforge4j.core.spi.integration`); `mcp` and `tools-http` contribute `IntegrationToolProviderFactory` implementations
+- `runtime` depends on `core`, `config-loader`, `llm-api`, `llm`, `schema`, `util`
+- `bootstrap` depends on `runtime`, `tools-http`, `config-loader`, `core`, `llm-api`, `llm`, `schema`, `util`
+- `spring-boot-starter` depends on `bootstrap` (plus the provider modules) and Spring Boot autoconfigure (library, not a runnable app)
+- `agentforge4j-workflows-catalog` is resources-only; no reactor module depends on it
+- Spring, databases, and file IO never appear in `util`, `core`, `llm-api`, `llm`, or `schema`
 
 If you are about to add an import that crosses these boundaries, stop and reconsider the design.
 
@@ -184,7 +191,7 @@ These are non-negotiable. Flag any existing code that violates them.
 ### External HTTP calls
 - Governed external HTTP calls are made through the tool SPI via `agentforge4j-tools-http`
   (`HttpToolProvider` + code-defined `HttpEndpointDefinition`s), resolved like any other
-  `ToolProvider`. The legacy `CALL_ENDPOINT` command and `agentforge4j-integrations` module were removed.
+  `ToolProvider`.
 - Credentials are **never** in workflow JSON or agent prompts — secret header values are resolved
   through a consumer-supplied secret resolver at invoke time, never inlined.
 
@@ -208,7 +215,7 @@ workflows/
 
 Agent ids, workflow ids, blueprint ids, and artifact ids must match their directory or filename stems exactly. The config-loader validates this at load time and fails fast on mismatch.
 
-Bundled (classpath) agents and workflows live in `agentforge4j-workflows` and are routed via bundle index files (`AgentBundleLocator`, `WorkflowBundleLocator`).
+Bundled (classpath) agents and workflows live in `agentforge4j-workflows-catalog` and are routed via bundle index files (`AgentBundleLocator`, `WorkflowBundleLocator`).
 
 ---
 
@@ -244,8 +251,7 @@ All file loading code uses `Validate.requireWithinBase()` to prevent path traver
 
 The following modules are complete and reviewed. Suggestions that change their architecture or public API are not welcome unless a bug is being fixed:
 
-- `agentforge4j-util`, `agentforge4j-core`, `agentforge4j-llm`, `agentforge4j-schema`, `agentforge4j-workflows`, `agentforge4j-config-loader`, all 9 LLM provider modules.
-- `agentforge4j-runtime`, `agentforge4j-spring-boot-starter` are built but physically reside in the platform repo pending relocation to OSS.
+- `agentforge4j-util`, `agentforge4j-core`, `agentforge4j-llm-api`, `agentforge4j-llm`, `agentforge4j-schema`, `agentforge4j-config-loader`, `agentforge4j-mcp`, `agentforge4j-tools-http`, `agentforge4j-runtime`, `agentforge4j-bootstrap`, `agentforge4j-spring-boot-starter`, `agentforge4j-testkit`, and all 10 LLM provider modules.
 
 ---
 

@@ -1,15 +1,18 @@
 @startuml oss-module-dependency
 '==============================================================================
 ' Diagram : OSS Module Dependency (Component Diagram)
-' Version : v1.2
-' Date    : 2026-06-16
+' Version : v1.3
+' Date    : 2026-07-01
 ' Source  : each module's module-info.java + root reactor pom.xml (live source)
 ' Note    : solid edges are JPMS `requires` (modules with module-info.java).
 '           `agentforge4j-mcp` and `agentforge4j-spring-boot-starter` have no
 '           module-info.java, so their edges are plain Maven <<compile>>
-'           dependencies (dashed/orange), not JPMS `requires`. Reactor has 22
-'           modules. There is NO `agentforge4j-integrations` module (integration
-'           SPI lives in core) and NO `agentforge4j-file-api` module (planned).
+'           dependencies (dashed/orange), not JPMS `requires`. Reactor has 27
+'           modules; test/verification modules (testkit, testkit-consumer-
+'           verification, oss-verification, starter-verification,
+'           workflow-fixtures) and the resources-only workflows-catalog are
+'           omitted here. Integration SPI lives in core. There is NO `agentforge4j-file-api`
+'           module (planned).
 '==============================================================================
 skinparam componentStyle rectangle
 skinparam packageStyle rectangle
@@ -54,7 +57,6 @@ package "Tool / MCP" {
 
 package "Config & content" {
   [agentforge4j-config-loader] as configloader
-  [agentforge4j-workflows] as workflows
 }
 
 package "Execution" {
@@ -96,9 +98,7 @@ toolshttp --> util
 
 configloader --> core
 configloader --> schema
-configloader --> workflows
 configloader --> util
-workflows    --> util
 
 runtime --> core
 runtime --> configloader
@@ -113,7 +113,6 @@ bootstrap --> llmapi
 bootstrap --> llm
 bootstrap --> configloader
 bootstrap --> schema
-bootstrap --> workflows
 bootstrap --> util
 
 ' spring-boot-starter has NO module-info.java -> Maven compile dependency.
@@ -160,6 +159,10 @@ note as N_absent
     (tools-http via module-info `provides` + META-INF/services;
     mcp via META-INF/services: McpStdio / McpStreamableHttp factories).
   * No `agentforge4j-file-api` module yet (planned).
+  * `agentforge4j-workflows-catalog` is a resources-only,
+    independently versioned artifact: no module-info.java and
+    no reactor module depends on it — consumers put it on the
+    classpath and the loaders read its shipped indexes at runtime.
   Providers also `requires agentforge4j.util` (edges omitted for clarity).
 end note
 

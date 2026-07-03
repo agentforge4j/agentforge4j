@@ -34,7 +34,7 @@
     <agentforge4j.version>0.0.1-SNAPSHOT</agentforge4j.version>
     <license-maven-plugin.version>5.0.0</license-maven-plugin.version>
     <!-- Spring Boot — managed via its BOM so the spring-boot example declares starters versionless. -->
-    <spring-boot.version>3.5.15</spring-boot.version>
+    <spring-boot.version>3.5.16</spring-boot.version>
     <!-- Re-asserts the framework's own commons-lang3 (it calls ObjectUtils.getIfNull, added in a
          newer release than the Spring BOM pins). Declared before the Spring BOM import below so this
          version wins over it. Keep aligned with the OSS reactor. -->

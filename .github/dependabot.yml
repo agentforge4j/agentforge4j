@@ -69,3 +69,25 @@ updates:
         update-types:
           - "minor"
           - "patch"
+
+  # npm end-to-end test package: agentforge4j-ui-e2e (committed package-lock.json).
+  - package-ecosystem: "npm"
+    directory: "/agentforge4j-ui-e2e"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    groups:
+      ui-e2e-minor-and-patch:
+        update-types:
+          - "minor"
+          - "patch"
+
+  # Standalone examples Maven tree (not part of the root reactor).
+  - package-ecosystem: "maven"
+    directory: "/agentforge4j-examples"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    ignore:
+      # The framework version is retargeted manually alongside framework releases.
+      - dependency-name: "org.agentforge4j:*"

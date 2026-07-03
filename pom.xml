@@ -12,6 +12,30 @@
   <name>AgentForge4j</name>
   <description>Multi-agent workflow orchestration. Agents of AI, forged in Java, for everyone.
   </description>
+  <url>https://github.com/agentforge4j/agentforge4j</url>
+
+  <licenses>
+    <license>
+      <name>Apache License, Version 2.0</name>
+      <url>https://www.apache.org/licenses/LICENSE-2.0</url>
+      <distribution>repo</distribution>
+    </license>
+  </licenses>
+
+  <developers>
+    <developer>
+      <id>angroene</id>
+      <name>André Groeneveld</name>
+      <url>https://github.com/angroene</url>
+    </developer>
+  </developers>
+
+  <scm>
+    <connection>scm:git:https://github.com/agentforge4j/agentforge4j.git</connection>
+    <developerConnection>scm:git:git@github.com:agentforge4j/agentforge4j.git</developerConnection>
+    <url>https://github.com/agentforge4j/agentforge4j</url>
+    <tag>HEAD</tag>
+  </scm>
 
   <properties>
     <release>17</release>
@@ -453,9 +477,9 @@
       </plugin>
 
       <!-- OWASP Dependency-Check: ADVISORY ONLY. Intentionally has NO <executions>, so it never
-           binds to `verify` and never runs in the normal build. The scheduled CI job invokes it
-           explicitly: mvn org.owasp:dependency-check-maven:aggregate -Dnvd.api.key=$NVD_API_KEY
-           Promote to gating later by adding a verify-bound execution plus
+           binds to `verify` and never runs in the normal build. No CI job invokes it yet; run it
+           manually when needed: mvn org.owasp:dependency-check-maven:aggregate -Dnvd.api.key=<key>
+           Promote to gating later by adding a scheduled CI job or a verify-bound execution plus
            <failBuildOnCVSS>7</failBuildOnCVSS> once the suppression baseline and NVD key are
            stable. -->
       <plugin>
@@ -475,8 +499,8 @@
       </plugin>
 
       <!-- CycloneDX SBOM: emits a single aggregate bom.json + bom.xml for the whole reactor at the
-           root, bound to `package`. inherited=false keeps it root-only (no per-module BOMs). The
-           release workflow attaches the aggregate BOMs as supply-chain artifacts. -->
+           root, bound to `package`. inherited=false keeps it root-only (no per-module BOMs). A
+           future release pipeline should attach the aggregate BOMs as supply-chain artifacts. -->
       <plugin>
         <groupId>org.cyclonedx</groupId>
         <artifactId>cyclonedx-maven-plugin</artifactId>
@@ -537,4 +561,64 @@
       </plugin>
     </plugins>
   </build>
+
+  <profiles>
+    <!-- Release artifacts: -sources.jar and -javadoc.jar for every published module, as required
+         by Maven Central. Activate with -Prelease. Signing and deployment configuration are
+         deliberately absent — they belong to the release pipeline, not the build. -->
+    <profile>
+      <id>release</id>
+      <build>
+        <plugins>
+          <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-source-plugin</artifactId>
+            <version>3.3.1</version>
+            <executions>
+              <execution>
+                <id>attach-sources</id>
+                <goals>
+                  <goal>jar-no-fork</goal>
+                </goals>
+              </execution>
+            </executions>
+          </plugin>
+          <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-javadoc-plugin</artifactId>
+            <version>3.11.2</version>
+            <configuration>
+              <doclint>all,-missing</doclint>
+              <quiet>true</quiet>
+              <tags>
+                <tag>
+                  <name>apiNote</name>
+                  <placement>a</placement>
+                  <head>API Note:</head>
+                </tag>
+                <tag>
+                  <name>implSpec</name>
+                  <placement>a</placement>
+                  <head>Implementation Requirements:</head>
+                </tag>
+                <tag>
+                  <name>implNote</name>
+                  <placement>a</placement>
+                  <head>Implementation Note:</head>
+                </tag>
+              </tags>
+            </configuration>
+            <executions>
+              <execution>
+                <id>attach-javadocs</id>
+                <goals>
+                  <goal>jar</goal>
+                </goals>
+              </execution>
+            </executions>
+          </plugin>
+        </plugins>
+      </build>
+    </profile>
+  </profiles>
 </project>

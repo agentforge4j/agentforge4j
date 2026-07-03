@@ -25,13 +25,13 @@ public enum CommandApplicationResult {
   /**
    * A {@code USER_PROMPT} with {@code responseRequired=true} or a {@code GENERATE_QUESTIONS}
    * command was applied — the run waits for
-   * {@link com.agentforge4j.core.runtime.WorkflowRuntime#submitInput(String, java.util.Map)}.
+   * {@link com.agentforge4j.core.runtime.WorkflowRuntime#submitInput(String, java.util.Map, String)}.
    */
   AWAITING_INPUT,
 
   /**
    * An {@code ESCALATE} command was applied — the run waits for
-   * {@link com.agentforge4j.core.runtime.WorkflowRuntime#approve(String, String, String)}.
+   * {@link com.agentforge4j.core.runtime.WorkflowRuntime#approve(String, String, String, String)}.
    */
   AWAITING_APPROVAL,
 
