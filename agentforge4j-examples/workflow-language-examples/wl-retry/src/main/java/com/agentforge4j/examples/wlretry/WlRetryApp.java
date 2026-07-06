@@ -3,17 +3,12 @@ package com.agentforge4j.examples.wlretry;
 
 import com.agentforge4j.bootstrap.AgentForge4j;
 import com.agentforge4j.bootstrap.AgentForge4jBootstrap;
+import com.agentforge4j.bootstrap.LlmProviderConfig;
 import com.agentforge4j.core.workflow.state.WorkflowState;
-import com.agentforge4j.llm.DefaultLlmClientResolver;
-import com.agentforge4j.llm.api.LlmClient;
-import com.agentforge4j.llm.fake.FakeLlmClient;
-import com.agentforge4j.llm.fake.FakeResponse;
-import com.agentforge4j.llm.fake.FakeScript;
-import com.agentforge4j.llm.fake.FakeScriptKey;
-import com.agentforge4j.llm.fake.StaticFakeResponseSource;
+import com.agentforge4j.llm.LlmClientResolver;
+import com.agentforge4j.llm.LlmSecretReference;
 import java.net.URISyntaxException;
 import java.nio.file.Path;
-import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 
@@ -30,11 +25,14 @@ import java.util.Objects;
  * agent step would have nothing to suspend on.) The two {@code submitInput} calls in
  * {@link #main(String[])} and the test correspond to the original request and the retry's re-request.
  *
- * <p>The run is deterministic and offline. The {@code agentforge4j-llm-fake} provider serves the
- * fallback agent's {@code COMPLETE}; the inputs are supplied directly in code, so no real model,
- * network, or API key is involved.
+ * <p>The example is LLM-agnostic. Out of the box it runs offline against the deterministic
+ * {@code agentforge4j-llm-fake} provider (no key, no network, no extra dependency). Configure a provider
+ * key in {@code example.properties} (or via the environment) <em>and</em> add a provider module to this
+ * module's POM to run the same workflow against a real model — no code change. The only model call is the
+ * fallback agent's; the inputs are supplied in code on both paths. The fake/real choice is resolved by
+ * {@link ExampleLlmConfig}.
  */
-public final class WlRetryExample {
+public final class WlRetryApp {
 
   /**
    * Workflow id; matches {@code workflows/wl-retry.workflow/} and its {@code id} field.
@@ -69,25 +67,22 @@ public final class WlRetryExample {
    */
   static final String FINALIZE_STEP_ID = "finalize";
 
-  /**
-   * The scripted model output for the fallback agent's single call: a lone {@code COMPLETE} finishes
-   * the run.
-   */
-  static final String SCRIPTED_COMPLETE = "[{\"type\":\"COMPLETE\"}]";
-
-  private WlRetryExample() {
+  private WlRetryApp() {
   }
 
   /**
    * Runs the workflow, supplying the note twice (original request and retry re-request), and prints
-   * the status after each step.
+   * the status after each step. The fake/real LLM choice is resolved from configuration.
    *
    * @param args ignored
    *
    * @throws URISyntaxException if a bundled resource directory cannot be resolved to a path
    */
   public static void main(String[] args) throws URISyntaxException {
-    AgentForge4j agentForge4j = assemble();
+    ExampleLlmConfig config = ExampleLlmConfig.load();
+    AgentForge4j agentForge4j = config.fakeLlm()
+        ? assembleWithFake(WlRetryFakeLlm.resolver())
+        : assemble(config);
 
     String runId = agentForge4j.start(WORKFLOW_ID);
     printStatus(agentForge4j, "after start", runId);
@@ -100,27 +95,79 @@ public final class WlRetryExample {
   }
 
   /**
-   * Assembles an AgentForge4j runtime wired to the deterministic fake provider and this module's own
-   * workflow, artifact, and agent configuration. Shared by {@link #main(String[])} and the test so
-   * both exercise exactly the same wiring.
+   * Assembles an AgentForge4j runtime that resolves a real LLM provider from configuration — the
+   * production-shaped path a copied example uses once a key and provider module are in place. The provider
+   * factory is discovered from the classpath, so a matching provider module must be on this module's POM;
+   * with none present the build fails fast with a clear "no provider factory" message.
+   *
+   * @param config the resolved example configuration carrying the provider name and API key
    *
    * @return a ready-to-use framework facade
    *
    * @throws URISyntaxException if a bundled resource directory cannot be resolved to a path
    */
-  static AgentForge4j assemble() throws URISyntaxException {
-    FakeScript script = new FakeScript(1, Map.of(
-        new FakeScriptKey(WORKFLOW_ID, FINALIZE_STEP_ID, FINALIZE_AGENT_ID, 0),
-        new FakeResponse(SCRIPTED_COMPLETE, null)));
-    LlmClient fakeLlmClient = new FakeLlmClient(new StaticFakeResponseSource(script));
+  static AgentForge4j assemble(ExampleLlmConfig config) throws URISyntaxException {
+    return baseBuilder()
+        .withLlmProvider(providerConfig(config))
+        .build();
+  }
 
+  /**
+   * Builds the real-provider configuration from {@code config}'s provider name, starting from that
+   * provider's own {@link LlmProviderConfig} factory so the base URL and default model are populated (a
+   * provider selected via configuration only, with no code change, must still resolve a working model).
+   *
+   * @param config the resolved example configuration carrying the provider name and API key
+   *
+   * @return a provider configuration with a working base URL/default model and the configured credential
+   *
+   * @throws IllegalArgumentException if {@code config.provider()} names a provider this template does not
+   *         recognise
+   */
+  private static LlmProviderConfig providerConfig(ExampleLlmConfig config) {
+    LlmProviderConfig.ProviderBuilder builder = switch (config.provider()) {
+      case "openai" -> LlmProviderConfig.openai();
+      case "claude" -> LlmProviderConfig.claude();
+      case "ollama" -> LlmProviderConfig.ollama();
+      case "vllm" -> LlmProviderConfig.vllm();
+      case "gemini" -> LlmProviderConfig.gemini();
+      case "mistral" -> LlmProviderConfig.mistral();
+      case "azure-openai" -> LlmProviderConfig.azureOpenAi();
+      case "openai-compatible" -> LlmProviderConfig.openAiCompatible();
+      case "bedrock" -> LlmProviderConfig.bedrock();
+      default -> throw new IllegalArgumentException(
+          ("Unsupported value \"%s\" for agentforge4j.example.llm.provider: expected one of openai, claude, "
+              + "ollama, vllm, gemini, mistral, azure-openai, openai-compatible, bedrock.")
+              .formatted(config.provider()));
+    };
+    return builder.defaults()
+        .apiKeyReference(LlmSecretReference.parse(config.apiKey()))
+        .build();
+  }
+
+  /**
+   * Assembles an AgentForge4j runtime wired to the given deterministic fake resolver. Used by the offline
+   * run path and the test, so both exercise exactly the same bootstrap wiring around a scripted fake — no
+   * key, no network.
+   *
+   * @param llmClientResolver the resolver to install (for example {@link WlRetryFakeLlm#resolver()})
+   *
+   * @return a ready-to-use framework facade
+   *
+   * @throws URISyntaxException if a bundled resource directory cannot be resolved to a path
+   */
+  static AgentForge4j assembleWithFake(LlmClientResolver llmClientResolver) throws URISyntaxException {
+    return baseBuilder()
+        .withLlmClientResolver(llmClientResolver)
+        .build();
+  }
+
+  private static AgentForge4jBootstrap.Builder baseBuilder() throws URISyntaxException {
     return AgentForge4jBootstrap.defaults()
         .withWorkflowsDir(resourceDirectory("/workflows"))
         .withAgentsDir(resourceDirectory("/agents"))
         .withLoadShippedWorkflows(false)
-        .withLoadShippedAgents(false)
-        .withLlmClientResolver(new DefaultLlmClientResolver(List.of(fakeLlmClient)))
-        .build();
+        .withLoadShippedAgents(false);
   }
 
   private static void printStatus(AgentForge4j agentForge4j, String label, String runId) {
@@ -141,7 +188,7 @@ public final class WlRetryExample {
    */
   private static Path resourceDirectory(String classpathDirectory) throws URISyntaxException {
     return Path.of(Objects.requireNonNull(
-        WlRetryExample.class.getResource(classpathDirectory),
+        WlRetryApp.class.getResource(classpathDirectory),
         "Missing classpath resource directory: %s".formatted(classpathDirectory)).toURI());
   }
 }
