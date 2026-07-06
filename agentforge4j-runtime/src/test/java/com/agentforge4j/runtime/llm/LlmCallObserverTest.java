@@ -220,7 +220,7 @@ class LlmCallObserverTest {
   void recordAttempt_followed_by_observe_emits_two_events_but_accumulates_only_the_winning_call() {
     InMemoryWorkflowEventLog eventLog = new InMemoryWorkflowEventLog();
     LlmCallObserver observer = new LlmCallObserver(recorder(eventLog), objectMapper);
-    WorkflowState state = workflowState("run-parse-retry-billing");
+    WorkflowState state = workflowState("run-parse-retry-usage");
     state.putStepExecutionUid("step-1", 7);
     TokenUsageReport discardedUsage = new TokenUsageReport(10, 5, null, null);
     TokenUsageReport winningUsage = new TokenUsageReport(20, 8, null, null);
@@ -230,7 +230,7 @@ class LlmCallObserverTest {
     observer.observe("agent-x", "openai", llmResponse("gpt-4o-mini", winningUsage),
         null, ModelSource.PROVIDER_DEFAULT, null, state, 2);
 
-    var completedEvents = eventLog.getEvents("run-parse-retry-billing").stream()
+    var completedEvents = eventLog.getEvents("run-parse-retry-usage").stream()
         .filter(e -> e.eventType() == WorkflowEventType.LLM_CALL_COMPLETED)
         .toList();
     assertThat(completedEvents).hasSize(2);

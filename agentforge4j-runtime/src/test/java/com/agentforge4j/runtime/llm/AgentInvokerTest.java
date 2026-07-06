@@ -237,9 +237,9 @@ class AgentInvokerTest {
     assertThat(llmOutputs.get(0).payload()).isEqualTo(firstRaw);
     assertThat(llmOutputs.get(1).payload()).isEqualTo(secondRaw);
 
-    // ENF-2 regression: the discarded (parse-failed) attempt consumed real, billable tokens and must
+    // ENF-2 regression: the discarded (parse-failed) attempt consumed real, metered tokens and must
     // not be lost — each attempt gets its own LLM_CALL_COMPLETED event, sharing the dispatch's stepUid
-    // but carrying a distinct callAttempt ordinal, so a downstream billing consumer can debit both.
+    // but carrying a distinct callAttempt ordinal, so a downstream usage consumer can account for both.
     List<com.agentforge4j.core.workflow.event.WorkflowEvent> completedEvents =
         llmCallCompletedEvents(eventLog, runId);
     assertThat(completedEvents).hasSize(2);
@@ -280,7 +280,7 @@ class AgentInvokerTest {
     assertThat(llmOutputEventCount(eventLog, runId)).isEqualTo(expectedLlmCalls);
 
     // ENF-2 regression: even when EVERY attempt fails parsing (no winning attempt ever calls
-    // observe()), each real provider call still gets its own billable LLM_CALL_COMPLETED via
+    // observe()), each real provider call still gets its own metered LLM_CALL_COMPLETED via
     // recordAttempt — nothing here is dropped just because the whole invocation ultimately throws.
     List<com.agentforge4j.core.workflow.event.WorkflowEvent> completedEvents =
         llmCallCompletedEvents(eventLog, runId);

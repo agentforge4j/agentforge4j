@@ -579,7 +579,7 @@ public final class WorkflowRunAssert {
   /**
    * Asserts the number of provider (LLM) calls recorded for a specific step, regardless of dispatch
    * or attempt. Useful for proving a looping or parse-retried step made the expected number of real,
-   * billable provider calls — each carries its own {@code stepUid}/{@code callAttempt} discriminator
+   * metered provider calls — each carries its own {@code stepUid}/{@code callAttempt} discriminator
    * in its {@code LLM_CALL_COMPLETED} payload, but this assertion only needs the step id.
    *
    * @param stepId   the step id to filter on; must not be blank

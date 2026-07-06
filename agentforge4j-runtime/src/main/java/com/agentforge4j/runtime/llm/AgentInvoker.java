@@ -492,7 +492,7 @@ public final class AgentInvoker {
       try {
         return new ParsedInvocation(response, llmCommandParser.parse(responseText, schema), attempt);
       } catch (LlmCommandParseException e) {
-        // The provider call above is real and billable regardless of parse outcome — record it now so
+        // The provider call above is real and metered regardless of parse outcome — record it now so
         // a superseded/exhausted attempt's usage is never lost, even though its output is discarded.
         llmCallObserver.recordAttempt(actorIdForEvents, preference.provider(), response,
             resolution.resolvedModel(), resolution.modelSource(), resolution.requestedModelTier(),

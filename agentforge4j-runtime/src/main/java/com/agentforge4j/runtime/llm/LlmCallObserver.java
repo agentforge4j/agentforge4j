@@ -101,8 +101,8 @@ public final class LlmCallObserver {
   }
 
   /**
-   * Records a discarded LLM call attempt for audit/billing purposes only. A schema-parse-retried
-   * attempt still consumed real, billable provider tokens even though its output was rejected and
+   * Records a discarded LLM call attempt for audit/usage purposes only. A schema-parse-retried
+   * attempt still consumed real, metered provider tokens even though its output was rejected and
    * superseded by a later attempt in the same dispatch. Unlike {@link #observe}, this does not update
    * {@link ReservedContextKeys#LLM_TOKENS_TOTAL} — that running total tracks only the response the
    * workflow actually used, which {@link #observe} records exactly once per dispatch.
