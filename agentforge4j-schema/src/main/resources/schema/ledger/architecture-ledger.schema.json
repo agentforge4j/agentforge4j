@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ArchitectureLedger",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["entries"],
+  "properties": {
+    "entries": {
+      "type": "array",
+      "description": "Ledger entries. Each entry has a stable id (the natural merge key); domain-specific fields are open.",
+      "items": {
+        "type": "object",
+        "required": ["id"],
+        "properties": {
+          "id": { "type": "string", "minLength": 1 }
+        },
+        "additionalProperties": true
+      }
+    },
+    "openQuestions": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Structural: unresolved questions are carried verbatim and never hidden by compaction."
+    },
+    "conflicts": {
+      "type": "array",
+      "items": { "type": "object" },
+      "description": "Structural: merge conflicts (same key, incompatible values) land here rather than auto-resolving."
+    }
+  }
+}
