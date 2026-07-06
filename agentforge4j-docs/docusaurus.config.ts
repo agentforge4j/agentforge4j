@@ -2,9 +2,10 @@
 import {themes as prismThemes} from 'prism-react-renderer';
 import type {Config} from '@docusaurus/types';
 import type * as Preset from '@docusaurus/preset-classic';
-// Plain ESM remark plugins (no types): vocabulary-tag validation and source-backed includes.
+// Plain ESM remark plugins (no types): vocabulary-tag validation, source-backed includes, Javadoc links.
 import vocabRemarkPlugin from './src/remark/vocab.mjs';
 import includeRemarkPlugin from './src/remark/include.mjs';
+import javadocRemarkPlugin from './src/remark/javadoc.mjs';
 
 // This runs in Node.js - Don't use client-side code here (browser APIs, JSX...)
 
@@ -55,8 +56,8 @@ const config: Config = {
           // public route is `/docs/<version-path>/<slug>` (no `/docs/docs`).
           routeBasePath: '/',
           sidebarPath: './sidebars.ts',
-          // Source-backed includes (resolve before vocab) + vocabulary-tag validation.
-          remarkPlugins: [includeRemarkPlugin, vocabRemarkPlugin],
+          // Source-backed includes (resolve first) + vocabulary-tag validation + Javadoc links.
+          remarkPlugins: [includeRemarkPlugin, vocabRemarkPlugin, javadocRemarkPlugin],
           editUrl:
             'https://github.com/agentforge4j/agentforge4j/tree/main/agentforge4j-docs/',
           // The current (editable) docs set is the forthcoming release: served at
