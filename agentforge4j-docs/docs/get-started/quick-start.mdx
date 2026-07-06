@@ -1,0 +1,33 @@
+---
+title: Quick start
+description: Install AgentForge4j and run a minimal workflow.
+kind: doc
+audience: integrating
+diataxis: tutorial
+sidebar_position: 4
+---
+
+# Quick start
+
+This guide gets a minimal AgentForge4j workflow running in an existing Java application.
+
+:::note Work in progress
+The runnable, source-backed code for this guide comes from the framework examples and is
+wired in with the snippet-include mechanism. Until then, this page describes the shape of
+the steps; see [Examples](../examples/index.mdx) for the full, compiled sources.
+:::
+
+## Steps
+
+1. **Add the dependency.** Add the AgentForge4j framework (or the Spring Boot starter) to
+   your build.
+2. **Configure a provider.** Supply credentials and model settings for an LLM provider —
+   see [Configure an LLM provider](../how-to/configure-llm-provider.mdx).
+3. **Provide a workflow definition.** Author a workflow JSON document validated against the
+   [workflow schema](../reference/schemas.mdx).
+4. **Run it.** Bootstrap the runtime and execute the workflow.
+
+## Next steps
+
+- [Your first workflow](../tutorials/first-workflow.mdx) — a fuller walkthrough.
+- [Configuration reference](../reference/config.mdx) — all configuration surfaces.

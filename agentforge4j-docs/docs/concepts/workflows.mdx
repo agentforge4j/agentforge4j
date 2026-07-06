@@ -1,0 +1,37 @@
+---
+title: Workflows
+description: The AgentForge4j workflow model — steps, behaviours, and transitions.
+kind: doc
+audience: authoring
+diataxis: concept
+sidebar_position: 1
+---
+
+# Workflows
+
+This page explains the workflow model and the reasoning behind it. It does not give
+step-by-step instructions — see the [How-to Guides](../how-to/configure-llm-provider.mdx) and
+[Tutorials](../tutorials/first-workflow.mdx) for those.
+
+## The model
+
+An AgentForge4j workflow is a declarative document: a set of steps, each with a
+**behaviour** that determines what the step does, connected by **transitions** that
+determine what runs next. Definitions are data, validated against the published
+[schemas](../reference/schemas.mdx) before execution, so a malformed workflow fails fast rather
+than partway through a run.
+
+## Why declarative
+
+Keeping workflows as validated data — rather than code — means they can be authored,
+reviewed, versioned, and validated independently of the application that runs them, and
+the runtime can reason about them (reachability, transitions) ahead of execution.
+
+## Vocabulary
+
+The execution vocabulary is fixed and documented in the reference section:
+
+- [Behaviours](../reference/behaviours.mdx) — what a step can do.
+- [Commands](../reference/commands.mdx) — the instructions an LLM step can emit.
+- [Events](../reference/events.mdx) and [Statuses](../reference/statuses.mdx) — what a run reports as it
+  progresses.

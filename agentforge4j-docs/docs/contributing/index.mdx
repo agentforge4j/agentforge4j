@@ -1,0 +1,32 @@
+---
+title: Contributing to the docs
+description: How to write and contribute to the AgentForge4j documentation.
+kind: contributing
+sidebar_position: 1
+---
+
+# Contributing to the docs
+
+How to add and change documentation pages.
+
+:::note Work in progress
+The full contributor guide — page-type templates, the frontmatter rules, snippet-region
+conventions, and how to run the gates locally — is fleshed out in a later phase. The
+mechanics below already apply.
+:::
+
+## Page kinds and frontmatter
+
+Every page declares a `kind` in its frontmatter. Content pages (`kind: doc`) also declare
+an `audience` and a `diataxis` quadrant; audience routers declare an `audience` only; the
+Examples gallery, release notes, and this contributing section declare neither. The
+`frontmatter` lint enforces these rules and fails the build on any violation.
+
+## Running the gates locally
+
+From the `agentforge4j-docs` module:
+
+```bash
+npm run lint    # frontmatter + navigation gates
+npm run build   # builds the site; fails on broken links or anchors
+```
