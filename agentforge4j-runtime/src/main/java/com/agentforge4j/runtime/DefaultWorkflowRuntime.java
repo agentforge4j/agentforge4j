@@ -893,7 +893,12 @@ public final class DefaultWorkflowRuntime implements WorkflowRuntime {
         // AWAITING_APPROVAL / PAUSED) — do not overwrite it here.
       }
       case FAILED -> {
-        if (state.getStatus() != WorkflowStatus.CANCELLED) {
+        // A handler (e.g. MaxIterationsHandler on MaxIterationsAction.FAIL) may already have
+        // transitioned the run to FAILED and recorded its own RUN_FAILED event with a specific
+        // payload; guard on both CANCELLED and FAILED so this generic fallback never double-fires
+        // RUN_FAILED for the same terminal failure.
+        if (state.getStatus() != WorkflowStatus.CANCELLED
+            && state.getStatus() != WorkflowStatus.FAILED) {
           state.setStatus(WorkflowStatus.FAILED);
           eventRecorder.record(state.getRunId(), state.getCurrentStepId(),
               WorkflowEventType.RUN_FAILED, null, "runtime");

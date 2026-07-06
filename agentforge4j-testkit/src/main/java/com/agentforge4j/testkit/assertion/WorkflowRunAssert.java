@@ -545,6 +545,23 @@ public final class WorkflowRunAssert {
   }
 
   /**
+   * Asserts the given tool capability was never invoked.
+   *
+   * @param capabilityId the capability id; must not be blank
+   *
+   * @return this
+   */
+  public WorkflowRunAssert didNotInvokeTool(String capabilityId) {
+    Validate.notBlank(capabilityId, "capabilityId must not be blank");
+    boolean found = eventsOfType(WorkflowEventType.TOOL_INVOCATION_REQUESTED).stream()
+        .anyMatch(event -> capabilityId.equals(jsonField(event.payload(), "capability")));
+    if (found) {
+      throw error("Expected tool '%s' to never be invoked".formatted(capabilityId));
+    }
+    return this;
+  }
+
+  /**
    * Asserts the number of tool invocations (counted from {@code TOOL_INVOCATION_REQUESTED}).
    *
    * @param expected the expected count
