@@ -1,0 +1,38 @@
+{
+  "kind": "WORKFLOW",
+  "id": "gate-under-branch",
+  "name": "Gated Input Under Branch",
+  "steps": [
+    {
+      "kind": "STEP",
+      "stepId": "decide",
+      "name": "Decide",
+      "behaviour": {
+        "type": "AGENT",
+        "agentRef": "branch-agent",
+        "transition": "AUTO"
+      }
+    },
+    {
+      "kind": "STEP",
+      "stepId": "route",
+      "name": "Route",
+      "behaviour": {
+        "type": "BRANCH",
+        "contextKey": "decision",
+        "branches": {
+          "go": {
+            "kind": "STEP",
+            "stepId": "gated-input",
+            "name": "Gated Input",
+            "behaviour": {
+              "type": "INPUT",
+              "artifactId": "user-form",
+              "transition": "HUMAN_REVIEW"
+            }
+          }
+        }
+      }
+    }
+  ]
+}

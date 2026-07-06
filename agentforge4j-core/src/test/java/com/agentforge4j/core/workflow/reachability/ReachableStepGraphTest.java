@@ -83,9 +83,11 @@ class ReachableStepGraphTest {
   }
 
   @Test
-  void walk_doesNotDescendBranchTargets() {
-    // The runtime's cross-workflow searcher does not descend BranchBehaviour targets; the guard must
-    // not either, or it would reject ids the runtime never resolves at a gate.
+  void walk_descendsBranchTargets() {
+    // CR-05: a step reachable only as a BranchBehaviour target (here, via a blueprint-ref branch
+    // value) must be descended exactly like any other child, or the runtime's gate/resume
+    // resolution (which uses this same graph) can neither find nor gate it — the branch-child
+    // human-gate bypass this case regresses.
     BlueprintDefinition branchBody = blueprint("branch-bp", step("branch-step"));
     StepDefinition branching = StepDefinition.builder()
         .withStepId("router")
@@ -98,7 +100,74 @@ class ReachableStepGraphTest {
 
     List<ReachableStep> reached = ReachableStepGraph.walk(root, NO_SUBWORKFLOWS);
 
-    assertThat(reached).extracting(ReachableStep::stepId).containsExactly("router");
+    assertThat(reached).extracting(ReachableStep::stepId)
+        .containsExactlyInAnyOrder("router", "branch-step");
+    assertThat(reached).extracting(ReachableStep::location)
+        .contains("wf:root/bp:branch-bp/step:branch-step");
+  }
+
+  @Test
+  void walk_descendsDirectBranchStepTargets() {
+    // Same as walk_descendsBranchTargets, but the branch value is a plain step (no blueprint-ref
+    // indirection) — the shape a gated INPUT/AGENT step directly under a BRANCH takes.
+    StepDefinition gated = step("gated");
+    StepDefinition branching = StepDefinition.builder()
+        .withStepId("router")
+        .withName("router")
+        .withBehaviour(new BranchBehaviour("flag", Map.of("yes", gated), List.of(), null, false))
+        .withContextMapping(new ContextMapping(List.of(), List.of()))
+        .build();
+    WorkflowDefinition root = wf("root", Map.of(), branching);
+
+    List<ReachableStep> reached = ReachableStepGraph.walk(root, NO_SUBWORKFLOWS);
+
+    assertThat(reached).extracting(ReachableStep::stepId)
+        .containsExactlyInAnyOrder("router", "gated");
+    assertThat(reached).extracting(ReachableStep::location).contains("wf:root/step:gated");
+  }
+
+  @Test
+  void walk_flagsDistinctSameIdDefinitionsInTwoBranchArms() {
+    // Two branch arms each define their own step with the same id. They are distinct definitions
+    // that may disagree on gating, so they must surface as two occurrences (ambiguous, fail-closed)
+    // rather than silently collapsing to whichever arm was walked first.
+    StepDefinition armYes = step("dup");
+    StepDefinition armNo = step("dup");
+    StepDefinition branching = StepDefinition.builder()
+        .withStepId("router")
+        .withName("router")
+        .withBehaviour(new BranchBehaviour("flag", Map.of("yes", armYes, "no", armNo), List.of(),
+            null, false))
+        .withContextMapping(new ContextMapping(List.of(), List.of()))
+        .build();
+    WorkflowDefinition root = wf("root", Map.of(), branching);
+
+    List<AmbiguousStepId> ambiguous = ReachableStepGraph.findAmbiguousStepIds(root, NO_SUBWORKFLOWS);
+    assertThat(ambiguous).extracting(AmbiguousStepId::stepId).containsExactly("dup");
+
+    assertThatThrownBy(() -> ReachableStepGraph.resolveUnique(root, "dup", NO_SUBWORKFLOWS))
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessageContaining("Ambiguous step id 'dup'");
+  }
+
+  @Test
+  void walk_collapsesSameBlueprintReferencedFromTwoBranchArms() {
+    // Convergence: two arms routing to the same blueprint is ONE definition reached via two paths —
+    // it must collapse to a single location, not read as ambiguous.
+    BlueprintDefinition shared = blueprint("shared-bp", step("converged"));
+    StepDefinition branching = StepDefinition.builder()
+        .withStepId("router")
+        .withName("router")
+        .withBehaviour(new BranchBehaviour("flag",
+            Map.of("yes", new BlueprintRef("shared-bp"), "no", new BlueprintRef("shared-bp")),
+            List.of(), null, false))
+        .withContextMapping(new ContextMapping(List.of(), List.of()))
+        .build();
+    WorkflowDefinition root = wf("root", Map.of("shared-bp", shared), branching);
+
+    assertThat(ReachableStepGraph.findAmbiguousStepIds(root, NO_SUBWORKFLOWS)).isEmpty();
+    assertThatCode(() -> ReachableStepGraph.resolveUnique(root, "converged", NO_SUBWORKFLOWS))
+        .doesNotThrowAnyException();
   }
 
   @Test
