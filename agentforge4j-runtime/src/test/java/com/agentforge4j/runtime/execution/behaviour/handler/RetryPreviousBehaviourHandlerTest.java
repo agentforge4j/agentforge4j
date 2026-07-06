@@ -202,8 +202,70 @@ class RetryPreviousBehaviourHandlerTest {
 
       assertThat(f.state().getContext()).containsKey(f.attemptKey());
       assertThat(f.state().getContext()).doesNotContainKey("ctxX");
-      assertThat(f.state().getStepExecutionUid()).doesNotContainKey("s2");
+      // The retry re-dispatch now allocates a fresh uid for "s2" before executing it (see
+      // UidReallocation below) — clearEntriesFromUid removes the pre-retry entry, but dispatch puts a
+      // new one straight back, so the key is present again (with a new value), not absent.
+      assertThat(f.state().getStepExecutionUid()).containsKey("s2");
       assertThat(f.state().getStepOutputs()).doesNotContainKey("s3");
+    }
+  }
+
+  @Nested
+  class UidReallocation {
+
+    @Test
+    void single_step_retry_allocates_a_fresh_uid_distinct_from_the_original() {
+      TestFixture f = fixture()
+          .retryStepId("s2")
+          .maxAttempts(5)
+          .retryMode(RetryMode.SINGLE_STEP)
+          .owningStepId("s3")
+          .sequence("s1", "s2", "s3")
+          .retryStepExecuted(2)
+          .build();
+      when(f.context().allocateStepSequenceUid()).thenReturn(99);
+
+      f.handle();
+
+      assertThat(f.state().getStepExecutionUid()).containsEntry("s2", 99);
+    }
+
+    @Test
+    void from_step_retry_allocates_a_fresh_uid_for_every_step_in_the_replayed_range() {
+      TestFixture f = fixture()
+          .retryStepId("s2")
+          .maxAttempts(5)
+          .retryMode(RetryMode.FROM_STEP)
+          .owningStepId("s4")
+          .sequence("s1", "s2", "s3", "s4")
+          .retryStepExecuted(2)
+          .stepExecuted("s3", 3, "out-s3")
+          .build();
+      when(f.context().allocateStepSequenceUid()).thenReturn(10, 11);
+
+      f.handle();
+
+      assertThat(f.state().getStepExecutionUid()).containsEntry("s2", 10);
+      assertThat(f.state().getStepExecutionUid()).containsEntry("s3", 11);
+    }
+
+    @Test
+    void fallback_path_still_allocates_a_fresh_uid() {
+      Executable fallback = fallbackStep("fallback");
+      TestFixture f = fixture()
+          .retryStepId("s2")
+          .maxAttempts(5)
+          .fallback(fallback)
+          .owningStepId("s3")
+          .sequence("s1", "s2", "s3")
+          .retryStepExecuted(2)
+          .attemptCount(5)
+          .build();
+      when(f.context().allocateStepSequenceUid()).thenReturn(7);
+
+      f.handle();
+
+      assertThat(f.state().getStepExecutionUid()).containsEntry("fallback", 7);
     }
   }
 

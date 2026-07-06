@@ -51,6 +51,12 @@ public final class LlmCallObserver {
    * @param totalTokens        {@code inputTokens + outputTokens}, or {@code null} when neither was
    *                           reported
    * @param cachedTokens       prompt-cache input tokens the provider reported, or {@code null} when not reported
+   * @param stepUid            the current step's dispatch execution uid, or {@code null} when the step has
+   *                           no recorded dispatch uid; disambiguates repeated dispatches of the same
+   *                           stepId (loop iterations, retries) from one another
+   * @param callAttempt        1-based ordinal of this call within its dispatch; a schema-parse-retried
+   *                           step makes multiple calls under one {@code stepUid}, each with its own
+   *                           {@code callAttempt}
    */
   public record LlmCallCompletedPayload(
       String agentId,
@@ -62,11 +68,14 @@ public final class LlmCallObserver {
       Integer inputTokens,
       Integer outputTokens,
       Integer totalTokens,
-      Integer cachedTokens) {
+      Integer cachedTokens,
+      String stepUid,
+      Integer callAttempt) {
   }
 
   /**
-   * Called once per completed LLM provider call.
+   * Called once for the LLM call whose parsed output the workflow actually uses. Emits the audit event
+   * and updates the {@link ReservedContextKeys#LLM_TOKENS_TOTAL} running total.
    *
    * @param agentId            the agent that triggered the call
    * @param provider           the provider name (e.g. {@code "claude"})
@@ -76,6 +85,7 @@ public final class LlmCallObserver {
    * @param modelSource        how the model was determined (pin, tier, or provider default)
    * @param requestedModelTier the requested capability tier, or {@code null} when none applied
    * @param state              mutable run state — token total is read-add-written here
+   * @param attempt            1-based ordinal of this call within its dispatch
    */
   public void observe(String agentId,
       String provider,
@@ -83,18 +93,67 @@ public final class LlmCallObserver {
       String resolvedModel,
       ModelSource modelSource,
       ModelTier requestedModelTier,
-      WorkflowState state) {
+      WorkflowState state,
+      int attempt) {
+    int callTotal = emit(agentId, provider, response, resolvedModel, modelSource,
+        requestedModelTier, state, attempt);
+    accumulateTokens(state, callTotal);
+  }
+
+  /**
+   * Records a discarded LLM call attempt for audit/billing purposes only. A schema-parse-retried
+   * attempt still consumed real, billable provider tokens even though its output was rejected and
+   * superseded by a later attempt in the same dispatch. Unlike {@link #observe}, this does not update
+   * {@link ReservedContextKeys#LLM_TOKENS_TOTAL} — that running total tracks only the response the
+   * workflow actually used, which {@link #observe} records exactly once per dispatch.
+   *
+   * @param agentId            the agent that triggered the call
+   * @param provider           the provider name (e.g. {@code "claude"})
+   * @param response           the full provider response including usage and model metadata
+   * @param resolvedModel      the model the runtime resolved and sent; {@code null} when the
+   *                           provider default was used
+   * @param modelSource        how the model was determined (pin, tier, or provider default)
+   * @param requestedModelTier the requested capability tier, or {@code null} when none applied
+   * @param state              mutable run state
+   * @param attempt            1-based ordinal of this call within its dispatch
+   */
+  public void recordAttempt(String agentId,
+      String provider,
+      LlmExecutionResponse response,
+      String resolvedModel,
+      ModelSource modelSource,
+      ModelTier requestedModelTier,
+      WorkflowState state,
+      int attempt) {
+    emit(agentId, provider, response, resolvedModel, modelSource, requestedModelTier, state,
+        attempt);
+  }
+
+  private int emit(String agentId,
+      String provider,
+      LlmExecutionResponse response,
+      String resolvedModel,
+      ModelSource modelSource,
+      ModelTier requestedModelTier,
+      WorkflowState state,
+      int attempt) {
     TokenUsageReport tokenUsage = response.tokenUsage();
     int callTotal = computeCallTokenTotal(tokenUsage);
+    String stepUid = stepUidFor(state);
     String payload = buildPayload(agentId, provider, response.modelUsed(), resolvedModel,
-        modelSource, requestedModelTier, tokenUsage, callTotal);
+        modelSource, requestedModelTier, tokenUsage, callTotal, stepUid, attempt);
     eventRecorder.record(
         state.getRunId(),
         state.getCurrentStepId(),
         WorkflowEventType.LLM_CALL_COMPLETED,
         payload,
         "runtime");
-    accumulateTokens(state, callTotal);
+    return callTotal;
+  }
+
+  private static String stepUidFor(WorkflowState state) {
+    Integer uid = state.getStepExecutionUid().get(state.getCurrentStepId());
+    return uid == null ? null : String.valueOf(uid);
   }
 
   private static int computeCallTokenTotal(TokenUsageReport tokenUsage) {
@@ -113,7 +172,9 @@ public final class LlmCallObserver {
       ModelSource modelSource,
       ModelTier requestedModelTier,
       TokenUsageReport tokenUsage,
-      int callTotal) {
+      int callTotal,
+      String stepUid,
+      int callAttempt) {
     // totalTokens = inputTokens + outputTokens; TokenUsageReport has no totalTokens field by design
     Integer totalTokens = (tokenUsage == null
         || (tokenUsage.inputTokens() == null && tokenUsage.outputTokens() == null))
@@ -128,7 +189,9 @@ public final class LlmCallObserver {
         tokenUsage == null ? null : tokenUsage.inputTokens(),
         tokenUsage == null ? null : tokenUsage.outputTokens(),
         totalTokens,
-        tokenUsage == null ? null : tokenUsage.cachedInputTokens());
+        tokenUsage == null ? null : tokenUsage.cachedInputTokens(),
+        stepUid,
+        callAttempt);
     try {
       return objectMapper.writeValueAsString(payload);
     } catch (JsonProcessingException e) {

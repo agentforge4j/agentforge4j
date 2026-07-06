@@ -577,6 +577,29 @@ public final class WorkflowRunAssert {
   }
 
   /**
+   * Asserts the number of provider (LLM) calls recorded for a specific step, regardless of dispatch
+   * or attempt. Useful for proving a looping or parse-retried step made the expected number of real,
+   * billable provider calls — each carries its own {@code stepUid}/{@code callAttempt} discriminator
+   * in its {@code LLM_CALL_COMPLETED} payload, but this assertion only needs the step id.
+   *
+   * @param stepId   the step id to filter on; must not be blank
+   * @param expected the expected count
+   *
+   * @return this
+   */
+  public WorkflowRunAssert providerCallCountForStep(String stepId, int expected) {
+    Validate.notBlank(stepId, "stepId must not be blank");
+    long count = eventsOfType(WorkflowEventType.LLM_CALL_COMPLETED).stream()
+        .filter(event -> stepId.equals(event.stepId()))
+        .count();
+    if (count != expected) {
+      throw error("Expected %d provider call(s) for step '%s' but found %d"
+          .formatted(expected, stepId, count));
+    }
+    return this;
+  }
+
+  /**
    * Asserts at least one provider call resolved its model from the given tier.
    *
    * @param tier the expected model tier; must not be {@code null}

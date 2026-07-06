@@ -202,6 +202,20 @@ class WorkflowRunAssertTest {
   }
 
   @Test
+  void providerCallCountForStepCountsOnlyThatStepsCalls() {
+    event(WorkflowEventType.LLM_CALL_COMPLETED, "step-a", "{\"stepUid\":\"1\",\"callAttempt\":1}");
+    event(WorkflowEventType.LLM_CALL_COMPLETED, "step-a", "{\"stepUid\":\"1\",\"callAttempt\":2}");
+    event(WorkflowEventType.LLM_CALL_COMPLETED, "step-b", "{\"stepUid\":\"1\",\"callAttempt\":1}");
+
+    assertThatCode(() -> assertRun().providerCallCountForStep("step-a", 2))
+        .doesNotThrowAnyException();
+    assertThatCode(() -> assertRun().providerCallCountForStep("step-b", 1))
+        .doesNotThrowAnyException();
+    assertThatThrownBy(() -> assertRun().providerCallCountForStep("step-a", 1))
+        .isInstanceOf(AssertionError.class);
+  }
+
+  @Test
   void tokenTotalsVerb() {
     state.putContextValue(ReservedContextKeys.LLM_TOKENS_TOTAL, new NumberContextValue(42, ContextProvenance.USER_SUPPLIED));
 

@@ -39,7 +39,8 @@ class LlmCallObserverTest {
         "gpt-4o-mini",
         ModelSource.TIER,
         ModelTier.STANDARD,
-        state);
+        state,
+        1);
 
     var completedEvents = eventLog.getEvents("run-llm-call-completed").stream()
         .filter(e -> e.eventType() == WorkflowEventType.LLM_CALL_COMPLETED)
@@ -70,7 +71,8 @@ class LlmCallObserverTest {
         null,
         ModelSource.PROVIDER_DEFAULT,
         null,
-        state);
+        state,
+        1);
 
     assertThat(llmTokensTotalInContext(state)).isEqualTo(150);
   }
@@ -83,9 +85,9 @@ class LlmCallObserverTest {
     TokenUsageReport secondUsage = new TokenUsageReport(20, 8, null, null);
 
     observer.observe("agent-x", "openai", llmResponse("gpt-4o-mini", firstUsage),
-        null, ModelSource.PROVIDER_DEFAULT, null, state);
+        null, ModelSource.PROVIDER_DEFAULT, null, state, 1);
     observer.observe("agent-x", "openai", llmResponse("gpt-4o-mini", secondUsage),
-        null, ModelSource.PROVIDER_DEFAULT, null, state);
+        null, ModelSource.PROVIDER_DEFAULT, null, state, 1);
 
     assertThat(llmTokensTotalInContext(state)).isEqualTo(43);
   }
@@ -98,7 +100,7 @@ class LlmCallObserverTest {
     WorkflowState state = workflowState("run-null-usage-contribution");
 
     observer.observe("agent-x", "openai", llmResponse("gpt-4o", null),
-        null, ModelSource.PROVIDER_DEFAULT, null, state);
+        null, ModelSource.PROVIDER_DEFAULT, null, state, 1);
 
     assertThat(llmTokensTotalInContext(state)).isEqualTo(0);
     assertThat(eventLog.getEvents("run-null-usage-contribution").stream()
@@ -114,7 +116,7 @@ class LlmCallObserverTest {
     WorkflowState state = workflowState("run-null-token-payload");
 
     observer.observe("agent-x", "openai", llmResponse("gpt-4o", null),
-        null, ModelSource.PROVIDER_DEFAULT, null, state);
+        null, ModelSource.PROVIDER_DEFAULT, null, state, 1);
 
     String payload = eventLog.getEvents("run-null-token-payload").stream()
         .filter(e -> e.eventType() == WorkflowEventType.LLM_CALL_COMPLETED)
@@ -135,7 +137,7 @@ class LlmCallObserverTest {
 
     observer.observe("agent-x", "openai",
         llmResponse("gpt-4o-mini", new TokenUsageReport(100, 50, 30, 10)),
-        "gpt-4o-mini", ModelSource.TIER, ModelTier.STANDARD, state);
+        "gpt-4o-mini", ModelSource.TIER, ModelTier.STANDARD, state, 1);
 
     String payload = eventLog.getEvents("run-cached-tokens").stream()
         .filter(e -> e.eventType() == WorkflowEventType.LLM_CALL_COMPLETED)
@@ -151,10 +153,100 @@ class LlmCallObserverTest {
     WorkflowState state = workflowState("run-llm-tokens-provenance");
 
     observer.observe("agent-x", "openai", llmResponse("gpt-4o-mini", TEST_TOKEN_USAGE),
-        null, ModelSource.PROVIDER_DEFAULT, null, state);
+        null, ModelSource.PROVIDER_DEFAULT, null, state, 1);
 
     ContextValue value = state.getContext().get(ReservedContextKeys.LLM_TOKENS_TOTAL);
     assertThat(value.provenance()).isEqualTo(ContextProvenance.SYSTEM_GENERATED);
+  }
+
+  @Test
+  void observe_payload_includes_stepUid_when_a_dispatch_uid_is_recorded() {
+    InMemoryWorkflowEventLog eventLog = new InMemoryWorkflowEventLog();
+    LlmCallObserver observer = new LlmCallObserver(recorder(eventLog), objectMapper);
+    WorkflowState state = workflowState("run-step-uid");
+    state.putStepExecutionUid("step-1", 42);
+
+    observer.observe("agent-x", "openai", llmResponse("gpt-4o-mini", TEST_TOKEN_USAGE),
+        null, ModelSource.PROVIDER_DEFAULT, null, state, 1);
+
+    String payload = onlyCompletedEventPayload(eventLog, "run-step-uid");
+    assertThat(payload).contains("\"stepUid\":\"42\"");
+  }
+
+  @Test
+  void observe_payload_stepUid_is_null_when_no_dispatch_uid_is_recorded() {
+    InMemoryWorkflowEventLog eventLog = new InMemoryWorkflowEventLog();
+    LlmCallObserver observer = new LlmCallObserver(recorder(eventLog), objectMapper);
+    WorkflowState state = workflowState("run-no-step-uid");
+
+    observer.observe("agent-x", "openai", llmResponse("gpt-4o-mini", TEST_TOKEN_USAGE),
+        null, ModelSource.PROVIDER_DEFAULT, null, state, 1);
+
+    String payload = onlyCompletedEventPayload(eventLog, "run-no-step-uid");
+    assertThat(payload).contains("\"stepUid\":null");
+  }
+
+  @Test
+  void observe_payload_carries_the_call_attempt_ordinal() {
+    InMemoryWorkflowEventLog eventLog = new InMemoryWorkflowEventLog();
+    LlmCallObserver observer = new LlmCallObserver(recorder(eventLog), objectMapper);
+    WorkflowState state = workflowState("run-call-attempt");
+
+    observer.observe("agent-x", "openai", llmResponse("gpt-4o-mini", TEST_TOKEN_USAGE),
+        null, ModelSource.PROVIDER_DEFAULT, null, state, 2);
+
+    String payload = onlyCompletedEventPayload(eventLog, "run-call-attempt");
+    assertThat(payload).contains("\"callAttempt\":2");
+  }
+
+  @Test
+  void recordAttempt_emits_an_event_but_does_not_accumulate_the_token_total() {
+    InMemoryWorkflowEventLog eventLog = new InMemoryWorkflowEventLog();
+    LlmCallObserver observer = new LlmCallObserver(recorder(eventLog), objectMapper);
+    WorkflowState state = workflowState("run-discarded-attempt");
+    state.putStepExecutionUid("step-1", 7);
+
+    observer.recordAttempt("agent-x", "openai", llmResponse("gpt-4o-mini", TEST_TOKEN_USAGE),
+        "gpt-4o-mini", ModelSource.TIER, ModelTier.STANDARD, state, 1);
+
+    String payload = onlyCompletedEventPayload(eventLog, "run-discarded-attempt");
+    assertThat(payload).contains("\"stepUid\":\"7\"");
+    assertThat(payload).contains("\"callAttempt\":1");
+    assertThat(payload).contains("\"inputTokens\":100");
+    assertThat(state.getContext().get(ReservedContextKeys.LLM_TOKENS_TOTAL)).isNull();
+  }
+
+  @Test
+  void recordAttempt_followed_by_observe_emits_two_events_but_accumulates_only_the_winning_call() {
+    InMemoryWorkflowEventLog eventLog = new InMemoryWorkflowEventLog();
+    LlmCallObserver observer = new LlmCallObserver(recorder(eventLog), objectMapper);
+    WorkflowState state = workflowState("run-parse-retry-billing");
+    state.putStepExecutionUid("step-1", 7);
+    TokenUsageReport discardedUsage = new TokenUsageReport(10, 5, null, null);
+    TokenUsageReport winningUsage = new TokenUsageReport(20, 8, null, null);
+
+    observer.recordAttempt("agent-x", "openai", llmResponse("gpt-4o-mini", discardedUsage),
+        null, ModelSource.PROVIDER_DEFAULT, null, state, 1);
+    observer.observe("agent-x", "openai", llmResponse("gpt-4o-mini", winningUsage),
+        null, ModelSource.PROVIDER_DEFAULT, null, state, 2);
+
+    var completedEvents = eventLog.getEvents("run-parse-retry-billing").stream()
+        .filter(e -> e.eventType() == WorkflowEventType.LLM_CALL_COMPLETED)
+        .toList();
+    assertThat(completedEvents).hasSize(2);
+    assertThat(completedEvents.get(0).payload()).contains("\"callAttempt\":1");
+    assertThat(completedEvents.get(1).payload()).contains("\"callAttempt\":2");
+    // Only the winning (observe) call's tokens land in the running total — the discarded attempt's
+    // tokens are billed via its own event, not double-counted into the workflow's own bookkeeping.
+    assertThat(llmTokensTotalInContext(state)).isEqualTo(28);
+  }
+
+  private static String onlyCompletedEventPayload(InMemoryWorkflowEventLog eventLog, String runId) {
+    return eventLog.getEvents(runId).stream()
+        .filter(e -> e.eventType() == WorkflowEventType.LLM_CALL_COMPLETED)
+        .findFirst()
+        .orElseThrow()
+        .payload();
   }
 
   private static int llmTokensTotalInContext(WorkflowState state) {
