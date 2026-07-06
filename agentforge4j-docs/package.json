@@ -18,11 +18,13 @@
     "lint:frontmatter": "node scripts/lint-frontmatter.mjs",
     "lint:nav": "node scripts/lint-nav.mjs",
     "lint:fixtures": "node scripts/validate-fixtures.mjs",
-    "lint": "npm run lint:frontmatter && npm run lint:nav && npm run lint:fixtures",
+    "lint:product-name": "node scripts/lint-product-name.mjs",
+    "lint": "npm run lint:frontmatter && npm run lint:nav && npm run lint:fixtures && npm run lint:product-name",
     "javadoc": "node scripts/build-javadoc.mjs",
     "release:stage": "node scripts/release-stage.mjs",
     "docs:scratch-cut": "node scripts/release-scratch-cut.mjs",
-    "test": "node --test scripts/vocab.test.mjs scripts/include.test.mjs scripts/fixtures.test.mjs scripts/javadoc.test.mjs scripts/dematerialize.test.mjs scripts/support-window.test.mjs",
+    "a11y": "node scripts/a11y.mjs",
+    "test": "node --test scripts/vocab.test.mjs scripts/include.test.mjs scripts/fixtures.test.mjs scripts/javadoc.test.mjs scripts/dematerialize.test.mjs scripts/support-window.test.mjs scripts/product-name.test.mjs",
     "check": "npm run generate && npm run lint && npm run typecheck && npm run test && npm run build"
   },
   "dependencies": {
@@ -45,6 +47,7 @@
     "ajv": "^8.17.1",
     "ajv-formats": "^3.0.1",
     "gray-matter": "^4.0.3",
+    "pa11y-ci": "^3.1.0",
     "remark-frontmatter": "^5.0.0",
     "remark-mdx": "^3.1.1",
     "remark-parse": "^11.0.0",
