@@ -167,6 +167,36 @@ class ForEachLoopStrategyTest {
   }
 
   @Test
+  void mutated_list_restart_rewinds_stale_body_outputs_so_steps_rerun() {
+    putList("a", "b");
+    AtomicInteger calls = new AtomicInteger();
+    when(stepSequenceExecutor.executeAll(anyList(), any()))
+        .thenAnswer(inv -> {
+          if (calls.getAndIncrement() == 0) {
+            // Simulate the real executor recording the body step's output before pausing — the
+            // entry StepSequenceExecutor.shouldSkip keys on during a later drive.
+            int uid = executionContext.allocateStepSequenceUid();
+            state.putStepExecutionUid("dummy", uid);
+            state.putStepOutput("dummy", "stale-output-from-abandoned-iteration");
+            return ExecutionOutcome.PAUSED;
+          }
+          return ExecutionOutcome.COMPLETED;
+        });
+
+    assertThat(strategy.iterate(blueprint, forEachConfig(true), executionContext))
+        .isEqualTo(ExecutionOutcome.PAUSED);
+    putList("x", "y");
+
+    assertThat(strategy.iterate(blueprint, forEachConfig(true), executionContext))
+        .isEqualTo(ExecutionOutcome.COMPLETED);
+    // The restart must rewind the abandoned iteration's body range: a surviving output would make
+    // StepSequenceExecutor.shouldSkip silently skip the body on every restarted iteration.
+    assertThat(state.getStepOutput("dummy")).isEmpty();
+    assertThat(state.getStepExecutionUid("dummy")).isEmpty();
+    assertThat(calls.get()).isEqualTo(3);
+  }
+
+  @Test
   void cancelled_clears_cursor_and_fingerprint() {
     putList("a", "b");
     when(stepSequenceExecutor.executeAll(anyList(), any()))

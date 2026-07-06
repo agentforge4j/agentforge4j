@@ -301,6 +301,7 @@ class WorkflowStateTest {
     original.setLoopIterationCursor("bp-a", 2);
     original.setForEachListFingerprint("bp-a", "abc123");
     original.markLoopCompleted("bp-done", 6);
+    original.setLoopIterationBodyStartUid("bp-a", 5);
 
     WorkflowState copy = original.snapshot();
     assertThat(copy).isNotSameAs(original);
@@ -308,6 +309,7 @@ class WorkflowStateTest {
     assertThat(copy.getLoopIterationCursor("bp-a")).isEqualTo(2);
     assertThat(copy.getForEachListFingerprint("bp-a")).contains("abc123");
     assertThat(copy.isLoopCompleted("bp-done")).isTrue();
+    assertThat(copy.getLoopIterationBodyStartUid("bp-a")).isEqualTo(5);
 
     copy.setStatus(WorkflowStatus.COMPLETED);
     copy.putContextValue("extra", new StringContextValue("x", ContextProvenance.USER_SUPPLIED));
@@ -352,6 +354,50 @@ class WorkflowStateTest {
         .isInstanceOf(IllegalArgumentException.class);
     assertThatThrownBy(() -> state.getCompletedLoopBlueprintUids().put("bp-x", 1))
         .isInstanceOf(UnsupportedOperationException.class);
+  }
+
+  @Test
+  void loop_iteration_body_start_uid_defaults_to_zero_and_is_validated() {
+    WorkflowState state = new WorkflowState("run-1", "wf-1", null, t());
+    assertThat(state.getLoopIterationBodyStartUid("bp-a")).isZero();
+
+    state.setLoopIterationBodyStartUid("bp-a", 5);
+    assertThat(state.getLoopIterationBodyStartUid("bp-a")).isEqualTo(5);
+
+    assertThatThrownBy(() -> state.setLoopIterationBodyStartUid("bp-a", 0))
+        .isInstanceOf(IllegalArgumentException.class);
+    assertThatThrownBy(() -> state.setLoopIterationBodyStartUid(" ", 1))
+        .isInstanceOf(IllegalArgumentException.class);
+    assertThatThrownBy(() -> state.getLoopIterationBodyStartUidByBlueprintId().put("bp-x", 1))
+        .isInstanceOf(UnsupportedOperationException.class);
+  }
+
+  @Test
+  void clear_loop_iteration_cursor_also_clears_the_body_start_uid_marker() {
+    WorkflowState state = new WorkflowState("run-1", "wf-1", null, t());
+    state.setLoopIterationCursor("bp-a", 2);
+    state.setLoopIterationBodyStartUid("bp-a", 5);
+
+    state.clearLoopIterationCursor("bp-a");
+
+    assertThat(state.getLoopIterationCursor("bp-a")).isZero();
+    assertThat(state.getLoopIterationBodyStartUid("bp-a")).isZero();
+  }
+
+  @Test
+  void replace_loop_iteration_body_start_uids_filters_invalid_and_null_clears() {
+    WorkflowState state = new WorkflowState("run-1", "wf-1", null, t());
+    state.setLoopIterationBodyStartUid("bp-a", 3);
+
+    Map<String, Integer> replacement = new HashMap<>();
+    replacement.put("bp-x", 5);
+    replacement.put("", 2);
+    replacement.put("bp-bad", 0);
+    state.replaceLoopIterationBodyStartUids(replacement);
+    assertThat(state.getLoopIterationBodyStartUidByBlueprintId()).containsExactly(Map.entry("bp-x", 5));
+
+    state.replaceLoopIterationBodyStartUids(null);
+    assertThat(state.getLoopIterationBodyStartUidByBlueprintId()).isEmpty();
   }
 
   @Test

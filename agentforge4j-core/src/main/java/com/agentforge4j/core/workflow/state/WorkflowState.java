@@ -70,6 +70,16 @@ public final class WorkflowState {
    */
   private final Map<String, String> forEachListFingerprintByBlueprintId;
   /**
+   * The execution uid at which the currently in-progress loop iteration's body began, keyed by
+   * blueprint id. Cleared together with {@link #loopIterationCursorByBlueprintId} whenever a loop
+   * is not in progress. Lets a loop strategy clear a just-completed iteration's step outputs (via
+   * {@link #clearEntriesFromUid(int)}) before starting the next one, so {@code StepSequenceExecutor}'s
+   * resume-skip guard does not mistake the previous iteration's outputs for this iteration's own —
+   * while a resume into a paused iteration (same iteration number as the persisted cursor) leaves
+   * this marker untouched, preserving that iteration's already-completed steps.
+   */
+  private final Map<String, Integer> loopIterationBodyStartUidByBlueprintId;
+  /**
    * Signal-terminated looped blueprints that have already run to terminal completion in this run,
    * keyed by blueprint id to the execution uid the loop body completed at (the highest
    * {@code stepExecutionUid} among its body steps). A resume re-drives the workflow from the start;
@@ -125,6 +135,7 @@ public final class WorkflowState {
     this.userPromptPauseCountByStepId = new HashMap<>();
     this.loopIterationCursorByBlueprintId = new HashMap<>();
     this.forEachListFingerprintByBlueprintId = new HashMap<>();
+    this.loopIterationBodyStartUidByBlueprintId = new HashMap<>();
     this.completedLoopBlueprintUids = new HashMap<>();
     this.collectionStateByStepId = new HashMap<>();
     this.generatedArtifactDescriptors = new ArrayList<>();
@@ -190,6 +201,10 @@ public final class WorkflowState {
 
   public Map<String, String> getForEachListFingerprintByBlueprintId() {
     return Collections.unmodifiableMap(forEachListFingerprintByBlueprintId);
+  }
+
+  public Map<String, Integer> getLoopIterationBodyStartUidByBlueprintId() {
+    return Collections.unmodifiableMap(loopIterationBodyStartUidByBlueprintId);
   }
 
   public Map<String, Integer> getCompletedLoopBlueprintUids() {
@@ -331,9 +346,15 @@ public final class WorkflowState {
     loopIterationCursorByBlueprintId.put(bid, iteration);
   }
 
+  /**
+   * Clears the loop iteration cursor together with the loop's body-start-uid marker (see
+   * {@link #getLoopIterationBodyStartUid(String)}) — the two are always scoped to the same
+   * in-progress-or-not loop, so a loop that is no longer in progress must forget both.
+   */
   public void clearLoopIterationCursor(String blueprintId) {
-    loopIterationCursorByBlueprintId.remove(
-        Validate.notBlank(blueprintId, "blueprintId must not be blank"));
+    String bid = Validate.notBlank(blueprintId, "blueprintId must not be blank");
+    loopIterationCursorByBlueprintId.remove(bid);
+    loopIterationBodyStartUidByBlueprintId.remove(bid);
   }
 
   /**
@@ -350,6 +371,43 @@ public final class WorkflowState {
                 && entry.getValue() != null
                 && entry.getValue() >= 1)
         .forEach(entry -> loopIterationCursorByBlueprintId.put(entry.getKey(), entry.getValue()));
+  }
+
+  /**
+   * Returns the execution uid at which the currently in-progress loop iteration's body began for
+   * {@code blueprintId}, or {@code 0} if no iteration of that loop is in progress.
+   */
+  public int getLoopIterationBodyStartUid(String blueprintId) {
+    return loopIterationBodyStartUidByBlueprintId.getOrDefault(
+        Validate.notBlank(blueprintId, "blueprintId must not be blank"), 0);
+  }
+
+  /**
+   * Records the execution uid at which the currently in-progress loop iteration's body began for
+   * {@code blueprintId}. Overwritten each time a genuinely new iteration starts; left untouched
+   * across a pause/resume of the same iteration.
+   */
+  public void setLoopIterationBodyStartUid(String blueprintId, int uid) {
+    String bid = Validate.notBlank(blueprintId, "blueprintId must not be blank");
+    Validate.isTrue(uid >= 1, "loop iteration body start uid must be at least 1");
+    loopIterationBodyStartUidByBlueprintId.put(bid, uid);
+  }
+
+  /**
+   * Replaces loop iteration body-start uids when loading persisted snapshot state.
+   */
+  public void replaceLoopIterationBodyStartUids(Map<String, Integer> bodyStartUids) {
+    loopIterationBodyStartUidByBlueprintId.clear();
+    if (bodyStartUids == null) {
+      return;
+    }
+    bodyStartUids.entrySet().stream()
+        .filter(entry ->
+            StringUtils.isNotBlank(entry.getKey())
+                && entry.getValue() != null
+                && entry.getValue() >= 1)
+        .forEach(entry ->
+            loopIterationBodyStartUidByBlueprintId.put(entry.getKey(), entry.getValue()));
   }
 
   /**
@@ -557,6 +615,10 @@ public final class WorkflowState {
         forEachListFingerprintByBlueprintId.isEmpty()
             ? null
             : Map.copyOf(forEachListFingerprintByBlueprintId));
+    copy.replaceLoopIterationBodyStartUids(
+        loopIterationBodyStartUidByBlueprintId.isEmpty()
+            ? null
+            : Map.copyOf(loopIterationBodyStartUidByBlueprintId));
     copy.replaceCompletedLoopBlueprintUids(
         completedLoopBlueprintUids.isEmpty() ? null : Map.copyOf(completedLoopBlueprintUids));
     copy.replaceCollectionStates(

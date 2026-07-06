@@ -102,6 +102,14 @@ public final class ExecutionContext {
   }
 
   /**
+   * Returns the uid the next call to {@link #allocateStepSequenceUid()} would assign, without
+   * allocating it. Used by loop strategies to record where a loop iteration's body begins.
+   */
+  public int peekNextStepSequenceUid() {
+    return stepSequenceUidCounter + 1;
+  }
+
+  /**
    * Returns the id of the innermost workflow currently executing: the workflow on top of the active workflow stack when
    * a nested workflow has been entered, or the root workflow id when none has. Always non-null. Used to key invocation
    * identity by the active (possibly nested) workflow, since {@link WorkflowState#getWorkflowId()} is the immutable

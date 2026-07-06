@@ -80,7 +80,7 @@ public final class ForEachLoopStrategy extends AbstractLoopStrategy {
       LOG.log(System.Logger.Level.INFO,
           "FOR_EACH list mutated under key={0} blueprint={1}, restarting iteration",
           config.forEachContextKey(), blueprintId);
-      clearLoopState(state, blueprintId);
+      restartLoop(state, blueprintId);
       state.setForEachListFingerprint(blueprintId, currentFingerprint);
     }
 
@@ -88,7 +88,7 @@ public final class ForEachLoopStrategy extends AbstractLoopStrategy {
     int ceiling = Math.min(total, config.maxIterations());
     int start = firstLoopIterationToRun(state, blueprintId);
     if (start > ceiling) {
-      clearLoopState(state, blueprintId);
+      restartLoop(state, blueprintId);
       start = 1;
     }
 
@@ -96,7 +96,7 @@ public final class ForEachLoopStrategy extends AbstractLoopStrategy {
       LOG.log(System.Logger.Level.DEBUG,
           "Loop iteration start strategy={0}, iteration={1}, maxIterations={2}",
           strategy(), iteration, config.maxIterations());
-      markLoopIterationStart(state, blueprintId, iteration);
+      markLoopIterationStart(executionContext, blueprintId, iteration);
       ContextValue current = items.values().get(iteration - 1);
       Optional<ContextValue> previous = state.getContextValue(LOOP_ITEM_KEY);
       state.putContextValue(LOOP_ITEM_KEY, current);
@@ -173,6 +173,21 @@ public final class ForEachLoopStrategy extends AbstractLoopStrategy {
   private static void clearLoopState(WorkflowState state, String blueprintId) {
     clearLoopIterationCursor(state, blueprintId);
     state.clearForEachListFingerprint(blueprintId);
+  }
+
+  /**
+   * Restarts the loop from iteration 1: rewinds the abandoned in-progress iteration's body
+   * execution range (when one is recorded) before forgetting the cursor and fingerprint. Without
+   * the rewind, the abandoned iteration's step outputs would still satisfy
+   * {@code StepSequenceExecutor}'s resume-skip guard and the restarted loop would silently skip
+   * every body step on every iteration.
+   */
+  private static void restartLoop(WorkflowState state, String blueprintId) {
+    int staleBodyStartUid = state.getLoopIterationBodyStartUid(blueprintId);
+    if (staleBodyStartUid > 0) {
+      state.clearEntriesFromUid(staleBodyStartUid);
+    }
+    clearLoopState(state, blueprintId);
   }
 
   // Package-private for direct fingerprint regression tests.
