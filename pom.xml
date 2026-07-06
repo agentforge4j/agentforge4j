@@ -62,7 +62,7 @@
     <maven-checkstyle-plugin.version>3.6.0</maven-checkstyle-plugin.version>
     <!-- Checkstyle 10.x is the last line that runs on Java 17 (the OSS build JDK); 11+ requires
          Java 21. Keep this on the latest 10.x until the OSS build JDK is raised. -->
-    <checkstyle.version>10.26.1</checkstyle.version>
+    <checkstyle.version>12.3.1</checkstyle.version>
     <dependency-check-maven.version>12.2.2</dependency-check-maven.version>
     <cyclonedx-maven-plugin.version>2.9.2</cyclonedx-maven-plugin.version>
     <spotbugs-annotations.version>4.10.2</spotbugs-annotations.version>
