@@ -25,8 +25,15 @@ class WorkflowExecutionAnalysisServiceTest {
   }
 
   @Test
-  void analyzeRejectsNull() {
-    assertThatThrownBy(() -> WorkflowExecutionAnalysisService.analyze(null))
+  void analyzeRejectsNullWorkflowDefinition() {
+    assertThatThrownBy(
+        () -> WorkflowExecutionAnalysisService.analyze((WorkflowDefinition) null))
+        .isInstanceOf(IllegalArgumentException.class);
+  }
+
+  @Test
+  void analyzeRejectsNullEpicPackage() {
+    assertThatThrownBy(() -> WorkflowExecutionAnalysisService.analyze((EpicPackage) null))
         .isInstanceOf(IllegalArgumentException.class);
   }
 
@@ -63,5 +70,29 @@ class WorkflowExecutionAnalysisServiceTest {
     assertThat(estimate.workflowId()).isEqualTo("wf");
     assertThat(estimate.estimatedMinTokens()).isLessThanOrEqualTo(estimate.estimatedMaxTokens());
     assertThat(estimate.recommendation()).isEqualTo(Recommendation.CONTINUE);
+  }
+
+  @Test
+  void analyzeProducesAnalysisForAnEpicPackage() {
+    EpicPackage epicPackage = new EpicPackage("pkg", List.of(new Epic("e1", "Epic One", null)));
+
+    WorkflowComplexityAnalysis analysis = WorkflowExecutionAnalysisService.analyze(epicPackage);
+
+    assertThat(analysis.workflowId()).isEqualTo("pkg");
+    assertThat(analysis.complexityClass()).isEqualTo(ComplexityClass.SIMPLE);
+  }
+
+  @Test
+  void aggregateComposesWithEpicPackageAnalysis() {
+    EpicPackage epicPackage = new EpicPackage("pkg",
+        List.of(new Epic("e1", "Epic One", null), new Epic("e2", "Epic Two", null)));
+    WorkflowComplexityAnalysis analysis = WorkflowExecutionAnalysisService.analyze(epicPackage);
+
+    ExecutionEstimate estimate =
+        WorkflowExecutionAnalysisService.aggregate(analysis, new SizingInputs(500, 300, 2));
+
+    assertThat(estimate.workflowId()).isEqualTo("pkg");
+    assertThat(estimate.estimatedMinTokens()).isLessThanOrEqualTo(estimate.estimatedExpectedTokens());
+    assertThat(estimate.estimatedExpectedTokens()).isLessThanOrEqualTo(estimate.estimatedMaxTokens());
   }
 }

@@ -13,11 +13,14 @@ import com.fasterxml.jackson.databind.ObjectMapper;
  * definition into a structural summary before the run, and aggregating the sized figures after it.
  *
  * <ol>
- *   <li>{@link #analyze(WorkflowDefinition)} runs {@link WorkflowComplexityAnalyzer} to produce the
- *       deterministic {@link WorkflowComplexityAnalysis}.</li>
+ *   <li>{@link #analyze(WorkflowDefinition)} (Mode 1) or {@link #analyze(EpicPackage)} (Mode 2) runs
+ *       the appropriate deterministic analyzer to produce a {@link WorkflowComplexityAnalysis} —
+ *       both modes converge on the same analysis shape, so the rest of the pipeline is mode-agnostic.
+ *       </li>
  *   <li>{@link #summarize(WorkflowComplexityAnalysis)} serialises that analysis to a compact JSON
  *       structural summary, which the host supplies to the run as an {@code INPUT} answer — the
- *       workflow never receives the {@code WorkflowDefinition} object itself.</li>
+ *       workflow never receives the {@code WorkflowDefinition} or {@code EpicPackage} object itself.
+ *       </li>
  *   <li>{@link #aggregate(WorkflowComplexityAnalysis, SizingInputs)} combines the analysis with the
  *       per-turn sizing the {@code execution-estimator} agent produced into the final
  *       {@link ExecutionEstimate}.</li>
@@ -44,6 +47,18 @@ public final class WorkflowExecutionAnalysisService {
   public static WorkflowComplexityAnalysis analyze(WorkflowDefinition definition) {
     Validate.notNull(definition, "definition must not be null");
     return WorkflowComplexityAnalyzer.analyze(definition);
+  }
+
+  /**
+   * Analyses an epic package's structure (Mode 2 — SDLC / epic-package estimation).
+   *
+   * @param epicPackage the target epic package; must not be {@code null}
+   *
+   * @return the deterministic structural analysis; never {@code null}
+   */
+  public static WorkflowComplexityAnalysis analyze(EpicPackage epicPackage) {
+    Validate.notNull(epicPackage, "epicPackage must not be null");
+    return EpicPackageComplexityAnalyzer.analyze(epicPackage);
   }
 
   /**
