@@ -1,0 +1,13 @@
+# Code ownership for the documentation system. Changes under these paths request a review from the
+# documentation maintainer. Other areas of the repository are intentionally not claimed here.
+
+# The documentation site and its build tooling.
+/agentforge4j-docs/            @angroene
+
+# The Java tooling that feeds the generated reference and the API surface.
+/agentforge4j-docs-emitter/    @angroene
+/agentforge4j-docs-javadoc/    @angroene
+
+# The documentation CI and deployment workflows.
+/.github/workflows/docs.yml    @angroene
+/.github/workflows/deploy.yml  @angroene

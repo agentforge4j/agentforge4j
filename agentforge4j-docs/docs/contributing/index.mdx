@@ -7,26 +7,98 @@ sidebar_position: 1
 
 # Contributing to the docs
 
-How to add and change documentation pages.
-
-:::note Work in progress
-The full contributor guide — page-type templates, the frontmatter rules, snippet-region
-conventions, and how to run the gates locally — is fleshed out in a later phase. The
-mechanics below already apply.
-:::
+The documentation lives in the `agentforge4j-docs` module and is built with Docusaurus. This
+guide covers how to author pages, keep every source example real, run the quality gates, and
+release a versioned snapshot. Repository-wide participation rules are in the top-level
+`CONTRIBUTING.md` and `CODE_OF_CONDUCT.md`.
 
 ## Page kinds and frontmatter
 
-Every page declares a `kind` in its frontmatter. Content pages (`kind: doc`) also declare
-an `audience` and a `diataxis` quadrant; audience routers declare an `audience` only; the
-Examples gallery, release notes, and this contributing section declare neither. The
-`frontmatter` lint enforces these rules and fails the build on any violation.
+Every page declares a `kind` in its frontmatter. Content pages (`kind: doc`) also declare an
+`audience` and a `diataxis` quadrant; audience routers (`kind: router`) declare an `audience`
+only; the Examples gallery, release notes, and this contributing section declare neither. The
+frontmatter gate enforces these rules and fails the build on any violation. Every page must also
+be reachable from the sidebar — each section wires its directory automatically, so a new page
+appears simply by living in the right folder.
+
+## Authoring: keep examples and identifiers real
+
+Documentation never hand-copies code, identifiers, or contracts. Three build-time roles keep the
+prose in lock-step with the source:
+
+- **Source includes** — a fenced code block whose info string names a repository file (and,
+  optionally, a named region) is filled with the real source at build time. Only files under the
+  runnable examples and the schema fixtures may be included, and a missing file or region fails
+  the build. This means every snippet you see is compiled and run by the examples build.
+- **Vocabulary tags** — an inline tag of the form `set:VALUE` (for behaviours, commands, events,
+  statuses, providers, and configuration keys) is validated against the generated vocabulary sets
+  and rendered as the bare value. A reference to an identifier that does not exist fails the build.
+- **API links** — an inline tag naming a framework class resolves to a link into the generated
+  Javadoc surface. An unknown type fails the build.
+
+Prefer these roles over pasting text. For working examples, look at the Get Started, Concepts, and
+Reference pages, which use all three.
+
+## Generating the reference
+
+The configuration, schema, provider, and contract reference pages are generated from the framework
+itself, not hand-written. Regenerating them requires a local framework build (JDK 17) so the
+generator can reflect over the installed artifacts and read the Spring configuration metadata. The
+generated pages are never committed — they are rebuilt from source on every build.
 
 ## Running the gates locally
 
 From the `agentforge4j-docs` module:
 
 ```bash
-npm run lint    # frontmatter + navigation gates
-npm run build   # builds the site; fails on broken links or anchors
+npm run generate    # regenerate the reference pages from the framework (needs a local framework build)
+npm run lint        # frontmatter, navigation, fixtures, and product-name separation gates
+npm run typecheck   # TypeScript type-check
+npm run test        # unit tests for the build tooling
+npm run build       # build the static site; fails on broken links or anchors
+npm run check       # all of the above, in order
 ```
+
+Accessibility is a blocking gate. After a build:
+
+```bash
+npm run a11y        # serves the build and checks every page against WCAG 2.1 AA (pa11y-ci)
+```
+
+Every page must pass WCAG 2.1 AA. If you add a UI element or custom styling, run the accessibility
+gate before opening a pull request.
+
+## Product identity
+
+The documentation describes the open-source framework only. The build fails if a page names the
+separate commercial product, its modules, or its vendors. Use the generic words "platform" and
+"cloud" freely, but do not name the hosted product. If the gate flags a legitimate occurrence,
+raise it in review so the reviewed allowlist can be updated.
+
+## Versioning and releases
+
+The current documentation set is served under `next` and labelled unreleased. Cutting a release
+creates an immutable snapshot in which every source include, vocabulary tag, and API link has been
+resolved to static content pinned to that version, so an archived version never re-reads current
+source. You can exercise the whole release-staging mechanism without creating a real version:
+
+```bash
+npm run docs:scratch-cut   # stage, cut, verify, and fully revert a throwaway version
+```
+
+The scratch cut leaves no artifacts behind and ends with a clean working tree — use it to check
+that a change still de-materialises cleanly.
+
+## Internationalisation readiness
+
+The site is authored in English and is structured so that additional locales can be added later
+without reorganising content: the docs plugin is configured with a default locale and a locale
+list, routing is locale-agnostic, and centralised copy keeps translatable strings in one place. No
+translation is shipped today. Adding a locale is a matter of extending the locale list and
+generating the translation scaffolding with Docusaurus's `write-translations` command — it does not
+require moving or rewriting any page.
+
+## Reporting security issues
+
+Do not open a public issue for a security vulnerability. Follow the responsible-disclosure process
+in the top-level `SECURITY.md`, which explains how to report privately and what to expect.
