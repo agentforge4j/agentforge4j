@@ -6,8 +6,11 @@ import com.agentforge4j.core.runtime.WorkflowRuntime;
 import com.agentforge4j.core.spi.tool.PendingToolInvocationStore;
 import com.agentforge4j.core.spi.validation.ArtifactValidator;
 import com.agentforge4j.core.spi.tool.ToolExecutionService;
+import com.agentforge4j.core.spi.validation.CollectionItemSchemaValidator;
 import com.agentforge4j.core.workflow.collection.CollectionAuthorizer;
+import com.agentforge4j.core.workflow.collection.CollectionSubmissionValidator;
 import com.agentforge4j.core.workflow.collection.DefaultCollectionAuthorizer;
+import com.agentforge4j.core.workflow.collection.DefaultCollectionSubmissionValidator;
 import com.agentforge4j.core.workflow.event.WorkflowEventLog;
 import com.agentforge4j.core.workflow.repository.WorkflowRepository;
 import com.agentforge4j.core.workflow.repository.WorkflowStateRepository;
@@ -96,6 +99,8 @@ public final class WorkflowRuntimeBuilder {
   private RequirementResolver requirementResolver;
   private RunExecutionInterceptor runExecutionInterceptor = RunExecutionInterceptor.NO_OP;
   private CollectionAuthorizer collectionAuthorizer;
+  private CollectionItemSchemaValidator collectionItemSchemaValidator;
+  private CollectionSubmissionValidator collectionSubmissionValidator;
   private ObjectMapper objectMapper;
   private GeneratedArtifactStore generatedArtifactStore;
   private List<ArtifactValidator> artifactValidators = List.of();
@@ -296,6 +301,39 @@ public final class WorkflowRuntimeBuilder {
   }
 
   /**
+   * Configures the validator that checks each submitted collection item's inline JSON against the
+   * JSON schema its gate declares via {@code itemSchemaRef}. Defaults to
+   * {@link CollectionItemSchemaValidator#unconfigured()} (reject every declared reference,
+   * fail-closed) when omitted, so a declared item contract is never silently unenforced. Gates
+   * that declare no {@code itemSchemaRef} never consult this validator.
+   *
+   * @param value item-schema validator instance
+   *
+   * @return this builder
+   */
+  public WorkflowRuntimeBuilder collectionItemSchemaValidator(CollectionItemSchemaValidator value) {
+    this.collectionItemSchemaValidator =
+        Validate.notNull(value, "collectionItemSchemaValidator must not be null");
+    return this;
+  }
+
+  /**
+   * Configures the embedding application's submission policy, consulted on every collection-gate
+   * submit and replace after the gate's declared constraints pass. Defaults to
+   * {@link DefaultCollectionSubmissionValidator} when omitted, which guards runtime integrity only
+   * (unsafe file paths) and imposes no application policy.
+   *
+   * @param value submission validator instance
+   *
+   * @return this builder
+   */
+  public WorkflowRuntimeBuilder collectionSubmissionValidator(CollectionSubmissionValidator value) {
+    this.collectionSubmissionValidator =
+        Validate.notNull(value, "collectionSubmissionValidator must not be null");
+    return this;
+  }
+
+  /**
    * Configures the authorizer consulted before guarded collection-gate operations in {@code ENFORCED} mode. Defaults to
    * {@link DefaultCollectionAuthorizer} (deny-all, fail-closed) when omitted, so a pure-{@code core} runtime admits no
    * {@code ENFORCED} operation until a richer authorizer is wired.
@@ -423,6 +461,8 @@ public final class WorkflowRuntimeBuilder {
         resolvedClock,
         resolvedRequirementResolver,
         ObjectUtils.getIfNull(collectionAuthorizer, DefaultCollectionAuthorizer::new),
+        ObjectUtils.getIfNull(collectionItemSchemaValidator, CollectionItemSchemaValidator::unconfigured),
+        ObjectUtils.getIfNull(collectionSubmissionValidator, DefaultCollectionSubmissionValidator::new),
         ObjectUtils.getIfNull(objectMapper, () -> new ObjectMapper().findAndRegisterModules()));
 
     return new DefaultWorkflowRuntime(

@@ -58,6 +58,8 @@ public record CollectionBehaviour(
   public static final int DEFAULT_MAX_INLINE_PAYLOAD_BYTES = 64 * 1024;
 
   public CollectionBehaviour {
+    Validate.isTrue(itemSchemaRef == null || !itemSchemaRef.isBlank(),
+        "CollectionBehaviour itemSchemaRef must be null or non-blank");
     Validate.isNotNegative(minItems, "CollectionBehaviour minItems must not be negative");
     if (maxItems != null) {
       Validate.isGreaterThanZero(maxItems, "CollectionBehaviour maxItems must be at least 1");

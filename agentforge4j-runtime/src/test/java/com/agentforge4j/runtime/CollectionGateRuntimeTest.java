@@ -9,6 +9,8 @@ import com.agentforge4j.core.runtime.CollectionSubmission;
 import com.agentforge4j.core.runtime.CollectionView;
 import com.agentforge4j.core.runtime.SubmissionResult;
 import com.agentforge4j.core.runtime.WorkflowRuntime;
+import com.agentforge4j.core.spi.validation.CollectionItemSchemaValidator;
+import com.agentforge4j.core.spi.validation.ValidationResult;
 import com.agentforge4j.core.workflow.WorkflowDefinition;
 import com.agentforge4j.core.workflow.WorkflowLifecycle;
 import com.agentforge4j.core.workflow.WorkflowSource;
@@ -20,8 +22,11 @@ import com.agentforge4j.core.workflow.collection.CollectionAuthorizer;
 import com.agentforge4j.core.workflow.collection.CollectionPayload;
 import com.agentforge4j.core.workflow.collection.CollectionPhase;
 import com.agentforge4j.core.workflow.collection.CollectionState;
+import com.agentforge4j.core.workflow.collection.CollectionSubmissionContext;
+import com.agentforge4j.core.workflow.collection.CollectionSubmissionValidator;
 import com.agentforge4j.core.workflow.collection.Decision;
 import com.agentforge4j.core.workflow.collection.DuplicatePolicy;
+import com.agentforge4j.core.workflow.collection.FileRef;
 import com.agentforge4j.core.workflow.collection.ReopenPolicy;
 import com.agentforge4j.core.workflow.collection.ReplacementPolicy;
 import com.agentforge4j.core.workflow.collection.WithdrawalPolicy;
@@ -835,6 +840,129 @@ class CollectionGateRuntimeTest {
     }
   }
 
+  // ---- client-token duplicate policy ----------------------------------------------------------
+
+  @Test
+  void rejectByClientTokenPolicyRejectsRepeatedTokenAsHardDuplicate() throws Exception {
+    WorkflowRuntime runtime = runtime(behaviourDuplicate(DuplicatePolicy.REJECT_BY_CLIENT_TOKEN));
+    CollectionGateRuntime gate = runtime.collections();
+    String runId = runtime.start("wf");
+
+    SubmissionResult first = gate.submitItem(runId, STEP, submission("a", "token-1", null), ACTOR);
+    assertThat(first.status()).isEqualTo(SubmissionResult.Status.ACCEPTED);
+
+    SubmissionResult repeat = gate.submitItem(runId, STEP, submission("b", "token-1", null), ACTOR);
+    assertThat(repeat.status()).isEqualTo(SubmissionResult.Status.REJECTED);
+    assertThat(repeat.reason()).isEqualTo("DUPLICATE");
+    assertThat(payloadOf(runId, WorkflowEventType.COLLECTION_ITEM_REJECTED).get("reason").asText())
+        .isEqualTo("DUPLICATE");
+
+    SubmissionResult fresh = gate.submitItem(runId, STEP, submission("c", "token-2", null), ACTOR);
+    assertThat(fresh.status()).isEqualTo(SubmissionResult.Status.ACCEPTED);
+    assertThat(gate.getCollection(runId, STEP, ACTOR).liveCount()).isEqualTo(2);
+  }
+
+  // ---- item schema enforcement ----------------------------------------------------------------
+
+  @Test
+  void declaredItemSchemaRejectsFailClosedWhenNoValidatorConfigured() {
+    WorkflowRuntime runtime = runtime(behaviourWithItemSchema("cv-item"));
+    CollectionGateRuntime gate = runtime.collections();
+    String runId = runtime.start("wf");
+
+    SubmissionResult result = gate.submitItem(runId, STEP, submission("a", null, null), ACTOR);
+
+    assertThat(result.status()).isEqualTo(SubmissionResult.Status.REJECTED);
+    assertThat(result.reason()).startsWith("ITEM_SCHEMA_INVALID");
+    assertThat(eventTypes(runId)).contains(WorkflowEventType.COLLECTION_ITEM_REJECTED);
+  }
+
+  @Test
+  void configuredItemSchemaValidatorAcceptsConformingAndRejectsViolatingItems() {
+    CollectionItemSchemaValidator schemaValidator = (ref, inlineJson) ->
+        inlineJson.contains("good")
+            ? ValidationResult.ok()
+            : ValidationResult.invalid("value must be 'good'");
+    WorkflowRuntime runtime = runtime(behaviourWithItemSchema("cv-item"), List.of(), null,
+        new InMemoryWorkflowStateRepository(), schemaValidator, null);
+    CollectionGateRuntime gate = runtime.collections();
+    String runId = runtime.start("wf");
+
+    SubmissionResult accepted = gate.submitItem(runId, STEP, submission("good", null, null), ACTOR);
+    assertThat(accepted.status()).isEqualTo(SubmissionResult.Status.ACCEPTED);
+
+    SubmissionResult rejected = gate.submitItem(runId, STEP, submission("bad", null, null), ACTOR);
+    assertThat(rejected.status()).isEqualTo(SubmissionResult.Status.REJECTED);
+    assertThat(rejected.reason()).contains("value must be 'good'");
+    assertThat(gate.getCollection(runId, STEP, ACTOR).liveCount()).isEqualTo(1);
+  }
+
+  // ---- submission validator SPI ----------------------------------------------------------------
+
+  @Test
+  void submissionValidatorReceivesFullContextOnSubmitAndReplace() {
+    List<CollectionSubmissionContext> seen = new ArrayList<>();
+    CollectionSubmissionValidator recording = context -> {
+      seen.add(context);
+      return Decision.allow();
+    };
+    WorkflowRuntime runtime = runtime(behaviour(0, null, ReopenPolicy.NONE, AuthorizationMode.OPEN),
+        List.of(), null, new InMemoryWorkflowStateRepository(), null, recording);
+    CollectionGateRuntime gate = runtime.collections();
+    String runId = runtime.start("wf");
+
+    SubmissionResult submitted =
+        gate.submitItem(runId, STEP, submission("a", "tok-1", "key-1"), ACTOR);
+    gate.replaceItem(runId, STEP, submitted.submissionId(), submission("b", null, null), ACTOR);
+
+    assertThat(seen).hasSize(2);
+    CollectionSubmissionContext submitContext = seen.get(0);
+    assertThat(submitContext.runId()).isEqualTo(runId);
+    assertThat(submitContext.workflowId()).isEqualTo("wf");
+    assertThat(submitContext.stepId()).isEqualTo(STEP);
+    assertThat(submitContext.actorId()).isEqualTo(ACTOR);
+    assertThat(submitContext.clientToken()).isEqualTo("tok-1");
+    assertThat(submitContext.dedupeKey()).isEqualTo("key-1");
+    assertThat(submitContext.replacesSubmissionId()).isNull();
+    assertThat(submitContext.payload().inlineJson()).contains("a");
+    assertThat(seen.get(1).replacesSubmissionId()).isEqualTo(submitted.submissionId());
+  }
+
+  @Test
+  void submissionValidatorDenialRejectsWithAuditEvent() throws Exception {
+    CollectionSubmissionValidator denying =
+        context -> Decision.deny("submissions are closed for this deployment");
+    WorkflowRuntime runtime = runtime(behaviour(0, null, ReopenPolicy.NONE, AuthorizationMode.OPEN),
+        List.of(), null, new InMemoryWorkflowStateRepository(), null, denying);
+    CollectionGateRuntime gate = runtime.collections();
+    String runId = runtime.start("wf");
+
+    SubmissionResult result = gate.submitItem(runId, STEP, submission("a", null, null), ACTOR);
+
+    assertThat(result.status()).isEqualTo(SubmissionResult.Status.REJECTED);
+    assertThat(result.reason()).contains("submissions are closed for this deployment");
+    assertThat(payloadOf(runId, WorkflowEventType.COLLECTION_ITEM_REJECTED).get("reason").asText())
+        .contains("SUBMISSION_VALIDATOR_REJECTED");
+    assertThat(gate.getCollection(runId, STEP, ACTOR).liveCount()).isZero();
+  }
+
+  @Test
+  void defaultSubmissionValidatorRejectsUnsafeFilePaths() {
+    WorkflowRuntime runtime = runtime(behaviour(0, null, ReopenPolicy.NONE, AuthorizationMode.OPEN));
+    CollectionGateRuntime gate = runtime.collections();
+    String runId = runtime.start("wf");
+
+    CollectionSubmission unsafe = new CollectionSubmission(
+        new CollectionPayload("{\"v\":\"a\"}",
+            List.of(new FileRef("../escape.pdf", "cv.pdf", "application/pdf", 10))),
+        null, null);
+
+    SubmissionResult result = gate.submitItem(runId, STEP, unsafe, ACTOR);
+
+    assertThat(result.status()).isEqualTo(SubmissionResult.Status.REJECTED);
+    assertThat(result.reason()).contains("FILE_PATH_UNSAFE");
+  }
+
   // ---- runtime-scoped accessor ----------------------------------------------------------------
 
   @Test
@@ -994,6 +1122,12 @@ class CollectionGateRuntimeTest {
         StepTransition.AUTO);
   }
 
+  private static CollectionBehaviour behaviourWithItemSchema(String itemSchemaRef) {
+    return new CollectionBehaviour(itemSchemaRef, 0, null, null, 0, DuplicatePolicy.ALLOW,
+        ReplacementPolicy.OWNER_REPLACE, WithdrawalPolicy.OWNER_WITHDRAW, true, false,
+        ReopenPolicy.NONE, AuthorizationMode.OPEN, StepTransition.AUTO);
+  }
+
   private static CollectionBehaviour behaviourFullDuplicate(int minItems, Integer maxItems,
       ReopenPolicy reopen, AuthorizationMode mode, ReplacementPolicy replacement,
       WithdrawalPolicy withdrawal, DuplicatePolicy duplicatePolicy) {
@@ -1020,6 +1154,13 @@ class CollectionGateRuntimeTest {
 
   private WorkflowRuntime runtime(CollectionBehaviour cfg, List<WorkflowRequirement> requirements,
       CollectionAuthorizer authorizer, WorkflowStateRepository repository) {
+    return runtime(cfg, requirements, authorizer, repository, null, null);
+  }
+
+  private WorkflowRuntime runtime(CollectionBehaviour cfg, List<WorkflowRequirement> requirements,
+      CollectionAuthorizer authorizer, WorkflowStateRepository repository,
+      CollectionItemSchemaValidator itemSchemaValidator,
+      CollectionSubmissionValidator submissionValidator) {
     eventLog = new InMemoryWorkflowEventLog();
     StepDefinition step = StepDefinition.builder()
         .withStepId(STEP)
@@ -1038,6 +1179,12 @@ class CollectionGateRuntimeTest {
         .agentInvoker(mock(AgentInvoker.class));
     if (authorizer != null) {
       builder.collectionAuthorizer(authorizer);
+    }
+    if (itemSchemaValidator != null) {
+      builder.collectionItemSchemaValidator(itemSchemaValidator);
+    }
+    if (submissionValidator != null) {
+      builder.collectionSubmissionValidator(submissionValidator);
     }
     return builder.build();
   }

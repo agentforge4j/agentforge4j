@@ -6,6 +6,8 @@ import com.agentforge4j.core.runtime.CloseResult;
 import com.agentforge4j.core.runtime.CollectionSubmission;
 import com.agentforge4j.core.runtime.CollectionView;
 import com.agentforge4j.core.runtime.SubmissionResult;
+import com.agentforge4j.core.spi.validation.CollectionItemSchemaValidator;
+import com.agentforge4j.core.spi.validation.ValidationResult;
 import com.agentforge4j.core.workflow.WorkflowDefinition;
 import com.agentforge4j.core.workflow.collection.AuthorizationMode;
 import com.agentforge4j.core.workflow.collection.CloseReason;
@@ -16,6 +18,8 @@ import com.agentforge4j.core.workflow.collection.CollectionItem;
 import com.agentforge4j.core.workflow.collection.CollectionPayload;
 import com.agentforge4j.core.workflow.collection.CollectionPhase;
 import com.agentforge4j.core.workflow.collection.CollectionState;
+import com.agentforge4j.core.workflow.collection.CollectionSubmissionContext;
+import com.agentforge4j.core.workflow.collection.CollectionSubmissionValidator;
 import com.agentforge4j.core.workflow.collection.Decision;
 import com.agentforge4j.core.workflow.collection.DuplicatePolicy;
 import com.agentforge4j.core.workflow.collection.FileRef;
@@ -64,10 +68,14 @@ final class CollectionGateService {
   private final Clock clock;
   private final RequirementResolver requirementResolver;
   private final CollectionAuthorizer collectionAuthorizer;
+  private final CollectionItemSchemaValidator itemSchemaValidator;
+  private final CollectionSubmissionValidator submissionValidator;
   private final ObjectMapper objectMapper;
 
   CollectionGateService(EventRecorder eventRecorder, Clock clock,
       RequirementResolver requirementResolver, CollectionAuthorizer collectionAuthorizer,
+      CollectionItemSchemaValidator itemSchemaValidator,
+      CollectionSubmissionValidator submissionValidator,
       ObjectMapper objectMapper) {
     this.eventRecorder = Validate.notNull(eventRecorder, "eventRecorder must not be null");
     this.clock = Validate.notNull(clock, "clock must not be null");
@@ -75,6 +83,10 @@ final class CollectionGateService {
         Validate.notNull(requirementResolver, "requirementResolver must not be null");
     this.collectionAuthorizer =
         Validate.notNull(collectionAuthorizer, "collectionAuthorizer must not be null");
+    this.itemSchemaValidator =
+        Validate.notNull(itemSchemaValidator, "itemSchemaValidator must not be null");
+    this.submissionValidator =
+        Validate.notNull(submissionValidator, "submissionValidator must not be null");
     this.objectMapper = Validate.notNull(objectMapper, "objectMapper must not be null");
   }
 
@@ -85,11 +97,26 @@ final class CollectionGateService {
     CollectionState gate = requireOpenGate(state, stepId);
     authorize(state, workflow, cfg, stepId, CollectionAction.SUBMIT, actorId);
 
+    // Under REJECT_BY_CLIENT_TOKEN a repeated token is a hard duplicate refusal; the silent
+    // idempotent return applies to the other policies only (a retry is indistinguishable from a
+    // duplicate, and the workflow author chose refusal).
+    if (cfg.duplicatePolicy() == DuplicatePolicy.REJECT_BY_CLIENT_TOKEN
+        && clientTokenSeen(gate, submission.clientToken())) {
+      emitRejected(state, stepId, actorId, CollectionAction.SUBMIT, "DUPLICATE");
+      return new SubmissionResult(SubmissionResult.Status.REJECTED, null, 0, "DUPLICATE");
+    }
     SubmissionResult idempotent = idempotentReturn(gate, submission.clientToken());
     if (idempotent != null) {
       return idempotent;
     }
     String rejection = checkSubmitConstraints(gate, cfg, submission, actorId);
+    if (rejection == null) {
+      rejection = checkItemSchema(cfg, submission.payload());
+    }
+    if (rejection == null) {
+      rejection = checkSubmissionValidator(state, workflow, cfg, stepId, gate, submission, actorId,
+          null);
+    }
     if (rejection != null) {
       emitRejected(state, stepId, actorId, CollectionAction.SUBMIT, rejection);
       return new SubmissionResult(SubmissionResult.Status.REJECTED, null, 0, rejection);
@@ -117,11 +144,23 @@ final class CollectionGateService {
     CollectionAction action = resolveReplaceAction(cfg.replacementPolicy(), owns, stepId);
     authorize(state, workflow, cfg, stepId, action, actorId);
 
+    if (cfg.duplicatePolicy() == DuplicatePolicy.REJECT_BY_CLIENT_TOKEN
+        && clientTokenSeen(gate, replacement.clientToken())) {
+      emitRejected(state, stepId, actorId, action, "DUPLICATE");
+      return new SubmissionResult(SubmissionResult.Status.REJECTED, null, 0, "DUPLICATE");
+    }
     SubmissionResult idempotent = idempotentReturn(gate, replacement.clientToken());
     if (idempotent != null) {
       return idempotent;
     }
     String rejection = checkReplaceConstraints(gate, cfg, submissionId, replacement);
+    if (rejection == null) {
+      rejection = checkItemSchema(cfg, replacement.payload());
+    }
+    if (rejection == null) {
+      rejection = checkSubmissionValidator(state, workflow, cfg, stepId, gate, replacement, actorId,
+          submissionId);
+    }
     if (rejection != null) {
       emitRejected(state, stepId, actorId, action, rejection);
       return new SubmissionResult(SubmissionResult.Status.REJECTED, null, 0, rejection);
@@ -452,6 +491,57 @@ final class CollectionGateService {
     }
     if (dedupeCollides(liveItems(gate), cfg.duplicatePolicy(), replacement.dedupeKey(), submissionId)) {
       return "DUPLICATE";
+    }
+    return null;
+  }
+
+  /** Whether the client token was already seen at this gate (any prior submit or replace). */
+  private static boolean clientTokenSeen(CollectionState gate, String clientToken) {
+    return clientToken != null && gate.seenClientTokens().contains(clientToken);
+  }
+
+  /**
+   * Validates the item's inline JSON against the gate's declared {@code itemSchemaRef}, if any.
+   * Fail-closed on every path: a declared reference with no inline JSON, an unresolvable
+   * reference, or a schema violation all reject the item.
+   *
+   * @return a rejection reason, or {@code null} when no schema is declared or the item conforms
+   */
+  private String checkItemSchema(CollectionBehaviour cfg, CollectionPayload payload) {
+    if (cfg.itemSchemaRef() == null) {
+      return null;
+    }
+    if (payload.inlineJson() == null || payload.inlineJson().isBlank()) {
+      return "ITEM_SCHEMA_INVALID: the gate declares itemSchemaRef '%s' but the item carries no inline JSON"
+          .formatted(cfg.itemSchemaRef());
+    }
+    ValidationResult result = itemSchemaValidator.validate(cfg.itemSchemaRef(), payload.inlineJson());
+    if (result == null) {
+      return "ITEM_SCHEMA_INVALID: the item-schema validator returned no result";
+    }
+    if (!result.valid()) {
+      return "ITEM_SCHEMA_INVALID: %s".formatted(result.message());
+    }
+    return null;
+  }
+
+  /**
+   * Consults the embedding application's {@link CollectionSubmissionValidator} after all declared
+   * gate constraints passed. A {@code null} decision is treated as a denial (fail closed).
+   *
+   * @return a rejection reason, or {@code null} when the submission is admitted
+   */
+  private String checkSubmissionValidator(WorkflowState state, WorkflowDefinition workflow,
+      CollectionBehaviour cfg, String stepId, CollectionState gate, CollectionSubmission submission,
+      String actorId, String replacesSubmissionId) {
+    Decision decision = submissionValidator.validate(new CollectionSubmissionContext(
+        state.getRunId(), workflow.id(), stepId, actorId, submission.payload(),
+        submission.clientToken(), submission.dedupeKey(), replacesSubmissionId, cfg, gate));
+    if (decision == null) {
+      return "SUBMISSION_VALIDATOR_REJECTED: the submission validator returned no decision";
+    }
+    if (!decision.allowed()) {
+      return "SUBMISSION_VALIDATOR_REJECTED: %s".formatted(decision.reason());
     }
     return null;
   }
