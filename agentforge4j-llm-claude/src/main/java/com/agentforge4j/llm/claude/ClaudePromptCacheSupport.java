@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package com.agentforge4j.llm.claude;
 
+import com.agentforge4j.llm.DefaultTokenEstimator;
 import com.agentforge4j.llm.api.PromptLayerBoundaries;
 import com.agentforge4j.llm.claude.dto.ClaudeSystemContentBlock;
 import com.agentforge4j.util.Validate;
@@ -15,8 +16,9 @@ import java.util.Map.Entry;
  * Splits an assembled system prompt into Anthropic {@code system} content blocks and applies
  * {@code cache_control} markers from {@link PromptLayerBoundaries}.
  * <p>
- * Token estimates use {@value #BYTES_PER_TOKEN_ESTIMATE} UTF-8 bytes per token (ceiling), a
- * conservative heuristic when the provider does not expose a tokenizer.
+ * Token estimates come from the shared {@link DefaultTokenEstimator} heuristic
+ * ({@code ceil(utf8ByteLength / 4)}), a conservative fallback when the provider does not expose a
+ * tokenizer.
  */
 final class ClaudePromptCacheSupport {
 
@@ -37,11 +39,6 @@ final class ClaudePromptCacheSupport {
   private static final Map<String, Integer> MODEL_MIN_CACHEABLE_SEGMENT_TOKENS = Map.of(
       "claude-haiku-4-5", 4096,
       "claude-3-5-haiku", 2048);
-
-  /**
-   * Bytes-per-token estimate for threshold checks ({@code ceil(utf8Length / 4)}).
-   */
-  static final double BYTES_PER_TOKEN_ESTIMATE = 4.0;
 
   private ClaudePromptCacheSupport() {
   }
@@ -153,16 +150,13 @@ final class ClaudePromptCacheSupport {
   }
 
   /**
-   * Estimates token count from a UTF-8 byte length using {@link #BYTES_PER_TOKEN_ESTIMATE}.
+   * Estimates token count from a UTF-8 byte length using the shared {@link DefaultTokenEstimator}.
    *
    * @param utf8ByteLength segment size in UTF-8 bytes
    * @return estimated token count (at least 1 when length is positive)
    */
   static int estimateTokens(int utf8ByteLength) {
-    if (utf8ByteLength <= 0) {
-      return 0;
-    }
-    return (int) Math.ceil((double) utf8ByteLength / BYTES_PER_TOKEN_ESTIMATE);
+    return DefaultTokenEstimator.estimateFromUtf8ByteLength(utf8ByteLength);
   }
 
   record LayerSlice(String text, int utf8ByteLength) {

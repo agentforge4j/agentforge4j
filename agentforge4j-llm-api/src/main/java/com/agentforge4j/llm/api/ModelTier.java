@@ -27,7 +27,14 @@ public enum ModelTier {
   /**
    * Strongest tier — for high-risk, review, generation, or reasoning-heavy steps.
    */
-  POWERFUL;
+  POWERFUL,
+
+  /**
+   * Highest named capability tier — sits above {@link #POWERFUL} in the ordered capability vocabulary. Purely a
+   * capability label: the configured {@link ModelTierResolver} decides which model each tier maps to, and a resolver
+   * may map this tier to the same model as another tier where no distinct higher-capability model is configured.
+   */
+  PREMIUM;
 
   /**
    * Parses a declared tier name into a {@link ModelTier}, trimming surrounding whitespace and upper-casing before
