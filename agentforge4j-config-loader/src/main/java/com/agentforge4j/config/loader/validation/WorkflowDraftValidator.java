@@ -35,6 +35,8 @@ public final class WorkflowDraftValidator {
     runValidation(errors, "validateRequirements", () -> validator.validateRequirements(workflows));
     runValidation(errors, "validateValidateBehaviourContracts",
         () -> validator.validateValidateBehaviourContracts(workflows));
+    runValidation(errors, "validateContextSelectionRefs",
+        () -> validator.validateContextSelectionRefs(workflows));
     return new ValidationReport(errors);
   }
 
