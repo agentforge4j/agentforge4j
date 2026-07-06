@@ -33,7 +33,24 @@ public record ExpectedResult(String workflowId, List<GateSpec> gates, ExpectSpec
    */
   @JsonIgnoreProperties(ignoreUnknown = true)
   public record GateSpec(String type, Map<String, String> answers, Boolean approve, String note,
-      String reason, String toolInvocationId) {
+      String reason, String toolInvocationId, List<CollectionOpSpec> ops) {
+
+    /**
+     * One operation in a {@code collection} gate's ordered op list.
+     *
+     * @param op           {@code submit} / {@code replace} / {@code withdraw} / {@code close}
+     * @param payloadRef   inline JSON payload for submit/replace; may be {@code null}
+     * @param submissionId 0-based ordinal of the originating submit for replace/withdraw; may be
+     *                     {@code null}
+     * @param clientToken  optional idempotency token for submit; may be {@code null}
+     * @param dedupeKey    optional dedupe key for submit; may be {@code null}
+     * @param reason       close reason for a close op; may be {@code null}
+     * @param override     close-despite-unmet-minimum flag for a close op; may be {@code null}
+     */
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public record CollectionOpSpec(String op, String payloadRef, Integer submissionId,
+        String clientToken, String dedupeKey, String reason, Boolean override) {
+    }
   }
 
   /**

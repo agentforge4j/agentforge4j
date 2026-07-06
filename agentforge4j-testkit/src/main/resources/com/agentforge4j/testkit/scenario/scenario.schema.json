@@ -24,10 +24,10 @@
       "properties": {
         "type": {
           "type": "string",
-          "description": "The human-gate verb. input/review/stepApproval/escalation resume the standard pauses; toolApprove/toolReject resolve an AWAITING_TOOL_APPROVAL pause; toolContinue/toolRetry resolve an AWAITING_TOOL_DECISION pause.",
+          "description": "The human-gate verb. input/review/stepApproval/escalation resume the standard pauses; toolApprove/toolReject resolve an AWAITING_TOOL_APPROVAL pause; toolContinue/toolRetry resolve an AWAITING_TOOL_DECISION pause; collection drives an AWAITING_COLLECTION pause through an ordered op list.",
           "enum": [
             "input", "review", "stepApproval", "escalation",
-            "toolApprove", "toolReject", "toolContinue", "toolRetry"
+            "toolApprove", "toolReject", "toolContinue", "toolRetry", "collection"
           ]
         },
         "answers": {
@@ -44,6 +44,42 @@
           "type": "string",
           "minLength": 1,
           "description": "Optional explicit pending tool-invocation id for a tool gate; when omitted the harness auto-targets the run's single current pending invocation (failing closed when there is not exactly one)."
+        },
+        "ops": {
+          "type": "array",
+          "description": "Ordered collection-gate operations applied at one AWAITING_COLLECTION pause (for a collection gate).",
+          "items": { "$ref": "#/$defs/CollectionOp" }
+        }
+      }
+    },
+    "CollectionOp": {
+      "type": "object",
+      "required": ["op"],
+      "additionalProperties": false,
+      "properties": {
+        "op": {
+          "type": "string",
+          "enum": ["submit", "replace", "withdraw", "close"]
+        },
+        "payloadRef": {
+          "type": "string",
+          "description": "Inline JSON payload for a submit/replace op."
+        },
+        "submissionId": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "For replace/withdraw: the 0-based ordinal of the originating submit in this op list (runtime ids are non-deterministic, so the harness maps the ordinal to the real id)."
+        },
+        "clientToken": { "type": "string" },
+        "dedupeKey": { "type": "string" },
+        "reason": {
+          "type": "string",
+          "enum": ["MANUAL", "DEADLINE", "OVERRIDE"],
+          "description": "Close reason (for a close op)."
+        },
+        "override": {
+          "type": "boolean",
+          "description": "Close despite an unmet minimum (for a close op)."
         }
       }
     },
