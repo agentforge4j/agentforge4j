@@ -14,10 +14,12 @@
     "write-translations": "docusaurus write-translations",
     "write-heading-ids": "docusaurus write-heading-ids",
     "typecheck": "tsc",
+    "generate": "node scripts/generate-references.mjs && node scripts/generate-vocab-lint.mjs",
     "lint:frontmatter": "node scripts/lint-frontmatter.mjs",
     "lint:nav": "node scripts/lint-nav.mjs",
     "lint": "npm run lint:frontmatter && npm run lint:nav",
-    "check": "npm run lint && npm run typecheck && npm run build"
+    "test": "node --test scripts/vocab.test.mjs",
+    "check": "npm run generate && npm run lint && npm run typecheck && npm run test && npm run build"
   },
   "dependencies": {
     "@docusaurus/core": "3.10.1",

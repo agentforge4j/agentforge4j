@@ -1,0 +1,81 @@
+{
+  "_comment": "SPDX-License-Identifier: Apache-2.0. Curated, source-grounded list of the environment / system-property configuration keys the framework-agnostic bootstrap recognises. Source of truth: the string literals consumed against ConfigReader.read() in AgentForge4jBootstrap (applyConfig / parseModelTierOverrides) and LlmClientWiring. ConfigReader is an internal generic passthrough with no key list, so this surface cannot be auto-extracted; this fixture is maintained by grounding. The generator soft-validates each entry's `builderMethod` against the emitted bootstrap-config.json. Env normalisation (ConfigReader): AGENTFORGE4J_<NAME> has its prefix stripped and '_' replaced with '.', lowercased — so it can only produce dot-separated lowercase keys and CANNOT produce a hyphen; hyphenated keys are therefore system-property-only. System properties win over environment variables on collision.",
+  "keys": [
+    {
+      "key": "agentforge4j.agents.path",
+      "envVar": "AGENTFORGE4J_AGENTS_PATH",
+      "envReachable": true,
+      "type": "Path",
+      "builderMethod": "withAgentsDir",
+      "description": "Filesystem directory of agent definitions (or blank to skip filesystem agent loading)."
+    },
+    {
+      "key": "agentforge4j.workflows.path",
+      "envVar": "AGENTFORGE4J_WORKFLOWS_PATH",
+      "envReachable": true,
+      "type": "Path",
+      "builderMethod": "withWorkflowsDir",
+      "description": "Filesystem directory of workflow definitions (or blank to skip filesystem workflow loading)."
+    },
+    {
+      "key": "agentforge4j.integrations.dir",
+      "envVar": "AGENTFORGE4J_INTEGRATIONS_DIR",
+      "envReachable": true,
+      "type": "Path",
+      "builderMethod": "withIntegrationsDir",
+      "description": "Filesystem directory of integration definition JSON (or blank to skip integration loading)."
+    },
+    {
+      "key": "agentforge4j.filesink.path",
+      "envVar": "AGENTFORGE4J_FILESINK_PATH",
+      "envReachable": true,
+      "type": "Path",
+      "builderMethod": "withFileSinkPath",
+      "description": "Filesystem directory the file sink writes generated artifacts to."
+    },
+    {
+      "key": "agentforge4j.llm.cache.enabled",
+      "envVar": "AGENTFORGE4J_LLM_CACHE_ENABLED",
+      "envReachable": true,
+      "type": "boolean",
+      "builderMethod": "withCacheEnabled",
+      "description": "Whether the LLM response cache is enabled."
+    },
+    {
+      "key": "agentforge4j.max-nesting-depth",
+      "envVar": null,
+      "envReachable": false,
+      "type": "int",
+      "builderMethod": "withMaxNestingDepth",
+      "description": "Maximum nested-workflow depth. System-property only (the key contains a hyphen, which the environment-variable normalisation cannot produce)."
+    },
+    {
+      "key": "agentforge4j.load-shipped-agents",
+      "envVar": null,
+      "envReachable": false,
+      "type": "boolean",
+      "builderMethod": "withLoadShippedAgents",
+      "description": "Whether the shipped (built-in) agents are loaded. System-property only (hyphenated key)."
+    },
+    {
+      "key": "agentforge4j.load-shipped-workflows",
+      "envVar": null,
+      "envReachable": false,
+      "type": "boolean",
+      "builderMethod": "withLoadShippedWorkflows",
+      "description": "Whether the shipped (built-in) workflows are loaded. System-property only (hyphenated key)."
+    }
+  ],
+  "prefixes": [
+    {
+      "prefix": "agentforge4j.llm.model-tiers.<provider>.<tier>",
+      "envReachable": false,
+      "description": "Per-provider, per-tier model override (e.g. agentforge4j.llm.model-tiers.openai.standard=gpt-...). The tier segment is the part after the final dot and must match a ModelTier constant (case-insensitive). System-property only (the prefix contains a hyphen)."
+    },
+    {
+      "prefix": "agentforge4j.llm.<provider>.*",
+      "envReachable": true,
+      "description": "Per-provider LLM client configuration consumed by LlmClientWiring (e.g. api-key, base-url, default-model). Leaf names without hyphens are reachable as environment variables; hyphenated leaves are system-property only."
+    }
+  ]
+}

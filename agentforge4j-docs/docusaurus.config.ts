@@ -2,6 +2,8 @@
 import {themes as prismThemes} from 'prism-react-renderer';
 import type {Config} from '@docusaurus/types';
 import type * as Preset from '@docusaurus/preset-classic';
+// Plain ESM remark plugin (no types); validates generated-vocabulary tags.
+import vocabRemarkPlugin from './src/remark/vocab.mjs';
 
 // This runs in Node.js - Don't use client-side code here (browser APIs, JSX...)
 
@@ -52,6 +54,8 @@ const config: Config = {
           // public route is `/docs/<version-path>/<slug>` (no `/docs/docs`).
           routeBasePath: '/',
           sidebarPath: './sidebars.ts',
+          // Vocabulary lint: validate `vocab:<set>:<value>` tags against the generated sets.
+          remarkPlugins: [vocabRemarkPlugin],
           editUrl:
             'https://github.com/agentforge4j/agentforge4j/tree/main/agentforge4j-docs/',
           // The current (editable) docs set is the forthcoming release: served at
