@@ -17,8 +17,9 @@
     "generate": "node scripts/generate-references.mjs && node scripts/generate-vocab-lint.mjs",
     "lint:frontmatter": "node scripts/lint-frontmatter.mjs",
     "lint:nav": "node scripts/lint-nav.mjs",
-    "lint": "npm run lint:frontmatter && npm run lint:nav",
-    "test": "node --test scripts/vocab.test.mjs",
+    "lint:fixtures": "node scripts/validate-fixtures.mjs",
+    "lint": "npm run lint:frontmatter && npm run lint:nav && npm run lint:fixtures",
+    "test": "node --test scripts/vocab.test.mjs scripts/include.test.mjs scripts/fixtures.test.mjs",
     "check": "npm run generate && npm run lint && npm run typecheck && npm run test && npm run build"
   },
   "dependencies": {
@@ -38,6 +39,8 @@
     "@docusaurus/tsconfig": "3.10.1",
     "@docusaurus/types": "3.10.1",
     "@types/react": "^19.0.0",
+    "ajv": "^8.17.1",
+    "ajv-formats": "^3.0.1",
     "gray-matter": "^4.0.3",
     "typescript": "~6.0.2"
   },

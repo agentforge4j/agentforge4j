@@ -314,6 +314,17 @@ function propertiesTable(schemaNode) {
   return ['| Property | Type | Required | Description |', '|---|---|---|---|', ...rows, ''];
 }
 
+// A representative, source-backed, schema-valid fixture per schema (paths relative to the repo root;
+// resolved + validated by the include plugin's allowlist). The agent example is the authoritative
+// schema fixture (real provider), not an example agent.json (which uses the test-only fake provider).
+// Integration has no source-backed fixture, so it renders schema-only.
+const WORKED_EXAMPLE = {
+  workflow: 'agentforge4j-examples/framework-examples/quick-start/src/main/resources/workflows/quick-start.workflow/workflow.json',
+  agent: 'agentforge4j-schema/src/test/resources/fixtures/agent.valid.json',
+  artifact: 'agentforge4j-examples/workflow-language-examples/wl-human-in-the-loop/src/main/resources/workflows/wl-human-in-the-loop.workflow/request-form.artifact.json',
+  blueprint: 'agentforge4j-examples/workflow-language-examples/wl-loop/src/main/resources/workflows/wl-loop-fixed.workflow/fixed-body.blueprint.json',
+};
+
 function generateSchemaPage(name, schema, sidebarPosition) {
   const lines = [
     frontmatter({
@@ -327,10 +338,18 @@ function generateSchemaPage(name, schema, sidebarPosition) {
     '',
     schema.description || `The \`${name}\` document type, validated against the published JSON schema.`,
     '',
-    '## Properties',
-    '',
-    ...propertiesTable(schema),
   ];
+  if (WORKED_EXAMPLE[name]) {
+    // A real, schema-valid example, included from source (filled by the include remark plugin).
+    lines.push(
+      '## Example',
+      '',
+      `\`\`\`json file=${WORKED_EXAMPLE[name]} title="${name}.json"`,
+      '```',
+      '',
+    );
+  }
+  lines.push('## Properties', '', ...propertiesTable(schema));
   const defs = schema.$defs || {};
   const defNames = Object.keys(defs);
   if (defNames.length > 0) {

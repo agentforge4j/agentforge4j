@@ -19,7 +19,11 @@ An AgentForge4j workflow is a declarative document: a set of steps, each with a
 **behaviour** that determines what the step does, connected by **transitions** that
 determine what runs next. Definitions are data, validated against the published
 [schemas](../reference/schemas/index.mdx) before execution, so a malformed workflow fails fast rather
-than partway through a run.
+than partway through a run. The shortest such document — the `quick-start` example's single agent
+step — looks like this:
+
+```json file=agentforge4j-examples/framework-examples/quick-start/src/main/resources/workflows/quick-start.workflow/workflow.json title="quick-start.workflow/workflow.json"
+```
 
 ## Why declarative
 
