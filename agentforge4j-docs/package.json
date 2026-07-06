@@ -24,6 +24,7 @@
     "release:stage": "node scripts/release-stage.mjs",
     "docs:scratch-cut": "node scripts/release-scratch-cut.mjs",
     "a11y": "node scripts/a11y.mjs",
+    "site:assemble": "node scripts/assemble-site.mjs",
     "test": "node --test scripts/vocab.test.mjs scripts/include.test.mjs scripts/fixtures.test.mjs scripts/javadoc.test.mjs scripts/dematerialize.test.mjs scripts/support-window.test.mjs scripts/product-name.test.mjs",
     "check": "npm run generate && npm run lint && npm run typecheck && npm run test && npm run build"
   },
