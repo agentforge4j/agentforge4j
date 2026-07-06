@@ -114,6 +114,6 @@ class WorkflowValidatorRequirementsTest {
       Executable... steps) {
     return new WorkflowDefinition("recruitment", "Recruitment", null, null, null, null, null,
         WorkflowSource.CUSTOM, WorkflowLifecycle.ACTIVE, Map.of(), Map.of(), List.of(steps),
-        requirements);
+        requirements, List.of());
   }
 }

@@ -106,7 +106,9 @@ class LoopCancellationTest {
         WorkflowLifecycle.ACTIVE,
         Map.of(),
         Map.of(),
-        List.of(dummyStep()));
+        List.of(dummyStep()),
+        List.of(),
+        List.of());
     ExecutionContext executionContext = new ExecutionContext(state, workflow, 32);
     BlueprintDefinition blueprint = new BlueprintDefinition(
         BLUEPRINT_ID,

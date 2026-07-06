@@ -59,7 +59,7 @@ class AgentForgeLoaderTest {
         .build();
     WorkflowDefinition wf = new WorkflowDefinition(
         "wf1", "W", "d", null, null, null, null, WorkflowSource.CUSTOM, WorkflowLifecycle.ACTIVE,
-        Map.of(), Map.of(), List.of(step1, step2));
+        Map.of(), Map.of(), List.of(step1, step2), List.of(), List.of());
     assertThatThrownBy(() -> validator.validateAgentRefs(Map.of("wf1", wf), Map.of()))
         .isInstanceOf(UnresolvedAgentReferenceException.class)
         .hasMessageContaining("missing-one")
@@ -92,7 +92,7 @@ class AgentForgeLoaderTest {
         .build();
     WorkflowDefinition wf = new WorkflowDefinition(
         "wf1", "W", "d", null, null, null, null, WorkflowSource.CUSTOM, WorkflowLifecycle.ACTIVE,
-        Map.of(), Map.of(), List.of(step));
+        Map.of(), Map.of(), List.of(step), List.of(), List.of());
     Map<String, AgentDefinition> agents = Map.of("present", sampleAgent("present", "P"));
     validator.validateAgentRefs(Map.of("wf1", wf), agents);
   }
@@ -117,7 +117,7 @@ class AgentForgeLoaderTest {
             .withName("S1")
             .withBehaviour(new FailBehaviour("stop"))
             .withContextMapping(new ContextMapping(List.of(), List.of()))
-            .build()));
+            .build()), List.of(), List.of());
     target.put("wf", wf);
 
     AgentForgeLoader.mergeWorkflowsStrict(target, Map.of(), "empty");
@@ -135,7 +135,7 @@ class AgentForgeLoaderTest {
             .withName("S1")
             .withBehaviour(new FailBehaviour("stop"))
             .withContextMapping(new ContextMapping(List.of(), List.of()))
-            .build()));
+            .build()), List.of(), List.of());
     target.put("dup-wf", existing);
     WorkflowDefinition duplicate = new WorkflowDefinition(
         "dup-wf", "Duplicate", "d", null, null, null, null, WorkflowSource.CUSTOM, WorkflowLifecycle.ACTIVE,
@@ -144,7 +144,7 @@ class AgentForgeLoaderTest {
             .withName("S2")
             .withBehaviour(new FailBehaviour("stop"))
             .withContextMapping(new ContextMapping(List.of(), List.of()))
-            .build()));
+            .build()), List.of(), List.of());
 
     assertThatThrownBy(() -> AgentForgeLoader.mergeWorkflowsStrict(
         target, Map.of("dup-wf", duplicate), "second source"))
@@ -177,7 +177,7 @@ class AgentForgeLoaderTest {
             .withName("S1")
             .withBehaviour(new FailBehaviour("stop"))
             .withContextMapping(new ContextMapping(List.of(), List.of()))
-            .build()));
+            .build()), List.of(), List.of());
     WorkflowDirectoryLoader directoryLoader = root -> {
       capturedPath.set(root);
       return new WorkflowDirectoryLoad(Map.of("wf", workflow), Map.of());

@@ -43,7 +43,9 @@ class WorkflowAgentRefCollectorTest {
         null,
         Map.of(),
         blueprints,
-        steps);
+        steps,
+        List.of(),
+        List.of());
   }
 
   @Test
@@ -148,7 +150,9 @@ class WorkflowAgentRefCollectorTest {
         null,
         Map.of(),
         Map.of(),
-        List.of(innerAgent));
+        List.of(innerAgent),
+        List.of(),
+        List.of());
     var outer = workflow("outer", List.of(nested), Map.of());
 
     assertThat(WorkflowAgentRefCollector.collect(outer))

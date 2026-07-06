@@ -60,7 +60,7 @@ class AgentSignalLoopStrategyTest {
     WorkflowDefinition workflow = new WorkflowDefinition(
         "wf-1", "wf-1", null, null, null, null, null,
         WorkflowSource.CUSTOM, WorkflowLifecycle.ACTIVE,
-        Map.of(), Map.of(), List.of(dummyStep()));
+        Map.of(), Map.of(), List.of(dummyStep()), List.of(), List.of());
     executionContext = new ExecutionContext(state, workflow, 32);
     loopConfig = agentSignalConfig(8, MaxIterationsAction.AWAIT_USER);
     blueprint = new BlueprintDefinition(

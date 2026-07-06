@@ -191,7 +191,7 @@ class DefaultWorkflowRuntimeInterceptorTest {
             .withName("s1")
             .withBehaviour(new ResourceBehaviour("/examples/sample.txt", "out", StepTransition.AUTO))
             .withContextMapping(ContextMapping.none())
-            .build()));
+            .build()), List.of(), List.of());
     eventLog = new InMemoryWorkflowEventLog();
     EventRecorder eventRecorder = new EventRecorder(eventLog, CLOCK);
     return new DefaultWorkflowRuntime(
