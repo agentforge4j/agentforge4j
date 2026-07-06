@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package com.agentforge4j.runtime.context;
 
+import com.agentforge4j.core.spi.contextpack.ContextPack;
+import com.agentforge4j.core.spi.contextpack.ContextPackVariant;
 import com.agentforge4j.core.workflow.LedgerDefinition;
 import com.agentforge4j.core.workflow.WorkflowDefinition;
 import com.agentforge4j.core.workflow.context.ContextValue;
@@ -23,18 +25,28 @@ import java.util.Optional;
  * full source, or (when a compact sibling exists and its fingerprint matches the current source) the
  * compact sibling.
  *
- * <p>{@link ContextSourceKind#CONTEXT_PACK} is not resolvable here: no context-pack registry exists
- * until context packs are wired into bootstrap/runtime (a later phase). Resolving one throws
- * {@link UnsupportedOperationException}.
+ * <p>{@link ContextSourceKind#CONTEXT_PACK} is resolved directly against the configured
+ * {@link ContextPackRegistry} and bypasses the compact-sibling machinery entirely: a pack's
+ * {@code compact} variant (RECORDED CONVENTION: the {@code "full"}/{@code "compact"} variant key
+ * names the design's own §4.7 example uses) is an author-provided file, not a runtime-computed
+ * sibling, so there is no fingerprint-staleness concept for it — it either exists in the pack manifest
+ * or it does not.
  */
 public final class ContextSourceResolver {
 
+  private static final String FULL_VARIANT = "full";
+  private static final String COMPACT_VARIANT = "compact";
+
   private final ContextRenderer contextRenderer;
   private final ObjectMapper objectMapper;
+  private final ContextPackRegistry contextPackRegistry;
 
-  public ContextSourceResolver(ContextRenderer contextRenderer, ObjectMapper objectMapper) {
+  public ContextSourceResolver(ContextRenderer contextRenderer, ObjectMapper objectMapper,
+      ContextPackRegistry contextPackRegistry) {
     this.contextRenderer = Validate.notNull(contextRenderer, "contextRenderer must not be null");
     this.objectMapper = Validate.notNull(objectMapper, "objectMapper must not be null");
+    this.contextPackRegistry = Validate.notNull(contextPackRegistry,
+        "contextPackRegistry must not be null");
   }
 
   /**
@@ -52,6 +64,9 @@ public final class ContextSourceResolver {
    */
   public String resolve(ContextSelector selector, WorkflowState state, WorkflowDefinition workflow) {
     Validate.notNull(selector, "selector must not be null");
+    if (selector.kind() == ContextSourceKind.CONTEXT_PACK) {
+      return resolveContextPack(selector);
+    }
     if (selector.variant() == ContextVariant.FULL) {
       return resolveFull(selector, state, workflow);
     }
@@ -97,9 +112,41 @@ public final class ContextSourceResolver {
     if (kind == ContextSourceKind.STEP_OUTPUT) {
       return resolveStepOutput(selector.ref(), state);
     }
-    throw new UnsupportedOperationException(
-        "CONTEXT_PACK selector '%s' cannot be resolved: no context-pack registry is wired into the "
-            + "runtime yet".formatted(selector.ref()));
+    return resolveContextPack(selector);
+  }
+
+  /**
+   * Resolves a {@code CONTEXT_PACK} selector directly against the pack registry: {@code FULL} reads
+   * the pack's {@code "full"} variant; {@code COMPACT_PREFERRED} reads {@code "compact"} and falls
+   * back to {@code "full"} when the pack declares no compact variant; {@code COMPACT_ONLY} reads
+   * {@code "compact"} and fails closed when absent. No fingerprint or compact-sibling machinery is
+   * involved — a pack variant is an author-provided file, not a runtime-computed sibling.
+   */
+  private String resolveContextPack(ContextSelector selector) {
+    ContextPack pack = contextPackRegistry.get(selector.ref())
+        .orElseThrow(() -> new IllegalArgumentException(
+            "Unknown context pack '%s'".formatted(selector.ref())));
+    if (selector.variant() == ContextVariant.FULL) {
+      return variantContent(pack, FULL_VARIANT)
+          .orElseThrow(() -> new IllegalStateException(
+              "Context pack '%s' declares no '%s' variant".formatted(pack.name(), FULL_VARIANT)));
+    }
+    Optional<String> compact = variantContent(pack, COMPACT_VARIANT);
+    if (compact.isPresent()) {
+      return compact.get();
+    }
+    if (selector.variant() == ContextVariant.COMPACT_ONLY) {
+      throw new IllegalStateException(
+          "Context pack '%s' declares no '%s' variant (COMPACT_ONLY)".formatted(pack.name(),
+              COMPACT_VARIANT));
+    }
+    return variantContent(pack, FULL_VARIANT)
+        .orElseThrow(() -> new IllegalStateException(
+            "Context pack '%s' declares no '%s' variant".formatted(pack.name(), FULL_VARIANT)));
+  }
+
+  private static Optional<String> variantContent(ContextPack pack, String variantName) {
+    return Optional.ofNullable(pack.variants().get(variantName)).map(ContextPackVariant::content);
   }
 
   private String resolveLedgerSection(String ref, WorkflowState state, WorkflowDefinition workflow) {

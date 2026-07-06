@@ -408,20 +408,25 @@ public final class WorkflowValidator {
 
   /**
    * Verifies that every context selector a step declares — its {@code contextSelection} selectors and expandable
-   * scope, and a {@code COMPACT} step's source — references something that exists in the same workflow scope: a
-   * {@code LEDGER_SECTION} names a declared ledger, an {@code ARTIFACT} names a declared artifact, and a
-   * {@code STEP_OUTPUT} names a real step. {@code STATE_KEY} is unconstrained; {@code CONTEXT_PACK} is not checked
-   * here — it is validated against the loaded pack registry once packs are wired into the runtime (a later phase).
+   * scope, and a {@code COMPACT} step's source — references something that exists: a {@code LEDGER_SECTION} names a
+   * declared ledger, an {@code ARTIFACT} names a declared artifact, a {@code STEP_OUTPUT} names a real step, and a
+   * {@code CONTEXT_PACK} names a pack in {@code loadedPackNames} (the real loaded pack registry/source, supplied by
+   * the caller once packs are wired into bootstrap/runtime). {@code STATE_KEY} is unconstrained.
    *
-   * @param workflows workflows to validate
+   * @param workflows       workflows to validate
+   * @param loadedPackNames names of the context packs actually loaded for this assembly; empty when none are
+   *                        configured (every {@code CONTEXT_PACK} selector then fails)
    *
-   * @throws IllegalArgumentException when a selector references an unknown ledger, artifact, or step
+   * @throws IllegalArgumentException when a selector references an unknown ledger, artifact, step, or pack
    */
-  public void validateContextSelectionRefs(Map<String, WorkflowDefinition> workflows) {
-    workflows.values().forEach(WorkflowValidator::validateScopeSelectors);
+  public void validateContextSelectionRefs(Map<String, WorkflowDefinition> workflows,
+      Set<String> loadedPackNames) {
+    workflows.values().forEach(
+        workflow -> validateScopeSelectors(workflow, loadedPackNames));
   }
 
-  private static void validateScopeSelectors(WorkflowDefinition workflow) {
+  private static void validateScopeSelectors(WorkflowDefinition workflow,
+      Set<String> loadedPackNames) {
     Set<String> ledgerIds = new HashSet<>();
     for (LedgerDefinition ledger : workflow.ledgers()) {
       ledgerIds.add(ledger.id());
@@ -429,7 +434,7 @@ public final class WorkflowValidator {
     Set<String> artifactIds = workflow.artifacts().keySet();
     Set<String> stepIds = new HashSet<>();
     collectScopeStepIds(workflow.steps(), workflow, stepIds);
-    walkScopeSelectors(workflow.steps(), workflow, ledgerIds, artifactIds, stepIds);
+    walkScopeSelectors(workflow.steps(), workflow, ledgerIds, artifactIds, stepIds, loadedPackNames);
   }
 
   // A second, deliberately different step-id collector from collectStepIds above: this one descends into
@@ -457,43 +462,50 @@ public final class WorkflowValidator {
   }
 
   private static void walkScopeSelectors(List<Executable> steps, WorkflowDefinition workflow,
-      Set<String> ledgerIds, Set<String> artifactIds, Set<String> stepIds) {
+      Set<String> ledgerIds, Set<String> artifactIds, Set<String> stepIds,
+      Set<String> loadedPackNames) {
     for (Executable executable : steps) {
       if (executable instanceof StepDefinition step) {
-        checkStepSelectors(step, workflow, ledgerIds, artifactIds, stepIds);
+        checkStepSelectors(step, workflow, ledgerIds, artifactIds, stepIds, loadedPackNames);
         if (step.behaviour() instanceof BranchBehaviour branch) {
-          walkScopeSelectors(branch.childExecutables(), workflow, ledgerIds, artifactIds, stepIds);
+          walkScopeSelectors(branch.childExecutables(), workflow, ledgerIds, artifactIds, stepIds,
+              loadedPackNames);
         }
       } else if (executable instanceof BlueprintRef ref) {
         BlueprintDefinition blueprint = workflow.blueprints().get(ref.blueprintId());
         if (blueprint != null) {
-          walkScopeSelectors(blueprint.steps(), workflow, ledgerIds, artifactIds, stepIds);
+          walkScopeSelectors(blueprint.steps(), workflow, ledgerIds, artifactIds, stepIds,
+              loadedPackNames);
         }
       } else if (executable instanceof WorkflowDefinition nested) {
-        validateScopeSelectors(nested);
+        validateScopeSelectors(nested, loadedPackNames);
       }
     }
   }
 
   private static void checkStepSelectors(StepDefinition step, WorkflowDefinition workflow,
-      Set<String> ledgerIds, Set<String> artifactIds, Set<String> stepIds) {
+      Set<String> ledgerIds, Set<String> artifactIds, Set<String> stepIds,
+      Set<String> loadedPackNames) {
     ContextSelection selection = step.contextSelection();
     if (selection != null) {
       for (ContextSelector selector : selection.selectors()) {
-        checkSelector(selector, step.stepId(), workflow, ledgerIds, artifactIds, stepIds);
+        checkSelector(selector, step.stepId(), workflow, ledgerIds, artifactIds, stepIds,
+            loadedPackNames);
       }
       for (ContextSelector selector : selection.expandableScope()) {
-        checkSelector(selector, step.stepId(), workflow, ledgerIds, artifactIds, stepIds);
+        checkSelector(selector, step.stepId(), workflow, ledgerIds, artifactIds, stepIds,
+            loadedPackNames);
       }
     }
     if (step.behaviour() instanceof CompactBehaviour compact) {
-      checkSelector(compact.source(), step.stepId(), workflow, ledgerIds, artifactIds, stepIds);
+      checkSelector(compact.source(), step.stepId(), workflow, ledgerIds, artifactIds, stepIds,
+          loadedPackNames);
     }
   }
 
   private static void checkSelector(ContextSelector selector, String stepId,
       WorkflowDefinition workflow, Set<String> ledgerIds, Set<String> artifactIds,
-      Set<String> stepIds) {
+      Set<String> stepIds, Set<String> loadedPackNames) {
     ContextSourceKind kind = selector.kind();
     if (kind == ContextSourceKind.LEDGER_SECTION) {
       String ledgerId = ledgerId(selector.ref());
@@ -508,8 +520,12 @@ public final class WorkflowValidator {
       Validate.isTrue(stepIds.contains(selector.ref()),
           "Step '%s' in workflow '%s' selects output of unknown step '%s'"
               .formatted(stepId, workflow.id(), selector.ref()));
+    } else if (kind == ContextSourceKind.CONTEXT_PACK) {
+      Validate.isTrue(loadedPackNames.contains(selector.ref()),
+          "Step '%s' in workflow '%s' selects unknown context pack '%s'"
+              .formatted(stepId, workflow.id(), selector.ref()));
     }
-    // CONTEXT_PACK is validated against the loaded pack registry in a later phase; STATE_KEY is unconstrained.
+    // STATE_KEY is unconstrained.
   }
 
   private static String ledgerId(String ref) {

@@ -25,6 +25,7 @@ import com.agentforge4j.runtime.context.CompactSibling;
 import com.agentforge4j.runtime.context.CompactSiblingStore;
 import com.agentforge4j.runtime.context.ContextFingerprint;
 import com.agentforge4j.runtime.context.ContextSourceId;
+import com.agentforge4j.runtime.context.ContextPackRegistry;
 import com.agentforge4j.runtime.context.ContextSourceResolver;
 import com.agentforge4j.runtime.event.EventRecorder;
 import com.agentforge4j.runtime.exception.CompactSiblingUnavailableException;
@@ -50,7 +51,8 @@ class RequestContextCommandHandlerTest {
   private final ObjectMapper mapper = new ObjectMapper();
   private final InMemoryWorkflowEventLog eventLog = new InMemoryWorkflowEventLog();
   private final RequestContextCommandHandler handler = new RequestContextCommandHandler(
-      new ContextSourceResolver(new ContextRenderer(mapper), mapper),
+      new ContextSourceResolver(new ContextRenderer(mapper), mapper,
+          com.agentforge4j.runtime.context.ContextPackRegistry.EMPTY),
       new EventRecorder(eventLog, CLOCK));
 
   private static ContextSelector selector(String ref) {
@@ -236,7 +238,8 @@ class RequestContextCommandHandlerTest {
     WorkflowState state = state();
     LedgerMerger.writeMerged(state, ledgerDef,
         mapper.valueToTree(Map.of("entries", List.of(Map.of("id", "REQ-1")))));
-    String fullContent = new ContextSourceResolver(new ContextRenderer(mapper), mapper)
+    String fullContent = new ContextSourceResolver(new ContextRenderer(mapper), mapper,
+        ContextPackRegistry.EMPTY)
         .resolveFull(compactSelector, state, workflow);
     String sourceId = ContextSourceId.of(compactSelector);
     CompactSiblingMetadata metadata = new CompactSiblingMetadata(sourceId,
