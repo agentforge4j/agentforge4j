@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
+import {existsSync, readFileSync} from 'fs';
 import {themes as prismThemes} from 'prism-react-renderer';
 import type {Config} from '@docusaurus/types';
 import type * as Preset from '@docusaurus/preset-classic';
@@ -6,8 +7,24 @@ import type * as Preset from '@docusaurus/preset-classic';
 import vocabRemarkPlugin from './src/remark/vocab.mjs';
 import includeRemarkPlugin from './src/remark/include.mjs';
 import javadocRemarkPlugin from './src/remark/javadoc.mjs';
+// The docs redirect toggle is computed from the released-version support window, not hardcoded, so it
+// flips from pre-release (`/`,`/latest` -> `/next`) to post-release (`/` -> `/latest` -> newest stable)
+// automatically at the first cut. Pre-`0.1.0` `versions.json` is absent, so this is inert.
+import {supportWindow} from './scripts/support-window.mjs';
+import {redirectConfig, docsEntryPath} from './scripts/redirect-config.mjs';
 
 // This runs in Node.js - Don't use client-side code here (browser APIs, JSX...)
+
+function readVersionList(path: string): string[] {
+  return existsSync(path) ? (JSON.parse(readFileSync(path, 'utf8')) as string[]) : [];
+}
+
+const supportedVersions = supportWindow(readVersionList('./versions.json'), readVersionList('./lts.json'));
+const docsRedirects = redirectConfig(supportedVersions);
+// The navbar/footer targets are not real routes when `next` is not the answer post-release, so they
+// are derived from the same support window as the redirects above: `next` pre-release, the newest
+// supported stable version once one exists. Inert today (resolves to `next`, byte-identical to before).
+const docsEntry = docsEntryPath(supportedVersions);
 
 const config: Config = {
   title: 'AgentForge4j',
@@ -84,14 +101,10 @@ const config: Config = {
     [
       '@docusaurus/plugin-client-redirects',
       {
-        // Pre-first-release routing (design §3): before any stable version exists,
-        // the docs root and the moving `latest` alias both resolve to `next`.
-        // The post-first-release toggle (`/` -> `/latest` -> newest stable) lands
-        // with the versioning/release phase.
-        redirects: [
-          {from: '/', to: '/next/'},
-          {from: '/latest', to: '/next/'},
-        ],
+        // Routing computed from the support window (design §3). Pre-first-release the docs root and
+        // the moving `latest` alias both resolve to `next`; once a stable version exists this flips to
+        // `/` -> `/latest` -> newest stable. See scripts/redirect-config.mjs.
+        redirects: docsRedirects,
       },
     ],
   ],
@@ -119,9 +132,9 @@ const config: Config = {
       logo: {
         alt: 'AgentForge4j',
         src: 'img/logo.svg',
-        // The brand links to the current-docs home. Theme links are not version-aware,
-        // so this targets `next` explicitly; revisited post-first-release.
-        href: '/next/',
+        // The brand links to the current effective docs entry (see docsEntry above): `next`
+        // pre-release, or the newest supported stable version once one exists.
+        href: `/${docsEntry}/`,
       },
       items: [
         {
@@ -147,20 +160,19 @@ const config: Config = {
         {
           title: 'Docs',
           items: [
-            // Theme links are not version-aware, so they target the current `next`
-            // version explicitly. The post-first-release phase revisits these to point
-            // at the moving `latest` alias.
-            {label: 'Get Started', to: '/next/get-started/evaluating'},
-            {label: 'Reference', to: '/next/reference/config'},
-            {label: 'Examples', to: '/next/examples'},
+            // Targets the current effective docs entry (see docsEntry above), so these follow the
+            // same version the navbar logo and the `/latest` redirect resolve to.
+            {label: 'Get Started', to: `/${docsEntry}/get-started/evaluating`},
+            {label: 'Reference', to: `/${docsEntry}/reference/config`},
+            {label: 'Examples', to: `/${docsEntry}/examples`},
           ],
         },
         {
           title: 'Project',
           items: [
             {label: 'GitHub', href: 'https://github.com/agentforge4j/agentforge4j'},
-            {label: 'Contributing', to: '/next/contributing'},
-            {label: 'Release Notes', to: '/next/release-notes'},
+            {label: 'Contributing', to: `/${docsEntry}/contributing`},
+            {label: 'Release Notes', to: `/${docsEntry}/release-notes`},
           ],
         },
       ],

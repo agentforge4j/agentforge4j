@@ -20,6 +20,9 @@
 /docs/reference/events.mdx
 /docs/reference/statuses.mdx
 
+# Release-staging scratch area (materialised snapshot + swap backup; never committed — design §12).
+/.release-staging
+
 # Misc
 .DS_Store
 .env.local

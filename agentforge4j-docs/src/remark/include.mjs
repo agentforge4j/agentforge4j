@@ -25,16 +25,16 @@ import {dirname, join, resolve, sep} from 'node:path';
 import {fileURLToPath} from 'node:url';
 
 const here = dirname(fileURLToPath(import.meta.url));
-const DEFAULT_REPO_ROOT = resolve(here, '..', '..', '..'); // agentforge4j repo root
+export const DEFAULT_REPO_ROOT = resolve(here, '..', '..', '..'); // agentforge4j repo root
 // Only source under these repo subdirectories may be included: the runnable examples, and the
 // authoritative, test-guarded schema fixtures (the worked agent example lives there).
-const ALLOWLIST_SUBDIRS = [
+export const ALLOWLIST_SUBDIRS = [
   'agentforge4j-examples',
   'agentforge4j-schema/src/test/resources/fixtures',
 ];
 
 /** Parse `key=value` (value may be "quoted") pairs from a code-block info string. */
-function parseMeta(meta) {
+export function parseMeta(meta) {
   const out = {};
   if (!meta) {
     return out;
@@ -57,7 +57,7 @@ function dedent(lines) {
 const MARKER = /(?:tag|end)::([A-Za-z0-9_-]+)\[\]/;
 
 /** Extract a named region (or the whole file), stripping all marker lines; deterministic. */
-function extractRegion(content, region, fileLabel) {
+export function extractRegion(content, region, fileLabel) {
   const lines = content.split(/\r?\n/);
   if (!region) {
     return dedent(lines.filter((line) => !MARKER.test(line))).join('\n').replace(/\n+$/, '');
@@ -88,6 +88,58 @@ function walk(node, visit) {
   }
 }
 
+/** Resolve the allowlisted include base directories (realpath'd) under a repo root. */
+export function includeAllowBases(repoRoot) {
+  return ALLOWLIST_SUBDIRS
+    .map((sub) => resolve(repoRoot, sub))
+    .filter((base) => existsSync(base))
+    .map((base) => realpathSync(base));
+}
+
+/**
+ * Resolve a single `file=…[ region=…]` code-block directive to its materialised body and the
+ * info-string that survives (language + any title, with the include directives stripped).
+ *
+ * Shared by the remark plugin and the release-staging de-materialiser (design §12) so the two can
+ * never disagree on what a snippet resolves to. Fails closed: unknown key, missing file, or a target
+ * outside the allowlist throws before any read.
+ *
+ * @param {string} rawMeta the raw code-block info string (may be null)
+ * @param {{repoRoot?: string, allowBases?: string[], docLabel?: string}} [options] resolution context
+ * @returns {{value: string, meta: string|null}|null} the body + kept meta, or null if not an include
+ */
+export function resolveInclude(rawMeta, options = {}) {
+  const repoRoot = options.repoRoot || DEFAULT_REPO_ROOT;
+  const allowBases = options.allowBases || includeAllowBases(repoRoot);
+  const docLabel = options.docLabel || 'unknown';
+
+  const meta = parseMeta(rawMeta);
+  if (!meta.file) {
+    return null;
+  }
+  const target = resolve(repoRoot, meta.file);
+
+  // Path allowlist — fail closed before any read.
+  if (!existsSync(target)) {
+    throw new Error(`include (${docLabel}): file not found: ${meta.file}`);
+  }
+  const real = realpathSync(target);
+  const allowed = allowBases.some((base) => real === base || real.startsWith(base + sep));
+  if (!allowed) {
+    throw new Error(`include (${docLabel}): '${meta.file}' is outside the include allowlist (${ALLOWLIST_SUBDIRS.join(', ')})`);
+  }
+
+  const value = extractRegion(readFileSync(real, 'utf8'), meta.region, meta.file);
+
+  // Strip the include directives from the info string; keep language + any title — the result is
+  // a plain fenced code block (release-staging materialisable).
+  const kept = (rawMeta || '')
+    .replace(/\bfile=("[^"]*"|\S+)/, '')
+    .replace(/\bregion=("[^"]*"|\S+)/, '')
+    .trim();
+  return {value, meta: kept === '' ? null : kept};
+}
+
 /**
  * Remark plugin: resolve `file=…[ region=…]` code-block includes from allowlisted source.
  *
@@ -95,38 +147,16 @@ function walk(node, visit) {
  */
 export default function includeRemarkPlugin(options = {}) {
   const repoRoot = options.repoRoot || DEFAULT_REPO_ROOT;
-  const allowBases = ALLOWLIST_SUBDIRS
-    .map((sub) => resolve(repoRoot, sub))
-    .filter((base) => existsSync(base))
-    .map((base) => realpathSync(base));
+  const allowBases = includeAllowBases(repoRoot);
   return (tree, file) => {
+    const docLabel = file && file.path ? file.path : 'unknown';
     walk(tree, (node) => {
-      const meta = parseMeta(node.meta);
-      if (!meta.file) {
+      const resolved = resolveInclude(node.meta, {repoRoot, allowBases, docLabel});
+      if (resolved === null) {
         return;
       }
-      const docLabel = file && file.path ? file.path : 'unknown';
-      const target = resolve(repoRoot, meta.file);
-
-      // Path allowlist — fail closed before any read.
-      if (!existsSync(target)) {
-        throw new Error(`include (${docLabel}): file not found: ${meta.file}`);
-      }
-      const real = realpathSync(target);
-      const allowed = allowBases.some((base) => real === base || real.startsWith(base + sep));
-      if (!allowed) {
-        throw new Error(`include (${docLabel}): '${meta.file}' is outside the include allowlist (${ALLOWLIST_SUBDIRS.join(', ')})`);
-      }
-
-      node.value = extractRegion(readFileSync(real, 'utf8'), meta.region, meta.file);
-
-      // Strip the include directives from the info string; keep language + any title — the result is
-      // a plain fenced code block (release-staging materialisable).
-      const kept = (node.meta || '')
-        .replace(/\bfile=("[^"]*"|\S+)/, '')
-        .replace(/\bregion=("[^"]*"|\S+)/, '')
-        .trim();
-      node.meta = kept === '' ? null : kept;
+      node.value = resolved.value;
+      node.meta = resolved.meta;
     });
   };
 }
