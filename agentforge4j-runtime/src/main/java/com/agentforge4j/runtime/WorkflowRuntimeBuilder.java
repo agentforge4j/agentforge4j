@@ -21,6 +21,7 @@ import com.agentforge4j.runtime.command.handler.ContinueCommandHandler;
 import com.agentforge4j.runtime.command.handler.CreateFileCommandHandler;
 import com.agentforge4j.runtime.command.handler.EscalateCommandHandler;
 import com.agentforge4j.runtime.command.handler.GeneralQuestionCommandHandler;
+import com.agentforge4j.runtime.command.handler.RequestContextCommandHandler;
 import com.agentforge4j.runtime.command.handler.RunCommandHandler;
 import com.agentforge4j.runtime.command.handler.SetContextCommandHandler;
 import com.agentforge4j.runtime.command.handler.UserPromptCommandHandler;
@@ -35,6 +36,7 @@ import com.agentforge4j.runtime.execution.behaviour.BehaviourHandler;
 import com.agentforge4j.runtime.execution.behaviour.handler.AgentBehaviourHandler;
 import com.agentforge4j.runtime.execution.behaviour.handler.AssignContextBehaviourHandler;
 import com.agentforge4j.runtime.execution.behaviour.handler.BranchBehaviourHandler;
+import com.agentforge4j.runtime.execution.behaviour.handler.CompactBehaviourHandler;
 import com.agentforge4j.runtime.execution.behaviour.handler.FailBehaviourHandler;
 import com.agentforge4j.runtime.execution.behaviour.handler.InputBehaviourHandler;
 import com.agentforge4j.runtime.execution.behaviour.handler.ResourceBehaviourHandler;
@@ -49,11 +51,16 @@ import com.agentforge4j.runtime.execution.loop.EvaluatorLoopStrategy;
 import com.agentforge4j.runtime.execution.loop.FixedCountLoopStrategy;
 import com.agentforge4j.runtime.execution.loop.ForEachLoopStrategy;
 import com.agentforge4j.runtime.execution.loop.MaxIterationsHandler;
+import com.agentforge4j.runtime.context.ContextSourceResolver;
 import com.agentforge4j.runtime.interceptor.RunExecutionInterceptor;
 import com.agentforge4j.runtime.llm.AgentInvoker;
+import com.agentforge4j.runtime.llm.ContextRenderer;
 import com.agentforge4j.runtime.tool.ToolInvocationCommandHandler;
 import com.agentforge4j.runtime.tool.ToolResultApplier;
 import com.agentforge4j.util.Validate;
+import com.agentforge4j.llm.TokenEstimatorResolver;
+import com.agentforge4j.llm.api.TokenEstimator;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.Clock;
 import java.util.ArrayList;
 import java.util.List;
@@ -93,6 +100,8 @@ public final class WorkflowRuntimeBuilder {
   private RunExecutionInterceptor runExecutionInterceptor = RunExecutionInterceptor.NO_OP;
   private GeneratedArtifactStore generatedArtifactStore;
   private List<ArtifactValidator> artifactValidators = List.of();
+  private ObjectMapper objectMapper;
+  private TokenEstimator tokenEstimator;
 
   /**
    * Configures the workflow definition source.
@@ -318,6 +327,33 @@ public final class WorkflowRuntimeBuilder {
   }
 
   /**
+   * Configures the {@link ObjectMapper} used for context-selection JSON handling (ledger content,
+   * compact siblings). Defaults to a new {@link ObjectMapper} when not set.
+   *
+   * @param value object mapper
+   *
+   * @return this builder
+   */
+  public WorkflowRuntimeBuilder objectMapper(ObjectMapper value) {
+    this.objectMapper = Validate.notNull(value, "objectMapper must not be null");
+    return this;
+  }
+
+  /**
+   * Configures the {@link TokenEstimator} used to decide whether a {@code COMPACT} step's source is
+   * large enough to be worth compacting. Defaults to {@link TokenEstimatorResolver#resolve()} when not
+   * set.
+   *
+   * @param value token estimator
+   *
+   * @return this builder
+   */
+  public WorkflowRuntimeBuilder tokenEstimator(TokenEstimator value) {
+    this.tokenEstimator = Validate.notNull(value, "tokenEstimator must not be null");
+    return this;
+  }
+
+  /**
    * Validates required dependencies, wires executors and handlers, and returns a runnable
    * {@link com.agentforge4j.core.runtime.WorkflowRuntime}.
    *
@@ -335,10 +371,15 @@ public final class WorkflowRuntimeBuilder {
     EventRecorder resolvedEventRecorder = eventRecorder != null
         ? eventRecorder
         : new EventRecorder(workflowEventLog, resolvedClock);
+    ObjectMapper resolvedObjectMapper = ObjectUtils.getIfNull(objectMapper, ObjectMapper::new);
+    TokenEstimator resolvedTokenEstimator = ObjectUtils.getIfNull(tokenEstimator,
+        TokenEstimatorResolver::resolve);
+    ContextSourceResolver contextSourceResolver = new ContextSourceResolver(
+        new ContextRenderer(resolvedObjectMapper), resolvedObjectMapper);
 
     CommandApplier commandApplier = new CommandApplier(determineCommandHandlers(
         resolvedEventRecorder, resolvedFileSink, resolvedShell, resolvedClock,
-        resolvedGeneratedArtifactStore));
+        resolvedGeneratedArtifactStore, contextSourceResolver));
 
     LoopEvaluator resolvedEvaluator = resolveLoopEvaluator(agentInvoker);
 
@@ -369,7 +410,10 @@ public final class WorkflowRuntimeBuilder {
         branchBehaviourHandler,
         retryPreviousBehaviourHandler,
         transitionGate,
-        resolvedGeneratedArtifactStore);
+        resolvedGeneratedArtifactStore,
+        resolvedObjectMapper,
+        resolvedTokenEstimator,
+        contextSourceResolver);
 
     ExecutableExecutor executableExecutor =
         new ExecutableExecutor(stepExecutor, blueprintExecutor, workflowExecutor,
@@ -414,7 +458,8 @@ public final class WorkflowRuntimeBuilder {
 
   private List<CommandHandler<? extends LlmCommand>> determineCommandHandlers(
       EventRecorder eventRecorder, FileSink resolvedFileSink, ShellCommandRunner resolvedShell,
-      Clock resolvedClock, GeneratedArtifactStore resolvedGeneratedArtifactStore) {
+      Clock resolvedClock, GeneratedArtifactStore resolvedGeneratedArtifactStore,
+      ContextSourceResolver contextSourceResolver) {
     List<CommandHandler<? extends LlmCommand>> handlers = new ArrayList<>(List.of(
         new CompleteCommandHandler(eventRecorder),
         new ContinueCommandHandler(),
@@ -423,7 +468,8 @@ public final class WorkflowRuntimeBuilder {
         new GeneralQuestionCommandHandler(eventRecorder, resolvedClock),
         new RunCommandHandler(eventRecorder, resolvedShell),
         new SetContextCommandHandler(eventRecorder),
-        new UserPromptCommandHandler(eventRecorder, resolvedClock)));
+        new UserPromptCommandHandler(eventRecorder, resolvedClock),
+        new RequestContextCommandHandler(contextSourceResolver, eventRecorder)));
     // TOOL_INVOCATION is dispatched only when a ToolExecutionService is configured; otherwise the
     // command is never advertised (opt-in) and never reaches the applier.
     if (toolExecutionService != null) {
@@ -441,7 +487,10 @@ public final class WorkflowRuntimeBuilder {
       BranchBehaviourHandler branchBehaviourHandler,
       RetryPreviousBehaviourHandler retryPreviousBehaviourHandler,
       TransitionGate transitionGate,
-      GeneratedArtifactStore generatedArtifactStore) {
+      GeneratedArtifactStore generatedArtifactStore,
+      ObjectMapper resolvedObjectMapper,
+      TokenEstimator resolvedTokenEstimator,
+      ContextSourceResolver contextSourceResolver) {
     List<BehaviourHandler<? extends StepBehaviour>> handlers = List.of(
         new AgentBehaviourHandler(agentInvoker, commandApplier, eventRecorder),
         new SparBehaviourHandler(agentInvoker, commandApplier, eventRecorder),
@@ -452,7 +501,9 @@ public final class WorkflowRuntimeBuilder {
         new FailBehaviourHandler(),
         retryPreviousBehaviourHandler,
         new ValidateBehaviourHandler(generatedArtifactStore, artifactValidators, eventRecorder),
-        new AssignContextBehaviourHandler(eventRecorder));
+        new AssignContextBehaviourHandler(eventRecorder),
+        new CompactBehaviourHandler(contextSourceResolver, resolvedTokenEstimator,
+            workflowRepository, eventRecorder, resolvedObjectMapper));
     return new StepExecutor(handlers, eventRecorder, resolvedClock, transitionGate);
   }
 

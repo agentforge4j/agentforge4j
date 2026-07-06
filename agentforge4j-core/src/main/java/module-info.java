@@ -23,6 +23,7 @@ module agentforge4j.core {
   exports com.agentforge4j.core.spi.tool;
   exports com.agentforge4j.core.spi.integration;
   exports com.agentforge4j.core.spi.contextpack;
+  exports com.agentforge4j.core.spi.governance;
   exports com.agentforge4j.core.spi.validation;
   exports com.agentforge4j.core.runtime;
   exports com.agentforge4j.core.workflow;

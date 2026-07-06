@@ -18,4 +18,5 @@ module agentforge4j.llm {
   requires agentforge4j.util;
   exports com.agentforge4j.llm;
   uses LlmClientFactory;
+  uses com.agentforge4j.llm.api.TokenEstimator;
 }

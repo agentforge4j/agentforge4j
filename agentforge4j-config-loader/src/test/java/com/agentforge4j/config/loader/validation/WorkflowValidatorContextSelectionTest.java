@@ -77,7 +77,7 @@ class WorkflowValidatorContextSelectionTest {
     ContextSelection selection = new ContextSelection(
         List.of(sel(ContextSourceKind.LEDGER_SECTION, "requirements.entries"),
             sel(ContextSourceKind.STEP_OUTPUT, "s1")),
-        List.of());
+        List.of(), null);
     WorkflowDefinition wf = workflow(
         List.of(step("s1"), stepWithSelection("s2", selection)),
         List.of(ledger("requirements")));
@@ -88,7 +88,7 @@ class WorkflowValidatorContextSelectionTest {
   @Test
   void rejectsUnknownLedgerSelector() {
     ContextSelection selection = new ContextSelection(
-        List.of(sel(ContextSourceKind.LEDGER_SECTION, "nope")), List.of());
+        List.of(sel(ContextSourceKind.LEDGER_SECTION, "nope")), List.of(), null);
     WorkflowDefinition wf = workflow(List.of(stepWithSelection("s1", selection)), List.of());
 
     assertThatThrownBy(() -> validate(wf))
@@ -99,7 +99,7 @@ class WorkflowValidatorContextSelectionTest {
   @Test
   void rejectsUnknownStepOutputSelector() {
     ContextSelection selection = new ContextSelection(
-        List.of(sel(ContextSourceKind.STEP_OUTPUT, "ghost")), List.of());
+        List.of(sel(ContextSourceKind.STEP_OUTPUT, "ghost")), List.of(), null);
     WorkflowDefinition wf = workflow(List.of(stepWithSelection("s1", selection)), List.of());
 
     assertThatThrownBy(() -> validate(wf))
@@ -110,7 +110,7 @@ class WorkflowValidatorContextSelectionTest {
   @Test
   void rejectsUnknownArtifactSelector() {
     ContextSelection selection = new ContextSelection(
-        List.of(sel(ContextSourceKind.ARTIFACT, "missing")), List.of());
+        List.of(sel(ContextSourceKind.ARTIFACT, "missing")), List.of(), null);
     WorkflowDefinition wf = workflow(List.of(stepWithSelection("s1", selection)), List.of());
 
     assertThatThrownBy(() -> validate(wf))
@@ -123,7 +123,7 @@ class WorkflowValidatorContextSelectionTest {
     ContextSelection selection = new ContextSelection(
         List.of(sel(ContextSourceKind.CONTEXT_PACK, "any-pack"),
             sel(ContextSourceKind.STATE_KEY, "some-key")),
-        List.of());
+        List.of(), null);
     WorkflowDefinition wf = workflow(List.of(stepWithSelection("s1", selection)), List.of());
 
     assertThatCode(() -> validate(wf)).doesNotThrowAnyException();
@@ -132,7 +132,7 @@ class WorkflowValidatorContextSelectionTest {
   @Test
   void validatesExpandableScopeSelectors() {
     ContextSelection selection = new ContextSelection(List.of(),
-        List.of(sel(ContextSourceKind.LEDGER_SECTION, "nope")));
+        List.of(sel(ContextSourceKind.LEDGER_SECTION, "nope")), null);
     WorkflowDefinition wf = workflow(List.of(stepWithSelection("s1", selection)), List.of());
 
     assertThatThrownBy(() -> validate(wf))

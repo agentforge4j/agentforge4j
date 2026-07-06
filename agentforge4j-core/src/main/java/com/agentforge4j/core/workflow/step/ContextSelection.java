@@ -16,14 +16,34 @@ import java.util.List;
  *                        becomes an empty list, defensively copied)
  * @param expandableScope the additional sources the step may request; empty means no expansion is
  *                        permitted. Never {@code null} ({@code null} becomes an empty list, copied)
+ * @param maxExpansions   maximum number of {@code RequestContextCommand} rounds granted or denied
+ *                        within a single step invocation; {@code null} or non-positive defaults to
+ *                        {@value #DEFAULT_MAX_EXPANSIONS}
  */
 public record ContextSelection(
     List<ContextSelector> selectors,
-    List<ContextSelector> expandableScope
+    List<ContextSelector> expandableScope,
+    Integer maxExpansions
 ) {
+
+  /**
+   * Default maximum context-expansion rounds per step invocation when {@link #maxExpansions} is
+   * {@code null} or non-positive.
+   */
+  public static final int DEFAULT_MAX_EXPANSIONS = 1;
 
   public ContextSelection {
     selectors = selectors != null ? List.copyOf(selectors) : List.of();
     expandableScope = expandableScope != null ? List.copyOf(expandableScope) : List.of();
+  }
+
+  /**
+   * Returns the effective maximum expansion rounds: {@link #maxExpansions} when positive, otherwise
+   * {@link #DEFAULT_MAX_EXPANSIONS}.
+   *
+   * @return the effective maximum; always positive
+   */
+  public int effectiveMaxExpansions() {
+    return maxExpansions != null && maxExpansions > 0 ? maxExpansions : DEFAULT_MAX_EXPANSIONS;
   }
 }
