@@ -207,6 +207,9 @@ class DefaultWorkflowRuntimeInterceptorTest {
         new DefaultRequirementResolver(),
         new TransitionGate(eventRecorder),
         interceptor,
-        new InMemoryGeneratedArtifactStore());
+        new InMemoryGeneratedArtifactStore(),
+        new CollectionGateService(eventRecorder, CLOCK, new DefaultRequirementResolver(),
+            new com.agentforge4j.core.workflow.collection.DefaultCollectionAuthorizer(),
+            new com.fasterxml.jackson.databind.ObjectMapper()));
   }
 }

@@ -190,7 +190,10 @@ class DefaultWorkflowRuntimeToolDecisionTest {
         new DefaultRequirementResolver(),
         new TransitionGate(eventRecorder),
         com.agentforge4j.runtime.interceptor.RunExecutionInterceptor.NO_OP,
-        new InMemoryGeneratedArtifactStore());
+        new InMemoryGeneratedArtifactStore(),
+        new CollectionGateService(eventRecorder, CLOCK, new DefaultRequirementResolver(),
+            new com.agentforge4j.core.workflow.collection.DefaultCollectionAuthorizer(),
+            new com.fasterxml.jackson.databind.ObjectMapper()));
   }
 
   private void seedState(WorkflowStatus status) {
@@ -247,7 +250,10 @@ class DefaultWorkflowRuntimeToolDecisionTest {
         new DefaultRequirementResolver(),
         new TransitionGate(eventRecorder),
         com.agentforge4j.runtime.interceptor.RunExecutionInterceptor.NO_OP,
-        new InMemoryGeneratedArtifactStore());
+        new InMemoryGeneratedArtifactStore(),
+        new CollectionGateService(eventRecorder, CLOCK, new DefaultRequirementResolver(),
+            new com.agentforge4j.core.workflow.collection.DefaultCollectionAuthorizer(),
+            new com.fasterxml.jackson.databind.ObjectMapper()));
   }
 
   private static final class StubToolService implements ToolExecutionService {

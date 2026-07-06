@@ -19,6 +19,7 @@ import com.agentforge4j.core.spi.tool.ToolPolicy;
 import com.agentforge4j.core.spi.tool.ToolProvider;
 import com.agentforge4j.core.spi.tool.ToolProviderResolver;
 import com.agentforge4j.core.spi.validation.ArtifactValidator;
+import com.agentforge4j.core.workflow.collection.CollectionAuthorizer;
 import com.agentforge4j.core.workflow.event.WorkflowEventLog;
 import com.agentforge4j.core.workflow.repository.WorkflowRepository;
 import com.agentforge4j.core.workflow.repository.WorkflowStateRepository;
@@ -119,6 +120,7 @@ public final class AgentForge4jBootstrap {
     private RunExecutionInterceptor runExecutionInterceptor;
     private ModelTierResolver modelTierResolver;
     private RequirementResolver requirementResolver;
+    private CollectionAuthorizer collectionAuthorizer;
     private List<ArtifactValidator> artifactValidators = List.of();
     private List<ToolProvider> toolProviders = List.of();
     private ToolProviderResolver toolProviderResolver;
@@ -393,6 +395,20 @@ public final class AgentForge4jBootstrap {
      */
     public Builder withRequirementResolver(RequirementResolver requirementResolver) {
       this.requirementResolver = Validate.notNull(requirementResolver, "requirementResolver must not be null");
+      return this;
+    }
+
+    /**
+     * Overrides the authorizer consulted before guarded collection-gate operations in {@code ENFORCED} mode. When not
+     * set, the runtime defaults to a deny-all {@code DefaultCollectionAuthorizer} (fail-closed), so {@code ENFORCED}
+     * gates admit no operation until the embedding application supplies an identity- and role-aware authorizer here.
+     *
+     * @param collectionAuthorizer authorizer instance; must not be {@code null}
+     *
+     * @return this builder
+     */
+    public Builder withCollectionAuthorizer(CollectionAuthorizer collectionAuthorizer) {
+      this.collectionAuthorizer = Validate.notNull(collectionAuthorizer, "collectionAuthorizer must not be null");
       return this;
     }
 
@@ -778,7 +794,7 @@ public final class AgentForge4jBootstrap {
           resolvedWorkflowRepo, resolvedStateRepo, resolvedEventLog, resolvedClock,
           resolvedFileSink, resolvedInvoker, resolvedRecorder,
           maxNestingDepth, resolvedToolExecutionService, resolvedPendingStore,
-          requirementResolver, resolvedInterceptor, resolvedMapper, artifactValidators);
+          requirementResolver, resolvedInterceptor, collectionAuthorizer, resolvedMapper, artifactValidators);
 
       BootstrapComponents components = new BootstrapComponents(resolvedAgentRepo, resolvedWorkflowRepo,
           resolvedStateRepo, resolvedEventLog, resolvedResolver, resolvedRenderer, resolvedParser, resolvedRecorder,

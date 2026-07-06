@@ -170,7 +170,10 @@ public enum WorkflowEventType {
    */
   COLLECTION_ITEM_REJECTED,
   /**
-   * Recorded when a close of a collection gate is requested. Payload fields: {@code actorId}, {@code reason}.
+   * Recorded when a close of a collection gate is requested for any reason other than
+   * {@link com.agentforge4j.core.workflow.collection.CloseReason#DEADLINE} — see
+   * {@link #COLLECTION_DEADLINE_CLOSE_REQUESTED} for that case. Payload fields: {@code actorId},
+   * {@code reason}.
    */
   COLLECTION_CLOSE_REQUESTED,
   /**
@@ -194,8 +197,11 @@ public enum WorkflowEventType {
    */
   COLLECTION_AUTHORIZATION_DENIED,
   /**
-   * Recorded when an external deadline close arrives for a collection gate. Carries the reserved system actor
-   * ({@code "runtime"}) and {@code reason=DEADLINE}.
+   * Recorded in place of {@link #COLLECTION_CLOSE_REQUESTED} when a close of a collection gate is
+   * requested with {@link com.agentforge4j.core.workflow.collection.CloseReason#DEADLINE} — a
+   * directly filterable type for an externally-driven deadline trigger, rather than requiring every
+   * consumer to parse the generic event's {@code reason} field. Payload fields: {@code actorId},
+   * {@code reason} (always {@code DEADLINE}).
    */
   COLLECTION_DEADLINE_CLOSE_REQUESTED
 }

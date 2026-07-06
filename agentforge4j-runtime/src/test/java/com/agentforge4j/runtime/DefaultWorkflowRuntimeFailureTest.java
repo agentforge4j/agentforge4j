@@ -108,7 +108,12 @@ class DefaultWorkflowRuntimeFailureTest {
         new DefaultRequirementResolver(),
         new TransitionGate(eventRecorder),
         com.agentforge4j.runtime.interceptor.RunExecutionInterceptor.NO_OP,
-        new InMemoryGeneratedArtifactStore());
+        new InMemoryGeneratedArtifactStore(),
+        new CollectionGateService(eventRecorder,
+            Clock.fixed(Instant.parse("2026-05-01T12:00:00Z"), ZoneOffset.UTC),
+            new DefaultRequirementResolver(),
+            new com.agentforge4j.core.workflow.collection.DefaultCollectionAuthorizer(),
+            new com.fasterxml.jackson.databind.ObjectMapper()));
   }
 
 }

@@ -160,4 +160,26 @@ public interface WorkflowRuntime {
    * @return a snapshot of the resumed run state
    */
   WorkflowState resolveToolDecision(String runId, String toolInvocationId, ToolDecision decision);
+
+  /**
+   * Returns the collection-gate operations for runs suspended at a {@code COLLECTION} step
+   * ({@link com.agentforge4j.core.workflow.state.WorkflowStatus#AWAITING_COLLECTION}). Collection
+   * gates accept, replace, and withdraw submissions from multiple actors while the run stays
+   * suspended; the returned surface shares this runtime's state, per-run serialisation, and audit
+   * trail. This accessor is the supported entry point for collection operations — collection gates
+   * are a runtime capability, scoped here rather than on the embedding facade.
+   *
+   * <p>Collection gates are an optional capability, kept off the mandatory contract so an
+   * implementation with no {@code COLLECTION}-step support is not forced to provide one: the
+   * default throws. An implementation that supports collection gates overrides this to return its
+   * real {@link CollectionGateRuntime}.
+   *
+   * @return the collection-gate operations of this runtime; never {@code null}
+   *
+   * @throws UnsupportedOperationException if this implementation does not support collection gates
+   */
+  default CollectionGateRuntime collections() {
+    throw new UnsupportedOperationException(
+        getClass().getName() + " does not support collection-gate operations");
+  }
 }
