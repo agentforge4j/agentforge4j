@@ -1,79 +1,76 @@
 # Jira — issues, search, and comments as governed capabilities
 
-> **Tier:** `MCP` — Atlassian publishes a hosted (remote) MCP server, so this is documented as an
-> MCP server config + capability bindings (Tier 1). It is the **hosted / `streamable_http`**
-> counterpart to the self-hosted [GitHub](../github/README.md) `stdio` recipe.
+> **Tier:** `MCP_STREAMABLE_HTTP` — Atlassian publishes a hosted (remote) MCP server, so this is
+> documented as an `IntegrationDefinition` of type `MCP_STREAMABLE_HTTP` (Tier 1). It is the
+> **hosted** counterpart to the self-hosted [GitHub](../github/README.md) `MCP_STDIO` recipe.
 
 AgentForge4j connects to and governs the hosted Jira MCP server; it never builds, pulls, or runs it.
 The operator points AgentForge4j at the hosted endpoint and completes the server's authorization.
 
 ## Capabilities
 
+The runtime capability for an MCP-sourced tool is the vendor server's advertised tool name — no
+`<domain>.` prefix is added by AgentForge4j (see [`CONVENTIONS.md`](../CONVENTIONS.md) §2). The
+names below are illustrative; confirm them against the Jira MCP server's live `tools/list` before
+relying on them.
+
 | Capability | Description | Access | Recommended policy |
 |---|---|---|---|
-| `jira.search_issues` | Search issues (e.g. by JQL) | read-only | `ALLOW` |
-| `jira.create_issue` | Create an issue | **mutating** | **`REQUIRE_APPROVAL`** |
-| `jira.add_comment` | Comment on an issue | **mutating** | **`REQUIRE_APPROVAL`** |
+| `search_issues` | Search issues (e.g. by JQL) | read-only | `Allow` |
+| `create_issue` | Create an issue | **mutating** | **`RequireApproval`** |
+| `add_comment` | Comment on an issue | **mutating** | **`RequireApproval`** |
 
 ## Transport
 
-`streamable_http` — the server is hosted/remote, so AgentForge4j connects over HTTP. (The platform
-transport layer supports `STDIO` and `STREAMABLE_HTTP`; if the vendor's hosted server is SSE-only,
-see Caveats.)
+`MCP_STREAMABLE_HTTP` — the server is hosted/remote, so AgentForge4j connects over HTTP. If the
+vendor's hosted server is SSE-only, see Caveats.
 
-## Config files
+## Config file
 
-Copy the JSON files in this folder and fill in the placeholders, then apply them against the platform
-MCP API (or the MCP admin UI). Secrets stay as `${secret:KEY}` references — never inline a token.
+Copy [`jira.json`](./jira.json), fill in the placeholder `url`, and drop it into the directory
+passed to `AgentForge4jBootstrap.withIntegrationsDir(...)`.
 
-- [`mcp-server-config.json`](./mcp-server-config.json) — `POST /api/v1/mcp/servers`
-  (`McpServerConfigRequest`). For a hosted server set `transport: "STREAMABLE_HTTP"`, point `url` at
-  the vendor's endpoint (`<your-jira-host>`), and leave `command`/`envJson` null. `headersJson` is a
-  JSON-string map of per-server request headers — here `Authorization` carries `${secret:JIRA_TOKEN}`
-  (resolved to the full header value at connect; now first-class via the per-server headers support).
-- [`capability-bindings.json`](./capability-bindings.json) — `POST /api/v1/mcp/bindings`, one object
-  per capability. Replace `mcpServerConfigId` with the id returned when the server config is created;
-  `workflowId: null` means tenant-wide.
-
-> Authorization to a hosted Jira server is handled by the **server's own OAuth flow** (the operator
-> grants access to their Atlassian site) where applicable; the `${secret:JIRA_TOKEN}` header is for a
-> deployment that fronts the server with a static token. Substitute the real hosted endpoint and auth
-> scheme from the vendor's docs (see Caveats).
+> **Current OSS gap:** the file-loaded `MCP_STREAMABLE_HTTP` config carries **no header field**
+> today — there is no way to attach a static `Authorization` header through this path. If the
+> hosted server authorizes purely via its own OAuth flow (the operator grants access to their
+> Atlassian site out of band), that's fine — this recipe needs nothing further. If the deployment
+> instead fronts the server with a static token header, you must construct
+> `StreamableHttpTransport` directly in Java (which does accept `secretHeaders` + a
+> `SecretResolver`) and register it via `AgentForge4jBootstrap.withToolProviders(...)` instead of
+> the file-loaded path — see [`CONVENTIONS.md`](../CONVENTIONS.md) §3.
 
 ## Secrets
 
 | Secret-reference key | What it is |
 |---|---|
-| `JIRA_TOKEN` | The Authorization header value for the hosted server (e.g. a `Bearer …` token), resolved per tenant. Omit it entirely if the server authorizes purely via its own OAuth flow. |
+| `JIRA_TOKEN` | The Authorization header value for the hosted server (e.g. a `Bearer …` token), only needed if you take the direct-Java path above. Omit entirely if the server authorizes purely via its own OAuth flow. |
 
-Store any token as a secret reference, never plaintext.
+Never inline a token in `jira.json` — there is nowhere in its schema to put one today (see the gap
+note above), which is itself the safest default: don't invent a field the loader won't consume.
 
 ## Operator run instructions
 
 - **Hosted:** point `url` at the vendor's hosted MCP endpoint and complete the server's
-  authorization (OAuth) for the target Atlassian site, or supply the `Authorization` header via
-  `JIRA_TOKEN`. AgentForge4j connects to the endpoint; it does not run anything.
+  authorization (OAuth) for the target Atlassian site, or take the direct-Java path above if the
+  deployment needs a static `Authorization` header. AgentForge4j connects to the endpoint; it does
+  not run anything.
 
 ## Governance notes
 
-- Gate the mutating capabilities with `REQUIRE_APPROVAL`:
-
-  ```json
-  [
-    { "capability": "jira.create_issue", "decision": "REQUIRE_APPROVAL", "reason": "Creates a ticket in a real project." },
-    { "capability": "jira.add_comment",  "decision": "REQUIRE_APPROVAL", "reason": "Posts a visible comment." }
-  ]
-  ```
-
-- A hosted server needs no `stdio` sandbox, but scope the granted OAuth permissions (or the token) to
-  the minimum the bound capabilities require.
+- Gate the mutating capabilities by returning `PolicyDecision.RequireApproval(reason,
+  approverScope)` for them from your own `ToolPolicy` (`AgentForge4jBootstrap.withToolPolicy(...)`):
+  `create_issue` ("Creates a ticket in a real project.") and `add_comment` ("Posts a visible
+  comment."). OSS ships no default per-capability rule table — see
+  [`CONVENTIONS.md`](../CONVENTIONS.md) §3.
+- A hosted server needs no stdio sandbox, but scope the granted OAuth permissions (or the token) to
+  the minimum the used capabilities require.
 
 ## Caveats / version pins
 
 - **Confirm the current hosted endpoint, transport, and authorization flow in Atlassian's docs.**
-  Hosted MCP endpoints and auth schemes move; the `url` in `mcp-server-config.json` is a placeholder.
-  If the hosted server is **SSE-only**, the platform's `STREAMABLE_HTTP` transport will not connect
-  directly — front it with a streamable-HTTP bridge or use a self-hosted `stdio` variant.
-- Verify the exact `remoteToolName` values against the server's live `tools/list`; Jira tool names
+  Hosted MCP endpoints and auth schemes move; the `url` in `jira.json` is a placeholder. If the
+  hosted server is **SSE-only**, `MCP_STREAMABLE_HTTP` will not connect directly — front it with a
+  streamable-HTTP bridge or use a self-hosted `MCP_STDIO` variant.
+- Verify the exact advertised tool names against the server's live `tools/list`; Jira tool names
   and input schemas (e.g. JQL parameters) drift.
 - Mind Atlassian API rate limits and the OAuth scopes granted to the server.

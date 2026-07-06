@@ -1,0 +1,10 @@
+{
+  "id": "<vendor>",
+  "displayName": "<Vendor>",
+  "type": "MCP_STREAMABLE_HTTP",
+  "active": true,
+  "config": {
+    "url": "<https hosted MCP endpoint>",
+    "requestTimeout": "PT30S"
+  }
+}

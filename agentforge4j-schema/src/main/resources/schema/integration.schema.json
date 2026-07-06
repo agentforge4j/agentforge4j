@@ -27,7 +27,7 @@
     },
     "config": {
       "type": ["object", "array"],
-      "description": "Type-specific payload. MCP_STDIO / MCP_STREAMABLE_HTTP: an mcp_server_config object (name, providerId, transport, command, url, envJson, headersJson, enabled). HTTP_TOOL: an array of HttpEndpointDefinition objects, validated against #/$defs/httpEndpoint by the conditional below."
+      "description": "Type-specific payload. MCP_STDIO: an object with required 'command' (executable only, no shell parsing) plus optional 'args' (array of strings), 'env' (object of literal string values), and 'requestTimeout' (ISO-8601 duration, default PT30S). MCP_STREAMABLE_HTTP: an object with required 'url' plus optional 'requestTimeout'. HTTP_TOOL: an array of HttpEndpointDefinition objects, validated against #/$defs/httpEndpoint by the conditional below."
     }
   },
   "allOf": [

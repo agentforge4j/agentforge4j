@@ -1,0 +1,10 @@
+{
+  "id": "jira",
+  "displayName": "Jira",
+  "type": "MCP_STREAMABLE_HTTP",
+  "active": true,
+  "config": {
+    "url": "<your-jira-host hosted MCP endpoint>",
+    "requestTimeout": "PT30S"
+  }
+}
