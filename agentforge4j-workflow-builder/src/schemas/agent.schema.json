@@ -55,7 +55,8 @@
           "COMPLETE",
           "CONTINUE",
           "GENERATE_QUESTIONS",
-          "ESCALATE"
+          "ESCALATE",
+          "TOOL_INVOCATION"
         ]
       },
       "description": "Subset of commands this agent may return. Null means all commands."

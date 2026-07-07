@@ -135,6 +135,24 @@ class TokenGovernanceSchemaContractTest {
   }
 
   @Test
+  void workflow_rejectsAppendLedgerWithMergeKeyField() throws Exception {
+    String json = """
+        {"kind":"WORKFLOW","id":"x","name":"X",
+         "steps":[{"kind":"STEP","stepId":"s1","name":"S","behaviour":{"type":"FAIL","reason":"r"}}],
+         "ledgers":[{"id":"r","schemaRef":"s","mergeStrategy":"APPEND","mergeKeyField":"oops"}]}""";
+    assertThat(validate(WORKFLOW_SCHEMA, json)).isNotEmpty();
+  }
+
+  @Test
+  void workflow_rejectsReplaceSectionLedgerWithMergeKeyField() throws Exception {
+    String json = """
+        {"kind":"WORKFLOW","id":"x","name":"X",
+         "steps":[{"kind":"STEP","stepId":"s1","name":"S","behaviour":{"type":"FAIL","reason":"r"}}],
+         "ledgers":[{"id":"r","schemaRef":"s","mergeStrategy":"REPLACE_SECTION","mergeKeyField":"oops"}]}""";
+    assertThat(validate(WORKFLOW_SCHEMA, json)).isNotEmpty();
+  }
+
+  @Test
   void agent_acceptsPremiumTierAndGatedCommands() throws Exception {
     String json = "{" + AGENT_BASE_FIELDS
         + ",\"modelTier\":\"PREMIUM\",\"supportedCommands\":[\"TOOL_INVOCATION\",\"REQUEST_CONTEXT\"]}";

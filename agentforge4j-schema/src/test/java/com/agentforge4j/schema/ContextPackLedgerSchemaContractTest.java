@@ -13,6 +13,8 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.MethodSource;
 
 /**
  * Contract tests for the shipped context-pack manifest schema and the ledger envelope schemas.
@@ -22,11 +24,11 @@ class ContextPackLedgerSchemaContractTest {
   private static final ObjectMapper MAPPER = new ObjectMapper();
   private static final SchemaRegistry SCHEMA_REGISTRY = SchemaRegistries.draft202012();
 
+  private static final Path LEDGER_SCHEMA_DIR =
+      Path.of("src/main/resources/schema/ledger").toAbsolutePath().normalize();
+
   private static final Path CONTEXT_PACK_SCHEMA =
       Path.of("src/main/resources/schema/context-pack.schema.json").toAbsolutePath().normalize();
-  private static final Path REQUIREMENT_LEDGER_SCHEMA =
-      Path.of("src/main/resources/schema/ledger/requirement-ledger.schema.json")
-          .toAbsolutePath().normalize();
 
   private static List<Error> validate(Path schemaPath, String instanceJson) throws Exception {
     JsonNode schemaNode = MAPPER.readTree(Files.readString(schemaPath));
@@ -57,19 +59,38 @@ class ContextPackLedgerSchemaContractTest {
     assertThat(validate(CONTEXT_PACK_SCHEMA, json)).isNotEmpty();
   }
 
-  @Test
-  void requirementLedger_acceptsEnvelopeWithIdentifiedEntries() throws Exception {
+  @ParameterizedTest
+  @MethodSource("ledgerSchemaFileNames")
+  void ledger_acceptsEnvelopeWithIdentifiedEntries(String schemaFileName) throws Exception {
     String json = """
-        {"entries":[{"id":"REQ-1","summary":"open text","priority":"HIGH"}],
+        {"entries":[{"id":"L-1","summary":"open text","priority":"HIGH"}],
          "openQuestions":["who owns onboarding?"],
          "conflicts":[]}""";
-    assertThat(validate(REQUIREMENT_LEDGER_SCHEMA, json)).isEmpty();
+    assertThat(validate(LEDGER_SCHEMA_DIR.resolve(schemaFileName), json)).isEmpty();
   }
 
-  @Test
-  void requirementLedger_rejectsEntryWithoutId() throws Exception {
+  @ParameterizedTest
+  @MethodSource("ledgerSchemaFileNames")
+  void ledger_rejectsEntryWithoutId(String schemaFileName) throws Exception {
     String json = """
         {"entries":[{"summary":"no id"}]}""";
-    assertThat(validate(REQUIREMENT_LEDGER_SCHEMA, json)).isNotEmpty();
+    assertThat(validate(LEDGER_SCHEMA_DIR.resolve(schemaFileName), json)).isNotEmpty();
+  }
+
+  @ParameterizedTest
+  @MethodSource("ledgerSchemaFileNames")
+  void ledger_rejectsUnknownTopLevelProperty(String schemaFileName) throws Exception {
+    String json = """
+        {"entries":[{"id":"L-1"}],"surpriseField":true}""";
+    assertThat(validate(LEDGER_SCHEMA_DIR.resolve(schemaFileName), json)).isNotEmpty();
+  }
+
+  static List<String> ledgerSchemaFileNames() {
+    return List.of(
+        "architecture-ledger.schema.json",
+        "decision-ledger.schema.json",
+        "epic-ledger.schema.json",
+        "requirement-ledger.schema.json",
+        "risk-ledger.schema.json");
   }
 }

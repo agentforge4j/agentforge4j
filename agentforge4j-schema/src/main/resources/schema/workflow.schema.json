@@ -466,7 +466,8 @@
       "allOf": [
         {
           "if": { "properties": { "mergeStrategy": { "const": "MERGE_BY_KEY" } } },
-          "then": { "required": ["mergeKeyField"], "properties": { "mergeKeyField": { "type": "string", "minLength": 1 } } }
+          "then": { "required": ["mergeKeyField"], "properties": { "mergeKeyField": { "type": "string", "minLength": 1 } } },
+          "else": { "properties": { "mergeKeyField": { "type": "null" } } }
         }
       ]
     }
