@@ -17,6 +17,13 @@ import java.util.List;
  * enclosing expected / maximum iteration products to {@code expectedAgentTurns} /
  * {@code maxAgentTurns}.
  *
+ * <p><b>Branch arms are summed, not selected.</b> Exactly one {@code BRANCH} arm executes at
+ * runtime, but every reachable arm's turns are added into all three figures. {@code maxAgentTurns}
+ * stays a true, conservative ceiling under this convention; {@code minAgentTurns} is
+ * <em>not</em> a floor for branchy workflows (an unmatched/default-less branch can complete a step
+ * with zero of the summed arms actually running), and {@code expectedAgentTurns} overstates the
+ * typical case in proportion to the arm count.
+ *
  * @param workflowId          non-blank id of the analysed workflow
  * @param stepCount           total reachable steps (not counting loop expansion)
  * @param agentStepCount      reachable steps that invoke a model (AGENT / SPAR), not loop-expanded
@@ -25,8 +32,10 @@ import java.util.List;
  * @param agentDrivenLoopCount reachable loops terminated by agent signal or evaluator
  * @param humanGateCount      reachable steps carrying a human-review / human-approval transition
  * @param maxNestingDepth     deepest structural nesting reached during traversal
- * @param minAgentTurns       loop-aware minimum agent turns (loops assumed to run once)
- * @param expectedAgentTurns  loop-aware expected agent turns (using expected iteration factors)
+ * @param minAgentTurns       loop-aware minimum agent turns (loops assumed to run once); not a true
+ *                            floor for workflows containing branches (see above)
+ * @param expectedAgentTurns  loop-aware expected agent turns (using expected iteration factors);
+ *                            overstated for workflows containing branches (see above)
  * @param maxAgentTurns       loop-aware maximum agent turns (using maximum iteration factors)
  * @param iterationCeiling    largest enclosing loop-iteration product encountered; {@code 1} when
  *                            there are no loops. Always finite for a well-formed definition

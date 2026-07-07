@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 package com.agentforge4j.core.workflow.estimate;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import org.junit.jupiter.api.Test;
 
 import java.util.List;
-import org.junit.jupiter.api.Test;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class WorkflowExecutionAggregatorTest {
 

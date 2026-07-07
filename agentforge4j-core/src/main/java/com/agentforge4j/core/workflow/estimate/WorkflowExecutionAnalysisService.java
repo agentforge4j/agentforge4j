@@ -24,8 +24,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
  * </ol>
  *
  * <p>This facade holds no run state and performs no run orchestration; starting the workflow,
- * collecting the sized figures, and reading them back are the caller's concern (the Cloud layer, the
- * SDLC workflow, or an example harness).
+ * collecting the sized figures, and reading them back are the caller's concern (the embedding
+ * application, the SDLC workflow, or an example harness).
  */
 public final class WorkflowExecutionAnalysisService {
 

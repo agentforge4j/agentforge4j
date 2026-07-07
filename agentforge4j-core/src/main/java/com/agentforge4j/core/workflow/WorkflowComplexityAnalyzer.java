@@ -31,12 +31,16 @@ import java.util.List;
  * walker's {@code (step, scope)} visitor signature does not expose. The descent mirrors the shared
  * walker's rules exactly: it follows branch children, blueprint bodies, and inline nested
  * definitions, stops at {@code workflowRef}/{@code WorkflowBehaviour} boundaries, and fails fast at
- * {@link WorkflowTreeWalker#MAX_TRAVERSAL_DEPTH} to turn a circular blueprint reference into a clear
+ * {@code WorkflowTreeWalker#MAX_TRAVERSAL_DEPTH} to turn a circular blueprint reference into a clear
  * error instead of a {@link StackOverflowError}.
  *
  * <p><b>Classification thresholds, the expected-iteration defaults, and the token-floor constants
  * below are deterministic implementation choices, intended to be tunable.</b> They are not part of
  * any published contract.
+ *
+ * <p>Model calls made by step retries ({@code RetryPolicy}) and interactive
+ * {@code maxUserPromptRounds} re-invocations are not modelled; the turn envelope reflects only the
+ * structural, non-retried execution path.
  */
 public final class WorkflowComplexityAnalyzer {
 
@@ -84,7 +88,7 @@ public final class WorkflowComplexityAnalyzer {
    * @return the deterministic structural analysis; never {@code null}
    *
    * @throws IllegalArgumentException if {@code root} is {@code null}, or the tree nests deeper than
-   *                                  {@link WorkflowTreeWalker#MAX_TRAVERSAL_DEPTH} (a circular
+   *                                  {@code WorkflowTreeWalker#MAX_TRAVERSAL_DEPTH} (a circular
    *                                  blueprint reference)
    */
   public static WorkflowComplexityAnalysis analyze(WorkflowDefinition root) {
@@ -132,6 +136,7 @@ public final class WorkflowComplexityAnalyzer {
 
   private static void walkExecutable(Executable executable, WorkflowDefinition scope,
       long expectedFactor, long maxFactor, int depth, Accumulator acc) {
+    acc.maxNestingDepth = Math.max(acc.maxNestingDepth, depth);
     if (executable instanceof StepDefinition step) {
       visitStep(step, expectedFactor, maxFactor, acc);
       if (step.behaviour() instanceof BranchBehaviour branch) {
@@ -159,6 +164,12 @@ public final class WorkflowComplexityAnalyzer {
         childExpected = saturatingMultiply(expectedFactor, expectedIterations);
         childMax = saturatingMultiply(maxFactor, loop.maxIterations());
         acc.iterationCeiling = Math.max(acc.iterationCeiling, childMax);
+        if (strategy == LoopTerminationStrategy.EVALUATOR) {
+          // One evaluator-agent turn per iteration, in addition to the loop body's own turns.
+          acc.minTurns += 1;
+          acc.expectedTurns += saturatingMultiply(1, childExpected);
+          acc.maxTurns += saturatingMultiply(1, childMax);
+        }
       }
       walk(blueprint.steps(), scope, childExpected, childMax, depth + 1, acc);
     } else if (executable instanceof WorkflowDefinition nested) {
@@ -180,27 +191,33 @@ public final class WorkflowComplexityAnalyzer {
         acc.humanGateCount++;
       }
     }
-    int turnsForStep = agentTurnsForStep(behaviour);
-    if (turnsForStep > 0) {
+    StepTurns turns = agentTurnsForStep(behaviour);
+    if (turns.max() > 0) {
       acc.agentStepCount++;
-      acc.minTurns += turnsForStep;
-      acc.expectedTurns += saturatingMultiply(turnsForStep, expectedFactor);
-      acc.maxTurns += saturatingMultiply(turnsForStep, maxFactor);
+      acc.minTurns += turns.min();
+      acc.expectedTurns += saturatingMultiply(turns.expected(), expectedFactor);
+      acc.maxTurns += saturatingMultiply(turns.max(), maxFactor);
     }
   }
 
   /**
-   * Model turns a single step contributes: an {@code AGENT} step is one turn; a {@code SPAR} step is
-   * two (primary plus challenger). All other behaviours contribute none.
+   * Model turns a single step contributes: an {@code AGENT} step is exactly one turn; a
+   * {@code SPAR} step runs a primary-plus-challenger exchange each round (up to
+   * {@code SparConfig.maxRounds()}) followed by one final resolution invocation, so it contributes
+   * a minimum of 3 turns (one early-stopped round plus resolution), a maximum of
+   * {@code 2 * maxRounds + 1}, and an expected value mirroring the agent-driven half-rounds
+   * convention used for loop iterations. All other behaviours contribute none.
    */
-  private static int agentTurnsForStep(StepBehaviour behaviour) {
+  private static StepTurns agentTurnsForStep(StepBehaviour behaviour) {
     if (behaviour instanceof AgentBehaviour) {
-      return 1;
+      return StepTurns.SINGLE_AGENT_TURN;
     }
-    if (behaviour instanceof SparBehaviour) {
-      return 2;
+    if (behaviour instanceof SparBehaviour spar) {
+      int maxRounds = spar.sparConfig().maxRounds();
+      int expectedRounds = Math.max(1, (maxRounds + 1) / 2);
+      return new StepTurns(3, 2 * expectedRounds + 1, 2 * maxRounds + 1);
     }
-    return 0;
+    return StepTurns.NONE;
   }
 
   /**
@@ -264,6 +281,12 @@ public final class WorkflowComplexityAnalyzer {
       return ITERATION_FACTOR_CAP;
     }
     return Math.min(product, ITERATION_FACTOR_CAP);
+  }
+
+  /** Per-step model-turn contribution before loop-expansion factors are applied. */
+  private record StepTurns(int min, int expected, int max) {
+    private static final StepTurns NONE = new StepTurns(0, 0, 0);
+    private static final StepTurns SINGLE_AGENT_TURN = new StepTurns(1, 1, 1);
   }
 
   private static final class Accumulator {

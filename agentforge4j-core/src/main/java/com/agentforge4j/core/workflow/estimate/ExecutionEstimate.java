@@ -8,8 +8,8 @@ import java.util.List;
  * The neutral execution-estimate report produced by {@code WorkflowExecutionAggregator}: the token
  * envelope, the deterministic minimum input floor, the sized turn / tool / step figures, the
  * complexity and confidence, the structural risk flags, and the continue/narrow/stop recommendation.
- * It is execution shape only — it carries no currency, pricing, billing, or credit concept. Cloud
- * may map it to money strictly downstream.
+ * It is execution shape only — it carries no currency, pricing, billing, or credit concept. An
+ * embedding application may map it to other domains strictly downstream.
  *
  * @param workflowId              non-blank id of the estimated workflow
  * @param complexity              deterministic complexity classification
