@@ -157,19 +157,21 @@ public final class FileSystemContextPackLoader implements ContextPackLoader {
             .formatted(dir, variantName, fileName));
         return null;
       }
-      String content = readContent(contentFile);
+      String content;
+      try {
+        content = readContent(contentFile);
+      } catch (IOException e) {
+        errors.add("%s: variant '%s' content file could not be read: %s (%s)"
+            .formatted(dir, variantName, fileName, e.getMessage()));
+        return null;
+      }
       variants.put(variantName, new ContextPackVariant(variantName, content, sha256Hex(content)));
     }
     return variants;
   }
 
-  private static String readContent(Path contentFile) {
-    try {
-      return Files.readString(contentFile);
-    } catch (IOException e) {
-      throw new UncheckedIOException(
-          "Failed to read context pack content file: %s".formatted(contentFile), e);
-    }
+  private static String readContent(Path contentFile) throws IOException {
+    return Files.readString(contentFile);
   }
 
   private static List<String> readTags(JsonNode node) {

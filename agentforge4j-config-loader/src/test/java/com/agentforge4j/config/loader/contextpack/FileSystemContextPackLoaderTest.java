@@ -92,6 +92,18 @@ class FileSystemContextPackLoaderTest {
   }
 
   @Test
+  void rejectsBlankVariantKey() throws Exception {
+    Path dir = pack("blank-variant-key");
+    write(dir, "pack.json", """
+        {"name":"blank-variant-key","version":"1.0.0","variants":{"":"c.md"}}""");
+    write(dir, "c.md", "content");
+
+    assertThatThrownBy(() -> loader().load())
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("variants");
+  }
+
+  @Test
   void rejectsMissingVariantContentFile() throws Exception {
     Path dir = pack("missing-content");
     write(dir, "pack.json", """
