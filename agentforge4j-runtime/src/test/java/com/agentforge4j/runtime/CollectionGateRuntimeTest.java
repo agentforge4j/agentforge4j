@@ -897,6 +897,25 @@ class CollectionGateRuntimeTest {
     assertThat(gate.getCollection(runId, STEP, ACTOR).liveCount()).isEqualTo(1);
   }
 
+  @Test
+  void itemSchemaValidatorThatThrowsFailsClosedWithoutLeakingTheExceptionMessage() throws Exception {
+    CollectionItemSchemaValidator throwing = (ref, inlineJson) -> {
+      throw new IllegalStateException("boom");
+    };
+    WorkflowRuntime runtime = runtime(behaviourWithItemSchema("cv-item"), List.of(), null,
+        new InMemoryWorkflowStateRepository(), throwing, null);
+    CollectionGateRuntime gate = runtime.collections();
+    String runId = runtime.start("wf");
+
+    SubmissionResult result = gate.submitItem(runId, STEP, submission("a", null, null), ACTOR);
+
+    assertThat(result.status()).isEqualTo(SubmissionResult.Status.REJECTED);
+    assertThat(result.reason()).isEqualTo("ITEM_SCHEMA_INVALID: item-schema validator error")
+        .doesNotContain("boom");
+    assertThat(payloadOf(runId, WorkflowEventType.COLLECTION_ITEM_REJECTED).get("reason").asText())
+        .doesNotContain("boom");
+  }
+
   // ---- submission validator SPI ----------------------------------------------------------------
 
   @Test
@@ -944,6 +963,25 @@ class CollectionGateRuntimeTest {
     assertThat(payloadOf(runId, WorkflowEventType.COLLECTION_ITEM_REJECTED).get("reason").asText())
         .contains("SUBMISSION_VALIDATOR_REJECTED");
     assertThat(gate.getCollection(runId, STEP, ACTOR).liveCount()).isZero();
+  }
+
+  @Test
+  void submissionValidatorThatThrowsFailsClosedWithoutLeakingTheExceptionMessage() throws Exception {
+    CollectionSubmissionValidator throwing = context -> {
+      throw new IllegalStateException("boom");
+    };
+    WorkflowRuntime runtime = runtime(behaviour(0, null, ReopenPolicy.NONE, AuthorizationMode.OPEN),
+        List.of(), null, new InMemoryWorkflowStateRepository(), null, throwing);
+    CollectionGateRuntime gate = runtime.collections();
+    String runId = runtime.start("wf");
+
+    SubmissionResult result = gate.submitItem(runId, STEP, submission("a", null, null), ACTOR);
+
+    assertThat(result.status()).isEqualTo(SubmissionResult.Status.REJECTED);
+    assertThat(result.reason()).isEqualTo("SUBMISSION_VALIDATOR_REJECTED: submission validator error")
+        .doesNotContain("boom");
+    assertThat(payloadOf(runId, WorkflowEventType.COLLECTION_ITEM_REJECTED).get("reason").asText())
+        .doesNotContain("boom");
   }
 
   @Test

@@ -515,7 +515,13 @@ final class CollectionGateService {
       return "ITEM_SCHEMA_INVALID: the gate declares itemSchemaRef '%s' but the item carries no inline JSON"
           .formatted(cfg.itemSchemaRef());
     }
-    ValidationResult result = itemSchemaValidator.validate(cfg.itemSchemaRef(), payload.inlineJson());
+    ValidationResult result;
+    try {
+      result = itemSchemaValidator.validate(cfg.itemSchemaRef(), payload.inlineJson());
+    } catch (RuntimeException ex) {
+      LOG.log(System.Logger.Level.WARNING, "CollectionItemSchemaValidator threw; failing closed", ex);
+      return "ITEM_SCHEMA_INVALID: item-schema validator error";
+    }
     if (result == null) {
       return "ITEM_SCHEMA_INVALID: the item-schema validator returned no result";
     }
@@ -534,9 +540,15 @@ final class CollectionGateService {
   private String checkSubmissionValidator(WorkflowState state, WorkflowDefinition workflow,
       CollectionBehaviour cfg, String stepId, CollectionState gate, CollectionSubmission submission,
       String actorId, String replacesSubmissionId) {
-    Decision decision = submissionValidator.validate(new CollectionSubmissionContext(
-        state.getRunId(), workflow.id(), stepId, actorId, submission.payload(),
-        submission.clientToken(), submission.dedupeKey(), replacesSubmissionId, cfg, gate));
+    Decision decision;
+    try {
+      decision = submissionValidator.validate(new CollectionSubmissionContext(
+          state.getRunId(), workflow.id(), stepId, actorId, submission.payload(),
+          submission.clientToken(), submission.dedupeKey(), replacesSubmissionId, cfg, gate));
+    } catch (RuntimeException ex) {
+      LOG.log(System.Logger.Level.WARNING, "CollectionSubmissionValidator threw; failing closed", ex);
+      return "SUBMISSION_VALIDATOR_REJECTED: submission validator error";
+    }
     if (decision == null) {
       return "SUBMISSION_VALIDATOR_REJECTED: the submission validator returned no decision";
     }
