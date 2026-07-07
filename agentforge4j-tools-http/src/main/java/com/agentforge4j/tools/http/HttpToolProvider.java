@@ -12,6 +12,8 @@ import com.agentforge4j.core.spi.tool.ToolSource;
 import com.agentforge4j.core.spi.tool.ToolSourceKind;
 import com.agentforge4j.util.net.EgressCheckResult;
 import com.agentforge4j.util.net.OutboundEgressGuard;
+import com.agentforge4j.util.retry.DecorrelatedJitter;
+import com.agentforge4j.util.retry.RetryableHttpStatuses;
 import com.agentforge4j.util.Validate;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -33,7 +35,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
-import java.util.concurrent.ThreadLocalRandom;
 import java.util.function.Function;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -55,7 +56,6 @@ public final class HttpToolProvider implements ToolProvider {
 
   private static final System.Logger LOG = System.getLogger(HttpToolProvider.class.getName());
 
-  private static final Set<Integer> RETRYABLE_HTTP_STATUS = Set.of(429, 500, 502, 503, 504);
   private static final Pattern PLACEHOLDER = Pattern.compile("\\{([a-zA-Z0-9_]+)}");
   private static final int ERROR_BODY_LIMIT = 512;
 
@@ -411,7 +411,7 @@ public final class HttpToolProvider implements ToolProvider {
       try {
         HttpResponse<InputStream> response =
             httpClient.send(request, HttpResponse.BodyHandlers.ofInputStream());
-        if (hasMore && RETRYABLE_HTTP_STATUS.contains(response.statusCode())) {
+        if (hasMore && RetryableHttpStatuses.isRetryable(response.statusCode())) {
           drainQuietly(response.body());
           lastSleep = backoff(base, lastSleep, ceiling);
           continue;
@@ -435,29 +435,9 @@ public final class HttpToolProvider implements ToolProvider {
     if (base <= 0L) {
       return 0L;
     }
-    long sleepMs = Math.min(ceiling, randomBetweenBaseAndTriple(base, lastSleep));
+    long sleepMs = DecorrelatedJitter.nextDelayMillis(base, lastSleep, ceiling);
     Thread.sleep(sleepMs);
     return sleepMs;
-  }
-
-  private static long randomBetweenBaseAndTriple(long base, long lastSleep) {
-    long triple = cappedMultiplyByThree(lastSleep);
-    long upperInclusive = Math.max(base, triple);
-    if (upperInclusive == base) {
-      return base;
-    }
-    long hiExclusive = upperInclusive + 1;
-    if (hiExclusive <= upperInclusive) {
-      return ThreadLocalRandom.current().nextLong(base, Long.MAX_VALUE);
-    }
-    return ThreadLocalRandom.current().nextLong(base, hiExclusive);
-  }
-
-  private static long cappedMultiplyByThree(long value) {
-    if (value > Long.MAX_VALUE / 3) {
-      return Long.MAX_VALUE;
-    }
-    return value * 3;
   }
 
   // --- response mapping -----------------------------------------------------------------------
