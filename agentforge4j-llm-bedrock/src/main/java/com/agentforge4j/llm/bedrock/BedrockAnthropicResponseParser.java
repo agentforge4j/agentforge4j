@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package com.agentforge4j.llm.bedrock;
 
+import com.agentforge4j.llm.LlmHttpErrorBodyTruncate;
 import com.agentforge4j.llm.api.LlmClient;
 import com.agentforge4j.llm.api.LlmExecutionResponse;
 import com.agentforge4j.llm.api.LlmInvocationException;
@@ -15,6 +16,9 @@ import org.apache.commons.lang3.StringUtils;
  * Parses Anthropic Claude message responses returned by Bedrock {@code InvokeModel}.
  */
 final class BedrockAnthropicResponseParser {
+
+  private static final System.Logger LOG =
+      System.getLogger(BedrockAnthropicResponseParser.class.getName());
 
   /**
    * Parses the InvokeModel response body into assistant text and optional {@code usage}
@@ -37,23 +41,26 @@ final class BedrockAnthropicResponseParser {
     Validate.notBlank(json,
         () -> new LlmInvocationException("Bedrock response body must not be blank"));
     Validate.notNull(objectMapper, "ObjectMapper must not be null");
+    LOG.log(System.Logger.Level.DEBUG, "Bedrock Anthropic response body (full) body={0}", json);
+    String truncatedJson = LlmHttpErrorBodyTruncate.truncateForEmbeddedMessage(json);
 
     JsonNode root = objectMapper.readTree(json);
     Validate.isTrue(root != null && !root.isNull(), () ->
         new LlmInvocationException("Bedrock response JSON deserialized to null"));
 
-    String text = extractAssistantText(root, json);
+    String text = extractAssistantText(root, truncatedJson);
     return new LlmExecutionResponse(
         text,
         StringUtils.trimToNull(modelId),
         toTokenUsageReport(root.get("usage")));
   }
 
-  private static String extractAssistantText(JsonNode root, String json) {
+  private static String extractAssistantText(JsonNode root, String truncatedJson) {
     JsonNode content = root.get("content");
     Validate.isTrue(content != null && content.isArray() && !content.isEmpty(), () ->
         new LlmInvocationException(
-            "Bedrock Anthropic response missing or empty content array: %s".formatted(json)));
+            "Bedrock Anthropic response missing or empty content array: %s".formatted(
+                truncatedJson)));
 
     for (JsonNode block : content) {
       if (block == null || !block.isObject()) {
@@ -69,7 +76,7 @@ final class BedrockAnthropicResponseParser {
     }
 
     throw new LlmInvocationException("Bedrock Anthropic response has no text content block: %s".
-        formatted(json));
+        formatted(truncatedJson));
   }
 
   private static TokenUsageReport toTokenUsageReport(JsonNode usage) {

@@ -2,17 +2,16 @@
 package com.agentforge4j.llm.mistral;
 
 import com.agentforge4j.llm.AbstractHttpLlmClient;
+import com.agentforge4j.llm.LlmHttpErrorBodyTruncate;
 import com.agentforge4j.llm.api.LlmClient;
 import com.agentforge4j.llm.api.LlmExecutionRequest;
 import com.agentforge4j.llm.api.LlmExecutionResponse;
 import com.agentforge4j.llm.api.LlmInvocationException;
-import com.agentforge4j.llm.api.TokenUsageReport;
-import com.agentforge4j.llm.mistral.dto.InputRole;
-import com.agentforge4j.llm.mistral.dto.MistralChatRequest;
-import com.agentforge4j.llm.mistral.dto.MistralChatResponse;
-import com.agentforge4j.llm.mistral.dto.MistralChoice;
-import com.agentforge4j.llm.mistral.dto.MistralMessage;
-import com.agentforge4j.llm.mistral.dto.MistralUsage;
+import com.agentforge4j.llm.wireprotocol.ChatChoice;
+import com.agentforge4j.llm.wireprotocol.ChatCompletionsApiSupport;
+import com.agentforge4j.llm.wireprotocol.ChatCompletionsRequest;
+import com.agentforge4j.llm.wireprotocol.ChatCompletionsResponse;
+import com.agentforge4j.llm.wireprotocol.ChatMessage;
 import com.agentforge4j.util.Validate;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
@@ -25,9 +24,15 @@ import org.apache.commons.lang3.StringUtils;
 
 /**
  * Mistral AI LLM client using the OpenAI-compatible chat completions API.
+ * <p>
+ * Request/response wire shapes and usage mapping are shared with {@code AzureOpenAiLlmClient} via
+ * {@link ChatCompletionsApiSupport}; error/choice validation stays here because Mistral's failure
+ * messages omit the deployment-name context that Azure includes.
  */
 @ToString(exclude = {"apiKey", "objectMapper"}, callSuper = true)
 public final class MistralLlmClient extends AbstractHttpLlmClient {
+
+  private static final System.Logger LOG = System.getLogger(MistralLlmClient.class.getName());
 
   private final String apiKey;
   private final ObjectMapper objectMapper;
@@ -84,51 +89,39 @@ public final class MistralLlmClient extends AbstractHttpLlmClient {
   @Override
   protected LlmExecutionResponse validateAndExtractResponse(String json) throws IOException {
     Validate.notBlank(json, () -> new LlmInvocationException("LLM client json must not be blank"));
-    MistralChatResponse dto = objectMapper.readValue(json, MistralChatResponse.class);
-    MistralChoice firstChoice = validateApiError(json, dto);
+    LOG.log(System.Logger.Level.DEBUG, "mistral response body (full) body={0}", json);
+    String truncatedJson = LlmHttpErrorBodyTruncate.truncateForEmbeddedMessage(json);
+    ChatCompletionsResponse dto = objectMapper.readValue(json, ChatCompletionsResponse.class);
+    ChatChoice firstChoice = validateApiError(truncatedJson, dto);
 
-    MistralMessage message = firstChoice.message();
+    ChatMessage message = firstChoice.message();
     String rawContent = message == null ? null : message.content();
     String content = Validate.notBlank(rawContent, () -> new LlmInvocationException(
-        "mistral response first choice content is blank: %s".formatted(json)));
+        "mistral response first choice content is blank: %s".formatted(truncatedJson)));
     return new LlmExecutionResponse(
         LlmClient.stripCodeFence(content.strip()),
         StringUtils.trimToNull(dto.model()),
-        toTokenUsageReport(dto.usage()));
+        ChatCompletionsApiSupport.toTokenUsageReport(dto.usage()));
   }
 
-  private static TokenUsageReport toTokenUsageReport(MistralUsage usage) {
-    if (usage == null) {
-      return null;
-    }
-    return new TokenUsageReport(
-        usage.promptTokens(),
-        usage.completionTokens(),
-        null,
-        null);
-  }
-
-  private MistralChoice validateApiError(String json, MistralChatResponse dto) {
+  private ChatChoice validateApiError(String truncatedJson, ChatCompletionsResponse dto) {
     Validate.notNull(dto,
         () -> new LlmInvocationException(
-            "mistral response deserialized to null: %s".formatted(json)));
+            "mistral response deserialized to null: %s".formatted(truncatedJson)));
     Validate.isTrue(dto.error() == null || StringUtils.isBlank(dto.error().message()),
         () -> new LlmInvocationException("mistral error: " + dto.error().message()));
-    List<MistralChoice> choices =
+    List<ChatChoice> choices =
         Validate.notEmpty(dto.choices(), () -> new LlmInvocationException(
-            "mistral response choices are empty: %s".formatted(json)));
-    MistralChoice firstChoice = choices.get(0);
+            "mistral response choices are empty: %s".formatted(truncatedJson)));
+    ChatChoice firstChoice = choices.get(0);
     return Validate.notNull(firstChoice, () -> new LlmInvocationException(
-        "mistral first choice is null: %s".formatted(json)));
+        "mistral first choice is null: %s".formatted(truncatedJson)));
   }
 
   private String generateRequestBody(LlmExecutionRequest request) {
     String model = StringUtils.defaultIfBlank(request.model(), getDefaultModel());
-    MistralChatRequest body = new MistralChatRequest(
-        model,
-        List.of(
-            new MistralMessage(InputRole.SYSTEM, request.systemPrompt()),
-            new MistralMessage(InputRole.USER, request.userInput())));
+    ChatCompletionsRequest body = ChatCompletionsApiSupport.buildRequest(
+        model, request.systemPrompt(), request.userInput(), null);
     try {
       return objectMapper.writeValueAsString(body);
     } catch (Exception e) {

@@ -17,7 +17,6 @@ module agentforge4j.llm.openaicompatible {
   requires static lombok;
   requires org.apache.commons.lang3;
   requires java.net.http;
-  opens com.agentforge4j.llm.openaicompatible.dto to com.fasterxml.jackson.databind;
   uses LlmClientFactory;
   provides LlmClientFactory
     with OpenAiCompatibleLlmClientFactory;

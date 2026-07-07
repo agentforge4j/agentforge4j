@@ -32,7 +32,6 @@ import org.apache.commons.lang3.Strings;
 public abstract class AbstractHttpLlmClient implements LlmClient {
 
   private static final System.Logger LOG = System.getLogger(AbstractHttpLlmClient.class.getName());
-  private static final int MAX_ERROR_BODY_MESSAGE_CHARS = 500;
 
   @Getter
   private final String providerName;
@@ -172,8 +171,7 @@ public abstract class AbstractHttpLlmClient implements LlmClient {
       String providerName) {
     return () -> {
       String fullBody = StringUtils.defaultString(body);
-      String truncated = LlmHttpErrorBodyTruncate.truncateForEmbeddedMessage(fullBody,
-          MAX_ERROR_BODY_MESSAGE_CHARS);
+      String truncated = LlmHttpErrorBodyTruncate.truncateForEmbeddedMessage(fullBody);
       LOG.log(System.Logger.Level.ERROR, "Non-2xx response providerName={0}, status={1}, body={2}",
           providerName, status, truncated);
       LOG.log(System.Logger.Level.DEBUG,

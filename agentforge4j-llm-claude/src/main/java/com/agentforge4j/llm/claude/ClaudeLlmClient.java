@@ -13,7 +13,7 @@ import com.agentforge4j.llm.claude.dto.ClaudeRequest;
 import com.agentforge4j.llm.claude.dto.ClaudeResponse;
 import com.agentforge4j.llm.claude.dto.ClaudeSystemContentBlock;
 import com.agentforge4j.llm.claude.dto.ClaudeUsage;
-import com.agentforge4j.llm.claude.dto.InputRole;
+import com.agentforge4j.llm.wireprotocol.InputRole;
 import com.agentforge4j.util.Validate;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;

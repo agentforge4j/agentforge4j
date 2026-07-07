@@ -2,18 +2,16 @@
 package com.agentforge4j.llm.azureopenai;
 
 import com.agentforge4j.llm.AbstractHttpLlmClient;
+import com.agentforge4j.llm.LlmHttpErrorBodyTruncate;
 import com.agentforge4j.llm.api.LlmClient;
 import com.agentforge4j.llm.api.LlmExecutionRequest;
 import com.agentforge4j.llm.api.LlmExecutionResponse;
 import com.agentforge4j.llm.api.LlmInvocationException;
-import com.agentforge4j.llm.api.TokenUsageReport;
-import com.agentforge4j.llm.azureopenai.dto.AzureChatCompletionChoice;
-import com.agentforge4j.llm.azureopenai.dto.AzureChatCompletionMessage;
-import com.agentforge4j.llm.azureopenai.dto.AzureChatCompletionPromptTokensDetails;
-import com.agentforge4j.llm.azureopenai.dto.AzureChatCompletionRequest;
-import com.agentforge4j.llm.azureopenai.dto.AzureChatCompletionResponse;
-import com.agentforge4j.llm.azureopenai.dto.AzureChatCompletionUsage;
-import com.agentforge4j.llm.azureopenai.dto.InputRole;
+import com.agentforge4j.llm.wireprotocol.ChatChoice;
+import com.agentforge4j.llm.wireprotocol.ChatCompletionsApiSupport;
+import com.agentforge4j.llm.wireprotocol.ChatCompletionsRequest;
+import com.agentforge4j.llm.wireprotocol.ChatCompletionsResponse;
+import com.agentforge4j.llm.wireprotocol.ChatMessage;
 import com.agentforge4j.util.Validate;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
@@ -29,10 +27,16 @@ import org.apache.commons.lang3.StringUtils;
 /**
  * Azure OpenAI LLM client implementation.
  * <p>
- * Sends requests to Azure OpenAI using the chat completions API.
+ * Sends requests to Azure OpenAI using the chat completions API. Request/response wire shapes and
+ * usage mapping are shared with {@code MistralLlmClient} and {@code VllmLlmClient} via
+ * {@link ChatCompletionsApiSupport}; error/choice validation stays here because Azure's failure
+ * messages embed the deployment name, unlike the other two providers.
  */
 @ToString(exclude = {"apiKey", "objectMapper"}, callSuper = true)
 public final class AzureOpenAiLlmClient extends AbstractHttpLlmClient {
+
+  private static final System.Logger LOG =
+      System.getLogger(AzureOpenAiLlmClient.class.getName());
 
   private final String apiKey;
   private final String deploymentName;
@@ -102,65 +106,47 @@ public final class AzureOpenAiLlmClient extends AbstractHttpLlmClient {
   @Override
   protected LlmExecutionResponse validateAndExtractResponse(String json) throws IOException {
     Validate.notBlank(json, () -> new LlmInvocationException("LLM client json must not be blank"));
-    AzureChatCompletionResponse dto = objectMapper.readValue(json,
-        AzureChatCompletionResponse.class);
-    validateResponse(json, dto);
+    LOG.log(System.Logger.Level.DEBUG, "azure-openai response body (full) body={0}", json);
+    String truncatedJson = LlmHttpErrorBodyTruncate.truncateForEmbeddedMessage(json);
+    ChatCompletionsResponse dto = objectMapper.readValue(json, ChatCompletionsResponse.class);
+    validateResponse(truncatedJson, dto);
 
-    AzureChatCompletionChoice firstChoice = retrieveFirstChoice(json, dto);
-    AzureChatCompletionMessage message = firstChoice.message();
+    ChatChoice firstChoice = retrieveFirstChoice(truncatedJson, dto);
+    ChatMessage message = firstChoice.message();
     String rawContent = message == null ? null : message.content();
     String content = Validate.notBlank(rawContent, () -> new
         LlmInvocationException(
         "azure-openai response first choice content is blank for deployment %s: %s".formatted(
-            deploymentName, json)));
+            deploymentName, truncatedJson)));
     return new LlmExecutionResponse(
         LlmClient.stripCodeFence(content.strip()),
         StringUtils.trimToNull(dto.model()),
-        toTokenUsageReport(dto.usage()));
+        ChatCompletionsApiSupport.toTokenUsageReport(dto.usage()));
   }
 
-  private static TokenUsageReport toTokenUsageReport(AzureChatCompletionUsage usage) {
-    if (usage == null) {
-      return null;
-    }
-    Integer cachedInputTokens = null;
-    AzureChatCompletionPromptTokensDetails details = usage.promptTokensDetails();
-    if (details != null) {
-      cachedInputTokens = details.cachedTokens();
-    }
-    return new TokenUsageReport(
-        usage.promptTokens(),
-        usage.completionTokens(),
-        cachedInputTokens,
-        null);
-  }
-
-  private AzureChatCompletionChoice retrieveFirstChoice(String json,
-      AzureChatCompletionResponse dto) {
-    List<AzureChatCompletionChoice> choices = Validate.notEmpty(dto.choices(), () -> new
+  private ChatChoice retrieveFirstChoice(String truncatedJson, ChatCompletionsResponse dto) {
+    List<ChatChoice> choices = Validate.notEmpty(dto.choices(), () -> new
         LlmInvocationException(
         "azure-openai response choices are empty for deployment %s: %s".formatted(deploymentName,
-            json)));
+            truncatedJson)));
     return Validate.notNull(choices.get(0), () -> new
         LlmInvocationException(
-        "azure-openai first choice is null for deployment %s: %s".formatted(deploymentName, json)));
+        "azure-openai first choice is null for deployment %s: %s".formatted(deploymentName,
+            truncatedJson)));
   }
 
-  private static void validateResponse(String json, AzureChatCompletionResponse dto) {
+  private static void validateResponse(String truncatedJson, ChatCompletionsResponse dto) {
     Validate.notNull(dto,
         () -> new LlmInvocationException(
-            "azure-openai response deserialized to null: %s".formatted(json)));
+            "azure-openai response deserialized to null: %s".formatted(truncatedJson)));
     Validate.isTrue(dto.error() == null || StringUtils.isBlank(dto.error().message()),
         () -> new LlmInvocationException(
             "azure-openai error: %s".formatted(dto.error().message())));
   }
 
   private String generateRequestBody(LlmExecutionRequest request) {
-    AzureChatCompletionRequest body = new AzureChatCompletionRequest(
-        deploymentName,
-        List.of(
-            new AzureChatCompletionMessage(InputRole.SYSTEM, request.systemPrompt()),
-            new AzureChatCompletionMessage(InputRole.USER, request.userInput())));
+    ChatCompletionsRequest body = ChatCompletionsApiSupport.buildRequest(
+        deploymentName, request.systemPrompt(), request.userInput(), null);
     try {
       return objectMapper.writeValueAsString(body);
     } catch (Exception e) {

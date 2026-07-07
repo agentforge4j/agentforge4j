@@ -10,6 +10,7 @@ import com.agentforge4j.llm.api.TokenUsageReport;
 import com.agentforge4j.llm.ollama.dto.MessageDto;
 import com.agentforge4j.llm.ollama.dto.OllamaChatRequestDto;
 import com.agentforge4j.llm.ollama.dto.OllamaChatResponseDto;
+import com.agentforge4j.llm.wireprotocol.InputRole;
 import com.agentforge4j.util.Validate;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
@@ -20,8 +21,8 @@ import java.util.List;
 import lombok.ToString;
 import org.apache.commons.lang3.StringUtils;
 
-import static com.agentforge4j.llm.ollama.dto.InputRole.SYSTEM;
-import static com.agentforge4j.llm.ollama.dto.InputRole.USER;
+import static com.agentforge4j.llm.wireprotocol.InputRole.SYSTEM;
+import static com.agentforge4j.llm.wireprotocol.InputRole.USER;
 
 /**
  * Ollama LLM client using the Ollama REST API (not the gRPC API).
