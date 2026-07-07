@@ -3,7 +3,6 @@ package com.agentforge4j.starter.logging;
 
 import java.util.HashMap;
 import java.util.Map;
-import org.apache.commons.lang3.StringUtils;
 import org.slf4j.MDC;
 
 /**
@@ -39,7 +38,7 @@ public final class RunMdcContext implements AutoCloseable {
     if (!previousValues.containsKey(key)) {
       previousValues.put(key, MDC.get(key));
     }
-    if (StringUtils.isBlank(value)) {
+    if (value == null || value.isBlank()) {
       MDC.remove(key);
       return;
     }

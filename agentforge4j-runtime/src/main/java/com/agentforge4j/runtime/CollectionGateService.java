@@ -53,8 +53,7 @@ import org.apache.commons.lang3.StringUtils;
  * Encapsulates collection-gate mutation, authorization, and audit. Mutates the supplied {@link WorkflowState} in place;
  * persistence and the post-close drive stay with {@link DefaultWorkflowRuntime}. Not thread-safe on its own —
  * collection gates are naturally multi-actor, so {@link DefaultWorkflowRuntime} serialises calls into this service per
- * run under a dedicated lock (design §9's "run's state-write lock"), distinct from the rest of the runtime's
- * caller-serialized drive contract.
+ * run under a dedicated lock, distinct from the rest of the runtime's caller-serialized drive contract.
  */
 final class CollectionGateService {
 

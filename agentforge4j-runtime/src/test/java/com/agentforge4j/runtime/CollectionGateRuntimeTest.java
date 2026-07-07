@@ -481,6 +481,27 @@ class CollectionGateRuntimeTest {
   // ---- replace / withdraw -------------------------------------------------------------------
 
   @Test
+  void replayOfTokenWhoseItemWasSinceReplacedReturnsIdempotentWithNullSubmissionId() {
+    // A clientToken stays in seenClientTokens forever once seen, but a replace can overwrite the
+    // item's own clientToken. A later replay of the original token then finds no live item still
+    // carrying it: SubmissionResult.Status.IDEMPOTENT with submissionId=null, version=0.
+    WorkflowRuntime runtime = runtime(behaviourFull(0, null, ReopenPolicy.NONE, AuthorizationMode.OPEN,
+        ReplacementPolicy.OWNER_REPLACE, WithdrawalPolicy.OWNER_WITHDRAW));
+    CollectionGateRuntime gate = (CollectionGateRuntime) runtime;
+    String runId = runtime.start("wf");
+    SubmissionResult submitted = gate.submitItem(runId, STEP, submission("a", "tok-1", null), ACTOR);
+
+    gate.replaceItem(runId, STEP, submitted.submissionId(), submission("b", null, null), ACTOR);
+    SubmissionResult replay = gate.submitItem(runId, STEP, submission("a", "tok-1", null), ACTOR);
+
+    assertThat(replay.status()).isEqualTo(SubmissionResult.Status.IDEMPOTENT);
+    assertThat(replay.submissionId()).isNull();
+    assertThat(replay.version()).isZero();
+    // The replace is not undone and no second item is created.
+    assertThat(gate.getCollection(runId, STEP, ACTOR).liveCount()).isEqualTo(1);
+  }
+
+  @Test
   void ownerReplaceBumpsVersion() {
     WorkflowRuntime runtime = runtime(behaviourFull(0, null, ReopenPolicy.NONE, AuthorizationMode.OPEN,
         ReplacementPolicy.OWNER_REPLACE, WithdrawalPolicy.OWNER_WITHDRAW));

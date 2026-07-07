@@ -10,7 +10,11 @@ import com.agentforge4j.util.Validate;
  *
  * @param payload     non-null content of the submission
  * @param clientToken optional idempotency token; a repeat returns the original submission with no new
- *                    item and no event. {@code null} when the caller does not need idempotency
+ *                    item and no event. {@code null} when the caller does not need idempotency.
+ *                    If the item the token originally carried has since been replaced or withdrawn,
+ *                    the repeat still returns {@link SubmissionResult.Status#IDEMPOTENT} but with a
+ *                    {@code null} {@code submissionId} — the token is remembered as seen even though
+ *                    no current item carries it
  * @param dedupeKey   optional caller-supplied opaque dedupe key honoured under
  *                    {@code DuplicatePolicy.REJECT_BY_DEDUPE_KEY}; {@code null} when absent
  */
