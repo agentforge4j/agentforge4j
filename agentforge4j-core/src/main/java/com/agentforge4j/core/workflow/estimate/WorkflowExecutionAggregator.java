@@ -42,12 +42,10 @@ public final class WorkflowExecutionAggregator {
 
     long perTurnTokens = (long) sizing.inputTokensPerAgentTurn() + sizing.outputTokensPerAgentTurn();
     long minTokens = analysis.minimumRequiredTokens() + analysis.minAgentTurns() * perTurnTokens;
-    long expectedTokens =
-        analysis.minimumRequiredTokens() + analysis.expectedAgentTurns() * perTurnTokens;
+    long expectedTokens = analysis.minimumRequiredTokens() + analysis.expectedAgentTurns() * perTurnTokens;
     long maxTokens = analysis.minimumRequiredTokens() + analysis.maxAgentTurns() * perTurnTokens;
 
-    long estimatedToolInvocations =
-        analysis.expectedAgentTurns() * sizing.toolInvocationsPerAgentTurn();
+    long estimatedToolInvocations = analysis.expectedAgentTurns() * sizing.toolInvocationsPerAgentTurn();
 
     boolean wideEnvelope = minTokens > 0 && maxTokens >= minTokens * WIDE_ENVELOPE_RATIO;
 

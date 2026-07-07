@@ -70,8 +70,7 @@ public final class WorkflowExecutionAnalysisService {
    *
    * @return the neutral execution estimate; never {@code null}
    */
-  public static ExecutionEstimate aggregate(WorkflowComplexityAnalysis analysis,
-      SizingInputs sizing) {
+  public static ExecutionEstimate aggregate(WorkflowComplexityAnalysis analysis, SizingInputs sizing) {
     return WorkflowExecutionAggregator.aggregate(analysis, sizing);
   }
 }

@@ -20,61 +20,82 @@ import java.util.EnumSet;
 import java.util.List;
 
 /**
- * Deterministic structural analysis of a single {@link WorkflowDefinition} for execution
- * estimation. Produces a {@link WorkflowComplexityAnalysis}: reproducible counts, loop-aware
- * agent-turn attribution, a complexity classification, the minimum input-token floor, and
- * structural risk flags — execution shape only, never money or provider cost.
+ * Deterministic structural analysis of a single {@link WorkflowDefinition} for execution estimation. Produces a
+ * {@link WorkflowComplexityAnalysis}: reproducible counts, loop-aware agent-turn attribution, a complexity
+ * classification, the minimum input-token floor, and structural risk flags — execution shape only, never money or
+ * provider cost.
  *
  * <p><b>Traversal.</b> Unlike the flat per-concern collectors in this package (which delegate to the
- * shared {@code WorkflowTreeWalker}), this analyzer performs its own bounded recursive descent
- * because it must carry loop-expansion factors and nesting depth down the tree — context the shared
- * walker's {@code (step, scope)} visitor signature does not expose. The descent mirrors the shared
- * walker's rules exactly: it follows branch children, blueprint bodies, and inline nested
- * definitions, stops at {@code workflowRef}/{@code WorkflowBehaviour} boundaries, and fails fast at
- * {@code WorkflowTreeWalker#MAX_TRAVERSAL_DEPTH} to turn a circular blueprint reference into a clear
+ * shared {@code WorkflowTreeWalker}), this analyzer performs its own bounded recursive descent because it must carry
+ * loop-expansion factors and nesting depth down the tree — context the shared walker's {@code (step, scope)} visitor
+ * signature does not expose. The descent mirrors the shared walker's rules exactly: it follows branch children,
+ * blueprint bodies, and inline nested definitions, stops at {@code workflowRef}/{@code WorkflowBehaviour} boundaries,
+ * and fails fast at {@code WorkflowTreeWalker#MAX_TRAVERSAL_DEPTH} to turn a circular blueprint reference into a clear
  * error instead of a {@link StackOverflowError}.
  *
  * <p><b>Classification thresholds, the expected-iteration defaults, and the token-floor constants
- * below are deterministic implementation choices, intended to be tunable.</b> They are not part of
- * any published contract.
+ * below are deterministic implementation choices, intended to be tunable.</b> They are not part of any published
+ * contract.
  *
  * <p>Model calls made by step retries ({@code RetryPolicy}) and interactive
- * {@code maxUserPromptRounds} re-invocations are not modelled; the turn envelope reflects only the
- * structural, non-retried execution path.
+ * {@code maxUserPromptRounds} re-invocations are not modelled; the turn envelope reflects only the structural,
+ * non-retried execution path.
  */
 public final class WorkflowComplexityAnalyzer {
 
-  /** Rough characters-per-token divisor for the deterministic input floor. */
+  /**
+   * Rough characters-per-token divisor for the deterministic input floor.
+   */
   private static final int CHARS_PER_TOKEN = 4;
 
-  /** Fixed per-agent-step framework input overhead (system framing, tool schemas, etc.). */
+  /**
+   * Fixed per-agent-step framework input overhead (system framing, tool schemas, etc.).
+   */
   private static final long FRAMEWORK_OVERHEAD_TOKENS_PER_AGENT_STEP = 200L;
 
-  /** Fixed base input cost for mandatory run structure. */
+  /**
+   * Fixed base input cost for mandatory run structure.
+   */
   private static final long BASE_STRUCTURE_TOKENS = 100L;
 
-  /** Saturating cap for iteration-factor products so deep loop nesting cannot overflow a long. */
+  /**
+   * Saturating cap for iteration-factor products so deep loop nesting cannot overflow a long.
+   */
   private static final long ITERATION_FACTOR_CAP = 1_000_000L;
 
-  /** Iteration ceiling at or above which a workload is treated as high risk. */
+  /**
+   * Iteration ceiling at or above which a workload is treated as high risk.
+   */
   private static final long HIGH_RISK_ITERATION_CEILING = 50L;
 
-  /** Maximum-case agent turns at or above which a workload is treated as high risk. */
+  /**
+   * Maximum-case agent turns at or above which a workload is treated as high risk.
+   */
   private static final long HIGH_RISK_MAX_TURNS = 60L;
 
-  /** Agent-step count at or above which a bounded workload is at least complex. */
+  /**
+   * Agent-step count at or above which a bounded workload is at least complex.
+   */
   private static final int COMPLEX_MIN_AGENT_STEPS = 9;
 
-  /** Branch count at or above which a bounded workload is at least complex. */
+  /**
+   * Branch count at or above which a bounded workload is at least complex.
+   */
   private static final int COMPLEX_MIN_BRANCHES = 3;
 
-  /** Agent-step count at or above which a small workload is at least moderate. */
+  /**
+   * Agent-step count at or above which a small workload is at least moderate.
+   */
   private static final int MODERATE_MIN_AGENT_STEPS = 4;
 
-  /** Nesting depth at or above which {@link RiskFlag#DEEP_NESTING} is raised. */
+  /**
+   * Nesting depth at or above which {@link RiskFlag#DEEP_NESTING} is raised.
+   */
   private static final int DEEP_NESTING_THRESHOLD = 4;
 
-  /** Step count at or above which {@link RiskFlag#LARGE_STRUCTURE} is raised. */
+  /**
+   * Step count at or above which {@link RiskFlag#LARGE_STRUCTURE} is raised.
+   */
   private static final int LARGE_STRUCTURE_STEPS = 20;
 
   private WorkflowComplexityAnalyzer() {
@@ -88,8 +109,7 @@ public final class WorkflowComplexityAnalyzer {
    * @return the deterministic structural analysis; never {@code null}
    *
    * @throws IllegalArgumentException if {@code root} is {@code null}, or the tree nests deeper than
-   *                                  {@code WorkflowTreeWalker#MAX_TRAVERSAL_DEPTH} (a circular
-   *                                  blueprint reference)
+   *                                  {@code WorkflowTreeWalker#MAX_TRAVERSAL_DEPTH} (a circular blueprint reference)
    */
   public static WorkflowComplexityAnalysis analyze(WorkflowDefinition root) {
     Validate.notNull(root, "root must not be null");
@@ -201,12 +221,11 @@ public final class WorkflowComplexityAnalyzer {
   }
 
   /**
-   * Model turns a single step contributes: an {@code AGENT} step is exactly one turn; a
-   * {@code SPAR} step runs a primary-plus-challenger exchange each round (up to
-   * {@code SparConfig.maxRounds()}) followed by one final resolution invocation, so it contributes
-   * a minimum of 3 turns (one early-stopped round plus resolution), a maximum of
-   * {@code 2 * maxRounds + 1}, and an expected value mirroring the agent-driven half-rounds
-   * convention used for loop iterations. All other behaviours contribute none.
+   * Model turns a single step contributes: an {@code AGENT} step is exactly one turn; a {@code SPAR} step runs a
+   * primary-plus-challenger exchange each round (up to {@code SparConfig.maxRounds()}) followed by one final resolution
+   * invocation, so it contributes a minimum of 3 turns (one early-stopped round plus resolution), a maximum of
+   * {@code 2 * maxRounds + 1}, and an expected value mirroring the agent-driven half-rounds convention used for loop
+   * iterations. All other behaviours contribute none.
    */
   private static StepTurns agentTurnsForStep(StepBehaviour behaviour) {
     if (behaviour instanceof AgentBehaviour) {
@@ -221,9 +240,9 @@ public final class WorkflowComplexityAnalyzer {
   }
 
   /**
-   * Expected-case iterations for a loop: the declared {@code expectedIterations} hint when present;
-   * otherwise the full {@code maxIterations} for fixed-count and for-each loops, or half (rounded
-   * up, at least one) for agent-signal / evaluator loops whose real count is model-decided.
+   * Expected-case iterations for a loop: the declared {@code expectedIterations} hint when present; otherwise the full
+   * {@code maxIterations} for fixed-count and for-each loops, or half (rounded up, at least one) for agent-signal /
+   * evaluator loops whose real count is model-decided.
    */
   private static long expectedIterations(LoopConfig loop, LoopTerminationStrategy strategy) {
     Integer hint = loop.expectedIterations();
@@ -283,13 +302,17 @@ public final class WorkflowComplexityAnalyzer {
     return Math.min(product, ITERATION_FACTOR_CAP);
   }
 
-  /** Per-step model-turn contribution before loop-expansion factors are applied. */
+  /**
+   * Per-step model-turn contribution before loop-expansion factors are applied.
+   */
   private record StepTurns(int min, int expected, int max) {
+
     private static final StepTurns NONE = new StepTurns(0, 0, 0);
     private static final StepTurns SINGLE_AGENT_TURN = new StepTurns(1, 1, 1);
   }
 
   private static final class Accumulator {
+
     private int stepCount;
     private int agentStepCount;
     private int branchCount;

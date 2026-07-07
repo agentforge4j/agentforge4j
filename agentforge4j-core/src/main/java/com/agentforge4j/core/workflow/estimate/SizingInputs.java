@@ -21,9 +21,7 @@ public record SizingInputs(
 
   public SizingInputs {
     Validate.isNotNegative(inputTokensPerAgentTurn, "inputTokensPerAgentTurn must not be negative");
-    Validate.isNotNegative(outputTokensPerAgentTurn,
-        "outputTokensPerAgentTurn must not be negative");
-    Validate.isNotNegative(toolInvocationsPerAgentTurn,
-        "toolInvocationsPerAgentTurn must not be negative");
+    Validate.isNotNegative(outputTokensPerAgentTurn, "outputTokensPerAgentTurn must not be negative");
+    Validate.isNotNegative(toolInvocationsPerAgentTurn, "toolInvocationsPerAgentTurn must not be negative");
   }
 }

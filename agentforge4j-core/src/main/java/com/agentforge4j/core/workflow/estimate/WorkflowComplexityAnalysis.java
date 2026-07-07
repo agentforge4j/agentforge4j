@@ -83,8 +83,7 @@ public record WorkflowComplexityAnalysis(
     Validate.isNotNegative(minimumRequiredTokens, "minimumRequiredTokens must not be negative");
     Validate.notNull(complexityClass, "complexityClass must not be null");
     if (!ceilingDerivable) {
-      Validate.notBlank(noCeilingReason,
-          "noCeilingReason must be provided when ceilingDerivable is false");
+      Validate.notBlank(noCeilingReason, "noCeilingReason must be provided when ceilingDerivable is false");
     }
     riskFlags = riskFlags == null ? List.of() : List.copyOf(riskFlags);
   }
