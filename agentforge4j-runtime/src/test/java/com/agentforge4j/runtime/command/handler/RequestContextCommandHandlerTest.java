@@ -93,6 +93,28 @@ class RequestContextCommandHandlerTest {
   }
 
   @Test
+  void grantDoesNotOverwriteAnExistingKeyWithReEncodedContent() {
+    // "design.md" already carries a StringContextValue in state() before the grant. A granted
+    // context-read request must never mutate an existing key's type/encoding by re-writing it as a
+    // JsonContextValue.
+    ContextSelection selection = new ContextSelection(List.of(), List.of(selector("design.md")),
+        null);
+    StepDefinition step = step(selection);
+    WorkflowState state = state();
+    RequestContextCommand command = new RequestContextCommand(List.of(selector("design.md")));
+
+    handler.apply(command, request(state, step, 1));
+
+    assertThat(eventLog.getEvents("run-1").get(0).eventType())
+        .isEqualTo(WorkflowEventType.CONTEXT_EXPANSION_GRANTED);
+    assertThat(state.getContextValue("design.md"))
+        .get()
+        .isInstanceOf(com.agentforge4j.core.workflow.context.StringContextValue.class)
+        .isEqualTo(new com.agentforge4j.core.workflow.context.StringContextValue("hello",
+            com.agentforge4j.core.workflow.context.ContextProvenance.USER_SUPPLIED));
+  }
+
+  @Test
   void deniesRequestNotInExpandableScope() {
     ContextSelection selection = new ContextSelection(List.of(), List.of(), null);
     StepDefinition step = step(selection);

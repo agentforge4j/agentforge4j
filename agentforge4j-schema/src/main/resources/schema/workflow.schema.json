@@ -440,6 +440,10 @@
           "type": "array",
           "items": { "$ref": "#/$defs/ContextSelector" },
           "description": "Additional sources the step may request at run time. Empty means no expansion."
+        },
+        "maxExpansions": {
+          "type": ["integer", "null"],
+          "description": "Maximum RequestContextCommand rounds granted or denied within a single step invocation. Null or non-positive defaults to 1."
         }
       }
     },

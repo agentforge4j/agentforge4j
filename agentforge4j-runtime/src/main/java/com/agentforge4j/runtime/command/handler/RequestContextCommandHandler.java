@@ -86,9 +86,15 @@ public final class RequestContextCommandHandler implements CommandHandler<Reques
 
   private void grant(CommandApplicationRequest request, ContextSelector selector, int round) {
     WorkflowState state = request.state();
-    String content = contextSourceResolver.resolveFull(selector, state, request.enclosingWorkflow());
-    state.putContextValue(selector.ref(),
-        new JsonContextValue(content, ContextProvenance.SYSTEM_GENERATED));
+    // Never overwrite an existing key with a re-encoded copy: a STATE_KEY selector's ref may already
+    // name a value the workflow author or a prior grant round put there, and re-writing it here would
+    // mutate its type/encoding (e.g. a StringContextValue becoming a re-encoded JsonContextValue) for
+    // a context-read request that has no business changing existing state.
+    if (state.getContextValue(selector.ref()).isEmpty()) {
+      String content = contextSourceResolver.resolveFull(selector, state, request.enclosingWorkflow());
+      state.putContextValue(selector.ref(),
+          new JsonContextValue(content, ContextProvenance.SYSTEM_GENERATED));
+    }
     String payload = "stepId=%s selector=%s:%s round=%d".formatted(state.getCurrentStepId(),
         selector.kind(), selector.ref(), round);
     eventRecorder.record(state.getRunId(), state.getCurrentStepId(),

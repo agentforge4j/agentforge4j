@@ -75,6 +75,19 @@ class SetContextCommandHandlerTest {
     assertThat(state.getContextValue(UntrustedInputEnvelope.KEY)).isEmpty();
   }
 
+  @Test
+  void rejects_a_key_targeting_the_reserved_double_underscore_namespace() {
+    WorkflowState state = stateAtStep("s1");
+    SetContextCommand cmd = new SetContextCommand("__ledger.requirements",
+        new StringContextValue("x", ContextProvenance.USER_SUPPLIED));
+
+    assertThatThrownBy(() -> handler.apply(cmd, request(state)))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("__ledger.requirements")
+        .hasMessageContaining("reserved");
+    assertThat(state.getContextValue("__ledger.requirements")).isEmpty();
+  }
+
   private static WorkflowState stateAtStep(String stepId) {
     WorkflowState state =
         new WorkflowState("run-1", "wf-1", null, Instant.parse("2026-05-01T00:00:00Z"));
