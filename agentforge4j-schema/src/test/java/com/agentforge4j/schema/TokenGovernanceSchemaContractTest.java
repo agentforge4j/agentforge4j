@@ -77,12 +77,31 @@ class TokenGovernanceSchemaContractTest {
   }
 
   @Test
+  void workflow_rejectsLlmSummaryWithUnknownModelTier() throws Exception {
+    String step = """
+        {"kind":"STEP","stepId":"s1","name":"S","behaviour":{"type":"COMPACT",
+         "source":{"kind":"ARTIFACT","ref":"a"},
+         "mode":{"type":"LLM_SUMMARY","modelTier":"PREMUIM"},
+         "policy":{"minSourceUnits":0,"minDownstreamReuse":0}}}""";
+    assertThat(validate(WORKFLOW_SCHEMA, workflowWithStep(step))).isNotEmpty();
+  }
+
+  @Test
   void workflow_acceptsCollectionStep() throws Exception {
     String step = """
         {"kind":"STEP","stepId":"s1","name":"S","behaviour":{"type":"COLLECTION",
          "minItems":1,"duplicatePolicy":"ALLOW","reopenPolicy":"NONE",
          "authorizationMode":"OPEN","transition":"AUTO"}}""";
     assertThat(validate(WORKFLOW_SCHEMA, workflowWithStep(step))).isEmpty();
+  }
+
+  @Test
+  void workflow_rejectsCollectionStepWithBlankItemSchemaRef() throws Exception {
+    String step = """
+        {"kind":"STEP","stepId":"s1","name":"S","behaviour":{"type":"COLLECTION",
+         "itemSchemaRef":"","minItems":1,"duplicatePolicy":"ALLOW","reopenPolicy":"NONE",
+         "authorizationMode":"OPEN","transition":"AUTO"}}""";
+    assertThat(validate(WORKFLOW_SCHEMA, workflowWithStep(step))).isNotEmpty();
   }
 
   @Test

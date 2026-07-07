@@ -360,22 +360,22 @@
     },
     "CollectionBehaviour": {
       "type": "object",
-      "additionalProperties": false,
       "required": ["type"],
+      "additionalProperties": false,
       "properties": {
-        "type": { "const": "COLLECTION" },
-        "itemSchemaRef": { "type": ["string", "null"] },
+        "type": { "type": "string", "const": "COLLECTION" },
+        "itemSchemaRef": { "type": ["string", "null"], "minLength": 1 },
         "minItems": { "type": "integer", "minimum": 0 },
         "maxItems": { "type": ["integer", "null"], "minimum": 1 },
         "maxItemsPerActor": { "type": ["integer", "null"], "minimum": 1 },
-        "maxInlinePayloadBytes": { "type": "integer" },
-        "duplicatePolicy": { "type": "string", "enum": ["ALLOW", "REJECT_BY_CLIENT_TOKEN", "REJECT_BY_DEDUPE_KEY"] },
-        "replacementPolicy": { "type": "string", "enum": ["NONE", "OWNER_REPLACE", "AUTHORIZED_REPLACE"] },
-        "withdrawalPolicy": { "type": "string", "enum": ["NONE", "OWNER_WITHDRAW", "AUTHORIZED_WITHDRAW"] },
+        "maxInlinePayloadBytes": { "type": "integer", "minimum": 0 },
+        "duplicatePolicy": { "enum": ["ALLOW", "REJECT_BY_CLIENT_TOKEN", "REJECT_BY_DEDUPE_KEY"] },
+        "replacementPolicy": { "enum": ["NONE", "OWNER_REPLACE", "AUTHORIZED_REPLACE"] },
+        "withdrawalPolicy": { "enum": ["NONE", "OWNER_WITHDRAW", "AUTHORIZED_WITHDRAW"] },
         "manualClose": { "type": ["boolean", "null"] },
         "externalDeadlineClosable": { "type": ["boolean", "null"] },
-        "reopenPolicy": { "type": "string", "enum": ["NONE", "ALLOWED"] },
-        "authorizationMode": { "type": "string", "enum": ["OPEN", "ENFORCED"] },
+        "reopenPolicy": { "enum": ["NONE", "ALLOWED"] },
+        "authorizationMode": { "enum": ["OPEN", "ENFORCED"] },
         "transition": { "$ref": "#/$defs/StepTransition" }
       }
     },
@@ -416,7 +416,7 @@
       "required": ["type", "modelTier"],
       "properties": {
         "type": { "const": "LLM_SUMMARY" },
-        "modelTier": { "type": "string", "minLength": 1 }
+        "modelTier": { "type": "string", "enum": ["LITE", "STANDARD", "POWERFUL", "PREMIUM"] }
       }
     },
     "CompactionPolicy": {
