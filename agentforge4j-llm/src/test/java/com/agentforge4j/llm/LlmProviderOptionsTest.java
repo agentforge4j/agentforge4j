@@ -85,10 +85,25 @@ class LlmProviderOptionsTest {
 
   @Test
   void invalid_duration_throws() {
-    LlmProviderOptions options = LlmProviderOptions.of("openai", Map.of("request.timeout", "30s"));
+    LlmProviderOptions options = LlmProviderOptions.of("openai", Map.of("request.timeout", "not-a-duration"));
 
     assertThatThrownBy(() -> options.duration("request.timeout"))
         .isInstanceOf(LlmProviderConfigurationException.class)
         .hasMessageContaining("request.timeout");
+  }
+
+  @Test
+  void duration_accepts_compact_shorthand_like_raw_provider_configuration() {
+    // MapLlmProviderOptions and RawProviderConfiguration share the same duration grammar: an operator who
+    // successfully writes a compact shorthand for a connect-timeout property must be able to write the same
+    // shorthand for a provider option.
+    LlmProviderOptions options = LlmProviderOptions.of("openai", Map.of(
+        "request.timeout", "15s",
+        "retry.backoff", "2m",
+        "poll.interval", "500ms"));
+
+    assertThat(options.duration("request.timeout")).contains(Duration.ofSeconds(15));
+    assertThat(options.duration("retry.backoff")).contains(Duration.ofMinutes(2));
+    assertThat(options.duration("poll.interval")).contains(Duration.ofMillis(500));
   }
 }
