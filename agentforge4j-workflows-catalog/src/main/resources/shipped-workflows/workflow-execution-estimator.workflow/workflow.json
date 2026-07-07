@@ -1,0 +1,65 @@
+{
+  "kind": "WORKFLOW",
+  "id": "workflow-execution-estimator",
+  "name": "Workflow Execution Estimator",
+  "description": "Estimates the execution shape of a workflow run before it executes: token range, agent turns, tool invocations, complexity, confidence inputs, structural risk flags, and a continue/narrow/stop recommendation. The caller pre-analyzes the target workflow deterministically and supplies the result here as structural facts. Execution shape only — never a monetary or account-balance concept.",
+  "steps": [
+    {
+      "kind": "STEP",
+      "stepId": "collect-analysis",
+      "name": "Collect Structural Analysis",
+      "behaviour": {
+        "type": "INPUT",
+        "artifactId": "structural-summary",
+        "transition": "AUTO"
+      },
+      "contextMapping": {
+        "outputKeys": [
+          "structuralSummaryJson",
+          "complexity",
+          "ceilingDerivable",
+          "noCeilingReason",
+          "minimumRequiredTokens"
+        ]
+      }
+    },
+    {
+      "kind": "STEP",
+      "stepId": "route-on-ceiling",
+      "name": "Route On Ceiling",
+      "behaviour": {
+        "type": "BRANCH",
+        "contextKey": "ceilingDerivable",
+        "branches": {
+          "false": {
+            "kind": "STEP",
+            "stepId": "no-ceiling",
+            "name": "No Finite Ceiling",
+            "behaviour": {
+              "type": "FAIL",
+              "reason": "No finite execution ceiling could be derived for the analyzed work."
+            }
+          }
+        },
+        "defaultBranch": {
+          "kind": "STEP",
+          "stepId": "estimate",
+          "name": "Estimate Execution Size",
+          "behaviour": {
+            "type": "AGENT",
+            "agentRef": "execution-estimator",
+            "transition": "HUMAN_APPROVAL"
+          },
+          "contextMapping": {
+            "inputKeys": ["structuralSummaryJson", "complexity"],
+            "outputKeys": [
+              "estimatedInputTokensPerAgentTurn",
+              "estimatedOutputTokensPerAgentTurn",
+              "estimatedToolInvocationsPerAgentTurn"
+            ]
+          }
+        }
+      }
+    }
+  ]
+}
