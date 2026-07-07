@@ -23,8 +23,27 @@ public sealed interface CollectionOp
    * @param payload     inline JSON payload; may be {@code null} for an empty submission
    * @param clientToken optional idempotency token
    * @param dedupeKey   optional dedupe key
+   * @param actorId     the submitting actor; {@code null} defaults to the harness's actor, so a
+   *                    scenario can script a multi-submitter collection or a specific submitter to
+   *                    later exercise owner-scoped replace/withdraw
    */
-  record Submit(String payload, String clientToken, String dedupeKey) implements CollectionOp {
+  record Submit(String payload, String clientToken, String dedupeKey, String actorId)
+      implements CollectionOp {
+
+    /**
+     * Validates the actor id (only when an explicit one is given; {@code null} means the harness
+     * default).
+     *
+     * @param payload     inline JSON payload; may be {@code null}
+     * @param clientToken optional idempotency token; may be {@code null}
+     * @param dedupeKey   optional dedupe key; may be {@code null}
+     * @param actorId     the submitting actor, or {@code null} to default to the harness's actor
+     */
+    public Submit {
+      if (actorId != null) {
+        Validate.notBlank(actorId, "Submit actorId must not be blank when provided");
+      }
+    }
   }
 
   /**
@@ -32,23 +51,48 @@ public sealed interface CollectionOp
    *
    * @param target  0-based ordinal of the originating submit; must not be negative
    * @param payload replacement inline JSON payload; may be {@code null}
+   * @param actorId the replacing actor; {@code null} defaults to the harness's actor. Under an
+   *                owner-scoped replacement policy this must match the target's submitting actor
+   *                (a scripted mismatch is a scenario asserting the runtime's denial)
    */
-  record Replace(int target, String payload) implements CollectionOp {
+  record Replace(int target, String payload, String actorId) implements CollectionOp {
 
+    /**
+     * Validates the target ordinal and the actor id.
+     *
+     * @param target  0-based ordinal of the originating submit; must not be negative
+     * @param payload replacement inline JSON payload; may be {@code null}
+     * @param actorId the replacing actor, or {@code null} to default to the harness's actor
+     */
     public Replace {
       Validate.isNotNegative(target, "Replace target must not be negative");
+      if (actorId != null) {
+        Validate.notBlank(actorId, "Replace actorId must not be blank when provided");
+      }
     }
   }
 
   /**
    * Withdraws the item created by the {@code target}-th submit in this op list.
    *
-   * @param target 0-based ordinal of the originating submit; must not be negative
+   * @param target  0-based ordinal of the originating submit; must not be negative
+   * @param actorId the withdrawing actor; {@code null} defaults to the harness's actor. Under an
+   *                owner-scoped withdrawal policy this must match the target's submitting actor
+   *                (a scripted mismatch is a scenario asserting the runtime's denial)
    */
-  record Withdraw(int target) implements CollectionOp {
+  record Withdraw(int target, String actorId) implements CollectionOp {
 
+    /**
+     * Validates the target ordinal and the actor id.
+     *
+     * @param target  0-based ordinal of the originating submit; must not be negative
+     * @param actorId the withdrawing actor, or {@code null} to default to the harness's actor
+     */
     public Withdraw {
       Validate.isNotNegative(target, "Withdraw target must not be negative");
+      if (actorId != null) {
+        Validate.notBlank(actorId, "Withdraw actorId must not be blank when provided");
+      }
     }
   }
 

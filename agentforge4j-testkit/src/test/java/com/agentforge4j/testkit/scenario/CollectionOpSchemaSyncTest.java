@@ -1,16 +1,17 @@
 // SPDX-License-Identifier: Apache-2.0
 package com.agentforge4j.testkit.scenario;
 
-import static org.assertj.core.api.Assertions.assertThat;
-
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.MissingNode;
 import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
 import org.junit.jupiter.api.Test;
+
+import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * Drift guard between the scenario DSL's collection-op vocabulary and its JSON schema: the
@@ -44,13 +45,14 @@ class CollectionOpSchemaSyncTest {
 
   private static JsonNode findCollectionOpEnum(JsonNode schema) {
     // The collection op definition carries an "op" property with an enum; locate it structurally
-    // rather than by definition name so a rename keeps the guard intact.
+    // rather than by definition name so a rename keeps the guard intact. Every $defs entry is
+    // checked here, so there is no reachable by-name fallback below it.
     for (JsonNode def : schema.path("$defs")) {
       JsonNode candidate = def.path("properties").path("op").path("enum");
       if (candidate.isArray()) {
         return candidate;
       }
     }
-    return schema.path("$defs").path("collectionOp").path("properties").path("op").path("enum");
+    return MissingNode.getInstance();
   }
 }

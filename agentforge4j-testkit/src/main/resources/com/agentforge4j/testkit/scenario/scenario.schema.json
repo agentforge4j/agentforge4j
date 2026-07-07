@@ -80,6 +80,11 @@
         "override": {
           "type": "boolean",
           "description": "Close despite an unmet minimum (for a close op)."
+        },
+        "actorId": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Acting actor for submit/replace/withdraw; when omitted the harness defaults to its own actor. Scripting distinct actors across ops exercises multi-submitter collections and owner-scoped replace/withdraw denial."
         }
       }
     },

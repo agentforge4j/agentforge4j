@@ -251,7 +251,13 @@ public final class CatalogScenarios {
     return responses;
   }
 
-  private static GateResponse toGateResponse(ExpectedResult.GateSpec spec) {
+  /**
+   * Package-visible (rather than {@code private}) solely so {@code CatalogScenariosCollectionOpTest}
+   * can exercise the scenario-DSL to {@link CollectionOp} conversion directly — the scenario-owning
+   * catalog is empty during the clean-slate window, so there is no shipped fixture to drive the
+   * {@code collection} gate type through {@link #run(ScenarioCase)} end to end.
+   */
+  static GateResponse toGateResponse(ExpectedResult.GateSpec spec) {
     String toolId = spec.toolInvocationId();
     return switch (spec.type()) {
       case "input" -> GateResponse.input(spec.answers() == null ? Map.of() : spec.answers());
@@ -284,10 +290,10 @@ public final class CatalogScenarios {
     List<CollectionOp> ops = new ArrayList<>();
     for (ExpectedResult.GateSpec.CollectionOpSpec spec : specs) {
       ops.add(switch (spec.op()) {
-        case "submit" ->
-            new CollectionOp.Submit(spec.payloadRef(), spec.clientToken(), spec.dedupeKey());
-        case "replace" -> new CollectionOp.Replace(ordinal(spec), spec.payloadRef());
-        case "withdraw" -> new CollectionOp.Withdraw(ordinal(spec));
+        case "submit" -> new CollectionOp.Submit(spec.payloadRef(), spec.clientToken(),
+            spec.dedupeKey(), spec.actorId());
+        case "replace" -> new CollectionOp.Replace(ordinal(spec), spec.payloadRef(), spec.actorId());
+        case "withdraw" -> new CollectionOp.Withdraw(ordinal(spec), spec.actorId());
         case "close" ->
             new CollectionOp.Close(closeReason(spec), Boolean.TRUE.equals(spec.override()));
         default -> throw new IllegalArgumentException("Unknown collection op: " + spec.op());

@@ -46,10 +46,13 @@ public record ExpectedResult(String workflowId, List<GateSpec> gates, ExpectSpec
      * @param dedupeKey    optional dedupe key for submit; may be {@code null}
      * @param reason       close reason for a close op; may be {@code null}
      * @param override     close-despite-unmet-minimum flag for a close op; may be {@code null}
+     * @param actorId      the acting actor for submit/replace/withdraw; {@code null} defaults to the
+     *                     harness's actor, so a scenario can script a multi-submitter collection or
+     *                     assert an owner-scoped denial
      */
     @JsonIgnoreProperties(ignoreUnknown = true)
     public record CollectionOpSpec(String op, String payloadRef, Integer submissionId,
-        String clientToken, String dedupeKey, String reason, Boolean override) {
+        String clientToken, String dedupeKey, String reason, Boolean override, String actorId) {
     }
   }
 

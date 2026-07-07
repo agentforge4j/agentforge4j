@@ -213,8 +213,14 @@ public final class WorkflowTestHarness {
    * Applies an ordered collection-gate interaction at a single {@code AWAITING_COLLECTION} pause:
    * submits/replaces/withdraws then close, through {@code CollectionGateRuntime}. Replace/withdraw
    * target a prior submit by its 0-based ordinal (runtime ids are non-deterministic), mapped to the
-   * real id captured at submit time. When the ops include a close that left the run still at the gate
-   * (reopen policy {@code ALLOWED}), the run is advanced so one response drives the whole interaction.
+   * real id captured at submit time. Each submit/replace/withdraw op runs under its own
+   * {@link CollectionOp} {@code actorId} when scripted, defaulting to the harness's {@link #ACTOR}
+   * otherwise, so a scenario can drive a multi-submitter collection or assert an owner-scoped
+   * denial. A rejected submit or replace (a configured constraint refusal, not an authorization
+   * denial, which throws) fails the harness immediately rather than silently continuing the
+   * scenario with a masked outcome. When the ops include a close that left the run still at the
+   * gate (reopen policy {@code ALLOWED}), the run is advanced so one response drives the whole
+   * interaction.
    */
   private static void applyCollectionOps(WorkflowRuntime runtime, CollectionGateRuntime collections,
       String runId, String stepId, List<CollectionOp> ops) {
@@ -224,13 +230,18 @@ public final class WorkflowTestHarness {
       if (op instanceof CollectionOp.Submit submit) {
         SubmissionResult result = collections.submitItem(runId, stepId,
             new CollectionSubmission(payload(submit.payload()), submit.clientToken(),
-                submit.dedupeKey()), ACTOR);
+                submit.dedupeKey()), actorOrDefault(submit.actorId()));
+        requireAccepted(result, stepId, "submit");
         submissionIds.add(result.submissionId());
       } else if (op instanceof CollectionOp.Replace replace) {
-        collections.replaceItem(runId, stepId, targetId(submissionIds, replace.target()),
-            new CollectionSubmission(payload(replace.payload()), null, null), ACTOR);
+        SubmissionResult result = collections.replaceItem(runId, stepId,
+            targetId(submissionIds, replace.target()),
+            new CollectionSubmission(payload(replace.payload()), null, null),
+            actorOrDefault(replace.actorId()));
+        requireAccepted(result, stepId, "replace");
       } else if (op instanceof CollectionOp.Withdraw withdraw) {
-        collections.withdrawItem(runId, stepId, targetId(submissionIds, withdraw.target()), ACTOR);
+        collections.withdrawItem(runId, stepId, targetId(submissionIds, withdraw.target()),
+            actorOrDefault(withdraw.actorId()));
       } else if (op instanceof CollectionOp.Close close) {
         collections.closeCollection(runId, stepId,
             new CloseRequest(ACTOR, close.reason(), close.override(), null));
@@ -239,6 +250,22 @@ public final class WorkflowTestHarness {
     }
     if (closed && runtime.getState(runId).getStatus() == WorkflowStatus.AWAITING_COLLECTION) {
       runtime.continueRun(runId, ACTOR);
+    }
+  }
+
+  private static String actorOrDefault(String actorId) {
+    return actorId != null ? actorId : ACTOR;
+  }
+
+  /**
+   * Fails the harness immediately when a scripted submit/replace was rejected by a configured gate
+   * constraint, instead of silently continuing the scenario with a masked {@code null} submission id.
+   */
+  private static void requireAccepted(SubmissionResult result, String stepId, String opName) {
+    if (result.status() == SubmissionResult.Status.REJECTED) {
+      throw new IllegalStateException(
+          "Collection %s op at step '%s' was rejected: %s".formatted(opName, stepId,
+              result.reason()));
     }
   }
 
