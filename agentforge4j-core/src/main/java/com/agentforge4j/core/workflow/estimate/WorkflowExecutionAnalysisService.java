@@ -15,9 +15,9 @@ import com.fasterxml.jackson.databind.ObjectMapper;
  * <ol>
  *   <li>{@link #analyze(WorkflowDefinition)} runs {@link WorkflowComplexityAnalyzer} to produce the
  *       deterministic {@link WorkflowComplexityAnalysis}.</li>
- *   <li>{@link #summarize(WorkflowComplexityAnalysis)} serialises that analysis to a compact JSON
- *       structural summary, which the host supplies to the run as an {@code INPUT} answer — the
- *       workflow never receives the {@code WorkflowDefinition} object itself.</li>
+ *   <li>{@link #summarize(WorkflowComplexityAnalysis, ObjectMapper)} serialises that analysis to a
+ *       compact JSON structural summary, which the host supplies to the run as an {@code INPUT}
+ *       answer — the workflow never receives the {@code WorkflowDefinition} object itself.</li>
  *   <li>{@link #aggregate(WorkflowComplexityAnalysis, SizingInputs)} combines the analysis with the
  *       per-turn sizing the {@code execution-estimator} agent produced into the final
  *       {@link ExecutionEstimate}.</li>
@@ -28,8 +28,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
  * application, the SDLC workflow, or an example harness).
  */
 public final class WorkflowExecutionAnalysisService {
-
-  private static final ObjectMapper MAPPER = new ObjectMapper();
 
   private WorkflowExecutionAnalysisService() {
   }
@@ -50,13 +48,15 @@ public final class WorkflowExecutionAnalysisService {
    * Serialises a structural analysis to a compact JSON summary for use as a run input answer.
    *
    * @param analysis the analysis to summarise; must not be {@code null}
+   * @param mapper   the caller's Jackson mapper; must not be {@code null}
    *
    * @return the JSON structural summary; never {@code null}
    */
-  public static String summarize(WorkflowComplexityAnalysis analysis) {
+  public static String summarize(WorkflowComplexityAnalysis analysis, ObjectMapper mapper) {
     Validate.notNull(analysis, "analysis must not be null");
+    Validate.notNull(mapper, "mapper must not be null");
     try {
-      return MAPPER.writeValueAsString(analysis);
+      return mapper.writeValueAsString(analysis);
     } catch (JsonProcessingException e) {
       throw new IllegalStateException("Failed to serialise workflow complexity analysis", e);
     }

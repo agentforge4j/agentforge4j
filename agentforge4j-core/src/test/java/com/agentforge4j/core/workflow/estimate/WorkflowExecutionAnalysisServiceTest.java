@@ -6,6 +6,7 @@ import com.agentforge4j.core.workflow.WorkflowDefinition;
 import com.agentforge4j.core.workflow.step.StepDefinition;
 import com.agentforge4j.core.workflow.step.StepTransition;
 import com.agentforge4j.core.workflow.step.behaviour.AgentBehaviour;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -45,7 +46,7 @@ class WorkflowExecutionAnalysisServiceTest {
     WorkflowComplexityAnalysis analysis =
         WorkflowExecutionAnalysisService.analyze(singleAgentWorkflow());
 
-    String summary = WorkflowExecutionAnalysisService.summarize(analysis);
+    String summary = WorkflowExecutionAnalysisService.summarize(analysis, new ObjectMapper());
 
     assertThat(summary)
         .contains("\"workflowId\":\"wf\"")
