@@ -15,6 +15,8 @@ import java.util.ServiceLoader;
  */
 public final class TokenEstimatorResolver {
 
+  private static final System.Logger LOG = System.getLogger(TokenEstimatorResolver.class.getName());
+
   private TokenEstimatorResolver() {
   }
 
@@ -28,6 +30,18 @@ public final class TokenEstimatorResolver {
     Iterator<TokenEstimator> discovered = ServiceLoader
         .load(TokenEstimator.class, Thread.currentThread().getContextClassLoader())
         .iterator();
-    return discovered.hasNext() ? discovered.next() : new DefaultTokenEstimator();
+    if (!discovered.hasNext()) {
+      return new DefaultTokenEstimator();
+    }
+    TokenEstimator selected = discovered.next();
+    if (discovered.hasNext()) {
+      // A TokenEstimator has no natural id to disambiguate by (unlike named LLM providers), so
+      // resolution cannot fail closed here: it deterministically keeps the first ServiceLoader result
+      // and just surfaces the ambiguity so the embedding application can prune its module path.
+      LOG.log(System.Logger.Level.WARNING,
+          "Multiple TokenEstimator implementations discovered on the module path; selected {0}",
+          selected.getClass().getName());
+    }
+    return selected;
   }
 }

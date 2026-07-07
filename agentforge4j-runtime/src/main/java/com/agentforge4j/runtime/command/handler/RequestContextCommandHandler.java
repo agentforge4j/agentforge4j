@@ -36,6 +36,7 @@ public final class RequestContextCommandHandler implements CommandHandler<Reques
 
   private static final String REASON_NOT_IN_SCOPE = "NOT_IN_EXPANDABLE_SCOPE";
   private static final String REASON_MAX_REACHED = "MAX_EXPANSIONS_REACHED";
+  private static final String REASON_RESERVED_NAMESPACE = "RESERVED_NAMESPACE";
 
   private final ContextSourceResolver contextSourceResolver;
   private final EventRecorder eventRecorder;
@@ -85,13 +86,26 @@ public final class RequestContextCommandHandler implements CommandHandler<Reques
   }
 
   private void grant(CommandApplicationRequest request, ContextSelector selector, int round) {
+    // Reject the reserved '__' runtime namespace (ledger merges, compact siblings, and other
+    // governance state) the same way SetContextCommandHandler guards LLM-declared output keys: a
+    // granted expansion must never write into runtime-owned state, even if a workflow author declared
+    // such a ref in expandableScope. Treated as a deny, not a thrown exception, so it stays consistent
+    // with this class's existing "requests are granted or denied" governance shape.
+    if (selector.ref().startsWith("__")) {
+      recordDenied(request, selector, round, REASON_RESERVED_NAMESPACE);
+      return;
+    }
     WorkflowState state = request.state();
     // Never overwrite an existing key with a re-encoded copy: a STATE_KEY selector's ref may already
     // name a value the workflow author or a prior grant round put there, and re-writing it here would
     // mutate its type/encoding (e.g. a StringContextValue becoming a re-encoded JsonContextValue) for
     // a context-read request that has no business changing existing state.
     if (state.getContextValue(selector.ref()).isEmpty()) {
-      String content = contextSourceResolver.resolveFull(selector, state, request.enclosingWorkflow());
+      // resolve() (not resolveFull()) so a granted expansion honors the selector's declared
+      // ContextVariant: COMPACT_PREFERRED serves the compact sibling when fresh, and COMPACT_ONLY fails
+      // closed via CompactSiblingUnavailableException (allowed to propagate, per this class's contract
+      // of surfacing command-application failures rather than swallowing them).
+      String content = contextSourceResolver.resolve(selector, state, request.enclosingWorkflow());
       state.putContextValue(selector.ref(),
           new JsonContextValue(content, ContextProvenance.SYSTEM_GENERATED));
     }

@@ -23,9 +23,12 @@ import java.util.Optional;
  *
  * <p>Both the current section and the delta follow the shipped ledger envelope shape:
  * {@code {entries: [...], openQuestions: [...], conflicts: [...]}}. Any field absent from a document
- * defaults to an empty array. {@code openQuestions} and {@code conflicts} are structural — always
- * carried forward — so for every strategy they are concatenated (current followed by delta); only
- * {@code entries} is shaped by {@code mergeStrategy}.
+ * defaults to an empty array. {@code entries} is always shaped by {@code mergeStrategy}.
+ * {@code openQuestions} and {@code conflicts} are structural — carried forward under
+ * {@link LedgerMergeStrategy#APPEND} and {@link LedgerMergeStrategy#MERGE_BY_KEY}, where they are
+ * concatenated (current followed by delta). {@link LedgerMergeStrategy#REPLACE_SECTION} does not carry
+ * them forward: it discards the current section's {@code openQuestions}/{@code conflicts} entirely and
+ * normalizes the delta's own (possibly absent, defaulting to empty) values instead.
  */
 public final class LedgerMerger {
 

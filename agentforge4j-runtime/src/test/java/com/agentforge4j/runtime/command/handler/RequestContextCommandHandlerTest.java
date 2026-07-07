@@ -2,22 +2,33 @@
 package com.agentforge4j.runtime.command.handler;
 
 import com.agentforge4j.core.command.RequestContextCommand;
+import com.agentforge4j.core.workflow.LedgerDefinition;
+import com.agentforge4j.core.workflow.LedgerMergeStrategy;
 import com.agentforge4j.core.workflow.WorkflowDefinition;
 import com.agentforge4j.core.workflow.WorkflowLifecycle;
 import com.agentforge4j.core.workflow.WorkflowSource;
 import com.agentforge4j.core.workflow.context.ContextMapping;
 import com.agentforge4j.core.workflow.event.WorkflowEvent;
 import com.agentforge4j.core.workflow.event.WorkflowEventType;
+import com.agentforge4j.core.workflow.state.CompactSiblingMetadata;
 import com.agentforge4j.core.workflow.state.WorkflowState;
 import com.agentforge4j.core.workflow.step.ContextSelection;
 import com.agentforge4j.core.workflow.step.ContextSelector;
 import com.agentforge4j.core.workflow.step.ContextSourceKind;
 import com.agentforge4j.core.workflow.step.ContextVariant;
 import com.agentforge4j.core.workflow.step.StepDefinition;
+import com.agentforge4j.core.workflow.step.behaviour.CompactionPolicy;
+import com.agentforge4j.core.workflow.step.behaviour.DeterministicExtract;
 import com.agentforge4j.core.workflow.step.behaviour.FailBehaviour;
 import com.agentforge4j.runtime.command.CommandApplicationRequest;
+import com.agentforge4j.runtime.context.CompactSibling;
+import com.agentforge4j.runtime.context.CompactSiblingStore;
+import com.agentforge4j.runtime.context.ContextFingerprint;
+import com.agentforge4j.runtime.context.ContextSourceId;
 import com.agentforge4j.runtime.context.ContextSourceResolver;
 import com.agentforge4j.runtime.event.EventRecorder;
+import com.agentforge4j.runtime.exception.CompactSiblingUnavailableException;
+import com.agentforge4j.runtime.ledger.LedgerMerger;
 import com.agentforge4j.runtime.llm.ContextRenderer;
 import com.agentforge4j.runtime.repository.InMemoryWorkflowEventLog;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -29,6 +40,7 @@ import java.util.Map;
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class RequestContextCommandHandlerTest {
 
@@ -45,6 +57,15 @@ class RequestContextCommandHandlerTest {
     return new ContextSelector(ContextSourceKind.STATE_KEY, ref, ContextVariant.FULL);
   }
 
+  private static ContextSelector ledgerSelector(String ref, ContextVariant variant) {
+    return new ContextSelector(ContextSourceKind.LEDGER_SECTION, ref, variant);
+  }
+
+  private static LedgerDefinition ledger(String id) {
+    return new LedgerDefinition(id, "ledger/requirement-ledger.schema.json",
+        LedgerMergeStrategy.APPEND, null);
+  }
+
   private static StepDefinition step(ContextSelection selection) {
     return StepDefinition.builder().withStepId("s1").withName("s1")
         .withBehaviour(new FailBehaviour("stop")).withContextSelection(selection).build();
@@ -56,10 +77,22 @@ class RequestContextCommandHandlerTest {
         List.of(), List.of());
   }
 
+  private static WorkflowDefinition workflowWithLedger(StepDefinition step, LedgerDefinition ledger) {
+    return new WorkflowDefinition("wf", "W", null, null, null, "1.0.0", null,
+        WorkflowSource.CUSTOM, WorkflowLifecycle.ACTIVE, Map.of(), Map.of(), List.of(step),
+        List.of(), List.of(ledger));
+  }
+
   private CommandApplicationRequest request(WorkflowState state, StepDefinition step,
       int round) {
     return new CommandApplicationRequest(state, ContextMapping.none(), "agent-1", 1, step,
         workflow(step), round);
+  }
+
+  private CommandApplicationRequest request(WorkflowState state, StepDefinition step,
+      WorkflowDefinition enclosingWorkflow, int round) {
+    return new CommandApplicationRequest(state, ContextMapping.none(), "agent-1", 1, step,
+        enclosingWorkflow, round);
   }
 
   private static WorkflowState state() {
@@ -191,5 +224,83 @@ class RequestContextCommandHandlerTest {
     assertThat(events).extracting(WorkflowEvent::eventType)
         .containsExactlyInAnyOrder(WorkflowEventType.CONTEXT_EXPANSION_GRANTED,
             WorkflowEventType.CONTEXT_EXPANSION_DENIED);
+  }
+
+  @Test
+  void compactPreferredGrantServesFreshSiblingAndFallsBackToFullWhenStale() {
+    LedgerDefinition ledgerDef = ledger("requirements");
+    ContextSelector compactSelector = ledgerSelector("requirements", ContextVariant.COMPACT_PREFERRED);
+    ContextSelection selection = new ContextSelection(List.of(), List.of(compactSelector), null);
+    StepDefinition step = step(selection);
+    WorkflowDefinition workflow = workflowWithLedger(step, ledgerDef);
+    WorkflowState state = state();
+    LedgerMerger.writeMerged(state, ledgerDef,
+        mapper.valueToTree(Map.of("entries", List.of(Map.of("id", "REQ-1")))));
+    String fullContent = new ContextSourceResolver(new ContextRenderer(mapper), mapper)
+        .resolveFull(compactSelector, state, workflow);
+    String sourceId = ContextSourceId.of(compactSelector);
+    CompactSiblingMetadata metadata = new CompactSiblingMetadata(sourceId,
+        ContextFingerprint.of(fullContent), new DeterministicExtract(), 100, 10, "compact-step",
+        new CompactionPolicy(0, 0));
+    CompactSiblingStore.write(state, sourceId, new CompactSibling("compact form", metadata), mapper);
+    RequestContextCommand command = new RequestContextCommand(List.of(compactSelector));
+
+    handler.apply(command, request(state, step, workflow, 1));
+
+    assertThat(eventLog.getEvents("run-1").get(0).eventType())
+        .isEqualTo(WorkflowEventType.CONTEXT_EXPANSION_GRANTED);
+    assertThat(state.getContextValue("requirements"))
+        .get()
+        .isInstanceOf(com.agentforge4j.core.workflow.context.JsonContextValue.class)
+        .extracting(value -> ((com.agentforge4j.core.workflow.context.JsonContextValue) value).json())
+        .isEqualTo("compact form");
+
+    // A fresh round against a state whose ledger has since changed (no matching sibling written) must
+    // fall back to full content rather than serving the now-stale "compact form" sibling.
+    WorkflowState staleState = state();
+    LedgerMerger.writeMerged(staleState, ledgerDef,
+        mapper.valueToTree(Map.of("entries", List.of(Map.of("id", "REQ-9")))));
+    RequestContextCommand staleCommand = new RequestContextCommand(List.of(compactSelector));
+
+    handler.apply(staleCommand, request(staleState, step, workflow, 1));
+
+    assertThat(staleState.getContextValue("requirements"))
+        .get()
+        .isInstanceOf(com.agentforge4j.core.workflow.context.JsonContextValue.class)
+        .extracting(value -> ((com.agentforge4j.core.workflow.context.JsonContextValue) value).json())
+        .isNotEqualTo("compact form");
+  }
+
+  @Test
+  void compactOnlyGrantPropagatesCompactSiblingUnavailableExceptionWhenNoFreshSiblingExists() {
+    LedgerDefinition ledgerDef = ledger("requirements");
+    ContextSelector compactOnlySelector = ledgerSelector("requirements", ContextVariant.COMPACT_ONLY);
+    ContextSelection selection = new ContextSelection(List.of(), List.of(compactOnlySelector), null);
+    StepDefinition step = step(selection);
+    WorkflowDefinition workflow = workflowWithLedger(step, ledgerDef);
+    WorkflowState state = state();
+    LedgerMerger.writeMerged(state, ledgerDef,
+        mapper.valueToTree(Map.of("entries", List.of(Map.of("id", "REQ-1")))));
+    RequestContextCommand command = new RequestContextCommand(List.of(compactOnlySelector));
+
+    assertThatThrownBy(() -> handler.apply(command, request(state, step, workflow, 1)))
+        .isInstanceOf(CompactSiblingUnavailableException.class);
+  }
+
+  @Test
+  void grantDeniesAndDoesNotWriteAReservedNamespaceSelector() {
+    ContextSelector reservedSelector = selector("__ledgerMergeState");
+    ContextSelection selection = new ContextSelection(List.of(), List.of(reservedSelector), null);
+    StepDefinition step = step(selection);
+    WorkflowState state = state();
+    RequestContextCommand command = new RequestContextCommand(List.of(reservedSelector));
+
+    handler.apply(command, request(state, step, 1));
+
+    List<WorkflowEvent> events = eventLog.getEvents("run-1");
+    assertThat(events).hasSize(1);
+    assertThat(events.get(0).eventType()).isEqualTo(WorkflowEventType.CONTEXT_EXPANSION_DENIED);
+    assertThat(events.get(0).payload()).contains("RESERVED_NAMESPACE");
+    assertThat(state.getContextValue("__ledgerMergeState")).isEmpty();
   }
 }
