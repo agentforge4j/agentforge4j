@@ -114,7 +114,12 @@ final class CollectionGateService {
     CollectionItem existing = requireLiveItem(gate, submissionId);
     boolean owns = existing.submittedByActorId().equals(actorId);
     CollectionAction action = resolveReplaceAction(cfg.replacementPolicy(), owns, stepId);
-    authorize(state, workflow, cfg, stepId, action, actorId);
+    // OWNER_REPLACE is an absolute, non-owner-overridable restriction; a non-owning actor's attempt is
+    // routed through authorize()/denyAndThrow below so it is audited identically to every other
+    // denial in this class, instead of failing closed silently before authorize() ever runs.
+    String ownerOnlyDenialReason = cfg.replacementPolicy() == ReplacementPolicy.OWNER_REPLACE && !owns
+        ? "Replacement is restricted to the submitting actor" : null;
+    authorize(state, workflow, cfg, stepId, action, actorId, ownerOnlyDenialReason);
 
     SubmissionResult idempotent = idempotentReturn(gate, replacement.clientToken());
     if (idempotent != null) {
@@ -151,7 +156,12 @@ final class CollectionGateService {
     CollectionItem existing = requireLiveItem(gate, submissionId);
     boolean owns = existing.submittedByActorId().equals(actorId);
     CollectionAction action = resolveWithdrawAction(cfg.withdrawalPolicy(), owns, stepId);
-    authorize(state, workflow, cfg, stepId, action, actorId);
+    // OWNER_WITHDRAW is an absolute, non-owner-overridable restriction; a non-owning actor's attempt
+    // is routed through authorize()/denyAndThrow below so it is audited identically to every other
+    // denial in this class, instead of failing closed silently before authorize() ever runs.
+    String ownerOnlyDenialReason = cfg.withdrawalPolicy() == WithdrawalPolicy.OWNER_WITHDRAW && !owns
+        ? "Withdrawal is restricted to the submitting actor" : null;
+    authorize(state, workflow, cfg, stepId, action, actorId, ownerOnlyDenialReason);
 
     CollectionItem withdrawn = new CollectionItem(submissionId, existing.submittedByActorId(),
         existing.submittedAt(), existing.version(), true, existing.payload(), existing.dedupeKey(),
@@ -335,8 +345,27 @@ final class CollectionGateService {
 
   private void authorize(WorkflowState state, WorkflowDefinition workflow, CollectionBehaviour cfg,
       String stepId, CollectionAction action, String actorId) {
+    authorize(state, workflow, cfg, stepId, action, actorId, null);
+  }
+
+  /**
+   * Authorizes {@code action} for {@code actorId}, additionally failing closed with
+   * {@code ownerOnlyDenialReason} when non-{@code null} — used by {@code replace}/{@code withdraw} to
+   * surface an {@code OWNER_REPLACE}/{@code OWNER_WITHDRAW} ownership violation through this method's
+   * own {@code denyAndThrow} so it is audited identically to every other denial in this class. The
+   * check runs before the {@code STEP_ACTION} requirement/authorizer path so that ownership, which is
+   * an absolute restriction for those policies, can never be overridden by an authorizer decision.
+   */
+  private void authorize(WorkflowState state, WorkflowDefinition workflow, CollectionBehaviour cfg,
+      String stepId, CollectionAction action, String actorId, String ownerOnlyDenialReason) {
     if (StringUtils.isBlank(actorId)) {
+      // Defense-in-depth: every public entry point already rejects a blank actor earlier via
+      // Validate.notBlank, so this branch is unreachable from any live call path today. It guards
+      // against a future internal caller reaching authorize() without having pre-validated the actor.
       denyAndThrow(state, stepId, action, actorId, "actor must not be blank");
+    }
+    if (ownerOnlyDenialReason != null) {
+      denyAndThrow(state, stepId, action, actorId, ownerOnlyDenialReason);
     }
     if (cfg.authorizationMode() == AuthorizationMode.OPEN) {
       if (action == CollectionAction.REPLACE_ANY || action == CollectionAction.WITHDRAW_ANY) {
@@ -390,21 +419,32 @@ final class CollectionGateService {
     throw new CollectionAuthorizationException(actorId, stepId, action, reason);
   }
 
+  /**
+   * Resolves the {@link CollectionAction} a replace attempt maps to. Under {@code OWNER_REPLACE} this
+   * is always {@code REPLACE_OWN}, even when {@code owns} is {@code false} — the caller pairs this
+   * with an owner-only denial reason so {@code authorize} fails closed on the mismatch instead of an
+   * ownership violation being (mis)routed through the {@code REPLACE_ANY} requirement/authorizer path.
+   */
   private static CollectionAction resolveReplaceAction(ReplacementPolicy policy, boolean owns, String stepId) {
     Validate.isTrue(policy != ReplacementPolicy.NONE,
         "Replacement is not permitted for collection step '%s'".formatted(stepId));
     if (policy == ReplacementPolicy.OWNER_REPLACE) {
-      Validate.isTrue(owns, "Replacement is restricted to the submitting actor");
       return CollectionAction.REPLACE_OWN;
     }
     return owns ? CollectionAction.REPLACE_OWN : CollectionAction.REPLACE_ANY;
   }
 
+  /**
+   * Resolves the {@link CollectionAction} a withdraw attempt maps to. Under {@code OWNER_WITHDRAW}
+   * this is always {@code WITHDRAW_OWN}, even when {@code owns} is {@code false} — the caller pairs
+   * this with an owner-only denial reason so {@code authorize} fails closed on the mismatch instead of
+   * an ownership violation being (mis)routed through the {@code WITHDRAW_ANY} requirement/authorizer
+   * path.
+   */
   private static CollectionAction resolveWithdrawAction(WithdrawalPolicy policy, boolean owns, String stepId) {
     Validate.isTrue(policy != WithdrawalPolicy.NONE,
         "Withdrawal is not permitted for collection step '%s'".formatted(stepId));
     if (policy == WithdrawalPolicy.OWNER_WITHDRAW) {
-      Validate.isTrue(owns, "Withdrawal is restricted to the submitting actor");
       return CollectionAction.WITHDRAW_OWN;
     }
     return owns ? CollectionAction.WITHDRAW_OWN : CollectionAction.WITHDRAW_ANY;

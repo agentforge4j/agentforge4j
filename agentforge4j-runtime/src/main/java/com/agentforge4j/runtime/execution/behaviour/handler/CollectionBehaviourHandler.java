@@ -13,6 +13,9 @@ import com.agentforge4j.runtime.execution.ExecutionContext;
 import com.agentforge4j.runtime.execution.ExecutionOutcome;
 import com.agentforge4j.runtime.execution.behaviour.BehaviourHandler;
 import com.agentforge4j.util.Validate;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.time.Clock;
 import java.util.List;
 import java.util.Optional;
@@ -41,10 +44,12 @@ public final class CollectionBehaviourHandler implements BehaviourHandler<Collec
 
   private final EventRecorder eventRecorder;
   private final Clock clock;
+  private final ObjectMapper objectMapper;
 
   public CollectionBehaviourHandler(EventRecorder eventRecorder, Clock clock) {
     this.eventRecorder = Validate.notNull(eventRecorder, "eventRecorder must not be null");
     this.clock = Validate.notNull(clock, "clock must not be null");
+    this.objectMapper = new ObjectMapper();
   }
 
   @Override
@@ -76,10 +81,23 @@ public final class CollectionBehaviourHandler implements BehaviourHandler<Collec
     return ExecutionOutcome.PAUSED;
   }
 
-  private static String openSummary(CollectionBehaviour behaviour) {
-    return "{\"minItems\":%d,\"maxItems\":%s,\"authorizationMode\":\"%s\"}".formatted(
-        behaviour.minItems(),
-        behaviour.maxItems() == null ? "null" : behaviour.maxItems().toString(),
-        behaviour.authorizationMode());
+  /**
+   * Serialises the {@code COLLECTION_OPENED} audit summary via the node API, consistent with
+   * {@code CollectionGateService}'s own audit-payload construction elsewhere in this feature.
+   */
+  private String openSummary(CollectionBehaviour behaviour) {
+    ObjectNode payload = objectMapper.createObjectNode();
+    payload.put("minItems", behaviour.minItems());
+    if (behaviour.maxItems() == null) {
+      payload.putNull("maxItems");
+    } else {
+      payload.put("maxItems", behaviour.maxItems());
+    }
+    payload.put("authorizationMode", behaviour.authorizationMode().name());
+    try {
+      return objectMapper.writeValueAsString(payload);
+    } catch (JsonProcessingException ex) {
+      throw new IllegalStateException("Failed to serialize collection-open audit payload", ex);
+    }
   }
 }

@@ -622,6 +622,45 @@ class CollectionGateRuntimeTest {
   }
 
   @Test
+  void ownerPolicyDeniesCrossActorReplaceAndWithdrawWithAnAuditedDenial() {
+    // OWNER_REPLACE/OWNER_WITHDRAW is the one denial path that used to throw before authorize() ever
+    // ran, leaving no COLLECTION_AUTHORIZATION_DENIED audit trail for a cross-actor tampering attempt
+    // against an owner-only gate. Both verbs must now be audited identically to every other denial.
+    WorkflowRuntime runtime = runtime(behaviourFull(0, null, ReopenPolicy.NONE, AuthorizationMode.OPEN,
+        ReplacementPolicy.OWNER_REPLACE, WithdrawalPolicy.OWNER_WITHDRAW));
+    CollectionGateRuntime gate = (CollectionGateRuntime) runtime;
+    String runId = runtime.start("wf");
+    SubmissionResult submitted = gate.submitItem(runId, STEP, submission("a", null, null), ACTOR);
+
+    assertThatThrownBy(() -> gate.replaceItem(runId, STEP, submitted.submissionId(),
+        submission("b", null, null), "other-actor"))
+        .isInstanceOf(CollectionAuthorizationException.class);
+    assertThat(eventTypes(runId)).contains(WorkflowEventType.COLLECTION_AUTHORIZATION_DENIED);
+
+    assertThatThrownBy(() -> gate.withdrawItem(runId, STEP, submitted.submissionId(), "other-actor"))
+        .isInstanceOf(CollectionAuthorizationException.class);
+    assertThat(eventTypes(runId)).filteredOn(type -> type == WorkflowEventType.COLLECTION_AUTHORIZATION_DENIED)
+        .hasSize(2);
+  }
+
+  @Test
+  void openModeAllowsReopenFromAnyNonBlankActor() {
+    // Unlike OVERRIDE and DEADLINE_CLOSE (which OPEN mode structurally denies regardless of actor),
+    // REOPEN is not in that carve-out list -- OPEN mode's default "any non-blank actor" grant applies,
+    // so a cross-actor reopen must succeed.
+    WorkflowRuntime runtime = runtime(behaviour(0, null, ReopenPolicy.ALLOWED, AuthorizationMode.OPEN));
+    CollectionGateRuntime gate = (CollectionGateRuntime) runtime;
+    String runId = runtime.start("wf");
+    gate.closeCollection(runId, STEP, new CloseRequest(ACTOR, CloseReason.MANUAL, false, null));
+    assertThat(gate.getCollection(runId, STEP, ACTOR).phase()).isEqualTo(CollectionPhase.CLOSED);
+
+    gate.reopenCollection(runId, STEP, "any-other-actor");
+
+    assertThat(gate.getCollection(runId, STEP, ACTOR).phase()).isEqualTo(CollectionPhase.OPEN);
+    assertThat(eventTypes(runId)).contains(WorkflowEventType.COLLECTION_REOPENED);
+  }
+
+  @Test
   void blankActorIsDenied() {
     WorkflowRuntime runtime = runtime(behaviour(0, null, ReopenPolicy.NONE, AuthorizationMode.OPEN));
     CollectionGateRuntime gate = (CollectionGateRuntime) runtime;
@@ -974,9 +1013,10 @@ class CollectionGateRuntimeTest {
     assertThat(replaced.status()).isEqualTo(SubmissionResult.Status.ACCEPTED);
 
     // Ownership of the slot follows the latest version (documented CollectionItem/CollectionGateService
-    // contract), not the original submitter: the original actor can no longer OWNER_WITHDRAW it...
+    // contract), not the original submitter: the original actor can no longer OWNER_WITHDRAW it -- this
+    // is an authorization denial (audited as COLLECTION_AUTHORIZATION_DENIED), not a structural error.
     assertThatThrownBy(() -> gate.withdrawItem(runId, STEP, submitted.submissionId(), ACTOR))
-        .isInstanceOf(IllegalArgumentException.class);
+        .isInstanceOf(CollectionAuthorizationException.class);
     // ...but the replacing actor, now the recorded owner, can.
     gate.withdrawItem(runId, STEP, submitted.submissionId(), "admin-actor");
     assertThat(gate.getCollection(runId, STEP, ACTOR).liveCount()).isZero();
