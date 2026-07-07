@@ -9,6 +9,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.api.Test;
 
@@ -138,6 +139,51 @@ class FileSystemContextPackLoaderTest {
     assertThatThrownBy(() -> loader().load())
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("duplicate context pack name 'dup'");
+  }
+
+  @Test
+  void aggregatesRecordValidationFailureWithOtherPackErrors() throws Exception {
+    pack("no-manifest");
+    Path dir = pack("blank-name");
+    write(dir, "pack.json", """
+        {"name":" ","version":"1.0.0","variants":{"full":"c.md"}}""");
+    write(dir, "c.md", "content");
+
+    assertThatThrownBy(() -> loader().load())
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("missing pack.json")
+        .hasMessageContaining("ContextPack name must not be blank");
+  }
+
+  @Test
+  void rejectsWhitespaceOnlyVariantKeyThatPassesSchema() throws Exception {
+    Path dir = pack("whitespace-variant-key");
+    write(dir, "pack.json", """
+        {"name":"whitespace-variant-key","version":"1.0.0","variants":{" ":"c.md"}}""");
+    write(dir, "c.md", "content");
+
+    assertThatThrownBy(() -> loader().load())
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("ContextPackVariant name must not be blank");
+  }
+
+  @Test
+  void rejectsPackDirectorySymlinkEscapingContextPacksRoot(@TempDir Path outside) throws Exception {
+    Path outsidePack = Files.createDirectories(outside.resolve("outside-pack"));
+    write(outsidePack, "pack.json", """
+        {"name":"outside","version":"1.0.0","variants":{"full":"c.md"}}""");
+    write(outsidePack, "c.md", "content");
+
+    Path link = root.resolve("linked-pack");
+    try {
+      Files.createSymbolicLink(link, outsidePack);
+    } catch (IOException | UnsupportedOperationException e) {
+      Assumptions.abort("Symlinks not supported in this environment: " + e.getMessage());
+    }
+
+    assertThatThrownBy(() -> loader().load())
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("escapes the context packs root");
   }
 
   @Test

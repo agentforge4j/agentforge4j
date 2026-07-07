@@ -38,6 +38,14 @@ class ContextPackTest {
   }
 
   @Test
+  void rejectsVariantKeyThatDoesNotMatchVariantName() {
+    assertThatThrownBy(() -> new ContextPack("p", "1.0.0", null, null, Map.of("wrong", variant())))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("wrong")
+        .hasMessageContaining("full");
+  }
+
+  @Test
   void variantRejectsBlankNameAndFingerprintButAllowsEmptyContent() {
     assertThat(new ContextPackVariant("full", "", "fp").content()).isEmpty();
     assertThatThrownBy(() -> new ContextPackVariant(" ", "c", "fp"))

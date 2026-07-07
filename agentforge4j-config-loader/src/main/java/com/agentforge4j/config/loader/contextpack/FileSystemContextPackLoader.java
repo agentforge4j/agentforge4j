@@ -96,12 +96,19 @@ public final class FileSystemContextPackLoader implements ContextPackLoader {
   }
 
   private List<Path> listPackDirectories() {
+    List<Path> dirs;
     try (Stream<Path> entries = Files.list(contextPacksRoot)) {
-      return entries.filter(Files::isDirectory).sorted().toList();
+      dirs = entries.filter(Files::isDirectory).sorted().toList();
     } catch (IOException e) {
       throw new UncheckedIOException(
           "Failed to read context packs directory: %s".formatted(contextPacksRoot), e);
     }
+    for (Path dir : dirs) {
+      String dirName = dir.getFileName().toString();
+      Validate.requireWithinBase(contextPacksRoot, dirName,
+          "context pack directory '%s' escapes the context packs root".formatted(dirName));
+    }
+    return dirs;
   }
 
   private ContextPack loadPack(Path dir, List<String> errors) {
@@ -132,8 +139,13 @@ public final class FileSystemContextPackLoader implements ContextPackLoader {
     if (variants == null) {
       return null;
     }
-    return new ContextPack(node.get("name").asText(), node.get("version").asText(),
-        textOrNull(node, "description"), readTags(node), variants);
+    try {
+      return new ContextPack(node.get("name").asText(), node.get("version").asText(),
+          textOrNull(node, "description"), readTags(node), variants);
+    } catch (IllegalArgumentException e) {
+      errors.add("%s: %s".formatted(manifest, e.getMessage()));
+      return null;
+    }
   }
 
   private Map<String, ContextPackVariant> loadVariants(Path dir, JsonNode node, List<String> errors) {
@@ -165,7 +177,12 @@ public final class FileSystemContextPackLoader implements ContextPackLoader {
             .formatted(dir, variantName, fileName, e.getMessage()));
         return null;
       }
-      variants.put(variantName, new ContextPackVariant(variantName, content, sha256Hex(content)));
+      try {
+        variants.put(variantName, new ContextPackVariant(variantName, content, sha256Hex(content)));
+      } catch (IllegalArgumentException e) {
+        errors.add("%s: variant '%s' is invalid: %s".formatted(dir, variantName, e.getMessage()));
+        return null;
+      }
     }
     return variants;
   }
