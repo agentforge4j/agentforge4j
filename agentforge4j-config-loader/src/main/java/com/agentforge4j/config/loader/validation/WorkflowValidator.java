@@ -432,6 +432,12 @@ public final class WorkflowValidator {
     walkScopeSelectors(workflow.steps(), workflow, ledgerIds, artifactIds, stepIds);
   }
 
+  // A second, deliberately different step-id collector from collectStepIds above: this one descends into
+  // BranchBehaviour children and a BlueprintRef's referenced blueprint steps so a STEP_OUTPUT selector nested
+  // inside either can resolve against sibling ids in the same reachable scope. collectStepIds (used by
+  // validateRetryStepRefs/validateRequirements) does neither, since a retry target or requirement stepId is only
+  // ever declared at the flat top level of a workflow's or blueprint's own steps() list. Do not merge the two —
+  // they intentionally collect different scopes.
   private static void collectScopeStepIds(List<Executable> steps, WorkflowDefinition workflow,
       Set<String> stepIds) {
     for (Executable executable : steps) {

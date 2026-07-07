@@ -12,10 +12,15 @@ import com.agentforge4j.core.workflow.step.ContextSelector;
 import com.agentforge4j.core.workflow.step.ContextSourceKind;
 import com.agentforge4j.core.workflow.step.ContextVariant;
 import com.agentforge4j.core.workflow.step.StepDefinition;
+import com.agentforge4j.core.workflow.step.StepTransition;
+import com.agentforge4j.core.workflow.step.behaviour.BranchBehaviour;
 import com.agentforge4j.core.workflow.step.behaviour.CompactBehaviour;
 import com.agentforge4j.core.workflow.step.behaviour.CompactionPolicy;
 import com.agentforge4j.core.workflow.step.behaviour.DeterministicExtract;
 import com.agentforge4j.core.workflow.step.behaviour.FailBehaviour;
+import com.agentforge4j.core.workflow.step.blueprint.BlueprintBehaviour;
+import com.agentforge4j.core.workflow.step.blueprint.BlueprintDefinition;
+import com.agentforge4j.core.workflow.step.blueprint.BlueprintRef;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
@@ -48,9 +53,19 @@ class WorkflowValidatorContextSelectionTest {
 
   private static WorkflowDefinition workflow(List<Executable> steps,
       List<LedgerDefinition> ledgers) {
-    return new WorkflowDefinition("wf", "W", null, null, null, "1.0.0", null,
-        WorkflowSource.CUSTOM, WorkflowLifecycle.ACTIVE, Map.of(), Map.of(), steps, List.of(),
+    return workflow("wf", steps, ledgers, Map.of());
+  }
+
+  private static WorkflowDefinition workflow(String id, List<Executable> steps,
+      List<LedgerDefinition> ledgers, Map<String, BlueprintDefinition> blueprints) {
+    return new WorkflowDefinition(id, "W", null, null, null, "1.0.0", null,
+        WorkflowSource.CUSTOM, WorkflowLifecycle.ACTIVE, Map.of(), blueprints, steps, List.of(),
         ledgers);
+  }
+
+  private static BlueprintDefinition blueprint(String id, List<Executable> steps) {
+    return new BlueprintDefinition(id, id, new BlueprintBehaviour(null, StepTransition.AUTO),
+        steps);
   }
 
   private void validate(WorkflowDefinition wf) {
@@ -136,5 +151,107 @@ class WorkflowValidatorContextSelectionTest {
     assertThatThrownBy(() -> validate(wf))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("unknown ledger 'nope'");
+  }
+
+  @Test
+  void acceptsResolvableSelectorInsideBranchChild() {
+    ContextSelection selection = new ContextSelection(
+        List.of(sel(ContextSourceKind.STEP_OUTPUT, "branch-target-a")), List.of());
+    StepDefinition branchTargetA = step("branch-target-a");
+    StepDefinition branchTargetB = stepWithSelection("branch-target-b", selection);
+    BranchBehaviour branch = new BranchBehaviour("route",
+        Map.of("a", branchTargetA, "b", branchTargetB), List.of(), null, false);
+    StepDefinition branchStep = StepDefinition.builder().withStepId("s1").withName("s1")
+        .withBehaviour(branch).build();
+    WorkflowDefinition wf = workflow(List.of(branchStep), List.of());
+
+    assertThatCode(() -> validate(wf)).doesNotThrowAnyException();
+  }
+
+  @Test
+  void rejectsUnknownSelectorInsideBranchChild() {
+    ContextSelection selection = new ContextSelection(
+        List.of(sel(ContextSourceKind.LEDGER_SECTION, "nope")), List.of());
+    StepDefinition branchTarget = stepWithSelection("branch-target", selection);
+    BranchBehaviour branch = new BranchBehaviour("route", Map.of("a", branchTarget), List.of(),
+        null, false);
+    StepDefinition branchStep = StepDefinition.builder().withStepId("s1").withName("s1")
+        .withBehaviour(branch).build();
+    WorkflowDefinition wf = workflow(List.of(branchStep), List.of());
+
+    assertThatThrownBy(() -> validate(wf))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("unknown ledger 'nope'");
+  }
+
+  @Test
+  void acceptsResolvableSelectorInsideBlueprintRefSteps() {
+    ContextSelection selection = new ContextSelection(
+        List.of(sel(ContextSourceKind.STEP_OUTPUT, "bp-step-a")), List.of());
+    StepDefinition bpStepA = step("bp-step-a");
+    StepDefinition bpStepB = stepWithSelection("bp-step-b", selection);
+    BlueprintDefinition bp = blueprint("bp1", List.of(bpStepA, bpStepB));
+    WorkflowDefinition wf = workflow("wf", List.of(new BlueprintRef("bp1")), List.of(),
+        Map.of("bp1", bp));
+
+    assertThatCode(() -> validate(wf)).doesNotThrowAnyException();
+  }
+
+  @Test
+  void rejectsUnknownSelectorInsideBlueprintRefSteps() {
+    ContextSelection selection = new ContextSelection(
+        List.of(sel(ContextSourceKind.LEDGER_SECTION, "nope")), List.of());
+    BlueprintDefinition bp = blueprint("bp1", List.of(stepWithSelection("bp-step", selection)));
+    WorkflowDefinition wf = workflow("wf", List.of(new BlueprintRef("bp1")), List.of(),
+        Map.of("bp1", bp));
+
+    assertThatThrownBy(() -> validate(wf))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("unknown ledger 'nope'");
+  }
+
+  @Test
+  void nestedWorkflowValidatesItsOwnLedgerScopeIndependently() {
+    ContextSelection parentSelection = new ContextSelection(
+        List.of(sel(ContextSourceKind.LEDGER_SECTION, "parentLedger.entries")), List.of());
+    ContextSelection nestedSelection = new ContextSelection(
+        List.of(sel(ContextSourceKind.LEDGER_SECTION, "nestedLedger.entries")), List.of());
+    WorkflowDefinition nestedWf = workflow("nested-wf",
+        List.of(stepWithSelection("nested-step", nestedSelection)),
+        List.of(ledger("nestedLedger")), Map.of());
+    WorkflowDefinition wf = workflow("wf",
+        List.of(stepWithSelection("parent-step", parentSelection), nestedWf),
+        List.of(ledger("parentLedger")), Map.of());
+
+    assertThatCode(() -> validate(wf)).doesNotThrowAnyException();
+  }
+
+  @Test
+  void rejectsNestedWorkflowLedgerSelectorReferencedFromParentScope() {
+    ContextSelection parentSelection = new ContextSelection(
+        List.of(sel(ContextSourceKind.LEDGER_SECTION, "nestedLedger.entries")), List.of());
+    WorkflowDefinition nestedWf = workflow("nested-wf", List.of(step("nested-step")),
+        List.of(ledger("nestedLedger")), Map.of());
+    WorkflowDefinition wf = workflow("wf",
+        List.of(stepWithSelection("parent-step", parentSelection), nestedWf),
+        List.of(ledger("parentLedger")), Map.of());
+
+    assertThatThrownBy(() -> validate(wf))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("unknown ledger 'nestedLedger'");
+  }
+
+  @Test
+  void rejectsParentWorkflowLedgerSelectorReferencedFromNestedScope() {
+    ContextSelection nestedSelection = new ContextSelection(
+        List.of(sel(ContextSourceKind.LEDGER_SECTION, "parentLedger.entries")), List.of());
+    WorkflowDefinition nestedWf = workflow("nested-wf",
+        List.of(stepWithSelection("nested-step", nestedSelection)), List.of(), Map.of());
+    WorkflowDefinition wf = workflow("wf", List.of(nestedWf), List.of(ledger("parentLedger")),
+        Map.of());
+
+    assertThatThrownBy(() -> validate(wf))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("unknown ledger 'parentLedger'");
   }
 }
