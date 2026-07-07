@@ -124,6 +124,7 @@ public final class AgentForge4jBootstrap {
     private ModelTierResolver modelTierResolver;
     private RequirementResolver requirementResolver;
     private Path collectionItemSchemasDir;
+    private CollectionItemSchemaValidator collectionItemSchemaValidator;
     private CollectionSubmissionValidator collectionSubmissionValidator;
     private CollectionAuthorizer collectionAuthorizer;
     private List<ArtifactValidator> artifactValidators = List.of();
@@ -430,6 +431,22 @@ public final class AgentForge4jBootstrap {
     public Builder withCollectionItemSchemasDir(Path collectionItemSchemasDir) {
       this.collectionItemSchemasDir = Validate.requireDirectory(collectionItemSchemasDir,
           "collectionItemSchemasDir must be a valid directory");
+      return this;
+    }
+
+    /**
+     * Overrides the item-schema validator consulted on every collection-gate submission whose gate declares an
+     * {@code itemSchemaRef}. When set, it is used instead of the filesystem-backed validator over
+     * {@link #withCollectionItemSchemasDir(Path)}.
+     *
+     * @param collectionItemSchemaValidator validator instance; must not be {@code null}
+     *
+     * @return this builder
+     */
+    public Builder withCollectionItemSchemaValidator(
+        CollectionItemSchemaValidator collectionItemSchemaValidator) {
+      this.collectionItemSchemaValidator = Validate.notNull(collectionItemSchemaValidator,
+          "collectionItemSchemaValidator must not be null");
       return this;
     }
 
@@ -828,9 +845,11 @@ public final class AgentForge4jBootstrap {
           resolvedObserver, resolvedTierResolver, agentInvoker, cacheEnabledSet,
           resolvedToolCatalog, resolvedInterceptor);
 
-      CollectionItemSchemaValidator resolvedItemSchemaValidator = collectionItemSchemasDir == null
-          ? null
-          : new FileSystemCollectionItemSchemaValidator(collectionItemSchemasDir, resolvedMapper);
+      CollectionItemSchemaValidator resolvedItemSchemaValidator = collectionItemSchemaValidator;
+      if (resolvedItemSchemaValidator == null && collectionItemSchemasDir != null) {
+        resolvedItemSchemaValidator =
+            new FileSystemCollectionItemSchemaValidator(collectionItemSchemasDir, resolvedMapper);
+      }
       WorkflowRuntime resolvedRuntime = RuntimeAssembler.runtime(
           resolvedWorkflowRepo, resolvedStateRepo, resolvedEventLog, resolvedClock,
           resolvedFileSink, resolvedInvoker, resolvedRecorder,

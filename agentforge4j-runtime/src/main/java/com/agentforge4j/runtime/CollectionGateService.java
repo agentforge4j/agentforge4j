@@ -97,13 +97,10 @@ final class CollectionGateService {
     CollectionState gate = requireOpenGate(state, stepId);
     authorize(state, workflow, cfg, stepId, CollectionAction.SUBMIT, actorId);
 
-    // Under REJECT_BY_CLIENT_TOKEN a repeated token is a hard duplicate refusal; the silent
-    // idempotent return applies to the other policies only (a retry is indistinguishable from a
-    // duplicate, and the workflow author chose refusal).
-    if (cfg.duplicatePolicy() == DuplicatePolicy.REJECT_BY_CLIENT_TOKEN
-        && clientTokenSeen(gate, submission.clientToken())) {
-      emitRejected(state, stepId, actorId, CollectionAction.SUBMIT, "DUPLICATE");
-      return new SubmissionResult(SubmissionResult.Status.REJECTED, null, 0, "DUPLICATE");
+    SubmissionResult hardDuplicate = rejectHardDuplicate(state, gate, cfg, stepId,
+        submission.clientToken(), actorId, CollectionAction.SUBMIT);
+    if (hardDuplicate != null) {
+      return hardDuplicate;
     }
     SubmissionResult idempotent = idempotentReturn(gate, submission.clientToken());
     if (idempotent != null) {
@@ -144,10 +141,10 @@ final class CollectionGateService {
     CollectionAction action = resolveReplaceAction(cfg.replacementPolicy(), owns, stepId);
     authorize(state, workflow, cfg, stepId, action, actorId);
 
-    if (cfg.duplicatePolicy() == DuplicatePolicy.REJECT_BY_CLIENT_TOKEN
-        && clientTokenSeen(gate, replacement.clientToken())) {
-      emitRejected(state, stepId, actorId, action, "DUPLICATE");
-      return new SubmissionResult(SubmissionResult.Status.REJECTED, null, 0, "DUPLICATE");
+    SubmissionResult hardDuplicate = rejectHardDuplicate(state, gate, cfg, stepId,
+        replacement.clientToken(), actorId, action);
+    if (hardDuplicate != null) {
+      return hardDuplicate;
     }
     SubmissionResult idempotent = idempotentReturn(gate, replacement.clientToken());
     if (idempotent != null) {
@@ -498,6 +495,25 @@ final class CollectionGateService {
   /** Whether the client token was already seen at this gate (any prior submit or replace). */
   private static boolean clientTokenSeen(CollectionState gate, String clientToken) {
     return clientToken != null && gate.seenClientTokens().contains(clientToken);
+  }
+
+  /**
+   * Under {@code REJECT_BY_CLIENT_TOKEN} a repeated token is a hard duplicate refusal; the silent
+   * idempotent return applies to the other policies only (a retry is indistinguishable from a
+   * duplicate, and the workflow author chose refusal).
+   *
+   * @return the rejection result to return to the caller, or {@code null} when this is not a hard
+   *     duplicate
+   */
+  private SubmissionResult rejectHardDuplicate(WorkflowState state, CollectionState gate,
+      CollectionBehaviour cfg, String stepId, String clientToken, String actorId,
+      CollectionAction action) {
+    if (cfg.duplicatePolicy() != DuplicatePolicy.REJECT_BY_CLIENT_TOKEN
+        || !clientTokenSeen(gate, clientToken)) {
+      return null;
+    }
+    emitRejected(state, stepId, actorId, action, "DUPLICATE");
+    return new SubmissionResult(SubmissionResult.Status.REJECTED, null, 0, "DUPLICATE");
   }
 
   /**
