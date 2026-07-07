@@ -5,10 +5,10 @@
       "type": "input",
       "answers": {
         "mode": "WORKFLOW_RUN",
-        "structuralSummaryJson": "{\"workflowId\":\"baby-agent-birth\",\"stepCount\":6,\"agentStepCount\":5,\"branchCount\":0,\"loopCount\":0,\"agentDrivenLoopCount\":0,\"humanGateCount\":1,\"maxNestingDepth\":0,\"minAgentTurns\":5,\"expectedAgentTurns\":5,\"maxAgentTurns\":5,\"iterationCeiling\":1,\"ceilingDerivable\":true,\"noCeilingReason\":null,\"minimumRequiredTokens\":1300,\"complexityClass\":\"SIMPLE\",\"riskFlags\":[]}",
-        "complexity": "SIMPLE",
+        "structuralSummaryJson": "{\"workflowId\":\"adoption-center-full-application\",\"stepCount\":58,\"agentStepCount\":52,\"branchCount\":4,\"loopCount\":1,\"agentDrivenLoopCount\":1,\"humanGateCount\":6,\"maxNestingDepth\":3,\"minAgentTurns\":52,\"expectedAgentTurns\":80,\"maxAgentTurns\":150,\"iterationCeiling\":55,\"ceilingDerivable\":true,\"noCeilingReason\":null,\"minimumRequiredTokens\":10500,\"complexityClass\":\"HIGH_RISK\",\"riskFlags\":[\"AGENT_DRIVEN_LOOP\",\"HIGH_ITERATION_CEILING\",\"LARGE_STRUCTURE\"]}",
+        "complexity": "HIGH_RISK",
         "ceilingDerivable": "true",
-        "minimumRequiredTokens": "1300"
+        "minimumRequiredTokens": "10500"
       }
     }
   ],
@@ -18,9 +18,9 @@
     "notVisitedSteps": ["no-ceiling"],
     "context": {
       "mode": "WORKFLOW_RUN",
-      "complexity": "SIMPLE",
+      "complexity": "HIGH_RISK",
       "ceilingDerivable": "true",
-      "minimumRequiredTokens": "1300"
+      "minimumRequiredTokens": "10500"
     },
     "contextPresent": [
       "structuralSummaryJson",
@@ -29,7 +29,6 @@
       "estimatedToolInvocationsPerAgentTurn"
     ],
     "contextMatches": {
-      "complexity": "SIMPLE|MODERATE|COMPLEX|HIGH_RISK",
       "estimatedInputTokensPerAgentTurn": "[0-9]+"
     }
   }
