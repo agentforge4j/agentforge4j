@@ -74,8 +74,8 @@
         "dedupeKey": { "type": "string" },
         "reason": {
           "type": "string",
-          "enum": ["MANUAL", "DEADLINE", "OVERRIDE"],
-          "description": "Close reason (for a close op)."
+          "enum": ["MANUAL", "DEADLINE"],
+          "description": "Close reason (for a close op). OVERRIDE is a derived outcome CloseRequest rejects as a requestable reason, so it is not offered here; set override:true instead."
         },
         "override": {
           "type": "boolean",

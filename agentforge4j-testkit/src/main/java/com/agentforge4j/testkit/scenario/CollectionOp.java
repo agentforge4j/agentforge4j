@@ -55,13 +55,17 @@ public sealed interface CollectionOp
   /**
    * Closes the gate.
    *
-   * @param reason   the close reason; must not be {@code null}
+   * @param reason   the close reason; must not be {@code null} and must not be
+   *                 {@link CloseReason#OVERRIDE} — that value is a derived outcome
+   *                 {@code CloseRequest} rejects as a requestable reason; use {@code override} instead
    * @param override whether to close despite an unmet minimum
    */
   record Close(CloseReason reason, boolean override) implements CollectionOp {
 
     public Close {
       Validate.notNull(reason, "Close reason must not be null");
+      Validate.isTrue(reason != CloseReason.OVERRIDE,
+          "Close reason must not be OVERRIDE; it is a derived outcome, not a requestable reason");
     }
   }
 }
