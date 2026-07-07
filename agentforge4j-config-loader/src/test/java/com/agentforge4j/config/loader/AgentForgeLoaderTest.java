@@ -12,6 +12,10 @@ import com.agentforge4j.core.workflow.WorkflowDefinition;
 import com.agentforge4j.core.workflow.WorkflowLifecycle;
 import com.agentforge4j.core.workflow.WorkflowSource;
 import com.agentforge4j.core.workflow.context.ContextMapping;
+import com.agentforge4j.core.workflow.step.ContextSelection;
+import com.agentforge4j.core.workflow.step.ContextSelector;
+import com.agentforge4j.core.workflow.step.ContextSourceKind;
+import com.agentforge4j.core.workflow.step.ContextVariant;
 import com.agentforge4j.core.workflow.step.StepDefinition;
 import com.agentforge4j.core.workflow.step.StepTransition;
 import com.agentforge4j.core.workflow.step.behaviour.AgentBehaviour;
@@ -210,6 +214,31 @@ class AgentForgeLoaderTest {
     assertThat(capturedPath.get()).isEqualTo(workflowsRoot);
     assertThat(loaded.workflows()).isEmpty();
     assertThat(loaded.agents()).isEmpty();
+  }
+
+  @Test
+  void load_rejectsWorkflowWithUnresolvedContextSelectionRef() {
+    ContextSelection selection = new ContextSelection(
+        List.of(new ContextSelector(ContextSourceKind.LEDGER_SECTION, "nope", ContextVariant.FULL)),
+        List.of());
+    StepDefinition step = StepDefinition.builder()
+        .withStepId("s1")
+        .withName("S1")
+        .withBehaviour(new FailBehaviour("stop"))
+        .withContextMapping(new ContextMapping(List.of(), List.of()))
+        .withContextSelection(selection)
+        .build();
+    WorkflowDefinition workflow = new WorkflowDefinition(
+        "wf", "W", "d", null, null, null, null, WorkflowSource.CUSTOM, WorkflowLifecycle.ACTIVE,
+        Map.of(), Map.of(), List.of(step), List.of(), List.of());
+    WorkflowDirectoryLoader directoryLoader =
+        root -> new WorkflowDirectoryLoad(Map.of("wf", workflow), Map.of());
+    AgentForgeLoader loader = new AgentForgeLoader(emptyAgentLoader(), directoryLoader);
+
+    assertThatThrownBy(() -> loader.load(Optional.empty(), Optional.of(Path.of("target/workflows")),
+        Optional.empty(), Optional.empty()))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("unknown ledger 'nope'");
   }
 
   @Test
