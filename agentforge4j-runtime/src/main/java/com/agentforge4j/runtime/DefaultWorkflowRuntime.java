@@ -896,7 +896,11 @@ public final class DefaultWorkflowRuntime implements WorkflowRuntime {
         // A handler (e.g. MaxIterationsHandler on MaxIterationsAction.FAIL) may already have
         // transitioned the run to FAILED and recorded its own RUN_FAILED event with a specific
         // payload; guard on both CANCELLED and FAILED so this generic fallback never double-fires
-        // RUN_FAILED for the same terminal failure.
+        // RUN_FAILED for the same terminal failure. The FAILED half of the guard is currently
+        // unreachable in practice (the only present ExecutionOutcome.FAILED producer,
+        // MaxIterationsHandler.handleFailed, always sets FAILED and records RUN_FAILED itself
+        // first); it is kept as defense-in-depth against a future FAILED-outcome producer that
+        // does not self-record RUN_FAILED.
         if (state.getStatus() != WorkflowStatus.CANCELLED
             && state.getStatus() != WorkflowStatus.FAILED) {
           state.setStatus(WorkflowStatus.FAILED);

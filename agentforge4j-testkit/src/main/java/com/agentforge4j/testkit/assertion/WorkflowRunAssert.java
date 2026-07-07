@@ -536,9 +536,7 @@ public final class WorkflowRunAssert {
    */
   public WorkflowRunAssert invokedTool(String capabilityId) {
     Validate.notBlank(capabilityId, "capabilityId must not be blank");
-    boolean found = eventsOfType(WorkflowEventType.TOOL_INVOCATION_REQUESTED).stream()
-        .anyMatch(event -> capabilityId.equals(jsonField(event.payload(), "capability")));
-    if (!found) {
+    if (!toolInvoked(capabilityId)) {
       throw error("Expected tool '%s' to be invoked".formatted(capabilityId));
     }
     return this;
@@ -553,9 +551,7 @@ public final class WorkflowRunAssert {
    */
   public WorkflowRunAssert didNotInvokeTool(String capabilityId) {
     Validate.notBlank(capabilityId, "capabilityId must not be blank");
-    boolean found = eventsOfType(WorkflowEventType.TOOL_INVOCATION_REQUESTED).stream()
-        .anyMatch(event -> capabilityId.equals(jsonField(event.payload(), "capability")));
-    if (found) {
+    if (toolInvoked(capabilityId)) {
       throw error("Expected tool '%s' to never be invoked".formatted(capabilityId));
     }
     return this;
@@ -644,6 +640,11 @@ public final class WorkflowRunAssert {
 
   private long stepStartCount(String stepId) {
     return eventsForStep(WorkflowEventType.STEP_STARTED, stepId).size();
+  }
+
+  private boolean toolInvoked(String capabilityId) {
+    return eventsOfType(WorkflowEventType.TOOL_INVOCATION_REQUESTED).stream()
+        .anyMatch(event -> capabilityId.equals(jsonField(event.payload(), "capability")));
   }
 
   private long countEvents(WorkflowEventType type) {
