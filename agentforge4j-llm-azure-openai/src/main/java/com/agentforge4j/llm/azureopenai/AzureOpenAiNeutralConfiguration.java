@@ -37,6 +37,10 @@ record AzureOpenAiNeutralConfiguration(
    * Maps a neutral configuration and resolved credential into this provider's validated form. The resource endpoint is
    * taken from the neutral base URL.
    *
+   * <p>An absent {@code request.timeout} option defaults to {@link AzureOpenAiDefaults#REQUEST_TIMEOUT} — the same
+   * value {@link AzureOpenAiConfigurationAdapter} applies for the properties-configured path — so the two
+   * construction paths cannot silently diverge on what "the" default is.
+   *
    * @param neutral the neutral provider configuration
    * @param apiKey  the resolved credential
    *
@@ -55,7 +59,7 @@ record AzureOpenAiNeutralConfiguration(
         apiKey,
         options.requireString("deployment"),
         options.requireString("api.version"),
-        options.duration("request.timeout").orElse(Duration.ofSeconds(30)));
+        options.duration("request.timeout").orElse(AzureOpenAiDefaults.REQUEST_TIMEOUT));
   }
 
   @Override
