@@ -11,13 +11,14 @@ import java.util.function.BiConsumer;
 
 /**
  * Shared structural traversal of a {@link WorkflowDefinition} tree, used by the per-concern collectors in this package
- * (agent-ref discovery, capture-path collection) so the walking logic exists in exactly one place. Descends through
- * branch children, blueprint bodies, and inline nested workflow definitions, but <b>not</b> through
- * {@code workflowRef}/{@code WorkflowBehaviour} boundaries — a sub-workflow referenced by id is resolved and merged
- * separately when it executes. Visits every reachable {@link StepDefinition} (including branch steps, whose
- * behaviour-specific extraction the visitor may ignore), tagged with the enclosing workflow scope.
+ * (agent-ref discovery, capture-path collection) and by {@code agentforge4j-config-loader}'s workflow validation, so
+ * the walking logic exists in exactly one place. Descends through branch children, blueprint bodies, and inline
+ * nested workflow definitions, but <b>not</b> through {@code workflowRef}/{@code WorkflowBehaviour} boundaries — a
+ * sub-workflow referenced by id is resolved and merged separately when it executes. Visits every reachable
+ * {@link StepDefinition} (including branch steps, whose behaviour-specific extraction the visitor may ignore), tagged
+ * with the enclosing workflow scope.
  */
-final class WorkflowTreeWalker {
+public final class WorkflowTreeWalker {
 
   /**
    * Maximum nesting depth traversed before failing fast. Matches the runtime's default workflow nesting limit, and
@@ -38,7 +39,7 @@ final class WorkflowTreeWalker {
    * @throws IllegalArgumentException if the tree nests deeper than {@link #MAX_TRAVERSAL_DEPTH}, which indicates a
    *                                  circular blueprint reference
    */
-  static void walk(WorkflowDefinition root, BiConsumer<StepDefinition, WorkflowDefinition> visitor) {
+  public static void walk(WorkflowDefinition root, BiConsumer<StepDefinition, WorkflowDefinition> visitor) {
     Validate.notNull(root, "root must not be null");
     Validate.notNull(visitor, "visitor must not be null");
     walkSteps(root.steps(), root, visitor, 0);

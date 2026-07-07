@@ -16,6 +16,8 @@ import com.agentforge4j.core.workflow.step.behaviour.AgentBehaviour;
 import com.agentforge4j.core.workflow.step.behaviour.ContextEqualityContract;
 import com.agentforge4j.core.workflow.step.behaviour.FailBehaviour;
 import com.agentforge4j.core.workflow.step.behaviour.InputBehaviour;
+import com.agentforge4j.core.workflow.step.behaviour.RetryMode;
+import com.agentforge4j.core.workflow.step.behaviour.RetryPreviousBehaviour;
 import com.agentforge4j.core.workflow.step.behaviour.ValidateBehaviour;
 import com.agentforge4j.core.workflow.step.behaviour.WorkflowBehaviour;
 import com.agentforge4j.core.workflow.step.blueprint.BlueprintBehaviour;
@@ -139,6 +141,52 @@ class WorkflowValidatorTest {
         .hasMessageContaining("ghost-bp");
   }
 
+  // Regression coverage for CL-1 Bug #1: a self-referencing (or mutually-referencing) BlueprintRef
+  // cycle used to send validateBlueprintRefs into unbounded recursion, crashing with a
+  // StackOverflowError at config-load time (confirmed before this fix by asserting
+  // isInstanceOf(StackOverflowError.class) here and observing the assertion pass). Rebuilding the
+  // traversal on WorkflowTreeWalker gives every walk the shared MAX_TRAVERSAL_DEPTH guard, so both
+  // cases now fail cleanly with a guarded IllegalArgumentException instead.
+  @Test
+  void validateBlueprintRefs_selfReferencingBlueprint_throwsGuardedExceptionInsteadOfStackOverflow() {
+    BlueprintDefinition selfReferencing = blueprint("bp-self", new BlueprintRef("bp-self"));
+    WorkflowDefinition wf = wfWithBlueprints("wf1", Map.of("bp-self", selfReferencing),
+        List.of(new BlueprintRef("bp-self")));
+
+    assertThatThrownBy(() -> validator.validateBlueprintRefs(Map.of("wf1", wf)))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("maximum nesting depth");
+  }
+
+  @Test
+  void validateBlueprintRefs_mutuallyReferencingBlueprints_throwsGuardedExceptionInsteadOfStackOverflow() {
+    BlueprintDefinition bpA = blueprint("bp-a", new BlueprintRef("bp-b"));
+    BlueprintDefinition bpB = blueprint("bp-b", new BlueprintRef("bp-a"));
+    WorkflowDefinition wf = wfWithBlueprints("wf1", Map.of("bp-a", bpA, "bp-b", bpB),
+        List.of(new BlueprintRef("bp-a")));
+
+    assertThatThrownBy(() -> validator.validateBlueprintRefs(Map.of("wf1", wf)))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("maximum nesting depth");
+  }
+
+  // Regression coverage for CL-1 Bug #2: WORKFLOW-behaviour steps nested inside a blueprint body used
+  // to be silently skipped by validateWorkflowRefs (walkForWorkflowRefExistence explicitly skipped
+  // BlueprintRef bodies), so an unresolvable workflowRef inside a blueprint only surfaced mid-run
+  // instead of at load time.
+  @Test
+  void validateWorkflowRefs_rejectsUnknownWorkflowRefInsideBlueprintBody() {
+    BlueprintDefinition blueprintWithWorkflowRef = blueprint("bp-a",
+        workflowRefStep("bp-step", "missing-wf"));
+    WorkflowDefinition wf = wfWithBlueprints("wf1", Map.of("bp-a", blueprintWithWorkflowRef),
+        List.of(new BlueprintRef("bp-a")));
+
+    assertThatThrownBy(() -> validator.validateWorkflowRefs(Map.of("wf1", wf)))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("unknown workflow")
+        .hasMessageContaining("missing-wf");
+  }
+
   @Test
   void validateArtifactRefs_rejectsUnknownArtifactOnInputStep() {
     StepDefinition step = StepDefinition.builder()
@@ -153,6 +201,61 @@ class WorkflowValidatorTest {
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("unknown artifact")
         .hasMessageContaining("missing-artifact");
+  }
+
+  // Regression coverage for CL-1 Bug #2: an INPUT step nested inside a blueprint body used to escape
+  // artifact-ref validation entirely (walkForArtifactRefs explicitly skipped BlueprintRef bodies).
+  @Test
+  void validateArtifactRefs_rejectsUnknownArtifactOnInputStepInsideBlueprintBody() {
+    StepDefinition inputStepInBlueprint = StepDefinition.builder()
+        .withStepId("bp-step")
+        .withName("BP Step")
+        .withBehaviour(new InputBehaviour("missing-artifact", StepTransition.AUTO))
+        .withContextMapping(new ContextMapping(List.of(), List.of()))
+        .build();
+    BlueprintDefinition blueprintWithInputStep = blueprint("bp-a", inputStepInBlueprint);
+    WorkflowDefinition wf = wfWithBlueprints("wf1", Map.of("bp-a", blueprintWithInputStep),
+        List.of(new BlueprintRef("bp-a")));
+
+    assertThatThrownBy(() -> validator.validateArtifactRefs(Map.of("wf1", wf)))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("unknown artifact")
+        .hasMessageContaining("missing-artifact");
+  }
+
+  @Test
+  void validateRetryStepRefs_rejectsUnknownRetryTarget() {
+    StepDefinition step = StepDefinition.builder()
+        .withStepId("s1")
+        .withName("S1")
+        .withBehaviour(new RetryPreviousBehaviour("missing-step", RetryMode.FROM_STEP, 2, null))
+        .withContextMapping(new ContextMapping(List.of(), List.of()))
+        .build();
+    WorkflowDefinition wf = wf("wf1", List.of(step));
+
+    assertThatThrownBy(() -> validator.validateRetryStepRefs(Map.of("wf1", wf)))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("unknown step")
+        .hasMessageContaining("missing-step");
+  }
+
+  // Regression coverage for CL-1 Bug #2: a RetryPreviousBehaviour targeting a step id that only exists
+  // inside a blueprint body used to incorrectly report "unknown step" (collectStepIds explicitly
+  // skipped BlueprintRef bodies), even though the target step genuinely exists and is reachable.
+  @Test
+  void validateRetryStepRefs_acceptsRetryTargetingStepInsideBlueprintBody() {
+    BlueprintDefinition blueprintWithTargetStep = blueprint("bp-a", terminalStep("bp-step"));
+    StepDefinition retryStep = StepDefinition.builder()
+        .withStepId("retry-step")
+        .withName("Retry")
+        .withBehaviour(new RetryPreviousBehaviour("bp-step", RetryMode.FROM_STEP, 2, null))
+        .withContextMapping(new ContextMapping(List.of(), List.of()))
+        .build();
+    WorkflowDefinition wf = wfWithBlueprints("wf1", Map.of("bp-a", blueprintWithTargetStep),
+        List.of(new BlueprintRef("bp-a"), retryStep));
+
+    assertThatCode(() -> validator.validateRetryStepRefs(Map.of("wf1", wf)))
+        .doesNotThrowAnyException();
   }
 
   @Test
