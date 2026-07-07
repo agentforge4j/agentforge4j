@@ -79,5 +79,6 @@ AgentForge4j does not pull the image or start the process — these are operator
   server's docs and its live `tools/list` — tool names and input schemas drift between releases.
 - GitHub also offers a **hosted remote** MCP server; to use that instead, switch to
   `MCP_STREAMABLE_HTTP` with the hosted `url` (see the [Jira](../jira/README.md) recipe for the
-  hosted shape, including its current header-support gap). Pin to a server version where practical.
+  hosted shape, including its `secretHeaders`/`staticHeaders` header configuration). Pin to a server
+  version where practical.
 - Mind GitHub API rate limits and token scope; over-scoped tokens widen blast radius.

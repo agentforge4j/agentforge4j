@@ -28,32 +28,28 @@ vendor's hosted server is SSE-only, see Caveats.
 ## Config file
 
 Copy [`jira.json`](./jira.json), fill in the placeholder `url`, and drop it into the directory
-passed to `AgentForge4jBootstrap.withIntegrationsDir(...)`.
-
-> **Current OSS gap:** the file-loaded `MCP_STREAMABLE_HTTP` config carries **no header field**
-> today — there is no way to attach a static `Authorization` header through this path. If the
-> hosted server authorizes purely via its own OAuth flow (the operator grants access to their
-> Atlassian site out of band), that's fine — this recipe needs nothing further. If the deployment
-> instead fronts the server with a static token header, you must construct
-> `StreamableHttpTransport` directly in Java (which does accept `secretHeaders` + a
-> `SecretResolver`) and register it via `AgentForge4jBootstrap.withToolProviders(...)` instead of
-> the file-loaded path — see [`CONVENTIONS.md`](../CONVENTIONS.md) §3.
+passed to `AgentForge4jBootstrap.withIntegrationsDir(...)`. If the hosted server authorizes purely
+via its own OAuth flow (the operator grants access to their Atlassian site out of band), delete the
+`secretHeaders` field entirely — this recipe needs nothing further. If the deployment instead fronts
+the server with a static token header, keep `secretHeaders` and resolve `JIRA_TOKEN` per the Secrets
+section below; see [`CONVENTIONS.md`](../CONVENTIONS.md) §3 for the full `MCP_STREAMABLE_HTTP`
+config shape (`staticHeaders` for literal, non-secret headers is also available).
 
 ## Secrets
 
 | Secret-reference key | What it is |
 |---|---|
-| `JIRA_TOKEN` | The Authorization header value for the hosted server (e.g. a `Bearer …` token), only needed if you take the direct-Java path above. Omit entirely if the server authorizes purely via its own OAuth flow. |
+| `JIRA_TOKEN` | The Authorization header value for the hosted server (e.g. a `Bearer …` token), resolved via `SecretResolver.resolve("JIRA_TOKEN")` at connect time. Only needed if the deployment fronts the server with a static token instead of its own OAuth flow — delete the `secretHeaders` field from `jira.json` when it isn't. |
 
-Never inline a token in `jira.json` — there is nowhere in its schema to put one today (see the gap
-note above), which is itself the safest default: don't invent a field the loader won't consume.
+Never inline a token as a `staticHeaders` literal in `jira.json` — always route it through
+`secretHeaders`, which never carries the plaintext value, only the reference key.
 
 ## Operator run instructions
 
 - **Hosted:** point `url` at the vendor's hosted MCP endpoint and complete the server's
-  authorization (OAuth) for the target Atlassian site, or take the direct-Java path above if the
-  deployment needs a static `Authorization` header. AgentForge4j connects to the endpoint; it does
-  not run anything.
+  authorization (OAuth) for the target Atlassian site, or configure `secretHeaders` above if the
+  deployment needs a static `Authorization` header instead. AgentForge4j connects to the endpoint;
+  it does not run anything.
 
 ## Governance notes
 

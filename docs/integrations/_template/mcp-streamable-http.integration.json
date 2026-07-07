@@ -5,6 +5,8 @@
   "active": true,
   "config": {
     "url": "<https hosted MCP endpoint>",
-    "requestTimeout": "PT30S"
+    "requestTimeout": "PT30S",
+    "staticHeaders": { "<X-Api-Version>": "<literal value, omit the whole field if none needed>" },
+    "secretHeaders": { "<Authorization>": "<bare secret-reference key, e.g. VENDOR_TOKEN — omit the whole field if the server authorizes via its own OAuth flow>" }
   }
 }

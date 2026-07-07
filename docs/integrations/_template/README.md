@@ -48,8 +48,9 @@ template, and never inlined as a literal credential.
 
 **(`MCP_STREAMABLE_HTTP` tier)**
 - [`mcp-streamable-http.integration.json`](./mcp-streamable-http.integration.json) — `url` is the
-  hosted endpoint. **No per-server headers field exists in this path today** — see Secrets below if
-  the server needs a static `Authorization` header.
+  hosted endpoint. `staticHeaders` (literal values) and `secretHeaders` (bare secret-reference keys,
+  resolved via `SecretResolver.resolve(key)`) attach per-server request headers, e.g. a static
+  `Authorization` header; omit both if the server authorizes purely via its own OAuth flow.
 
 **(`HTTP_TOOL` tier)**
 - [`http-tool.integration.json`](./http-tool.integration.json) — `config` is an array of
@@ -71,9 +72,9 @@ Store every credential as a **secret reference**, never plaintext.
 >   parent environment), or construct `StdioTransport` directly in Java, resolving the secret
 >   yourself via `SecretResolver.resolve(key)` before building the `env` map, and register it via
 >   `AgentForge4jBootstrap.withToolProviders(...)` instead of the file-loaded path.
-> - `MCP_STREAMABLE_HTTP` file-loaded config carries no header field at all — a static
->   `Authorization` header is only supported by constructing `StreamableHttpTransport` directly in
->   Java (which does accept `secretHeaders` + a `SecretResolver`).
+> - `MCP_STREAMABLE_HTTP` file-loaded config's `secretHeaders` resolves each bare secret-reference
+>   key through `SecretResolver.resolve(key)` at connect time — same model as `HTTP_TOOL`'s
+>   `secretHeaders`. Never inline a token as a `staticHeaders` literal.
 
 ## Operator run instructions
 

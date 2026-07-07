@@ -111,14 +111,13 @@ fails the whole bootstrap fast, naming both sources.
 |---|---|---|
 | `url` | string | required — the hosted MCP endpoint; egress-checked before connect |
 | `requestTimeout` | string | optional, ISO-8601 duration; defaults to 30s |
+| `staticHeaders` | object of string | optional — literal header name to value, sent on every request (e.g. an API-version header) |
+| `secretHeaders` | object of string | optional — header name to **bare secret-reference key**, resolved via `SecretResolver.resolve(key)` at connect time (e.g. `Authorization`) |
 
-> **Current OSS gap:** the file-loaded `MCP_STREAMABLE_HTTP` path carries **no per-server headers
-> field today** (no `Authorization` header support) — header/secret support for this path is gated
-> on further OSS work. If the hosted server needs a static `Authorization` header, either rely on
-> the server's own OAuth flow (no header needed), or construct `StreamableHttpTransport` directly in
-> Java (which does support `secretHeaders` + a `SecretResolver`) and register it via
-> `AgentForge4jBootstrap.withToolProviders(...)` instead of `withIntegrationsDir(...)`. A recipe that
-> needs this must say so explicitly rather than showing a `headersJson` field that nothing consumes.
+> A header name must not appear in both `staticHeaders` and `secretHeaders`, and header names are
+> compared case-insensitively (HTTP header names are case-insensitive) — a duplicate under either
+> rule fails fast at wiring time. If the hosted server authorizes purely via its own OAuth flow, omit
+> both fields entirely — that's the safest default.
 
 ### `HTTP_TOOL` — `config` array of `HttpEndpointDefinition`
 
