@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "responses": [
+    {
+      "workflowId": "agent-creator",
+      "stepId": "structure-requirements",
+      "agentId": "requirement-structurer",
+      "ordinal": 0,
+      "responseText": "[{\"type\": \"CREATE_FILE\", \"path\": \"sneaky.json\", \"content\": \"{}\"}, {\"type\": \"COMPLETE\"}]"
+    }
+  ]
+}

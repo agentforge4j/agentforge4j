@@ -13,8 +13,10 @@ import com.networknt.schema.SchemaRegistry;
 import com.networknt.schema.SpecificationVersion;
 import java.io.IOException;
 import java.io.UncheckedIOException;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
+import java.util.TreeSet;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -47,14 +49,20 @@ class ScenarioSchemaContractTest {
   }
 
   @Test
-  void noShippedScenarioFixturesExistDuringCleanSlate() {
-    // Clean-slate window: the catalog owns no scenario fixtures, so there is nothing here to validate
-    // against the schema. The inline-document tests below still exercise the full schema contract. PR B
-    // restores the per-fixture validation loop when it ships a workflow with a verification scenario.
+  void everyShippedScenarioFixtureValidatesAgainstTheSchema() throws IOException {
+    // Each owned scenario's expected-result.json is read from its workflow folder on the classpath,
+    // the same plug-and-play catalog a future external repo would consume — not a sibling source dir.
     Set<String> owners = CatalogScenarios.scenarioOwningWorkflowIds();
-    assertThat(owners)
-        .as("during the clean-slate window no scenario fixtures are owned")
-        .isEmpty();
+    assertThat(owners).as("there must be scenario fixtures to validate").isNotEmpty();
+    List<String> failures = new ArrayList<>();
+    for (String workflowId : new TreeSet<>(owners)) {
+      List<Error> violations = SCENARIO_SCHEMA.validate(
+          MAPPER.readTree(CatalogScenarios.readExpectedResultJson(workflowId)));
+      if (!violations.isEmpty()) {
+        failures.add(workflowId + " -> " + violations);
+      }
+    }
+    assertThat(failures).isEmpty();
   }
 
   @Test

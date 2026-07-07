@@ -1,0 +1,13 @@
+{
+  "id": "verification-author",
+  "name": "Verification Author",
+  "locality": "CLOUD",
+  "enabled": true,
+  "providerPreferences": [
+    { "provider": "openai", "model": null },
+    { "provider": "claude", "model": null },
+    { "provider": "ollama", "model": null }
+  ],
+  "supportedCommands": ["CREATE_FILE", "COMPLETE"],
+  "version": "1.0.0"
+}

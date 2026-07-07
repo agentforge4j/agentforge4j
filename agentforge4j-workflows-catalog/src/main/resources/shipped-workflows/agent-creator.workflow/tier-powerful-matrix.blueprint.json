@@ -1,0 +1,29 @@
+{
+  "blueprintId": "tier-powerful-matrix",
+  "name": "Assign POWERFUL tier (complexity/risk matrix)",
+  "behaviour": {
+    "transition": "AUTO"
+  },
+  "steps": [
+    {
+      "kind": "STEP",
+      "stepId": "assign-tier-powerful-matrix",
+      "name": "Assign recommendedTier = POWERFUL",
+      "behaviour": {
+        "type": "ASSIGN_CONTEXT",
+        "contextKey": "recommendedTier",
+        "value": { "type": "STRING", "value": "POWERFUL" }
+      }
+    },
+    {
+      "kind": "STEP",
+      "stepId": "assign-rule-matrix-powerful",
+      "name": "Assign ruleFired = COMPLEXITY_RISK_MATRIX",
+      "behaviour": {
+        "type": "ASSIGN_CONTEXT",
+        "contextKey": "ruleFired",
+        "value": { "type": "STRING", "value": "COMPLEXITY_RISK_MATRIX" }
+      }
+    }
+  ]
+}

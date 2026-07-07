@@ -1,0 +1,12 @@
+{
+  "id": "pdf-summarizer",
+  "name": "PDF Summarizer",
+  "locality": "CLOUD",
+  "enabled": true,
+  "providerPreferences": [
+    { "provider": "openai", "model": null }
+  ],
+  "supportedCommands": ["SET_CONTEXT", "COMPLETE"],
+  "version": "1.0.0",
+  "modelTier": "LITE"
+}
