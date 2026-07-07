@@ -66,7 +66,7 @@ class CatalogConformanceTest {
       assertThat(scenario.expected().workflowId())
           .as("scenario '%s' expected-result.json must name the workflow its folder owns",
               scenario.name())
-          .isEqualTo(scenario.name());
+          .isEqualTo(scenario.owningWorkflowId());
       assertThatCode(() -> new FakeScriptParser().parse(scenario.scriptJson()))
           .as("scenario '%s' script.json must parse", scenario.name())
           .doesNotThrowAnyException();
