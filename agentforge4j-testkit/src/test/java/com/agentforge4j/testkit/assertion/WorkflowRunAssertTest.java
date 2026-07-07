@@ -142,6 +142,16 @@ class WorkflowRunAssertTest {
   }
 
   @Test
+  void outputsHaveNoForbiddenTermsScansStepOutputs() {
+    state.putStepOutput("step-a", "raw model response mentions billing");
+
+    assertThatThrownBy(() -> assertRun().outputsHaveNoForbiddenTerms(List.of("billing")))
+        .isInstanceOf(AssertionError.class)
+        .hasMessageContaining("stepOutput['step-a']")
+        .hasMessageContaining("billing");
+  }
+
+  @Test
   void artifactVerbs() {
     files.add(new CapturedFile("run-1", "step-a", "out/result.txt", "hello"));
 

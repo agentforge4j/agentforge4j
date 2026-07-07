@@ -340,6 +340,13 @@ public final class WorkflowRunAssert {
         }
       }
     }
+    result.finalState().getStepOutputs().forEach((stepId, output) -> {
+      for (String term : forbiddenTerms) {
+        if (containsIgnoreCase(output, term)) {
+          violations.add("stepOutput['%s'] contains forbidden term '%s'".formatted(stepId, term));
+        }
+      }
+    });
     if (!violations.isEmpty()) {
       throw error("Expected run outputs to contain no forbidden terms but found: " + violations);
     }
