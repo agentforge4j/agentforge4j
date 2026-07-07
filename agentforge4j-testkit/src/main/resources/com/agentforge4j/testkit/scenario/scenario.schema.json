@@ -56,6 +56,16 @@
           "type": "object",
           "additionalProperties": { "type": "string" }
         },
+        "contextPresent": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Context keys that must be present, asserted by presence only (not value). Use for fields whose magnitude is not fully deterministic, e.g. sized token estimates."
+        },
+        "contextMatches": {
+          "type": "object",
+          "additionalProperties": { "type": "string" },
+          "description": "Context key -> regular expression the value must match. Use for shape assertions (e.g. an enum grade or a numeric range) rather than brittle exact equality."
+        },
         "visitedSteps": { "type": "array", "items": { "type": "string" } },
         "notVisitedSteps": { "type": "array", "items": { "type": "string" } },
         "emittedEvents": { "type": "array", "items": { "type": "string" } },
