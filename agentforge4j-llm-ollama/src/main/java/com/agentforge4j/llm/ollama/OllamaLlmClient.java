@@ -2,6 +2,7 @@
 package com.agentforge4j.llm.ollama;
 
 import com.agentforge4j.llm.AbstractHttpLlmClient;
+import com.agentforge4j.llm.LlmHttpErrorBodyTruncate;
 import com.agentforge4j.llm.api.LlmClient;
 import com.agentforge4j.llm.api.LlmExecutionRequest;
 import com.agentforge4j.llm.api.LlmExecutionResponse;
@@ -66,10 +67,11 @@ public final class OllamaLlmClient extends AbstractHttpLlmClient {
   @Override
   protected LlmExecutionResponse validateAndExtractResponse(String json) throws IOException {
     Validate.notBlank(json, () -> new LlmInvocationException("LLM client json must not be blank"));
+    String truncatedJson = LlmHttpErrorBodyTruncate.truncateForEmbeddedMessage(json);
     OllamaChatResponseDto dto = objectMapper.readValue(json, OllamaChatResponseDto.class);
-    validateApiError(dto, json);
+    validateApiError(dto, truncatedJson);
     return new LlmExecutionResponse(
-        LlmClient.stripCodeFence(retrieveResponse(dto, json).strip()),
+        LlmClient.stripCodeFence(retrieveResponse(dto, truncatedJson).strip()),
         StringUtils.trimToNull(dto.model()),
         toTokenUsageReport(dto));
   }
@@ -96,20 +98,21 @@ public final class OllamaLlmClient extends AbstractHttpLlmClient {
         .build();
   }
 
-  private static void validateApiError(OllamaChatResponseDto dto, String json) {
+  private static void validateApiError(OllamaChatResponseDto dto, String truncatedJson) {
     Validate.notNull(dto,
-        () -> new LlmInvocationException("Ollama response missing: %s".formatted(json)));
+        () -> new LlmInvocationException("Ollama response missing: %s".formatted(truncatedJson)));
     if (StringUtils.isNotBlank(dto.error())) {
       throw new LlmInvocationException("Ollama error: %s".formatted(dto.error()));
     }
     Validate.notNull(dto.message(),
-        () -> new LlmInvocationException("Ollama response missing message: %s".formatted(json)));
+        () -> new LlmInvocationException(
+            "Ollama response missing message: %s".formatted(truncatedJson)));
   }
 
-  private static String retrieveResponse(OllamaChatResponseDto dto, String json) {
+  private static String retrieveResponse(OllamaChatResponseDto dto, String truncatedJson) {
     return Validate.notBlank(dto.message().content(),
         () -> new LlmInvocationException(
-            "Ollama response has empty message.content: %s".formatted(json)));
+            "Ollama response has empty message.content: %s".formatted(truncatedJson)));
   }
 
   private String generateRequestBody(LlmExecutionRequest request) {

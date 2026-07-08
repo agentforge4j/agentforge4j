@@ -201,6 +201,23 @@ class ClaudeLlmClientTest {
     }
 
     @Test
+    void shouldTruncateLargeResponseBodyEmbeddedInExceptionMessage() {
+      ClaudeLlmClient client = new ClaudeLlmClient(new ObjectMapper(),
+          FixedClaudeConfiguration.defaults());
+      String largePadding = "X".repeat(2_000) + "_TAIL_MARKER_END";
+      String json = "{\"content\":[],\"model\":\"%s\"}".formatted(largePadding);
+
+      assertThatThrownBy(() -> client.validateAndExtractResponse(json))
+          .isInstanceOf(LlmInvocationException.class)
+          .hasMessageContaining("empty")
+          .satisfies(thrown -> {
+            String message = thrown.getMessage();
+            assertThat(message).doesNotContain("_TAIL_MARKER_END");
+            assertThat(message.length()).isLessThan(json.length());
+          });
+    }
+
+    @Test
     void shouldIgnoreUnknownPropertiesOnToolUseBlocks() {
       ClaudeLlmClient client = new ClaudeLlmClient(new ObjectMapper(),
           FixedClaudeConfiguration.defaults());
