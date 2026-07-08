@@ -48,10 +48,12 @@ Tiers 1 and 2 are documentation only. Tier 3 is code and is not produced here.
 - **Transport (MCP).** Local subprocess / desktop → `MCP_STDIO`; remote / hosted →
   `MCP_STREAMABLE_HTTP`. An SSE-only legacy server needs a bridge — note it as a caveat.
 - **Secrets.** Only secret-*reference* keys appear in any sample — a bare key (e.g. `GITHUB_TOKEN`)
-  in an `env` object (`MCP_STDIO`) or a `secretHeaders` map value (`HTTP_TOOL`), resolved via
-  `SecretResolver.resolve(key)` at connect/invoke. **No plaintext credential, token, or key in any
-  recipe**, and no secret routed through tool arguments. See §3 — the reference is the literal key
-  string, not a `${...}`-wrapped template.
+  in a `secretHeaders` map value (`HTTP_TOOL` and `MCP_STREAMABLE_HTTP`), resolved via
+  `SecretResolver.resolve(key)` at connect/invoke. `MCP_STDIO`'s `env` values are **literal today** —
+  there is no secret-reference resolution for file-loaded MCP env vars; secrets for `MCP_STDIO` must
+  come from the host process environment, not the recipe file. **No plaintext credential, token, or
+  key in any recipe**, and no secret routed through tool arguments. See §3 — the reference is the
+  literal key string, not a `${...}`-wrapped template.
 - **No orchestration claims.** Recipes must not imply AgentForge4j runs or pulls containers. Any
   `docker run` line is an **operator instruction**, not something the framework does.
 - **Mutating capabilities** carry a documented `RequireApproval` recommendation for the embedder's
