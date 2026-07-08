@@ -7,8 +7,10 @@ import java.util.Map;
 
 /**
  * A named, versioned, fingerprinted bundle of context content, referenced by a
- * {@code ContextSelector} of kind {@code CONTEXT_PACK}. Packs exclude irrelevant context and sit in
- * the stable prompt prefix so they cache; the per-variant fingerprints make selection auditable.
+ * {@code ContextSelector} of kind {@code CONTEXT_PACK}. A selected pack variant is rendered into the
+ * step's run-specific context (the per-call user message, like every other selected source), never
+ * into the cached system-prompt prefix; packs reduce tokens by excluding irrelevant context, and the
+ * per-variant fingerprints make selection auditable.
  *
  * @param name        the pack name (referenced by selectors); non-blank
  * @param version     the pack version; non-blank
