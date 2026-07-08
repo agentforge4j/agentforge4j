@@ -46,7 +46,7 @@ class WorkflowDraftValidatorTest {
         .build();
     WorkflowDefinition wf = new WorkflowDefinition(
         "wf1", "W", "d", null, null, null, null, WorkflowSource.CUSTOM, WorkflowLifecycle.ACTIVE,
-        Map.of(), Map.of(), List.of(step));
+        Map.of(), Map.of(), List.of(step), List.of());
 
     ValidationReport report =
         draftValidator.validate(Map.of("wf1", wf), Map.of());
@@ -69,7 +69,7 @@ class WorkflowDraftValidatorTest {
         .build();
     WorkflowDefinition wf = new WorkflowDefinition(
         "wf1", "W", "d", null, null, null, null, WorkflowSource.CUSTOM, WorkflowLifecycle.ACTIVE,
-        Map.of(), Map.of(), List.of(step));
+        Map.of(), Map.of(), List.of(step), List.of());
     AgentDefinition agent = AgentDefinition.builder()
         .withId("ok")
         .withName("Ok")
@@ -105,7 +105,7 @@ class WorkflowDraftValidatorTest {
         .build();
     WorkflowDefinition wf = new WorkflowDefinition(
         "wf1", "W", "d", null, null, null, null, WorkflowSource.CUSTOM, WorkflowLifecycle.ACTIVE,
-        Map.of(), Map.of(), List.of(badAgent, badRetry));
+        Map.of(), Map.of(), List.of(badAgent, badRetry), List.of());
 
     ValidationReport report = draftValidator.validate(Map.of("wf1", wf), Map.of());
 

@@ -79,6 +79,6 @@ class InMemoryWorkflowRepositoryTest {
             .withName("S1")
             .withBehaviour(new FailBehaviour("stop"))
             .withContextMapping(new ContextMapping(List.of(), List.of()))
-            .build()));
+            .build()), List.of());
   }
 }
