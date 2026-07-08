@@ -109,6 +109,22 @@ class ContextSourceResolverTest {
   }
 
   @Test
+  void rejectsUnknownLedgerSectionNamingAvailableSections() throws Exception {
+    WorkflowState state = state();
+    WorkflowDefinition wf = workflow(List.of(ledger("requirements")));
+    JsonNode merged = mapper.readTree("""
+        {"entries":[{"id":"REQ-1"}],"openQuestions":[],"conflicts":[]}""");
+    LedgerMerger.writeMerged(state, ledger("requirements"), merged);
+
+    assertThatThrownBy(() -> resolver.resolveFull(
+        selector(ContextSourceKind.LEDGER_SECTION, "requirements.entires", ContextVariant.FULL),
+        state, wf))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("entires")
+        .hasMessageContaining("entries");
+  }
+
+  @Test
   void resolvesStateKeyAndArtifactViaContextValue() {
     WorkflowState state = state();
     state.putContextValue("design.md", new StringContextValue("hello", ContextProvenance.USER_SUPPLIED));

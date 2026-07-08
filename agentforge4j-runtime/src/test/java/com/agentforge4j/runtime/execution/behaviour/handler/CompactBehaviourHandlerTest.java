@@ -149,6 +149,30 @@ class CompactBehaviourHandlerTest {
   }
 
   @Test
+  void countsExpandableScopeReferenceTowardReuse() throws Exception {
+    CompactBehaviour behaviour = new CompactBehaviour(source(), new DeterministicExtract(),
+        new CompactionPolicy(0, 1));
+    StepDefinition compact = compactStep(behaviour.policy(), behaviour.mode());
+    ContextSelector expandable = new ContextSelector(ContextSourceKind.LEDGER_SECTION,
+        "requirements", ContextVariant.COMPACT_PREFERRED);
+    StepDefinition expandableOnly = StepDefinition.builder().withStepId("s1").withName("s1")
+        .withBehaviour(new FailBehaviour("stop"))
+        .withContextSelection(new ContextSelection(List.of(), List.of(expandable), null))
+        .build();
+    WorkflowDefinition workflow = workflow(compact, expandableOnly);
+    ExecutionContext executionContext = context(workflow);
+    var merged = mapper.readTree("""
+        {"entries":[{"id":"REQ-1","rationale":"because"}]}""");
+    com.agentforge4j.runtime.ledger.LedgerMerger.writeMerged(executionContext.getState(), ledger(),
+        merged);
+
+    handler(workflow).handle(compact, behaviour, executionContext);
+
+    assertThat(CompactSiblingStore.read(executionContext.getState(), ContextSourceId.of(source()),
+        mapper)).isPresent();
+  }
+
+  @Test
   void skipsWhenAlreadyUpToDate() {
     CompactBehaviour behaviour = new CompactBehaviour(source(), new DeterministicExtract(),
         new CompactionPolicy(0, 1));

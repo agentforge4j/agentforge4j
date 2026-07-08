@@ -14,6 +14,8 @@ import com.agentforge4j.runtime.llm.ContextRenderer;
 import com.agentforge4j.util.Validate;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Optional;
 
 /**
@@ -106,13 +108,25 @@ public final class ContextSourceResolver {
     String subpath = dot < 0 ? null : ref.substring(dot + 1);
     LedgerDefinition ledger = findLedger(workflow, ledgerId);
     JsonNode section = LedgerMerger.readCurrent(state, ledger, objectMapper);
-    JsonNode content = section != null ? section : LedgerMerger.merge(ledger, null,
+    JsonNode envelope = section != null ? section : LedgerMerger.merge(ledger, null,
         objectMapper.createObjectNode(), objectMapper);
+    JsonNode content = envelope;
     if (subpath != null) {
-      JsonNode field = content.get(subpath);
-      content = field != null ? field : objectMapper.createArrayNode();
+      JsonNode field = envelope.get(subpath);
+      // Fail loud on an unknown section: silently resolving a typo'd section name to an empty
+      // array would hide the mistake from both the author and the model.
+      Validate.notNull(field, () -> new IllegalArgumentException(
+          "Ledger '%s' has no section '%s'; available sections: %s"
+              .formatted(ledgerId, subpath, fieldNames(envelope))));
+      content = field;
     }
     return CanonicalJson.render(content, objectMapper);
+  }
+
+  private static List<String> fieldNames(JsonNode node) {
+    List<String> names = new ArrayList<>();
+    node.fieldNames().forEachRemaining(names::add);
+    return names;
   }
 
   private static LedgerDefinition findLedger(WorkflowDefinition workflow, String ledgerId) {

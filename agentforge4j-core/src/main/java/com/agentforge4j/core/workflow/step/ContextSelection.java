@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package com.agentforge4j.core.workflow.step;
 
+import com.agentforge4j.util.Validate;
 import java.util.List;
 
 /**
@@ -17,8 +18,10 @@ import java.util.List;
  * @param expandableScope the additional sources the step may request; empty means no expansion is
  *                        permitted. Never {@code null} ({@code null} becomes an empty list, copied)
  * @param maxExpansions   maximum number of {@code RequestContextCommand} rounds granted or denied
- *                        within a single step invocation; {@code null} or non-positive defaults to
- *                        {@value #DEFAULT_MAX_EXPANSIONS}
+ *                        within a single step invocation; {@code null} defaults to
+ *                        {@value #DEFAULT_MAX_EXPANSIONS}. Must be positive when present — "no
+ *                        expansion permitted" is declared with an empty {@code expandableScope},
+ *                        not a zero limit
  */
 public record ContextSelection(
     List<ContextSelector> selectors,
@@ -28,22 +31,27 @@ public record ContextSelection(
 
   /**
    * Default maximum context-expansion rounds per step invocation when {@link #maxExpansions} is
-   * {@code null} or non-positive.
+   * {@code null}.
    */
   public static final int DEFAULT_MAX_EXPANSIONS = 1;
 
   public ContextSelection {
     selectors = selectors != null ? List.copyOf(selectors) : List.of();
     expandableScope = expandableScope != null ? List.copyOf(expandableScope) : List.of();
+    if (maxExpansions != null) {
+      Validate.isGreaterThanZero(maxExpansions,
+          "ContextSelection maxExpansions must be positive when present; declare an empty "
+              + "expandableScope to permit no expansion");
+    }
   }
 
   /**
-   * Returns the effective maximum expansion rounds: {@link #maxExpansions} when positive, otherwise
+   * Returns the effective maximum expansion rounds: {@link #maxExpansions} when present, otherwise
    * {@link #DEFAULT_MAX_EXPANSIONS}.
    *
    * @return the effective maximum; always positive
    */
   public int effectiveMaxExpansions() {
-    return maxExpansions != null && maxExpansions > 0 ? maxExpansions : DEFAULT_MAX_EXPANSIONS;
+    return maxExpansions != null ? maxExpansions : DEFAULT_MAX_EXPANSIONS;
   }
 }

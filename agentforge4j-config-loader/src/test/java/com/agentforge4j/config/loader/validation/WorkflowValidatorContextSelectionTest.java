@@ -156,7 +156,7 @@ class WorkflowValidatorContextSelectionTest {
   @Test
   void acceptsResolvableSelectorInsideBranchChild() {
     ContextSelection selection = new ContextSelection(
-        List.of(sel(ContextSourceKind.STEP_OUTPUT, "branch-target-a")), List.of());
+        List.of(sel(ContextSourceKind.STEP_OUTPUT, "branch-target-a")), List.of(), null);
     StepDefinition branchTargetA = step("branch-target-a");
     StepDefinition branchTargetB = stepWithSelection("branch-target-b", selection);
     BranchBehaviour branch = new BranchBehaviour("route",
@@ -171,7 +171,7 @@ class WorkflowValidatorContextSelectionTest {
   @Test
   void rejectsUnknownSelectorInsideBranchChild() {
     ContextSelection selection = new ContextSelection(
-        List.of(sel(ContextSourceKind.LEDGER_SECTION, "nope")), List.of());
+        List.of(sel(ContextSourceKind.LEDGER_SECTION, "nope")), List.of(), null);
     StepDefinition branchTarget = stepWithSelection("branch-target", selection);
     BranchBehaviour branch = new BranchBehaviour("route", Map.of("a", branchTarget), List.of(),
         null, false);
@@ -187,7 +187,7 @@ class WorkflowValidatorContextSelectionTest {
   @Test
   void acceptsResolvableSelectorInsideBlueprintRefSteps() {
     ContextSelection selection = new ContextSelection(
-        List.of(sel(ContextSourceKind.STEP_OUTPUT, "bp-step-a")), List.of());
+        List.of(sel(ContextSourceKind.STEP_OUTPUT, "bp-step-a")), List.of(), null);
     StepDefinition bpStepA = step("bp-step-a");
     StepDefinition bpStepB = stepWithSelection("bp-step-b", selection);
     BlueprintDefinition bp = blueprint("bp1", List.of(bpStepA, bpStepB));
@@ -200,7 +200,7 @@ class WorkflowValidatorContextSelectionTest {
   @Test
   void rejectsUnknownSelectorInsideBlueprintRefSteps() {
     ContextSelection selection = new ContextSelection(
-        List.of(sel(ContextSourceKind.LEDGER_SECTION, "nope")), List.of());
+        List.of(sel(ContextSourceKind.LEDGER_SECTION, "nope")), List.of(), null);
     BlueprintDefinition bp = blueprint("bp1", List.of(stepWithSelection("bp-step", selection)));
     WorkflowDefinition wf = workflow("wf", List.of(new BlueprintRef("bp1")), List.of(),
         Map.of("bp1", bp));
@@ -213,9 +213,9 @@ class WorkflowValidatorContextSelectionTest {
   @Test
   void nestedWorkflowValidatesItsOwnLedgerScopeIndependently() {
     ContextSelection parentSelection = new ContextSelection(
-        List.of(sel(ContextSourceKind.LEDGER_SECTION, "parentLedger.entries")), List.of());
+        List.of(sel(ContextSourceKind.LEDGER_SECTION, "parentLedger.entries")), List.of(), null);
     ContextSelection nestedSelection = new ContextSelection(
-        List.of(sel(ContextSourceKind.LEDGER_SECTION, "nestedLedger.entries")), List.of());
+        List.of(sel(ContextSourceKind.LEDGER_SECTION, "nestedLedger.entries")), List.of(), null);
     WorkflowDefinition nestedWf = workflow("nested-wf",
         List.of(stepWithSelection("nested-step", nestedSelection)),
         List.of(ledger("nestedLedger")), Map.of());
@@ -229,7 +229,7 @@ class WorkflowValidatorContextSelectionTest {
   @Test
   void rejectsNestedWorkflowLedgerSelectorReferencedFromParentScope() {
     ContextSelection parentSelection = new ContextSelection(
-        List.of(sel(ContextSourceKind.LEDGER_SECTION, "nestedLedger.entries")), List.of());
+        List.of(sel(ContextSourceKind.LEDGER_SECTION, "nestedLedger.entries")), List.of(), null);
     WorkflowDefinition nestedWf = workflow("nested-wf", List.of(step("nested-step")),
         List.of(ledger("nestedLedger")), Map.of());
     WorkflowDefinition wf = workflow("wf",
@@ -244,7 +244,7 @@ class WorkflowValidatorContextSelectionTest {
   @Test
   void rejectsParentWorkflowLedgerSelectorReferencedFromNestedScope() {
     ContextSelection nestedSelection = new ContextSelection(
-        List.of(sel(ContextSourceKind.LEDGER_SECTION, "parentLedger.entries")), List.of());
+        List.of(sel(ContextSourceKind.LEDGER_SECTION, "parentLedger.entries")), List.of(), null);
     WorkflowDefinition nestedWf = workflow("nested-wf",
         List.of(stepWithSelection("nested-step", nestedSelection)), List.of(), Map.of());
     WorkflowDefinition wf = workflow("wf", List.of(nestedWf), List.of(ledger("parentLedger")),

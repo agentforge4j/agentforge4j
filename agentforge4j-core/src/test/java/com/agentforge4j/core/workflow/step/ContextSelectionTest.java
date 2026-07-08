@@ -5,6 +5,7 @@ import java.util.List;
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class ContextSelectionTest {
 
@@ -27,13 +28,19 @@ class ContextSelectionTest {
   }
 
   @Test
-  void effectiveMaxExpansionsDefaultsWhenNullOrNonPositive() {
+  void effectiveMaxExpansionsDefaultsWhenNull() {
     assertThat(new ContextSelection(null, null, null).effectiveMaxExpansions())
         .isEqualTo(ContextSelection.DEFAULT_MAX_EXPANSIONS);
-    assertThat(new ContextSelection(null, null, 0).effectiveMaxExpansions())
-        .isEqualTo(ContextSelection.DEFAULT_MAX_EXPANSIONS);
-    assertThat(new ContextSelection(null, null, -1).effectiveMaxExpansions())
-        .isEqualTo(ContextSelection.DEFAULT_MAX_EXPANSIONS);
+  }
+
+  @Test
+  void rejectsNonPositiveMaxExpansions() {
+    assertThatThrownBy(() -> new ContextSelection(null, null, 0))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("maxExpansions");
+    assertThatThrownBy(() -> new ContextSelection(null, null, -1))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("maxExpansions");
   }
 
   @Test

@@ -33,6 +33,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import java.util.List;
 
 /**
  * Handles a {@link CompactBehaviour}: deterministically decides whether compacting the declared source
@@ -41,7 +42,8 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
  * <p><strong>Reuse counting (owner-relaxed rule, 2026-07-05):</strong> a referencing step counts
  * toward {@link CompactionPolicy#minDownstreamReuse()} when it is reachable in the resolved workflow
  * graph ({@link ReachableStepGraph#walk}) from the run root and its declared {@code contextSelection}
- * selectors (not {@code expandableScope} — that is opt-in and not a standing reference) reference this
+ * — its {@code selectors} or its {@code expandableScope} (a granted expansion reads the compact
+ * form too, so a potential reader counts as reuse) — references this
  * step's source with variant {@code COMPACT_PREFERRED} or {@code COMPACT_ONLY}. There is no
  * before/after-the-COMPACT-step ordering check; see the design record for why the relaxation is safe
  * (a before-step's variant resolution fails closed or falls back at read time regardless).
@@ -140,7 +142,12 @@ public final class CompactBehaviourHandler implements BehaviourHandler<CompactBe
     if (selection == null) {
       return false;
     }
-    for (ContextSelector selector : selection.selectors()) {
+    return referencesSource(selection.selectors(), sourceId)
+        || referencesSource(selection.expandableScope(), sourceId);
+  }
+
+  private static boolean referencesSource(List<ContextSelector> selectors, String sourceId) {
+    for (ContextSelector selector : selectors) {
       boolean compactVariant = selector.variant() == ContextVariant.COMPACT_PREFERRED
           || selector.variant() == ContextVariant.COMPACT_ONLY;
       if (compactVariant && ContextSourceId.of(selector).equals(sourceId)) {

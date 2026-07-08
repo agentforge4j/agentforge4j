@@ -220,7 +220,7 @@ class AgentForgeLoaderTest {
   void load_rejectsWorkflowWithUnresolvedContextSelectionRef() {
     ContextSelection selection = new ContextSelection(
         List.of(new ContextSelector(ContextSourceKind.LEDGER_SECTION, "nope", ContextVariant.FULL)),
-        List.of());
+        List.of(), null);
     StepDefinition step = StepDefinition.builder()
         .withStepId("s1")
         .withName("S1")
