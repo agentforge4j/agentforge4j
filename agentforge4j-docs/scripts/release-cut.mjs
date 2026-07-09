@@ -19,6 +19,7 @@ import {stage} from './release-stage.mjs';
 import {
   MODULE_ROOT,
   DOCS_DIR,
+  DOCUSAURUS_BIN,
   STAGING_ROOT,
   STAGED_DOCS,
   VERSIONED_DOCS,
@@ -28,9 +29,6 @@ import {
 } from './release-paths.mjs';
 
 const BACKUP = join(STAGING_ROOT, 'docs-live-backup');
-// The Docusaurus CLI entry, run directly via node — no shell, so the version arg cannot be
-// shell-interpreted (and no cross-platform npm/.cmd handling or DEP0190 shell-args warning).
-const DOCUSAURUS_BIN = join(MODULE_ROOT, 'node_modules', '@docusaurus', 'core', 'bin', 'docusaurus.mjs');
 
 function runDocsVersion(version) {
   console.log(`[release-cut] docusaurus docs:version ${version}`);

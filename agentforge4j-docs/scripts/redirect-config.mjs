@@ -5,8 +5,8 @@
 //
 //   Pre-first-release (no stable version exists): the docs root and the moving `/latest` alias both
 //     resolve to `/next/` — byte-identical to the Phase-1 wiring, so this is inert until the first cut.
-//   Post-first-release: `/` -> `/latest` -> the newest stable version, so `/latest` is a durable,
-//     bookmarkable alias that follows each release.
+//   Post-first-release: the root and the durable, bookmarkable `/latest` alias both resolve to the
+//     newest stable version, and follow each release automatically.
 //
 // The toggle flips automatically the first time `versions.json` is non-empty; no code change is needed
 // at release time.
@@ -40,9 +40,13 @@ export function redirectConfig(window) {
       {from: '/latest', to: '/next/'},
     ];
   }
-  // Post-first-release: root -> durable `/latest` alias -> newest stable version.
+  // Post-first-release: the root and the durable `/latest` alias both resolve directly to the
+  // newest stable version. The redirects plugin validates every `to` against the site's real
+  // routes, so `/latest` cannot itself be a redirect target (a redirect is not a route) — the
+  // design §3 outcome (`/` -> `/latest` -> newest stable) is expressed as two direct redirects
+  // with the same reachable result. Proven by the scratch-cut's post-release build.
   return [
-    {from: '/', to: '/latest'},
+    {from: '/', to: `/${latest}/`},
     {from: '/latest', to: `/${latest}/`},
   ];
 }

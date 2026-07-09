@@ -29,6 +29,7 @@ import {visit} from 'unist-util-visit';
 import {
   resolveInclude,
   includeAllowBases,
+  parseMeta,
   DEFAULT_REPO_ROOT,
 } from '../src/remark/include.mjs';
 import {
@@ -173,4 +174,59 @@ export function dematerialize(source, options) {
     out = out.slice(0, edit.start) + edit.text + out.slice(edit.end);
   }
   return out;
+}
+
+/**
+ * Find every LIVE directive in an MDX document: `file=` includes (a code node's info string),
+ * `vocab:`/`javadoc:` inline-code tags, and unpinned `/javadoc/next/` routes outside fenced code.
+ *
+ * This is the assertion-side twin of {@link dematerialize}: it walks the same AST, so text that
+ * merely *documents* a directive inside a fenced code block (a `code` node's literal value — e.g. the
+ * contributor guide's authoring examples) is correctly NOT reported, exactly as `dematerialize`
+ * correctly does not rewrite it. The scratch-cut uses this to prove a snapshot is fully materialised
+ * without false-failing on documentation about the directives themselves.
+ *
+ * @param {string} source the raw .mdx text
+ * @returns {{type: 'include'|'vocab'|'javadoc'|'javadoc-route', line: number, excerpt: string}[]}
+ *          live directives found (empty when the document is fully materialised)
+ */
+export function findLiveDirectives(source) {
+  const tree = parser.parse(source);
+  const findings = [];
+  const codeSpans = [];
+
+  visit(tree, (node) => {
+    if (!node.position || node.position.start.offset === undefined) {
+      return;
+    }
+    if (node.type === 'code') {
+      codeSpans.push([node.position.start.offset, node.position.end.offset]);
+      if (parseMeta(node.meta).file) {
+        findings.push({
+          type: 'include',
+          line: node.position.start.line,
+          excerpt: String(node.meta).trim(),
+        });
+      }
+      return;
+    }
+    if (node.type === 'inlineCode') {
+      if (VOCAB_PATTERN.test(node.value)) {
+        findings.push({type: 'vocab', line: node.position.start.line, excerpt: node.value});
+      } else if (JAVADOC_PATTERN.test(node.value)) {
+        findings.push({type: 'javadoc', line: node.position.start.line, excerpt: node.value});
+      }
+    }
+  });
+
+  // Unpinned current-version Javadoc routes, outside fenced code — mirrors dematerialize's pinning.
+  const inCodeSpan = (offset) => codeSpans.some(([s, e]) => offset >= s && offset < e);
+  for (const match of source.matchAll(JAVADOC_ROUTE)) {
+    if (!inCodeSpan(match.index)) {
+      const line = source.slice(0, match.index).split('\n').length;
+      findings.push({type: 'javadoc-route', line, excerpt: match[0]});
+    }
+  }
+
+  return findings.sort((a, b) => a.line - b.line);
 }

@@ -61,9 +61,11 @@ test('redirect toggle: pre-release routes / and /latest to /next/ (inert, matche
   ]);
 });
 
-test('redirect toggle: post-release routes / -> /latest -> newest stable', () => {
+test('redirect toggle: post-release routes / and /latest to the newest stable', () => {
+  // Both direct: the redirects plugin validates every `to` against real routes, so `/latest`
+  // (itself a redirect, not a route) cannot be a redirect target.
   assert.deepEqual(redirectConfig(supportWindow(['1.2.0', '1.1.0'])), [
-    {from: '/', to: '/latest'},
+    {from: '/', to: '/1.2.0/'},
     {from: '/latest', to: '/1.2.0/'},
   ]);
 });
