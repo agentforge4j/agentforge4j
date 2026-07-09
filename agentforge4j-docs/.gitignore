@@ -20,7 +20,7 @@
 /docs/reference/events.mdx
 /docs/reference/statuses.mdx
 
-# Release-staging scratch area (materialised snapshot + swap backup; never committed — design §12).
+# Release-staging scratch area (materialised snapshot + swap backup; never committed).
 /.release-staging
 
 # Misc

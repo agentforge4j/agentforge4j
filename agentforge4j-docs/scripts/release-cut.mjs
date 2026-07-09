@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 //
-// Release cut (design §12, Phase 5a) — step 2: turn a staged, materialised docs tree into an immutable
+// Release cut — step 2: turn a staged, materialised docs tree into an immutable
 // Docusaurus version snapshot.
 //
 // `docusaurus docs:version <v>` snapshots whatever is at the configured `docs/` path and offers no

@@ -17,7 +17,7 @@
 // the build rather than producing a dead link.
 
 // The current (editable) docs version. Live builds resolve against `next`; the release-staging
-// de-materialiser (design §12) passes the snapshot's own version so a frozen page links into its
+// de-materialiser passes the snapshot's own version so a frozen page links into its
 // own Javadoc surface (`/javadoc/<version>/…`) instead of the moving `next`.
 export const DEFAULT_VERSION = 'next';
 

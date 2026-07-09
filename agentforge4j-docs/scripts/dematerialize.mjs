@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 //
-// Release-staging de-materialiser (design §12, Phase 5a).
+// Release-staging de-materialiser.
 //
 // A versioned docs snapshot must contain *materialised* content — plain Markdown/MDX with no live
 // `file=`/`vocab:`/`javadoc:` directives — because `docusaurus docs:version` copies the current

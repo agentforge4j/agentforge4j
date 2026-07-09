@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 //
-// Scratch-cut simulation (design §12, Phase 5a; owner lock: no real release before 0.1.0).
+// Scratch-cut simulation. No real version is cut or deployed before 0.1.0, so this self-reverting
+// simulation is the only pre-release proof of the release mechanics.
 //
 // Proves the release-staging + versioning mechanism end-to-end against the real `docs/` tree, then
 // fully reverts so nothing throwaway is ever committed:
@@ -88,7 +89,7 @@ function assertMaterialised(snapshotDir, version) {
 /**
  * Build the site with the scratch version present and assert the post-first-release routing engaged:
  * the released version at `/<version>/`, the root and `/latest` redirect pages both emitted
- * targeting it, and the current (`next`) docs still served. Proves design §3's toggle end-to-end —
+ * targeting it, and the current (`next`) docs still served. Proves the redirect toggle end-to-end —
  * the config's post-release branch is otherwise unreachable until a real release exists.
  */
 function assertPostReleaseBuild(version) {

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 //
-// Release staging (design §12, Phase 5a) — step 1 of cutting a versioned docs snapshot.
+// Release staging — step 1 of cutting a versioned docs snapshot.
 //
 // Produces `.release-staging/docs/`: a full copy of the current `docs/` tree in which every
 // `file=`/`vocab:`/`javadoc:` directive has been de-materialised into static content pinned to the

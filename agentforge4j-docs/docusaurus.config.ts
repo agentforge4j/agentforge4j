@@ -108,7 +108,7 @@ const config: Config = {
     [
       '@docusaurus/plugin-client-redirects',
       {
-        // Routing computed from the support window (design §3). Pre-first-release the docs root and
+        // Routing computed from the support window. Pre-first-release the docs root and
         // the moving `latest` alias both resolve to `next`; once a stable version exists both flip to
         // the newest stable version. See scripts/redirect-config.mjs.
         redirects: docsRedirects,

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 //
-// Shared paths + small fs helpers for the release-staging scripts (design §12, Phase 5a). Kept in one
+// Shared paths + small fs helpers for the release-staging scripts. Kept in one
 // place so release-stage, release-cut, and release-scratch-cut agree on where things live.
 
 import {createHash} from 'node:crypto';

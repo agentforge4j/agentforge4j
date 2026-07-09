@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 //
-// Docs redirect toggle (design §3, Phase 5a) — a pure function consumed by docusaurus.config.ts so the
+// Docs redirect toggle — a pure function consumed by docusaurus.config.ts so the
 // pre-/post-first-release routing is computed from the support window, not hardcoded.
 //
 //   Pre-first-release (no stable version exists): the docs root and the moving `/latest` alias both
@@ -43,7 +43,7 @@ export function redirectConfig(window) {
   // Post-first-release: the root and the durable `/latest` alias both resolve directly to the
   // newest stable version. The redirects plugin validates every `to` against the site's real
   // routes, so `/latest` cannot itself be a redirect target (a redirect is not a route) — the
-  // design §3 outcome (`/` -> `/latest` -> newest stable) is expressed as two direct redirects
+  // intended outcome (`/` -> `/latest` -> newest stable) is expressed as two direct redirects
   // with the same reachable result. Proven by the scratch-cut's post-release build.
   return [
     {from: '/', to: `/${latest}/`},

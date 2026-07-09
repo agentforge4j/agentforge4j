@@ -54,7 +54,7 @@ test('rejects non-array inputs', () => {
   assert.throws(() => supportWindow([], 'x'), /`lts` must be an array/);
 });
 
-test('redirect toggle: pre-release routes / and /latest to /next/ (inert, matches Phase 1)', () => {
+test('redirect toggle: pre-release routes / and /latest to /next/ (inert: byte-identical to the pre-release wiring)', () => {
   assert.deepEqual(redirectConfig(supportWindow([])), [
     {from: '/', to: '/next/'},
     {from: '/latest', to: '/next/'},

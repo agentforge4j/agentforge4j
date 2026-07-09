@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 //
-// Supported-version window (design §3/§7, Phase 5a).
+// Supported-version window.
 //
 // A pure function over Docusaurus's `versions.json` (an array of released version strings, newest
 // first) and an LTS list (`lts.json`). It classifies each released version as supported or archived

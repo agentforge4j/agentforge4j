@@ -100,9 +100,11 @@ export function includeAllowBases(repoRoot) {
  * Resolve a single `file=…[ region=…]` code-block directive to its materialised body and the
  * info-string that survives (language + any title, with the include directives stripped).
  *
- * Shared by the remark plugin and the release-staging de-materialiser (design §12) so the two can
- * never disagree on what a snippet resolves to. Fails closed: unknown key, missing file, or a target
- * outside the allowlist throws before any read.
+ * Shared by the remark plugin and the release-staging de-materialiser so the two can
+ * never disagree on what a snippet resolves to. Fails closed on a missing file, a missing region,
+ * or a target outside the allowlist — each throws before any read. Info-string keys other than
+ * `file`/`region` (e.g. `title`) are not include directives: they pass through into the kept
+ * info string untouched.
  *
  * @param {string} rawMeta the raw code-block info string (may be null)
  * @param {{repoRoot?: string, allowBases?: string[], docLabel?: string}} [options] resolution context
