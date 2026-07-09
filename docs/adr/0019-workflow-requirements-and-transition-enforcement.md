@@ -48,7 +48,7 @@ Real workflows depend on facts that live outside the definition: configuration v
 
 ## Compatibility impact
 
-Requirement declarations and references are additions to the public workflow definition schema. `RequirementResolver` is a public SPI. Two run statuses (awaiting review, awaiting step approval), the gate verbs, and their transition semantics are runtime and event contract. All additive at introduction; transition semantics are behavioral contract from here on.
+Requirement declarations and references are additions to the public workflow definition schema. `RequirementResolver` is a public SPI. Two run statuses (awaiting review, awaiting step approval), the gate verbs, and their transition semantics are runtime and event contract. All additive at introduction; transition semantics are behavioural contract from here on.
 
 ## Implementation notes
 

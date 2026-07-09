@@ -44,7 +44,7 @@ Model releases thereby become configuration changes: remap the tier, touch no wo
 ### Neutral / tradeoffs
 
 - String-typed tiers in the core trade compile-time safety for layering cleanliness; validation happens at load and resolution time.
-- The tier set may grow: an additional capability tier is in review, and automatic tier selection has been proposed but is not accepted. This ADR covers the shipped three-tier model; extensions would amend or supersede it.
+- This ADR covers the shipped three-tier model; the tier set may grow, and extensions would amend or supersede this record.
 
 ## Compatibility impact
 
@@ -56,7 +56,7 @@ The tier vocabulary is part of the public workflow definition schema and agent c
 
 ## Follow-up work
 
-- Decide and, if accepted, document the additional tier currently in review as an amendment to this ADR.
+- Decide the additional capability tier in review at the time of writing and, if accepted, document it as an amendment to this ADR. Automatic tier selection has been proposed but is not accepted.
 
 ## Related documents
 

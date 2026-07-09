@@ -20,7 +20,7 @@ Shipped workflows are content, not framework: they evolve on a different cadence
 
 1. Shipped workflows and agents live in `agentforge4j-workflows-catalog`, an **independently versioned** artifact within the reactor.
 2. The artifact is **code-free**: JSON/markdown resources only. The framework loads zero shipped workflows when the artifact is absent.
-3. Executable support a workflow requires (validators and similar) is framework code, discovered via `ServiceLoader` — never bundled in the catalog artifact.
+3. Executable support a workflow requires (validators and similar) is **generic framework capability**, discovered via `ServiceLoader` — never bundled in the catalog artifact, and never workflow-specific: no per-workflow Java classes, validators, or test classes exist anywhere in the framework tree or the catalog module.
 4. Normative conventions bind every bundle: verification scenarios with deterministic expected results, and a runnable example project per shipped workflow.
 
 The pre-split `agentforge4j-workflows` module is removed; this artifact model supersedes it.
@@ -41,12 +41,12 @@ The pre-split `agentforge4j-workflows` module is removed; this artifact model su
 
 ### Negative
 
-- Publishing needs dedicated release wiring (its own release job and POM flattening so the published artifact stands alone) — still open at the time of writing.
-- The ServiceLoader seam means a workflow needing new executable support requires a coordinated framework change.
+- Publishing needs dedicated release wiring (its own release job and POM flattening so the published artifact stands alone).
+- The ServiceLoader seam means a workflow needing new executable support requires a coordinated framework change — and that support must be designed as a generic, reusable capability, never as code specific to the workflow that motivated it.
 
 ### Neutral / tradeoffs
 
-- At the time of writing, the catalog on `main` ships structure only (empty indexes): the legacy content was deliberately removed (see ADR-0007) and rebuilt content is pending in open pull requests, with two initial bundles expected. Nothing here should be read as "the catalog is populated" until those merge.
+- Whether the catalog is populated at any given moment is a content-release question, not a framework question: this record defines the artifact model, not the content inventory (see ADR-0007 for the content decision).
 
 ## Compatibility impact
 
@@ -58,8 +58,8 @@ The catalog artifact's coordinates, its manifest, and the compatibility gate aga
 
 ## Follow-up work
 
-- Catalog release wiring (dedicated deploy job + POM flattening).
-- First rebuilt content bundles (open pull requests at the time of writing).
+- Catalog release wiring (dedicated deploy job + POM flattening) — still open at the time of writing.
+- First rebuilt content bundles: at the time of writing the catalog on `main` ships structure only (empty indexes — the legacy content was deliberately removed, see ADR-0007) and rebuilt content is pending in open pull requests, with two initial bundles expected. Nothing in this record should be read as "the catalog is populated" until those merge.
 
 ## Related documents
 

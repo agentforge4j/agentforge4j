@@ -60,5 +60,5 @@ Chokepoint: `DefaultToolExecutionService` (`agentforge4j-runtime`). Policy SPI: 
 
 ## Related documents
 
-- ADR-0004 (realized tools as the single source of capability truth).
+- ADR-0004 (Realised tools are the single source of capability truth).
 - ADR-0015 (external tool servers under the same governance).

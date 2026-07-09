@@ -14,7 +14,7 @@ This ADR was written retrospectively to document an already accepted and impleme
 
 ## Context
 
-LLM output is non-deterministic. Organizations embedding AI workflows need the opposite properties from the surrounding machinery: reproducibility, auditability, reviewability, and human oversight. Frameworks that express agent behavior as application code make workflows non-portable, hard to review, and hard to govern — the control flow lives wherever the code lives, and changing a workflow means a code change and redeployment. Frameworks that let the model plan its own control flow make execution unexplainable and unrepeatable.
+LLM output is non-deterministic. Organizations embedding AI workflows need the opposite properties from the surrounding machinery: reproducibility, auditability, reviewability, and human oversight. Frameworks that express agent behaviour as application code make workflows non-portable, hard to review, and hard to govern — the control flow lives wherever the code lives, and changing a workflow means a code change and redeployment. Frameworks that let the model plan its own control flow make execution unexplainable and unrepeatable.
 
 The forces: a complete audit trail per run, replayable execution, human approval gates as first-class constructs, and a hard separation between what the model decides and what the engine decides.
 
@@ -37,7 +37,7 @@ Concretely: workflow definitions are portable JSON/markdown documents declaring 
 - Runs are replayable and explainable; the audit event stream is a verifiable contract.
 - Definitions are diffable, reviewable, and versionable like any other data artifact.
 - Builders and visualizers operate on the same data model as the engine.
-- Black-box verification can assert runtime behavior against the event contract rather than implementation internals.
+- Black-box verification can assert runtime behaviour against the event contract rather than implementation internals.
 
 ### Negative
 

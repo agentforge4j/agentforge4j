@@ -36,7 +36,7 @@ Remove all seven legacy workflow bundles from the catalog in one deliberate chan
 
 ### Negative
 
-- A fresh install currently ships zero workflows and zero agents; the framework's showcase content is temporarily absent (open pull requests carry the first rebuilt bundles, with two initial bundles expected).
+- Until rebuilt bundles land, a fresh install ships zero workflows and zero agents — the framework's showcase content is absent for the duration of the rebuild.
 - Historical examples and references to legacy bundle ids are dead until re-pointed.
 
 ### Neutral / tradeoffs
@@ -49,11 +49,11 @@ Legacy workflow and agent ids are gone and will not return under the same identi
 
 ## Implementation notes
 
-Empty `shipped-workflows/index` and `shipped-agents/index` verified on `main @ 9ad289dd` (2026-07-09). Rebuild content is pending in open pull requests at the time of writing — statuses are perishable; verify current catalog state against `main` rather than this record.
+Empty `shipped-workflows/index` and `shipped-agents/index` verified on `main @ 9ad289dd` (2026-07-09).
 
 ## Follow-up work
 
-- Land the first rebuilt bundles (in review at the time of writing).
+- Land the first rebuilt bundles — open pull requests at the time of writing carry the first two. This status is perishable; verify current catalog state against `main` rather than this record.
 
 ## Related documents
 

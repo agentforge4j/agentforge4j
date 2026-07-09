@@ -14,7 +14,7 @@ This ADR was written retrospectively to document an already accepted and impleme
 
 ## Context
 
-A deterministic engine whose value is auditability (ADR-0001) cannot be verified by outputs alone: two runs can produce the same artifact while one silently skipped a retry, reordered a pause/resume, or bypassed a tool denial. Output-only assertions pass exactly when governance regressions are invisible. White-box assertions on runtime internals verify behavior but couple tests to implementation, making every refactor a test rewrite. What users actually rely on — and what the framework contractually promises — is the audit event stream.
+A deterministic engine whose value is auditability (ADR-0001) cannot be verified by outputs alone: two runs can produce the same artifact while one silently skipped a retry, reordered a pause/resume, or bypassed a tool denial. Output-only assertions pass exactly when governance regressions are invisible. White-box assertions on runtime internals verify behaviour but couple tests to implementation, making every refactor a test rewrite. What users actually rely on — and what the framework contractually promises — is the audit event stream.
 
 ## Decision
 
@@ -24,8 +24,8 @@ Event assertions live in the verification suites, not in per-workflow catalog fi
 
 ## Alternatives considered
 
-- **Output-only assertions.** Blind to governance behavior — precisely the regressions that matter most here.
-- **White-box assertions on runtime internals.** Verifies behavior but welds tests to implementation structure; the event stream is the stable observable.
+- **Output-only assertions.** Blind to governance behaviour — precisely the regressions that matter most here.
+- **White-box assertions on runtime internals.** Verifies behaviour but welds tests to implementation structure; the event stream is the stable observable.
 - **Per-workflow expected-event fixtures in the catalog** (tried, removed). Duplicates the contract per fixture and makes additive event evolution a mass fixture churn; the suites assert the contract once, properly.
 
 ## Consequences

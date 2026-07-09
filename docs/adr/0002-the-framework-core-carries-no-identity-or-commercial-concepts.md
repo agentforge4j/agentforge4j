@@ -20,12 +20,12 @@ The framework must be embeddable in any application and any deployment shape —
 
 The framework carries no identity model, no user or organizational account model, and no monetization concepts of any kind. Identity and authorization are the embedding application's responsibility.
 
-Concretely: runtime events carry no identity; `actorId` is an opaque string supplied by the embedder wherever a human action is attributed. SPIs (execution interception, event log, repositories, tool policy) are the seams through which an embedding application attaches identity, authorization, and lifecycle policy. Nothing in the core is conditional on a deployment mode — capability differences between embedders are expressed by which modules and SPI implementations are present, never by runtime flags.
+Concretely: runtime events carry no framework-owned identity semantics; `actorId` is an opaque string supplied by the embedder wherever a human action is attributed. SPIs (execution interception, event log, repositories, tool policy) are the seams through which an embedding application attaches identity, authorization, and lifecycle policy. Nothing in the core is conditional on a deployment mode — capability differences between embedders are expressed by which modules and SPI implementations are present, never by runtime flags.
 
 ## Alternatives considered
 
 - **Built-in identity/auth module.** Convenient for demos, but forces an opinionated identity model, bloats the dependency surface, and collides with whatever the embedder already runs.
-- **Optional identity behind configuration flags.** Produces dual code paths and flag-conditional behavior in the core — harder to test, easy to leak assumptions across the boundary.
+- **Optional identity behind configuration flags.** Produces dual code paths and flag-conditional behaviour in the core — harder to test, easy to leak assumptions across the boundary.
 - **Minimal user concept (id + roles) in core.** Even a minimal model encodes authorization semantics the framework cannot know; the opaque `actorId` gives attribution without semantics.
 - **Softer boundary ("agnostic by default, identity-aware if configured").** Rejected: any identity vocabulary on core surfaces becomes a de-facto contract.
 

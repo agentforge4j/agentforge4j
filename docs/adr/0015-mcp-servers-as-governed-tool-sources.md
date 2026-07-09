@@ -47,7 +47,7 @@ The layering invariant: the workflow controls flow, the runtime controls permiss
 
 ## Compatibility impact
 
-`agentforge4j-mcp` is an optional module — presence by dependency, per the framework's composition principle. Its governance behavior adds no new policy surface: existing `ToolPolicy` implementations govern MCP tools unchanged. Workflow definitions reference MCP-provided tools like any other tool.
+`agentforge4j-mcp` is an optional module — presence by dependency, per the framework's composition principle. Its governance behaviour adds no new policy surface: existing `ToolPolicy` implementations govern MCP tools unchanged. Workflow definitions reference MCP-provided tools like any other tool.
 
 ## Implementation notes
 
