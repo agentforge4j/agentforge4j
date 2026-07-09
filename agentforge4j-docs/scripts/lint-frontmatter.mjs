@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 //
-// Frontmatter gate (design §11, enforceable). Walks every doc page and validates its
+// Frontmatter gate (enforceable at build time). Walks every doc page and validates its
 // frontmatter against the kind-conditional contract in frontmatter-contract.mjs.
 // Exits non-zero on any violation so the build/CI fails closed.
 

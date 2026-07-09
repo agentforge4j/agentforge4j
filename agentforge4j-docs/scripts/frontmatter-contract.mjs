@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 //
-// Single source of truth for the kind-conditional frontmatter contract (design §9).
+// Single source of truth for the kind-conditional frontmatter contract.
 // Consumed by scripts/lint-frontmatter.mjs (and reused by later CI gates). The
 // contract keeps the Diátaxis spine unchanged while admitting the structural/meta
 // pages (routers, gallery, release notes, contributing) that fit no Diátaxis quadrant.

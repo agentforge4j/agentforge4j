@@ -31,9 +31,9 @@
 }
 
 /*
- * Accessibility baseline (design §13). Docusaurus already provides a skip-to-content
+ * Accessibility baseline. Docusaurus already provides a skip-to-content
  * link and semantic landmarks; these rules harden keyboard focus visibility and honour
- * reduced-motion preferences. The automated axe/pa11y CI gate lands with the CI phase.
+ * reduced-motion preferences.
  */
 *:focus-visible {
   outline: 2px solid var(--ifm-color-primary);
