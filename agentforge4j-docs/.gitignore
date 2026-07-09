@@ -8,7 +8,7 @@
 .docusaurus
 .cache-loader
 
-# Generated reference content (regenerated at build from source — never committed; design §7/§11).
+# Generated reference content (regenerated at build from source — never committed).
 # The emitter handoff, the vocabulary sets, and the generated reference pages are all ephemeral.
 /scripts/emitter-output
 /src/vocab
