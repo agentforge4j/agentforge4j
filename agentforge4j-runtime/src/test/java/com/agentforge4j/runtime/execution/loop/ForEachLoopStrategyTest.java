@@ -197,6 +197,38 @@ class ForEachLoopStrategyTest {
   }
 
   @Test
+  void new_iteration_reruns_body_but_preserves_previous_iterations_context_writes() {
+    putList("a", "b");
+    List<Boolean> outputPresentAtIterationEntry = new ArrayList<>();
+    List<Boolean> draftPresentAtIterationEntry = new ArrayList<>();
+    when(stepSequenceExecutor.executeAll(anyList(), any()))
+        .thenAnswer(inv -> {
+          // Observed at body entry, i.e. after markLoopIterationStart's iteration-boundary clear.
+          outputPresentAtIterationEntry.add(state.getStepOutput("dummy").isPresent());
+          draftPresentAtIterationEntry.add(state.getContextValue("draft").isPresent());
+          // Simulate the real executor and body: record the step's uid/output, and write a
+          // non-reserved context value the way SetContextCommandHandler does (value + written-at uid).
+          int uid = executionContext.allocateStepSequenceUid();
+          state.putStepExecutionUid("dummy", uid);
+          state.putStepOutput("dummy", "out");
+          state.putContextValue("draft",
+              new StringContextValue("draft", ContextProvenance.LLM_GENERATED));
+          state.putContextKeyWrittenAtUid("draft", uid);
+          return ExecutionOutcome.COMPLETED;
+        });
+
+    assertThat(strategy.iterate(blueprint, forEachConfig(false), executionContext))
+        .isEqualTo(ExecutionOutcome.COMPLETED);
+
+    // Iteration 2 must re-run the body (previous output cleared at the boundary) while still
+    // seeing iteration 1's context write — advancing a loop is not a rewind, and cross-iteration
+    // context handoff is what a rework/refinement loop depends on.
+    assertThat(outputPresentAtIterationEntry).containsExactly(false, false);
+    assertThat(draftPresentAtIterationEntry).containsExactly(false, true);
+    assertThat(state.getContextValue("draft")).isPresent();
+  }
+
+  @Test
   void cancelled_clears_cursor_and_fingerprint() {
     putList("a", "b");
     when(stepSequenceExecutor.executeAll(anyList(), any()))

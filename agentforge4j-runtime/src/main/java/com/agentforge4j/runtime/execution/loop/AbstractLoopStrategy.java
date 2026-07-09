@@ -47,12 +47,20 @@ abstract class AbstractLoopStrategy implements LoopStrategy {
   /**
    * Marks {@code iteration} as the loop iteration now starting for {@code blueprintId}, and — when
    * this is a genuinely new iteration rather than a resume into one already in progress — clears
-   * the previous iteration's body step outputs/uids so {@code StepSequenceExecutor}'s resume-skip
-   * guard does not mistake them for this iteration's own (CR-1: previously, nothing cleared body
-   * outputs between iterations, so iterations 2..N of every loop silently skipped their entire
-   * body).
+   * the previous iteration's body step outputs, execution uids, and nested completed-loop markers
+   * (via {@link WorkflowState#clearStepEntriesFromUid(int)}) so {@code StepSequenceExecutor}'s
+   * resume-skip guard re-executes the body instead of mistaking the previous iteration's outputs
+   * for this iteration's own. Without this clear, every loop strategy ran its body on iteration 1
+   * only while still emitting {@code LOOP_ITERATION_STARTED}/{@code LOOP_ITERATION_COMPLETED} for
+   * each iteration.
    *
-   * <p>The previous iteration's outputs are identified by the uid at which its body began
+   * <p>Context values and generated-artifact descriptors written by the previous iteration are
+   * deliberately preserved: advancing a loop is not a rewind — earlier iterations really ran, so
+   * their context writes stay visible to later iterations (until overwritten) and their emitted
+   * artifacts stay recorded. That preserved handoff is what lets a rework/refinement loop read the
+   * previous iteration's result.
+   *
+   * <p>The previous iteration's body range is identified by the uid at which it began
    * ({@link WorkflowState#getLoopIterationBodyStartUid(String)}), recorded the last time this
    * method genuinely started a new iteration. A resume into a paused iteration is detected by the
    * persisted cursor already equalling {@code iteration}: in that case nothing is cleared, so
@@ -64,7 +72,7 @@ abstract class AbstractLoopStrategy implements LoopStrategy {
     if (state.getLoopIterationCursor(blueprintId) != iteration) {
       int previousBodyStartUid = state.getLoopIterationBodyStartUid(blueprintId);
       if (previousBodyStartUid > 0) {
-        state.clearEntriesFromUid(previousBodyStartUid);
+        state.clearStepEntriesFromUid(previousBodyStartUid);
       }
       state.setLoopIterationBodyStartUid(blueprintId, executionContext.peekNextStepSequenceUid());
     }

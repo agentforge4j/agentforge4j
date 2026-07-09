@@ -273,6 +273,39 @@ class WorkflowStateTest {
   }
 
   @Test
+  void clearStepEntriesFromUid_clears_step_entries_and_loop_markers_but_preserves_context_and_artifacts() {
+    WorkflowState state = new WorkflowState("run-1", "wf-1", null, t());
+    state.putStepExecutionUid("early-step", 3);
+    state.putStepOutput("early-step", "early-out");
+    state.putStepExecutionUid("body-step", 5);
+    state.putStepOutput("body-step", "body-out");
+    StringContextValue draft = new StringContextValue("draft-v1", ContextProvenance.LLM_GENERATED);
+    state.putContextValue("draft", draft);
+    state.putContextKeyWrittenAtUid("draft", 5);
+    state.markLoopCompleted("nested-loop", 6);
+    state.markLoopCompleted("earlier-loop", 2);
+    ArtifactDescriptor emitted = new ArtifactDescriptor("report.md", "h1", "body-step", 5);
+    state.addGeneratedArtifactDescriptor(emitted);
+
+    state.clearStepEntriesFromUid(5);
+
+    // Step outputs/uids at or after the threshold are cleared (so the resume-skip guard re-runs
+    // the body), and a nested loop's completion marker in the range is dropped (so it re-executes).
+    assertThat(state.getStepOutput("body-step")).isEmpty();
+    assertThat(state.getStepExecutionUid("body-step")).isEmpty();
+    assertThat(state.isLoopCompleted("nested-loop")).isFalse();
+    assertThat(state.getStepOutput("early-step")).contains("early-out");
+    assertThat(state.getStepExecutionUid("early-step")).contains(3);
+    assertThat(state.isLoopCompleted("earlier-loop")).isTrue();
+    // Context values (with their written-at bookkeeping) and generated-artifact descriptors are
+    // preserved: an iteration boundary is not a rewind — later iterations read what earlier ones
+    // wrote, and a later retry rewind can still clear the preserved keys by their recorded uid.
+    assertThat(state.getContextValue("draft")).contains(draft);
+    assertThat(state.getContextKeyWrittenAtUid()).containsEntry("draft", 5);
+    assertThat(state.getGeneratedArtifactDescriptors()).containsExactly(emitted);
+  }
+
+  @Test
   void mutation_methods_do_not_change_last_updated_at() {
     var state = new WorkflowState("run-1", "wf-1", null, t());
     var initial = state.getLastUpdatedAt();

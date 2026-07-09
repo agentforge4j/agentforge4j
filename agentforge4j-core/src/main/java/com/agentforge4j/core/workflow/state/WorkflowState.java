@@ -72,11 +72,14 @@ public final class WorkflowState {
   /**
    * The execution uid at which the currently in-progress loop iteration's body began, keyed by
    * blueprint id. Cleared together with {@link #loopIterationCursorByBlueprintId} whenever a loop
-   * is not in progress. Lets a loop strategy clear a just-completed iteration's step outputs (via
-   * {@link #clearEntriesFromUid(int)}) before starting the next one, so {@code StepSequenceExecutor}'s
-   * resume-skip guard does not mistake the previous iteration's outputs for this iteration's own —
-   * while a resume into a paused iteration (same iteration number as the persisted cursor) leaves
-   * this marker untouched, preserving that iteration's already-completed steps.
+   * is not in progress. Lets a loop strategy clear a just-completed iteration's step outputs,
+   * execution uids, and nested completed-loop markers (via {@link #clearStepEntriesFromUid(int)})
+   * before starting the next one, so {@code StepSequenceExecutor}'s resume-skip guard does not
+   * mistake the previous iteration's outputs for this iteration's own — while a resume into a
+   * paused iteration (same iteration number as the persisted cursor) leaves this marker untouched,
+   * preserving that iteration's already-completed steps. Context values and generated-artifact
+   * descriptors written by the previous iteration are deliberately not cleared at an iteration
+   * boundary — see {@link #clearStepEntriesFromUid(int)}.
    */
   private final Map<String, Integer> loopIterationBodyStartUidByBlueprintId;
   /**
@@ -547,14 +550,7 @@ public final class WorkflowState {
    * @param retryUid the uid threshold; entries with uid &gt;= this value are cleared
    */
   public void clearEntriesFromUid(int retryUid) {
-    Iterator<Map.Entry<String, Integer>> stepUidIterator = stepExecutionUid.entrySet().iterator();
-    while (stepUidIterator.hasNext()) {
-      Map.Entry<String, Integer> entry = stepUidIterator.next();
-      if (entry.getValue() >= retryUid) {
-        stepOutputs.remove(entry.getKey());
-        stepUidIterator.remove();
-      }
-    }
+    clearStepEntriesFromUid(retryUid);
 
     Iterator<Map.Entry<String, Integer>> contextUidIterator =
         contextKeyWrittenAtUid.entrySet().iterator();
@@ -569,9 +565,37 @@ public final class WorkflowState {
       }
     }
 
-    completedLoopBlueprintUids.values().removeIf(completionUid -> completionUid >= retryUid);
-
     generatedArtifactDescriptors.removeIf(descriptor -> descriptor.stepExecutionUid() >= retryUid);
+  }
+
+  /**
+   * Removes step outputs, step execution uids, and completed-loop markers for all steps that began
+   * executing at or after {@code fromUid} — the loop-iteration-boundary subset of
+   * {@link #clearEntriesFromUid(int)}. Clearing the step outputs/uids is what makes
+   * {@code StepSequenceExecutor}'s resume-skip guard re-execute a loop body on the next iteration;
+   * dropping completed-loop markers in the range makes a nested loop re-execute on the new outer
+   * iteration instead of being skipped as already complete.
+   *
+   * <p>Unlike a retry rewind, advancing a loop to its next iteration does not undo the previous
+   * iteration: context values (and their written-at-uid bookkeeping) and generated-artifact
+   * descriptors are deliberately preserved, so later iterations can read what earlier iterations
+   * wrote — the cross-iteration handoff a rework/refinement loop depends on — and artifacts really
+   * emitted by earlier iterations stay recorded (descriptors are upserted by path, so a re-emit on
+   * a later iteration replaces rather than duplicates).
+   *
+   * @param fromUid the uid threshold; step entries with uid &gt;= this value are cleared
+   */
+  public void clearStepEntriesFromUid(int fromUid) {
+    Iterator<Map.Entry<String, Integer>> stepUidIterator = stepExecutionUid.entrySet().iterator();
+    while (stepUidIterator.hasNext()) {
+      Map.Entry<String, Integer> entry = stepUidIterator.next();
+      if (entry.getValue() >= fromUid) {
+        stepOutputs.remove(entry.getKey());
+        stepUidIterator.remove();
+      }
+    }
+
+    completedLoopBlueprintUids.values().removeIf(completionUid -> completionUid >= fromUid);
   }
 
   /**
