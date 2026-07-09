@@ -10,8 +10,8 @@ import java.util.Optional;
 import java.util.Set;
 
 /**
- * Run-scoped, immutable lookup of loaded {@link ContextPack}s by name. Packs are immutable per run
- * (design §4.7), so one registry instance is safe to share for a whole run's lifetime.
+ * Run-scoped, immutable lookup of loaded {@link ContextPack}s by name. Packs are immutable per run,
+ * so one registry instance is safe to share for a whole run's lifetime.
  */
 public final class ContextPackRegistry {
 

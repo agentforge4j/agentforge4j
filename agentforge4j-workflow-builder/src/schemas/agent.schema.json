@@ -56,7 +56,8 @@
           "CONTINUE",
           "GENERATE_QUESTIONS",
           "ESCALATE",
-          "TOOL_INVOCATION"
+          "TOOL_INVOCATION",
+          "REQUEST_CONTEXT"
         ]
       },
       "description": "Subset of commands this agent may return. Null means all commands."
@@ -83,9 +84,29 @@
         null
       ],
       "description": "Optional capability tier resolved to a concrete model per provider at invocation time. A raw model pin on a providerPreference always wins over the tier. Null relies on pins or provider defaults."
+    },
+    "outputContract": {
+      "$ref": "#/$defs/OutputContract",
+      "description": "Optional declaration of the structured output this agent is expected to produce."
     }
   },
   "$defs": {
+    "OutputContract": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["discipline"],
+      "properties": {
+        "schemaRef": { "type": ["string", "null"] },
+        "discipline": { "type": "string", "enum": ["STRUCTURED_ONLY", "STRUCTURED_PREFERRED", "FREEFORM"] },
+        "rationaleAllowed": { "type": "boolean" }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "discipline": { "const": "STRUCTURED_ONLY" } } },
+          "then": { "required": ["schemaRef"], "properties": { "schemaRef": { "type": "string", "minLength": 1 } } }
+        }
+      ]
+    },
     "ProviderPreference": {
       "type": "object",
       "required": [

@@ -177,6 +177,23 @@ class WorkflowValidatorContextSelectionTest {
   }
 
   @Test
+  void rejectsCompactStepSourceNamingALedgerSection() {
+    // A section subpath resolves to a bare array the deterministic extractor cannot compact;
+    // accepting it at load would let a run silently produce an empty compact form.
+    StepDefinition compact = StepDefinition.builder().withStepId("c").withName("c")
+        .withBehaviour(new CompactBehaviour(
+            sel(ContextSourceKind.LEDGER_SECTION, "requirements.entries"),
+            new DeterministicExtract(), new CompactionPolicy(0, 0)))
+        .build();
+    WorkflowDefinition wf = workflow(List.of(compact), List.of(ledger("requirements")));
+
+    assertThatThrownBy(() -> validate(wf))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("whole ledger")
+        .hasMessageContaining("requirements.entries");
+  }
+
+  @Test
   void acceptsResolvableSelectorInsideBranchChild() {
     ContextSelection selection = new ContextSelection(
         List.of(sel(ContextSourceKind.STEP_OUTPUT, "branch-target-a")), List.of(), null);

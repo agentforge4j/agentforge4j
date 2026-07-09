@@ -500,6 +500,14 @@ public final class WorkflowValidator {
     if (step.behaviour() instanceof CompactBehaviour compact) {
       checkSelector(compact.source(), step.stepId(), workflow, ledgerIds, artifactIds, stepIds,
           loadedPackNames);
+      // A deterministic extract operates on the whole ledger envelope; a section subpath resolves
+      // to a bare array, which the extractor cannot compact — reject it here rather than letting a
+      // run produce an empty compact form of a non-empty ledger.
+      if (compact.source().kind() == ContextSourceKind.LEDGER_SECTION) {
+        Validate.isTrue(!compact.source().ref().contains("."),
+            "COMPACT step '%s' in workflow '%s' must compact a whole ledger; source '%s' names a ledger section"
+                .formatted(step.stepId(), workflow.id(), compact.source().ref()));
+      }
     }
   }
 

@@ -9,7 +9,10 @@ import com.agentforge4j.util.Validate;
  * and to match a downstream selector against the source a {@code COMPACT} step produced a sibling for.
  *
  * <p>Two selectors with the same {@code kind} and {@code ref} name the same source regardless of
- * {@code variant} — the canonical id deliberately excludes {@code variant} for that reason.
+ * {@code variant} — the canonical id deliberately excludes {@code variant} for that reason. The
+ * {@code ref} is part of the identity verbatim, so a whole-ledger ref and a section subpath of the
+ * same ledger (for example {@code requirements} vs {@code requirements.entries}) are two distinct
+ * sources: a compact sibling produced for one never serves the other.
  */
 public final class ContextSourceId {
 

@@ -6,9 +6,15 @@ import java.util.List;
 
 /**
  * Optional declaration on a {@link StepDefinition} of the context a step receives by default, and the
- * additional context it <em>may</em> request at run time. The runtime builds the step's context
- * strictly from {@code selectors}; a step with no {@link ContextSelection} keeps the current
- * full-context behaviour.
+ * additional context it <em>may</em> request at run time. A step with no {@link ContextSelection}
+ * keeps the full-context behaviour.
+ *
+ * <p>What the runtime currently does with this declaration: selectors are validated at load time
+ * against the enclosing workflow's declared sources, {@code expandableScope} governs run-time
+ * context-expansion grants ({@code RequestContextCommand}), and compact-form references count toward
+ * compaction-reuse thresholds. The runtime does not yet assemble a step's rendered agent context
+ * from {@code selectors} — an agent's input context still flows through its
+ * {@code ContextMapping}.
  *
  * <p>This is the token-efficient subset chosen <em>within</em> the boundary an inheritance scope
  * decides; it never widens context beyond that boundary.
