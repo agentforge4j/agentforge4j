@@ -42,7 +42,11 @@ export function releaseTag(version) {
 }
 
 const SRC_ROOT = join(STAGING_ROOT, 'javadoc-src');
-const ISOLATED_M2 = join(STAGING_ROOT, 'javadoc-m2');
+// The isolated repository path travels via MAVEN_OPTS, which every Maven launcher splits on
+// whitespace — a path containing spaces cannot be expressed there portably. CI checkout paths are
+// space-free; a local run from a space-containing checkout overrides this with AF4J_JAVADOC_M2
+// (buildFromTag fails fast rather than silently corrupting the shared ~/.m2).
+const ISOLATED_M2 = process.env.AF4J_JAVADOC_M2 || join(STAGING_ROOT, 'javadoc-m2');
 
 function git(args, opts = {}) {
   return execFileSync('git', args, {cwd: REPO_ROOT, encoding: 'utf8', ...opts});
@@ -50,6 +54,12 @@ function git(args, opts = {}) {
 
 /** The real per-version builder: detached-worktree checkout of the tag, isolated install, surface build. */
 function buildFromTag(version, outDir) {
+  if (/\s/.test(ISOLATED_M2)) {
+    throw new Error(
+      `javadoc-versions: the isolated Maven repository path contains whitespace (${ISOLATED_M2}) — ` +
+        'MAVEN_OPTS cannot carry it. Set AF4J_JAVADOC_M2 to a space-free directory and rerun.',
+    );
+  }
   const tag = releaseTag(version);
   const srcDir = join(SRC_ROOT, version);
   git(['rev-parse', '--verify', `refs/tags/${tag}`]); // fail fast: the release tag must exist

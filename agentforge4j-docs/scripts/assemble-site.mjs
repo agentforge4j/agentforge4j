@@ -84,8 +84,18 @@ function writeRedirectStubs(siteDir, manifestPath) {
   const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
   for (const {from, to} of manifest) {
     const dir = join(siteDir, ...from.split('/').filter(Boolean));
+    const stub = join(dir, 'index.html');
+    // A stub must never shadow a live page. The transition removes the version from versions.json
+    // in the same run that freezes the artifact, so its old routes cannot exist in the live build;
+    // if one does, archive/ and versions.json are inconsistent — stop rather than publish a site
+    // where a redirect silently replaced real content.
+    if (existsSync(stub)) {
+      console.error(`[assemble-site] redirect stub would overwrite a live page: ${from}`);
+      console.error('  The archived version is still part of the live build — archive/ and versions.json disagree.');
+      process.exit(1);
+    }
     mkdirSync(dir, {recursive: true});
-    writeFileSync(join(dir, 'index.html'), redirectHtml(`${to}/`), 'utf8');
+    writeFileSync(stub, redirectHtml(`${to}/`), 'utf8');
   }
   return manifest.length;
 }
