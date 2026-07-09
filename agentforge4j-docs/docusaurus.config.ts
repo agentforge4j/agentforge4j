@@ -8,7 +8,7 @@ import type * as Preset from '@docusaurus/preset-classic';
 const config: Config = {
   title: 'AgentForge4j',
   tagline: 'An embeddable Java framework for building agentic LLM workflows',
-  favicon: 'img/favicon.ico',
+  favicon: 'img/favicon.svg',
 
   // Improve compatibility with the upcoming Docusaurus v4.
   future: {
