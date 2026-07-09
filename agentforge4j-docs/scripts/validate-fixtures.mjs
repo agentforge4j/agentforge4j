@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 //
-// Source-backed JSON fixture gate (design §8/§11). Validates real repo fixtures against the published
+// Source-backed JSON fixture gate. Validates real repo fixtures against the published
 // Draft 2020-12 schemas with AJV, so a doc-included fixture that no longer matches its schema fails the
 // build. Nothing is hand-authored in the docs module.
 //
-// Fixture sources (owner decision Seq 33):
+// Fixture sources (chosen so every validated document is a real, test-guarded repo artifact):
 //   - agent      -> agentforge4j-schema/src/test/resources/fixtures/agent.valid.json  (the authoritative,
 //                   test-guarded, real-provider fixture). The example agent.json files use the test-only
 //                   `fake` provider for offline runnability and are NOT public schema-conformance fixtures
