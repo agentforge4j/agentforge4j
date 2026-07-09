@@ -1,0 +1,63 @@
+name: Build the documentation site
+description: >-
+  Shared build for the docs quality gate and the Pages deploy: JDK 17 + OSS reactor install, the docs
+  emitter, the examples build (snippet compile gate), the Node toolchain, the aggregate Javadoc
+  surface, the full generate/lint/type-check/test/build pipeline, and the blocking accessibility
+  gate. Both workflows consume this action so the gate and the deploy can never drift apart.
+
+runs:
+  using: composite
+  steps:
+    - name: Set up JDK 17
+      uses: actions/setup-java@v4
+      with:
+        distribution: temurin
+        java-version: '17'
+        cache: maven
+
+    - name: Install the OSS reactor
+      # Installs every OSS artifact (and the starter's Spring configuration metadata) to the local
+      # repository so the emitter, the examples, and the aggregate Javadoc can resolve them. Tests
+      # are skipped here — this pipeline builds the site, not the framework's test suite.
+      shell: bash
+      run: ./mvnw -B -e -q -DskipTests -Dmaven.test.skip=true install
+
+    - name: Generate the docs emitter output
+      # The standalone emitter reflects over the installed artifacts and writes providers/contract-set/
+      # bootstrap JSON that the reference generators consume.
+      shell: bash
+      run: >-
+        ./mvnw -B -q -f agentforge4j-docs-emitter/pom.xml exec:java
+        -Dexec.args="${{ github.workspace }}/agentforge4j-docs/scripts/emitter-output"
+
+    - name: Build the examples (snippet compile gate)
+      # The examples reactor is the compile/run gate for every source-backed snippet the docs include.
+      shell: bash
+      run: ./mvnw -B -q -f agentforge4j-examples/pom.xml -Dmaven.test.skip=true install
+
+    - name: Set up Node
+      uses: actions/setup-node@v5
+      with:
+        node-version-file: '.nvmrc'
+        cache: npm
+        cache-dependency-path: agentforge4j-docs/package-lock.json
+
+    - name: Install docs dependencies
+      shell: bash
+      working-directory: agentforge4j-docs
+      run: npm ci
+
+    - name: Build the Javadoc surface
+      shell: bash
+      working-directory: agentforge4j-docs
+      run: npm run javadoc
+
+    - name: Generate, lint, type-check, test, and build the site
+      shell: bash
+      working-directory: agentforge4j-docs
+      run: npm run check
+
+    - name: Accessibility gate (pa11y-ci, WCAG 2.1 AA)
+      shell: bash
+      working-directory: agentforge4j-docs
+      run: npm run a11y
