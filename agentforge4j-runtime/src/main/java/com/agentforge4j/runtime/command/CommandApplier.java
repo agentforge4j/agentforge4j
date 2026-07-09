@@ -64,17 +64,19 @@ public final class CommandApplier {
     Validate.notNull(step, "step must not be null");
     Validate.notNull(enclosingWorkflow, "enclosingWorkflow must not be null");
 
-    int requestContextRound = 0;
+    int requestContextExpansions = 0;
     for (LlmCommand command : commands) {
-      // The 1-based expansion round is meaningful only on a RequestContextCommand; every other
-      // command type carries 0, as CommandApplicationRequest documents.
-      int commandRound = 0;
-      if (command instanceof RequestContextCommand) {
-        requestContextRound++;
-        commandRound = requestContextRound;
+      // The prior-expansion count is meaningful only on a RequestContextCommand; every other
+      // command type carries 0, as CommandApplicationRequest documents. Counting SELECTORS (not
+      // commands) makes maxExpansions bound the total requested expansions in the batch — packing
+      // many selectors into one command must not evade the limit.
+      int priorExpansions = 0;
+      if (command instanceof RequestContextCommand requestContext) {
+        priorExpansions = requestContextExpansions;
+        requestContextExpansions += requestContext.requestedSelectors().size();
       }
       CommandApplicationRequest request = new CommandApplicationRequest(state, contextMapping,
-          agentId, currentStepUid, step, enclosingWorkflow, commandRound);
+          agentId, currentStepUid, step, enclosingWorkflow, priorExpansions);
       CommandApplicationResult result = applyOne(command, request);
       if (result != CommandApplicationResult.CONTINUE) {
         return result;

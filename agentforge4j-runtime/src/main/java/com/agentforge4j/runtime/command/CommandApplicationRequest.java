@@ -18,10 +18,11 @@ import com.agentforge4j.util.Validate;
  * @param step                     the step whose commands are being applied
  * @param enclosingWorkflow        the workflow definition enclosing {@code step} (root, or the active
  *                                 nested workflow), used to resolve context sources by reference
- * @param requestContextRoundNumber 1-based ordinal of this command within the batch among
- *                                 {@code RequestContextCommand} instances only (0 for any other
- *                                 command type); used to enforce the per-invocation expansion-round
- *                                 limit
+ * @param priorRequestContextExpansions number of context expansions requested by earlier
+ *                                 {@code RequestContextCommand} instances in this batch (each
+ *                                 requested selector counts as one expansion; 0 for the first such
+ *                                 command and for any other command type); used to enforce the
+ *                                 per-invocation expansion limit across the whole batch
  */
 public record CommandApplicationRequest(
     WorkflowState state,
@@ -30,7 +31,7 @@ public record CommandApplicationRequest(
     int currentStepUid,
     StepDefinition step,
     WorkflowDefinition enclosingWorkflow,
-    int requestContextRoundNumber) {
+    int priorRequestContextExpansions) {
 
   /**
    * Validates required fields.
@@ -41,7 +42,7 @@ public record CommandApplicationRequest(
     Validate.notNull(contextMapping, "contextMapping must not be null");
     Validate.notNull(step, "step must not be null");
     Validate.notNull(enclosingWorkflow, "enclosingWorkflow must not be null");
-    Validate.isNotNegative(requestContextRoundNumber,
-        "requestContextRoundNumber must not be negative");
+    Validate.isNotNegative(priorRequestContextExpansions,
+        "priorRequestContextExpansions must not be negative");
   }
 }
