@@ -1,10 +1,10 @@
 name: Deploy Docs
 
-# Publishes the documentation site to GitHub Pages. Builds the full site the same way the Docs gate
-# does (JDK 17 -> OSS reactor -> emitter -> examples -> Node generate/build -> Javadoc), then composes
-# a single Pages artifact (/docs + /javadoc/{next,latest}, archived versions carried forward) and
-# deploys it. Runs on EVERY push to `main` and on manual dispatch; never on pull requests (previews are
-# the build artifact uploaded by the Docs workflow).
+# Publishes the documentation site to GitHub Pages. Builds the full site with the same shared
+# .github/actions/build-docs-site composite action the Docs gate uses (one pipeline definition, no
+# drift), then composes a single Pages artifact (/docs + /javadoc/{next,latest}, archived versions
+# carried forward) and deploys it. Runs on EVERY push to `main` and on manual dispatch; never on pull
+# requests (previews are the build artifact uploaded by the Docs workflow).
 #
 # No changed-paths filter: the generated reference and the aggregate Javadoc surface depend on
 # essentially the whole OSS reactor (any module's public API, config property, or provider can change
@@ -44,46 +44,8 @@ jobs:
       - name: Configure Pages
         uses: actions/configure-pages@v5
 
-      - name: Set up JDK 17
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: '17'
-          cache: maven
-
-      - name: Install the OSS reactor
-        run: ./mvnw -B -e -q -DskipTests -Dmaven.test.skip=true install
-
-      - name: Generate the docs emitter output
-        run: >-
-          ./mvnw -B -q -f agentforge4j-docs-emitter/pom.xml exec:java
-          -Dexec.args="${{ github.workspace }}/agentforge4j-docs/scripts/emitter-output"
-
-      - name: Build the examples (snippet compile gate)
-        run: ./mvnw -B -q -f agentforge4j-examples/pom.xml -Dmaven.test.skip=true install
-
-      - name: Set up Node
-        uses: actions/setup-node@v5
-        with:
-          node-version-file: '.nvmrc'
-          cache: npm
-          cache-dependency-path: agentforge4j-docs/package-lock.json
-
-      - name: Install docs dependencies
-        working-directory: agentforge4j-docs
-        run: npm ci
-
-      - name: Build the Javadoc surface
-        working-directory: agentforge4j-docs
-        run: npm run javadoc
-
-      - name: Generate, lint, type-check, test, and build the site
-        working-directory: agentforge4j-docs
-        run: npm run check
-
-      - name: Accessibility gate (pa11y-ci, WCAG 2.1 AA)
-        working-directory: agentforge4j-docs
-        run: npm run a11y
+      - name: Build the documentation site
+        uses: ./.github/actions/build-docs-site
 
       - name: Assemble the Pages artifact (/docs + /javadoc)
         working-directory: agentforge4j-docs

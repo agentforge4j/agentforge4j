@@ -18,9 +18,11 @@
 //
 // Run via `node scripts/assemble-site.mjs` (usually from the deploy workflow).
 
-import {cpSync, existsSync, mkdirSync, rmSync, writeFileSync} from 'node:fs';
+import {cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync} from 'node:fs';
 import {dirname, join, resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
+import {supportWindow} from './support-window.mjs';
+import {docsEntryPath} from './redirect-config.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const MODULE_ROOT = resolve(here, '..');
@@ -33,7 +35,22 @@ const ARCHIVE_DIR = join(MODULE_ROOT, 'archive');
 const SITE_DIR = join(MODULE_ROOT, '_site');
 
 const CUSTOM_DOMAIN = 'agentforge4j.org';
-const DOCS_ENTRY = '/docs/next/'; // pre-release entry; the redirect toggle moves this at first release.
+
+/** Read a version-list JSON file (versions.json / lts.json), or [] if absent — same as the config. */
+function readVersionList(path) {
+  return existsSync(path) ? JSON.parse(readFileSync(path, 'utf8')) : [];
+}
+
+// The site-root redirect target. Derived from the SAME support window as the in-build redirect
+// toggle and the navbar/footer targets (docsEntryPath is the single source of truth for "where do I
+// point today" — design §3), so it follows the first release automatically: `/docs/next/` while no
+// stable version exists, `/docs/<newest stable>/` afterwards.
+const DOCS_ENTRY = `/docs/${docsEntryPath(
+  supportWindow(
+    readVersionList(join(MODULE_ROOT, 'versions.json')),
+    readVersionList(join(MODULE_ROOT, 'lts.json')),
+  ),
+)}/`;
 
 function requireDir(path, what, hint) {
   if (!existsSync(path)) {
