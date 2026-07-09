@@ -8,6 +8,7 @@
 /agentforge4j-docs-emitter/    @angroene
 /agentforge4j-docs-javadoc/    @angroene
 
-# The documentation CI and deployment workflows.
-/.github/workflows/docs.yml    @angroene
-/.github/workflows/deploy.yml  @angroene
+# The documentation CI and deployment workflows, and the shared build pipeline they consume.
+/.github/workflows/docs.yml           @angroene
+/.github/workflows/deploy.yml         @angroene
+/.github/actions/build-docs-site/     @angroene
