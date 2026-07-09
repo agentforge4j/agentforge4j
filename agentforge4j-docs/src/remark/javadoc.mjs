@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 //
-// JavadocLink remark role (design §7/§12, Phase 4). Authors write an inline-code tag
+// JavadocLink remark role. Authors write an inline-code tag
 // `javadoc:com.agentforge4j.<fqcn>` and this resolves it, at build time, to a version-pinned link
 // into the stitched Javadoc surface, rendering the simple class name as a clickable code link.
 //

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 //
-// Builds the docs-side Javadoc surface (design §7/§12, Phase 4) WITHOUT changing any OSS production
+// Builds the docs-side Javadoc surface WITHOUT changing any OSS production
 // artifact (no module-info, no Automatic-Module-Name, no manifest edit). It produces three surfaces
 // and stitches them under one /javadoc/next/ tree:
 //
@@ -29,12 +29,22 @@ const UNNAMED_PUBLIC = [
   {module: 'agentforge4j-spring-boot-starter', dest: 'spring-boot-starter'},
 ];
 
-// Run Maven from `cwd` (never pass a space-containing absolute path as a shell arg — the repo path
-// contains a space, which a shell would split). The aggregate runs in the aggregator module; the
-// standalone runs use a relative `-pl` from the repo root.
+// The repo Maven wrapper — never a globally-installed `mvn`, so the build uses the repo-pinned
+// Maven version wherever it runs. Absolute path from the repo root so the per-surface cwd swap
+// below keeps working.
+const MVNW = join(REPO_ROOT, process.platform === 'win32' ? 'mvnw.cmd' : 'mvnw');
+
+// Run the wrapper from `cwd`. On Windows the .cmd wrapper must go through a shell (batch files
+// cannot be spawned directly); the command path is quoted because the checkout path may contain
+// spaces, and every argument is a fixed token without spaces, so plain concatenation is unambiguous.
+// POSIX spawns the wrapper directly — no shell, no argument re-interpretation.
 function run(args, cwd) {
-  console.log(`[build-javadoc] (cwd=${cwd}) mvn ${args.join(' ')}`);
-  execFileSync('mvn', args, {cwd, stdio: 'inherit', shell: true});
+  console.log(`[build-javadoc] (cwd=${cwd}) mvnw ${args.join(' ')}`);
+  if (process.platform === 'win32') {
+    execFileSync(`"${MVNW}"`, args, {cwd, stdio: 'inherit', shell: true});
+  } else {
+    execFileSync(MVNW, args, {cwd, stdio: 'inherit'});
+  }
 }
 
 function assertSurface(dir, label, minHtml) {
