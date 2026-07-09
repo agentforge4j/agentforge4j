@@ -31,6 +31,14 @@ public final class ReservedContextKeys {
    */
   public static final String COMPACT_KEY_PREFIX = "__compact.";
 
+  /**
+   * Reserved key prefix under which content served by a granted context-expansion request is
+   * stored, one key per canonical source id. In the protected {@code __} namespace for the same
+   * reason as {@link #LEDGER_KEY_PREFIX} — a granted expansion is runtime bookkeeping and must
+   * never collide with (or be overwritten by) author- or agent-owned context keys.
+   */
+  public static final String GRANTED_KEY_PREFIX = "__granted.";
+
   private ReservedContextKeys() {
   }
 
@@ -57,5 +65,19 @@ public final class ReservedContextKeys {
   public static String compactKey(String sourceId) {
     Validate.notBlank(sourceId, "sourceId must not be blank");
     return COMPACT_KEY_PREFIX + sourceId;
+  }
+
+  /**
+   * Returns the reserved context key storing granted context-expansion content for the given
+   * canonical source id.
+   *
+   * @param sourceId the canonical source id (see {@code ContextSourceId} in the runtime); must not
+   *                 be blank
+   *
+   * @return the reserved key {@code "__granted." + sourceId}; never {@code null}
+   */
+  public static String grantedKey(String sourceId) {
+    Validate.notBlank(sourceId, "sourceId must not be blank");
+    return GRANTED_KEY_PREFIX + sourceId;
   }
 }
