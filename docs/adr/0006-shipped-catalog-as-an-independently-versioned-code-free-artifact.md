@@ -21,7 +21,7 @@ Shipped workflows are content, not framework: they evolve on a different cadence
 1. Shipped workflows and agents live in `agentforge4j-workflows-catalog`, an **independently versioned** artifact within the reactor.
 2. The artifact is **code-free**: JSON/markdown resources only. The framework loads zero shipped workflows when the artifact is absent.
 3. Executable support a workflow requires (validators and similar) is **generic framework capability**, discovered via `ServiceLoader` — never bundled in the catalog artifact, and never workflow-specific: no per-workflow Java classes, validators, or test classes exist anywhere in the framework tree or the catalog module.
-4. Normative conventions bind every bundle: verification scenarios with deterministic expected results, and a runnable example project per shipped workflow.
+4. Normative conventions bind every bundle: verification scenarios with deterministic expected results, and a runnable example project under `workflow-catalog-examples/<workflow-id>/` in the examples tree.
 
 The pre-split `agentforge4j-workflows` module is removed; this artifact model supersedes it.
 
@@ -54,7 +54,7 @@ The catalog artifact's coordinates, its manifest, and the compatibility gate aga
 
 ## Implementation notes
 
-`agentforge4j-workflows-catalog` with its own version line; empty `shipped-workflows/index` and `shipped-agents/index` on `main @ 9ad289dd` (2026-07-09); validator discovery via `ServiceLoader`. The artifact ships no module descriptor — resources only, enforced by an integration test — and declares an `Automatic-Module-Name` in its manifest for module-path consumers (see ADR-0009). A stale comment in the module POM predates the content removal and does not reflect current state.
+`agentforge4j-workflows-catalog` with its own version line; empty `shipped-workflows/index` and `shipped-agents/index` on `main @ 9ad289dd` (2026-07-09); validator discovery via `ServiceLoader`. The artifact ships no module descriptor — resources only, enforced by an integration test — and declares an `Automatic-Module-Name` in its manifest for module-path consumers (see ADR-0009).
 
 ## Follow-up work
 

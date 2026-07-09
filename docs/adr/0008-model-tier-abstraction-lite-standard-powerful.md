@@ -56,7 +56,7 @@ The tier vocabulary is part of the public workflow definition schema and agent c
 
 ## Follow-up work
 
-- Decide the additional capability tier in review at the time of writing and, if accepted, document it as an amendment to this ADR. Automatic tier selection has been proposed but is not accepted.
+- A fourth capability tier has been proposed and is under review; if accepted it amends this record. Automatic tier selection has been proposed and is not accepted.
 
 ## Related documents
 

@@ -18,7 +18,7 @@ The Model Context Protocol (MCP) is the emerging standard for exposing tools to 
 
 ## Decision
 
-MCP integration ships as a dedicated `agentforge4j-mcp` module, depending on `agentforge4j-core` and `agentforge4j-util` only — the SDK dependency is confined to this one module and never touches core or runtime. MCP-provided tools flow through the same governance chokepoint as every other tool (ADR-0003) and the same realised-capability model (ADR-0004); where an MCP server supplies no risk metadata, defaults are conservative.
+MCP integration ships as a dedicated `agentforge4j-mcp` module, depending only on `agentforge4j-core` and `agentforge4j-util` among framework modules, plus the external MCP SDK — the SDK dependency is confined to this one module and never touches core or runtime. MCP-provided tools flow through the same governance chokepoint as every other tool (ADR-0003) and the same realised-capability model (ADR-0004); where an MCP server supplies no risk metadata, defaults are conservative.
 
 The layering invariant: the workflow controls flow, the runtime controls permissions and audit, MCP provides tools — nothing more.
 
@@ -51,7 +51,7 @@ The layering invariant: the workflow controls flow, the runtime controls permiss
 
 ## Implementation notes
 
-`agentforge4j-mcp` with dependencies on `agentforge4j-core` and `agentforge4j-util` only (verified in the module POM); tool flow through `DefaultToolExecutionService`; conservative risk defaults in the MCP tool descriptor mapping. Verified on `main @ 9ad289dd` (2026-07-09).
+`agentforge4j-mcp` depends only on `agentforge4j-core` and `agentforge4j-util` among framework modules, plus the external MCP SDK (verified in the module POM); tool flow through `DefaultToolExecutionService`; conservative risk defaults in the MCP tool descriptor mapping. Verified on `main @ 9ad289dd` (2026-07-09).
 
 ## Follow-up work
 
