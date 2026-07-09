@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 //
-// Accessibility gate (design §11, Phase 5b) — a BLOCKING WCAG 2.1 AA check (pa11y-ci: axe + HTML_CS)
+// Accessibility gate — a BLOCKING WCAG 2.1 AA check (pa11y-ci: axe + HTML_CS)
 // over every built page. It serves the production build locally and crawls the generated sitemap, so
 // the gate exercises exactly what ships. Requires a prior `npm run build` (fails fast if `build/` is
 // absent) and headless Chromium (bundled with pa11y-ci; CI must allow `--no-sandbox`).

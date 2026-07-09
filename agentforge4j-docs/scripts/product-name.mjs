@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 //
-// Product-name separation vocabulary (design §11, Phase 5b). The OSS documentation must never leak the
+// Product-name separation vocabulary. The OSS documentation must never leak the
 // commercial Platform/Cloud product identity: proprietary artifact names, the hosted product names, the
 // commercial vendors, or billing/tenancy concepts the OSS framework deliberately does not carry.
 //
@@ -42,7 +42,7 @@ export const BLOCKED = [
   'paywall',
 ];
 
-// NOTE (design §11): the block list stays to PRECISE product/artifact/vendor identifiers. Bare concept
+// NOTE: the block list stays to PRECISE product/artifact/vendor identifiers. Bare concept
 // words — "billing", "subscription", "metering", "tenant"/"tenancy", "multi-tenant" — are deliberately
 // NOT blocked: they occur legitimately in third-party technical text surfaced by the generated
 // reference (e.g. an LLM provider's "multi-tenant host"), so blocking them produces false positives.

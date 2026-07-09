@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 //
-// Product-name separation gate (design §11, Phase 5b). Scans every docs page (authored + generated,
+// Product-name separation gate. Scans every docs page (authored + generated,
 // so run after `npm run generate`) for commercial Platform/Cloud identifiers and fails the build on
 // any leak. Precise identifiers + allowlist live in product-name.mjs.
 //

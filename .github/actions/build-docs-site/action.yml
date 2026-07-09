@@ -5,6 +5,16 @@ description: >-
   surface, the full generate/lint/type-check/test/build pipeline, and the blocking accessibility
   gate. Both workflows consume this action so the gate and the deploy can never drift apart.
 
+inputs:
+  emitter-maven-phases:
+    description: >-
+      Maven lifecycle phase(s) to run for the docs-emitter module before exec:java. The default
+      compiles AND tests the emitter (it is a standalone module, outside the reactor install, so
+      nothing else builds or tests it); a consumer that relies on another workflow for the tests
+      can pass `compile`.
+    required: false
+    default: test
+
 runs:
   using: composite
   steps:
@@ -22,12 +32,15 @@ runs:
       shell: bash
       run: ./mvnw -B -e -q -DskipTests -Dmaven.test.skip=true install
 
-    - name: Generate the docs emitter output
-      # The standalone emitter reflects over the installed artifacts and writes providers/contract-set/
-      # bootstrap JSON that the reference generators consume.
+    - name: Build, test, and run the docs emitter
+      # The emitter is a standalone Maven module — it is NOT part of the reactor install above, so
+      # it must be compiled here before exec:java can run its main class (exec:java builds nothing
+      # by itself), and its unit tests only ever run here (the default phase is `test`). It reflects
+      # over the installed artifacts and writes the providers/contract-set/bootstrap JSON that the
+      # reference generators consume.
       shell: bash
       run: >-
-        ./mvnw -B -q -f agentforge4j-docs-emitter/pom.xml exec:java
+        ./mvnw -B -q -f agentforge4j-docs-emitter/pom.xml ${{ inputs.emitter-maven-phases }} exec:java
         -Dexec.args="${{ github.workspace }}/agentforge4j-docs/scripts/emitter-output"
 
     - name: Build the examples (snippet compile gate)
