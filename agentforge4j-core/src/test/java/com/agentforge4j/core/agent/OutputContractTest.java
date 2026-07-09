@@ -36,4 +36,13 @@ class OutputContractTest {
     assertThatThrownBy(() -> new OutputContract("  ", OutputDiscipline.STRUCTURED_ONLY, false))
         .isInstanceOf(IllegalArgumentException.class);
   }
+
+  @Test
+  void rejectsBlankSchemaRefForOtherDisciplines() {
+    // A present schemaRef is never blank; only null means "no schema declared".
+    assertThatThrownBy(() -> new OutputContract("  ", OutputDiscipline.FREEFORM, false))
+        .isInstanceOf(IllegalArgumentException.class);
+    assertThatThrownBy(() -> new OutputContract("  ", OutputDiscipline.STRUCTURED_PREFERRED, false))
+        .isInstanceOf(IllegalArgumentException.class);
+  }
 }

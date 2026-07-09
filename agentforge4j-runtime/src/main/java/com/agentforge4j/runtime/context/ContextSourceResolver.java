@@ -89,7 +89,8 @@ public final class ContextSourceResolver {
   /**
    * Resolves {@code selector}'s full (uncompacted) source content, ignoring any compact sibling. Used
    * both for {@link ContextVariant#FULL} selectors and by a {@code COMPACT} step to read the source it
-   * compacts.
+   * compacts. For a {@code CONTEXT_PACK} selector this is the pack's {@code "full"} variant,
+   * regardless of the selector's declared variant.
    *
    * @param selector the selector to resolve; must not be {@code null}
    * @param state    run state to resolve against; must not be {@code null}
@@ -112,7 +113,10 @@ public final class ContextSourceResolver {
     if (kind == ContextSourceKind.STEP_OUTPUT) {
       return resolveStepOutput(selector.ref(), state);
     }
-    return resolveContextPack(selector);
+    // A CONTEXT_PACK's "full" source is its author-provided "full" variant — resolveFull must never
+    // honour the selector's variant, or its "ignoring any compact form" contract would break for
+    // pack selectors (e.g. a COMPACT_ONLY pack selector failing closed on a full-content read).
+    return packFullVariant(lookUpPack(selector));
   }
 
   /**
@@ -123,13 +127,9 @@ public final class ContextSourceResolver {
    * involved — a pack variant is an author-provided file, not a runtime-computed sibling.
    */
   private String resolveContextPack(ContextSelector selector) {
-    ContextPack pack = contextPackRegistry.get(selector.ref())
-        .orElseThrow(() -> new IllegalArgumentException(
-            "Unknown context pack '%s'".formatted(selector.ref())));
+    ContextPack pack = lookUpPack(selector);
     if (selector.variant() == ContextVariant.FULL) {
-      return variantContent(pack, FULL_VARIANT)
-          .orElseThrow(() -> new IllegalStateException(
-              "Context pack '%s' declares no '%s' variant".formatted(pack.name(), FULL_VARIANT)));
+      return packFullVariant(pack);
     }
     Optional<String> compact = variantContent(pack, COMPACT_VARIANT);
     if (compact.isPresent()) {
@@ -140,6 +140,16 @@ public final class ContextSourceResolver {
           "Context pack '%s' declares no '%s' variant (COMPACT_ONLY)".formatted(pack.name(),
               COMPACT_VARIANT));
     }
+    return packFullVariant(pack);
+  }
+
+  private ContextPack lookUpPack(ContextSelector selector) {
+    return contextPackRegistry.get(selector.ref())
+        .orElseThrow(() -> new IllegalArgumentException(
+            "Unknown context pack '%s'".formatted(selector.ref())));
+  }
+
+  private static String packFullVariant(ContextPack pack) {
     return variantContent(pack, FULL_VARIANT)
         .orElseThrow(() -> new IllegalStateException(
             "Context pack '%s' declares no '%s' variant".formatted(pack.name(), FULL_VARIANT)));

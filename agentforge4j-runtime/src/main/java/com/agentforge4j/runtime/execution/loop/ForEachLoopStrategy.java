@@ -16,12 +16,9 @@ import com.agentforge4j.runtime.event.EventRecorder;
 import com.agentforge4j.runtime.execution.ExecutionContext;
 import com.agentforge4j.runtime.execution.ExecutionOutcome;
 import com.agentforge4j.runtime.execution.StepSequenceExecutor;
+import com.agentforge4j.util.Sha256;
 import com.agentforge4j.util.Validate;
 
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
-import java.util.HexFormat;
 import java.util.List;
 import java.util.Optional;
 import java.util.stream.Collectors;
@@ -180,13 +177,7 @@ public final class ForEachLoopStrategy extends AbstractLoopStrategy {
     String payload = list.values().size() + "|"
         + list.values().stream().map(ForEachLoopStrategy::contentSignature)
         .collect(Collectors.joining("|"));
-    try {
-      MessageDigest digest = MessageDigest.getInstance("SHA-256");
-      byte[] hash = digest.digest(payload.getBytes(StandardCharsets.UTF_8));
-      return HexFormat.of().formatHex(hash);
-    } catch (NoSuchAlgorithmException e) {
-      throw new IllegalStateException("SHA-256 unavailable", e);
-    }
+    return Sha256.hex(payload);
   }
 
   /**

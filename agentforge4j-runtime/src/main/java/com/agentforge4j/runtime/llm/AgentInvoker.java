@@ -30,9 +30,7 @@ import com.agentforge4j.runtime.interceptor.RunExecutionInterceptor;
 import com.agentforge4j.util.Validate;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.nio.charset.StandardCharsets;
-import java.util.Arrays;
 import java.util.List;
-import java.util.stream.Collectors;
 import org.apache.commons.lang3.StringUtils;
 
 /**
@@ -444,12 +442,8 @@ public final class AgentInvoker {
     } catch (IllegalArgumentException e) {
       throw new ModelTierResolutionException(
           "Invalid model tier '%s' for agent '%s'; valid tiers: %s".formatted(
-              tierName, agentId, validTierNames()));
+              tierName, agentId, ModelTier.joinedNames()));
     }
-  }
-
-  private static String validTierNames() {
-    return Arrays.stream(ModelTier.values()).map(Enum::name).collect(Collectors.joining(", "));
   }
 
   private record ModelResolution(String resolvedModel, ModelSource modelSource,

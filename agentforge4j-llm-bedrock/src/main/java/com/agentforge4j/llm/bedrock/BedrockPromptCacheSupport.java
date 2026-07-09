@@ -5,7 +5,6 @@ import com.agentforge4j.llm.DefaultTokenEstimator;
 import com.agentforge4j.llm.PromptLayerCacheSupport;
 import com.agentforge4j.llm.api.PromptLayerBoundaries;
 import com.agentforge4j.llm.bedrock.dto.BedrockSystemContentBlock;
-import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 
@@ -22,9 +21,6 @@ import java.util.Map;
  * tokenizer.
  */
 final class BedrockPromptCacheSupport {
-
-  private static final System.Logger LOG = System.getLogger(
-      BedrockPromptCacheSupport.class.getName());
 
   /**
    * Default minimum estimated tokens in a layer segment for a cache breakpoint when the model id is
@@ -93,13 +89,10 @@ final class BedrockPromptCacheSupport {
    * @return per-layer marker flags
    */
   static boolean[] selectBreakpoints(PromptLayerBoundaries promptLayerBoundaries, String modelId) {
-    boolean[] mark = PromptLayerCacheSupport.selectBreakpoints(
+    // The shared selectBreakpoints logs the per-request breakpoint decision; logging it here too
+    // would duplicate the line for callers of this wrapper.
+    return PromptLayerCacheSupport.selectBreakpoints(
         promptLayerBoundaries, modelId, MODEL_MIN_CACHEABLE_SEGMENT_TOKENS);
-    LOG.log(
-        System.Logger.Level.DEBUG,
-        "prompt-cache modelId=%s thresholds=%s mark=%s".formatted(modelId, promptLayerBoundaries,
-            Arrays.toString(mark)));
-    return mark;
   }
 
   /**

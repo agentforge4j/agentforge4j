@@ -11,8 +11,8 @@ import java.nio.charset.StandardCharsets;
  * estimate shared across the framework; provider prompt-cache support delegates to
  * {@link #estimateFromUtf8ByteLength(int)} rather than duplicating the formula.
  *
- * <p>Estimates feed advisory evidence only (segment-size thresholds, governance metadata) — never gates,
- * limits, or cost mapping.
+ * <p>Estimates feed advisory evidence only (segment-size thresholds, governance metadata) — never gates
+ * or limits.
  */
 public final class DefaultTokenEstimator implements TokenEstimator {
 

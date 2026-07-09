@@ -48,4 +48,9 @@ class ModelTierTest {
     assertThatThrownBy(() -> ModelTier.fromName("FAST"))
         .isInstanceOf(IllegalArgumentException.class);
   }
+
+  @Test
+  void joinedNamesListsEveryTierInDeclarationOrder() {
+    assertThat(ModelTier.joinedNames()).isEqualTo("LITE, STANDARD, POWERFUL, PREMIUM");
+  }
 }

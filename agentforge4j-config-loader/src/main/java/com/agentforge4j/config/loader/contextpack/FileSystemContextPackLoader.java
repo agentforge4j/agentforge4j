@@ -5,6 +5,7 @@ import com.agentforge4j.core.spi.contextpack.ContextPack;
 import com.agentforge4j.core.spi.contextpack.ContextPackLoader;
 import com.agentforge4j.core.spi.contextpack.ContextPackVariant;
 import com.agentforge4j.schema.SchemaProvider;
+import com.agentforge4j.util.Sha256;
 import com.agentforge4j.util.Validate;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -15,13 +16,9 @@ import com.networknt.schema.SchemaRegistry;
 import com.networknt.schema.SpecificationVersion;
 import java.io.IOException;
 import java.io.UncheckedIOException;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
-import java.util.HexFormat;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -178,7 +175,7 @@ public final class FileSystemContextPackLoader implements ContextPackLoader {
         return null;
       }
       try {
-        variants.put(variantName, new ContextPackVariant(variantName, content, sha256Hex(content)));
+        variants.put(variantName, new ContextPackVariant(variantName, content, Sha256.hex(content)));
       } catch (IllegalArgumentException e) {
         errors.add("%s: variant '%s' is invalid: %s".formatted(dir, variantName, e.getMessage()));
         return null;
@@ -204,15 +201,6 @@ public final class FileSystemContextPackLoader implements ContextPackLoader {
   private static String textOrNull(JsonNode node, String field) {
     JsonNode value = node.get(field);
     return (value == null || value.isNull()) ? null : value.asText();
-  }
-
-  private static String sha256Hex(String content) {
-    try {
-      MessageDigest digest = MessageDigest.getInstance("SHA-256");
-      return HexFormat.of().formatHex(digest.digest(content.getBytes(StandardCharsets.UTF_8)));
-    } catch (NoSuchAlgorithmException e) {
-      throw new IllegalStateException("SHA-256 algorithm not available", e);
-    }
   }
 
   private static Schema parseContextPackSchema(ObjectMapper objectMapper,

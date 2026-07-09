@@ -22,6 +22,7 @@ import com.agentforge4j.llm.DefaultTokenEstimator;
 import com.agentforge4j.runtime.context.CompactSibling;
 import com.agentforge4j.runtime.context.CompactSiblingStore;
 import com.agentforge4j.runtime.context.ContextFingerprint;
+import com.agentforge4j.runtime.context.ContextPackRegistry;
 import com.agentforge4j.runtime.context.ContextSourceId;
 import com.agentforge4j.runtime.context.ContextSourceResolver;
 import com.agentforge4j.runtime.event.EventRecorder;
@@ -84,8 +85,7 @@ class CompactBehaviourHandlerTest {
   private CompactBehaviourHandler handler(WorkflowDefinition workflow) {
     EventRecorder eventRecorder = new EventRecorder(new InMemoryWorkflowEventLog(), CLOCK);
     return new CompactBehaviourHandler(
-        new ContextSourceResolver(new ContextRenderer(mapper), mapper,
-            com.agentforge4j.runtime.context.ContextPackRegistry.EMPTY),
+        new ContextSourceResolver(new ContextRenderer(mapper), mapper, ContextPackRegistry.EMPTY),
         new DefaultTokenEstimator(),
         new InMemoryWorkflowRepository(Map.of(workflow.id(), workflow)),
         eventRecorder,
