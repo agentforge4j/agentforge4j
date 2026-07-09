@@ -84,7 +84,7 @@ class ReachableStepGraphTest {
 
   @Test
   void walk_descendsBranchTargets() {
-    // CR-05: a step reachable only as a BranchBehaviour target (here, via a blueprint-ref branch
+    // A step reachable only as a BranchBehaviour target (here, via a blueprint-ref branch
     // value) must be descended exactly like any other child, or the runtime's gate/resume
     // resolution (which uses this same graph) can neither find nor gate it — the branch-child
     // human-gate bypass this case regresses.

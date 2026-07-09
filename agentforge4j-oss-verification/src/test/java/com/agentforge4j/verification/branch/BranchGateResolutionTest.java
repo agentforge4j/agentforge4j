@@ -18,7 +18,7 @@ import java.util.Map;
 import org.junit.jupiter.api.Test;
 
 /**
- * Regression coverage for CR-05: a gated step reachable only as a {@code BRANCH} target was absent
+ * Regression coverage: a gated step reachable only as a {@code BRANCH} target was absent
  * from {@code ReachableStepGraph} (the branch step itself was recorded, but
  * {@code BranchBehaviour.childExecutables()} was never descended), so
  * {@code DefaultWorkflowRuntime.gateCompletedStep} could not resolve it and silently skipped its

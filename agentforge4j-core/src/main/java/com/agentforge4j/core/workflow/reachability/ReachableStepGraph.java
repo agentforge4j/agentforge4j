@@ -156,7 +156,7 @@ public final class ReachableStepGraph {
             // A branch's routable children (exact-match targets, predicate targets, the default
             // branch) are reachable at runtime exactly like any sibling step in this same
             // container — descend them here, or they (and any gate on them) are invisible to
-            // resume/gate resolution and the duplicate-id guard (CR-05).
+            // resume/gate resolution and the duplicate-id guard.
             collect(branchBehaviour.childExecutables(), enclosing, containerKey, blueprintPath);
           }
         } else if (executable instanceof BlueprintRef ref) {
