@@ -11,7 +11,7 @@
 // Generated output is gitignored and regenerated at build time, so it cannot drift from source.
 // Run AFTER the emitter (see scripts/README or the module README for the full sequence).
 
-import {existsSync, mkdirSync, readFileSync, rmSync, writeFileSync} from 'node:fs';
+import {existsSync, mkdirSync, readFileSync, writeFileSync} from 'node:fs';
 import {dirname, join} from 'node:path';
 import {fileURLToPath} from 'node:url';
 
@@ -370,18 +370,6 @@ function generateSchemasIndex(names) {
 
 // --- Main ------------------------------------------------------------------------------------
 
-function removeFlatStubsBeingReplaced() {
-  // Phase 1 shipped flat stubs for these areas; Phase 2 replaces them with generated content.
-  // config/schemas/providers move into subdirectories, so their flat stubs must be removed to
-  // avoid duplicate routes; behaviours/commands/events/statuses are regenerated in place.
-  for (const stub of ['config.mdx', 'schemas.mdx', 'providers.mdx']) {
-    const path = join(REFERENCE_DIR, stub);
-    if (existsSync(path)) {
-      rmSync(path);
-    }
-  }
-}
-
 function main() {
   const providers = readJson(join(EMITTER_OUT, 'providers.json'), 'providers.json (emitter output)');
   const contracts = readJson(join(EMITTER_OUT, 'contract-sets.json'), 'contract-sets.json (emitter output)');
@@ -397,8 +385,6 @@ function main() {
       process.exit(1);
     }
   }
-
-  removeFlatStubsBeingReplaced();
 
   generateProviders(providers);
 
