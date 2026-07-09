@@ -23,7 +23,7 @@
 # Release-staging scratch area (materialised snapshot + swap backup; never committed — design §12).
 /.release-staging
 
-# Assembled GitHub Pages artifact (docs + javadoc), built at deploy time — never committed (design §12).
+# Assembled GitHub Pages artifact (docs + javadoc), built at deploy time — never committed.
 /_site
 
 # Misc
