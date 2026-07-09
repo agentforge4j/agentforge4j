@@ -92,7 +92,7 @@
           ],
           "description": "Optional capability tier overriding the agent tier for this step. A raw model pin always wins over the tier. Null inherits the agent tier."
         },
-"estimatedInputTokens": {
+        "estimatedInputTokens": {
           "type": "integer",
           "minimum": 0,
           "description": "Optional execution-estimation hint: expected input tokens consumed by this step. Advisory only; never affects runtime behaviour."

@@ -24,8 +24,8 @@ import com.agentforge4j.runtime.command.CommandApplicationRequest;
 import com.agentforge4j.runtime.context.CompactSibling;
 import com.agentforge4j.runtime.context.CompactSiblingStore;
 import com.agentforge4j.runtime.context.ContextFingerprint;
-import com.agentforge4j.runtime.context.ContextSourceId;
 import com.agentforge4j.runtime.context.ContextPackRegistry;
+import com.agentforge4j.runtime.context.ContextSourceId;
 import com.agentforge4j.runtime.context.ContextSourceResolver;
 import com.agentforge4j.runtime.event.EventRecorder;
 import com.agentforge4j.runtime.exception.CompactSiblingUnavailableException;
@@ -51,8 +51,7 @@ class RequestContextCommandHandlerTest {
   private final ObjectMapper mapper = new ObjectMapper();
   private final InMemoryWorkflowEventLog eventLog = new InMemoryWorkflowEventLog();
   private final RequestContextCommandHandler handler = new RequestContextCommandHandler(
-      new ContextSourceResolver(new ContextRenderer(mapper), mapper,
-          com.agentforge4j.runtime.context.ContextPackRegistry.EMPTY),
+      new ContextSourceResolver(new ContextRenderer(mapper), mapper, ContextPackRegistry.EMPTY),
       new EventRecorder(eventLog, CLOCK));
 
   private static ContextSelector selector(String ref) {

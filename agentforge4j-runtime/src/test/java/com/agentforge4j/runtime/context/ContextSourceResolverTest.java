@@ -225,6 +225,25 @@ class ContextSourceResolverTest {
   }
 
   @Test
+  void resolveFullOnContextPackIgnoresTheDeclaredVariant() {
+    // resolveFull's contract is the full (uncompacted) source: for a pack selector it must return
+    // the pack's "full" variant even when the selector declares COMPACT_PREFERRED or COMPACT_ONLY.
+    ContextSourceResolver withPacks = new ContextSourceResolver(new ContextRenderer(mapper), mapper,
+        ContextPackRegistry.of(List.of(pack("coding-standards", true))));
+    WorkflowState state = state();
+    WorkflowDefinition wf = workflow(List.of());
+
+    assertThat(withPacks.resolveFull(
+        selector(ContextSourceKind.CONTEXT_PACK, "coding-standards", ContextVariant.COMPACT_PREFERRED),
+        state, wf))
+        .isEqualTo("FULL CONTENT");
+    assertThat(withPacks.resolveFull(
+        selector(ContextSourceKind.CONTEXT_PACK, "coding-standards", ContextVariant.COMPACT_ONLY),
+        state, wf))
+        .isEqualTo("FULL CONTENT");
+  }
+
+  @Test
   void compactPreferredUsesFreshSiblingAndFallsBackWhenStale() {
     WorkflowState state = state();
     WorkflowDefinition wf = workflow(List.of(ledger("requirements")));

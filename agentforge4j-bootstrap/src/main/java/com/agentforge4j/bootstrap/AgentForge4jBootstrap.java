@@ -56,7 +56,6 @@ import com.agentforge4j.util.net.HttpEgressGuard;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.nio.file.Path;
 import java.time.Clock;
-import java.util.Arrays;
 import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
@@ -66,7 +65,6 @@ import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Set;
 import java.util.function.Function;
-import java.util.stream.Collectors;
 import org.apache.commons.lang3.ObjectUtils;
 
 /**
@@ -1001,12 +999,8 @@ public final class AgentForge4jBootstrap {
       } catch (IllegalArgumentException exception) {
         throw new IllegalStateException(
             ("Invalid tier '%s' in '%s' — valid tiers: %s")
-                .formatted(tierName, key, validTierNames()), exception);
+                .formatted(tierName, key, ModelTier.joinedNames()), exception);
       }
-    }
-
-    private static String validTierNames() {
-      return Arrays.stream(ModelTier.values()).map(Enum::name).collect(Collectors.joining(", "));
     }
   }
 }

@@ -5,6 +5,7 @@ import com.agentforge4j.llm.api.PromptLayerBoundaries;
 import com.agentforge4j.util.Validate;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 
@@ -23,6 +24,9 @@ import java.util.Map;
  * tokenizer.
  */
 public final class PromptLayerCacheSupport {
+
+  private static final System.Logger LOG =
+      System.getLogger(PromptLayerCacheSupport.class.getName());
 
   /**
    * Default minimum estimated tokens in a layer segment for a cache breakpoint when the model id is
@@ -64,7 +68,8 @@ public final class PromptLayerCacheSupport {
 
   /**
    * Resolves the minimum cacheable segment length for a model id against a provider-supplied
-   * model-prefix-to-minimum-tokens table.
+   * model-prefix-to-minimum-tokens table. When more than one configured prefix matches, the longest
+   * (most specific) prefix wins — matching is deterministic regardless of the map's iteration order.
    *
    * @param modelId                   request model identifier (non-blank)
    * @param modelPrefixToMinTokens    provider model-prefix (matched with
@@ -75,12 +80,14 @@ public final class PromptLayerCacheSupport {
       String modelId, Map<String, Integer> modelPrefixToMinTokens) {
     Validate.notBlank(modelId, "modelId must not be blank");
     Validate.notNull(modelPrefixToMinTokens, "modelPrefixToMinTokens must not be null");
+    Map.Entry<String, Integer> longestMatch = null;
     for (Map.Entry<String, Integer> entry : modelPrefixToMinTokens.entrySet()) {
-      if (modelId.startsWith(entry.getKey())) {
-        return entry.getValue();
+      if (modelId.startsWith(entry.getKey())
+          && (longestMatch == null || entry.getKey().length() > longestMatch.getKey().length())) {
+        longestMatch = entry;
       }
     }
-    return DEFAULT_MIN_CACHEABLE_SEGMENT_TOKENS;
+    return longestMatch != null ? longestMatch.getValue() : DEFAULT_MIN_CACHEABLE_SEGMENT_TOKENS;
   }
 
   /**
@@ -183,6 +190,14 @@ public final class PromptLayerCacheSupport {
       mark[2] = DefaultTokenEstimator.estimateFromUtf8ByteLength(
           promptLayerBoundaries.layer3EndOffset()) >= threshold;
     }
+    // Logged here — the shared path every production buildSystemBlocks call goes through — so the
+    // per-request breakpoint decision stays observable regardless of which provider wrapper exists.
+    // Supplier form: this runs on every cached LLM call, so the message must only be built when
+    // DEBUG is actually enabled.
+    LOG.log(
+        System.Logger.Level.DEBUG,
+        () -> "prompt-cache modelId=%s thresholds=%s mark=%s".formatted(modelId,
+            promptLayerBoundaries, Arrays.toString(mark)));
     return mark;
   }
 }

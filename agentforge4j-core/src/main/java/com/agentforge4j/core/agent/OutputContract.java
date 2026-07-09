@@ -13,7 +13,8 @@ import com.agentforge4j.util.Validate;
  *
  * @param schemaRef        classpath- or bundle-relative id of the JSON schema the response conforms
  *                         to; must be non-blank when {@code discipline} is
- *                         {@link OutputDiscipline#STRUCTURED_ONLY}, otherwise may be {@code null}
+ *                         {@link OutputDiscipline#STRUCTURED_ONLY}, otherwise {@code null} or
+ *                         non-blank (a present reference is never blank)
  * @param discipline       how strictly the response must conform; never {@code null}
  * @param rationaleAllowed whether the contract schema may carry a bounded {@code rationale} field so
  *                         reasoning-heavy agents keep explanation inside the contract, not around it
@@ -29,6 +30,9 @@ public record OutputContract(
     if (discipline == OutputDiscipline.STRUCTURED_ONLY) {
       Validate.notBlank(schemaRef,
           "OutputContract schemaRef must not be blank when discipline is STRUCTURED_ONLY");
+    } else if (schemaRef != null) {
+      Validate.notBlank(schemaRef,
+          "OutputContract schemaRef must be null or non-blank");
     }
   }
 }

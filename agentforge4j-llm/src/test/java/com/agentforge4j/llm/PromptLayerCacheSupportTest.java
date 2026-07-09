@@ -42,6 +42,20 @@ class PromptLayerCacheSupportTest {
   }
 
   @Test
+  void resolveMinCacheableSegmentTokens_overlappingPrefixesResolveToTheMostSpecific() {
+    // "model" and "model-pro" both match "model-pro-v2"; the longer (more specific) prefix must win
+    // deterministically, regardless of the map's unordered iteration.
+    Map<String, Integer> overlapping = Map.of(
+        "model", 1111,
+        "model-pro", 2222);
+
+    assertThat(PromptLayerCacheSupport.resolveMinCacheableSegmentTokens(
+        "model-pro-v2", overlapping)).isEqualTo(2222);
+    assertThat(PromptLayerCacheSupport.resolveMinCacheableSegmentTokens(
+        "model-lite-v2", overlapping)).isEqualTo(1111);
+  }
+
+  @Test
   void resolveMinCacheableSegmentTokens_unrecognizedModelUsesDefault() {
     assertThat(PromptLayerCacheSupport.resolveMinCacheableSegmentTokens(
         "unrecognized-model", MODEL_MIN_TOKENS))
