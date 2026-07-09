@@ -199,14 +199,22 @@ class RetryPreviousBehaviourHandlerTest {
           .attemptCounter("1")
           .build();
 
+      int firstReallocatedUid = f.state().getStepExecutionUid().values().stream()
+          .mapToInt(Integer::intValue)
+          .max()
+          .orElse(0) + 1;
+
       f.handle();
 
       assertThat(f.state().getContext()).containsKey(f.attemptKey());
       assertThat(f.state().getContext()).doesNotContainKey("ctxX");
       // s2 and s3's pre-retry uids/outputs are cleared by clearEntriesFromUid, then each is
-      // re-allocated a fresh, higher uid as it is re-dispatched (CR-2 fix) — no output is set for
-      // either since the mocked executableExecutor never calls putStepOutput.
-      assertThat(f.state().getStepExecutionUid()).containsEntry("s2", 5).containsEntry("s3", 6);
+      // re-allocated a fresh uid (continuing above the highest pre-retry uid) as it is
+      // re-dispatched — no output is set for either since the mocked executableExecutor never
+      // calls putStepOutput.
+      assertThat(f.state().getStepExecutionUid())
+          .containsEntry("s2", firstReallocatedUid)
+          .containsEntry("s3", firstReallocatedUid + 1);
       assertThat(f.state().getStepOutputs()).doesNotContainKey("s2");
       assertThat(f.state().getStepOutputs()).doesNotContainKey("s3");
     }

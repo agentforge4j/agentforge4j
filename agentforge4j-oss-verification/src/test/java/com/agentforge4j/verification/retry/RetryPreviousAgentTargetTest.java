@@ -13,7 +13,7 @@ import java.nio.file.Files;
 import org.junit.jupiter.api.Test;
 
 /**
- * Regression coverage for CR-2: a {@code RETRY_PREVIOUS} step whose {@code retryStepId} targets an
+ * Regression coverage: a {@code RETRY_PREVIOUS} step whose {@code retryStepId} targets an
  * {@code AGENT} (or {@code SPAR}) step crashed the run. {@code RetryPreviousBehaviourHandler}
  * cleared the target's execution uid (via {@code clearEntriesFromUid}) then dispatched it directly
  * through {@code ExecutableExecutor}, bypassing the {@code StepSequenceExecutor} allocation point
