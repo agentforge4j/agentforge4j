@@ -33,4 +33,17 @@ class ReservedContextKeysTest {
     assertThatThrownBy(() -> ReservedContextKeys.compactKey(" "))
         .isInstanceOf(IllegalArgumentException.class);
   }
+
+  @Test
+  void grantedKeyIsNamespacedUnderReservedPrefix() {
+    assertThat(ReservedContextKeys.grantedKey("STATE_KEY:design.md"))
+        .isEqualTo("__granted.STATE_KEY:design.md")
+        .startsWith(ReservedContextKeys.GRANTED_KEY_PREFIX);
+  }
+
+  @Test
+  void grantedKeyRejectsBlankSourceId() {
+    assertThatThrownBy(() -> ReservedContextKeys.grantedKey(" "))
+        .isInstanceOf(IllegalArgumentException.class);
+  }
 }

@@ -7,6 +7,7 @@ import com.agentforge4j.core.workflow.context.ContextValue;
 import com.agentforge4j.core.workflow.context.JsonContextValue;
 import com.agentforge4j.core.workflow.context.StringContextValue;
 import com.agentforge4j.core.workflow.event.WorkflowEventType;
+import com.agentforge4j.core.workflow.state.ReservedContextKeys;
 import com.agentforge4j.core.workflow.state.WorkflowState;
 import com.agentforge4j.core.workflow.step.ContextSelection;
 import com.agentforge4j.core.workflow.step.ContextSelector;
@@ -14,6 +15,8 @@ import com.agentforge4j.core.workflow.step.ContextSourceKind;
 import com.agentforge4j.runtime.command.CommandApplicationRequest;
 import com.agentforge4j.runtime.command.CommandApplicationResult;
 import com.agentforge4j.runtime.command.CommandHandler;
+import com.agentforge4j.runtime.context.ContextFingerprint;
+import com.agentforge4j.runtime.context.ContextSourceId;
 import com.agentforge4j.runtime.context.ContextSourceResolver;
 import com.agentforge4j.runtime.event.EventRecorder;
 import com.agentforge4j.util.Validate;
@@ -42,13 +45,15 @@ import java.util.Optional;
  * {@code MAX_EXPANSIONS_REACHED} even for out-of-scope selectors. A step with no
  * {@link ContextSelection} has no expandable scope, so every request is denied.
  *
- * <p><strong>Write and delivery semantics:</strong> granted content is written under the declared
- * {@code ref} as a context key in the shared context namespace, and only when no value exists under
- * that key yet — an existing value (author-supplied, or written by an earlier grant) is preserved
- * unchanged, so a grant never mutates existing state and the first granted resolution of a source
- * wins for the remainder of the run state. The grant does not re-invoke the requesting agent: the
- * written key reaches an agent through the normal context rendering of a subsequent invocation that
- * maps it, like any other context key.
+ * <p><strong>Write and delivery semantics:</strong> granted content is written under the reserved
+ * key {@link ReservedContextKeys#grantedKey} for the selector's canonical source id — never under a
+ * plain context key, so a grant can never collide with author- or agent-owned state. Every grant
+ * resolves the source's <em>current</em> value; when a source was granted before and its content has
+ * changed since, the fresh value replaces the stored one and the {@code CONTEXT_EXPANSION_GRANTED}
+ * event carries {@code changedSincePriorGrant=true} with the prior and new content fingerprints.
+ * There is no serve-stale path: a resolution failure propagates rather than falling back to the
+ * previously stored value. The grant does not re-invoke the requesting agent; the written key
+ * reaches an agent through the normal context rendering of a subsequent invocation that maps it.
  */
 public final class RequestContextCommandHandler implements CommandHandler<RequestContextCommand> {
 
@@ -118,32 +123,53 @@ public final class RequestContextCommandHandler implements CommandHandler<Reques
   private void grant(CommandApplicationRequest request, ContextSelector selector, int round) {
     // Reject the reserved '__' runtime namespace (ledger merges, compact siblings, and other
     // governance state) the same way SetContextCommandHandler guards LLM-declared output keys: a
-    // granted expansion must never write into runtime-owned state, even if a workflow author declared
-    // such a ref in expandableScope. Treated as a deny, not a thrown exception, so it stays consistent
-    // with this class's existing "requests are granted or denied" governance shape.
+    // granted expansion must never read runtime-owned state as a source, even if a workflow author
+    // declared such a ref in expandableScope. Treated as a deny, not a thrown exception, so it stays
+    // consistent with this class's existing "requests are granted or denied" governance shape.
     if (selector.ref().startsWith("__")) {
       recordDenied(request, selector, round, REASON_RESERVED_NAMESPACE);
       return;
     }
     WorkflowState state = request.state();
-    // Never overwrite an existing key with a re-encoded copy: a STATE_KEY selector's ref may already
-    // name a value the workflow author or a prior grant round put there, and re-writing it here would
-    // mutate its type/encoding (e.g. a StringContextValue becoming a re-encoded JsonContextValue) for
-    // a context-read request that has no business changing existing state.
-    if (state.getContextValue(selector.ref()).isEmpty()) {
-      // resolve() (not resolveFull()) so a granted expansion honors the DECLARED ContextVariant:
-      // COMPACT_PREFERRED serves the compact sibling when fresh, and COMPACT_ONLY fails closed via
-      // CompactSiblingUnavailableException (allowed to propagate, per this class's contract of
-      // surfacing command-application failures rather than swallowing them).
-      String content = contextSourceResolver.resolve(selector, state, request.enclosingWorkflow());
-      state.putContextValue(selector.ref(), grantedValue(selector.kind(), content));
+    // resolve() (not resolveFull()) so a granted expansion honors the DECLARED ContextVariant:
+    // COMPACT_PREFERRED serves the compact sibling when fresh, and COMPACT_ONLY fails closed via
+    // CompactSiblingUnavailableException (allowed to propagate, per this class's contract of
+    // surfacing command-application failures rather than swallowing them). Resolution always reads
+    // the source's CURRENT value — there is no serve-stale path.
+    String content = contextSourceResolver.resolve(selector, state, request.enclosingWorkflow());
+    String grantedKey = ReservedContextKeys.grantedKey(ContextSourceId.of(selector));
+    Optional<String> priorContent = state.getContextValue(grantedKey)
+        .map(RequestContextCommandHandler::contentOf);
+    String changeSuffix = "";
+    if (priorContent.isPresent() && !priorContent.get().equals(content)) {
+      // Same staleness mechanism as compact siblings: content identity by fingerprint.
+      changeSuffix = " changedSincePriorGrant=true priorFingerprint=%s newFingerprint=%s"
+          .formatted(ContextFingerprint.of(priorContent.get()), ContextFingerprint.of(content));
     }
-    String payload = "stepId=%s selector=%s:%s round=%d".formatted(state.getCurrentStepId(),
-        selector.kind(), selector.ref(), round);
+    if (priorContent.isEmpty() || !changeSuffix.isEmpty()) {
+      state.putContextValue(grantedKey, grantedValue(selector.kind(), content));
+    }
+    String payload = "stepId=%s selector=%s:%s round=%d%s".formatted(state.getCurrentStepId(),
+        selector.kind(), selector.ref(), round, changeSuffix);
     eventRecorder.record(state.getRunId(), state.getCurrentStepId(),
         WorkflowEventType.CONTEXT_EXPANSION_GRANTED, payload, request.agentId());
     LOG.log(System.Logger.Level.DEBUG, "Context expansion granted stepId={0}, selector={1}, round={2}",
         state.getCurrentStepId(), selector, round);
+  }
+
+  /**
+   * Extracts the raw content string a prior grant stored, for fingerprint comparison. Grants only
+   * ever write the two types produced by {@link #grantedValue}.
+   */
+  private static String contentOf(ContextValue value) {
+    if (value instanceof JsonContextValue json) {
+      return json.json();
+    }
+    if (value instanceof StringContextValue text) {
+      return text.value();
+    }
+    throw new IllegalStateException(
+        "Granted-context key holds an unexpected value type: %s".formatted(value.getClass()));
   }
 
   /**

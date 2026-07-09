@@ -11,6 +11,7 @@ import com.agentforge4j.core.workflow.context.ContextMapping;
 import com.agentforge4j.core.workflow.event.WorkflowEvent;
 import com.agentforge4j.core.workflow.event.WorkflowEventType;
 import com.agentforge4j.core.workflow.state.CompactSiblingMetadata;
+import com.agentforge4j.core.workflow.state.ReservedContextKeys;
 import com.agentforge4j.core.workflow.state.WorkflowState;
 import com.agentforge4j.core.workflow.step.ContextSelection;
 import com.agentforge4j.core.workflow.step.ContextSelector;
@@ -107,15 +108,11 @@ class RequestContextCommandHandlerTest {
   }
 
   @Test
-  void grantsRequestInExpandableScopeAndWritesContext() {
+  void grantsRequestInExpandableScopeAndWritesTheReservedGrantedKey() {
     ContextSelection selection = new ContextSelection(List.of(), List.of(selector("design.md")),
         null);
     StepDefinition step = step(selection);
     WorkflowState state = state();
-    state.removeContextValue("design.md");
-    state.putContextValue("design.md",
-        new com.agentforge4j.core.workflow.context.StringContextValue("hello",
-            com.agentforge4j.core.workflow.context.ContextProvenance.USER_SUPPLIED));
     RequestContextCommand command = new RequestContextCommand(List.of(selector("design.md")));
 
     handler.apply(command, request(state, step, 1));
@@ -123,14 +120,15 @@ class RequestContextCommandHandlerTest {
     List<WorkflowEvent> events = eventLog.getEvents("run-1");
     assertThat(events).hasSize(1);
     assertThat(events.get(0).eventType()).isEqualTo(WorkflowEventType.CONTEXT_EXPANSION_GRANTED);
-    assertThat(state.getContextValue("design.md")).isPresent();
+    assertThat(state.getContextValue(
+        ReservedContextKeys.grantedKey(ContextSourceId.of(selector("design.md"))))).isPresent();
   }
 
   @Test
-  void grantDoesNotOverwriteAnExistingKeyWithReEncodedContent() {
-    // "design.md" already carries a StringContextValue in state() before the grant. A granted
-    // context-read request must never mutate an existing key's type/encoding by re-writing it as a
-    // JsonContextValue.
+  void grantNeverTouchesTheSourceKeyItself() {
+    // "design.md" carries an author-supplied StringContextValue. A granted context-read request
+    // writes its copy under the reserved granted key and must never mutate the source key's value,
+    // type, or provenance.
     ContextSelection selection = new ContextSelection(List.of(), List.of(selector("design.md")),
         null);
     StepDefinition step = step(selection);
@@ -146,6 +144,61 @@ class RequestContextCommandHandlerTest {
         .isInstanceOf(com.agentforge4j.core.workflow.context.StringContextValue.class)
         .isEqualTo(new com.agentforge4j.core.workflow.context.StringContextValue("hello",
             com.agentforge4j.core.workflow.context.ContextProvenance.USER_SUPPLIED));
+  }
+
+  @Test
+  void unchangedReRequestServesTheSameValueWithoutAChangeAuditEntry() {
+    ContextSelection selection = new ContextSelection(List.of(), List.of(selector("design.md")),
+        2);
+    StepDefinition step = step(selection);
+    WorkflowState state = state();
+    String grantedKey = ReservedContextKeys.grantedKey(ContextSourceId.of(selector("design.md")));
+
+    handler.apply(new RequestContextCommand(List.of(selector("design.md"))),
+        request(state, step, 1));
+    var firstValue = state.getContextValue(grantedKey).orElseThrow();
+    handler.apply(new RequestContextCommand(List.of(selector("design.md"))),
+        request(state, step, 2));
+
+    List<WorkflowEvent> events = eventLog.getEvents("run-1");
+    assertThat(events).hasSize(2);
+    assertThat(events).extracting(WorkflowEvent::eventType)
+        .containsOnly(WorkflowEventType.CONTEXT_EXPANSION_GRANTED);
+    assertThat(events.get(1).payload()).doesNotContain("changedSincePriorGrant");
+    assertThat(state.getContextValue(grantedKey)).contains(firstValue);
+  }
+
+  @Test
+  void changedReRequestServesTheFreshValueAndRecordsFingerprints() {
+    ContextSelection selection = new ContextSelection(List.of(), List.of(selector("design.md")),
+        2);
+    StepDefinition step = step(selection);
+    WorkflowState state = state();
+    String grantedKey = ReservedContextKeys.grantedKey(ContextSourceId.of(selector("design.md")));
+
+    handler.apply(new RequestContextCommand(List.of(selector("design.md"))),
+        request(state, step, 1));
+    String priorContent = ((com.agentforge4j.core.workflow.context.JsonContextValue)
+        state.getContextValue(grantedKey).orElseThrow()).json();
+    // The source changes between grants: the re-request must serve the CURRENT value, never the
+    // previously stored grant.
+    state.removeContextValue("design.md");
+    state.putContextValue("design.md",
+        new com.agentforge4j.core.workflow.context.StringContextValue("hello v2",
+            com.agentforge4j.core.workflow.context.ContextProvenance.USER_SUPPLIED));
+    handler.apply(new RequestContextCommand(List.of(selector("design.md"))),
+        request(state, step, 2));
+
+    List<WorkflowEvent> events = eventLog.getEvents("run-1");
+    assertThat(events).hasSize(2);
+    String secondPayload = events.get(1).payload();
+    String newContent = ((com.agentforge4j.core.workflow.context.JsonContextValue)
+        state.getContextValue(grantedKey).orElseThrow()).json();
+    assertThat(newContent).contains("hello v2").isNotEqualTo(priorContent);
+    assertThat(secondPayload)
+        .contains("changedSincePriorGrant=true")
+        .contains("priorFingerprint=" + ContextFingerprint.of(priorContent))
+        .contains("newFingerprint=" + ContextFingerprint.of(newContent));
   }
 
   @Test
@@ -249,28 +302,30 @@ class RequestContextCommandHandlerTest {
 
     handler.apply(command, request(state, step, workflow, 1));
 
+    String grantedKey = ReservedContextKeys.grantedKey(sourceId);
     assertThat(eventLog.getEvents("run-1").get(0).eventType())
         .isEqualTo(WorkflowEventType.CONTEXT_EXPANSION_GRANTED);
-    assertThat(state.getContextValue("requirements"))
+    assertThat(state.getContextValue(grantedKey))
         .get()
         .isInstanceOf(com.agentforge4j.core.workflow.context.JsonContextValue.class)
         .extracting(value -> ((com.agentforge4j.core.workflow.context.JsonContextValue) value).json())
         .isEqualTo("compact form");
 
-    // A fresh round against a state whose ledger has since changed (no matching sibling written) must
-    // fall back to full content rather than serving the now-stale "compact form" sibling.
-    WorkflowState staleState = state();
-    LedgerMerger.writeMerged(staleState, ledgerDef,
+    // The ledger changes after the first grant, making the stored sibling stale. A re-request in
+    // the SAME run state must serve the fresh full content (COMPACT_PREFERRED fallback), replace
+    // the stored grant, and record the change with both fingerprints.
+    LedgerMerger.writeMerged(state, ledgerDef,
         mapper.valueToTree(Map.of("entries", List.of(Map.of("id", "REQ-9")))));
-    RequestContextCommand staleCommand = new RequestContextCommand(List.of(compactSelector));
+    handler.apply(new RequestContextCommand(List.of(compactSelector)),
+        request(state, step, workflow, 1));
 
-    handler.apply(staleCommand, request(staleState, step, workflow, 1));
-
-    assertThat(staleState.getContextValue("requirements"))
-        .get()
-        .isInstanceOf(com.agentforge4j.core.workflow.context.JsonContextValue.class)
-        .extracting(value -> ((com.agentforge4j.core.workflow.context.JsonContextValue) value).json())
-        .isNotEqualTo("compact form");
+    String regrantedContent = ((com.agentforge4j.core.workflow.context.JsonContextValue)
+        state.getContextValue(grantedKey).orElseThrow()).json();
+    assertThat(regrantedContent).contains("REQ-9").isNotEqualTo("compact form");
+    assertThat(eventLog.getEvents("run-1").get(1).payload())
+        .contains("changedSincePriorGrant=true")
+        .contains("priorFingerprint=" + ContextFingerprint.of("compact form"))
+        .contains("newFingerprint=" + ContextFingerprint.of(regrantedContent));
   }
 
   @Test
@@ -317,7 +372,7 @@ class RequestContextCommandHandlerTest {
 
     assertThat(eventLog.getEvents("run-1").get(0).eventType())
         .isEqualTo(WorkflowEventType.CONTEXT_EXPANSION_GRANTED);
-    assertThat(state.getContextValue("requirements"))
+    assertThat(state.getContextValue(ReservedContextKeys.grantedKey(sourceId)))
         .get()
         .extracting(value -> ((com.agentforge4j.core.workflow.context.JsonContextValue) value).json())
         .isEqualTo("compact form");
@@ -339,7 +394,7 @@ class RequestContextCommandHandlerTest {
 
     assertThat(eventLog.getEvents("run-1").get(0).eventType())
         .isEqualTo(WorkflowEventType.CONTEXT_EXPANSION_GRANTED);
-    assertThat(state.getContextValue("s0"))
+    assertThat(state.getContextValue(ReservedContextKeys.grantedKey(ContextSourceId.of(stepOutput))))
         .get()
         .isInstanceOf(com.agentforge4j.core.workflow.context.StringContextValue.class)
         .extracting(
