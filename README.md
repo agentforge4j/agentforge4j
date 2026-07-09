@@ -55,7 +55,7 @@ During the early experimental phase, I also hit a hard but useful learning momen
 - **Human input, review, and approval** — first-class human gates that pause a run, capture a decision, and continue.
 - **Structured tool execution** — tools are invoked through a typed command and a `ToolProvider` SPI, not by parsing free text.
 - **Model / provider abstraction** — a `ModelTier` concept plus a `ServiceLoader`-discovered provider model lets workflows stay independent of any one vendor.
-- **Workflow testing** — a fake LLM client makes workflow runs deterministic and repeatable in tests.
+- **Workflow testing** — a fake LLM client and a dedicated test kit (`agentforge4j-testkit`) make workflow runs deterministic and repeatable in tests.
 - **Decision-level audit events** — a structured event log records what happened at each step, including LLM calls, retries, and approvals.
 
 ---
@@ -118,27 +118,36 @@ cd agentforge4j
 
 ### Run a workflow without Spring
 
-The `agentforge4j-bootstrap` module assembles a fully wired runtime in plain Java — no container required. Shipped agents and workflows are loaded from the classpath by default.
+The `agentforge4j-bootstrap` module assembles a fully wired runtime in plain Java — no container
+required. Agent and workflow definitions are external JSON + markdown; point bootstrap at the
+directories that hold yours (the shipped catalog is intentionally empty pre-0.1.0 — see
+[Included workflows](#included-workflows)).
 
 ```java
 import com.agentforge4j.bootstrap.AgentForge4j;
 import com.agentforge4j.bootstrap.AgentForge4jBootstrap;
 import com.agentforge4j.bootstrap.LlmProviderConfig;
+import java.nio.file.Path;
 
 AgentForge4j af = AgentForge4jBootstrap.defaults()
+    .withAgentsDir(Path.of("agents"))
+    .withWorkflowsDir(Path.of("workflows"))
     .withLlmProvider(LlmProviderConfig.openai()
         .defaults()
         .apiKey(System.getenv("OPENAI_API_KEY"))
         .build())
     .build();
 
-String runId = af.start("workflow-generator");
+String runId = af.start("your-workflow-id");
 ```
 
 Add the LLM provider modules you want on the classpath (for example `agentforge4j-llm-openai`,
 `agentforge4j-llm-ollama`); providers are discovered via `ServiceLoader<LlmClientFactory>`.
 See [`agentforge4j-bootstrap/README.md`](agentforge4j-bootstrap/README.md) for the full
-configuration surface (file sinks, retries, persistence overrides, environment variables).
+configuration surface (file sinks, retries, persistence overrides, environment variables). For a
+complete, runnable, offline version of this snippet — including the agent and workflow definition
+files it loads — see
+[`agentforge4j-examples/framework-examples/quick-start`](agentforge4j-examples/framework-examples/quick-start).
 
 ### Use it from Spring Boot
 
@@ -158,19 +167,16 @@ bootstrap and exposes a single `AgentForge4j` bean you can inject. The Maven coo
 
 ## Included workflows
 
-A starter catalog ships in `agentforge4j-workflows` (loaded automatically by bootstrap):
+The shipped workflow catalog (`agentforge4j-workflows-catalog`, loaded automatically by bootstrap)
+is **intentionally empty right now**. The original starter workflows are being redesigned from the
+ground up against the current workflow language and quality bar, and will land as reviewed catalog
+releases on the way to 0.1.0 — starting with an Agent Creator and a Workflow Cost Estimator, with
+the fuller set (workflow generator, application delivery, and more) to follow.
 
-| Workflow ID | Name | What it does |
-|---|---|---|
-| `agent-creator` | Agent Creator | Collects requirements and generates a complete agent bundle (`agent.json`, `systemprompt.md`, `boundaries.md`). |
-| `workflow-generator` | Workflow Generator | Conversational designer that helps you discover, refine, and generate a new workflow. |
-| `workflow-cost-estimator` | Workflow Cost Estimator | Analyses a workflow definition and estimates its cost (min / expected / max). |
-| `app-creator` | Software Application Creator | Turns an application idea into a delivery package using PO, BA, Architect, Developer, and Tester agents with approval gates. |
-| `application-delivery` | Application Delivery | End-to-end AI-driven delivery pipeline that iterates over epics via the epic-implementation sub-workflow. |
-| `epic-implementation` | Epic Implementation | Implements a single epic with a developer/tester/validator rework loop. |
-| `recruitment` | Recruitment Workflow | AI-assisted intake, job-post generation, CV evaluation, and shortlisting with human confirmation gates. |
-
-The catalog is expanding — see the [Roadmap](#roadmap).
+Until then, you author your own workflow definitions (plain JSON + markdown — see the
+[Quickstart](#quickstart)) or start from the runnable definitions in
+[`agentforge4j-examples`](agentforge4j-examples). The planned catalog line-up is in the
+[Roadmap](#roadmap).
 
 ---
 
@@ -180,9 +186,10 @@ AgentForge4j is intentionally split so the runtime stays clean and embeddable. T
 **Apache-2.0**; platform and cloud concerns (tenancy, dashboards, metering, governance) are kept
 in separate projects so they never leak into the runtime.
 
-```
-util ──► core ──► llm-api / file-api ──► config-loader ──► runtime ──► bootstrap ──► spring-boot-starter
-```
+Dependencies flow strictly one way, with no cycles: the core domain model depends only on the
+shared validation utility; the runtime composes the domain model, config loading, and the LLM
+abstraction; `agentforge4j-bootstrap` assembles the runtime; and the Spring Boot starter sits on
+top of bootstrap. Nothing below the starter knows Spring exists.
 
 | Layer | Modules | Role |
 |---|---|---|
@@ -191,11 +198,11 @@ util ──► core ──► llm-api / file-api ──► config-loader ──�
 | **Tooling** | `agentforge4j-tools-http`, `agentforge4j-mcp` | Tool execution, including HTTP tools and Model Context Protocol support. |
 | **Bootstrap** | [`agentforge4j-bootstrap`](agentforge4j-bootstrap/README.md) | Programmatic assembly of the full runtime without requiring Spring. |
 | **Spring integration** | `agentforge4j-spring-boot-starter` | Auto-configuration for Spring Boot applications. |
-| **Testing** | `agentforge4j-llm-fake` | A fake LLM client for deterministic, repeatable workflow tests. |
-| **Workflow catalog** | `agentforge4j-workflows` | The shipped workflows and agents above. |
+| **Testing** | `agentforge4j-llm-fake`, `agentforge4j-testkit` | A fake LLM client plus a dedicated test kit (harness, run assertions, scripted gate responses) for deterministic, repeatable workflow tests. |
+| **Workflow catalog** | `agentforge4j-workflows-catalog` | The shipped workflow catalog — intentionally empty pre-0.1.0 (see [Included workflows](#included-workflows)). |
 
-> A dedicated test kit (beyond the fake LLM client) and a visual workflow builder
-> (`agentforge4j-workflow-builder`, `agentforge4j-web-ui`) are in progress.
+> A visual workflow builder (`agentforge4j-workflow-builder`, `agentforge4j-web-ui`) is in
+> progress.
 
 Most framework-neutral modules carry a JPMS `module-info.java`. The Spring Boot starter is consumed on the classpath by design, and MCP currently depends on SDK module-name constraints.
 
@@ -218,7 +225,7 @@ Most framework-neutral modules carry a JPMS `module-info.java`. The Spring Boot 
 ### Toward OSS 1.0
 
 - Harden runtime APIs and workflow contracts
-- Expand the shipped workflow catalog
+- Ship the redesigned workflow catalog, then expand it
 - Add complete example applications
 - Improve workflow testing and verification
 - Improve documentation, diagrams, and module READMEs
@@ -253,17 +260,19 @@ of it rather than replacing it.
 
 ## Examples
 
-Example applications are planned and will demonstrate:
+Runnable examples live in [`agentforge4j-examples`](agentforge4j-examples) (a standalone Maven
+tree, deliberately outside the framework reactor so each example builds the way an embedder
+would):
 
-- simple workflow execution
-- Spring Boot integration
-- human approval flows
-- tool execution
-- fake-LLM testing
-- generated frontend / backend / documentation workflows
-- an AI Agent Adoption demo application
+- **Framework examples** — `quick-start` (the shortest runnable program, offline via the fake LLM
+  client), `spring-boot` (starter integration), `human-approval` (a human gate pausing and
+  resuming a run), `tools-http` (governed HTTP tool execution), and `mcp` (Model Context Protocol
+  tools).
+- **Workflow-language examples** — one small workflow per language feature: branching, loops,
+  retries, SPAR, human-in-the-loop, and resources.
 
-*(No standalone examples module ships yet — these will land as the catalog and demos mature.)*
+Planned additions as the catalog and demos mature: generated frontend / backend / documentation
+workflows and an AI Agent Adoption demo application.
 
 ---
 
@@ -272,8 +281,9 @@ Example applications are planned and will demonstrate:
 - **Version:** `0.0.1-SNAPSHOT` — pre-1.0, being hardened for public OSS release.
 - **Not yet on Maven Central.** Build from source for now.
 - **APIs and workflow contracts may change** before 1.0.
-- The core, runtime, bootstrap, provider modules, and a starter workflow catalog are in place;
-  full examples, a dedicated test kit, the visual builder, and published artifacts are in progress.
+- The core, runtime, bootstrap, provider modules, test kit, and runnable examples are in place;
+  the shipped workflow catalog is intentionally empty while its workflows are redesigned, and the
+  visual builder and published artifacts are in progress.
 
 Treat it as a capable, actively developed framework — not yet a frozen, production-certified release.
 
