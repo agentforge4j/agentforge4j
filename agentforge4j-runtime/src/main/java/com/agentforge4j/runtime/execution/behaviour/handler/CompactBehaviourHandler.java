@@ -98,21 +98,22 @@ public final class CompactBehaviourHandler implements BehaviourHandler<CompactBe
     String sourceId = ContextSourceId.of(source);
     String fullContent = contextSourceResolver.resolveFull(source, state, enclosing);
     String sourceFingerprint = ContextFingerprint.of(fullContent);
+    int estimatedUnitsBefore = tokenEstimator.estimate(fullContent);
 
-    SkipReason skip = decideSkip(behaviour.policy(), fullContent, sourceId, sourceFingerprint,
-        executionContext);
+    SkipReason skip = decideSkip(behaviour.policy(), estimatedUnitsBefore, sourceId,
+        sourceFingerprint, executionContext);
     if (skip != null) {
       recordSkipped(state, step.stepId(), sourceId, sourceFingerprint, skip);
       return ExecutionOutcome.COMPLETED;
     }
 
-    performCompaction(step, behaviour, state, source, sourceId, fullContent, sourceFingerprint);
+    performCompaction(step, behaviour, state, source, sourceId, fullContent, sourceFingerprint,
+        estimatedUnitsBefore);
     return ExecutionOutcome.COMPLETED;
   }
 
-  private SkipReason decideSkip(CompactionPolicy policy, String fullContent, String sourceId,
+  private SkipReason decideSkip(CompactionPolicy policy, int estimatedUnits, String sourceId,
       String sourceFingerprint, ExecutionContext executionContext) {
-    int estimatedUnits = tokenEstimator.estimate(fullContent);
     if (estimatedUnits < policy.minSourceUnits()) {
       return SkipReason.SOURCE_TOO_SMALL;
     }
@@ -161,7 +162,7 @@ public final class CompactBehaviourHandler implements BehaviourHandler<CompactBe
 
   private void performCompaction(StepDefinition step, CompactBehaviour behaviour,
       WorkflowState state, ContextSelector source, String sourceId, String fullContent,
-      String sourceFingerprint) {
+      String sourceFingerprint, int estimatedUnitsBefore) {
     String compactContent;
     if (behaviour.mode() instanceof DeterministicExtract) {
       Validate.isTrue(source.kind() == ContextSourceKind.LEDGER_SECTION,
@@ -179,7 +180,6 @@ public final class CompactBehaviourHandler implements BehaviourHandler<CompactBe
       throw new IllegalStateException("Unhandled CompactionMode: " + behaviour.mode().getClass());
     }
 
-    int estimatedUnitsBefore = tokenEstimator.estimate(fullContent);
     int estimatedUnitsAfter = tokenEstimator.estimate(compactContent);
     CompactSiblingMetadata metadata = new CompactSiblingMetadata(sourceId, sourceFingerprint,
         behaviour.mode(), estimatedUnitsBefore, estimatedUnitsAfter, step.stepId(),

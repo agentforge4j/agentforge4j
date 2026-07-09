@@ -177,6 +177,22 @@ class WorkflowValidatorContextSelectionTest {
   }
 
   @Test
+  void rejectsDeterministicExtractOnANonLedgerSource() {
+    // The shipped extractor only understands the ledger envelope shape; a non-LEDGER_SECTION
+    // source must fail at load, not mid-run.
+    StepDefinition compact = StepDefinition.builder().withStepId("c").withName("c")
+        .withBehaviour(new CompactBehaviour(sel(ContextSourceKind.STATE_KEY, "some-key"),
+            new DeterministicExtract(), new CompactionPolicy(0, 0)))
+        .build();
+    WorkflowDefinition wf = workflow(List.of(compact), List.of());
+
+    assertThatThrownBy(() -> validate(wf))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("DETERMINISTIC_EXTRACT")
+        .hasMessageContaining("STATE_KEY");
+  }
+
+  @Test
   void rejectsCompactStepSourceNamingALedgerSection() {
     // A section subpath resolves to a bare array the deterministic extractor cannot compact;
     // accepting it at load would let a run silently produce an empty compact form.

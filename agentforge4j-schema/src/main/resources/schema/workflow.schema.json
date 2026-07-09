@@ -422,7 +422,7 @@
         "maxExpansions": {
           "type": ["integer", "null"],
           "minimum": 1,
-          "description": "Maximum RequestContextCommand rounds granted or denied within a single step invocation. Null defaults to 1; must be positive when present — declare an empty expandableScope to permit no expansion."
+          "description": "Maximum requested context expansions evaluated within a single step invocation — each requested selector counts as one expansion, however the selectors are batched into commands. Null defaults to 1; must be positive when present — declare an empty expandableScope to permit no expansion."
         }
       }
     },

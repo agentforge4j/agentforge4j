@@ -86,15 +86,15 @@ class RequestContextCommandHandlerTest {
   }
 
   private CommandApplicationRequest request(WorkflowState state, StepDefinition step,
-      int round) {
+      int priorExpansions) {
     return new CommandApplicationRequest(state, ContextMapping.none(), "agent-1", 1, step,
-        workflow(step), round);
+        workflow(step), priorExpansions);
   }
 
   private CommandApplicationRequest request(WorkflowState state, StepDefinition step,
-      WorkflowDefinition enclosingWorkflow, int round) {
+      WorkflowDefinition enclosingWorkflow, int priorExpansions) {
     return new CommandApplicationRequest(state, ContextMapping.none(), "agent-1", 1, step,
-        enclosingWorkflow, round);
+        enclosingWorkflow, priorExpansions);
   }
 
   private static WorkflowState state() {
@@ -115,7 +115,7 @@ class RequestContextCommandHandlerTest {
     WorkflowState state = state();
     RequestContextCommand command = new RequestContextCommand(List.of(selector("design.md")));
 
-    handler.apply(command, request(state, step, 1));
+    handler.apply(command, request(state, step, 0));
 
     List<WorkflowEvent> events = eventLog.getEvents("run-1");
     assertThat(events).hasSize(1);
@@ -135,7 +135,7 @@ class RequestContextCommandHandlerTest {
     WorkflowState state = state();
     RequestContextCommand command = new RequestContextCommand(List.of(selector("design.md")));
 
-    handler.apply(command, request(state, step, 1));
+    handler.apply(command, request(state, step, 0));
 
     assertThat(eventLog.getEvents("run-1").get(0).eventType())
         .isEqualTo(WorkflowEventType.CONTEXT_EXPANSION_GRANTED);
@@ -155,10 +155,10 @@ class RequestContextCommandHandlerTest {
     String grantedKey = ReservedContextKeys.grantedKey(ContextSourceId.of(selector("design.md")));
 
     handler.apply(new RequestContextCommand(List.of(selector("design.md"))),
-        request(state, step, 1));
+        request(state, step, 0));
     var firstValue = state.getContextValue(grantedKey).orElseThrow();
     handler.apply(new RequestContextCommand(List.of(selector("design.md"))),
-        request(state, step, 2));
+        request(state, step, 1));
 
     List<WorkflowEvent> events = eventLog.getEvents("run-1");
     assertThat(events).hasSize(2);
@@ -177,7 +177,7 @@ class RequestContextCommandHandlerTest {
     String grantedKey = ReservedContextKeys.grantedKey(ContextSourceId.of(selector("design.md")));
 
     handler.apply(new RequestContextCommand(List.of(selector("design.md"))),
-        request(state, step, 1));
+        request(state, step, 0));
     String priorContent = ((com.agentforge4j.core.workflow.context.JsonContextValue)
         state.getContextValue(grantedKey).orElseThrow()).json();
     // The source changes between grants: the re-request must serve the CURRENT value, never the
@@ -187,7 +187,7 @@ class RequestContextCommandHandlerTest {
         new com.agentforge4j.core.workflow.context.StringContextValue("hello v2",
             com.agentforge4j.core.workflow.context.ContextProvenance.USER_SUPPLIED));
     handler.apply(new RequestContextCommand(List.of(selector("design.md"))),
-        request(state, step, 2));
+        request(state, step, 1));
 
     List<WorkflowEvent> events = eventLog.getEvents("run-1");
     assertThat(events).hasSize(2);
@@ -208,7 +208,7 @@ class RequestContextCommandHandlerTest {
     WorkflowState state = state();
     RequestContextCommand command = new RequestContextCommand(List.of(selector("design.md")));
 
-    handler.apply(command, request(state, step, 1));
+    handler.apply(command, request(state, step, 0));
 
     List<WorkflowEvent> events = eventLog.getEvents("run-1");
     assertThat(events).hasSize(1);
@@ -223,7 +223,7 @@ class RequestContextCommandHandlerTest {
     WorkflowState state = state();
     RequestContextCommand command = new RequestContextCommand(List.of(selector("design.md")));
 
-    handler.apply(command, request(state, step, 1));
+    handler.apply(command, request(state, step, 0));
 
     assertThat(eventLog.getEvents("run-1")).hasSize(1);
     assertThat(eventLog.getEvents("run-1").get(0).eventType())
@@ -232,16 +232,16 @@ class RequestContextCommandHandlerTest {
 
   @Test
   void deniesWithMaxExpansionsReachedBeforeCheckingScope() {
-    // Selector IS in scope, but the round number already exceeds maxExpansions (default 1): the
-    // round limit must be checked before the scope check, so this denies for MAX_EXPANSIONS_REACHED,
-    // not NOT_IN_EXPANDABLE_SCOPE.
+    // Selector IS in scope, but one expansion was already consumed earlier in the batch and
+    // maxExpansions is the default 1: the expansion limit must be checked before the scope check,
+    // so this denies for MAX_EXPANSIONS_REACHED, not NOT_IN_EXPANDABLE_SCOPE.
     ContextSelection selection = new ContextSelection(List.of(), List.of(selector("design.md")),
         null);
     StepDefinition step = step(selection);
     WorkflowState state = state();
     RequestContextCommand command = new RequestContextCommand(List.of(selector("design.md")));
 
-    handler.apply(command, request(state, step, 2));
+    handler.apply(command, request(state, step, 1));
 
     List<WorkflowEvent> events = eventLog.getEvents("run-1");
     assertThat(events).hasSize(1);
@@ -256,7 +256,7 @@ class RequestContextCommandHandlerTest {
     WorkflowState state = state();
     RequestContextCommand command = new RequestContextCommand(List.of(selector("design.md")));
 
-    handler.apply(command, request(state, step, 2));
+    handler.apply(command, request(state, step, 1));
 
     assertThat(eventLog.getEvents("run-1").get(0).eventType())
         .isEqualTo(WorkflowEventType.CONTEXT_EXPANSION_GRANTED);
@@ -264,14 +264,16 @@ class RequestContextCommandHandlerTest {
 
   @Test
   void handlesMultipleSelectorsInOneCommandIndependently() {
+    // maxExpansions 2 so both selectors are within the expansion limit and the deny below is
+    // scope-based, not limit-based.
     ContextSelection selection = new ContextSelection(List.of(), List.of(selector("design.md")),
-        null);
+        2);
     StepDefinition step = step(selection);
     WorkflowState state = state();
     RequestContextCommand command = new RequestContextCommand(
         List.of(selector("design.md"), selector("other-key")));
 
-    handler.apply(command, request(state, step, 1));
+    handler.apply(command, request(state, step, 0));
 
     List<WorkflowEvent> events = eventLog.getEvents("run-1");
     assertThat(events).hasSize(2);
@@ -300,7 +302,7 @@ class RequestContextCommandHandlerTest {
     CompactSiblingStore.write(state, sourceId, new CompactSibling("compact form", metadata), mapper);
     RequestContextCommand command = new RequestContextCommand(List.of(compactSelector));
 
-    handler.apply(command, request(state, step, workflow, 1));
+    handler.apply(command, request(state, step, workflow, 0));
 
     String grantedKey = ReservedContextKeys.grantedKey(sourceId);
     assertThat(eventLog.getEvents("run-1").get(0).eventType())
@@ -317,7 +319,7 @@ class RequestContextCommandHandlerTest {
     LedgerMerger.writeMerged(state, ledgerDef,
         mapper.valueToTree(Map.of("entries", List.of(Map.of("id", "REQ-9")))));
     handler.apply(new RequestContextCommand(List.of(compactSelector)),
-        request(state, step, workflow, 1));
+        request(state, step, workflow, 0));
 
     String regrantedContent = ((com.agentforge4j.core.workflow.context.JsonContextValue)
         state.getContextValue(grantedKey).orElseThrow()).json();
@@ -340,7 +342,7 @@ class RequestContextCommandHandlerTest {
         mapper.valueToTree(Map.of("entries", List.of(Map.of("id", "REQ-1")))));
     RequestContextCommand command = new RequestContextCommand(List.of(compactOnlySelector));
 
-    assertThatThrownBy(() -> handler.apply(command, request(state, step, workflow, 1)))
+    assertThatThrownBy(() -> handler.apply(command, request(state, step, workflow, 0)))
         .isInstanceOf(CompactSiblingUnavailableException.class);
   }
 
@@ -368,7 +370,7 @@ class RequestContextCommandHandlerTest {
     ContextSelector requestedFull = ledgerSelector("requirements", ContextVariant.FULL);
     RequestContextCommand command = new RequestContextCommand(List.of(requestedFull));
 
-    handler.apply(command, request(state, step, workflow, 1));
+    handler.apply(command, request(state, step, workflow, 0));
 
     assertThat(eventLog.getEvents("run-1").get(0).eventType())
         .isEqualTo(WorkflowEventType.CONTEXT_EXPANSION_GRANTED);
@@ -390,7 +392,7 @@ class RequestContextCommandHandlerTest {
     state.putStepOutput("s0", "plain text, not JSON");
     RequestContextCommand command = new RequestContextCommand(List.of(stepOutput));
 
-    handler.apply(command, request(state, step, 1));
+    handler.apply(command, request(state, step, 0));
 
     assertThat(eventLog.getEvents("run-1").get(0).eventType())
         .isEqualTo(WorkflowEventType.CONTEXT_EXPANSION_GRANTED);
@@ -403,6 +405,62 @@ class RequestContextCommandHandlerTest {
   }
 
   @Test
+  void selectorsBeyondMaxExpansionsInOneCommandAreDeniedNotGranted() {
+    // maxExpansions counts requested SELECTORS, not commands: with the default limit of 1, packing
+    // two in-scope selectors into a single command must grant only the first and deny the second
+    // for MAX_EXPANSIONS_REACHED — batching cannot evade the limit.
+    ContextSelection selection = new ContextSelection(List.of(),
+        List.of(selector("design.md"), selector("other.md")), null);
+    StepDefinition step = step(selection);
+    WorkflowState state = state();
+    state.putContextValue("other.md",
+        new com.agentforge4j.core.workflow.context.StringContextValue("more",
+            com.agentforge4j.core.workflow.context.ContextProvenance.USER_SUPPLIED));
+    RequestContextCommand command = new RequestContextCommand(
+        List.of(selector("design.md"), selector("other.md")));
+
+    handler.apply(command, request(state, step, 0));
+
+    List<WorkflowEvent> events = eventLog.getEvents("run-1");
+    assertThat(events).hasSize(2);
+    assertThat(events.get(0).eventType()).isEqualTo(WorkflowEventType.CONTEXT_EXPANSION_GRANTED);
+    assertThat(events.get(1).eventType()).isEqualTo(WorkflowEventType.CONTEXT_EXPANSION_DENIED);
+    assertThat(events.get(1).payload()).contains("MAX_EXPANSIONS_REACHED").contains("expansion=2");
+    assertThat(state.getContextValue(
+        ReservedContextKeys.grantedKey(ContextSourceId.of(selector("design.md"))))).isPresent();
+    assertThat(state.getContextValue(
+        ReservedContextKeys.grantedKey(ContextSourceId.of(selector("other.md"))))).isEmpty();
+  }
+
+  @Test
+  void blankGrantedContentFailsWithASelectorNamingError() {
+    // ContextPackVariant explicitly permits empty content; a grant must not bury that in a generic
+    // value-invariant error — it fails with a message naming the selector so the author can find
+    // the empty variant file.
+    com.agentforge4j.core.spi.contextpack.ContextPack blankPack =
+        new com.agentforge4j.core.spi.contextpack.ContextPack("empty-pack", "1.0.0", null, null,
+            Map.of("full", new com.agentforge4j.core.spi.contextpack.ContextPackVariant("full", " ",
+                ContextFingerprint.of(" "))));
+    RequestContextCommandHandler packHandler = new RequestContextCommandHandler(
+        new ContextSourceResolver(new ContextRenderer(mapper), mapper,
+            ContextPackRegistry.of(List.of(blankPack))),
+        new EventRecorder(eventLog, CLOCK));
+    ContextSelector packSelector = new ContextSelector(ContextSourceKind.CONTEXT_PACK, "empty-pack",
+        ContextVariant.FULL);
+    ContextSelection selection = new ContextSelection(List.of(), List.of(packSelector), null);
+    StepDefinition step = step(selection);
+    WorkflowState state = state();
+    RequestContextCommand command = new RequestContextCommand(List.of(packSelector));
+
+    assertThatThrownBy(() -> packHandler.apply(command, request(state, step, 0)))
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessageContaining("CONTEXT_PACK:empty-pack")
+        .hasMessageContaining("blank content");
+    assertThat(state.getContextValue(
+        ReservedContextKeys.grantedKey(ContextSourceId.of(packSelector)))).isEmpty();
+  }
+
+  @Test
   void grantDeniesAndDoesNotWriteAReservedNamespaceSelector() {
     ContextSelector reservedSelector = selector("__ledgerMergeState");
     ContextSelection selection = new ContextSelection(List.of(), List.of(reservedSelector), null);
@@ -410,7 +468,7 @@ class RequestContextCommandHandlerTest {
     WorkflowState state = state();
     RequestContextCommand command = new RequestContextCommand(List.of(reservedSelector));
 
-    handler.apply(command, request(state, step, 1));
+    handler.apply(command, request(state, step, 0));
 
     List<WorkflowEvent> events = eventLog.getEvents("run-1");
     assertThat(events).hasSize(1);

@@ -207,15 +207,16 @@ public enum WorkflowEventType {
   CONTEXT_SCOPE_APPLIED,
   /**
    * Recorded when a step's run-time request for additional context is granted (the requested selector is within the
-   * step's declared expandable scope). Payload fields: {@code stepId}, {@code selector}, {@code round}; when the
-   * source was granted before and its content has changed since, additionally {@code changedSincePriorGrant=true},
-   * {@code priorFingerprint}, and {@code newFingerprint}.
+   * step's declared expandable scope). Payload fields: {@code stepId}, {@code selector}, {@code expansion} (the
+   * request's 1-based expansion ordinal within the invocation); when the source was granted before and its content
+   * has changed since, additionally {@code changedSincePriorGrant=true}, {@code priorFingerprint}, and
+   * {@code newFingerprint}.
    */
   CONTEXT_EXPANSION_GRANTED,
   /**
    * Recorded when a step's run-time request for additional context is denied. Payload fields: {@code stepId},
-   * {@code selector}, {@code round}, {@code reason} ({@code NOT_IN_EXPANDABLE_SCOPE} / {@code MAX_EXPANSIONS_REACHED}
-   * / {@code RESERVED_NAMESPACE}).
+   * {@code selector}, {@code expansion}, {@code reason} ({@code NOT_IN_EXPANDABLE_SCOPE} /
+   * {@code MAX_EXPANSIONS_REACHED} / {@code RESERVED_NAMESPACE}).
    */
   CONTEXT_EXPANSION_DENIED,
   /**

@@ -23,11 +23,12 @@ import java.util.List;
  *                        becomes an empty list, defensively copied)
  * @param expandableScope the additional sources the step may request; empty means no expansion is
  *                        permitted. Never {@code null} ({@code null} becomes an empty list, copied)
- * @param maxExpansions   maximum number of {@code RequestContextCommand} rounds granted or denied
- *                        within a single step invocation; {@code null} defaults to
- *                        {@value #DEFAULT_MAX_EXPANSIONS}. Must be positive when present — "no
- *                        expansion permitted" is declared with an empty {@code expandableScope},
- *                        not a zero limit
+ * @param maxExpansions   maximum number of requested context expansions evaluated within a single
+ *                        step invocation — each selector requested via {@code RequestContextCommand}
+ *                        counts as one expansion, however the selectors are batched into commands;
+ *                        {@code null} defaults to {@value #DEFAULT_MAX_EXPANSIONS}. Must be positive
+ *                        when present — "no expansion permitted" is declared with an empty
+ *                        {@code expandableScope}, not a zero limit
  */
 public record ContextSelection(
     List<ContextSelector> selectors,
@@ -36,8 +37,8 @@ public record ContextSelection(
 ) {
 
   /**
-   * Default maximum context-expansion rounds per step invocation when {@link #maxExpansions} is
-   * {@code null}.
+   * Default maximum requested context expansions per step invocation when {@link #maxExpansions}
+   * is {@code null}.
    */
   public static final int DEFAULT_MAX_EXPANSIONS = 1;
 
@@ -52,8 +53,8 @@ public record ContextSelection(
   }
 
   /**
-   * Returns the effective maximum expansion rounds: {@link #maxExpansions} when present, otherwise
-   * {@link #DEFAULT_MAX_EXPANSIONS}.
+   * Returns the effective maximum requested expansions: {@link #maxExpansions} when present,
+   * otherwise {@link #DEFAULT_MAX_EXPANSIONS}.
    *
    * @return the effective maximum; always positive
    */

@@ -108,11 +108,13 @@ class CommandApplierTest {
   }
 
   @Test
-  void apply_passesTheExpansionRoundOnlyToRequestContextCommands() {
-    // CommandApplicationRequest documents requestContextRoundNumber as 0 for any command type other
-    // than RequestContextCommand — a non-RCC command after an RCC must not inherit the counter.
-    List<Integer> continueRounds = new ArrayList<>();
-    List<Integer> requestContextRounds = new ArrayList<>();
+  void apply_countsPriorExpansionsPerSelectorAndOnlyForRequestContextCommands() {
+    // CommandApplicationRequest documents priorRequestContextExpansions as the number of selectors
+    // requested by EARLIER RequestContextCommands in the batch (0 for any other command type — a
+    // non-RCC command after an RCC must not inherit the counter). Selectors are counted, not
+    // commands, so a two-selector command advances the counter by two.
+    List<Integer> continuePriors = new ArrayList<>();
+    List<Integer> requestContextPriors = new ArrayList<>();
     CommandHandler<ContinueCommand> capturingContinue = new CommandHandler<>() {
       @Override
       public Class<ContinueCommand> getCommandClass() {
@@ -122,7 +124,7 @@ class CommandApplierTest {
       @Override
       public CommandApplicationResult apply(ContinueCommand command,
           CommandApplicationRequest request) {
-        continueRounds.add(request.requestContextRoundNumber());
+        continuePriors.add(request.priorRequestContextExpansions());
         return CommandApplicationResult.CONTINUE;
       }
     };
@@ -135,7 +137,7 @@ class CommandApplierTest {
       @Override
       public CommandApplicationResult apply(RequestContextCommand command,
           CommandApplicationRequest request) {
-        requestContextRounds.add(request.requestContextRoundNumber());
+        requestContextPriors.add(request.priorRequestContextExpansions());
         return CommandApplicationResult.CONTINUE;
       }
     };
@@ -143,17 +145,20 @@ class CommandApplierTest {
         capturingRequestContext));
     ContextSelector selector = new ContextSelector(ContextSourceKind.STATE_KEY, "k",
         ContextVariant.FULL);
+    ContextSelector otherSelector = new ContextSelector(ContextSourceKind.STATE_KEY, "k2",
+        ContextVariant.FULL);
 
     applier.apply(
         List.of(
             new RequestContextCommand(List.of(selector)),
             new ContinueCommand(null, null, null),
-            new RequestContextCommand(List.of(selector)),
-            new ContinueCommand(null, null, null)),
+            new RequestContextCommand(List.of(selector, otherSelector)),
+            new ContinueCommand(null, null, null),
+            new RequestContextCommand(List.of(selector))),
         stateAtStep("s1"), ContextMapping.none(), "agent-1", 1, step("s1"), workflow());
 
-    assertThat(requestContextRounds).containsExactly(1, 2);
-    assertThat(continueRounds).containsExactly(0, 0);
+    assertThat(requestContextPriors).containsExactly(0, 1, 3);
+    assertThat(continuePriors).containsExactly(0, 0);
   }
 
   private static WorkflowState stateAtStep(String stepId) {

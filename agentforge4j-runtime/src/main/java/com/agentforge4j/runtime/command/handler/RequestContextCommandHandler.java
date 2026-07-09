@@ -35,12 +35,14 @@ import java.util.Optional;
  * — never the variant the requester asked for. An agent therefore cannot widen a declared
  * compact-form source to its full form by requesting {@code FULL}.
  *
- * <p><strong>Round limit:</strong> the workflow-declared
- * {@link ContextSelection#effectiveMaxExpansions()} bounds how many {@code RequestContextCommand}
- * instances within a single step invocation's command batch are evaluated at all:
- * {@link CommandApplicationRequest#requestContextRoundNumber()} — a 1-based count of this command
- * among {@code RequestContextCommand} instances in the batch, computed by
- * {@link com.agentforge4j.runtime.command.CommandApplier} — is checked against the limit
+ * <p><strong>Expansion limit:</strong> the workflow-declared
+ * {@link ContextSelection#effectiveMaxExpansions()} bounds how many requested selectors are
+ * evaluated at all within a single step invocation's command batch — each requested selector is one
+ * expansion, so packing many selectors into one {@code RequestContextCommand} cannot evade the
+ * limit. Each selector's 1-based expansion ordinal is
+ * {@link CommandApplicationRequest#priorRequestContextExpansions()} (the count consumed by earlier
+ * commands in the batch, computed by {@link com.agentforge4j.runtime.command.CommandApplier}) plus
+ * its position in this command's selector list; the ordinal is checked against the limit
  * <em>before</em> the selector-scope check, so exceeding the limit is reported as
  * {@code MAX_EXPANSIONS_REACHED} even for out-of-scope selectors. A step with no
  * {@link ContextSelection} has no expandable scope, so every request is denied.
@@ -88,20 +90,20 @@ public final class RequestContextCommandHandler implements CommandHandler<Reques
         : List.of();
     int maxExpansions = selection != null ? selection.effectiveMaxExpansions()
         : ContextSelection.DEFAULT_MAX_EXPANSIONS;
-    int round = request.requestContextRoundNumber();
+    List<ContextSelector> requestedSelectors = command.requestedSelectors();
 
-    if (round > maxExpansions) {
-      command.requestedSelectors()
-          .forEach(selector -> recordDenied(request, selector, round, REASON_MAX_REACHED));
-      return CommandApplicationResult.CONTINUE;
-    }
-
-    for (ContextSelector requested : command.requestedSelectors()) {
+    for (int index = 0; index < requestedSelectors.size(); index++) {
+      ContextSelector requested = requestedSelectors.get(index);
+      int expansion = request.priorRequestContextExpansions() + index + 1;
+      if (expansion > maxExpansions) {
+        recordDenied(request, requested, expansion, REASON_MAX_REACHED);
+        continue;
+      }
       Optional<ContextSelector> declared = findInScope(requested, expandableScope);
       if (declared.isPresent()) {
-        grant(request, declared.get(), round);
+        grant(request, declared.get(), expansion);
       } else {
-        recordDenied(request, requested, round, REASON_NOT_IN_SCOPE);
+        recordDenied(request, requested, expansion, REASON_NOT_IN_SCOPE);
       }
     }
     return CommandApplicationResult.CONTINUE;
@@ -120,14 +122,14 @@ public final class RequestContextCommandHandler implements CommandHandler<Reques
         .findFirst();
   }
 
-  private void grant(CommandApplicationRequest request, ContextSelector selector, int round) {
+  private void grant(CommandApplicationRequest request, ContextSelector selector, int expansion) {
     // Reject the reserved '__' runtime namespace (ledger merges, compact siblings, and other
     // governance state) the same way SetContextCommandHandler guards LLM-declared output keys: a
     // granted expansion must never read runtime-owned state as a source, even if a workflow author
     // declared such a ref in expandableScope. Treated as a deny, not a thrown exception, so it stays
     // consistent with this class's existing "requests are granted or denied" governance shape.
     if (selector.ref().startsWith("__")) {
-      recordDenied(request, selector, round, REASON_RESERVED_NAMESPACE);
+      recordDenied(request, selector, expansion, REASON_RESERVED_NAMESPACE);
       return;
     }
     WorkflowState state = request.state();
@@ -137,6 +139,13 @@ public final class RequestContextCommandHandler implements CommandHandler<Reques
     // surfacing command-application failures rather than swallowing them). Resolution always reads
     // the source's CURRENT value — there is no serve-stale path.
     String content = contextSourceResolver.resolve(selector, state, request.enclosingWorkflow());
+    // A grant never writes blank content: the granted-value types reject it, and failing there
+    // would surface as a generic value-invariant error far from the cause. An empty context-pack
+    // variant file is the realistic trigger (ContextPackVariant explicitly permits empty content).
+    Validate.isTrue(!content.isBlank(), () -> new IllegalStateException(
+        ("Granted context for selector %s:%s resolved to blank content; fix the source "
+            + "(for example an empty context-pack variant file)")
+            .formatted(selector.kind(), selector.ref())));
     String grantedKey = ReservedContextKeys.grantedKey(ContextSourceId.of(selector));
     Optional<String> priorContent = state.getContextValue(grantedKey)
         .map(RequestContextCommandHandler::contentOf);
@@ -149,12 +158,13 @@ public final class RequestContextCommandHandler implements CommandHandler<Reques
     if (priorContent.isEmpty() || !changeSuffix.isEmpty()) {
       state.putContextValue(grantedKey, grantedValue(selector.kind(), content));
     }
-    String payload = "stepId=%s selector=%s:%s round=%d%s".formatted(state.getCurrentStepId(),
-        selector.kind(), selector.ref(), round, changeSuffix);
+    String payload = "stepId=%s selector=%s:%s expansion=%d%s".formatted(state.getCurrentStepId(),
+        selector.kind(), selector.ref(), expansion, changeSuffix);
     eventRecorder.record(state.getRunId(), state.getCurrentStepId(),
         WorkflowEventType.CONTEXT_EXPANSION_GRANTED, payload, request.agentId());
-    LOG.log(System.Logger.Level.DEBUG, "Context expansion granted stepId={0}, selector={1}, round={2}",
-        state.getCurrentStepId(), selector, round);
+    LOG.log(System.Logger.Level.DEBUG,
+        "Context expansion granted stepId={0}, selector={1}, expansion={2}",
+        state.getCurrentStepId(), selector, expansion);
   }
 
   /**
@@ -188,15 +198,15 @@ public final class RequestContextCommandHandler implements CommandHandler<Reques
     };
   }
 
-  private void recordDenied(CommandApplicationRequest request, ContextSelector selector, int round,
-      String reason) {
+  private void recordDenied(CommandApplicationRequest request, ContextSelector selector,
+      int expansion, String reason) {
     WorkflowState state = request.state();
-    String payload = "stepId=%s selector=%s:%s round=%d reason=%s".formatted(
-        state.getCurrentStepId(), selector.kind(), selector.ref(), round, reason);
+    String payload = "stepId=%s selector=%s:%s expansion=%d reason=%s".formatted(
+        state.getCurrentStepId(), selector.kind(), selector.ref(), expansion, reason);
     eventRecorder.record(state.getRunId(), state.getCurrentStepId(),
         WorkflowEventType.CONTEXT_EXPANSION_DENIED, payload, request.agentId());
     LOG.log(System.Logger.Level.DEBUG,
-        "Context expansion denied stepId={0}, selector={1}, round={2}, reason={3}",
-        state.getCurrentStepId(), selector, round, reason);
+        "Context expansion denied stepId={0}, selector={1}, expansion={2}, reason={3}",
+        state.getCurrentStepId(), selector, expansion, reason);
   }
 }
