@@ -18,7 +18,7 @@ An embeddable framework needs a principled answer to three questions: how module
 
 ## Decision
 
-1. **JPMS throughout, one documented carve-out.** Every reactor module ships `module-info.java` and exports public packages only — except `agentforge4j-spring-boot-starter`, which deliberately has no module descriptor (the auto-configuration ecosystem it integrates with is not module-path-friendly).
+1. **JPMS descriptors on every module that ships main code, with two documented carve-outs** — the Spring Boot starter (its ecosystem is not module-path-friendly) and the MCP module (the upstream SDK's automatic module name is invalid, so the module is classpath-only). Resources-only artifacts declare an `Automatic-Module-Name` instead of a descriptor; test-only modules carry none. Named modules export public packages only.
 2. **Providers are discovered, never declared.** LLM providers register via JPMS `provides ... LlmClientFactory` and are discovered through `ServiceLoader`; there is no classpath-only `META-INF/services` fallback for provider factories. Adding a provider means adding a dependency, not editing wiring.
 3. **`bootstrap` is the assembly entry point.** The `bootstrap` module offers framework-agnostic defaults for assembling a runtime and declares **no** concrete providers; the Spring Boot starter depends on `bootstrap`, not on `runtime` directly, so any integration layer builds on the same assembly surface.
 
@@ -27,7 +27,7 @@ An embeddable framework needs a principled answer to three questions: how module
 - **Classpath-only, `META-INF/services` discovery.** Works everywhere, but forfeits JPMS encapsulation (internals become reachable API) and dual registration paths invite drift between them.
 - **Explicit provider wiring in configuration.** Predictable, but every new provider is a wiring change in every embedder; discovery makes provider presence a dependency decision.
 - **No dedicated bootstrap; integrations assemble `runtime` directly.** Each integration re-derives default assembly, and defaults drift per integration.
-- **JPMS everywhere, no carve-out.** Forcing a module descriptor onto the starter fights its ecosystem for purity's sake; the carve-out is documented rather than hidden.
+- **JPMS everywhere, no carve-out.** Forcing a module descriptor onto the starter fights its ecosystem for purity's sake, and one onto the MCP module is impossible while its SDK dependency ships an illegal automatic module name; the carve-outs are documented rather than hidden.
 
 ## Consequences
 
@@ -44,15 +44,15 @@ An embeddable framework needs a principled answer to three questions: how module
 
 ### Neutral / tradeoffs
 
-- The starter carve-out is a permanent, documented asymmetry — acceptable because it is a leaf integration module, not core surface.
+- The starter carve-out is a permanent, documented asymmetry; the MCP carve-out lasts as long as the upstream SDK's module name remains unusable. Both are acceptable because they are leaf integration modules, not core surface.
 
 ## Compatibility impact
 
-Exported packages define the public API surface; `provides`/`uses` clauses on `LlmClientFactory` (and other SPIs) are part of the extension contract. The starter's absence of a module descriptor is a documented expectation for module-path consumers.
+Exported packages define the public API surface; `provides`/`uses` clauses on `LlmClientFactory` (and other SPIs) are part of the extension contract. The starter's and the MCP module's absence of a module descriptor is a documented expectation for module-path consumers.
 
 ## Implementation notes
 
-`module-info.java` present in every reactor module except the Spring Boot starter (verified); `ServiceLoader` wiring in `bootstrap` (`AgentForge4jBootstrap`, `LlmClientWiring`, `RuntimeAssembler`); providers register via JPMS `provides` with no classpath-only registration for `LlmClientFactory`; `bootstrap` declares no concrete providers; the starter depends on `bootstrap`. Verified on `main @ 9ad289dd` (2026-07-09).
+`module-info.java` present in every reactor module that ships main code except the two carve-outs, `agentforge4j-spring-boot-starter` and `agentforge4j-mcp` (the latter documented in its own build file: the SDK's automatic module name contains a hyphen and is not a legal module name); the resources-only catalog artifact declares `Automatic-Module-Name` in its manifest (see ADR-0006); test-only verification and fixture modules ship no main code and no descriptor. `ServiceLoader` wiring in `bootstrap` (`AgentForge4jBootstrap`, `LlmClientWiring`, `RuntimeAssembler`); providers register via JPMS `provides` with no classpath-only registration for `LlmClientFactory`; `bootstrap` declares no concrete providers; the starter depends on `bootstrap`. Verified on `main @ 9ad289dd` (2026-07-09).
 
 ## Follow-up work
 

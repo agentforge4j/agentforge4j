@@ -54,7 +54,7 @@ The catalog artifact's coordinates, its manifest, and the compatibility gate aga
 
 ## Implementation notes
 
-`agentforge4j-workflows-catalog` with its own version line; empty `shipped-workflows/index` and `shipped-agents/index` on `main @ 9ad289dd` (2026-07-09); validator discovery via `ServiceLoader`. A stale comment in the module POM predates the content removal and does not reflect current state.
+`agentforge4j-workflows-catalog` with its own version line; empty `shipped-workflows/index` and `shipped-agents/index` on `main @ 9ad289dd` (2026-07-09); validator discovery via `ServiceLoader`. The artifact ships no module descriptor — resources only, enforced by an integration test — and declares an `Automatic-Module-Name` in its manifest for module-path consumers (see ADR-0009). A stale comment in the module POM predates the content removal and does not reflect current state.
 
 ## Follow-up work
 
