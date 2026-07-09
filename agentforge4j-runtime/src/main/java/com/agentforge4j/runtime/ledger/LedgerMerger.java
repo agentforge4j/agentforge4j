@@ -29,6 +29,11 @@ import java.util.Optional;
  * concatenated (current followed by delta). {@link LedgerMergeStrategy#REPLACE_SECTION} does not carry
  * them forward: it discards the current section's {@code openQuestions}/{@code conflicts} entirely and
  * normalizes the delta's own (possibly absent, defaulting to empty) values instead.
+ *
+ * <p>Concatenation is deliberately verbatim — a delta that repeats an already-present
+ * {@code openQuestions} or {@code conflicts} entry accumulates a duplicate. Deduplication would
+ * require an identity rule for free-form entries, which no strategy declares; emitters should send
+ * only new structural entries in a delta.
  */
 public final class LedgerMerger {
 

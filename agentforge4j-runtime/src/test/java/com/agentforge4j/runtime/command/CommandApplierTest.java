@@ -4,14 +4,19 @@ package com.agentforge4j.runtime.command;
 import com.agentforge4j.core.command.CompleteCommand;
 import com.agentforge4j.core.command.ContinueCommand;
 import com.agentforge4j.core.command.LlmCommand;
+import com.agentforge4j.core.command.RequestContextCommand;
 import com.agentforge4j.core.command.RunCommandCommand;
 import com.agentforge4j.core.workflow.WorkflowDefinition;
 import com.agentforge4j.core.workflow.WorkflowLifecycle;
 import com.agentforge4j.core.workflow.WorkflowSource;
 import com.agentforge4j.core.workflow.context.ContextMapping;
 import com.agentforge4j.core.workflow.state.WorkflowState;
+import com.agentforge4j.core.workflow.step.ContextSelector;
+import com.agentforge4j.core.workflow.step.ContextSourceKind;
+import com.agentforge4j.core.workflow.step.ContextVariant;
 import com.agentforge4j.core.workflow.step.StepDefinition;
 import com.agentforge4j.core.workflow.step.behaviour.FailBehaviour;
+import java.util.ArrayList;
 import java.util.Map;
 import com.agentforge4j.runtime.InMemoryGeneratedArtifactStore;
 import com.agentforge4j.runtime.command.handler.CompleteCommandHandler;
@@ -100,6 +105,55 @@ class CommandApplierTest {
         step("s1"), workflow()))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("commands must not be null");
+  }
+
+  @Test
+  void apply_passesTheExpansionRoundOnlyToRequestContextCommands() {
+    // CommandApplicationRequest documents requestContextRoundNumber as 0 for any command type other
+    // than RequestContextCommand — a non-RCC command after an RCC must not inherit the counter.
+    List<Integer> continueRounds = new ArrayList<>();
+    List<Integer> requestContextRounds = new ArrayList<>();
+    CommandHandler<ContinueCommand> capturingContinue = new CommandHandler<>() {
+      @Override
+      public Class<ContinueCommand> getCommandClass() {
+        return ContinueCommand.class;
+      }
+
+      @Override
+      public CommandApplicationResult apply(ContinueCommand command,
+          CommandApplicationRequest request) {
+        continueRounds.add(request.requestContextRoundNumber());
+        return CommandApplicationResult.CONTINUE;
+      }
+    };
+    CommandHandler<RequestContextCommand> capturingRequestContext = new CommandHandler<>() {
+      @Override
+      public Class<RequestContextCommand> getCommandClass() {
+        return RequestContextCommand.class;
+      }
+
+      @Override
+      public CommandApplicationResult apply(RequestContextCommand command,
+          CommandApplicationRequest request) {
+        requestContextRounds.add(request.requestContextRoundNumber());
+        return CommandApplicationResult.CONTINUE;
+      }
+    };
+    CommandApplier applier = new CommandApplier(List.of(capturingContinue,
+        capturingRequestContext));
+    ContextSelector selector = new ContextSelector(ContextSourceKind.STATE_KEY, "k",
+        ContextVariant.FULL);
+
+    applier.apply(
+        List.of(
+            new RequestContextCommand(List.of(selector)),
+            new ContinueCommand(null, null, null),
+            new RequestContextCommand(List.of(selector)),
+            new ContinueCommand(null, null, null)),
+        stateAtStep("s1"), ContextMapping.none(), "agent-1", 1, step("s1"), workflow());
+
+    assertThat(requestContextRounds).containsExactly(1, 2);
+    assertThat(continueRounds).containsExactly(0, 0);
   }
 
   private static WorkflowState stateAtStep(String stepId) {

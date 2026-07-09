@@ -187,6 +187,26 @@ class FileSystemContextPackLoaderTest {
   }
 
   @Test
+  void rejectsVariantFileSymlinkEscapingPackDirectory(@TempDir Path outside) throws Exception {
+    // The pack-directory symlink case is covered above; this pins the variant-FILE case — a
+    // manifest naming an in-directory link whose target lives outside the pack.
+    Path secret = outside.resolve("secret.md");
+    Files.writeString(secret, "outside content");
+    Path dir = pack("linked-variant");
+    write(dir, "pack.json", """
+        {"name":"linked-variant","version":"1.0.0","variants":{"full":"content.md"}}""");
+    try {
+      Files.createSymbolicLink(dir.resolve("content.md"), secret);
+    } catch (IOException | UnsupportedOperationException e) {
+      Assumptions.abort("Symlinks not supported in this environment: " + e.getMessage());
+    }
+
+    assertThatThrownBy(() -> loader().load())
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("escapes the pack directory");
+  }
+
+  @Test
   void rejectsNonDirectoryRoot() {
     Path missing = root.resolve("does-not-exist");
     assertThatThrownBy(() -> new FileSystemContextPackLoader(mapper, schemaProvider, missing))

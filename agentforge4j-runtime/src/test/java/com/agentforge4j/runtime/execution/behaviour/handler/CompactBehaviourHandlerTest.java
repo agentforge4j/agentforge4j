@@ -194,6 +194,55 @@ class CompactBehaviourHandlerTest {
   }
 
   @Test
+  void sectionSubpathSourceFailsLoudInsteadOfProducingAnEmptyCompact() throws Exception {
+    // Load-time validation rejects a COMPACT source naming a ledger section; this pins the runtime
+    // backstop for programmatically built definitions: the bare array a subpath resolves to must
+    // fail loud, never become {"entries":[]} silently.
+    ContextSelector subpathSource = new ContextSelector(ContextSourceKind.LEDGER_SECTION,
+        "requirements.entries", ContextVariant.FULL);
+    CompactBehaviour behaviour = new CompactBehaviour(subpathSource, new DeterministicExtract(),
+        new CompactionPolicy(0, 0));
+    StepDefinition compact = StepDefinition.builder().withStepId("compact").withName("compact")
+        .withBehaviour(behaviour).build();
+    WorkflowDefinition workflow = workflow(compact);
+    ExecutionContext executionContext = context(workflow);
+    var merged = mapper.readTree("""
+        {"entries":[{"id":"REQ-1","rationale":"because"}],"openQuestions":[],"conflicts":[]}""");
+    com.agentforge4j.runtime.ledger.LedgerMerger.writeMerged(executionContext.getState(), ledger(),
+        merged);
+
+    assertThatThrownBy(() -> handler(workflow).handle(compact, behaviour, executionContext))
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessageContaining("whole ledger envelope");
+    assertThat(CompactSiblingStore.read(executionContext.getState(),
+        ContextSourceId.of(subpathSource), mapper)).isEmpty();
+  }
+
+  @Test
+  void absentEnvelopeFieldsBecomeEmptyArraysInTheCompactForm() throws Exception {
+    // An envelope missing conflicts (or openQuestions) must compact to empty arrays for those
+    // fields — never to JSON nulls, which would violate the envelope shape downstream.
+    CompactBehaviour behaviour = new CompactBehaviour(source(), new DeterministicExtract(),
+        new CompactionPolicy(0, 0));
+    StepDefinition compact = compactStep(behaviour.policy(), behaviour.mode());
+    WorkflowDefinition workflow = workflow(compact);
+    ExecutionContext executionContext = context(workflow);
+    var merged = mapper.readTree("""
+        {"entries":[{"id":"REQ-1"}],"openQuestions":["q?"]}""");
+    com.agentforge4j.runtime.ledger.LedgerMerger.writeMerged(executionContext.getState(), ledger(),
+        merged);
+
+    handler(workflow).handle(compact, behaviour, executionContext);
+
+    var stored = CompactSiblingStore.read(executionContext.getState(), ContextSourceId.of(source()),
+        mapper).orElseThrow();
+    var compactNode = mapper.readTree(stored.content());
+    assertThat(compactNode.get("conflicts").isArray()).isTrue();
+    assertThat(compactNode.get("conflicts")).isEmpty();
+    assertThat(stored.content()).doesNotContain("null");
+  }
+
+  @Test
   void llmSummaryThrowsUnsupported() {
     CompactBehaviour behaviour = new CompactBehaviour(source(), new LlmSummary("STANDARD"),
         new CompactionPolicy(0, 0));

@@ -201,7 +201,8 @@ public enum WorkflowEventType {
   /**
    * Recorded when a step's context is assembled from its declared selection (or from full context when the step
    * declares none). Payload fields: {@code stepId}, {@code mode} ({@code SCOPED} / {@code UNSCOPED_FULL}), the
-   * selector list, per-selector fingerprints, and estimated units.
+   * selector list, per-selector fingerprints, and estimated units. Reserved for scoped context assembly, which the
+   * runtime does not perform yet — no code records this event.
    */
   CONTEXT_SCOPE_APPLIED,
   /**
@@ -211,7 +212,8 @@ public enum WorkflowEventType {
   CONTEXT_EXPANSION_GRANTED,
   /**
    * Recorded when a step's run-time request for additional context is denied. Payload fields: {@code stepId},
-   * {@code selector}, {@code round}, {@code reason} ({@code NOT_IN_EXPANDABLE_SCOPE} / {@code MAX_EXPANSIONS_REACHED}).
+   * {@code selector}, {@code round}, {@code reason} ({@code NOT_IN_EXPANDABLE_SCOPE} / {@code MAX_EXPANSIONS_REACHED}
+   * / {@code RESERVED_NAMESPACE}).
    */
   CONTEXT_EXPANSION_DENIED,
   /**
@@ -229,6 +231,7 @@ public enum WorkflowEventType {
   /**
    * Recorded when deterministic waste detection emits an advisory signal. Payload carries the signal kind, the
    * relevant fingerprints, and the step/loop coordinates. Advisory only: the OSS default never blocks on it.
+   * Reserved for the waste-detection wiring, which the runtime does not perform yet — no code records this event.
    */
   TOKEN_GOVERNANCE_SIGNAL
 }

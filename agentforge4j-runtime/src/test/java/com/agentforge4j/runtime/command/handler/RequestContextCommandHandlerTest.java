@@ -290,6 +290,64 @@ class RequestContextCommandHandlerTest {
   }
 
   @Test
+  void grantHonoursTheDeclaredVariantNotTheRequestedOne() {
+    // expandableScope declares the ledger with COMPACT_PREFERRED and a fresh compact sibling
+    // exists; the agent requests the same source as FULL. The grant must serve the DECLARED form —
+    // the requester cannot widen a compact-form source to its full form.
+    LedgerDefinition ledgerDef = ledger("requirements");
+    ContextSelector declaredCompact = ledgerSelector("requirements", ContextVariant.COMPACT_PREFERRED);
+    ContextSelection selection = new ContextSelection(List.of(), List.of(declaredCompact), null);
+    StepDefinition step = step(selection);
+    WorkflowDefinition workflow = workflowWithLedger(step, ledgerDef);
+    WorkflowState state = state();
+    LedgerMerger.writeMerged(state, ledgerDef,
+        mapper.valueToTree(Map.of("entries", List.of(Map.of("id", "REQ-1")))));
+    String fullContent = new ContextSourceResolver(new ContextRenderer(mapper), mapper,
+        ContextPackRegistry.EMPTY)
+        .resolveFull(declaredCompact, state, workflow);
+    String sourceId = ContextSourceId.of(declaredCompact);
+    CompactSiblingMetadata metadata = new CompactSiblingMetadata(sourceId,
+        ContextFingerprint.of(fullContent), new DeterministicExtract(), 100, 10, "compact-step",
+        new CompactionPolicy(0, 0));
+    CompactSiblingStore.write(state, sourceId, new CompactSibling("compact form", metadata), mapper);
+    ContextSelector requestedFull = ledgerSelector("requirements", ContextVariant.FULL);
+    RequestContextCommand command = new RequestContextCommand(List.of(requestedFull));
+
+    handler.apply(command, request(state, step, workflow, 1));
+
+    assertThat(eventLog.getEvents("run-1").get(0).eventType())
+        .isEqualTo(WorkflowEventType.CONTEXT_EXPANSION_GRANTED);
+    assertThat(state.getContextValue("requirements"))
+        .get()
+        .extracting(value -> ((com.agentforge4j.core.workflow.context.JsonContextValue) value).json())
+        .isEqualTo("compact form");
+  }
+
+  @Test
+  void grantedStepOutputIsStoredAsStringContent() {
+    // A step's raw output is arbitrary text, not JSON — storing it as a JSON context value would
+    // hand downstream JSON consumers unparseable content.
+    ContextSelector stepOutput = new ContextSelector(ContextSourceKind.STEP_OUTPUT, "s0",
+        ContextVariant.FULL);
+    ContextSelection selection = new ContextSelection(List.of(), List.of(stepOutput), null);
+    StepDefinition step = step(selection);
+    WorkflowState state = state();
+    state.putStepOutput("s0", "plain text, not JSON");
+    RequestContextCommand command = new RequestContextCommand(List.of(stepOutput));
+
+    handler.apply(command, request(state, step, 1));
+
+    assertThat(eventLog.getEvents("run-1").get(0).eventType())
+        .isEqualTo(WorkflowEventType.CONTEXT_EXPANSION_GRANTED);
+    assertThat(state.getContextValue("s0"))
+        .get()
+        .isInstanceOf(com.agentforge4j.core.workflow.context.StringContextValue.class)
+        .extracting(
+            value -> ((com.agentforge4j.core.workflow.context.StringContextValue) value).value())
+        .isEqualTo("plain text, not JSON");
+  }
+
+  @Test
   void grantDeniesAndDoesNotWriteAReservedNamespaceSelector() {
     ContextSelector reservedSelector = selector("__ledgerMergeState");
     ContextSelection selection = new ContextSelection(List.of(), List.of(reservedSelector), null);

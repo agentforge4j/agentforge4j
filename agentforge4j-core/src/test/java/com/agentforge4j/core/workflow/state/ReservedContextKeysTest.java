@@ -20,4 +20,17 @@ class ReservedContextKeysTest {
     assertThatThrownBy(() -> ReservedContextKeys.ledgerKey(" "))
         .isInstanceOf(IllegalArgumentException.class);
   }
+
+  @Test
+  void compactKeyIsNamespacedUnderReservedPrefix() {
+    assertThat(ReservedContextKeys.compactKey("LEDGER_SECTION:requirements"))
+        .isEqualTo("__compact.LEDGER_SECTION:requirements")
+        .startsWith(ReservedContextKeys.COMPACT_KEY_PREFIX);
+  }
+
+  @Test
+  void compactKeyRejectsBlankSourceId() {
+    assertThatThrownBy(() -> ReservedContextKeys.compactKey(" "))
+        .isInstanceOf(IllegalArgumentException.class);
+  }
 }

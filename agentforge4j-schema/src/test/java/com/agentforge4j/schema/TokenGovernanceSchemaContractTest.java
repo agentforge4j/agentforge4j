@@ -16,9 +16,8 @@ import org.junit.jupiter.api.Test;
 
 /**
  * Contract tests for the token-governance additions to the workflow and agent schemas: the COMPACT
- * behaviour, the COLLECTION behaviour (previously missing), per-step context selection, workflow
- * ledgers, the PREMIUM tier, the TOOL_INVOCATION and REQUEST_CONTEXT commands, and agent output
- * contracts.
+ * behaviour, per-step context selection, workflow ledgers, the PREMIUM tier, the TOOL_INVOCATION
+ * and REQUEST_CONTEXT commands, and agent output contracts.
  */
 class TokenGovernanceSchemaContractTest {
 
@@ -83,24 +82,6 @@ class TokenGovernanceSchemaContractTest {
          "source":{"kind":"ARTIFACT","ref":"a"},
          "mode":{"type":"LLM_SUMMARY","modelTier":"PREMUIM"},
          "policy":{"minSourceUnits":0,"minDownstreamReuse":0}}}""";
-    assertThat(validate(WORKFLOW_SCHEMA, workflowWithStep(step))).isNotEmpty();
-  }
-
-  @Test
-  void workflow_acceptsCollectionStep() throws Exception {
-    String step = """
-        {"kind":"STEP","stepId":"s1","name":"S","behaviour":{"type":"COLLECTION",
-         "minItems":1,"duplicatePolicy":"ALLOW","reopenPolicy":"NONE",
-         "authorizationMode":"OPEN","transition":"AUTO"}}""";
-    assertThat(validate(WORKFLOW_SCHEMA, workflowWithStep(step))).isEmpty();
-  }
-
-  @Test
-  void workflow_rejectsCollectionStepWithBlankItemSchemaRef() throws Exception {
-    String step = """
-        {"kind":"STEP","stepId":"s1","name":"S","behaviour":{"type":"COLLECTION",
-         "itemSchemaRef":"","minItems":1,"duplicatePolicy":"ALLOW","reopenPolicy":"NONE",
-         "authorizationMode":"OPEN","transition":"AUTO"}}""";
     assertThat(validate(WORKFLOW_SCHEMA, workflowWithStep(step))).isNotEmpty();
   }
 

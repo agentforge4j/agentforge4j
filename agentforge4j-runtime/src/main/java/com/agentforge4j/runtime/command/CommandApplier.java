@@ -66,11 +66,15 @@ public final class CommandApplier {
 
     int requestContextRound = 0;
     for (LlmCommand command : commands) {
+      // The 1-based expansion round is meaningful only on a RequestContextCommand; every other
+      // command type carries 0, as CommandApplicationRequest documents.
+      int commandRound = 0;
       if (command instanceof RequestContextCommand) {
         requestContextRound++;
+        commandRound = requestContextRound;
       }
       CommandApplicationRequest request = new CommandApplicationRequest(state, contextMapping,
-          agentId, currentStepUid, step, enclosingWorkflow, requestContextRound);
+          agentId, currentStepUid, step, enclosingWorkflow, commandRound);
       CommandApplicationResult result = applyOne(command, request);
       if (result != CommandApplicationResult.CONTINUE) {
         return result;

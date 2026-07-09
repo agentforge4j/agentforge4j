@@ -122,7 +122,7 @@
       "properties": {
         "type": {
           "type": "string",
-          "enum": ["AGENT", "SPAR", "WORKFLOW", "INPUT", "RESOURCE", "BRANCH", "FAIL", "RETRY_PREVIOUS", "VALIDATE", "ASSIGN_CONTEXT", "COLLECTION", "COMPACT"]
+          "enum": ["AGENT", "SPAR", "WORKFLOW", "INPUT", "RESOURCE", "BRANCH", "FAIL", "RETRY_PREVIOUS", "VALIDATE", "ASSIGN_CONTEXT", "COMPACT"]
         }
       },
       "required": ["type"],
@@ -140,7 +140,6 @@
         { "$ref": "#/$defs/RetryPreviousBehaviour" },
         { "$ref": "#/$defs/ValidateBehaviour" },
         { "$ref": "#/$defs/AssignContextBehaviour" },
-        { "$ref": "#/$defs/CollectionBehaviour" },
         { "$ref": "#/$defs/CompactBehaviour" }
       ]
     },
@@ -356,27 +355,6 @@
           "type": "array",
           "items": { "type": "string" }
         }
-      }
-    },
-    "CollectionBehaviour": {
-      "type": "object",
-      "required": ["type"],
-      "additionalProperties": false,
-      "properties": {
-        "type": { "type": "string", "const": "COLLECTION" },
-        "itemSchemaRef": { "type": ["string", "null"], "minLength": 1 },
-        "minItems": { "type": "integer", "minimum": 0 },
-        "maxItems": { "type": ["integer", "null"], "minimum": 1 },
-        "maxItemsPerActor": { "type": ["integer", "null"], "minimum": 1 },
-        "maxInlinePayloadBytes": { "type": "integer", "minimum": 0 },
-        "duplicatePolicy": { "enum": ["ALLOW", "REJECT_BY_CLIENT_TOKEN", "REJECT_BY_DEDUPE_KEY"] },
-        "replacementPolicy": { "enum": ["NONE", "OWNER_REPLACE", "AUTHORIZED_REPLACE"] },
-        "withdrawalPolicy": { "enum": ["NONE", "OWNER_WITHDRAW", "AUTHORIZED_WITHDRAW"] },
-        "manualClose": { "type": ["boolean", "null"] },
-        "externalDeadlineClosable": { "type": ["boolean", "null"] },
-        "reopenPolicy": { "enum": ["NONE", "ALLOWED"] },
-        "authorizationMode": { "enum": ["OPEN", "ENFORCED"] },
-        "transition": { "$ref": "#/$defs/StepTransition" }
       }
     },
     "CompactBehaviour": {

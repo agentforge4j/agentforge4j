@@ -27,10 +27,9 @@ import java.util.Optional;
  *
  * <p>{@link ContextSourceKind#CONTEXT_PACK} is resolved directly against the configured
  * {@link ContextPackRegistry} and bypasses the compact-sibling machinery entirely: a pack's
- * {@code compact} variant (RECORDED CONVENTION: the {@code "full"}/{@code "compact"} variant key
- * names the design's own §4.7 example uses) is an author-provided file, not a runtime-computed
- * sibling, so there is no fingerprint-staleness concept for it — it either exists in the pack manifest
- * or it does not.
+ * {@code compact} variant ({@code "full"} and {@code "compact"} are the conventional variant key
+ * names) is an author-provided file, not a runtime-computed sibling, so there is no
+ * fingerprint-staleness concept for it — it either exists in the pack manifest or it does not.
  */
 public final class ContextSourceResolver {
 

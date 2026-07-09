@@ -19,7 +19,7 @@ import java.util.Optional;
 import java.util.Set;
 
 /**
- * Deterministic, syntactic waste-signal evaluator (design §4.9). Every method is a pure function over
+ * Deterministic, syntactic waste-signal evaluator. Every method is a pure function over
  * explicitly-passed fingerprints/coordinates — it observes nothing itself. Callers are responsible for
  * computing fingerprints (see {@link com.agentforge4j.runtime.context.ContextFingerprint}) and for
  * deciding what "prior" values to compare against.
@@ -33,9 +33,9 @@ import java.util.Set;
  * persisted on {@code WorkflowState} (new state surface, not yet added); wiring
  * {@link #evaluateUnchangedLoopContext} and {@link #evaluateRepeatedLoopOutput} needs each loop
  * strategy ({@code FixedCountLoopStrategy}, {@code ForEachLoopStrategy}, {@code AgentSignalLoopStrategy},
- * {@code EvaluatorLoopStrategy}) to track and pass prior-iteration fingerprints. Both are separate,
- * deliberate design decisions raised for owner review rather than guessed here; the evaluator itself is
- * complete and independently tested so wiring can plug into a correct, ready implementation.
+ * {@code EvaluatorLoopStrategy}) to track and pass prior-iteration fingerprints. Until then no
+ * {@code TOKEN_GOVERNANCE_SIGNAL} event is recorded; the evaluator itself is complete and
+ * independently tested so that wiring can plug into a correct, ready implementation.
  */
 public final class WasteDetector {
 
@@ -227,7 +227,7 @@ public final class WasteDetector {
   }
 
   /**
-   * Normalizes raw agent output for stable fingerprinting, per design §4.9: canonical JSON (sorted
+   * Normalizes raw agent output for stable fingerprinting: canonical JSON (sorted
    * keys) when {@code rawOutput} parses as JSON, otherwise whitespace-collapsed text.
    *
    * @param rawOutput the raw output to normalize; must not be {@code null}

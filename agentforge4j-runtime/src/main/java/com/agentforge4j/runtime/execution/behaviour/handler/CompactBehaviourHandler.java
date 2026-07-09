@@ -37,32 +37,30 @@ import java.util.List;
 
 /**
  * Handles a {@link CompactBehaviour}: deterministically decides whether compacting the declared source
- * is worthwhile, no-ops when it is not, and always records why (design §4.5).
+ * is worthwhile, no-ops when it is not, and always records why.
  *
- * <p><strong>Reuse counting (owner-relaxed rule, 2026-07-05):</strong> a referencing step counts
- * toward {@link CompactionPolicy#minDownstreamReuse()} when it is reachable in the resolved workflow
+ * <p><strong>Reuse counting:</strong> a referencing step counts toward
+ * {@link CompactionPolicy#minDownstreamReuse()} when it is reachable in the resolved workflow
  * graph ({@link ReachableStepGraph#walk}) from the run root and its declared {@code contextSelection}
  * — its {@code selectors} or its {@code expandableScope} (a granted expansion reads the compact
  * form too, so a potential reader counts as reuse) — references this
  * step's source with variant {@code COMPACT_PREFERRED} or {@code COMPACT_ONLY}. There is no
- * before/after-the-COMPACT-step ordering check; see the design record for why the relaxation is safe
- * (a before-step's variant resolution fails closed or falls back at read time regardless).
+ * before/after-the-COMPACT-step ordering check: a step that reads the source before compaction ran
+ * either fails closed ({@code COMPACT_ONLY}) or falls back to the full source
+ * ({@code COMPACT_PREFERRED}) at read time regardless, so ordering cannot make the count unsafe.
  *
  * <p>A referencing step inside a reached sub-workflow counts individually, not collapsed to its
  * {@code WORKFLOW} step: this runtime shares one flat context map for the whole run (no
- * per-sub-workflow context isolation), so there is no "input mapping" to test for whether the source
- * was "passed into" the sub-workflow — every reachable step already sees the same source. This is a
- * recorded deviation from the design's literal sub-workflow clause, not a design quote.
+ * per-sub-workflow context isolation), so there is no input mapping to test for whether the source
+ * was passed into the sub-workflow — every reachable step already sees the same source.
  *
- * <p>Only {@link DeterministicExtract} is implemented in this pass, and only for
+ * <p>Only {@link DeterministicExtract} is currently implemented, and only for whole-ledger
  * {@code LEDGER_SECTION} sources: it copies the source verbatim except stripping any top-level
- * {@code rationale} field from each entry (a recognized convention field name elsewhere in this
- * design). {@link LlmSummary} is not invoked: its shipped shape carries a {@code modelTier} but no
- * agent identity, so there is no agent to invoke through the normal {@link
- * com.agentforge4j.runtime.llm.AgentInvoker} path — invoking one requires a design decision (add an
- * agent reference to {@code LlmSummary}, or define an internal invocation convention) that has not
- * been made. Reaching an {@code LlmSummary} mode throws {@link UnsupportedOperationException}
- * naming this gap, rather than silently no-opping or fabricating a summary.
+ * {@code rationale} field from each entry. {@link LlmSummary} is not invoked: its shape carries a
+ * {@code modelTier} but no agent identity, so there is no agent to invoke through the normal {@link
+ * com.agentforge4j.runtime.llm.AgentInvoker} path. Reaching an {@code LlmSummary} mode throws
+ * {@link UnsupportedOperationException} naming this gap, rather than silently no-opping or
+ * fabricating a summary.
  */
 public final class CompactBehaviourHandler implements BehaviourHandler<CompactBehaviour> {
 
@@ -118,9 +116,13 @@ public final class CompactBehaviourHandler implements BehaviourHandler<CompactBe
     if (estimatedUnits < policy.minSourceUnits()) {
       return SkipReason.SOURCE_TOO_SMALL;
     }
-    int reuseCount = countReferencingSteps(executionContext.getRootWorkflow(), sourceId);
-    if (reuseCount < policy.minDownstreamReuse()) {
-      return SkipReason.INSUFFICIENT_REUSE;
+    // A zero threshold compacts regardless of reuse — skip the reachable-graph walk entirely; it
+    // runs on every COMPACT execution and loop-heavy workflows would pay for it repeatedly.
+    if (policy.minDownstreamReuse() > 0) {
+      int reuseCount = countReferencingSteps(executionContext.getRootWorkflow(), sourceId);
+      if (reuseCount < policy.minDownstreamReuse()) {
+        return SkipReason.INSUFFICIENT_REUSE;
+      }
     }
     return CompactSiblingStore.read(executionContext.getState(), sourceId, objectMapper)
         .filter(sibling -> sibling.metadata().sourceFingerprint().equals(sourceFingerprint))
@@ -195,20 +197,37 @@ public final class CompactBehaviourHandler implements BehaviourHandler<CompactBe
   /**
    * Copies the ledger envelope verbatim except stripping a top-level {@code rationale} field from
    * each entry. Entry ids, {@code openQuestions}, and {@code conflicts} are always carried forward
-   * (structural, exempt from summarization).
+   * (structural, exempt from summarization); an envelope field that is absent from the source is
+   * written as an empty array, never as a JSON null.
+   *
+   * <p>The source must be a whole ledger envelope (a JSON object). A ledger <em>section</em> subpath
+   * resolves to a bare array with none of the envelope fields, and extracting it would silently
+   * produce an empty compact form of a non-empty ledger — load-time validation rejects such a
+   * source, and this method fails loud as the defence-in-depth backstop for programmatically built
+   * definitions.
    */
   private String extractLedgerDeterministically(String fullLedgerContentJson) {
     try {
       JsonNode envelope = objectMapper.readTree(fullLedgerContentJson);
+      Validate.isTrue(envelope.isObject(), () -> new IllegalStateException(
+          ("DeterministicExtract requires a whole ledger envelope (a JSON object); the resolved "
+              + "source is %s — a COMPACT source must not name a ledger section")
+              .formatted(envelope.getNodeType())));
       ObjectNode result = objectMapper.createObjectNode();
       result.set("entries", stripRationale(envelope.get("entries")));
-      result.set("openQuestions", envelope.get("openQuestions"));
-      result.set("conflicts", envelope.get("conflicts"));
+      result.set("openQuestions", arrayOrEmpty(envelope.get("openQuestions")));
+      result.set("conflicts", arrayOrEmpty(envelope.get("conflicts")));
       return CanonicalJson.render(result, objectMapper);
+    } catch (IllegalStateException e) {
+      throw e;
     } catch (Exception e) {
       throw new IllegalStateException(
           "Failed to deterministically extract ledger content: %s".formatted(e.getMessage()), e);
     }
+  }
+
+  private JsonNode arrayOrEmpty(JsonNode value) {
+    return value != null && value.isArray() ? value : objectMapper.createArrayNode();
   }
 
   private JsonNode stripRationale(JsonNode entries) {
