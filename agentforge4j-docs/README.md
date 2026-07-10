@@ -7,11 +7,27 @@ version pinned by the repository root `.nvmrc`.
 
 ## Local development
 
+`npm start`/`npm run build` render generated content and validate `vocab:`-tagged identifiers
+against sets the build produces from source — the vocabulary lint fails fast if `src/vocab` is
+missing. Before starting or building for the first time (and after pulling framework changes),
+generate that content from the OSS reactor once, from the repository root:
+
 ```bash
-npm ci          # install dependencies (uses the committed package-lock.json)
-npm start       # start the dev server with hot reload
-npm run build   # build the static site; fails on broken links or anchors
+./mvnw install -Dmaven.test.skip=true                              # 1. install the OSS reactor (JDK 17)
+./mvnw -f agentforge4j-docs-emitter/pom.xml exec:java \
+  -Dexec.args="$(pwd)/agentforge4j-docs/scripts/emitter-output"    # 2. run the docs emitter
 ```
+
+Then, from this module:
+
+```bash
+npm ci             # install dependencies (uses the committed package-lock.json)
+npm run generate   # regenerate the reference pages + vocabulary sets from the emitter output
+npm start          # start the dev server with hot reload
+npm run build      # build the static site; fails on broken links or anchors
+```
+
+See [Contributing](docs/contributing/index.mdx) for the full authoring and gate-running guide.
 
 ## Quality gates
 
