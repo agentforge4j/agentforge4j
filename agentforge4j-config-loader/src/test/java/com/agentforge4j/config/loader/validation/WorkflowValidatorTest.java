@@ -142,6 +142,30 @@ class WorkflowValidatorTest {
   }
 
   @Test
+  void validateBlueprintRefs_rejectsASelfReferentialBlueprintInsteadOfOverflowingTheStack() {
+    BlueprintDefinition selfReferential = blueprint("bp-a", new BlueprintRef("bp-a"));
+    WorkflowDefinition wf = wfWithBlueprints("wf1", Map.of("bp-a", selfReferential),
+        List.of(new BlueprintRef("bp-a")));
+
+    assertThatThrownBy(() -> validator.validateBlueprintRefs(Map.of("wf1", wf)))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("cyclic")
+        .hasMessageContaining("bp-a");
+  }
+
+  @Test
+  void validateBlueprintRefs_allowsTheSameBlueprintReferencedFromTwoSiblingBranches() {
+    // A diamond reference (the same blueprint reached from two unrelated places) is legitimate
+    // reuse, not a cycle, and must not be rejected by the cycle guard.
+    BlueprintDefinition shared = blueprint("bp-shared", terminalStep("s"));
+    WorkflowDefinition wf = wfWithBlueprints("wf1", Map.of("bp-shared", shared),
+        List.of(new BlueprintRef("bp-shared"), new BlueprintRef("bp-shared")));
+
+    assertThatCode(() -> validator.validateBlueprintRefs(Map.of("wf1", wf)))
+        .doesNotThrowAnyException();
+  }
+
+  @Test
   void validateArtifactRefs_rejectsUnknownArtifactOnInputStep() {
     StepDefinition step = StepDefinition.builder()
         .withStepId("s1")
