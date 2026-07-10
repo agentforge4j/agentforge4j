@@ -29,6 +29,7 @@ import com.agentforge4j.core.workflow.step.blueprint.BlueprintDefinition;
 import com.agentforge4j.core.workflow.step.blueprint.BlueprintRef;
 import com.agentforge4j.core.workflow.step.loop.LoopConfig;
 import com.agentforge4j.core.workflow.step.loop.LoopTerminationStrategy;
+import com.agentforge4j.core.workflow.step.loop.MaxIterationsAction;
 import com.agentforge4j.llm.LlmClientResolver;
 import com.agentforge4j.llm.api.LlmClient;
 import com.agentforge4j.runtime.command.FileSink;
@@ -128,6 +129,41 @@ class RetryContinuationRuntimeTest {
     assertThat(after.getStatus()).isEqualTo(WorkflowStatus.COMPLETED);
     assertThat(after.getPendingUserPrompt()).isNull();
     assertThat(after.getContext()).containsKeys("k1", "k2");
+  }
+
+  @Test
+  void retry_across_a_loop_paused_at_max_iterations_restarts_it_from_iteration_one() {
+    // Regression for a stale loop cursor surviving a retry rewind: an AGENT_SIGNAL loop that never
+    // signals completion pauses via MaxIterationsHandler's AWAIT_USER action, which — unlike the
+    // FAIL action — does not clear the loop's cursor/body-start-uid. Retrying an earlier top-level
+    // step must still forget them (via WorkflowState.clearEntriesFromUid), so the loop restarts at
+    // iteration 1 on the redrive instead of resuming mid-way and silently running fewer iterations.
+    StepDefinition s1 = resourceStep("s1", "/examples/sample.txt", "k1");
+    StepDefinition body = agentStep("body");
+    BlueprintDefinition loopBp = new BlueprintDefinition("loop-bp", "loop-bp",
+        new BlueprintBehaviour(
+            LoopConfig.withDefaults(LoopTerminationStrategy.AGENT_SIGNAL, null, null, 2,
+                MaxIterationsAction.AWAIT_USER),
+            StepTransition.AUTO),
+        List.of(body));
+    WorkflowDefinition workflow = workflow("wf-retry-paused-loop",
+        Map.of("loop-bp", loopBp), List.of(s1, new BlueprintRef("loop-bp")));
+
+    Fixture fixture = fixture(workflow, continuingAgentInvoker());
+    String runId = fixture.runtime().start(workflow.id());
+
+    // The agent always CONTINUEs, so the loop never signals completion and reaches maxIterations=2,
+    // pausing via AWAIT_USER with a non-zero cursor.
+    assertThat(fixture.runtime().getState(runId).getStatus()).isEqualTo(WorkflowStatus.PAUSED);
+    assertThat(countEvents(fixture, runId, "body", WorkflowEventType.STEP_STARTED)).isEqualTo(2);
+
+    fixture.runtime().retry(runId, "s1", "user");
+
+    // Pre-fix, the stale cursor (2) survived the rewind and the redrive resumed at iteration 2,
+    // running the body only once more (3 total) before re-pausing. The fix clears the cursor, so the
+    // redrive restarts the loop at iteration 1 and runs both iterations again (4 total).
+    assertThat(fixture.runtime().getState(runId).getStatus()).isEqualTo(WorkflowStatus.PAUSED);
+    assertThat(countEvents(fixture, runId, "body", WorkflowEventType.STEP_STARTED)).isEqualTo(4);
   }
 
   @Test

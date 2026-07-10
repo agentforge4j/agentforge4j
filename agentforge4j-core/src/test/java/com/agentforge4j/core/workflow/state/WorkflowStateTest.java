@@ -464,6 +464,27 @@ class WorkflowStateTest {
   }
 
   @Test
+  void clearEntriesFromUid_drops_stale_loop_cursor_and_body_start_uid_at_or_after_threshold() {
+    WorkflowState state = new WorkflowState("run-1", "wf-1", null, t());
+    // A loop paused mid-iteration (e.g. an AWAIT_USER max-iterations pause) leaves its cursor and
+    // body-start-uid non-zero; neither is cleared by the loop strategies themselves in that case.
+    state.setLoopIterationCursor("paused-loop", 2);
+    state.setLoopIterationBodyStartUid("paused-loop", 5);
+    // A loop whose in-progress iteration began before the rewind point is untouched.
+    state.setLoopIterationCursor("later-loop", 1);
+    state.setLoopIterationBodyStartUid("later-loop", 2);
+
+    state.clearEntriesFromUid(5);
+
+    // A retry/rewind crossing this loop's in-progress iteration must forget the cursor too, so the
+    // next drive restarts the loop from iteration 1 instead of resuming mid-way with a stale cursor.
+    assertThat(state.getLoopIterationCursor("paused-loop")).isZero();
+    assertThat(state.getLoopIterationBodyStartUid("paused-loop")).isZero();
+    assertThat(state.getLoopIterationCursor("later-loop")).isEqualTo(1);
+    assertThat(state.getLoopIterationBodyStartUid("later-loop")).isEqualTo(2);
+  }
+
+  @Test
   void generated_artifact_descriptors_append_in_order_and_getter_is_unmodifiable() {
     WorkflowState state = new WorkflowState("run-1", "wf-1", null, t());
     ArtifactDescriptor first = new ArtifactDescriptor("agent.json", "h1", "generate", 1);

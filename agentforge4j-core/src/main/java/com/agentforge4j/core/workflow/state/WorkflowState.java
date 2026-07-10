@@ -79,7 +79,9 @@ public final class WorkflowState {
    * paused iteration (same iteration number as the persisted cursor) leaves this marker untouched,
    * preserving that iteration's already-completed steps. Context values and generated-artifact
    * descriptors written by the previous iteration are deliberately not cleared at an iteration
-   * boundary — see {@link #clearStepEntriesFromUid(int)}.
+   * boundary — see {@link #clearStepEntriesFromUid(int)}. A retry/rewind crossing this iteration's
+   * start uid — whether the loop is still actively iterating or sitting paused — also clears both
+   * maps together, via {@link #clearEntriesFromUid(int)}.
    */
   private final Map<String, Integer> loopIterationBodyStartUidByBlueprintId;
   /**
@@ -547,6 +549,14 @@ public final class WorkflowState {
    * {@code stepOutputs}), so a rewind past a file-emitting step does not leave a stale descriptor for a path the
    * re-drive may not re-emit.
    *
+   * <p>A loop's {@link #loopIterationCursorByBlueprintId cursor} and
+   * {@link #loopIterationBodyStartUidByBlueprintId body-start-uid marker} are also dropped together when the
+   * marker's uid is at or after {@code retryUid}: the loop's currently in-progress iteration began within the
+   * rewound range, so — whether that loop is still actively iterating or sitting paused (e.g. an
+   * {@code AWAIT_USER} max-iterations pause) — it is no longer meaningfully in progress once its body outputs
+   * are cleared, and must restart from iteration one on the next drive rather than resume mid-way with a stale
+   * cursor.
+   *
    * @param retryUid the uid threshold; entries with uid &gt;= this value are cleared
    */
   public void clearEntriesFromUid(int retryUid) {
@@ -566,6 +576,16 @@ public final class WorkflowState {
     }
 
     generatedArtifactDescriptors.removeIf(descriptor -> descriptor.stepExecutionUid() >= retryUid);
+
+    Iterator<Map.Entry<String, Integer>> loopBodyStartUidIterator =
+        loopIterationBodyStartUidByBlueprintId.entrySet().iterator();
+    while (loopBodyStartUidIterator.hasNext()) {
+      Map.Entry<String, Integer> entry = loopBodyStartUidIterator.next();
+      if (entry.getValue() >= retryUid) {
+        loopIterationCursorByBlueprintId.remove(entry.getKey());
+        loopBodyStartUidIterator.remove();
+      }
+    }
   }
 
   /**
