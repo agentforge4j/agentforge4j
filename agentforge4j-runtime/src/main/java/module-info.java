@@ -39,6 +39,10 @@ module agentforge4j.runtime {
   exports com.agentforge4j.runtime.interceptor;
   // PUBLIC: ContextPackRegistry, the WorkflowRuntimeBuilder#contextPackRegistry(...) parameter type.
   exports com.agentforge4j.runtime.context;
+  // PUBLIC: exceptions that propagate out of command application to embedders
+  // (CompactSiblingUnavailableException from a COMPACT_ONLY expansion grant;
+  // UserPromptLimitExceededException from the user-prompt pause guard).
+  exports com.agentforge4j.runtime.exception;
 
   opens com.agentforge4j.runtime.llm to com.fasterxml.jackson.databind;
 }
