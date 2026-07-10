@@ -21,6 +21,7 @@ import com.agentforge4j.core.workflow.step.behaviour.CompactBehaviour;
 import com.agentforge4j.core.workflow.step.behaviour.ContextEqualityContract;
 import com.agentforge4j.core.workflow.step.behaviour.DeterministicExtract;
 import com.agentforge4j.core.workflow.step.behaviour.InputBehaviour;
+import com.agentforge4j.core.workflow.step.behaviour.LlmSummary;
 import com.agentforge4j.core.workflow.step.behaviour.RetryPreviousBehaviour;
 import com.agentforge4j.core.workflow.step.behaviour.ValidateBehaviour;
 import com.agentforge4j.core.workflow.step.behaviour.WorkflowBehaviour;
@@ -430,7 +431,8 @@ public final class WorkflowValidator {
       Set<String> loadedPackNames) {
     Set<String> ledgerIds = new HashSet<>();
     for (LedgerDefinition ledger : workflow.ledgers()) {
-      ledgerIds.add(ledger.id());
+      Validate.isTrue(ledgerIds.add(ledger.id()),
+          "Workflow '%s' declares duplicate ledger id '%s'".formatted(workflow.id(), ledger.id()));
     }
     Set<String> artifactIds = workflow.artifacts().keySet();
     Set<String> stepIds = new HashSet<>();
@@ -508,6 +510,16 @@ public final class WorkflowValidator {
             ("COMPACT step '%s' in workflow '%s' declares DETERMINISTIC_EXTRACT, which is only "
                 + "implemented for LEDGER_SECTION sources; source kind is %s")
                 .formatted(step.stepId(), workflow.id(), compact.source().kind()));
+      } else if (compact.mode() instanceof LlmSummary) {
+        // LLM_SUMMARY is a schema-valid shape reserved for a future invocation convention (see
+        // CompactBehaviourHandler and LlmSummary's own Javadoc) — no agent identity exists to
+        // invoke through today. Reject at load, the same fail-early rule as the DETERMINISTIC_EXTRACT
+        // case above, so a publicly valid workflow definition cannot be guaranteed to fail only at
+        // run start.
+        throw new IllegalArgumentException(
+            ("COMPACT step '%s' in workflow '%s' declares LLM_SUMMARY, which this runtime version "
+                + "does not invoke (no agent identity to invoke through); use DETERMINISTIC_EXTRACT")
+                .formatted(step.stepId(), workflow.id()));
       }
       // A deterministic extract operates on the whole ledger envelope; a section subpath resolves
       // to a bare array, which the extractor cannot compact — reject it here rather than letting a
