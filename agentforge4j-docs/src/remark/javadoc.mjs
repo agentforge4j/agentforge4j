@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 //
-// JavadocLink remark role (design §7/§12, Phase 4). Authors write an inline-code tag
+// JavadocLink remark role. Authors write an inline-code tag
 // `javadoc:com.agentforge4j.<fqcn>` and this resolves it, at build time, to a version-pinned link
 // into the stitched Javadoc surface, rendering the simple class name as a clickable code link.
 //
@@ -24,7 +24,7 @@ export const DEFAULT_VERSION = 'next';
 // Surfaces. The aggregate documents named modules under a module directory; mcp/starter are flat
 // (classpath-mode) surfaces. The module set MUST match the agentforge4j-docs-javadoc aggregator's
 // <modules> (scripts/javadoc.test.mjs asserts this so the two cannot drift).
-const AGGREGATE_MODULES = [
+export const AGGREGATE_MODULES = [
   'agentforge4j.util',
   'agentforge4j.llm.api',
   'agentforge4j.llm',
