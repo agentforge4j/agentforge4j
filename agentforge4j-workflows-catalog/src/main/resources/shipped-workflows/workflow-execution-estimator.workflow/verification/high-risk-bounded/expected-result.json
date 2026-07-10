@@ -5,10 +5,16 @@
       "type": "input",
       "answers": {
         "mode": "WORKFLOW_RUN",
-        "structuralSummaryJson": "{\"workflowId\":\"adoption-center-full-application\",\"stepCount\":58,\"agentStepCount\":52,\"branchCount\":4,\"loopCount\":1,\"agentDrivenLoopCount\":1,\"humanGateCount\":6,\"maxNestingDepth\":3,\"minAgentTurns\":52,\"expectedAgentTurns\":80,\"maxAgentTurns\":150,\"iterationCeiling\":55,\"ceilingDerivable\":true,\"noCeilingReason\":null,\"minimumRequiredTokens\":10500,\"complexityClass\":\"HIGH_RISK\",\"riskFlags\":[\"AGENT_DRIVEN_LOOP\",\"HIGH_ITERATION_CEILING\",\"LARGE_STRUCTURE\"]}",
         "complexity": "HIGH_RISK",
         "ceilingDerivable": "true",
-        "minimumRequiredTokens": "10500"
+        "minimumRequiredTokens": "10500",
+        "stepCount": "58",
+        "agentStepCount": "52",
+        "branchCount": "4",
+        "loopCount": "1",
+        "agentDrivenLoopCount": "1",
+        "humanGateCount": "6",
+        "maxNestingDepth": "3"
       }
     }
   ],
@@ -20,10 +26,13 @@
       "mode": "WORKFLOW_RUN",
       "complexity": "HIGH_RISK",
       "ceilingDerivable": "true",
-      "minimumRequiredTokens": "10500"
+      "minimumRequiredTokens": "10500",
+      "stepCount": "58",
+      "branchCount": "4"
     },
     "contextPresent": [
-      "structuralSummaryJson",
+      "agentStepCount",
+      "loopCount",
       "estimatedInputTokensPerAgentTurn",
       "estimatedOutputTokensPerAgentTurn",
       "estimatedToolInvocationsPerAgentTurn"

@@ -5,10 +5,16 @@
       "type": "input",
       "answers": {
         "mode": "WORKFLOW_RUN",
-        "structuralSummaryJson": "{\"workflowId\":\"baby-agent-birth\",\"stepCount\":6,\"agentStepCount\":5,\"branchCount\":0,\"loopCount\":0,\"agentDrivenLoopCount\":0,\"humanGateCount\":1,\"maxNestingDepth\":0,\"minAgentTurns\":5,\"expectedAgentTurns\":5,\"maxAgentTurns\":5,\"iterationCeiling\":1,\"ceilingDerivable\":true,\"noCeilingReason\":null,\"minimumRequiredTokens\":1300,\"complexityClass\":\"SIMPLE\",\"riskFlags\":[]}",
-        "complexity": "SIMPLE",
+        "complexity": "MODERATE",
         "ceilingDerivable": "true",
-        "minimumRequiredTokens": "1300"
+        "minimumRequiredTokens": "1300",
+        "stepCount": "7",
+        "agentStepCount": "6",
+        "branchCount": "0",
+        "loopCount": "0",
+        "agentDrivenLoopCount": "0",
+        "humanGateCount": "1",
+        "maxNestingDepth": "0"
       }
     }
   ],
@@ -18,12 +24,15 @@
     "notVisitedSteps": ["no-ceiling"],
     "context": {
       "mode": "WORKFLOW_RUN",
-      "complexity": "SIMPLE",
+      "complexity": "MODERATE",
       "ceilingDerivable": "true",
-      "minimumRequiredTokens": "1300"
+      "minimumRequiredTokens": "1300",
+      "agentStepCount": "6",
+      "humanGateCount": "1"
     },
     "contextPresent": [
-      "structuralSummaryJson",
+      "stepCount",
+      "agentStepCount",
       "estimatedInputTokensPerAgentTurn",
       "estimatedOutputTokensPerAgentTurn",
       "estimatedToolInvocationsPerAgentTurn"

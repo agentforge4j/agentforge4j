@@ -96,9 +96,11 @@ public final class WorkflowExecutionEstimatorExample {
         new FakeResponse(sizingCommands, null)));
     LlmClient fakeLlmClient = new FakeLlmClient(new StaticFakeResponseSource(script));
 
+    // execution-estimator is workflow-specific and ships inside the workflow-execution-estimator
+    // bundle's agents/ subfolder (DC-2), not top-level shipped-agents/, so loading shipped workflows
+    // alone is sufficient — withLoadShippedAgents(true) is not needed for this example.
     return AgentForge4jBootstrap.defaults()
         .withLoadShippedWorkflows(true)
-        .withLoadShippedAgents(true)
         .withLlmClientResolver(new WildcardFakeLlmClientResolver(fakeLlmClient))
         .withLlmProviderSelectionStrategy(new FirstDeclaredPreferenceSelectionStrategy())
         .build();
@@ -163,16 +165,22 @@ public final class WorkflowExecutionEstimatorExample {
    */
   static ExecutionEstimate estimate(AgentForge4j agentForge4j, WorkflowDefinition target) {
     WorkflowComplexityAnalysis analysis = WorkflowExecutionAnalysisService.analyze(target);
-    String structuralSummaryJson =
-        WorkflowExecutionAnalysisService.summarize(analysis, new ObjectMapper());
 
+    // Every fact the run needs travels once, as its own typed field, sourced directly from the same
+    // analysis object — no independently-supplied JSON summary to duplicate or contradict it.
     String runId = agentForge4j.start(ESTIMATOR_WORKFLOW_ID);
-    agentForge4j.runtime().submitInput(runId, Map.of(
-        "mode", "WORKFLOW_RUN",
-        "structuralSummaryJson", structuralSummaryJson,
-        "complexity", analysis.complexityClass().name(),
-        "ceilingDerivable", String.valueOf(analysis.ceilingDerivable()),
-        "minimumRequiredTokens", String.valueOf(analysis.minimumRequiredTokens())),
+    agentForge4j.runtime().submitInput(runId, Map.ofEntries(
+        Map.entry("mode", "WORKFLOW_RUN"),
+        Map.entry("complexity", analysis.complexityClass().name()),
+        Map.entry("ceilingDerivable", String.valueOf(analysis.ceilingDerivable())),
+        Map.entry("minimumRequiredTokens", String.valueOf(analysis.minimumRequiredTokens())),
+        Map.entry("stepCount", String.valueOf(analysis.stepCount())),
+        Map.entry("agentStepCount", String.valueOf(analysis.agentStepCount())),
+        Map.entry("branchCount", String.valueOf(analysis.branchCount())),
+        Map.entry("loopCount", String.valueOf(analysis.loopCount())),
+        Map.entry("agentDrivenLoopCount", String.valueOf(analysis.agentDrivenLoopCount())),
+        Map.entry("humanGateCount", String.valueOf(analysis.humanGateCount())),
+        Map.entry("maxNestingDepth", String.valueOf(analysis.maxNestingDepth()))),
         CALLER_ACTOR_ID);
 
     WorkflowState paused = agentForge4j.runtime().getState(runId);
@@ -202,7 +210,12 @@ public final class WorkflowExecutionEstimatorExample {
         readNumber(state, "estimatedToolInvocationsPerAgentTurn"));
   }
 
-  private static int readNumber(WorkflowState state, String key) {
+  /**
+   * Reads a context key as an exact, non-negative {@code int}. The compliant-caller pattern must not
+   * silently coerce a sizing figure: a fractional, negative, or out-of-{@code int}-range value from
+   * the estimator agent is rejected with the offending key and value named, not truncated.
+   */
+  static int readNumber(WorkflowState state, String key) {
     ContextValue value = state.getContextValue(key)
         .orElseThrow(() -> new IllegalStateException(
             "Expected the estimator run to expose context key '%s' at the pause".formatted(key)));
@@ -211,7 +224,22 @@ public final class WorkflowExecutionEstimatorExample {
           "Expected context key '%s' to be numeric but was %s".formatted(key,
               value.getClass().getSimpleName()));
     }
-    return number.value().intValue();
+    double raw = number.value().doubleValue();
+    if (Double.isNaN(raw) || Double.isInfinite(raw) || raw != Math.rint(raw)) {
+      throw new IllegalStateException(
+          "Expected context key '%s' to be an exact integer but was %s".formatted(key,
+              number.value()));
+    }
+    if (raw < 0) {
+      throw new IllegalStateException(
+          "Expected context key '%s' to be non-negative but was %s".formatted(key,
+              number.value()));
+    }
+    if (raw > Integer.MAX_VALUE) {
+      throw new IllegalStateException(
+          "Expected context key '%s' to fit in an int but was %s".formatted(key, number.value()));
+    }
+    return (int) raw;
   }
 
   private static void printDisclosure(ExecutionEstimate estimate) {

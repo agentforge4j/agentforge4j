@@ -47,9 +47,9 @@ disclosure printed, run `WorkflowExecutionEstimatorExample.main` from your IDE.
 --- Execution estimate (disclosed before approval) ---
 complexity: MODERATE
 confidence: HIGH
-estimatedMinTokens: 5500
-estimatedExpectedTokens: 5500
-estimatedMaxTokens: 5500
+estimatedMinTokens: 7600
+estimatedExpectedTokens: 7600
+estimatedMaxTokens: 7600
 minimumRequiredTokens: 1300
 estimatedAgentTurns: 6
 estimatedToolInvocations: 0

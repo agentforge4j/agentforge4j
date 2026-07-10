@@ -23,7 +23,11 @@ class ExecutionEstimatorForbiddenTermTest {
 
   @Test
   void shippedAgentResourcesCarryNoForbiddenTerms() throws URISyntaxException {
-    Path root = resourceDirectory("/shipped-agents/execution-estimator.agent");
+    // execution-estimator is workflow-specific and ships inside the bundle's agents/ subfolder, not
+    // top-level shipped-agents/ (DC-2: genuinely reusable agents go top-level; workflow-specific
+    // agents stay inside their owning bundle).
+    Path root = resourceDirectory(
+        "/shipped-workflows/workflow-execution-estimator.workflow/agents/execution-estimator.agent");
     ForbiddenTermScanner.assertNoForbiddenTerms(root, FORBIDDEN_TERMS,
         path -> path.toString().endsWith(".json") || path.toString().endsWith(".md"));
   }

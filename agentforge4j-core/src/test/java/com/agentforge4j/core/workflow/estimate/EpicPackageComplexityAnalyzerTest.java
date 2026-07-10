@@ -30,8 +30,9 @@ class EpicPackageComplexityAnalyzerTest {
 
     assertThat(analysis.workflowId()).isEqualTo("pkg");
     assertThat(analysis.complexityClass()).isEqualTo(ComplexityClass.SIMPLE);
-    assertThat(analysis.loopCount()).isEqualTo(1);
-    assertThat(analysis.agentDrivenLoopCount()).isEqualTo(1);
+    assertThat(analysis.loopCount()).isEqualTo(EpicPackageComplexityAnalyzer.PHASES_PER_EPIC);
+    assertThat(analysis.agentDrivenLoopCount())
+        .isEqualTo(EpicPackageComplexityAnalyzer.PHASES_PER_EPIC);
     assertThat(analysis.stepCount())
         .isEqualTo(EpicPackageComplexityAnalyzer.PHASES_PER_EPIC + 1);
     assertThat(analysis.minAgentTurns()).isEqualTo(5);
@@ -39,6 +40,22 @@ class EpicPackageComplexityAnalyzerTest {
         .isEqualTo(EpicPackageComplexityAnalyzer.PHASES_PER_EPIC
             * EpicPackageComplexityAnalyzer.DEFAULT_MAX_REWORK_ITERATIONS_PER_PHASE + 1);
     assertThat(analysis.ceilingDerivable()).isTrue();
+    // Locks the positional constructor mapping (SV-4a): branch/human-gate/nesting are structurally
+    // flat for an epic package (no branches, no human gates, no nesting), and the ceiling defaults to
+    // the per-phase rework cap when no epic supplies a hint.
+    assertThat(analysis.branchCount()).isZero();
+    assertThat(analysis.humanGateCount()).isZero();
+    assertThat(analysis.maxNestingDepth()).isEqualTo(1);
+    assertThat(analysis.iterationCeiling())
+        .isEqualTo(EpicPackageComplexityAnalyzer.DEFAULT_MAX_REWORK_ITERATIONS_PER_PHASE);
+  }
+
+  @Test
+  void twelveEpicsLoopCountModel() {
+    WorkflowComplexityAnalysis analysis = EpicPackageComplexityAnalyzer.analyze(packageOf(12));
+
+    assertThat(analysis.loopCount()).isEqualTo(48);
+    assertThat(analysis.agentDrivenLoopCount()).isEqualTo(48);
   }
 
   @Test
@@ -59,12 +76,19 @@ class EpicPackageComplexityAnalyzerTest {
 
   @Test
   void elevenOrMoreEpicsIsHighRiskAndFlagged() {
+    // 11 epics with no hint: epic count drives complexity/LARGE_STRUCTURE. HIGH_ITERATION_CEILING
+    // never appears in Mode 2's risk flags at all under the capped-hint model — no epic count and no
+    // hint can move iterationCeiling off the fixed default, so the flag is structurally unreachable
+    // (see EpicPackageComplexityAnalyzer's class Javadoc) and is not evaluated, never merely absent
+    // by coincidence.
     WorkflowComplexityAnalysis analysis = EpicPackageComplexityAnalyzer.analyze(packageOf(11));
 
     assertThat(analysis.complexityClass()).isEqualTo(ComplexityClass.HIGH_RISK);
     assertThat(analysis.riskFlags())
-        .contains(RiskFlag.LARGE_STRUCTURE, RiskFlag.HIGH_ITERATION_CEILING,
-            RiskFlag.AGENT_DRIVEN_LOOP);
+        .contains(RiskFlag.LARGE_STRUCTURE, RiskFlag.AGENT_DRIVEN_LOOP)
+        .doesNotContain(RiskFlag.HIGH_ITERATION_CEILING);
+    assertThat(analysis.iterationCeiling())
+        .isEqualTo(EpicPackageComplexityAnalyzer.DEFAULT_MAX_REWORK_ITERATIONS_PER_PHASE);
   }
 
   @Test
@@ -75,6 +99,12 @@ class EpicPackageComplexityAnalyzerTest {
 
     assertThat(analysis.expectedAgentTurns())
         .isEqualTo(1 + EpicPackageComplexityAnalyzer.PHASES_PER_EPIC * 2L);
+    // A hint below the default ceiling doesn't touch the max envelope or iterationCeiling.
+    assertThat(analysis.maxAgentTurns())
+        .isEqualTo(1 + EpicPackageComplexityAnalyzer.PHASES_PER_EPIC
+            * (long) EpicPackageComplexityAnalyzer.DEFAULT_MAX_REWORK_ITERATIONS_PER_PHASE);
+    assertThat(analysis.iterationCeiling())
+        .isEqualTo(EpicPackageComplexityAnalyzer.DEFAULT_MAX_REWORK_ITERATIONS_PER_PHASE);
   }
 
   @Test
@@ -116,5 +146,13 @@ class EpicPackageComplexityAnalyzerTest {
   void rejectsEmptyEpicList() {
     assertThatThrownBy(() -> new EpicPackage("pkg", List.of()))
         .isInstanceOf(IllegalArgumentException.class);
+  }
+
+  @Test
+  void rejectsDuplicateEpicIds() {
+    assertThatThrownBy(() -> new EpicPackage("pkg",
+        List.of(new Epic("e1", "E1", null), new Epic("e1", "E1 duplicate", null))))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("e1");
   }
 }

@@ -10,13 +10,6 @@
       "hint": "The mode discriminator, resolved by the caller before starting this run: a single target workflow (WORKFLOW_RUN) or an epic-package breakdown (SDLC_EPIC_PACKAGE). Both modes converge on the same structural-summary shape below, so downstream routing does not depend on it — it is recorded for disclosure only."
     },
     {
-      "type": "TEXT_AREA",
-      "id": "structuralSummaryJson",
-      "label": "Structural summary (JSON)",
-      "required": true,
-      "hint": "The deterministic structural analysis of the work being estimated, serialized as JSON."
-    },
-    {
       "type": "SINGLE_CHOICE",
       "id": "complexity",
       "label": "Complexity classification",
@@ -40,6 +33,48 @@
       "type": "NUMBER",
       "id": "minimumRequiredTokens",
       "label": "Minimum required input tokens",
+      "required": true
+    },
+    {
+      "type": "NUMBER",
+      "id": "stepCount",
+      "label": "Reachable step count (not loop-expanded)",
+      "required": true
+    },
+    {
+      "type": "NUMBER",
+      "id": "agentStepCount",
+      "label": "Reachable agent-step count (steps that invoke a model)",
+      "required": true
+    },
+    {
+      "type": "NUMBER",
+      "id": "branchCount",
+      "label": "Reachable branch-decision count",
+      "required": true
+    },
+    {
+      "type": "NUMBER",
+      "id": "loopCount",
+      "label": "Reachable loop count",
+      "required": true
+    },
+    {
+      "type": "NUMBER",
+      "id": "agentDrivenLoopCount",
+      "label": "Agent-driven loop count (terminated by agent signal or evaluator)",
+      "required": true
+    },
+    {
+      "type": "NUMBER",
+      "id": "humanGateCount",
+      "label": "Human-gated step count (human-review or human-approval transition)",
+      "required": true
+    },
+    {
+      "type": "NUMBER",
+      "id": "maxNestingDepth",
+      "label": "Maximum structural nesting depth",
       "required": true
     }
   ]

@@ -8,8 +8,13 @@ facts given to you.
 
 You will be given:
 - `complexity`: a deterministic classification (`SIMPLE`, `MODERATE`, `COMPLEX`, or `HIGH_RISK`).
-- `structuralSummaryJson`: a JSON structural summary describing step counts, agent-step counts,
-  branch/loop counts, and nesting depth for the analysed work.
+- `stepCount`: total reachable steps in the analysed work.
+- `agentStepCount`: reachable steps that invoke a model.
+- `branchCount`: reachable branch-decision steps.
+- `loopCount`: reachable loop bodies.
+- `agentDrivenLoopCount`: loops terminated by agent signal or evaluator rather than a fixed count.
+- `humanGateCount`: reachable steps carrying a human-review or human-approval gate.
+- `maxNestingDepth`: deepest structural nesting reached in the analysed work.
 
 You must return exactly these three sizing figures via `SET_CONTEXT`, then `COMPLETE`:
 - `estimatedInputTokensPerAgentTurn` — expected input tokens for one typical agent turn in this

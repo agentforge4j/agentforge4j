@@ -5,10 +5,16 @@
       "type": "input",
       "answers": {
         "mode": "SDLC_EPIC_PACKAGE",
-        "structuralSummaryJson": "{\"workflowId\":\"adoption-center-epic-package\",\"stepCount\":49,\"agentStepCount\":49,\"branchCount\":0,\"loopCount\":12,\"agentDrivenLoopCount\":12,\"humanGateCount\":0,\"maxNestingDepth\":1,\"minAgentTurns\":49,\"expectedAgentTurns\":97,\"maxAgentTurns\":145,\"iterationCeiling\":3,\"ceilingDerivable\":true,\"noCeilingReason\":null,\"minimumRequiredTokens\":9900,\"complexityClass\":\"HIGH_RISK\",\"riskFlags\":[\"AGENT_DRIVEN_LOOP\",\"LARGE_STRUCTURE\",\"HIGH_ITERATION_CEILING\"]}",
         "complexity": "HIGH_RISK",
         "ceilingDerivable": "true",
-        "minimumRequiredTokens": "9900"
+        "minimumRequiredTokens": "9900",
+        "stepCount": "49",
+        "agentStepCount": "49",
+        "branchCount": "0",
+        "loopCount": "48",
+        "agentDrivenLoopCount": "48",
+        "humanGateCount": "0",
+        "maxNestingDepth": "1"
       }
     }
   ],
@@ -20,10 +26,13 @@
       "mode": "SDLC_EPIC_PACKAGE",
       "complexity": "HIGH_RISK",
       "ceilingDerivable": "true",
-      "minimumRequiredTokens": "9900"
+      "minimumRequiredTokens": "9900",
+      "loopCount": "48",
+      "agentDrivenLoopCount": "48"
     },
     "contextPresent": [
-      "structuralSummaryJson",
+      "stepCount",
+      "agentStepCount",
       "estimatedInputTokensPerAgentTurn",
       "estimatedOutputTokensPerAgentTurn",
       "estimatedToolInvocationsPerAgentTurn"

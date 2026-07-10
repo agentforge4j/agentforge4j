@@ -5,9 +5,9 @@
   "enabled": true,
   "version": "1.0.0",
   "providerPreferences": [
-    { "provider": "openai", "model": "gpt-4o-mini" },
-    { "provider": "claude", "model": "claude-3-5-haiku-20241022" },
-    { "provider": "ollama", "model": "llama3.1:8b" }
+    { "provider": "openai", "model": null },
+    { "provider": "claude", "model": null },
+    { "provider": "ollama", "model": null }
   ],
   "supportedCommands": ["SET_CONTEXT", "COMPLETE"],
   "modelTier": "LITE"

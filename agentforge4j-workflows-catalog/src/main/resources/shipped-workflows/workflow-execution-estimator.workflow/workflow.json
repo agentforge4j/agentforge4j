@@ -16,11 +16,17 @@
       "contextMapping": {
         "outputKeys": [
           "mode",
-          "structuralSummaryJson",
           "complexity",
           "ceilingDerivable",
           "noCeilingReason",
-          "minimumRequiredTokens"
+          "minimumRequiredTokens",
+          "stepCount",
+          "agentStepCount",
+          "branchCount",
+          "loopCount",
+          "agentDrivenLoopCount",
+          "humanGateCount",
+          "maxNestingDepth"
         ]
       }
     },
@@ -52,7 +58,16 @@
             "transition": "HUMAN_APPROVAL"
           },
           "contextMapping": {
-            "inputKeys": ["mode", "structuralSummaryJson", "complexity"],
+            "inputKeys": [
+              "complexity",
+              "stepCount",
+              "agentStepCount",
+              "branchCount",
+              "loopCount",
+              "agentDrivenLoopCount",
+              "humanGateCount",
+              "maxNestingDepth"
+            ],
             "outputKeys": [
               "estimatedInputTokensPerAgentTurn",
               "estimatedOutputTokensPerAgentTurn",

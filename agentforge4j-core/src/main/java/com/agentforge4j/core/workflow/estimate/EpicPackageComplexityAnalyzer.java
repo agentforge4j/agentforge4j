@@ -22,6 +22,16 @@ import java.util.List;
  * Security &amp; Delivery Readiness — each modelled as an evaluator-gated rework loop (one review
  * turn per iteration). The package as a whole adds one final aggregate phase (Application Delivery
  * Package) not repeated per epic.
+ *
+ * <p><b>{@link RiskFlag#HIGH_ITERATION_CEILING} never applies to Mode 2.</b> Every epic's
+ * {@link Epic#expectedReworkIterations()} hint is capped at
+ * {@link #DEFAULT_MAX_REWORK_ITERATIONS_PER_PHASE} (see {@link #analyze(EpicPackage)}), so the
+ * iteration ceiling this analyzer reports is always that fixed default — no input can raise it. The
+ * default is always far below the threshold {@link RiskFlag#HIGH_ITERATION_CEILING} requires
+ * (mirroring Mode 1's own "large iteration expansion" contract), so the flag is structurally
+ * unreachable for this analyzer and is not evaluated at all, rather than left as a conditional that
+ * can never be true. {@link #HIGH_RISK_MIN_EPICS} / {@link RiskFlag#LARGE_STRUCTURE} is Mode 2's
+ * sole risk signal beyond {@link RiskFlag#AGENT_DRIVEN_LOOP}.
  */
 public final class EpicPackageComplexityAnalyzer {
 
@@ -67,6 +77,7 @@ public final class EpicPackageComplexityAnalyzer {
 
     int epicCount = epicPackage.epics().size();
     int totalPhases = epicCount * PHASES_PER_EPIC + FINAL_PACKAGE_PHASES;
+    int loopCount = epicCount * PHASES_PER_EPIC;
 
     // One review turn per phase if every rework loop runs once; the final aggregate phase is not a
     // rework loop, so it always contributes exactly one turn in every case (min/expected/max).
@@ -96,8 +107,8 @@ public final class EpicPackageComplexityAnalyzer {
         totalPhases,
         totalPhases,
         0,
-        epicCount,
-        epicCount,
+        loopCount,
+        loopCount,
         0,
         1,
         minTurns,
@@ -124,12 +135,15 @@ public final class EpicPackageComplexityAnalyzer {
     return ComplexityClass.SIMPLE;
   }
 
+  /**
+   * {@link RiskFlag#HIGH_ITERATION_CEILING} is deliberately never evaluated here — see the class
+   * Javadoc for why it is structurally unreachable under this analyzer's capped-hint model.
+   */
   private static List<RiskFlag> riskFlags(int epicCount) {
     EnumSet<RiskFlag> flags = EnumSet.noneOf(RiskFlag.class);
     flags.add(RiskFlag.AGENT_DRIVEN_LOOP);
     if (epicCount >= HIGH_RISK_MIN_EPICS) {
       flags.add(RiskFlag.LARGE_STRUCTURE);
-      flags.add(RiskFlag.HIGH_ITERATION_CEILING);
     }
     return List.copyOf(flags);
   }
