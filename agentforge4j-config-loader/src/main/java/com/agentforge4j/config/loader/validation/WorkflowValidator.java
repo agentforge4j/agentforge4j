@@ -31,6 +31,7 @@ import com.agentforge4j.util.Validate;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -57,7 +58,8 @@ public final class WorkflowValidator {
    * @throws IllegalArgumentException when a blueprint reference targets an unknown blueprint
    */
   public void validateBlueprintRefs(Map<String, WorkflowDefinition> workflows) {
-    workflows.values().forEach(workflow -> walkForBlueprintRefs(workflow.steps(), workflow));
+    workflows.values().forEach(workflow -> walkForBlueprintRefs(workflow.steps(), workflow,
+        new LinkedHashSet<>()));
   }
 
   /**
@@ -215,11 +217,17 @@ public final class WorkflowValidator {
     inStack.remove(workflowId);
   }
 
-  private void walkForBlueprintRefs(List<Executable> steps, WorkflowDefinition workflow) {
+  // blueprintChain tracks blueprint ids on the CURRENT descent path (added on entry, removed on
+  // backtrack) so a blueprint reachable from two sibling branches (a legitimate diamond) is not
+  // mistaken for a cycle — only a blueprint that re-appears while still an ancestor of itself is
+  // rejected. Without this, a self- or mutually-referential BlueprintRef would recurse until
+  // StackOverflowError, which WorkflowDraftValidator's catch (RuntimeException) does not catch.
+  private void walkForBlueprintRefs(List<Executable> steps, WorkflowDefinition workflow,
+      Set<String> blueprintChain) {
     for (Executable executable : steps) {
       if (executable instanceof StepDefinition step) {
         if (step.behaviour() instanceof BranchBehaviour branchBehaviour) {
-          walkForBlueprintRefs(branchBehaviour.childExecutables(), workflow);
+          walkForBlueprintRefs(branchBehaviour.childExecutables(), workflow, blueprintChain);
         }
       } else if (executable instanceof BlueprintRef ref) {
         validateBlueprintExists(ref.blueprintId(), workflow);
@@ -227,9 +235,13 @@ public final class WorkflowValidator {
         Validate.notNull(blueprint,
             "Workflow '%s' contains BlueprintRef to unknown blueprint '%s'"
                 .formatted(workflow.id(), ref.blueprintId()));
-        walkForBlueprintRefs(blueprint.steps(), workflow);
+        Validate.isTrue(blueprintChain.add(ref.blueprintId()),
+            "Workflow '%s' contains a cyclic BlueprintRef chain reaching blueprint '%s' again: %s"
+                .formatted(workflow.id(), ref.blueprintId(), blueprintChain));
+        walkForBlueprintRefs(blueprint.steps(), workflow, blueprintChain);
+        blueprintChain.remove(ref.blueprintId());
       } else if (executable instanceof WorkflowDefinition nested) {
-        walkForBlueprintRefs(nested.steps(), nested);
+        walkForBlueprintRefs(nested.steps(), nested, blueprintChain);
       }
     }
   }
@@ -244,24 +256,29 @@ public final class WorkflowValidator {
    * @throws IllegalArgumentException when a contract references an artifact outside the step's allowlist
    */
   public void validateValidateBehaviourContracts(Map<String, WorkflowDefinition> workflows) {
-    workflows.values().forEach(workflow -> walkForValidateContracts(workflow.steps(), workflow));
+    workflows.values().forEach(workflow -> walkForValidateContracts(workflow.steps(), workflow,
+        new LinkedHashSet<>()));
   }
 
-  private void walkForValidateContracts(List<Executable> steps, WorkflowDefinition workflow) {
+  // See walkForBlueprintRefs's blueprintChain comment: a path-scoped (not global) visited set so a
+  // legitimately diamond-shared blueprint is not rejected, only a true cycle.
+  private void walkForValidateContracts(List<Executable> steps, WorkflowDefinition workflow,
+      Set<String> blueprintChain) {
     for (Executable executable : steps) {
       if (executable instanceof StepDefinition step) {
         if (step.behaviour() instanceof ValidateBehaviour validate) {
           assertContractsWithinAllowlist(validate, step.stepId(), workflow.id());
         } else if (step.behaviour() instanceof BranchBehaviour bb) {
-          walkForValidateContracts(bb.childExecutables(), workflow);
+          walkForValidateContracts(bb.childExecutables(), workflow, blueprintChain);
         }
       } else if (executable instanceof BlueprintRef ref) {
         BlueprintDefinition blueprint = workflow.blueprints().get(ref.blueprintId());
-        if (blueprint != null) {
-          walkForValidateContracts(blueprint.steps(), workflow);
+        if (blueprint != null && blueprintChain.add(ref.blueprintId())) {
+          walkForValidateContracts(blueprint.steps(), workflow, blueprintChain);
+          blueprintChain.remove(ref.blueprintId());
         }
       } else if (executable instanceof WorkflowDefinition nested) {
-        walkForValidateContracts(nested.steps(), nested);
+        walkForValidateContracts(nested.steps(), nested, blueprintChain);
       }
     }
   }
@@ -436,8 +453,9 @@ public final class WorkflowValidator {
     }
     Set<String> artifactIds = workflow.artifacts().keySet();
     Set<String> stepIds = new HashSet<>();
-    collectScopeStepIds(workflow.steps(), workflow, stepIds);
-    walkScopeSelectors(workflow.steps(), workflow, ledgerIds, artifactIds, stepIds, loadedPackNames);
+    collectScopeStepIds(workflow.steps(), workflow, stepIds, new LinkedHashSet<>());
+    walkScopeSelectors(workflow.steps(), workflow, ledgerIds, artifactIds, stepIds, loadedPackNames,
+        new LinkedHashSet<>());
   }
 
   // A second, deliberately different step-id collector from collectStepIds above: this one descends into
@@ -445,19 +463,21 @@ public final class WorkflowValidator {
   // inside either can resolve against sibling ids in the same reachable scope. collectStepIds (used by
   // validateRetryStepRefs/validateRequirements) does neither, since a retry target or requirement stepId is only
   // ever declared at the flat top level of a workflow's or blueprint's own steps() list. Do not merge the two —
-  // they intentionally collect different scopes.
+  // they intentionally collect different scopes. blueprintChain is a path-scoped (not global) visited set —
+  // see walkForBlueprintRefs's comment — so a diamond-shared blueprint is not mistaken for a cycle.
   private static void collectScopeStepIds(List<Executable> steps, WorkflowDefinition workflow,
-      Set<String> stepIds) {
+      Set<String> stepIds, Set<String> blueprintChain) {
     for (Executable executable : steps) {
       if (executable instanceof StepDefinition step) {
         stepIds.add(step.stepId());
         if (step.behaviour() instanceof BranchBehaviour branch) {
-          collectScopeStepIds(branch.childExecutables(), workflow, stepIds);
+          collectScopeStepIds(branch.childExecutables(), workflow, stepIds, blueprintChain);
         }
       } else if (executable instanceof BlueprintRef ref) {
         BlueprintDefinition blueprint = workflow.blueprints().get(ref.blueprintId());
-        if (blueprint != null) {
-          collectScopeStepIds(blueprint.steps(), workflow, stepIds);
+        if (blueprint != null && blueprintChain.add(ref.blueprintId())) {
+          collectScopeStepIds(blueprint.steps(), workflow, stepIds, blueprintChain);
+          blueprintChain.remove(ref.blueprintId());
         }
       }
       // A nested WorkflowDefinition is a separate scope validated on its own.
@@ -466,19 +486,20 @@ public final class WorkflowValidator {
 
   private static void walkScopeSelectors(List<Executable> steps, WorkflowDefinition workflow,
       Set<String> ledgerIds, Set<String> artifactIds, Set<String> stepIds,
-      Set<String> loadedPackNames) {
+      Set<String> loadedPackNames, Set<String> blueprintChain) {
     for (Executable executable : steps) {
       if (executable instanceof StepDefinition step) {
         checkStepSelectors(step, workflow, ledgerIds, artifactIds, stepIds, loadedPackNames);
         if (step.behaviour() instanceof BranchBehaviour branch) {
           walkScopeSelectors(branch.childExecutables(), workflow, ledgerIds, artifactIds, stepIds,
-              loadedPackNames);
+              loadedPackNames, blueprintChain);
         }
       } else if (executable instanceof BlueprintRef ref) {
         BlueprintDefinition blueprint = workflow.blueprints().get(ref.blueprintId());
-        if (blueprint != null) {
+        if (blueprint != null && blueprintChain.add(ref.blueprintId())) {
           walkScopeSelectors(blueprint.steps(), workflow, ledgerIds, artifactIds, stepIds,
-              loadedPackNames);
+              loadedPackNames, blueprintChain);
+          blueprintChain.remove(ref.blueprintId());
         }
       } else if (executable instanceof WorkflowDefinition nested) {
         validateScopeSelectors(nested, loadedPackNames);

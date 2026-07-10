@@ -294,6 +294,18 @@ class WorkflowValidatorContextSelectionTest {
   }
 
   @Test
+  void aSelfReferentialBlueprintRefDoesNotOverflowTheStack() {
+    // This walker stops descending once it revisits a blueprint already on the current path
+    // (silently, since validateBlueprintRefs is the authoritative site that reports the cycle as
+    // an error) rather than recursing until StackOverflowError.
+    BlueprintDefinition bp = blueprint("bp1", List.of(new BlueprintRef("bp1")));
+    WorkflowDefinition wf = workflow("wf", List.of(new BlueprintRef("bp1")), List.of(),
+        Map.of("bp1", bp));
+
+    assertThatCode(() -> validate(wf)).doesNotThrowAnyException();
+  }
+
+  @Test
   void nestedWorkflowValidatesItsOwnLedgerScopeIndependently() {
     ContextSelection parentSelection = new ContextSelection(
         List.of(sel(ContextSourceKind.LEDGER_SECTION, "parentLedger.entries")), List.of(), null);
@@ -322,6 +334,22 @@ class WorkflowValidatorContextSelectionTest {
     assertThatThrownBy(() -> validate(wf))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("unknown ledger 'nestedLedger'");
+  }
+
+  @Test
+  void rejectsStepOutputSelectorReferencingAStepInsideANestedWorkflow() {
+    // A nested WorkflowDefinition is a separate scope (see collectScopeStepIds); a STEP_OUTPUT
+    // selector at the parent level must not resolve against a step id declared only inside it.
+    ContextSelection parentSelection = new ContextSelection(
+        List.of(sel(ContextSourceKind.STEP_OUTPUT, "nested-step")), List.of(), null);
+    WorkflowDefinition nestedWf = workflow("nested-wf", List.of(step("nested-step")), List.of(),
+        Map.of());
+    WorkflowDefinition wf = workflow("wf",
+        List.of(stepWithSelection("parent-step", parentSelection), nestedWf), List.of(), Map.of());
+
+    assertThatThrownBy(() -> validate(wf))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("selects output of unknown step 'nested-step'");
   }
 
   @Test
