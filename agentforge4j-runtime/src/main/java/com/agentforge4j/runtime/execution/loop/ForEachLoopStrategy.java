@@ -12,9 +12,11 @@ import com.agentforge4j.core.workflow.state.WorkflowStatus;
 import com.agentforge4j.core.workflow.step.blueprint.BlueprintDefinition;
 import com.agentforge4j.core.workflow.step.loop.LoopConfig;
 import com.agentforge4j.core.workflow.step.loop.LoopTerminationStrategy;
+import com.agentforge4j.runtime.GeneratedArtifactStore;
 import com.agentforge4j.runtime.event.EventRecorder;
 import com.agentforge4j.runtime.execution.ExecutionContext;
 import com.agentforge4j.runtime.execution.ExecutionOutcome;
+import com.agentforge4j.runtime.execution.GeneratedArtifactEviction;
 import com.agentforge4j.runtime.execution.StepSequenceExecutor;
 import com.agentforge4j.util.Validate;
 
@@ -42,10 +44,15 @@ public final class ForEachLoopStrategy extends AbstractLoopStrategy {
    */
   public static final String LOOP_ITEM_KEY = "loop.item";
 
+  private final GeneratedArtifactStore generatedArtifactStore;
+
   public ForEachLoopStrategy(StepSequenceExecutor stepSequenceExecutor,
       EventRecorder eventRecorder,
-      MaxIterationsHandler maxIterationsHandler) {
+      MaxIterationsHandler maxIterationsHandler,
+      GeneratedArtifactStore generatedArtifactStore) {
     super(stepSequenceExecutor, eventRecorder, maxIterationsHandler);
+    this.generatedArtifactStore = Validate.notNull(generatedArtifactStore,
+        "generatedArtifactStore must not be null");
   }
 
   @Override
@@ -181,10 +188,17 @@ public final class ForEachLoopStrategy extends AbstractLoopStrategy {
    * the rewind, the abandoned iteration's step outputs would still satisfy
    * {@code StepSequenceExecutor}'s resume-skip guard and the restarted loop would silently skip
    * every body step on every iteration.
+   *
+   * <p>Evicts the abandoned iteration's captured artifact bytes from {@link GeneratedArtifactStore}
+   * before the rewind, mirroring the other two rewind chokepoints ({@code DefaultWorkflowRuntime.retry}
+   * and {@code RetryPreviousBehaviourHandler}) — otherwise a restarted FOR_EACH iteration that emitted
+   * per-element unique artifact paths would leak them permanently against the run's artifact-count
+   * bound, since {@link WorkflowState#clearEntriesFromUid(int)} drops the descriptors but not the bytes.
    */
-  private static void restartLoop(WorkflowState state, String blueprintId) {
+  private void restartLoop(WorkflowState state, String blueprintId) {
     int staleBodyStartUid = state.getLoopIterationBodyStartUid(blueprintId);
     if (staleBodyStartUid > 0) {
+      GeneratedArtifactEviction.evictFromUid(generatedArtifactStore, state, staleBodyStartUid);
       state.clearEntriesFromUid(staleBodyStartUid);
     }
     clearLoopState(state, blueprintId);

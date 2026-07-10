@@ -112,4 +112,19 @@ class LoopStrategyTest {
         .isCompleted()
         .loopIterations(1);
   }
+
+  @Test
+  void agentSignalLoopInvokesBodyOnBothIterationsBeforeSignalling() {
+    // Regression: unlike agentSignalLoopTerminatesWhenAgentEmitsComplete (which only exercises a
+    // single, first-iteration signal), this drives the body through iteration 1 (CONTINUE) before
+    // it signals COMPLETE on iteration 2 — the same body-skip-on-resume bug this PR fixes for
+    // FIXED_COUNT/FOR_EACH/EVALUATOR could equally have left AGENT_SIGNAL's own body unexecuted on
+    // iteration 2, undetected by a single-iteration test.
+    WorkflowRunResult result = harness().run("agent-signal-loop-multi-iteration");
+    WorkflowRunAssert.assertThat(result)
+        .isCompleted()
+        .loopIterations(2)
+        .stepVisitCount("body", 2)
+        .providerCallCount(2);
+  }
 }

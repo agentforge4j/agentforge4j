@@ -8,6 +8,7 @@ import com.agentforge4j.core.workflow.WorkflowSource;
 import com.agentforge4j.core.workflow.context.ContextValue;
 import com.agentforge4j.core.workflow.context.ContextValueList;
 import com.agentforge4j.core.workflow.context.StringContextValue;
+import com.agentforge4j.core.workflow.file.ArtifactDescriptor;
 import com.agentforge4j.core.workflow.state.WorkflowState;
 import com.agentforge4j.core.workflow.state.WorkflowStatus;
 import com.agentforge4j.core.workflow.step.StepDefinition;
@@ -17,6 +18,7 @@ import com.agentforge4j.core.workflow.step.blueprint.BlueprintBehaviour;
 import com.agentforge4j.core.workflow.step.blueprint.BlueprintDefinition;
 import com.agentforge4j.core.workflow.step.loop.LoopConfig;
 import com.agentforge4j.core.workflow.step.loop.LoopTerminationStrategy;
+import com.agentforge4j.runtime.InMemoryGeneratedArtifactStore;
 import com.agentforge4j.runtime.event.EventRecorder;
 import com.agentforge4j.runtime.execution.ExecutionContext;
 import com.agentforge4j.runtime.execution.ExecutionOutcome;
@@ -72,6 +74,7 @@ class ForEachLoopStrategyTest {
   private EventRecorder eventRecorder;
   private MaxIterationsHandler maxIterationsHandler;
   private StepSequenceExecutor stepSequenceExecutor;
+  private InMemoryGeneratedArtifactStore generatedArtifactStore;
   private ForEachLoopStrategy strategy;
   private WorkflowState state;
   private ExecutionContext executionContext;
@@ -83,7 +86,9 @@ class ForEachLoopStrategyTest {
     maxIterationsHandler = new MaxIterationsHandler(eventRecorder,
         Clock.fixed(Instant.parse("2026-05-01T12:00:00Z"), ZoneOffset.UTC));
     stepSequenceExecutor = mock(StepSequenceExecutor.class);
-    strategy = new ForEachLoopStrategy(stepSequenceExecutor, eventRecorder, maxIterationsHandler);
+    generatedArtifactStore = new InMemoryGeneratedArtifactStore();
+    strategy = new ForEachLoopStrategy(stepSequenceExecutor, eventRecorder, maxIterationsHandler,
+        generatedArtifactStore);
     state = new WorkflowState("run-1", "wf-1", null, Instant.parse("2026-05-01T12:00:00Z"));
     WorkflowDefinition workflow = new WorkflowDefinition(
         "wf-1",
@@ -194,6 +199,38 @@ class ForEachLoopStrategyTest {
     assertThat(state.getStepOutput("dummy")).isEmpty();
     assertThat(state.getStepExecutionUid("dummy")).isEmpty();
     assertThat(calls.get()).isEqualTo(3);
+  }
+
+  @Test
+  void mutated_list_restart_evicts_abandoned_iterations_generated_artifact_bytes() {
+    putList("a", "b");
+    AtomicInteger calls = new AtomicInteger();
+    when(stepSequenceExecutor.executeAll(anyList(), any()))
+        .thenAnswer(inv -> {
+          if (calls.getAndIncrement() == 0) {
+            // Simulate the real executor: the abandoned iteration's body emitted an artifact via
+            // CREATE_FILE before pausing — descriptor on state, bytes in the run-scoped store.
+            int uid = executionContext.allocateStepSequenceUid();
+            state.putStepExecutionUid("dummy", uid);
+            state.addGeneratedArtifactDescriptor(
+                new ArtifactDescriptor("abandoned.txt", "hash", "dummy", uid));
+            generatedArtifactStore.register("run-1", "dummy", "abandoned.txt", "stale bytes");
+            return ExecutionOutcome.PAUSED;
+          }
+          return ExecutionOutcome.COMPLETED;
+        });
+
+    assertThat(strategy.iterate(blueprint, forEachConfig(true), executionContext))
+        .isEqualTo(ExecutionOutcome.PAUSED);
+    assertThat(generatedArtifactStore.find("run-1", "abandoned.txt")).isPresent();
+    putList("x", "y");
+
+    assertThat(strategy.iterate(blueprint, forEachConfig(true), executionContext))
+        .isEqualTo(ExecutionOutcome.COMPLETED);
+    // F-1 regression: the restart must evict the abandoned iteration's captured artifact bytes,
+    // not just its descriptor from WorkflowState, mirroring DefaultWorkflowRuntime.retry and
+    // RetryPreviousBehaviourHandler's paired GeneratedArtifactEviction.evictFromUid call.
+    assertThat(generatedArtifactStore.find("run-1", "abandoned.txt")).isEmpty();
   }
 
   @Test
