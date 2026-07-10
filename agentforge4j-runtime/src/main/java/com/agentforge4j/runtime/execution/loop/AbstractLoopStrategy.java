@@ -99,6 +99,13 @@ abstract class AbstractLoopStrategy implements LoopStrategy {
    * regardless of nesting), so the events are deferred until after the body runs and only recorded
    * when at least one step genuinely executed — including a step that started and then paused, which
    * still allocates its uid before pausing.
+   *
+   * <p>An uncaught {@link RuntimeException} from the body is handled the same way: {@code
+   * StepSequenceExecutor} allocates a step's execution uid before invoking its behaviour, so the uid
+   * counter has already advanced by the time such a step throws. The counter is therefore still
+   * checked (in a {@code catch}, before the exception propagates) so a genuine mid-body failure still
+   * leaves a {@code LOOP_ITERATION_STARTED} audit entry — only {@code COMPLETED} is inherently
+   * unreachable on this path, since the iteration never actually completed.
    */
   protected ExecutionOutcome executeIteration(BlueprintDefinition blueprint,
       int iteration,
@@ -107,12 +114,21 @@ abstract class AbstractLoopStrategy implements LoopStrategy {
       return ExecutionOutcome.PAUSED;
     }
     int uidBeforeIteration = executionContext.peekNextStepSequenceUid();
-    ExecutionOutcome outcome = stepSequenceExecutor.executeAll(blueprint.steps(), executionContext);
+    String runId = executionContext.getState().getRunId();
+    String payload = "iteration=%d".formatted(iteration);
+    ExecutionOutcome outcome;
+    try {
+      outcome = stepSequenceExecutor.executeAll(blueprint.steps(), executionContext);
+    } catch (RuntimeException exception) {
+      if (executionContext.peekNextStepSequenceUid() != uidBeforeIteration) {
+        eventRecorder.record(runId, blueprint.blueprintId(),
+            WorkflowEventType.LOOP_ITERATION_STARTED, payload, "runtime");
+      }
+      throw exception;
+    }
     if (executionContext.peekNextStepSequenceUid() == uidBeforeIteration) {
       return outcome;
     }
-    String runId = executionContext.getState().getRunId();
-    String payload = "iteration=%d".formatted(iteration);
     eventRecorder.record(runId, blueprint.blueprintId(),
         WorkflowEventType.LOOP_ITERATION_STARTED, payload, "runtime");
     eventRecorder.record(runId, blueprint.blueprintId(),

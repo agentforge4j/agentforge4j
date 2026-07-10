@@ -3,6 +3,7 @@ package com.agentforge4j.runtime;
 
 import com.agentforge4j.config.loader.repository.InMemoryWorkflowRepository;
 import com.agentforge4j.core.agent.AgentRepository;
+import com.agentforge4j.core.command.CompleteCommand;
 import com.agentforge4j.core.command.ContinueCommand;
 import com.agentforge4j.core.runtime.StepApprovalDecision;
 import com.agentforge4j.core.runtime.WorkflowRuntime;
@@ -163,6 +164,76 @@ class RetryContinuationRuntimeTest {
     // running the body only once more (3 total) before re-pausing. The fix clears the cursor, so the
     // redrive restarts the loop at iteration 1 and runs both iterations again (4 total).
     assertThat(fixture.runtime().getState(runId).getStatus()).isEqualTo(WorkflowStatus.PAUSED);
+    assertThat(countEvents(fixture, runId, "body", WorkflowEventType.STEP_STARTED)).isEqualTo(4);
+  }
+
+  @Test
+  void continue_across_a_loop_paused_at_max_iterations_restarts_it_from_iteration_one() {
+    // Regression for continueRun (the documented resume verb for an AWAIT_USER max-iterations
+    // pause) never rewinding the loop's cursor/body-start-uid: pre-fix, the resume-skip guard
+    // skipped the already-recorded body entirely and the loop re-paused with zero progress on every
+    // subsequent continueRun. The fix rewinds the loop's completed iteration the same way retry
+    // does, so it restarts at iteration 1 and runs both iterations again.
+    StepDefinition body = agentStep("body");
+    BlueprintDefinition loopBp = new BlueprintDefinition("loop-bp", "loop-bp",
+        new BlueprintBehaviour(
+            LoopConfig.withDefaults(LoopTerminationStrategy.AGENT_SIGNAL, null, null, 2,
+                MaxIterationsAction.AWAIT_USER),
+            StepTransition.AUTO),
+        List.of(body));
+    WorkflowDefinition workflow = workflow("wf-continue-paused-loop",
+        Map.of("loop-bp", loopBp), List.of(new BlueprintRef("loop-bp")));
+
+    Fixture fixture = fixture(workflow, continuingAgentInvoker());
+    String runId = fixture.runtime().start(workflow.id());
+
+    // The agent always CONTINUEs, so the loop never signals completion and reaches maxIterations=2,
+    // pausing via AWAIT_USER.
+    assertThat(fixture.runtime().getState(runId).getStatus()).isEqualTo(WorkflowStatus.PAUSED);
+    assertThat(countEvents(fixture, runId, "body", WorkflowEventType.STEP_STARTED)).isEqualTo(2);
+
+    fixture.runtime().continueRun(runId, "user");
+
+    assertThat(fixture.runtime().getState(runId).getStatus()).isEqualTo(WorkflowStatus.PAUSED);
+    assertThat(countEvents(fixture, runId, "body", WorkflowEventType.STEP_STARTED)).isEqualTo(4);
+  }
+
+  @Test
+  void continue_across_a_loop_paused_at_max_iterations_lets_a_later_agent_signal_reach_completion() {
+    // continueRun's rewind gives the loop a genuinely fresh attempt, not a hollow re-pause: when the
+    // agent scripted for the restarted attempt signals completion, the run actually completes.
+    StepDefinition body = agentStep("body");
+    BlueprintDefinition loopBp = new BlueprintDefinition("loop-bp", "loop-bp",
+        new BlueprintBehaviour(
+            LoopConfig.withDefaults(LoopTerminationStrategy.AGENT_SIGNAL, null, null, 2,
+                MaxIterationsAction.AWAIT_USER),
+            StepTransition.AUTO),
+        List.of(body));
+    WorkflowDefinition workflow = workflow("wf-continue-paused-loop-completes",
+        Map.of("loop-bp", loopBp), List.of(new BlueprintRef("loop-bp")));
+
+    AgentInvoker invoker = mock(AgentInvoker.class);
+    AgentInvocationResult continueResult = AgentInvocationResult.builder()
+        .withRawResponse("agent-output")
+        .withCommands(List.of(new ContinueCommand(null, null, null)))
+        .build();
+    AgentInvocationResult completeResult = AgentInvocationResult.builder()
+        .withRawResponse("agent-output")
+        .withCommands(List.of(new CompleteCommand("done")))
+        .build();
+    when(invoker.invoke(any(), any(), any(), any(), any(), any()))
+        .thenReturn(continueResult, continueResult, continueResult, completeResult);
+
+    Fixture fixture = fixture(workflow, invoker);
+    String runId = fixture.runtime().start(workflow.id());
+    assertThat(fixture.runtime().getState(runId).getStatus()).isEqualTo(WorkflowStatus.PAUSED);
+
+    fixture.runtime().continueRun(runId, "user");
+
+    // The restarted attempt's second iteration signals completion, so continueRun does not merely
+    // re-pause identically — the loop (and the run, since it is the workflow's only step) completes.
+    WorkflowState after = fixture.runtime().getState(runId);
+    assertThat(after.getStatus()).isEqualTo(WorkflowStatus.COMPLETED);
     assertThat(countEvents(fixture, runId, "body", WorkflowEventType.STEP_STARTED)).isEqualTo(4);
   }
 

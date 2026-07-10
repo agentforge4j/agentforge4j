@@ -170,11 +170,34 @@ public final class DefaultWorkflowRuntime implements WorkflowRuntime {
       ensureNotCancelled(state, "continue");
       Validate.isTrue(state.getStatus() == WorkflowStatus.PAUSED,
           "Cannot continue run '%s' in status %s".formatted(runId, state.getStatus()));
+      rewindLoopAwaitingMaxIterationsDecision(state);
       state.setStatus(WorkflowStatus.RUNNING);
       state.setLastUpdatedAt(clock.instant());
       WorkflowDefinition workflow = workflowRepository.get(state.getWorkflowId());
       drive(state, workflow);
     }
+  }
+
+  /**
+   * When the run is {@code PAUSED} because a loop reached {@code maxIterations} under
+   * {@code MaxIterationsAction.AWAIT_USER} (see {@link WorkflowState#getBlueprintIdAwaitingMaxIterationsDecision()}),
+   * rewinds that loop's already-completed iteration the same way {@link #retry} rewinds a target — evicting its
+   * generated-artifact bytes and clearing its state via {@link WorkflowState#clearEntriesFromUid(int)} — so the
+   * loop restarts at iteration one on this drive instead of the resume-skip guard mistaking the already-executed
+   * iteration for still in progress and re-pausing with no progress on every subsequent {@code continueRun}. A
+   * no-op when the run is {@code PAUSED} for a different reason (for example an interceptor veto).
+   */
+  private void rewindLoopAwaitingMaxIterationsDecision(WorkflowState state) {
+    String blueprintId = state.getBlueprintIdAwaitingMaxIterationsDecision();
+    if (blueprintId == null) {
+      return;
+    }
+    int bodyStartUid = state.getLoopIterationBodyStartUid(blueprintId);
+    if (bodyStartUid > 0) {
+      GeneratedArtifactEviction.evictFromUid(generatedArtifactStore, state, bodyStartUid);
+      state.clearEntriesFromUid(bodyStartUid);
+    }
+    state.setBlueprintIdAwaitingMaxIterationsDecision(null);
   }
 
   /**

@@ -335,6 +335,7 @@ class WorkflowStateTest {
     original.setForEachListFingerprint("bp-a", "abc123");
     original.markLoopCompleted("bp-done", 6);
     original.setLoopIterationBodyStartUid("bp-a", 5);
+    original.setBlueprintIdAwaitingMaxIterationsDecision("bp-a");
 
     WorkflowState copy = original.snapshot();
     assertThat(copy).isNotSameAs(original);
@@ -343,6 +344,7 @@ class WorkflowStateTest {
     assertThat(copy.getForEachListFingerprint("bp-a")).contains("abc123");
     assertThat(copy.isLoopCompleted("bp-done")).isTrue();
     assertThat(copy.getLoopIterationBodyStartUid("bp-a")).isEqualTo(5);
+    assertThat(copy.getBlueprintIdAwaitingMaxIterationsDecision()).isEqualTo("bp-a");
 
     copy.setStatus(WorkflowStatus.COMPLETED);
     copy.putContextValue("extra", new StringContextValue("x", ContextProvenance.USER_SUPPLIED));
@@ -415,6 +417,34 @@ class WorkflowStateTest {
 
     assertThat(state.getLoopIterationCursor("bp-a")).isZero();
     assertThat(state.getLoopIterationBodyStartUid("bp-a")).isZero();
+  }
+
+  @Test
+  void clear_loop_iteration_cursor_also_clears_the_awaiting_max_iterations_marker_for_the_same_blueprint() {
+    WorkflowState state = new WorkflowState("run-1", "wf-1", null, t());
+    state.setLoopIterationCursor("bp-a", 2);
+    state.setBlueprintIdAwaitingMaxIterationsDecision("bp-a");
+    state.setLoopIterationCursor("bp-b", 1);
+    state.setBlueprintIdAwaitingMaxIterationsDecision("bp-b");
+
+    state.clearLoopIterationCursor("bp-a");
+    // A blueprint-b cursor clear must not touch a marker naming a different blueprint.
+    assertThat(state.getBlueprintIdAwaitingMaxIterationsDecision()).isEqualTo("bp-b");
+
+    state.clearLoopIterationCursor("bp-b");
+    assertThat(state.getBlueprintIdAwaitingMaxIterationsDecision()).isNull();
+  }
+
+  @Test
+  void clearEntriesFromUid_drops_the_awaiting_max_iterations_marker_when_it_names_the_swept_loop() {
+    WorkflowState state = new WorkflowState("run-1", "wf-1", null, t());
+    state.setLoopIterationCursor("paused-loop", 2);
+    state.setLoopIterationBodyStartUid("paused-loop", 5);
+    state.setBlueprintIdAwaitingMaxIterationsDecision("paused-loop");
+
+    state.clearEntriesFromUid(5);
+
+    assertThat(state.getBlueprintIdAwaitingMaxIterationsDecision()).isNull();
   }
 
   @Test

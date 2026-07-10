@@ -98,6 +98,19 @@ public final class WorkflowState {
    */
   private final Map<String, Integer> completedLoopBlueprintUids;
   /**
+   * The blueprint id of the loop currently paused via {@code MaxIterationsAction.AWAIT_USER}, or
+   * {@code null} when no loop is in that specific pause. Set only by the handler that performs that
+   * pause and consumed only by {@code continueRun} — the sole documented resume verb for it — which
+   * rewinds the loop via {@link #clearEntriesFromUid(int)} using
+   * {@link #getLoopIterationBodyStartUid(String)} as the threshold before clearing this field, so the
+   * loop genuinely restarts from iteration one instead of the resume-skip guard mistaking the
+   * already-completed iteration for still in progress. {@code PAUSED} is otherwise ambiguous (an
+   * interceptor veto also leaves the run {@code PAUSED} with no loop rewind due); this field is the
+   * only way to tell the two apart.
+   */
+  @Setter
+  private String blueprintIdAwaitingMaxIterationsDecision;
+  /**
    * Per-step collection-gate state, keyed by collection step id. Each value is an immutable snapshot
    * replaced wholesale by collection operations. Intentionally not uid-scoped: a closed collection is
    * never cleared by {@link #clearEntriesFromUid(int)}, so a retry or rewind does not reopen it.
@@ -357,12 +370,18 @@ public final class WorkflowState {
   /**
    * Clears the loop iteration cursor together with the loop's body-start-uid marker (see
    * {@link #getLoopIterationBodyStartUid(String)}) — the two are always scoped to the same
-   * in-progress-or-not loop, so a loop that is no longer in progress must forget both.
+   * in-progress-or-not loop, so a loop that is no longer in progress must forget both. Also clears
+   * {@link #blueprintIdAwaitingMaxIterationsDecision} when it names this blueprint: a loop that just
+   * terminated (or is being rewound) can no longer be the one a pending {@code continueRun} rewind
+   * applies to.
    */
   public void clearLoopIterationCursor(String blueprintId) {
     String bid = Validate.notBlank(blueprintId, "blueprintId must not be blank");
     loopIterationCursorByBlueprintId.remove(bid);
     loopIterationBodyStartUidByBlueprintId.remove(bid);
+    if (bid.equals(blueprintIdAwaitingMaxIterationsDecision)) {
+      blueprintIdAwaitingMaxIterationsDecision = null;
+    }
   }
 
   /**
@@ -590,6 +609,9 @@ public final class WorkflowState {
       if (entry.getValue() >= retryUid) {
         loopIterationCursorByBlueprintId.remove(entry.getKey());
         forEachListFingerprintByBlueprintId.remove(entry.getKey());
+        if (entry.getKey().equals(blueprintIdAwaitingMaxIterationsDecision)) {
+          blueprintIdAwaitingMaxIterationsDecision = null;
+        }
         loopBodyStartUidIterator.remove();
       }
     }
@@ -672,6 +694,7 @@ public final class WorkflowState {
             : Map.copyOf(loopIterationBodyStartUidByBlueprintId));
     copy.replaceCompletedLoopBlueprintUids(
         completedLoopBlueprintUids.isEmpty() ? null : Map.copyOf(completedLoopBlueprintUids));
+    copy.setBlueprintIdAwaitingMaxIterationsDecision(blueprintIdAwaitingMaxIterationsDecision);
     copy.replaceCollectionStates(
         collectionStateByStepId.isEmpty() ? null : Map.copyOf(collectionStateByStepId));
     for (ArtifactDescriptor descriptor : generatedArtifactDescriptors) {
