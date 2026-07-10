@@ -3,6 +3,7 @@ package com.agentforge4j.docs.emitter;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -101,6 +102,51 @@ class DocsEmitterTest {
         "emitted providers.json must match the reactor's llm-* provider modules exactly — "
             + "a provider module was added to (or removed from) the reactor without updating "
             + "the emitter pom's dependency list");
+  }
+
+  /**
+   * Drift guard: the emitter pom hardcodes {@code agentforge4j.version} for all ten OSS
+   * dependencies with no CI/README override — a release-time reactor version bump that is not also
+   * applied here would resolve stale (or unresolvable) artifacts with no failure signal until the
+   * build itself breaks confusingly downstream. A failing test that forces a manual bump is the
+   * right scope for a value that only ever changes at release time.
+   */
+  @Test
+  void emitterVersionMatchesTheReactorVersion() throws Exception {
+    final Path rootPom = Path.of("..", "pom.xml");
+    assertTrue(Files.exists(rootPom), "expected the OSS reactor root pom at " + rootPom.toAbsolutePath());
+    final Matcher rootVersion = Pattern.compile("<version>([^<]+)</version>").matcher(Files.readString(rootPom));
+    assertTrue(rootVersion.find(), "expected to find a <version> in " + rootPom);
+    final String reactorVersion = rootVersion.group(1);
+
+    final Path ownPom = Path.of("pom.xml");
+    assertTrue(Files.exists(ownPom), "expected the emitter's own pom at " + ownPom.toAbsolutePath());
+    final Matcher emitterVersion = Pattern.compile("<agentforge4j\\.version>([^<]+)</agentforge4j\\.version>")
+        .matcher(Files.readString(ownPom));
+    assertTrue(emitterVersion.find(), "expected to find <agentforge4j.version> in " + ownPom);
+
+    assertEquals(reactorVersion, emitterVersion.group(1),
+        "the emitter pom's agentforge4j.version (%s) has drifted from the reactor's own version (%s) — "
+            .formatted(emitterVersion.group(1), reactorVersion)
+            + "bump agentforge4j-docs-emitter/pom.xml's agentforge4j.version to match a release");
+  }
+
+  /**
+   * {@link DocsEmitter#main} must never leave a mix of old/new/missing descriptors on a failure
+   * partway through — see the atomicity note on {@code emitAll}. Forces the second write (the
+   * {@code contract-sets.json} target) to fail by pre-occupying it with a directory, which a file
+   * move can never replace, then asserts neither the first nor the third descriptor survived.
+   */
+  @Test
+  void emitAllLeavesNoPartialOutputOnFailure(@TempDir Path partialDir) throws Exception {
+    Files.createDirectory(partialDir.resolve("contract-sets.json"));
+
+    assertThrows(Exception.class, () -> DocsEmitter.main(new String[] {partialDir.toString()}));
+
+    assertTrue(Files.notExists(partialDir.resolve("providers.json")),
+        "a failed emit must not leave providers.json behind");
+    assertTrue(Files.notExists(partialDir.resolve("bootstrap-config.json")),
+        "a failed emit must not leave bootstrap-config.json behind");
   }
 
   @Test

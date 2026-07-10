@@ -8,10 +8,9 @@
 // (agentforge4j-platform pom.xml) — never the generic English words "platform"/"cloud", which the OSS
 // docs use legitimately. A small allowlist exempts reviewed edges. Shared by the lint and its test.
 //
-// OWNER-APPROVED EXCEPTION to the no-Platform/Cloud-terms rule (same class as OD-1): this file's sole
-// purpose is enforcing that boundary — it exists so the Platform/Cloud identifiers below CANNOT
-// appear anywhere else in the OSS docs. The exact strings here are the boundary-enforcement
-// vocabulary itself, not a leak.
+// Deliberate, documented exception to the no-commercial-identifiers rule: this file exists to
+// enforce that rule, so the identifiers must appear here and nowhere else. The exact strings below
+// are the boundary-enforcement vocabulary itself, not a leak.
 
 // Precise blocked identifiers (each entry is matched case-insensitively as a whole token/phrase).
 export const BLOCKED = [

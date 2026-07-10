@@ -13,6 +13,7 @@ import java.lang.System.Logger.Level;
 import java.lang.reflect.Method;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -77,10 +78,43 @@ public final class DocsEmitter {
     new DocsEmitter().emitAll(outputDir);
   }
 
+  /**
+   * Emits every descriptor atomically as a group: each is first serialized to a temporary file
+   * beside its target, then every temporary file is moved into place only once every serialization
+   * succeeded. If any move fails, every already-moved target and every remaining temporary file is
+   * removed, so a failure can never leave a mix of old, new, and missing descriptors on disk.
+   */
   private void emitAll(Path outputDir) throws Exception {
-    write(outputDir.resolve("providers.json"), emitProviders());
-    write(outputDir.resolve("contract-sets.json"), emitContractSets());
-    write(outputDir.resolve("bootstrap-config.json"), emitBootstrapConfig());
+    final Map<Path, Object> descriptors = new LinkedHashMap<>();
+    descriptors.put(outputDir.resolve("providers.json"), emitProviders());
+    descriptors.put(outputDir.resolve("contract-sets.json"), emitContractSets());
+    descriptors.put(outputDir.resolve("bootstrap-config.json"), emitBootstrapConfig());
+
+    final Map<Path, Path> tempByTarget = new LinkedHashMap<>();
+    try {
+      for (final Map.Entry<Path, Object> entry : descriptors.entrySet()) {
+        final Path temp = Files.createTempFile(outputDir, entry.getKey().getFileName() + "-", ".tmp");
+        write(temp, entry.getValue());
+        tempByTarget.put(entry.getKey(), temp);
+      }
+      final List<Path> moved = new ArrayList<>();
+      try {
+        for (final Map.Entry<Path, Path> entry : tempByTarget.entrySet()) {
+          Files.move(entry.getValue(), entry.getKey(),
+              StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+          moved.add(entry.getKey());
+        }
+      } catch (IOException e) {
+        for (final Path target : moved) {
+          Files.deleteIfExists(target);
+        }
+        throw e;
+      }
+    } finally {
+      for (final Path temp : tempByTarget.values()) {
+        Files.deleteIfExists(temp); // no-op for every temp file that was already moved into place
+      }
+    }
     LOGGER.log(Level.INFO, "DocsEmitter wrote providers.json, contract-sets.json, bootstrap-config.json to %s"
         .formatted(outputDir.toAbsolutePath()));
   }
