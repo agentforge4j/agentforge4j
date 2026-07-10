@@ -26,6 +26,10 @@ Skip this section entirely if there genuinely wasn't a real alternative on the t
 ### Negative
 ### Neutral / tradeoffs
 
+## Open questions
+<Proposed ADRs only. What's genuinely still unresolved — don't let it hide inside prose
+elsewhere in the record.>
+
 ## Compatibility impact
 <Does this touch a public contract — schema, API, extension SPI? State it plainly, or
 "none" if it doesn't.>
