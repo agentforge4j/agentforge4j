@@ -1,0 +1,41 @@
+---
+id: index
+title: Why AgentForge4j
+description: An embeddable Java framework for building agentic LLM workflows, with pluggable providers, tools, and file sinks.
+slug: /
+kind: doc
+audience: evaluating
+diataxis: concept
+sidebar_position: 0
+---
+
+# Why AgentForge4j
+
+AgentForge4j is an embeddable Java framework for building agentic workflows on top of
+large language models. Workflows are declared as data — JSON definitions validated
+against published schemas — and executed by a runtime that coordinates LLM calls,
+tool invocations, human input, and file output.
+
+It is a framework, not a product: you embed it in your own application. There is no
+required hosting, account, or service — providers, tools, and file sinks are pluggable
+through service-provider interfaces (SPIs), and a Spring Boot starter is available for
+applications that use Spring.
+
+## What it gives you
+
+- **Declarative workflows.** Steps, behaviours, and transitions described in JSON and
+  validated against the published schemas before they run.
+- **Pluggable LLM providers.** Multiple providers are discovered at runtime through a
+  `ServiceLoader` SPI; add or swap providers without touching workflow definitions.
+- **Tools and file output.** Workflows can invoke tools and write generated artifacts
+  through configurable sinks.
+- **Two integration styles.** A framework-agnostic bootstrap builder, or a Spring Boot
+  starter with configuration properties.
+
+## Where to go next
+
+Pick the path that matches what you are doing:
+
+- [Evaluating AgentForge4j](./get-started/evaluating.mdx) — understand what it does and try it.
+- [Integrating it into an application](./get-started/integrating.mdx) — install, configure, and wire it in.
+- [Authoring workflows](./get-started/authoring.mdx) — write and validate workflow definitions.

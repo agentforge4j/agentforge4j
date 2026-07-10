@@ -1,0 +1,4 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128" role="img" aria-label="AgentForge4j">
+  <rect x="1" y="1" width="126" height="126" rx="20" fill="#1c1e21" stroke="#8a8f98" stroke-opacity="0.4" stroke-width="2"/>
+  <text x="64" y="82" font-family="system-ui, 'Segoe UI', Arial, sans-serif" font-size="50" font-weight="700" text-anchor="middle" fill="#ffffff">AF<tspan fill="#3578e5">4j</tspan></text>
+</svg>
