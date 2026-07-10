@@ -47,10 +47,14 @@ public record ExpectedResult(String workflowId, List<GateSpec> gates, ExpectSpec
    * @param notVisitedSteps step ids that must not have been visited
    * @param emittedEvents  {@code WorkflowEventType} names that must have been emitted
    * @param createdFiles   file paths that must have been created
+   * @param stepVisitCounts step id -> the exact number of times it must have been visited
+   * @param orderedSteps   a subsequence of step ids that must occur in this relative order among all
+   *                       visited steps
    */
   @JsonIgnoreProperties(ignoreUnknown = true)
   public record ExpectSpec(String status, Map<String, String> context, List<String> contextPresent,
       Map<String, String> contextMatches, List<String> visitedSteps, List<String> notVisitedSteps,
-      List<String> emittedEvents, List<String> createdFiles) {
+      List<String> emittedEvents, List<String> createdFiles, Map<String, Integer> stepVisitCounts,
+      List<String> orderedSteps) {
   }
 }
