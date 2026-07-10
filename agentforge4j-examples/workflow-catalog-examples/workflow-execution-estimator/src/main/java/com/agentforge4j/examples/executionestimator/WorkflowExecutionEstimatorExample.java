@@ -97,8 +97,8 @@ public final class WorkflowExecutionEstimatorExample {
     LlmClient fakeLlmClient = new FakeLlmClient(new StaticFakeResponseSource(script));
 
     // execution-estimator is workflow-specific and ships inside the workflow-execution-estimator
-    // bundle's agents/ subfolder (DC-2), not top-level shipped-agents/, so loading shipped workflows
-    // alone is sufficient — withLoadShippedAgents(true) is not needed for this example.
+    // bundle's agents/ subfolder, not top-level shipped-agents/, so loading shipped workflows alone
+    // is sufficient — withLoadShippedAgents(true) is not needed for this example.
     return AgentForge4jBootstrap.defaults()
         .withLoadShippedWorkflows(true)
         .withLlmClientResolver(new WildcardFakeLlmClientResolver(fakeLlmClient))
