@@ -33,4 +33,4 @@ This directory holds the framework's architecture decision records (ADRs): short
 | [0018](0018-release-management-and-publication-sequencing.md) | Release management and publication sequencing | Proposed | 2026-07-10 |
 | [0019](0019-workflow-requirements-and-transition-enforcement.md) | Workflow requirements and step-transition enforcement | Accepted | 2026-07-09 |
 
-Reserved numbers with no entry above are decisions still too early to draft; none remain reserved at present.
+New decisions are allocated the next sequential number, with a reserved-numbers table appearing here whenever a number is held for a decision too early to draft.

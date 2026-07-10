@@ -23,7 +23,7 @@ Constraints and forces:
 
 Two cooperating parts:
 
-- **Framework utilities**: a deterministic complexity analyzer and execution aggregator in core, behind a facade — walking a workflow definition to produce a structural estimate (step counts, branch/loop bounds, token-magnitude hints via the shared estimator SPI).
+- **Framework utilities**: a deterministic complexity analyzer and execution aggregator in core, behind a facade — walking a workflow definition to produce a structural estimate (step counts, branch/loop bounds, a deterministic input-token floor). Per-turn token and tool-call magnitudes are supplied by the `execution-estimator` agent's own sizing today; once ADR-0016's shared `TokenEstimator` SPI lands, that agent-supplied sizing is the intended integration point for it, replacing today's agent-only figures with SPI-backed ones.
 - **A shipped estimator workflow** in the catalog: runs the deterministic analysis, then uses a lightweight agent step to classify the result into an actionable verdict — continue, narrow scope, or stop — before the target workflow is executed. The agent classifies; deterministic steps route (the determinism boundary holds).
 
 Estimation output is advisory evidence, surfaced as context and audit events — it never gates execution by itself.
@@ -65,7 +65,7 @@ Estimation output is advisory evidence, surfaced as context and audit events —
 
 ## Compatibility impact
 
-- **API**: analyzer/aggregator facade in core (additive); consumes ADR-0016's estimator SPI.
+- **API**: analyzer/aggregator facade in core (additive). Consuming ADR-0016's `TokenEstimator` SPI is the intended final architecture, contingent on that ADR's implementation stack merging; the facade does not consume it today.
 - **Runtime behavior**: none — estimation is advisory and pre-run.
 - **Workflow definitions**: none required; the estimator workflow itself is catalog content.
 - **Configuration**: none beyond estimator SPI registration.
@@ -79,7 +79,7 @@ Estimation output is advisory evidence, surfaced as context and audit events —
 3. Shipped estimator workflow (agent + bundle) with catalog verification scenarios.
 4. Runnable example; documentation.
 
-**Verification note:** the core analyzer/aggregator utilities have landed on `main`, including the turn-counting fix. The shipped estimator workflow itself remains unmerged: an open pull request carries it, targeting `main`. Confirm that pull request has merged, and that catalog verification passes, before moving this ADR to Accepted.
+**Verification note:** the core analyzer/aggregator utilities have landed on `main`, including the turn-counting fix, using today's agent-supplied sizing — not ADR-0016's `TokenEstimator` SPI, which does not exist on `main`. The shipped estimator workflow itself remains unmerged: open pull request #59 carries it, targeting `main`. Before moving this ADR to Accepted, confirm: #59 has merged and catalog verification passes; and, if this record's SPI-integration language is to describe landed behaviour rather than target architecture, that the facade has been updated to actually delegate to ADR-0016's SPI.
 
 ## Related documents
 
