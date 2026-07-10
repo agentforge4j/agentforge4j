@@ -34,6 +34,7 @@ class WorkflowExecutableSchemaContractTest {
     JsonNode instance = MAPPER.readTree("""
         {
           "kind": "WORKFLOW",
+          "schemaVersion": 1,
           "id": "x",
           "name": "X",
           "steps": [{"kind": "STEP", "stepId": "s1", "name": "S", "behaviour": {"type": "FAIL", "reason": "r"}}],
@@ -54,6 +55,7 @@ class WorkflowExecutableSchemaContractTest {
     JsonNode instance = MAPPER.readTree("""
         {
           "kind": "WORKFLOW",
+          "schemaVersion": 1,
           "id": "x",
           "name": "X",
           "steps": [{"kind": "STEP", "stepId": "s1", "name": "S", "behaviour": {"type": "FAIL", "reason": "r"}}],
@@ -74,6 +76,7 @@ class WorkflowExecutableSchemaContractTest {
     JsonNode instance = MAPPER.readTree("""
         {
           "kind": "WORKFLOW",
+          "schemaVersion": 1,
           "id": "x",
           "name": "X",
           "steps": [{"kind": "STEP", "stepId": "s1", "name": "S", "stepPrompt": "do the thing", "behaviour": {"type": "FAIL", "reason": "r"}}]

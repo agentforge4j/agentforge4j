@@ -1,5 +1,6 @@
 {
   "kind": "WORKFLOW",
+  "schemaVersion": 1,
   "id": "fixed-count-loop",
   "name": "Fixed Count Loop",
   "steps": [
