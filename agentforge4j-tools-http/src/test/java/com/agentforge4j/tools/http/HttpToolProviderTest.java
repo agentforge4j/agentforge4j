@@ -408,6 +408,58 @@ class HttpToolProviderTest {
   }
 
   @Test
+  void endpointMaxRetriesCapsRuntimeRetryCount() throws Exception {
+    // The server needs 2 retries (3 total attempts) to succeed, but the endpoint caps retries at
+    // 1 — the effective retry count must be min(endpoint, runtime), never the larger runtime value.
+    try (LoopbackHttpServer server = new LoopbackHttpServer(
+        new Response(503, "down", null, 0L), new Response(503, "down", null, 0L),
+        Response.json(200, "{\"ok\":1}"))) {
+      HttpEndpointDefinition definition = HttpEndpointDefinition.builder()
+          .withCapability("capped.get")
+          .withDisplayName("capped")
+          .withMutating(false)
+          .withMethod(HttpMethod.GET)
+          .withUrlTemplate(server.baseUri() + "/capped")
+          .withInputSchema(objectSchema())
+          .withBodyMode(BodyMode.NONE)
+          .withMaxRetries(1)
+          .build();
+      HttpToolProvider provider = provider(definition);
+
+      ToolResult result = provider.invoke(descriptor(provider, "capped.get"), "{}", ctx, withRetry);
+
+      assertThat(result.success()).isFalse();
+      assertThat(result.errorMessage()).contains("HTTP 503");
+      assertThat(server.captured()).hasSize(2);
+    }
+  }
+
+  @Test
+  void endpointMaxRetriesNeverExpandsRuntimeRetryCount() throws Exception {
+    // The endpoint sets a higher maxRetries than the runtime option allows; the effective retry
+    // count must stay capped by the runtime value (min(endpoint, runtime)), never grow past it.
+    try (LoopbackHttpServer server = new LoopbackHttpServer(
+        new Response(503, "down", null, 0L), Response.json(200, "{\"ok\":1}"))) {
+      HttpEndpointDefinition definition = HttpEndpointDefinition.builder()
+          .withCapability("uncapped.get")
+          .withDisplayName("uncapped")
+          .withMutating(false)
+          .withMethod(HttpMethod.GET)
+          .withUrlTemplate(server.baseUri() + "/uncapped")
+          .withInputSchema(objectSchema())
+          .withBodyMode(BodyMode.NONE)
+          .withMaxRetries(10)
+          .build();
+      HttpToolProvider provider = provider(definition);
+
+      ToolResult result = provider.invoke(descriptor(provider, "uncapped.get"), "{}", ctx, withRetry);
+
+      assertThat(result.success()).isTrue();
+      assertThat(server.captured()).hasSize(2);
+    }
+  }
+
+  @Test
   void endpointTimeoutRestrictsRuntimeOption() throws Exception {
     try (LoopbackHttpServer server =
         new LoopbackHttpServer(new Response(200, "{}", "application/json", 1_500L))) {
