@@ -54,16 +54,18 @@ test('rejects non-array inputs', () => {
   assert.throws(() => supportWindow([], 'x'), /`lts` must be an array/);
 });
 
-test('redirect toggle: pre-release routes / and /latest to /next/ (inert, matches Phase 1)', () => {
+test('redirect toggle: pre-release routes / and /latest to /next/ (inert: byte-identical to the pre-release wiring)', () => {
   assert.deepEqual(redirectConfig(supportWindow([])), [
     {from: '/', to: '/next/'},
     {from: '/latest', to: '/next/'},
   ]);
 });
 
-test('redirect toggle: post-release routes / -> /latest -> newest stable', () => {
+test('redirect toggle: post-release routes / and /latest to the newest stable', () => {
+  // Both direct: the redirects plugin validates every `to` against real routes, so `/latest`
+  // (itself a redirect, not a route) cannot be a redirect target.
   assert.deepEqual(redirectConfig(supportWindow(['1.2.0', '1.1.0'])), [
-    {from: '/', to: '/latest'},
+    {from: '/', to: '/1.2.0/'},
     {from: '/latest', to: '/1.2.0/'},
   ]);
 });

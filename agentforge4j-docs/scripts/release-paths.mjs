@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 //
-// Shared paths + small fs helpers for the release-staging scripts (design §12, Phase 5a). Kept in one
+// Shared paths + small fs helpers for the release-staging scripts. Kept in one
 // place so release-stage, release-cut, and release-scratch-cut agree on where things live.
 
 import {createHash} from 'node:crypto';
@@ -22,6 +22,11 @@ export const STAGED_DOCS = join(STAGING_ROOT, 'docs');
 export const VERSIONS_JSON = join(MODULE_ROOT, 'versions.json');
 export const VERSIONED_DOCS = join(MODULE_ROOT, 'versioned_docs');
 export const VERSIONED_SIDEBARS = join(MODULE_ROOT, 'versioned_sidebars');
+/** The Docusaurus production build output. */
+export const BUILD_DIR = join(MODULE_ROOT, 'build');
+// The Docusaurus CLI entry, run directly via node — no shell, so arguments cannot be
+// shell-interpreted (and no cross-platform npm/.cmd handling or DEP0190 shell-args warning).
+export const DOCUSAURUS_BIN = join(MODULE_ROOT, 'node_modules', '@docusaurus', 'core', 'bin', 'docusaurus.mjs');
 
 /** List every file (recursively) under a directory, as repo-relative-to-`base` POSIX paths. */
 export function listFiles(dir, base = dir) {

@@ -8,8 +8,8 @@ import vocabRemarkPlugin from './src/remark/vocab.mjs';
 import includeRemarkPlugin from './src/remark/include.mjs';
 import javadocRemarkPlugin from './src/remark/javadoc.mjs';
 // The docs redirect toggle is computed from the released-version support window, not hardcoded, so it
-// flips from pre-release (`/`,`/latest` -> `/next`) to post-release (`/` -> `/latest` -> newest stable)
-// automatically at the first cut. Pre-`0.1.0` `versions.json` is absent, so this is inert.
+// flips from pre-release (`/`,`/latest` -> `/next`) to post-release (`/` and `/latest` -> newest
+// stable) automatically at the first cut. Pre-`0.1.0` `versions.json` is absent, so this is inert.
 import {supportWindow} from './scripts/support-window.mjs';
 import {redirectConfig, docsEntryPath} from './scripts/redirect-config.mjs';
 
@@ -19,7 +19,8 @@ function readVersionList(path: string): string[] {
   return existsSync(path) ? (JSON.parse(readFileSync(path, 'utf8')) as string[]) : [];
 }
 
-const supportedVersions = supportWindow(readVersionList('./versions.json'), readVersionList('./lts.json'));
+const releasedVersions = readVersionList('./versions.json');
+const supportedVersions = supportWindow(releasedVersions, readVersionList('./lts.json'));
 const docsRedirects = redirectConfig(supportedVersions);
 // The navbar/footer targets are not real routes when `next` is not the answer post-release, so they
 // are derived from the same support window as the redirects above: `next` pre-release, the newest
@@ -86,6 +87,12 @@ const config: Config = {
               path: 'next',
               banner: 'unreleased',
             },
+            // Every released version is served at its own explicit `/<version>/` path. Without
+            // this, Docusaurus serves the newest release at the docs root (its default for the
+            // last version), which collides with the computed `/`,`/latest` -> `/<version>/`
+            // routing above and leaves every redirect/navbar target pointing at a route that
+            // does not exist. Inert pre-release (`releasedVersions` is empty).
+            ...Object.fromEntries(releasedVersions.map((version) => [version, {path: version}])),
           },
         },
         // No blog surface in the OSS docs.
@@ -101,9 +108,9 @@ const config: Config = {
     [
       '@docusaurus/plugin-client-redirects',
       {
-        // Routing computed from the support window (design §3). Pre-first-release the docs root and
-        // the moving `latest` alias both resolve to `next`; once a stable version exists this flips to
-        // `/` -> `/latest` -> newest stable. See scripts/redirect-config.mjs.
+        // Routing computed from the support window. Pre-first-release the docs root and
+        // the moving `latest` alias both resolve to `next`; once a stable version exists both flip to
+        // the newest stable version. See scripts/redirect-config.mjs.
         redirects: docsRedirects,
       },
     ],

@@ -12,7 +12,7 @@ import assert from 'node:assert/strict';
 import {mkdtempSync, mkdirSync, writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
-import {dematerialize} from './dematerialize.mjs';
+import {dematerialize, findLiveDirectives} from './dematerialize.mjs';
 
 function repo() {
   const root = mkdtempSync(join(tmpdir(), 'demat-'));
@@ -117,6 +117,59 @@ test('fails closed on an unknown vocab value (a bad reference cannot ship in a s
     () => dematerialize('`vocab:behaviour:NOPE`', opts),
     /not a member of the 'behaviour' vocabulary/,
   );
+});
+
+test('findLiveDirectives reports every live directive kind with its line', () => {
+  const src = [
+    'A `vocab:behaviour:BRANCH` step,',
+    'then `javadoc:com.agentforge4j.core.workflow.Workflow`,',
+    'and [the surface](pathname:///javadoc/next/).',
+    '',
+    '```java file=agentforge4j-examples/m/src/X.java region=run',
+    '```',
+  ].join('\n');
+  const live = findLiveDirectives(src);
+  assert.deepEqual(
+    live.map((d) => [d.type, d.line]),
+    [
+      ['vocab', 1],
+      ['javadoc', 2],
+      ['javadoc-route', 3],
+      ['include', 5],
+    ],
+  );
+});
+
+test('findLiveDirectives is fence-aware: documentation about the directives is not live', () => {
+  // The contributor guide's authoring examples: everything sits inside fenced code blocks, so none
+  // of it is a live directive — the de-materialiser leaves it alone and the assertion must too.
+  const src = [
+    'Authoring examples:',
+    '',
+    '````md',
+    '```java file=agentforge4j-examples/m/src/X.java region=run title="X.java"',
+    '```',
+    '````',
+    '',
+    '```text',
+    'Write `vocab:behaviour:BRANCH` or `javadoc:com.agentforge4j.core.workflow.Workflow`.',
+    'Routes live under /javadoc/next/ before release.',
+    '```',
+    '',
+  ].join('\n');
+  assert.deepEqual(findLiveDirectives(src), []);
+  // And the same document passes through dematerialize byte-identical.
+  assert.equal(dematerialize(src, opts), src);
+});
+
+test('findLiveDirectives returns empty on fully de-materialised output', () => {
+  const src = [
+    'A `vocab:behaviour:BRANCH` and `javadoc:com.agentforge4j.core.workflow.Workflow`.',
+    '',
+    '```java file=agentforge4j-examples/m/src/X.java region=run',
+    '```',
+  ].join('\n');
+  assert.deepEqual(findLiveDirectives(dematerialize(src, opts)), []);
 });
 
 test('applies multiple directives in one document', () => {
