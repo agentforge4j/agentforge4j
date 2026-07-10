@@ -20,7 +20,7 @@
     "lint:fixtures": "node scripts/validate-fixtures.mjs",
     "lint": "npm run lint:frontmatter && npm run lint:nav && npm run lint:fixtures",
     "javadoc": "node scripts/build-javadoc.mjs",
-    "test": "node --test scripts/vocab.test.mjs scripts/include.test.mjs scripts/fixtures.test.mjs scripts/javadoc.test.mjs",
+    "test": "node --test scripts/vocab.test.mjs scripts/generate-references.test.mjs scripts/include.test.mjs scripts/fixtures.test.mjs scripts/javadoc.test.mjs",
     "check": "npm run generate && npm run lint && npm run typecheck && npm run test && npm run build"
   },
   "dependencies": {

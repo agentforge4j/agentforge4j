@@ -87,6 +87,31 @@ function documentedModules() {
     .map((l) => l.slice('module:'.length));
 }
 
+/**
+ * The aggregator pom's `<module>` list, converted to the dotted module-name form Javadoc emits
+ * (e.g. `../agentforge4j-util` -> `agentforge4j.util`). Same transform as the reverse assertion in
+ * scripts/javadoc.test.mjs, so the two checks agree on what "the live named-public set" means.
+ */
+function pomModules() {
+  const pom = readFileSync(join(JAVADOC_MODULE, 'pom.xml'), 'utf8');
+  return [...pom.matchAll(/<module>\.\.\/(agentforge4j-[\w-]+)<\/module>/g)]
+    .map((m) => m[1].replaceAll('-', '.'));
+}
+
+/** Assert the aggregate actually documents exactly the pom's module list — no silent drift. */
+function assertMatchesPomModules(documented) {
+  const expected = new Set(pomModules());
+  const actual = new Set(documented);
+  const missing = [...expected].filter((m) => !actual.has(m));
+  const extra = [...actual].filter((m) => !expected.has(m));
+  if (missing.length > 0 || extra.length > 0) {
+    throw new Error(
+      'build-javadoc: the aggregate does not match the pom\'s <modules> list — ' +
+        `missing: [${missing.join(', ')}], extra: [${extra.join(', ')}]`,
+    );
+  }
+}
+
 function writeSurfacesLanding(modules) {
   const moduleItems = modules.map((m) => `      <li><code>${m}</code></li>`).join('\n');
   const html = `<!DOCTYPE html>
@@ -143,10 +168,8 @@ function main() {
   assertSurface(OUT_NEXT, 'aggregate', 100);
 
   const modules = documentedModules();
-  if (modules.length < 8) {
-    throw new Error(`build-javadoc: aggregate documented only ${modules.length} modules — expected the named-public set`);
-  }
-  console.log(`[build-javadoc] aggregate documents ${modules.length} modules: ${modules.join(', ')}`);
+  assertMatchesPomModules(modules);
+  console.log(`[build-javadoc] aggregate documents ${modules.length} modules (matches the pom): ${modules.join(', ')}`);
 
   // 2. The intentionally-unnamed public modules, standalone (classpath mode). doclint relaxed: their
   //    cross-module @links to the named API cannot resolve in isolation (no OSS pom change to wire

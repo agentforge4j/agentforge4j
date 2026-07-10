@@ -21,7 +21,7 @@ const VERSION = 'next'; // current docs version; versioned/`latest` routing arri
 // Surfaces. The aggregate documents named modules under a module directory; mcp/starter are flat
 // (classpath-mode) surfaces. The module set MUST match the agentforge4j-docs-javadoc aggregator's
 // <modules> (scripts/javadoc.test.mjs asserts this so the two cannot drift).
-const AGGREGATE_MODULES = [
+export const AGGREGATE_MODULES = [
   'agentforge4j.util',
   'agentforge4j.llm.api',
   'agentforge4j.llm',

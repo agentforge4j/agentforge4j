@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {dirname, join, resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
-import plugin, {resolveJavadocUrl} from '../src/remark/javadoc.mjs';
+import plugin, {resolveJavadocUrl, AGGREGATE_MODULES} from '../src/remark/javadoc.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(here, '..', '..');
@@ -74,5 +74,18 @@ test('drift guard: role module table matches the aggregator pom modules', () => 
   for (const moduleName of pomModules) {
     const url = resolveJavadocUrl(`com.${moduleName}.SomeType`).url;
     assert.ok(url.includes(`/javadoc/next/${moduleName}/`), `${moduleName} not routed to its module dir`);
+  }
+});
+
+test('drift guard (reverse): every role AGGREGATE_MODULES entry maps back to a pom <module>', () => {
+  // The forward direction (above) proves every pom module resolves via the role. This closes the
+  // other direction: a module removed from the pom (but left in the role's table) would otherwise
+  // keep silently resolving to a dead /javadoc/next/<module>/ link.
+  const pom = readFileSync(join(REPO_ROOT, 'agentforge4j-docs-javadoc', 'pom.xml'), 'utf8');
+  const pomModules = new Set(
+    [...pom.matchAll(/<module>\.\.\/(agentforge4j-[\w-]+)<\/module>/g)].map((m) => m[1].replaceAll('-', '.')),
+  );
+  for (const moduleName of AGGREGATE_MODULES) {
+    assert.ok(pomModules.has(moduleName), `${moduleName} is in AGGREGATE_MODULES but not in the pom's <modules>`);
   }
 });
