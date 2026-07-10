@@ -4,6 +4,7 @@ package com.agentforge4j.config.loader.validation;
 import com.agentforge4j.core.agent.AgentDefinition;
 import com.agentforge4j.core.exception.UnresolvedAgentReferenceException;
 import com.agentforge4j.core.workflow.Executable;
+import com.agentforge4j.core.workflow.LedgerDefinition;
 import com.agentforge4j.core.workflow.WorkflowAgentRefCollector;
 import com.agentforge4j.core.workflow.WorkflowAgentRefCollector.AgentRefSite;
 import com.agentforge4j.core.workflow.WorkflowDefinition;
@@ -11,8 +12,12 @@ import com.agentforge4j.core.workflow.reachability.AmbiguousStepId;
 import com.agentforge4j.core.workflow.reachability.ReachableStepGraph;
 import com.agentforge4j.core.workflow.reachability.WorkflowRefResolver;
 import com.agentforge4j.core.workflow.requirement.WorkflowRequirement;
+import com.agentforge4j.core.workflow.step.ContextSelection;
+import com.agentforge4j.core.workflow.step.ContextSelector;
+import com.agentforge4j.core.workflow.step.ContextSourceKind;
 import com.agentforge4j.core.workflow.step.StepDefinition;
 import com.agentforge4j.core.workflow.step.behaviour.BranchBehaviour;
+import com.agentforge4j.core.workflow.step.behaviour.CompactBehaviour;
 import com.agentforge4j.core.workflow.step.behaviour.ContextEqualityContract;
 import com.agentforge4j.core.workflow.step.behaviour.InputBehaviour;
 import com.agentforge4j.core.workflow.step.behaviour.RetryPreviousBehaviour;
@@ -399,5 +404,132 @@ public final class WorkflowValidator {
       }
     }
     Validate.isTrue(missing.isEmpty(), () -> new UnresolvedAgentReferenceException(missing));
+  }
+
+  /**
+   * Verifies that every context selector a step declares — its {@code contextSelection} selectors and expandable
+   * scope, and a {@code COMPACT} step's source — references something that exists: a {@code LEDGER_SECTION} names a
+   * declared ledger, an {@code ARTIFACT} names a declared artifact, a {@code STEP_OUTPUT} names a real step, and a
+   * {@code CONTEXT_PACK} names a pack in {@code loadedPackNames} (the real loaded pack registry/source, supplied by
+   * the caller once packs are wired into bootstrap/runtime). {@code STATE_KEY} is unconstrained.
+   *
+   * @param workflows       workflows to validate
+   * @param loadedPackNames names of the context packs actually loaded for this assembly; empty when none are
+   *                        configured (every {@code CONTEXT_PACK} selector then fails)
+   *
+   * @throws IllegalArgumentException when a selector references an unknown ledger, artifact, step, or pack
+   */
+  public void validateContextSelectionRefs(Map<String, WorkflowDefinition> workflows,
+      Set<String> loadedPackNames) {
+    workflows.values().forEach(
+        workflow -> validateScopeSelectors(workflow, loadedPackNames));
+  }
+
+  private static void validateScopeSelectors(WorkflowDefinition workflow,
+      Set<String> loadedPackNames) {
+    Set<String> ledgerIds = new HashSet<>();
+    for (LedgerDefinition ledger : workflow.ledgers()) {
+      ledgerIds.add(ledger.id());
+    }
+    Set<String> artifactIds = workflow.artifacts().keySet();
+    Set<String> stepIds = new HashSet<>();
+    collectScopeStepIds(workflow.steps(), workflow, stepIds);
+    walkScopeSelectors(workflow.steps(), workflow, ledgerIds, artifactIds, stepIds, loadedPackNames);
+  }
+
+  // A second, deliberately different step-id collector from collectStepIds above: this one descends into
+  // BranchBehaviour children and a BlueprintRef's referenced blueprint steps so a STEP_OUTPUT selector nested
+  // inside either can resolve against sibling ids in the same reachable scope. collectStepIds (used by
+  // validateRetryStepRefs/validateRequirements) does neither, since a retry target or requirement stepId is only
+  // ever declared at the flat top level of a workflow's or blueprint's own steps() list. Do not merge the two —
+  // they intentionally collect different scopes.
+  private static void collectScopeStepIds(List<Executable> steps, WorkflowDefinition workflow,
+      Set<String> stepIds) {
+    for (Executable executable : steps) {
+      if (executable instanceof StepDefinition step) {
+        stepIds.add(step.stepId());
+        if (step.behaviour() instanceof BranchBehaviour branch) {
+          collectScopeStepIds(branch.childExecutables(), workflow, stepIds);
+        }
+      } else if (executable instanceof BlueprintRef ref) {
+        BlueprintDefinition blueprint = workflow.blueprints().get(ref.blueprintId());
+        if (blueprint != null) {
+          collectScopeStepIds(blueprint.steps(), workflow, stepIds);
+        }
+      }
+      // A nested WorkflowDefinition is a separate scope validated on its own.
+    }
+  }
+
+  private static void walkScopeSelectors(List<Executable> steps, WorkflowDefinition workflow,
+      Set<String> ledgerIds, Set<String> artifactIds, Set<String> stepIds,
+      Set<String> loadedPackNames) {
+    for (Executable executable : steps) {
+      if (executable instanceof StepDefinition step) {
+        checkStepSelectors(step, workflow, ledgerIds, artifactIds, stepIds, loadedPackNames);
+        if (step.behaviour() instanceof BranchBehaviour branch) {
+          walkScopeSelectors(branch.childExecutables(), workflow, ledgerIds, artifactIds, stepIds,
+              loadedPackNames);
+        }
+      } else if (executable instanceof BlueprintRef ref) {
+        BlueprintDefinition blueprint = workflow.blueprints().get(ref.blueprintId());
+        if (blueprint != null) {
+          walkScopeSelectors(blueprint.steps(), workflow, ledgerIds, artifactIds, stepIds,
+              loadedPackNames);
+        }
+      } else if (executable instanceof WorkflowDefinition nested) {
+        validateScopeSelectors(nested, loadedPackNames);
+      }
+    }
+  }
+
+  private static void checkStepSelectors(StepDefinition step, WorkflowDefinition workflow,
+      Set<String> ledgerIds, Set<String> artifactIds, Set<String> stepIds,
+      Set<String> loadedPackNames) {
+    ContextSelection selection = step.contextSelection();
+    if (selection != null) {
+      for (ContextSelector selector : selection.selectors()) {
+        checkSelector(selector, step.stepId(), workflow, ledgerIds, artifactIds, stepIds,
+            loadedPackNames);
+      }
+      for (ContextSelector selector : selection.expandableScope()) {
+        checkSelector(selector, step.stepId(), workflow, ledgerIds, artifactIds, stepIds,
+            loadedPackNames);
+      }
+    }
+    if (step.behaviour() instanceof CompactBehaviour compact) {
+      checkSelector(compact.source(), step.stepId(), workflow, ledgerIds, artifactIds, stepIds,
+          loadedPackNames);
+    }
+  }
+
+  private static void checkSelector(ContextSelector selector, String stepId,
+      WorkflowDefinition workflow, Set<String> ledgerIds, Set<String> artifactIds,
+      Set<String> stepIds, Set<String> loadedPackNames) {
+    ContextSourceKind kind = selector.kind();
+    if (kind == ContextSourceKind.LEDGER_SECTION) {
+      String ledgerId = ledgerId(selector.ref());
+      Validate.isTrue(ledgerIds.contains(ledgerId),
+          "Step '%s' in workflow '%s' selects unknown ledger '%s'"
+              .formatted(stepId, workflow.id(), ledgerId));
+    } else if (kind == ContextSourceKind.ARTIFACT) {
+      Validate.isTrue(artifactIds.contains(selector.ref()),
+          "Step '%s' in workflow '%s' selects unknown artifact '%s'"
+              .formatted(stepId, workflow.id(), selector.ref()));
+    } else if (kind == ContextSourceKind.STEP_OUTPUT) {
+      Validate.isTrue(stepIds.contains(selector.ref()),
+          "Step '%s' in workflow '%s' selects output of unknown step '%s'"
+              .formatted(stepId, workflow.id(), selector.ref()));
+    } else if (kind == ContextSourceKind.CONTEXT_PACK) {
+      Validate.isTrue(loadedPackNames.contains(selector.ref()),
+          "Step '%s' in workflow '%s' selects unknown context pack '%s'"
+              .formatted(stepId, workflow.id(), selector.ref()));
+    }
+    // STATE_KEY is unconstrained.
+  }
+
+  private static String ledgerId(String ref) {
+    int dot = ref.indexOf('.');
+    return dot < 0 ? ref : ref.substring(0, dot);
   }
 }

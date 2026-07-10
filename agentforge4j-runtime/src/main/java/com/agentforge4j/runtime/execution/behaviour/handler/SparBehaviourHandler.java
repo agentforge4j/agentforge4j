@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package com.agentforge4j.runtime.execution.behaviour.handler;
 
+import com.agentforge4j.core.workflow.WorkflowDefinition;
 import com.agentforge4j.core.workflow.context.ContextMapping;
 import com.agentforge4j.core.workflow.context.ContextProvenance;
 import com.agentforge4j.core.workflow.context.StringContextValue;
@@ -128,7 +129,7 @@ public final class SparBehaviourHandler implements BehaviourHandler<SparBehaviou
         resolution.commands());
 
     CommandApplicationResult result = applyCommands(step, behaviour, resolution, state,
-        currentStepUid);
+        currentStepUid, executionContext.getEnclosingWorkflow());
     LOG.log(System.Logger.Level.INFO,
         "SPAR completed stepId={0}, executedRounds={1}, maxRounds={2}, loopTermination={3}",
         step.stepId(), executedRounds, config.maxRounds(), loopTermination);
@@ -154,13 +155,15 @@ public final class SparBehaviourHandler implements BehaviourHandler<SparBehaviou
 
   private CommandApplicationResult applyCommands(StepDefinition step,
       SparBehaviour behaviour, AgentInvocationResult resolution, WorkflowState state,
-      Integer currentStepUid) {
+      Integer currentStepUid, WorkflowDefinition enclosingWorkflow) {
     CommandApplicationResult result = commandApplier.apply(
         resolution.commands(),
         state,
         step.contextMapping(),
         behaviour.agentRef(),
-        Validate.notNull(currentStepUid, "currentStepUid must not be null"));
+        Validate.notNull(currentStepUid, "currentStepUid must not be null"),
+        step,
+        enclosingWorkflow);
 
     UserPromptPauseGuard.afterCommandApplication(step, state, result);
 

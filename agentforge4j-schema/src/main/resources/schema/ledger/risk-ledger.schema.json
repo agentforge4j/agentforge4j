@@ -1,0 +1,5 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "RiskLedger",
+  "$ref": "ledger-envelope.schema.json#/$defs/LedgerEnvelope"
+}

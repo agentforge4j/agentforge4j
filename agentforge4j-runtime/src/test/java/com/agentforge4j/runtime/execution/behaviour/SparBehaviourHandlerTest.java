@@ -81,7 +81,7 @@ class SparBehaviourHandlerTest {
         .thenReturn(bareContinueResult())
         .thenReturn(bareContinueResult());
     when(agentInvoker.invoke(eq(CHALLENGER), any(), any(), anyString(), any(), any())).thenReturn(bareContinueResult());
-    when(commandApplier.apply(any(), any(), any(), anyString(), anyInt())).thenReturn(
+    when(commandApplier.apply(any(), any(), any(), anyString(), anyInt(), any(), any())).thenReturn(
         CommandApplicationResult.CONTINUE);
 
     runHandler();
@@ -90,7 +90,7 @@ class SparBehaviourHandlerTest {
     verify(agentInvoker, times(1)).invoke(eq(CHALLENGER), any(), any(), anyString(), any(), any());
     assertThat(state.getContext()).containsKeys("spar.primary.round.1", "spar.challenger.round.1");
     assertThat(state.getContext()).doesNotContainKey("spar.primary.round.2");
-    verify(commandApplier, times(1)).apply(any(), any(), any(), anyString(), anyInt());
+    verify(commandApplier, times(1)).apply(any(), any(), any(), anyString(), anyInt(), any(), any());
   }
 
   @Test
@@ -102,7 +102,7 @@ class SparBehaviourHandlerTest {
     when(agentInvoker.invoke(eq(CHALLENGER), any(), any(), anyString(), any(), any()))
         .thenReturn(invokeResult(true, GOOD_REASON))
         .thenReturn(invokeResult(false, null));
-    when(commandApplier.apply(any(), any(), any(), anyString(), anyInt()))
+    when(commandApplier.apply(any(), any(), any(), anyString(), anyInt(), any(), any()))
         .thenReturn(CommandApplicationResult.CONTINUE);
 
     runHandler();
@@ -120,7 +120,7 @@ class SparBehaviourHandlerTest {
     when(agentInvoker.invoke(eq(CHALLENGER), any(), any(), anyString(), any(), any()))
         .thenReturn(invokeResult(true, "This needs more discussion before we can finalize"))
         .thenReturn(invokeResult(false, null));
-    when(commandApplier.apply(any(), any(), any(), anyString(), anyInt()))
+    when(commandApplier.apply(any(), any(), any(), anyString(), anyInt(), any(), any()))
         .thenReturn(CommandApplicationResult.CONTINUE);
 
     runHandler();
@@ -148,7 +148,7 @@ class SparBehaviourHandlerTest {
     when(agentInvoker.invoke(eq(CHALLENGER), any(), any(), anyString(), any(), any()))
         .thenReturn(invokeResult(true, GOOD_REASON))
         .thenReturn(invokeResult(true, GOOD_REASON));
-    when(commandApplier.apply(any(), any(), any(), anyString(), anyInt()))
+    when(commandApplier.apply(any(), any(), any(), anyString(), anyInt(), any(), any()))
         .thenReturn(CommandApplicationResult.CONTINUE);
 
     runHandler();
@@ -177,7 +177,7 @@ class SparBehaviourHandlerTest {
         .thenReturn(invokeResult(false, null))
         .thenReturn(invokeResult(false, null))
         .thenReturn(bareContinueResult());
-    when(commandApplier.apply(any(), any(), any(), anyString(), anyInt()))
+    when(commandApplier.apply(any(), any(), any(), anyString(), anyInt(), any(), any()))
         .thenReturn(CommandApplicationResult.CONTINUE);
 
     ArgumentCaptor<ContextMapping> cap = ArgumentCaptor.forClass(ContextMapping.class);
@@ -212,7 +212,7 @@ class SparBehaviourHandlerTest {
         .thenReturn(bareContinueResult())
         .thenReturn(bareContinueResult())
         .thenReturn(bareContinueResult());
-    when(commandApplier.apply(any(), any(), any(), anyString(), anyInt()))
+    when(commandApplier.apply(any(), any(), any(), anyString(), anyInt(), any(), any()))
         .thenReturn(CommandApplicationResult.CONTINUE);
 
     ArgumentCaptor<ContextMapping> cap = ArgumentCaptor.forClass(ContextMapping.class);
@@ -230,7 +230,7 @@ class SparBehaviourHandlerTest {
         .thenReturn(bareContinueResult());
     when(agentInvoker.invoke(eq(CHALLENGER), any(), any(), anyString(), any(), any()))
         .thenReturn(bareContinueResult());
-    when(commandApplier.apply(any(), any(), any(), anyString(), anyInt()))
+    when(commandApplier.apply(any(), any(), any(), anyString(), anyInt(), any(), any()))
         .thenReturn(CommandApplicationResult.CONTINUE);
 
     ArgumentCaptor<ContextMapping> mappingCaptor = ArgumentCaptor.forClass(ContextMapping.class);
@@ -252,7 +252,7 @@ class SparBehaviourHandlerTest {
         .thenReturn(bareContinueResult());
     when(agentInvoker.invoke(eq(CHALLENGER), any(), any(), anyString(), any(), any()))
         .thenReturn(bareContinueResult());
-    when(commandApplier.apply(any(), any(), any(), anyString(), anyInt()))
+    when(commandApplier.apply(any(), any(), any(), anyString(), anyInt(), any(), any()))
         .thenReturn(CommandApplicationResult.CONTINUE);
 
     ArgumentCaptor<String> promptCaptor = ArgumentCaptor.forClass(String.class);

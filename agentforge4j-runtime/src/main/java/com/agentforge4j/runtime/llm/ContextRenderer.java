@@ -72,6 +72,20 @@ public final class ContextRenderer {
     }
   }
 
+  /**
+   * Renders a single {@link ContextValue} to JSON, using the same per-type extractors as
+   * {@link #render(Map, ContextMapping)}. Exposed for callers that resolve one context source at a
+   * time (for example a step's declared context selectors) rather than filtering the whole context.
+   *
+   * @param value the context value to render; must not be {@code null}
+   *
+   * @return the rendered JSON representation; never {@code null}
+   */
+  public JsonNode renderSingleValue(ContextValue value) {
+    Validate.notNull(value, "value must not be null");
+    return renderValue(value);
+  }
+
   private <T extends ContextValue> JsonNode renderValue(T value) {
     @SuppressWarnings("unchecked")
     ContextValueExtractor<T> extractor =
