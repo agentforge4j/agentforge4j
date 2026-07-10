@@ -228,7 +228,7 @@ class DefaultWorkflowRuntimeToolDecisionTest {
         List.of(new StepDefinition(
             "s1", "s1",
             new ResourceBehaviour("/examples/sample.txt", "out", transition),
-            ContextMapping.none(), null, null, null, null, null)));
+            ContextMapping.none(), null, null, null, null, null)), List.of());
   }
 
   private DefaultWorkflowRuntime runtimeWith(StepTransition transition) {

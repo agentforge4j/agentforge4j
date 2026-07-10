@@ -30,7 +30,7 @@ class WorkflowComplexityAnalyzerTest {
   private static WorkflowDefinition workflow(String id, List<Executable> steps,
       Map<String, BlueprintDefinition> blueprints) {
     return new WorkflowDefinition(id, "W", null, null, null, "1.0.0", null, null, null,
-        Map.of(), blueprints, steps);
+        Map.of(), blueprints, steps, List.of());
   }
 
   private static StepDefinition agentStep(String id, StepTransition transition) {

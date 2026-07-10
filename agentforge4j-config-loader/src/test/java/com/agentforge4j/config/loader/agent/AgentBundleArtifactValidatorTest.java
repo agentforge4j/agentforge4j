@@ -3,6 +3,7 @@ package com.agentforge4j.config.loader.agent;
 
 import com.agentforge4j.core.spi.validation.ArtifactValidationContext;
 import com.agentforge4j.core.spi.validation.ValidationResult;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 
@@ -10,7 +11,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 class AgentBundleArtifactValidatorTest {
 
-  private final AgentBundleArtifactValidator validator = new AgentBundleArtifactValidator();
+  private final AgentBundleArtifactValidator validator =
+      new AgentBundleArtifactValidator(new ObjectMapper());
 
   private static final String VALID_AGENT_JSON = """
       {"id":"a1","name":"A","locality":"CLOUD",

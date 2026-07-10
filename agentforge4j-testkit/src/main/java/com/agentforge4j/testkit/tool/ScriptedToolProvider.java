@@ -29,17 +29,6 @@ public final class ScriptedToolProvider implements ToolProvider {
   private final String inputSchema;
 
   /**
-   * Creates a provider serving one capability with a fixed result and an open object input schema.
-   *
-   * @param providerId stable provider id; must not be blank
-   * @param capability the capability id matched against a {@code TOOL_INVOCATION}; must not be blank
-   * @param result     the result returned on every invocation; must not be {@code null}
-   */
-  public ScriptedToolProvider(String providerId, String capability, ToolResult result) {
-    this(providerId, capability, result, OBJECT_SCHEMA);
-  }
-
-  /**
    * Creates a provider serving one capability with a fixed result and an explicit input schema (used
    * to drive the argument-validation branch of the governance chokepoint).
    *
@@ -66,7 +55,8 @@ public final class ScriptedToolProvider implements ToolProvider {
    * @return a succeeding provider
    */
   public static ScriptedToolProvider succeeding(String providerId, String capability, String output) {
-    return new ScriptedToolProvider(providerId, capability, ToolResult.success(output, 1L));
+    return new ScriptedToolProvider(providerId, capability, ToolResult.success(output, 1L),
+        OBJECT_SCHEMA);
   }
 
   /**
@@ -100,7 +90,8 @@ public final class ScriptedToolProvider implements ToolProvider {
    */
   public static ScriptedToolProvider failing(String providerId, String capability,
       String errorMessage) {
-    return new ScriptedToolProvider(providerId, capability, ToolResult.failure(errorMessage, 1L));
+    return new ScriptedToolProvider(providerId, capability, ToolResult.failure(errorMessage, 1L),
+        OBJECT_SCHEMA);
   }
 
   @Override
