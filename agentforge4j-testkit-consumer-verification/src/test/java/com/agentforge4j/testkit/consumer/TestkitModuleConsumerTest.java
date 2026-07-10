@@ -10,6 +10,7 @@ import com.agentforge4j.core.workflow.state.WorkflowState;
 import com.agentforge4j.llm.api.ModelTier;
 import com.agentforge4j.llm.fake.FakeScript;
 import com.agentforge4j.runtime.command.FileSink;
+import com.agentforge4j.runtime.context.ContextPackRegistry;
 import com.agentforge4j.testkit.capture.CaptureBundle;
 import com.agentforge4j.testkit.capture.CapturingFileSink;
 import com.agentforge4j.testkit.capture.WorkflowRunResult;
@@ -66,5 +67,13 @@ class TestkitModuleConsumerTest {
 
     assertThatCode(() -> consumer.assertProviderTier(result, ModelTier.STANDARD))
         .doesNotThrowAnyException();
+  }
+
+  @Test
+  void resolvesContextPackRegistryFromAnExternalModule() {
+    ContextPackRegistry registry = consumer.emptyContextPackRegistry();
+
+    assertThat(registry).isSameAs(ContextPackRegistry.EMPTY);
+    assertThat(registry.names()).isEmpty();
   }
 }

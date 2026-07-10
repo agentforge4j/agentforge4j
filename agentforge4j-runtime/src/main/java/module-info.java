@@ -37,6 +37,8 @@ module agentforge4j.runtime {
   exports com.agentforge4j.runtime.llm;
   // PUBLIC SPI: run-execution interceptor seam for embedding applications.
   exports com.agentforge4j.runtime.interceptor;
+  // PUBLIC: ContextPackRegistry, the WorkflowRuntimeBuilder#contextPackRegistry(...) parameter type.
+  exports com.agentforge4j.runtime.context;
 
   opens com.agentforge4j.runtime.llm to com.fasterxml.jackson.databind;
 }
