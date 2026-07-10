@@ -63,13 +63,20 @@ function git(args, opts = {}) {
  * clobbering issue) silently beat the isolation this script exists to guarantee — so any inherited
  * occurrence is stripped before ours is added. Exported so the ordering guarantee is unit-testable.
  *
+ * Splits only at whitespace that precedes a new flag (`\s+(?=-)`), not at every space: a flag's
+ * VALUE can itself contain spaces (e.g. an inherited `-Dmaven.repo.local=C:\Users\dev\my repo\.m2`
+ * on Windows — this repo's own checkout path has one), and naive whitespace splitting would strip
+ * only the flag's leading fragment, leaving the rest of the value behind as a stray non-flag token
+ * that corrupts the composed MAVEN_OPTS.
+ *
  * @param {string|undefined} inheritedMavenOpts process.env.MAVEN_OPTS
  * @param {string} isolatedRepoPath
  * @returns {string}
  */
 export function isolatedMavenOpts(inheritedMavenOpts, isolatedRepoPath) {
   const rest = (inheritedMavenOpts || '')
-    .split(/\s+/)
+    .split(/\s+(?=-)/)
+    .map((flag) => flag.trim())
     .filter((flag) => flag !== '' && !flag.startsWith('-Dmaven.repo.local='));
   return [`-Dmaven.repo.local=${isolatedRepoPath}`, ...rest].join(' ');
 }

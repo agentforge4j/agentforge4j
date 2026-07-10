@@ -74,3 +74,12 @@ test('isolatedMavenOpts: preserves unrelated flags and collapses whitespace', ()
     '-Dmaven.repo.local=/isolated/m2 -Xmx2g',
   );
 });
+
+test('isolatedMavenOpts: strips an inherited -Dmaven.repo.local whose VALUE contains a space, with no stray fragment left behind', () => {
+  // A realistic Windows path (this repo's own checkout path has a space in it too).
+  const inherited = String.raw`-Dmaven.repo.local=C:\Users\dev\my repo\.m2\repository -Dfoo=bar`;
+  assert.equal(
+    isolatedMavenOpts(inherited, '/isolated/m2'),
+    '-Dmaven.repo.local=/isolated/m2 -Dfoo=bar',
+  );
+});

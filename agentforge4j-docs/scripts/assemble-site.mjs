@@ -79,8 +79,11 @@ function redirectHtml(to) {
  * Publish an archived version's redirect manifest as static stub pages: every page route of the
  * version's old active address (`/docs/<v>/...`) permanently forwards to its archive mount
  * (`/docs/archive/<v>/...`). Written AFTER the docs copy so a stub can never be overwritten by it.
+ *
+ * @param {(code: number) => void} [exit] injectable seam for the fail-closed collision guard
+ *        (tests; default `process.exit`), mirroring the `builder` seam on `buildJavadocVersions`.
  */
-function writeRedirectStubs(siteDir, manifestPath) {
+function writeRedirectStubs(siteDir, manifestPath, exit = process.exit) {
   const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
   for (const {from, to} of manifest) {
     const dir = join(siteDir, ...from.split('/').filter(Boolean));
@@ -92,7 +95,8 @@ function writeRedirectStubs(siteDir, manifestPath) {
     if (existsSync(stub)) {
       console.error(`[assemble-site] redirect stub would overwrite a live page: ${from}`);
       console.error('  The archived version is still part of the live build — archive/ and versions.json disagree.');
-      process.exit(1);
+      exit(1);
+      return manifest.length;
     }
     mkdirSync(dir, {recursive: true});
     writeFileSync(stub, redirectHtml(`${to}/`), 'utf8');
@@ -107,7 +111,9 @@ function writeRedirectStubs(siteDir, manifestPath) {
  *
  * @param {{buildDir: string, javadocDir: string, javadocVersionsDir?: string,
  *          releasedVersions?: string[], archiveDir: string, siteDir: string,
- *          docsEntry: string, customDomain: string|null}} options
+ *          docsEntry: string, customDomain: string|null,
+ *          exit?: (code: number) => void}} options `exit` is an injectable seam for the
+ *        redirect-stub collision guard (tests; default `process.exit`).
  */
 export function assembleSite({
   buildDir,
@@ -118,6 +124,7 @@ export function assembleSite({
   siteDir,
   docsEntry,
   customDomain,
+  exit = process.exit,
 }) {
   requireDir(buildDir, 'Docusaurus build', 'Run `npm run build` first.');
   requireDir(javadocDir, 'Javadoc surface', 'Run `npm run javadoc` first.');
@@ -155,7 +162,7 @@ export function assembleSite({
         cpSync(join(archiveDir, entry.name), join(siteDir, 'docs', 'archive', entry.name), {recursive: true});
         archived += 1;
       } else if (entry.name.endsWith('.redirects.json')) {
-        stubs += writeRedirectStubs(siteDir, join(archiveDir, entry.name));
+        stubs += writeRedirectStubs(siteDir, join(archiveDir, entry.name), exit);
       }
     }
     console.log(`[assemble-site] carried forward ${archived} archived version(s), ${stubs} redirect stub(s)`);
