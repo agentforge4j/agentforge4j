@@ -1,5 +1,6 @@
 {
   "kind": "WORKFLOW",
+  "schemaVersion": 1,
   "id": "gate-under-branch-predicate",
   "name": "Gated Input Under Branch Predicate",
   "steps": [

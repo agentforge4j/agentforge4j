@@ -1,5 +1,6 @@
 {
   "kind": "WORKFLOW",
+  "schemaVersion": 1,
   "id": "retry-previous-agent-from-step",
   "name": "Retry Previous To Agent (FROM_STEP)",
   "steps": [
