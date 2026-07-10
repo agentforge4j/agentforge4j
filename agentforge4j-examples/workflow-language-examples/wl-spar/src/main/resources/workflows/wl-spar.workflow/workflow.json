@@ -1,5 +1,6 @@
 {
   "kind": "WORKFLOW",
+  "schemaVersion": 1,
   "id": "wl-spar",
   "name": "SPAR Review",
   "description": "A SPAR step pits a primary agent against a challenger over bounded rounds: each round both speak, and the exchange continues while a side asks for another round with a concrete reason. After the rounds, the primary produces the resolution.",

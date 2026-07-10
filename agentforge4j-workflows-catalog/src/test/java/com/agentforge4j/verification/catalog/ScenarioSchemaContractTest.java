@@ -75,6 +75,22 @@ class ScenarioSchemaContractTest {
   }
 
   @Test
+  void schemaAcceptsContextPresenceAndRegexShapeAssertions() throws IOException {
+    List<Error> violations = SCENARIO_SCHEMA.validate(MAPPER.readTree("""
+        {
+          "workflowId": "demo",
+          "expect": {
+            "status": "AWAITING_STEP_APPROVAL",
+            "contextPresent": ["estimatedMinTokens", "estimatedMaxTokens"],
+            "contextMatches": {"confidence": "HIGH|MEDIUM|LOW|VERY_LOW"}
+          }
+        }
+        """));
+
+    assertThat(violations).isEmpty();
+  }
+
+  @Test
   void schemaAcceptsAllToolGateVerbs() throws IOException {
     List<Error> violations = SCENARIO_SCHEMA.validate(MAPPER.readTree("""
         {
@@ -87,6 +103,22 @@ class ScenarioSchemaContractTest {
             {"type": "toolApprove", "toolInvocationId": "tool-1"}
           ],
           "expect": {"status": "COMPLETED"}
+        }
+        """));
+
+    assertThat(violations).isEmpty();
+  }
+
+  @Test
+  void schemaAcceptsStepVisitCountsAndOrderedSteps() throws IOException {
+    List<Error> violations = SCENARIO_SCHEMA.validate(MAPPER.readTree("""
+        {
+          "workflowId": "demo",
+          "expect": {
+            "status": "COMPLETED",
+            "stepVisitCounts": {"revise": 2},
+            "orderedSteps": ["draft", "revise", "publish"]
+          }
         }
         """));
 

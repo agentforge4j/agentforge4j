@@ -16,7 +16,7 @@
   <description>AWS Bedrock Runtime LLM provider (Anthropic Claude messages) via the official AWS SDK</description>
 
   <properties>
-    <aws.sdk.version>2.46.21</aws.sdk.version>
+    <aws.sdk.version>2.47.4</aws.sdk.version>
   </properties>
 
   <licenses>

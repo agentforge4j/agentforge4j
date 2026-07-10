@@ -112,7 +112,7 @@ public final class RetryPreviousBehaviourHandler implements
     List<String> orderedIds = executionContext.getCurrentSequenceStepIds();
     Executable target = resolveExecutable(behaviour.retryStepId(), orderedIds, executionContext,
         step.stepId());
-    return executableExecutor.execute(target, executionContext);
+    return executeStep(target, executionContext);
   }
 
   private ExecutionOutcome executeFromStep(StepDefinition step,
@@ -136,7 +136,7 @@ public final class RetryPreviousBehaviourHandler implements
     for (String rangeStepId : orderedIds.subList(fromIndex, toIndex)) {
       Executable target = resolveExecutable(rangeStepId, orderedIds, executionContext,
           step.stepId());
-      last = executableExecutor.execute(target, executionContext);
+      last = executeStep(target, executionContext);
       if (last != ExecutionOutcome.COMPLETED) {
         return last;
       }
@@ -145,10 +145,11 @@ public final class RetryPreviousBehaviourHandler implements
   }
 
   /**
-   * Executes the fallback executable, allocating a fresh step-execution uid for a
-   * {@link StepDefinition} first. The fallback runs outside {@code StepSequenceExecutor}, which is
-   * where a step's uid is normally allocated, so without this an AGENT (or any uid-dependent)
-   * fallback step would see a {@code null} current-step uid. Mirrors the uid allocation
+   * Executes a retry target (single-step, from-step range, or fallback), allocating a fresh
+   * step-execution uid for a {@link StepDefinition} first. Every retry target runs outside
+   * {@code StepSequenceExecutor}, which is where a step's uid is normally allocated — the retry
+   * uid range has just been cleared via {@code clearEntriesFromUid}, so without this an AGENT (or
+   * any uid-dependent) target would see a {@code null} current-step uid. Mirrors the uid allocation
    * {@code BranchBehaviourHandler} performs for a directly executed branch step.
    */
   private ExecutionOutcome executeStep(Executable executable, ExecutionContext executionContext) {

@@ -1,5 +1,6 @@
 {
   "kind": "WORKFLOW",
+  "schemaVersion": 1,
   "id": "step-tier",
   "name": "Step Tier Override",
   "steps": [

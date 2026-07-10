@@ -60,6 +60,7 @@ public final class QuickStartExample {
    * @throws URISyntaxException if a bundled resource directory cannot be resolved to a path
    */
   public static void main(String[] args) throws URISyntaxException {
+    // tag::run[]
     AgentForge4j agentForge4j = assemble();
 
     String runId = agentForge4j.start(WORKFLOW_ID);
@@ -67,6 +68,7 @@ public final class QuickStartExample {
 
     System.out.printf("Workflow '%s' (run %s) finished with status: %s%n", WORKFLOW_ID, runId, state.getStatus());
     System.out.printf("Step outputs: %s%n", state.getStepOutputs());
+    // end::run[]
   }
 
   /**
@@ -78,6 +80,7 @@ public final class QuickStartExample {
    * @throws URISyntaxException if a bundled resource directory cannot be resolved to a path
    */
   static AgentForge4j assemble() throws URISyntaxException {
+    // tag::assemble[]
     FakeScript script = new FakeScript(1, Map.of(
         new FakeScriptKey(WORKFLOW_ID, STEP_ID, AGENT_ID, 0),
         new FakeResponse(SCRIPTED_COMPLETE, null)));
@@ -90,6 +93,7 @@ public final class QuickStartExample {
         .withLoadShippedAgents(false)
         .withLlmClientResolver(new DefaultLlmClientResolver(List.of(fakeLlmClient)))
         .build();
+    // end::assemble[]
   }
 
   /**
