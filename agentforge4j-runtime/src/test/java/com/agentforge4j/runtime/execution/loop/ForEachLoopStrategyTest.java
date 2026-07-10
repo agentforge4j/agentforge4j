@@ -204,6 +204,7 @@ class ForEachLoopStrategyTest {
         null,
         10,
         null,
-        allowMutation);
+        allowMutation,
+        null);
   }
 }

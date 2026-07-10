@@ -17,9 +17,11 @@ import java.util.Map;
 
 /**
  * Realises {@link IntegrationType#MCP_STREAMABLE_HTTP} integrations: connects to a remote MCP server over Streamable
- * HTTP. The {@code config} payload carries a required {@code url} plus an optional {@code requestTimeout} (ISO-8601
- * duration; defaults to {@link McpIntegrations#DEFAULT_REQUEST_TIMEOUT} when omitted). The resulting provider id is
- * {@code "mcp:" + definition.id()}.
+ * HTTP. The {@code config} payload carries a required {@code url} plus optional {@code requestTimeout} (ISO-8601
+ * duration; defaults to {@link McpIntegrations#DEFAULT_REQUEST_TIMEOUT} when omitted), {@code staticHeaders} (literal
+ * header name to value pairs) and {@code secretHeaders} (header name to secret-reference key, resolved via
+ * {@link ToolProviderFactoryContext#secretResolver()} at connect time) — mirroring the {@code HTTP_TOOL} integration's
+ * own header model. The resulting provider id is {@code "mcp:" + definition.id()}.
  * <p>
  * Discovered via {@link java.util.ServiceLoader}; the connection is not started here — the provider connects lazily on
  * first use.
@@ -50,12 +52,11 @@ public final class McpStreamableHttpToolProviderFactory implements IntegrationTo
     Validate.isTrue(egress.allowed(), () -> new IllegalStateException(
         "MCP server '%s' streamable-HTTP url is not an allowed egress target: %s"
             .formatted(definition.id(), egress.reason())));
-    // Integration-configured streamable-HTTP MCP servers carry no per-server headers yet (the
-    // config payload has only 'url'); pass empty header maps and a null resolver. Header/secret
-    // support is gated on the OSS SecretResolver SPI landing with agentforge4j-tools-http.
+    Map<String, String> staticHeaders = McpIntegrations.stringMap(config, "staticHeaders", definition);
+    Map<String, String> secretHeaders = McpIntegrations.stringMap(config, "secretHeaders", definition);
     StreamableHttpTransport transport = new StreamableHttpTransport(url,
-        McpIntegrations.requestTimeout(config, definition), Map.of(), Map.of(), null,
-        McpIntegrations.mcpJsonMapper(mapper));
+        McpIntegrations.requestTimeout(config, definition), staticHeaders, secretHeaders,
+        context.secretResolver()::resolve, McpIntegrations.mcpJsonMapper(mapper));
     return McpIntegrations.toProvider(definition, transport, ToolSourceKind.REMOTE_HTTP);
   }
 }
