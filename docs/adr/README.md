@@ -1,13 +1,13 @@
 # Architecture Decision Records
 
-This directory holds the framework's architecture decision records (ADRs): short, immutable documents recording the significant design decisions, the alternatives considered, and the consequences accepted. Records follow a common MADR-style structure (Status, Date, Context, Decision, Alternatives considered, Consequences, Compatibility impact, Implementation notes, Follow-up work).
+This directory records the architecture decisions that shape AgentForge4j — the reasoning behind how the framework is built, not a running design log. See `TEMPLATE.md` to start a new one.
 
 ## Conventions
 
-- **Numbering** is sequential and four-digit; a number is never reused. Gaps in the sequence are reserved numbers for decisions still in flight (listed below).
+- **Numbering** is sequential and four-digit; a number is never reused. Gaps in the sequence are reserved numbers for decisions still in flight (see Reserved, below).
 - **Retrospective records are allowed.** A decision that was made and implemented before being recorded carries a "Retrospective note" saying so; its Date is the decision or merge date where history pins one, otherwise the record date.
-- **Records are not rewritten.** Once Accepted, a record's decision substance is fixed. A change of direction is a new ADR that supersedes the old one; the old record's Status is updated to note the superseding record, and nothing else in it changes.
-- **Statuses:** `Proposed` (decision drafted, not yet in force), `Accepted` (in force), `Superseded` (replaced by a later record).
+- **Records are not rewritten.** Once Accepted, a record's decision substance is fixed. A change of direction is a new ADR that supersedes the old one; the old record's Status is updated to note the superseding record, and nothing else in it changes. Editorial fixes (typos, broken links, a renamed class in an Implementation-notes pointer) that don't alter what was decided may still be corrected in place.
+- **Statuses:** `Proposed` (decision drafted, not yet in force), `Accepted` (in force — verified merged to the default branch, not just "PR open" or "stack ready"), `Superseded` (replaced by a later record), `Deprecated` (no longer recommended, with no single successor), `Rejected` (seriously considered and explicitly declined).
 
 ## Index
 
@@ -33,4 +33,14 @@ This directory holds the framework's architecture decision records (ADRs): short
 | [0018](0018-release-management-and-publication-sequencing.md) | Release management and publication sequencing | Proposed | 2026-07-10 |
 | [0019](0019-workflow-requirements-and-transition-enforcement.md) | Workflow requirements and step-transition enforcement | Accepted | 2026-07-09 |
 
-New decisions are allocated the next sequential number, with a reserved-numbers table appearing here whenever a number is held for a decision too early to draft.
+## Reserved
+
+Numbers claimed for planned ADRs not yet drafted. A reservation exists only once merged
+here on the default branch — an open PR proposing a row does not itself reserve the
+number. Each entry needs an owner and a date; a reservation with neither is
+indistinguishable from an abandoned one.
+
+| # | Topic | Reserved by | Date reserved | Reference |
+|---|---|---|---|---|
+
+Nothing currently reserved. New decisions are allocated the next sequential number.

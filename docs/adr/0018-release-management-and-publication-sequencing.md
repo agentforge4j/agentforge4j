@@ -19,7 +19,7 @@ Constraints and forces:
 - The root README is the project's front door; it must describe the release truthfully, so it can only be finalized once everything it describes is real.
 - Pre-1.0, the compatibility policy is clean-break (ADR-0013); the release process must not imply stability guarantees the version does not carry.
 
-## Proposed decision
+## Decision
 
 Adopt a strict publication sequencing rule for the coordinated first public launch (0.1.0), and the supporting release machinery:
 
@@ -36,13 +36,13 @@ Supporting decisions:
 - **Release automation** runs in CI from tags, one workflow per track; no manual artifact assembly.
 - **Versioning**: 0.x with the clean-break policy; the version itself signals contract fluidity.
 
-## Alternatives under consideration
+## Alternatives considered
 
 1. **Publish first, fix docs after**: conventional for mutable hosting, fatal for immutable artifacts — rejected as the anti-goal this ADR exists to prevent.
 2. **Single-version reactor release** (catalog pinned to framework version): simpler, but couples content iteration speed to framework release cadence.
 3. **Manual releases without CI automation**: acceptable for exactly one release, an error source afterwards.
 
-## Expected consequences
+## Consequences
 
 ### Positive
 
@@ -65,12 +65,6 @@ Supporting decisions:
 - The exact shape of release CI (tag-triggered jobs, staging validation, rollback of a failed publication attempt).
 - Cut point for the release branch/tag relative to the remaining gate items.
 
-## Decision criteria
-
-- **Accept** when the release profile produces complete, signed, portal-valid artifacts in a dry run and the sequencing gates are all reachable.
-- **Revise** if portal validation or catalog POM flattening reveals structural POM changes with wider impact.
-- **Reject** only the automation shape, not the sequencing rule — the docs-before-artifacts ordering is the invariant.
-
 ## Compatibility impact
 
 - **API/runtime/workflow definitions**: none — process only.
@@ -78,14 +72,13 @@ Supporting decisions:
 - **Docs/examples**: docs site and project domain become release-blocking deliverables; the README gains its finalized release-state content.
 - **Users**: first consumable coordinates on Central; catalog consumable as an independent dependency.
 
-## Implementation outline
+## Verification note
 
-1. Complete portal-mandatory POM metadata and the release profile (done in part).
-2. Signing setup and publication plugin wiring; dry-run validation.
-3. Tag-driven release CI per track: framework, catalog (with POM flattening), and builder (npm publish).
-4. Execute the sequence: docs/site live → framework and catalog to Central → builder to npm → README merge.
+Becomes Accepted once the release profile produces complete, signed, portal-valid artifacts in a dry run and every sequencing gate is reachable. POM metadata and the release profile have landed. No artifact release or publication workflow for Maven Central or npm exists yet in CI. The only deploy workflow currently on `main` publishes the documentation site to GitHub Pages. Signing and the catalog deploy job remain open. No prefixed release tags (`framework-v*`, `catalog-v*`, `builder-v*`) exist yet either. The wire-format `schemaVersion` field referenced in ADR-0001's follow-up work is a decided requirement — not an open question — but it remains unimplemented on `main`: it must land in the workflow schema before framework 0.1.0 is cut.
 
-**Verification note:** POM metadata and the release profile have landed; no release, deploy, or publish workflow exists yet in CI (confirmed against current `main`), and signing and the catalog deploy job remain open. No prefixed release tags (`framework-v*`, `catalog-v*`, `builder-v*`) exist yet either. The wire-format `schemaVersion` field referenced in ADR-0001's follow-up work is a decided requirement — not an open question — but it remains unimplemented on `main`: it must land in the workflow schema before framework 0.1.0 is cut. Confirm against `main` and CI configuration before moving this ADR to Accepted.
+## Follow-up work
+
+If portal validation or catalog POM flattening reveals structural POM changes with wider impact, this decision needs revision. Only the automation shape may be rejected outright, never the sequencing rule itself — the docs-before-artifacts ordering is the invariant this ADR exists to establish.
 
 ## Related documents
 

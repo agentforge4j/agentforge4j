@@ -21,7 +21,7 @@ Constraints and forces:
 - Token-estimation logic previously existed as duplicated private heuristics inside individual provider modules.
 - A separate workstream owns context *scoping* (an INHERIT/SCOPED/FRESH boundary concept, field name `contextScope`); this design must compose with it, not compete.
 
-## Proposed decision
+## Decision
 
 Introduce opt-in, deterministic token-governance primitives:
 
@@ -36,13 +36,13 @@ Introduce opt-in, deterministic token-governance primitives:
 
 No changes to `PromptLayerBoundaries` or prompt-layer structure.
 
-## Alternatives under consideration
+## Alternatives considered
 
 1. **Provider prompt caching only**: zero new surface, but caching reduces the cost of repetition, not context size, and provides no governance or evidence.
 2. **Agent-side self-management** (instructing agents to be concise): non-deterministic and unauditable — conflicts with the engine-controls-flow principle.
 3. **Selection only**: land `contextSelection` and defer ledger/compaction/output contracts. Rejected as the primary path — the mechanisms reinforce each other and the evidence trail is a core part of the value.
 
-## Expected consequences
+## Consequences
 
 ### Positive
 
@@ -67,12 +67,6 @@ No changes to `PromptLayerBoundaries` or prompt-layer structure.
 - Attribution shape of per-call summaries in the ledger (whether the emitting agent is identified on the summary record).
 - Waste-detection reporting: requires a persisted run-state history section whose shape is not yet settled.
 
-## Decision criteria
-
-- **Accept** when the implementation is merged to `main` and black-box verification asserts selection, ledger, and compaction evidence through the runtime event contract (ADR-0011).
-- **Revise** if verification shows the composition contract with `contextScope` cannot be enforced at load time.
-- **Reject** individual mechanisms (not the whole) if a mechanism proves unverifiable through the event contract.
-
 ## Compatibility impact
 
 - **API**: new `TokenEstimator` SPI (additive); two new sealed permits (`CompactBehaviour`, `RequestContextCommand`); `PREMIUM` added to `ModelTier`. Pre-1.0 clean-break policy applies (ADR-0013).
@@ -82,14 +76,13 @@ No changes to `PromptLayerBoundaries` or prompt-layer structure.
 - **Docs/examples**: author-facing vocabulary — needs a dedicated guide plus reference pages; tier documentation gains `PREMIUM` with capability-only wording.
 - **Users**: no impact on existing definitions; incremental opt-in.
 
-## Implementation outline
+## Verification note
 
-1. Estimator SPI + `PREMIUM` tier in the LLM API layer (foundation increment).
-2. Core domain types, compaction behaviour, schema surface.
-3. Context-pack loading, selection validation, estimator-backed ledger, pack selectors.
-4. Black-box verification of the evidence trail against the event contract.
+Becomes Accepted once the root pull request targeting `main` (#16) has merged and black-box verification asserts selection, ledger, and compaction evidence through the runtime event contract (ADR-0011). All implementation increments (estimator SPI and `PREMIUM` tier, core domain types and `CompactBehaviour`, schema surface, context-pack loading, context-selection validation, the estimator-backed ledger, context-pack selectors) plus a prompt-cache-stability verification pass are complete and merged into each other on a single stacked branch — none of this has reached `main` yet; every dependent pull request has merged into #16's branch rather than into `main` itself, so `main` currently carries none of this ADR's surface (no `PREMIUM` tier, no `TokenEstimator` SPI, no `CompactBehaviour`, no `RequestContextCommand`). Until #16 merges, Proposed is unambiguous, not a judgment call.
 
-**Verification note:** all implementation increments (estimator SPI and `PREMIUM` tier, core domain types and `CompactBehaviour`, schema surface, context-pack loading, context-selection validation, the estimator-backed ledger, context-pack selectors) plus a prompt-cache-stability verification pass are complete and merged into each other on a single stacked branch — none of this has reached `main`. The root pull request targeting `main` (#16) remains open; every dependent pull request in the stack has merged into #16's branch rather than into `main` itself, so `main` currently carries none of this ADR's surface (no `PREMIUM` tier, no `TokenEstimator` SPI, no `CompactBehaviour`, no `RequestContextCommand`). Confirm #16 has merged before moving this ADR to Accepted; until then, Proposed is unambiguous, not a judgment call.
+## Follow-up work
+
+If verification shows the composition contract with `contextScope` cannot be enforced at load time, this decision needs revision rather than straightforward acceptance. Individual mechanisms — not the whole decision — may be rejected if a specific mechanism proves unverifiable through the event contract; the rest would still land.
 
 ## Related documents
 
