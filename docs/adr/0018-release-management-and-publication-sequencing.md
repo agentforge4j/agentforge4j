@@ -21,16 +21,18 @@ Constraints and forces:
 
 ## Proposed decision
 
-Adopt a strict publication sequencing rule and the supporting release machinery:
+Adopt a strict publication sequencing rule for the coordinated first public launch (0.1.0), and the supporting release machinery:
 
 1. **Documentation and project site go live first** — the docs site and project domain must be serving before any artifact referencing them is published.
 2. **Maven Central publication second** — the framework and the catalog, as signed artifacts with full metadata, sources, and javadoc, published via the Central portal tooling from a dedicated release profile.
 3. **Builder npm publication third** — the workflow builder publishes to npm once the site is live and Central carries the framework and catalog; a documentation surface (the project site's visualizer embed) pins the supported builder version, so it follows the same docs-before-artifacts invariant as the other two.
 4. **Root README lands last** — it merges only when every other release gate is satisfied, as the final gate.
 
+After the initial launch, this four-step ordering no longer applies: each track releases independently, subject only to the permanent docs-before-artifacts invariant — any documentation surface an artifact references must be live before that artifact publishes.
+
 Supporting decisions:
 
-- **Three independently versioned, prefix-tagged release tracks**: `framework-v*` (the full Maven reactor, to Central), `catalog-v*` (the shipped workflow catalog, to Central with a flattened POM so its published POM stands alone), and `builder-v*` (the workflow builder, published to npm). Each track iterates on its own cadence; no track's release blocks another's.
+- **Three independently versioned, prefix-tagged release tracks**: `framework-v*` (the full Maven reactor, to Central), `catalog-v*` (the shipped workflow catalog, to Central with a flattened POM so its published POM stands alone), and `builder-v*` (the workflow builder, published to npm). Post-launch, each track iterates on its own cadence; no track's release blocks another's.
 - **Release automation** runs in CI from tags, one workflow per track; no manual artifact assembly.
 - **Versioning**: 0.x with the clean-break policy; the version itself signals contract fluidity.
 

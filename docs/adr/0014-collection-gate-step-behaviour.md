@@ -74,7 +74,7 @@ Add **COLLECTION** as a step behaviour: the run pauses in a collection-open stat
 3. Test-harness DSL for scripted collection scenarios.
 4. Black-box lifecycle verification.
 
-**Verification note:** the completing implementation is fully assembled on a stacked branch — schema, runtime handler, authorizer SPI, and the full open/submit/replace/withdraw/close/reopen lifecycle including deadline-close, all present with tests — but has not reached `main`. Two dependent pull requests have merged into the stack, but the root pull request targeting `main` (#19) remains open. Confirm #19 has merged before moving this ADR to Accepted.
+**Verification note:** the completing implementation is fully assembled on a stacked branch — schema, runtime handler, authorizer SPI, and the full open/submit/replace/withdraw/close-request/rejection/close/reopen lifecycle including deadline-close, all present with tests — but has not reached `main`. Two dependent pull requests have merged into the stack, but the root pull request targeting `main` (#19) remains open. Confirm #19 has merged before moving this ADR to Accepted.
 
 ## Related documents
 
