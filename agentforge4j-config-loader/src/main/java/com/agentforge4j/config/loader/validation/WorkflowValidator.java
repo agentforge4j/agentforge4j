@@ -12,7 +12,9 @@ import com.agentforge4j.core.workflow.reachability.ReachableStepGraph;
 import com.agentforge4j.core.workflow.reachability.WorkflowRefResolver;
 import com.agentforge4j.core.workflow.requirement.WorkflowRequirement;
 import com.agentforge4j.core.workflow.step.StepDefinition;
+import com.agentforge4j.core.workflow.collection.ReopenPolicy;
 import com.agentforge4j.core.workflow.step.behaviour.BranchBehaviour;
+import com.agentforge4j.core.workflow.step.behaviour.CollectionBehaviour;
 import com.agentforge4j.core.workflow.step.behaviour.ContextEqualityContract;
 import com.agentforge4j.core.workflow.step.behaviour.InputBehaviour;
 import com.agentforge4j.core.workflow.step.behaviour.RetryPreviousBehaviour;
@@ -228,6 +230,38 @@ public final class WorkflowValidator {
   }
 
   /**
+   * Verifies the cross-field configuration invariants of every {@code CollectionBehaviour} step that intrinsic record
+   * validation cannot express: a gate must be closable ({@code manualClose} or {@code externalDeadlineClosable}), and a
+   * gate that allows reopening must permit manual close.
+   *
+   * @param workflows workflows to validate
+   *
+   * @throws IllegalArgumentException when a collection gate's configuration is invalid
+   */
+  public void validateCollectionGates(Map<String, WorkflowDefinition> workflows) {
+    workflows.values().forEach(workflow -> walkForCollectionGates(workflow.steps(), workflow));
+  }
+
+  private static void walkForCollectionGates(List<Executable> steps, WorkflowDefinition workflow) {
+    for (Executable executable : steps) {
+      if (executable instanceof StepDefinition step) {
+        if (step.behaviour() instanceof CollectionBehaviour behaviour) {
+          validateCollectionConfig(behaviour, step.stepId(), workflow.id());
+        } else if (step.behaviour() instanceof BranchBehaviour bb) {
+          walkForCollectionGates(bb.childExecutables(), workflow);
+        }
+      } else if (executable instanceof BlueprintRef ref) {
+        BlueprintDefinition blueprint = workflow.blueprints().get(ref.blueprintId());
+        if (blueprint != null) {
+          walkForCollectionGates(blueprint.steps(), workflow);
+        }
+      } else if (executable instanceof WorkflowDefinition nested) {
+        walkForCollectionGates(nested.steps(), nested);
+      }
+    }
+  }
+
+  /**
    * Verifies that every {@code VALIDATE} step's context-equality contracts reference an artifact in that step's own
    * {@code requiredArtifacts} allowlist. A contract pointing at a path outside the allowlist can never be satisfied at
    * runtime (that artifact is never captured for the step), so it is a config error caught here at load time.
@@ -268,6 +302,16 @@ public final class WorkflowValidator {
               + "requiredArtifacts allowlist %s")
               .formatted(stepId, workflowId, contract.artifactPath(), allowlist));
     }
+  }
+
+  private static void validateCollectionConfig(CollectionBehaviour behaviour, String stepId,
+      String workflowId) {
+    Validate.isTrue(behaviour.manualClose() || behaviour.externalDeadlineClosable(),
+        ("Collection step '%s' in workflow '%s' must be closable: enable manualClose or "
+            + "externalDeadlineClosable").formatted(stepId, workflowId));
+    Validate.isTrue(behaviour.reopenPolicy() != ReopenPolicy.ALLOWED || behaviour.manualClose(),
+        "Collection step '%s' in workflow '%s' with reopenPolicy=ALLOWED requires manualClose"
+            .formatted(stepId, workflowId));
   }
 
   private void walkForArtifactRefs(List<Executable> steps, WorkflowDefinition workflow) {

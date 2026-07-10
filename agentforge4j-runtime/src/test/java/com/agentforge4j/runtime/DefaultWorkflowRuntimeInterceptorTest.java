@@ -210,6 +210,8 @@ class DefaultWorkflowRuntimeInterceptorTest {
         new InMemoryGeneratedArtifactStore(),
         new CollectionGateService(eventRecorder, CLOCK, new DefaultRequirementResolver(),
             new com.agentforge4j.core.workflow.collection.DefaultCollectionAuthorizer(),
+            com.agentforge4j.core.spi.validation.CollectionItemSchemaValidator.unconfigured(),
+            new com.agentforge4j.core.workflow.collection.DefaultCollectionSubmissionValidator(),
             new com.fasterxml.jackson.databind.ObjectMapper()));
   }
 }

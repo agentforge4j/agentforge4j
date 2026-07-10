@@ -192,6 +192,7 @@ public final class AgentForgeLoader {
     runValidation("retry refs", () -> validator.validateRetryStepRefs(workflows));
     runValidation("requirement refs", () -> validator.validateRequirements(workflows));
     runValidation("validate contracts", () -> validator.validateValidateBehaviourContracts(workflows));
+    runValidation("collection gates", () -> validator.validateCollectionGates(workflows));
   }
 
   /**
