@@ -13,7 +13,12 @@ import assert from 'node:assert/strict';
 import {mkdtempSync, existsSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
-import {buildJavadocVersions, isolatedMavenOpts, releaseTag} from './build-javadoc-versions.mjs';
+import {
+  buildJavadocVersions,
+  isolatedMavenOpts,
+  javadocBuildVersions,
+  releaseTag,
+} from './build-javadoc-versions.mjs';
 
 test('release tags are v-prefixed versions', () => {
   assert.equal(releaseTag('1.2.0'), 'v1.2.0');
@@ -82,4 +87,23 @@ test('isolatedMavenOpts: strips an inherited -Dmaven.repo.local whose VALUE cont
     isolatedMavenOpts(inherited, '/isolated/m2'),
     '-Dmaven.repo.local=/isolated/m2 -Dfoo=bar',
   );
+});
+
+test('javadocBuildVersions: no archived versions returns the active list unchanged', () => {
+  assert.deepEqual(javadocBuildVersions(['1.1.0', '1.0.0'], []), ['1.1.0', '1.0.0']);
+});
+
+test('javadocBuildVersions: appends archived versions not already active, active-first', () => {
+  assert.deepEqual(
+    javadocBuildVersions(['1.1.0'], ['1.0.0', '0.9.0']),
+    ['1.1.0', '1.0.0', '0.9.0'],
+  );
+});
+
+test('javadocBuildVersions: does not duplicate a version present in both lists', () => {
+  assert.deepEqual(javadocBuildVersions(['1.1.0', '1.0.0'], ['1.0.0']), ['1.1.0', '1.0.0']);
+});
+
+test('javadocBuildVersions: pre-first-release (no active versions) still publishes archived ones', () => {
+  assert.deepEqual(javadocBuildVersions([], ['0.9.0']), ['0.9.0']);
 });

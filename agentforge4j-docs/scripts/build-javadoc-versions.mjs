@@ -1,11 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 // Version-pinned Javadoc surfaces (design §7/§12). Every versioned docs snapshot links its API
-// references at `/javadoc/<version>/…` (pinned at cut time by the de-materialiser), so the deploy
-// must publish one frozen Javadoc surface per ACTIVE released version. Each surface is built from
-// the version's RELEASE TAG — never from `main` — so it documents exactly the API that shipped:
+// references at `/javadoc/<version>/…` (pinned at cut time by the de-materialiser) — including
+// snapshots that have since been ARCHIVED, whose frozen pages are carried forward forever, so their
+// Javadoc links must be too. The deploy therefore publishes one frozen Javadoc surface per version
+// that is either ACTIVE (versions.json) or ARCHIVED (a directory under archive/) — see
+// `javadocBuildVersions` below. Each surface is built from the version's RELEASE TAG — never from
+// `main` — so it documents exactly the API that shipped:
 //
-//   for each version in versions.json (newest first):
+//   for each version in versions.json UNION the archive/ directory listing (order not significant):
 //     1. check out the release tag `v<version>` into an isolated, gitignored source tree
 //        (a detached git worktree under .release-staging/);
 //     2. install that tag's reactor into an ISOLATED local Maven repository (never the shared
@@ -26,7 +29,7 @@
 // Run via `npm run javadoc:versions` (usually from the deploy workflow, before assemble-site).
 
 import {execFileSync} from 'node:child_process';
-import {cpSync, mkdirSync, readFileSync, rmSync} from 'node:fs';
+import {cpSync, mkdirSync, readdirSync, readFileSync, rmSync} from 'node:fs';
 import {join} from 'node:path';
 import {
   MODULE_ROOT,
@@ -35,6 +38,7 @@ import {
   pathExists,
   validateVersion,
 } from './release-paths.mjs';
+import {ARCHIVE_ROOT} from './archive-transition.mjs';
 
 const REPO_ROOT = join(MODULE_ROOT, '..');
 /** Where the per-version surfaces land for assemble-site.mjs. */
@@ -97,6 +101,10 @@ export function withTagWorktree(version, fn) {
   const srcDir = join(SRC_ROOT, version);
   git(['rev-parse', '--verify', `refs/tags/${tag}`]); // fail fast: the release tag must exist
   rmSync(srcDir, {recursive: true, force: true});
+  // Clears any worktree registration left behind by a run that was killed before its own `finally`
+  // (below) could run `git worktree remove` — otherwise `git worktree add` fails hard on a
+  // registered-but-missing worktree, blocking every future run until someone prunes by hand.
+  git(['worktree', 'prune']);
   git(['worktree', 'add', '--detach', srcDir, tag], {stdio: 'inherit'});
   try {
     fn(srcDir);
@@ -144,7 +152,8 @@ function buildFromTag(version, outDir) {
 /**
  * Build the frozen Javadoc surface for every active released version.
  *
- * @param {string[]} versions released versions, newest first (versions.json)
+ * @param {string[]} versions versions to build a surface for (active + archived; see
+ *        `javadocBuildVersions`) — ordering only affects log/build order, not correctness
  * @param {{builder?: (version: string, outDir: string) => void, outRoot?: string}} [options]
  *        `builder` replaces the tag-sourced build (tests); `outRoot` overrides the output root
  * @returns {string[]} the versions built
@@ -172,8 +181,30 @@ export function buildJavadocVersions(versions, options = {}) {
   return [...versions];
 }
 
+/**
+ * The full set of versions whose Javadoc surface must be published: every ACTIVE released version
+ * (versions.json) plus every ARCHIVED version still carried forward (a directory under archive/).
+ * Archiving removes a version from versions.json, but archive-transition.mjs deliberately keeps its
+ * versioned_docs snapshot in-repo as provenance specifically so it keeps being served — this mirrors
+ * that same "archive/<v>/ exists -> keep serving it forever" rule assemble-site.mjs already applies
+ * to the docs archive, applied here to Javadoc. Pure — unit-tested without a real archive/ directory.
+ *
+ * @param {string[]} activeVersions versions.json contents (newest first)
+ * @param {string[]} archivedVersionNames directory names under archive/ (order-independent)
+ * @returns {string[]} activeVersions followed by any archived version not already active
+ */
+export function javadocBuildVersions(activeVersions, archivedVersionNames) {
+  const archivedOnly = archivedVersionNames.filter((version) => !activeVersions.includes(version));
+  return [...activeVersions, ...archivedOnly];
+}
+
 // CLI entry.
 if (process.argv[1]?.endsWith('build-javadoc-versions.mjs')) {
-  const versions = pathExists(VERSIONS_JSON) ? JSON.parse(readFileSync(VERSIONS_JSON, 'utf8')) : [];
-  buildJavadocVersions(versions);
+  const active = pathExists(VERSIONS_JSON) ? JSON.parse(readFileSync(VERSIONS_JSON, 'utf8')) : [];
+  const archivedVersionNames = pathExists(ARCHIVE_ROOT)
+    ? readdirSync(ARCHIVE_ROOT, {withFileTypes: true})
+        .filter((entry) => entry.isDirectory())
+        .map((entry) => entry.name)
+    : [];
+  buildJavadocVersions(javadocBuildVersions(active, archivedVersionNames));
 }

@@ -11,7 +11,12 @@
 //      repo tree while the callback runs, that it is gone immediately after a successful run, and that
 //      a THROWING callback (what a failed `mvnw install` looks like) still leaves it removed;
 //   4. assert a missing release tag fails BEFORE any worktree is created;
-//   5. delete the throwaway tag and assert `git worktree list` is back to the pre-state.
+//   5. simulate an ABNORMALLY KILLED run (the process dies before its own `finally` can run `git
+//      worktree remove`, e.g. Ctrl+C mid-`mvnw install`): manufacture a worktree, then delete its
+//      directory directly (bypassing `git worktree remove`) so it is registered-but-missing, and
+//      assert the next withTagWorktree call recovers (via `git worktree prune`) instead of failing
+//      hard on git's "already registered" error;
+//   6. delete the throwaway tag and assert `git worktree list` is back to the pre-state.
 //
 // Does not run a real Maven install — the tag-checkout/cleanup lifecycle is what's proven here; the
 // Maven install + the tag's own build-javadoc.mjs step is exercised for real only by an actual release
@@ -19,7 +24,7 @@
 
 import assert from 'node:assert/strict';
 import {execFileSync} from 'node:child_process';
-import {existsSync} from 'node:fs';
+import {existsSync, rmSync} from 'node:fs';
 import {join} from 'node:path';
 import {releaseTag, withTagWorktree} from './build-javadoc-versions.mjs';
 import {MODULE_ROOT, validateVersion} from './release-paths.mjs';
@@ -84,6 +89,31 @@ function main() {
       /simulated build failure/,
     );
     assert.ok(!existsSync(srcDirOnFailure), 'the worktree must be removed even when the callback throws');
+
+    // Crash recovery: an abnormally killed run leaves the worktree directory deleted from disk but
+    // still REGISTERED with git (a real kill never runs `git worktree remove`). Manufacture that
+    // state directly, then assert the next real withTagWorktree call recovers rather than failing on
+    // git's "already registered" error.
+    let srcDirForCrash;
+    withTagWorktree(SCRATCH_VERSION, (srcDir) => {
+      srcDirForCrash = srcDir;
+    });
+    execFileSync('git', ['worktree', 'add', '--detach', srcDirForCrash, SCRATCH_TAG], {
+      cwd: REPO_ROOT,
+      stdio: 'inherit',
+    });
+    rmSync(srcDirForCrash, {recursive: true, force: true}); // the crash: directory gone, git still thinks it's there
+    withTagWorktree(SCRATCH_VERSION, (srcDir) => {
+      assert.ok(
+        existsSync(join(srcDir, 'agentforge4j-docs', 'package.json')),
+        'the recovered worktree must contain the real checked-out repo tree',
+      );
+    });
+    assert.ok(!existsSync(srcDirForCrash), 'the worktree must be removed after the recovered run');
+    console.log(
+      '[javadoc-versions-scratch] recovered from a registered-but-missing worktree (simulated crash) ' +
+        'via git worktree prune.',
+    );
 
     console.log(
       '[javadoc-versions-scratch] withTagWorktree proven against a real tag: real checkout, ' +

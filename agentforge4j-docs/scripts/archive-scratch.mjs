@@ -34,6 +34,13 @@ import {
 
 const REPO_ROOT = join(MODULE_ROOT, '..');
 const SCRATCH_VERSION = validateVersion(process.argv[2] || '0.0.0-scratch');
+// Synthetic "newer" placeholders (never staged/cut for real — they exist only as versions.json
+// entries) so the freshly-cut scratch version is not itself the newest/immediately-prior release.
+// archiveTransition() now refuses to archive a version supportWindow() classifies as supported, and
+// a lone freshly-cut version is always that — exactly what two subsequent real releases would fix
+// in production. Wiped out by the byte-identical versions.json restore in `finally` below.
+const SCRATCH_NEWER_1 = validateVersion('9.9.9-scratch-newer-1');
+const SCRATCH_NEWER_2 = validateVersion('9.9.9-scratch-newer-2');
 
 function gitStatus() {
   return execFileSync('git', ['status', '--porcelain'], {cwd: REPO_ROOT, encoding: 'utf8'});
@@ -103,6 +110,12 @@ function main() {
     // 2. Manufacture the scratch version (materialised, exactly like a real cut).
     stage(SCRATCH_VERSION);
     cut(SCRATCH_VERSION);
+    const versionsAfterCut = JSON.parse(readFileSync(VERSIONS_JSON, 'utf8'));
+    writeFileSync(
+      VERSIONS_JSON,
+      `${JSON.stringify([SCRATCH_NEWER_2, SCRATCH_NEWER_1, ...versionsAfterCut], null, 2)}\n`,
+      'utf8',
+    );
 
     // 3. The real transition.
     archiveTransition(SCRATCH_VERSION);

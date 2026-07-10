@@ -22,6 +22,7 @@ import {execFileSync} from 'node:child_process';
 import {cpSync, mkdirSync, readFileSync, rmSync, writeFileSync} from 'node:fs';
 import {join} from 'node:path';
 import {
+  DOCUSAURUS_BIN,
   MODULE_ROOT,
   STAGING_ROOT,
   VERSIONS_JSON,
@@ -30,12 +31,17 @@ import {
   pathExists,
   validateVersion,
 } from './release-paths.mjs';
+import {supportWindow} from './support-window.mjs';
 
 /** The committed archive artifacts (design §7): `archive/<v>/` + `archive/<v>.redirects.json`. */
 export const ARCHIVE_ROOT = join(MODULE_ROOT, 'archive');
-// The Docusaurus CLI entry, run directly via node — no shell, so arguments cannot be shell-interpreted.
-const DOCUSAURUS_BIN = join(MODULE_ROOT, 'node_modules', '@docusaurus', 'core', 'bin', 'docusaurus.mjs');
+const LTS_JSON = join(MODULE_ROOT, 'lts.json');
 const EXPORT_BUILD = join(STAGING_ROOT, 'archive-build');
+
+/** Read a version-list JSON file (versions.json / lts.json), or [] if absent. */
+function readVersionList(path) {
+  return pathExists(path) ? JSON.parse(readFileSync(path, 'utf8')) : [];
+}
 
 /**
  * Derive the page routes of an exported site from its file listing: every `index.html` directory is
@@ -77,9 +83,19 @@ export function archiveTransition(version) {
   if (!pathExists(join(VERSIONED_DOCS, `version-${version}`))) {
     throw new Error(`archive-transition: no versioned snapshot for '${version}' (versioned_docs/version-${version} missing)`);
   }
-  const versions = pathExists(VERSIONS_JSON) ? JSON.parse(readFileSync(VERSIONS_JSON, 'utf8')) : [];
+  const versions = readVersionList(VERSIONS_JSON);
   if (!versions.includes(version)) {
     throw new Error(`archive-transition: '${version}' is not in versions.json (already archived, or never released)`);
+  }
+  // support-window.mjs is the policy's own source of truth for what may leave the active build (see
+  // its header comment): the newest stable, the one immediately prior, and any LTS version are
+  // supported and must not be archived — only a version it classifies as archived may transition.
+  const {supported} = supportWindow(versions, readVersionList(LTS_JSON));
+  if (supported.includes(version)) {
+    throw new Error(
+      `archive-transition: '${version}' is still supported per supportWindow() (newest stable, the ` +
+        'immediately-prior release, or LTS) — refusing to archive a version that policy says must stay live',
+    );
   }
   const artifactDir = join(ARCHIVE_ROOT, version);
   const manifestPath = join(ARCHIVE_ROOT, `${version}.redirects.json`);

@@ -159,3 +159,77 @@ test('redirect stub collision guard fails closed instead of overwriting a live p
     '<html>still live</html>',
   );
 });
+
+test('an archived version carried in releasedVersions still publishes its /javadoc/<v>/ surface, without becoming the /latest source', () => {
+  // Mirrors what main() does in production: releasedVersions is the union of active AND archived
+  // versions (via build-javadoc-versions.mjs's javadocBuildVersions), active-first — 1.0.0 has left
+  // versions.json (archived) but its docs archive is carried forward, so its Javadoc must be too.
+  const {root, buildDir, javadocDir, siteDir} = fixture();
+  const javadocVersionsDir = join(root, 'javadoc-versions');
+  for (const version of ['1.1.0', '1.0.0']) {
+    mkdirSync(join(javadocVersionsDir, version), {recursive: true});
+    writeFileSync(join(javadocVersionsDir, version, 'index.html'), `<html>javadoc ${version}</html>`);
+  }
+  const archiveDir = join(root, 'archive');
+  mkdirSync(join(archiveDir, '1.0.0'), {recursive: true});
+  writeFileSync(join(archiveDir, '1.0.0', 'index.html'), '<html>archived docs 1.0.0</html>');
+
+  assembleSite({
+    buildDir,
+    javadocDir,
+    javadocVersionsDir,
+    releasedVersions: ['1.1.0', '1.0.0'],
+    archiveDir,
+    siteDir,
+    docsEntry: '/docs/1.1.0/',
+    customDomain: null,
+  });
+
+  assert.equal(
+    readFileSync(join(siteDir, 'javadoc', '1.0.0', 'index.html'), 'utf8'),
+    '<html>javadoc 1.0.0</html>',
+  );
+  assert.equal(
+    readFileSync(join(siteDir, 'docs', 'archive', '1.0.0', 'index.html'), 'utf8'),
+    '<html>archived docs 1.0.0</html>',
+  );
+  // Only releasedVersions[0] (the true newest ACTIVE version) sources /latest — an archived version
+  // must never become the alias target.
+  assert.equal(
+    readFileSync(join(siteDir, 'javadoc', 'latest', 'index.html'), 'utf8'),
+    '<html>javadoc 1.1.0</html>',
+  );
+});
+
+test('writeRedirectStubs fails closed on a manifest entry that is not rooted at /docs/ or contains a `..` segment', () => {
+  const {root, buildDir, javadocDir, siteDir} = fixture();
+  const archiveDir = join(root, 'archive');
+  mkdirSync(join(archiveDir, '1.0.0'), {recursive: true});
+  writeFileSync(join(archiveDir, '1.0.0', 'index.html'), '<html>archived</html>');
+  writeFileSync(
+    join(archiveDir, '1.0.0.redirects.json'),
+    JSON.stringify([{from: '/docs/1.0.0/../../../etc/passwd', to: '/docs/archive/1.0.0'}]),
+  );
+
+  const exitCodes = [];
+  const fakeExit = (code) => {
+    exitCodes.push(code);
+    throw new Error(`exit(${code})`);
+  };
+  assert.throws(
+    () =>
+      assembleSite({
+        buildDir,
+        javadocDir,
+        archiveDir,
+        siteDir,
+        docsEntry: '/docs/next/',
+        customDomain: null,
+        exit: fakeExit,
+      }),
+    /exit\(1\)/,
+  );
+  assert.deepEqual(exitCodes, [1]);
+  // The traversal segment must never be resolved into a real write outside siteDir.
+  assert.ok(!existsSync(join(root, 'etc')));
+});

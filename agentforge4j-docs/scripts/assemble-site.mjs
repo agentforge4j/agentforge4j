@@ -6,7 +6,7 @@
 //   _site/
 //     docs/          <- the Docusaurus build (baseUrl /docs/, so build/* maps under /docs/)
 //     javadoc/next/  <- the aggregate Javadoc surface (build-javadoc output)
-//     javadoc/<v>/   <- a version-pinned Javadoc surface per released version (build-javadoc-versions.mjs)
+//     javadoc/<v>/   <- a version-pinned Javadoc surface per active OR archived version (build-javadoc-versions.mjs)
 //     javadoc/latest/<- the moving alias (newest stable once one exists, else mirrors next)
 //     docs/archive/  <- carried-forward frozen versions (design §7; no-op until archives exist), plus
 //                        static redirect stubs at each archived version's old active address
@@ -14,9 +14,11 @@
 //     CNAME          <- the custom domain, ONLY when DOCS_CUSTOM_DOMAIN is set (default: omitted)
 //     .nojekyll      <- disable Jekyll so files/dirs starting with _ are served
 //
-// Because javadoc is rebuilt from source on every deploy and the archive is carried forward here, a
-// routine docs redeploy never drops /javadoc/** or /docs/archive/** — the additive-composition
-// guarantee on a full-replace host. Fails closed if a required input is missing.
+// Because javadoc is rebuilt from source on every deploy (for both active AND archived versions —
+// `main()` below and build-javadoc-versions.mjs's own CLI entry both compute the same active-plus-
+// archived union via the shared `javadocBuildVersions` helper) and the docs archive is carried
+// forward here, a routine docs redeploy never drops /javadoc/** or /docs/archive/** — the
+// additive-composition guarantee on a full-replace host. Fails closed if a required input is missing.
 //
 // Run via `node scripts/assemble-site.mjs` (usually from the deploy workflow).
 
@@ -25,7 +27,8 @@ import {dirname, join, resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {supportWindow} from './support-window.mjs';
 import {docsEntryPath} from './redirect-config.mjs';
-import {JAVADOC_VERSIONS_OUT} from './build-javadoc-versions.mjs';
+import {JAVADOC_VERSIONS_OUT, javadocBuildVersions} from './build-javadoc-versions.mjs';
+import {ARCHIVE_ROOT} from './archive-transition.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const MODULE_ROOT = resolve(here, '..');
@@ -33,8 +36,6 @@ const REPO_ROOT = resolve(MODULE_ROOT, '..');
 
 const BUILD_DIR = join(MODULE_ROOT, 'build');
 const JAVADOC_DIR = join(REPO_ROOT, 'agentforge4j-docs-javadoc', 'build-javadoc', 'next');
-// Optional committed/carried-forward frozen versions (design §7). Absent pre-0.1.0.
-const ARCHIVE_DIR = join(MODULE_ROOT, 'archive');
 const SITE_DIR = join(MODULE_ROOT, '_site');
 
 // Custom-domain opt-in. A CNAME file claims the domain for this Pages site, and one domain can
@@ -57,6 +58,18 @@ const DOCS_ENTRY = `/docs/${docsEntryPath(
   supportWindow(RELEASED_VERSIONS, readVersionList(join(MODULE_ROOT, 'lts.json'))),
 )}/`;
 
+// Every version whose Javadoc surface must be present: RELEASED_VERSIONS (active) plus any archived
+// version (a directory under archive/) — see javadocBuildVersions. Kept separate from
+// RELEASED_VERSIONS itself, which stays active-only and must not include archived versions: it also
+// drives DOCS_ENTRY/supportWindow above, and `latestSource` inside assembleSite (an archived version
+// must never become the /latest alias target).
+const ARCHIVED_VERSION_NAMES = existsSync(ARCHIVE_ROOT)
+  ? readdirSync(ARCHIVE_ROOT, {withFileTypes: true})
+      .filter((entry) => entry.isDirectory())
+      .map((entry) => entry.name)
+  : [];
+const JAVADOC_VERSIONS_TO_PUBLISH = javadocBuildVersions(RELEASED_VERSIONS, ARCHIVED_VERSION_NAMES);
+
 function requireDir(path, what, hint) {
   if (!existsSync(path)) {
     console.error(`[assemble-site] missing ${what}: ${path}`);
@@ -75,6 +88,16 @@ function redirectHtml(to) {
   );
 }
 
+// A manifest entry is trusted to become a filesystem path segment, so it is held to the same
+// fail-closed path-safety standard as every other version/path input in these scripts
+// (release-paths.mjs's `validateVersion`): rooted at /docs/, no `..` traversal segment. The only
+// production writer (redirectManifest, from a validateVersion'd version + real page routes) already
+// satisfies this — the check guards `archive/*.redirects.json` being a plain committed JSON file a
+// future hand-edit or merge-conflict resolution could otherwise corrupt undetected.
+function isSafeManifestPath(path) {
+  return typeof path === 'string' && path.startsWith('/docs/') && !path.split('/').includes('..');
+}
+
 /**
  * Publish an archived version's redirect manifest as static stub pages: every page route of the
  * version's old active address (`/docs/<v>/...`) permanently forwards to its archive mount
@@ -86,6 +109,12 @@ function redirectHtml(to) {
 function writeRedirectStubs(siteDir, manifestPath, exit = process.exit) {
   const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
   for (const {from, to} of manifest) {
+    if (!isSafeManifestPath(from) || !isSafeManifestPath(to)) {
+      console.error(`[assemble-site] refusing an unsafe redirect manifest entry: ${JSON.stringify({from, to})}`);
+      console.error('  Both `from` and `to` must be rooted at /docs/ with no `..` segments.');
+      exit(1);
+      return manifest.length;
+    }
     const dir = join(siteDir, ...from.split('/').filter(Boolean));
     const stub = join(dir, 'index.html');
     // A stub must never shadow a live page. The transition removes the version from versions.json
@@ -135,10 +164,15 @@ export function assembleSite({
   // 1. Docs at /docs/ (the Docusaurus build already prefixes every route with baseUrl /docs/).
   cpSync(buildDir, join(siteDir, 'docs'), {recursive: true});
 
-  // 2. Javadoc at /javadoc/next/, one version-pinned surface per released version (built from each
-  //    release tag by build-javadoc-versions.mjs — the frozen docs snapshots link these), and the
-  //    moving /javadoc/latest/ alias: the newest stable's surface once one exists, else mirrors next.
+  // 2. Javadoc at /javadoc/next/, one version-pinned surface per entry in `releasedVersions` (the
+  //    frozen docs snapshots link these), and the moving /javadoc/latest/ alias: the newest stable's
+  //    surface once one exists, else mirrors next. `main()` below passes the union of active AND
+  //    archived versions here (via build-javadoc-versions.mjs's `javadocBuildVersions`) so an
+  //    archived version's Javadoc is carried forward exactly like its docs archive is in step 3 —
+  //    kept as a caller-supplied list (not re-derived from `archiveDir` in here) so this function
+  //    stays independently testable against fixtures that don't care about Javadoc at all.
   cpSync(javadocDir, join(siteDir, 'javadoc', 'next'), {recursive: true});
+  const archiveEntries = existsSync(archiveDir) ? readdirSync(archiveDir, {withFileTypes: true}) : [];
   for (const version of releasedVersions) {
     const src = join(javadocVersionsDir, version);
     requireDir(
@@ -157,7 +191,7 @@ export function assembleSite({
   if (existsSync(archiveDir)) {
     let archived = 0;
     let stubs = 0;
-    for (const entry of readdirSync(archiveDir, {withFileTypes: true})) {
+    for (const entry of archiveEntries) {
       if (entry.isDirectory()) {
         cpSync(join(archiveDir, entry.name), join(siteDir, 'docs', 'archive', entry.name), {recursive: true});
         archived += 1;
@@ -186,8 +220,8 @@ function main() {
     buildDir: BUILD_DIR,
     javadocDir: JAVADOC_DIR,
     javadocVersionsDir: JAVADOC_VERSIONS_OUT,
-    releasedVersions: RELEASED_VERSIONS,
-    archiveDir: ARCHIVE_DIR,
+    releasedVersions: JAVADOC_VERSIONS_TO_PUBLISH,
+    archiveDir: ARCHIVE_ROOT,
     siteDir: SITE_DIR,
     docsEntry: DOCS_ENTRY,
     customDomain: CUSTOM_DOMAIN,
