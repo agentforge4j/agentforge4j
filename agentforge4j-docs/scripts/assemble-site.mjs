@@ -63,44 +63,67 @@ function requireDir(path, what, hint) {
   }
 }
 
-function main() {
-  requireDir(BUILD_DIR, 'Docusaurus build', 'Run `npm run build` first.');
-  requireDir(JAVADOC_DIR, 'Javadoc surface', 'Run `npm run javadoc` first.');
+/**
+ * Assemble the Pages artifact into `siteDir` from the given inputs. Pure with respect to module
+ * location (every path is a parameter), so it is directly unit-testable against fixture
+ * directories; `main()` below is the real CLI entry, computing the live paths.
+ *
+ * @param {{buildDir: string, javadocDir: string, archiveDir: string, siteDir: string,
+ *          docsEntry: string, customDomain: string|null}} options
+ */
+export function assembleSite({buildDir, javadocDir, archiveDir, siteDir, docsEntry, customDomain}) {
+  requireDir(buildDir, 'Docusaurus build', 'Run `npm run build` first.');
+  requireDir(javadocDir, 'Javadoc surface', 'Run `npm run javadoc` first.');
 
-  rmSync(SITE_DIR, {recursive: true, force: true});
-  mkdirSync(SITE_DIR, {recursive: true});
+  rmSync(siteDir, {recursive: true, force: true});
+  mkdirSync(siteDir, {recursive: true});
 
   // 1. Docs at /docs/ (the Docusaurus build already prefixes every route with baseUrl /docs/).
-  cpSync(BUILD_DIR, join(SITE_DIR, 'docs'), {recursive: true});
+  cpSync(buildDir, join(siteDir, 'docs'), {recursive: true});
 
   // 2. Javadoc at /javadoc/next/ and the moving /javadoc/latest/ (pre-release: mirror next).
-  cpSync(JAVADOC_DIR, join(SITE_DIR, 'javadoc', 'next'), {recursive: true});
-  cpSync(JAVADOC_DIR, join(SITE_DIR, 'javadoc', 'latest'), {recursive: true});
+  cpSync(javadocDir, join(siteDir, 'javadoc', 'next'), {recursive: true});
+  cpSync(javadocDir, join(siteDir, 'javadoc', 'latest'), {recursive: true});
 
   // 3. Carry archived versions forward so a redeploy never drops them (no-op until they exist).
-  if (existsSync(ARCHIVE_DIR)) {
-    cpSync(ARCHIVE_DIR, join(SITE_DIR, 'docs', 'archive'), {recursive: true});
+  if (existsSync(archiveDir)) {
+    cpSync(archiveDir, join(siteDir, 'docs', 'archive'), {recursive: true});
     console.log('[assemble-site] carried forward archived versions');
   }
 
   // 4. Root redirect, custom domain (opt-in only), and Jekyll opt-out.
   writeFileSync(
-    join(SITE_DIR, 'index.html'),
+    join(siteDir, 'index.html'),
     `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">` +
-      `<meta http-equiv="refresh" content="0; url=${DOCS_ENTRY}">` +
-      `<link rel="canonical" href="${DOCS_ENTRY}"><title>AgentForge4j</title></head>` +
-      `<body><a href="${DOCS_ENTRY}">Continue to the documentation</a></body></html>\n`,
+      `<meta http-equiv="refresh" content="0; url=${docsEntry}">` +
+      `<link rel="canonical" href="${docsEntry}"><title>AgentForge4j</title></head>` +
+      `<body><a href="${docsEntry}">Continue to the documentation</a></body></html>\n`,
     'utf8',
   );
-  if (CUSTOM_DOMAIN) {
-    writeFileSync(join(SITE_DIR, 'CNAME'), `${CUSTOM_DOMAIN}\n`, 'utf8');
-    console.log(`[assemble-site] custom domain opted in: CNAME ${CUSTOM_DOMAIN}`);
+  if (customDomain) {
+    writeFileSync(join(siteDir, 'CNAME'), `${customDomain}\n`, 'utf8');
+    console.log(`[assemble-site] custom domain opted in: CNAME ${customDomain}`);
   } else {
     console.log('[assemble-site] no custom domain configured — CNAME omitted (set DOCS_CUSTOM_DOMAIN to opt in)');
   }
-  writeFileSync(join(SITE_DIR, '.nojekyll'), '', 'utf8');
+  writeFileSync(join(siteDir, '.nojekyll'), '', 'utf8');
 
-  console.log(`[assemble-site] composed ${SITE_DIR}: /docs, /javadoc/{next,latest}, root redirect -> ${DOCS_ENTRY}`);
+  console.log(`[assemble-site] composed ${siteDir}: /docs, /javadoc/{next,latest}, root redirect -> ${docsEntry}`);
 }
 
-main();
+function main() {
+  assembleSite({
+    buildDir: BUILD_DIR,
+    javadocDir: JAVADOC_DIR,
+    archiveDir: ARCHIVE_DIR,
+    siteDir: SITE_DIR,
+    docsEntry: DOCS_ENTRY,
+    customDomain: CUSTOM_DOMAIN,
+  });
+}
+
+// CLI entry. Guarded so assembleSite() can be unit-tested against fixture directories without
+// requiring a real Docusaurus build / Javadoc surface.
+if (process.argv[1]?.endsWith('assemble-site.mjs')) {
+  main();
+}
