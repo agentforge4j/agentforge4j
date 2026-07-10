@@ -19,10 +19,15 @@ import com.agentforge4j.util.Validate;
  * @param enclosingWorkflow        the workflow definition enclosing {@code step} (root, or the active
  *                                 nested workflow), used to resolve context sources by reference
  * @param priorRequestContextExpansions number of context expansions requested by earlier
- *                                 {@code RequestContextCommand} instances in this batch (each
- *                                 requested selector counts as one expansion; 0 for the first such
- *                                 command and for any other command type); used to enforce the
- *                                 per-invocation expansion limit across the whole batch
+ *                                 {@code RequestContextCommand} instances for this step invocation
+ *                                 (each requested selector counts as one expansion; 0 for the first
+ *                                 such command and for any other command type) — the count persisted
+ *                                 under {@code ReservedContextKeys#expansionCountKey}, so it includes
+ *                                 both earlier commands in this batch and any earlier
+ *                                 command-application batch for the same step execution uid (a
+ *                                 pause/resume or retry that reuses it); used to enforce
+ *                                 {@code maxExpansions} across the whole step invocation, not just
+ *                                 one batch
  */
 public record CommandApplicationRequest(
     WorkflowState state,

@@ -36,14 +36,15 @@ import java.util.Optional;
  *
  * <p><strong>Expansion limit:</strong> the workflow-declared
  * {@link ContextSelection#effectiveMaxExpansions()} bounds how many requested selectors are
- * evaluated at all within a single command-application batch — each requested selector is one
- * expansion, so packing many selectors into one {@code RequestContextCommand} cannot evade the
- * limit within that batch. The count resets on the next batch (see
- * {@link ContextSelection#maxExpansions()}), so it does not bound expansions across a step's full
- * invocation lifecycle if that step pauses/resumes or is retried. Each selector's 1-based expansion
- * ordinal is
- * {@link CommandApplicationRequest#priorRequestContextExpansions()} (the count consumed by earlier
- * commands in the batch, computed by {@link com.agentforge4j.runtime.command.CommandApplier}) plus
+ * evaluated at all across the step invocation's whole lifetime — each requested selector is one
+ * expansion, so packing many selectors into one {@code RequestContextCommand}, or spreading them
+ * across separate command-application batches for the same step execution uid (a pause/resume or
+ * retry), cannot evade the limit. The count is persisted under
+ * {@code ReservedContextKeys#expansionCountKey} and survives across batches; a genuinely new step
+ * invocation gets a new step execution uid, so its count starts fresh. Each selector's 1-based
+ * expansion ordinal is
+ * {@link CommandApplicationRequest#priorRequestContextExpansions()} (the persisted count consumed
+ * by earlier commands, computed by {@link com.agentforge4j.runtime.command.CommandApplier}) plus
  * its position in this command's selector list; the ordinal is checked against the limit
  * <em>before</em> the selector-scope check, so exceeding the limit is reported as
  * {@code MAX_EXPANSIONS_REACHED} even for out-of-scope selectors. A step with no
