@@ -4,6 +4,7 @@ package com.agentforge4j.core.workflow.reachability;
 import com.agentforge4j.core.workflow.Executable;
 import com.agentforge4j.core.workflow.WorkflowDefinition;
 import com.agentforge4j.core.workflow.step.StepDefinition;
+import com.agentforge4j.core.workflow.step.behaviour.BranchBehaviour;
 import com.agentforge4j.core.workflow.step.behaviour.WorkflowBehaviour;
 import com.agentforge4j.core.workflow.step.blueprint.BlueprintDefinition;
 import com.agentforge4j.core.workflow.step.blueprint.BlueprintRef;
@@ -25,15 +26,19 @@ import java.util.Set;
  * <ul>
  *   <li>a {@link StepDefinition} contributes a location, and a {@code WORKFLOW}-behaviour step
  *       descends into the resolved sub-workflow;</li>
+ *   <li>a {@code BranchBehaviour} step descends into its routable children (exact-match, predicate,
+ *       and default targets) in the same container;</li>
  *   <li>a {@link BlueprintRef} descends into the referenced blueprint;</li>
  *   <li>an inline {@link WorkflowDefinition} descends into its steps;</li>
  *   <li>an inline {@link BlueprintDefinition} is <em>not</em> descended — it is not directly
  *       executable, so its steps are unreachable at runtime.</li>
  * </ul>
  *
- * <p>Locations are deduplicated by their defining-container path: a single definition reached by more
- * than one path to the same container collapses to one location, while the same step id defined at
- * two different structural locations stays distinct (and therefore ambiguous).
+ * <p>Locations are deduplicated by their defining-container path <em>and definition identity</em>: a
+ * single definition reached by more than one path to the same container collapses to one location,
+ * while the same step id defined at two different structural locations — or by two distinct
+ * definitions at the same container path (e.g. two branch arms each defining a step with the same
+ * id) — stays distinct (and therefore ambiguous).
  *
  * <p>Cycle safety is by visited sets, not a depth bound, so an acyclic graph of any depth is walked
  * in full while a cyclic graph terminates: sub-workflows are entered at most once (a global
@@ -147,6 +152,12 @@ public final class ReachableStepGraph {
             if (sub != null) {
               enterWorkflow(sub, "wf:" + sub.id(), new HashSet<>());
             }
+          } else if (step.behaviour() instanceof BranchBehaviour branchBehaviour) {
+            // A branch's routable children (exact-match targets, predicate targets, the default
+            // branch) are reachable at runtime exactly like any sibling step in this same
+            // container — descend them here, or they (and any gate on them) are invisible to
+            // resume/gate resolution and the duplicate-id guard.
+            collect(branchBehaviour.childExecutables(), enclosing, containerKey, blueprintPath);
           }
         } else if (executable instanceof BlueprintRef ref) {
           BlueprintDefinition blueprint = enclosing.blueprints().get(ref.blueprintId());
@@ -165,7 +176,29 @@ public final class ReachableStepGraph {
 
     private void recordStep(StepDefinition step, String containerKey) {
       String location = containerKey + "/step:" + step.stepId();
-      byLocation.putIfAbsent(location, new ReachableStep(step.stepId(), location, step));
+      ReachableStep existing = byLocation.get(location);
+      if (existing == null) {
+        byLocation.put(location, new ReachableStep(step.stepId(), location, step));
+        return;
+      }
+      if (existing.step() == step) {
+        // The same definition reached via another path to the same container — one location.
+        return;
+      }
+      // A different definition occupying the same container path (e.g. two branch arms each
+      // defining a step with this id). The definitions may disagree — including on gating
+      // transitions — so keep every occurrence distinct: ambiguity detection and resolveUnique
+      // must fail closed instead of silently resolving to whichever definition was walked first.
+      int occurrence = 2;
+      String distinct = location + "#" + occurrence;
+      while (byLocation.containsKey(distinct)) {
+        if (byLocation.get(distinct).step() == step) {
+          return;
+        }
+        occurrence++;
+        distinct = location + "#" + occurrence;
+      }
+      byLocation.put(distinct, new ReachableStep(step.stepId(), distinct, step));
     }
   }
 }
