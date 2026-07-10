@@ -16,7 +16,12 @@
 //      version-<v>/` deliberately stays in-repo as provenance (design §7).
 //
 // Nothing here runs pre-`0.1.0` for real — `npm run docs:archive-scratch` proves the mechanism
-// against a manufactured scratch version and reverts (see archive-scratch.mjs).
+// against a manufactured scratch version and reverts (see archive-scratch.mjs). Running this
+// transition remains a manual, maintainer-triggered decision (it produces a committed artifact plus a
+// `versions.json` edit that must go through a real PR) — but a CI gate (archive-drift-check.mjs,
+// `npm run docs:archive-check`) automatically fails the build the moment support-window.mjs's policy
+// says a version should already be archived and `archive/` does not have it yet, so the need to run
+// this is never silently missed.
 
 import {execFileSync} from 'node:child_process';
 import {cpSync, mkdirSync, readFileSync, rmSync, writeFileSync} from 'node:fs';
