@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 //
-// Tests for the product-name separation vocabulary (design §11). Proves the gate blocks precise
+// Tests for the product-name separation vocabulary. Proves the gate blocks precise
 // commercial identifiers, leaves the generic English words "platform"/"cloud" alone, and honours the
 // reviewed allowlist.
 
@@ -20,7 +20,7 @@ test('flags commercial vendors and the paywall term', () => {
   assert.ok(findProductNameLeaks('Add `billing-stripe`.').some((h) => h.token === 'billing-stripe'));
 });
 
-test('does NOT flag bare concept words (avoids third-party false positives, §11)', () => {
+test('does NOT flag bare concept words (avoids third-party false positives)', () => {
   // These occur in generated reference text describing third-party providers (e.g. Gemini's
   // "multi-tenant host") and must not block the build.
   assert.deepEqual(findProductNameLeaks('the default multi-tenant host'), []);

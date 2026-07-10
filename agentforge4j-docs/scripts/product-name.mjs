@@ -1,12 +1,17 @@
 // SPDX-License-Identifier: Apache-2.0
 //
-// Product-name separation vocabulary (design §11, Phase 5b). The OSS documentation must never leak the
+// Product-name separation vocabulary. The OSS documentation must never leak the
 // commercial Platform/Cloud product identity: proprietary artifact names, the hosted product names, the
 // commercial vendors, or billing/tenancy concepts the OSS framework deliberately does not carry.
 //
 // The block list targets PRECISE identifiers grounded against the live Platform/Cloud reactor
 // (agentforge4j-platform pom.xml) — never the generic English words "platform"/"cloud", which the OSS
 // docs use legitimately. A small allowlist exempts reviewed edges. Shared by the lint and its test.
+//
+// OWNER-APPROVED EXCEPTION to the no-Platform/Cloud-terms rule (same class as OD-1): this file's sole
+// purpose is enforcing that boundary — it exists so the Platform/Cloud identifiers below CANNOT
+// appear anywhere else in the OSS docs. The exact strings here are the boundary-enforcement
+// vocabulary itself, not a leak.
 
 // Precise blocked identifiers (each entry is matched case-insensitively as a whole token/phrase).
 export const BLOCKED = [
@@ -42,7 +47,7 @@ export const BLOCKED = [
   'paywall',
 ];
 
-// NOTE (design §11): the block list stays to PRECISE product/artifact/vendor identifiers. Bare concept
+// NOTE: the block list stays to PRECISE product/artifact/vendor identifiers. Bare concept
 // words — "billing", "subscription", "metering", "tenant"/"tenancy", "multi-tenant" — are deliberately
 // NOT blocked: they occur legitimately in third-party technical text surfaced by the generated
 // reference (e.g. an LLM provider's "multi-tenant host"), so blocking them produces false positives.

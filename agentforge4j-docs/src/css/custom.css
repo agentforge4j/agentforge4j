@@ -52,7 +52,7 @@
 }
 
 /*
- * Accessible syntax highlighting (design §11/§13; enforced by the pa11y-ci gate). The bundled
+ * Accessible syntax highlighting (enforced by the pa11y-ci gate). The bundled
  * prism-react-renderer themes emit low-contrast token colours as inline styles (e.g. a teal
  * `property` at 2.58:1, a pink `string` at 4.32:1), which fail WCAG 2.1 AA (1.4.3) on every code
  * token. These rules replace the token palette with one that meets >= 4.5:1 on the light and dark
