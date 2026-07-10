@@ -26,16 +26,11 @@ This directory holds the framework's architecture decision records (ADRs): short
 | [0011](0011-the-runtime-event-contract-is-the-verification-surface.md) | The runtime event contract is the verification surface | Accepted | 2026-06 |
 | [0012](0012-pre-execution-interception-and-blocked-run-resumability.md) | Pre-execution interception and blocked-run resumability | Accepted | 2026-07-09 |
 | [0013](0013-pre-1-0-clean-break-compatibility-policy.md) | Pre-1.0 clean-break compatibility policy | Accepted | 2026-07-09 |
+| [0014](0014-collection-gate-step-behaviour.md) | Collection gate step behaviour | Proposed | 2026-07-10 |
 | [0015](0015-mcp-servers-as-governed-tool-sources.md) | MCP servers as first-class governed tool sources | Accepted | 2026-07-09 |
+| [0016](0016-deterministic-token-efficiency-governance.md) | Deterministic token-efficiency governance | Proposed | 2026-07-10 |
+| [0017](0017-workflow-execution-estimation.md) | Workflow execution estimation | Proposed | 2026-07-10 |
+| [0018](0018-release-management-and-publication-sequencing.md) | Release management and publication sequencing | Proposed | 2026-07-10 |
 | [0019](0019-workflow-requirements-and-transition-enforcement.md) | Workflow requirements and step-transition enforcement | Accepted | 2026-07-09 |
 
-## Reserved numbers
-
-| ADR | Reserved for |
-|---|---|
-| 0014 | Multiple-submission collection gates |
-| 0016 | Token governance |
-| 0017 | Workflow execution estimation |
-| 0018 | Release management and versioning |
-
-Reserved records will be written when their decisions are finalised; until then the number is held so cross-references (for example ADR-0013's reference to ADR-0018) stay stable.
+Reserved numbers with no entry above are decisions still too early to draft; none remain reserved at present.
