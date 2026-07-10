@@ -36,9 +36,12 @@ import java.util.Optional;
  *
  * <p><strong>Expansion limit:</strong> the workflow-declared
  * {@link ContextSelection#effectiveMaxExpansions()} bounds how many requested selectors are
- * evaluated at all within a single step invocation's command batch — each requested selector is one
+ * evaluated at all within a single command-application batch — each requested selector is one
  * expansion, so packing many selectors into one {@code RequestContextCommand} cannot evade the
- * limit. Each selector's 1-based expansion ordinal is
+ * limit within that batch. The count resets on the next batch (see
+ * {@link ContextSelection#maxExpansions()}), so it does not bound expansions across a step's full
+ * invocation lifecycle if that step pauses/resumes or is retried. Each selector's 1-based expansion
+ * ordinal is
  * {@link CommandApplicationRequest#priorRequestContextExpansions()} (the count consumed by earlier
  * commands in the batch, computed by {@link com.agentforge4j.runtime.command.CommandApplier}) plus
  * its position in this command's selector list; the ordinal is checked against the limit
@@ -157,8 +160,9 @@ public final class RequestContextCommandHandler implements CommandHandler<Reques
     if (priorContent.isEmpty() || !changeSuffix.isEmpty()) {
       state.putContextValue(grantedKey, grantedValue(selector, content, state));
     }
-    String payload = "stepId=%s selector=%s:%s expansion=%d%s".formatted(state.getCurrentStepId(),
-        selector.kind(), selector.ref(), expansion, changeSuffix);
+    String payload = "stepId=%s selector=%s:%s variant=%s expansion=%d%s".formatted(
+        state.getCurrentStepId(), selector.kind(), selector.ref(), selector.variant(), expansion,
+        changeSuffix);
     eventRecorder.record(state.getRunId(), state.getCurrentStepId(),
         WorkflowEventType.CONTEXT_EXPANSION_GRANTED, payload, request.agentId());
     LOG.log(System.Logger.Level.DEBUG,

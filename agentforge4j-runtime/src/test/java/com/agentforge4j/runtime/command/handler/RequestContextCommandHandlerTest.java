@@ -409,6 +409,8 @@ class RequestContextCommandHandlerTest {
 
     assertThat(eventLog.getEvents("run-1").get(0).eventType())
         .isEqualTo(WorkflowEventType.CONTEXT_EXPANSION_GRANTED);
+    // The recorded variant is the DECLARED one (COMPACT_ONLY), not the requester's FULL ask.
+    assertThat(eventLog.getEvents("run-1").get(0).payload()).contains("variant=COMPACT_ONLY");
     assertThat(state.getContextValue(ReservedContextKeys.grantedKey(sourceId)))
         .get()
         .extracting(value -> ((com.agentforge4j.core.workflow.context.JsonContextValue) value).json())
