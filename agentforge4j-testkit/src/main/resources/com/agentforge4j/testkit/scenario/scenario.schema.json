@@ -72,7 +72,7 @@
         "createdFiles": { "type": "array", "items": { "type": "string" } },
         "stepVisitCounts": {
           "type": "object",
-          "additionalProperties": { "type": "integer" },
+          "additionalProperties": { "type": "integer", "minimum": 0},
           "description": "Step id -> the exact number of times it must have been visited. Use for repeat-count assertions (e.g. SPAR rounds, retry attempts) rather than simple visited/not-visited presence."
         },
         "orderedSteps": {
