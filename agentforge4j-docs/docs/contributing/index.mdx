@@ -83,14 +83,16 @@ npm run build       # build the static site; fails on broken links or anchors
 npm run check       # all of the above, in order
 ```
 
-Accessibility is a blocking gate. After a build:
+Two gates need a real Javadoc build first, so they run separately from `npm run check`:
 
 ```bash
-npm run a11y        # serves the build and checks every page against WCAG 2.1 AA (pa11y-ci)
+npm run javadoc             # builds the Javadoc surface (needs a local framework build, JDK 17)
+npm run lint:javadoc-links  # asserts every javadoc:<fqcn> reference resolves to a page that exists
+npm run a11y                # serves the build and checks every page against WCAG 2.1 AA (pa11y-ci)
 ```
 
-Every page must pass WCAG 2.1 AA. If you add a UI element or custom styling, run the accessibility
-gate before opening a pull request.
+Every page must pass WCAG 2.1 AA, and every `javadoc:` reference must resolve. If you add a UI
+element, custom styling, or a `javadoc:` reference, run these gates before opening a pull request.
 
 ## Product identity
 

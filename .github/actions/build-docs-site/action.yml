@@ -2,8 +2,9 @@ name: Build the documentation site
 description: >-
   Shared build for the docs quality gate and the Pages deploy: JDK 17 + OSS reactor install, the docs
   emitter, the examples build (snippet compile gate), the Node toolchain, the aggregate Javadoc
-  surface, the full generate/lint/type-check/test/build pipeline, and the blocking accessibility
-  gate. Both workflows consume this action so the gate and the deploy can never drift apart.
+  surface, a Javadoc link-target existence gate, the full generate/lint/type-check/test/build
+  pipeline, and the blocking accessibility gate. Both workflows consume this action so the gate and
+  the deploy can never drift apart.
 
 inputs:
   emitter-maven-phases:
@@ -64,6 +65,13 @@ runs:
       shell: bash
       working-directory: agentforge4j-docs
       run: npm run javadoc
+
+    - name: Javadoc link-target existence gate
+      # Requires the built surface from the step above — kept outside `npm run check` (like the
+      # accessibility gate below) so the fast local `check` loop never needs a Maven Javadoc build.
+      shell: bash
+      working-directory: agentforge4j-docs
+      run: npm run lint:javadoc-links
 
     - name: Generate, lint, type-check, test, and build the site
       shell: bash

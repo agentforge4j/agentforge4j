@@ -10,7 +10,11 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -63,6 +67,40 @@ class DocsEmitterTest {
     }
     assertFalse(names.contains("fake"), "the fake provider must not appear in the user-facing matrix");
     assertTrue(names.contains("openai"), "expected the openai provider to be present");
+  }
+
+  /**
+   * Drift guard: the emitted provider set must equal the reactor's registered provider modules
+   * (llm-* minus the api/fake modules, which are not providers). The emitter pom's dependency list
+   * is otherwise a hardcoded classpath — a provider module added to the reactor without a matching
+   * emitter dependency would silently vanish from the "generated from source" provider page with no
+   * failure signal. Mirrors the reverse drift guard already used for the Javadoc module table
+   * (scripts/javadoc.test.mjs), reading the same kind of root-of-truth (a pom's &lt;module&gt; list).
+   */
+  @Test
+  void providerSetMatchesTheReactorsProviderModules() throws Exception {
+    final Path rootPom = Path.of("..", "pom.xml");
+    assertTrue(Files.exists(rootPom), "expected the OSS reactor root pom at " + rootPom.toAbsolutePath());
+    final String pom = Files.readString(rootPom);
+    final Pattern modulePattern = Pattern.compile("<module>(agentforge4j-llm-[\\w-]+)</module>");
+    final Matcher matcher = modulePattern.matcher(pom);
+    final Set<String> expectedProviders = new LinkedHashSet<>();
+    while (matcher.find()) {
+      final String artifactId = matcher.group(1);
+      if ("agentforge4j-llm-api".equals(artifactId) || "agentforge4j-llm-fake".equals(artifactId)) {
+        continue; // not providers: the API module and the deterministic test-only provider
+      }
+      expectedProviders.add(artifactId.substring("agentforge4j-llm-".length()));
+    }
+    assertTrue(expectedProviders.size() >= 8, "expected to find the reactor's provider modules in " + rootPom);
+
+    final Set<String> emittedProviders = new LinkedHashSet<>();
+    providers.forEach(provider -> emittedProviders.add(provider.get("name").asText()));
+
+    assertEquals(expectedProviders, emittedProviders,
+        "emitted providers.json must match the reactor's llm-* provider modules exactly — "
+            + "a provider module was added to (or removed from) the reactor without updating "
+            + "the emitter pom's dependency list");
   }
 
   @Test

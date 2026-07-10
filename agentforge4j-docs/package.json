@@ -19,13 +19,14 @@
     "lint:nav": "node scripts/lint-nav.mjs",
     "lint:fixtures": "node scripts/validate-fixtures.mjs",
     "lint:product-name": "node scripts/lint-product-name.mjs",
+    "lint:javadoc-links": "node scripts/lint-javadoc-links.mjs",
     "lint": "npm run lint:frontmatter && npm run lint:nav && npm run lint:fixtures && npm run lint:product-name",
     "javadoc": "node scripts/build-javadoc.mjs",
     "release:stage": "node scripts/release-stage.mjs",
     "docs:scratch-cut": "node scripts/release-scratch-cut.mjs",
     "a11y": "node scripts/a11y.mjs",
     "site:assemble": "node scripts/assemble-site.mjs",
-    "test": "node --test scripts/vocab.test.mjs scripts/generate-references.test.mjs scripts/include.test.mjs scripts/fixtures.test.mjs scripts/javadoc.test.mjs scripts/dematerialize.test.mjs scripts/support-window.test.mjs scripts/product-name.test.mjs scripts/assemble-site.test.mjs",
+    "test": "node --test scripts/vocab.test.mjs scripts/generate-references.test.mjs scripts/include.test.mjs scripts/fixtures.test.mjs scripts/javadoc.test.mjs scripts/dematerialize.test.mjs scripts/support-window.test.mjs scripts/product-name.test.mjs scripts/assemble-site.test.mjs scripts/lint-javadoc-links.test.mjs",
     "check": "npm run generate && npm run lint && npm run typecheck && npm run test && npm run build"
   },
   "dependencies": {

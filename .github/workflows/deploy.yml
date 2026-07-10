@@ -10,10 +10,11 @@ name: Deploy Docs
 # and how this repository's /docs and /javadoc surfaces compose with the project website under
 # `agentforge4j.org` is not settled yet. Until it is, nothing may publish automatically: a deploy
 # happens only when a maintainer dispatches this workflow, and the artifact carries no CNAME unless
-# the dispatch environment sets DOCS_CUSTOM_DOMAIN (see scripts/assemble-site.mjs). When automatic
-# publishing is enabled later, prefer an unfiltered `push: main` trigger — the generated reference
-# and the Javadoc surface depend on essentially the whole reactor, so any path filter would let the
-# published site go silently stale.
+# the repository variable DOCS_CUSTOM_DOMAIN is set (mapped below into the assemble step; see
+# scripts/assemble-site.mjs — an unset/empty variable resolves to no CNAME, the same as today). When
+# automatic publishing is enabled later, prefer an unfiltered `push: main` trigger — the generated
+# reference and the Javadoc surface depend on essentially the whole reactor, so any path filter
+# would let the published site go silently stale.
 
 on:
   workflow_dispatch:
@@ -47,6 +48,10 @@ jobs:
 
       - name: Assemble the Pages artifact (/docs + /javadoc)
         working-directory: agentforge4j-docs
+        env:
+          # Repository (or org) Actions variable — unset/empty means no custom domain (default,
+          # since the domain composition with the project website is not settled yet).
+          DOCS_CUSTOM_DOMAIN: ${{ vars.DOCS_CUSTOM_DOMAIN }}
         run: node scripts/assemble-site.mjs
 
       - name: Upload the Pages artifact

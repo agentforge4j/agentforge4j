@@ -75,7 +75,7 @@
     {
       "prefix": "agentforge4j.llm.<provider>.*",
       "envReachable": true,
-      "description": "Per-provider LLM client configuration consumed by LlmClientWiring (e.g. api-key, base-url, default-model). Leaf names without hyphens are reachable as environment variables; hyphenated leaves are system-property only."
+      "description": "Per-provider LLM client configuration consumed by LlmClientWiring (e.g. api.key, base.url, default.model, connect.timeout — all dot-separated, matching LlmClientWiring's own canonical lowercase-dotted form). These leaves are unrelated to the Spring Boot starter's hyphenated equivalents (api-key, base-url), which are bound separately via Spring's relaxed Binder and never pass through ConfigReader/LlmClientWiring."
     }
   ]
 }
