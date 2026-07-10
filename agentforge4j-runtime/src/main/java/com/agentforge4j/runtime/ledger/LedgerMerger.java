@@ -94,7 +94,14 @@ public final class LedgerMerger {
 
   /**
    * Writes {@code merged} into {@code state}'s reserved ledger context key for {@code ledger}, as
-   * system-generated content.
+   * {@link ContextProvenance#SYSTEM_GENERATED} content. Deliberate: the merge algorithm this class
+   * runs is deterministic and no LLM participates in it (see the class Javadoc). No production
+   * command currently calls this method to submit a ledger delta — that write path is unwired in this
+   * runtime version, so this stance concerns only test and future callers; it must be re-validated
+   * once a real delta-submission path exists, specifically whether the SOURCE of a delta (as opposed
+   * to the deterministic merge step itself) can be LLM-authored and needs a distinct provenance label,
+   * the same distinction {@link com.agentforge4j.runtime.command.handler.RequestContextCommandHandler}
+   * makes for granted content.
    *
    * @param state  run state to write to; must not be {@code null}
    * @param ledger the ledger declaration; must not be {@code null}

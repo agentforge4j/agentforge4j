@@ -51,7 +51,12 @@ public final class CompactSiblingStore {
 
   /**
    * Writes {@code sibling} to the reserved compact-sibling context key for {@code sourceId}, as
-   * system-generated content.
+   * {@link ContextProvenance#SYSTEM_GENERATED} content. Deliberate, not a default: a compact sibling
+   * is a deterministic, non-LLM transform ({@code DeterministicExtract}) of a whole-ledger
+   * {@code LEDGER_SECTION} source (the only source kind {@code COMPACT} steps may target), and ledger
+   * content itself is produced only by {@code LedgerMerger}'s deterministic merge — no LLM
+   * participates in either step, so the compact form inherits the same framework-owned trust level as
+   * its source.
    *
    * @param state    run state to write to; must not be {@code null}
    * @param sourceId the canonical source id; must not be blank

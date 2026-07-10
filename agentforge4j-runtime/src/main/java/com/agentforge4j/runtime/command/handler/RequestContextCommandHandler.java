@@ -11,7 +11,6 @@ import com.agentforge4j.core.workflow.state.ReservedContextKeys;
 import com.agentforge4j.core.workflow.state.WorkflowState;
 import com.agentforge4j.core.workflow.step.ContextSelection;
 import com.agentforge4j.core.workflow.step.ContextSelector;
-import com.agentforge4j.core.workflow.step.ContextSourceKind;
 import com.agentforge4j.runtime.command.CommandApplicationRequest;
 import com.agentforge4j.runtime.command.CommandApplicationResult;
 import com.agentforge4j.runtime.command.CommandHandler;
@@ -156,7 +155,7 @@ public final class RequestContextCommandHandler implements CommandHandler<Reques
           .formatted(ContextFingerprint.of(priorContent.get()), ContextFingerprint.of(content));
     }
     if (priorContent.isEmpty() || !changeSuffix.isEmpty()) {
-      state.putContextValue(grantedKey, grantedValue(selector.kind(), content));
+      state.putContextValue(grantedKey, grantedValue(selector, content, state));
     }
     String payload = "stepId=%s selector=%s:%s expansion=%d%s".formatted(state.getCurrentStepId(),
         selector.kind(), selector.ref(), expansion, changeSuffix);
@@ -189,12 +188,47 @@ public final class RequestContextCommandHandler implements CommandHandler<Reques
    * are arbitrary text, so both store as {@link StringContextValue} — storing them as JSON would
    * hand downstream JSON consumers unparseable content far from the cause.
    */
-  private static ContextValue grantedValue(ContextSourceKind kind, String content) {
-    return switch (kind) {
-      case LEDGER_SECTION, ARTIFACT, STATE_KEY ->
-          new JsonContextValue(content, ContextProvenance.SYSTEM_GENERATED);
-      case STEP_OUTPUT, CONTEXT_PACK ->
-          new StringContextValue(content, ContextProvenance.SYSTEM_GENERATED);
+  private static ContextValue grantedValue(ContextSelector selector, String content,
+      WorkflowState state) {
+    ContextProvenance provenance = grantedProvenance(selector, state);
+    return switch (selector.kind()) {
+      case LEDGER_SECTION, ARTIFACT, STATE_KEY -> new JsonContextValue(content, provenance);
+      case STEP_OUTPUT, CONTEXT_PACK -> new StringContextValue(content, provenance);
+    };
+  }
+
+  /**
+   * Determines the provenance to stamp on granted content, matching {@link SetContextCommandHandler}'s
+   * re-stamping precedent so a grant can never elevate untrusted content to a trusted label by copying
+   * it into the reserved namespace.
+   *
+   * <ul>
+   *   <li>{@code STATE_KEY} and {@code ARTIFACT} selectors both resolve to an existing context value
+   *       (see {@link ContextSourceResolver#resolveFull}) — the grant copies THAT value's own
+   *       provenance forward rather than assuming a label, so a granted copy of user-supplied content
+   *       stays untrusted, exactly like the source it was copied from.</li>
+   *   <li>{@code STEP_OUTPUT} copies a step's raw response text. This runtime does not track
+   *       per-step-output provenance (it is a plain string, not a {@link ContextValue}), but the
+   *       security-relevant case — an {@code AGENT}/{@code SPAR} step's raw LLM response — is
+   *       genuinely LLM-authored, so {@link ContextProvenance#LLM_GENERATED} is the label that can
+   *       never under-represent trust here, matching how {@code AgentBehaviourHandler}/
+   *       {@code SparBehaviourHandler} tag the same text at the point they capture it.</li>
+   *   <li>{@code LEDGER_SECTION} content is produced exclusively by {@code LedgerMerger}'s
+   *       deterministic merge (see its class Javadoc: "No LLM participates in the merge") — no
+   *       production command currently writes a ledger delta at all, so this is framework-owned
+   *       content today. {@code CONTEXT_PACK} content is an author-provided static file. Both are
+   *       {@link ContextProvenance#SYSTEM_GENERATED}.</li>
+   * </ul>
+   */
+  private static ContextProvenance grantedProvenance(ContextSelector selector, WorkflowState state) {
+    return switch (selector.kind()) {
+      case STATE_KEY, ARTIFACT -> state.getContextValue(selector.ref())
+          .map(ContextValue::provenance)
+          .orElseThrow(() -> new IllegalStateException(
+              ("Granted selector %s:%s resolved successfully but its source context value is "
+                  + "missing").formatted(selector.kind(), selector.ref())));
+      case STEP_OUTPUT -> ContextProvenance.LLM_GENERATED;
+      case LEDGER_SECTION, CONTEXT_PACK -> ContextProvenance.SYSTEM_GENERATED;
     };
   }
 
