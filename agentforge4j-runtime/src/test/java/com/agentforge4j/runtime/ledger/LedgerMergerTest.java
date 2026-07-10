@@ -82,6 +82,32 @@ class LedgerMergerTest {
   }
 
   @Test
+  void mergeByKeyAcceptsANonTextualKeyFieldByItsStringifiedForm() throws Exception {
+    JsonNode current = json("""
+        {"entries":[{"id":1,"status":"OPEN"}]}""");
+    JsonNode delta = json("""
+        {"entries":[{"id":1,"status":"DONE"},{"id":2,"status":"OPEN"}]}""");
+
+    JsonNode merged = LedgerMerger.merge(ledger(LedgerMergeStrategy.MERGE_BY_KEY, "id"), current,
+        delta, mapper);
+
+    assertThat(merged.get("entries")).hasSize(2);
+    assertThat(merged.get("entries").get(0).get("status").asText()).isEqualTo("DONE");
+  }
+
+  @Test
+  void mergeByKeyKeepsTheLastEntryWhenTheSameDeltaDeclaresADuplicateKey() throws Exception {
+    JsonNode delta = json("""
+        {"entries":[{"id":"REQ-1","status":"OPEN"},{"id":"REQ-1","status":"DONE"}]}""");
+
+    JsonNode merged = LedgerMerger.merge(ledger(LedgerMergeStrategy.MERGE_BY_KEY, "id"), null,
+        delta, mapper);
+
+    assertThat(merged.get("entries")).hasSize(1);
+    assertThat(merged.get("entries").get(0).get("status").asText()).isEqualTo("DONE");
+  }
+
+  @Test
   void nullCurrentTreatedAsEmptyEnvelope() throws Exception {
     JsonNode delta = json("""
         {"entries":[{"id":"REQ-1"}]}""");
