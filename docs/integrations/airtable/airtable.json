@@ -1,4 +1,9 @@
-[
+{
+  "id": "airtable",
+  "displayName": "Airtable",
+  "type": "HTTP_TOOL",
+  "active": true,
+  "config": [
   {
     "capability": "airtable.list_records",
     "displayName": "List records",
@@ -54,4 +59,5 @@
     "retryNonIdempotent": false,
     "maxResponseBytes": null
   }
-]
+  ]
+}
