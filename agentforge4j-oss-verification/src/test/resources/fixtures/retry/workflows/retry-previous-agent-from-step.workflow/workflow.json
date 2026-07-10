@@ -1,0 +1,49 @@
+{
+  "kind": "WORKFLOW",
+  "schemaVersion": 1,
+  "id": "retry-previous-agent-from-step",
+  "name": "Retry Previous To Agent (FROM_STEP)",
+  "steps": [
+    {
+      "kind": "STEP",
+      "stepId": "seedA",
+      "name": "Seed A",
+      "behaviour": {
+        "type": "AGENT",
+        "agentRef": "retry-agent",
+        "transition": "AUTO"
+      }
+    },
+    {
+      "kind": "STEP",
+      "stepId": "seedB",
+      "name": "Seed B",
+      "behaviour": {
+        "type": "AGENT",
+        "agentRef": "retry-agent",
+        "transition": "AUTO"
+      }
+    },
+    {
+      "kind": "STEP",
+      "stepId": "retry",
+      "name": "Retry Previous",
+      "behaviour": {
+        "type": "RETRY_PREVIOUS",
+        "retryStepId": "seedA",
+        "retryMode": "FROM_STEP",
+        "maxAttempts": 1,
+        "fallback": {
+          "kind": "STEP",
+          "stepId": "fallback",
+          "name": "Fallback",
+          "behaviour": {
+            "type": "AGENT",
+            "agentRef": "retry-agent",
+            "transition": "AUTO"
+          }
+        }
+      }
+    }
+  ]
+}

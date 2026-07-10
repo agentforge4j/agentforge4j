@@ -1,0 +1,14 @@
+{
+  "concurrency": 1,
+  "defaults": {
+    "standard": "WCAG2AA",
+    "runners": ["axe", "htmlcs"],
+    "timeout": 60000,
+    "wait": 1000,
+    "chromeLaunchConfig": {
+      "args": ["--no-sandbox", "--disable-dev-shm-usage"]
+    },
+    "hideElements": "iframe",
+    "ignore": ["color-contrast"]
+  }
+}

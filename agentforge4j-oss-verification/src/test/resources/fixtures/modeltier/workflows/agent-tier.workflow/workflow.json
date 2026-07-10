@@ -1,5 +1,6 @@
 {
   "kind": "WORKFLOW",
+  "schemaVersion": 1,
   "id": "agent-tier",
   "name": "Agent Tier Resolution",
   "steps": [

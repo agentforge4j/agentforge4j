@@ -1,9 +1,0 @@
-[
-  {
-    "capability": "<domain>.<verb_object>",
-    "mcpServerConfigId": "<mcp-server-config-id>",
-    "remoteToolName": "<the server's advertised tool name>",
-    "workflowId": null,
-    "enabled": true
-  }
-]

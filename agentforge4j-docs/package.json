@@ -1,0 +1,72 @@
+{
+  "name": "agentforge4j-docs",
+  "version": "0.0.0",
+  "private": true,
+  "license": "Apache-2.0",
+  "description": "AgentForge4j OSS documentation site (Docusaurus)",
+  "scripts": {
+    "docusaurus": "docusaurus",
+    "start": "docusaurus start",
+    "build": "docusaurus build",
+    "swizzle": "docusaurus swizzle",
+    "clear": "docusaurus clear",
+    "serve": "docusaurus serve",
+    "write-translations": "docusaurus write-translations",
+    "write-heading-ids": "docusaurus write-heading-ids",
+    "typecheck": "tsc",
+    "generate": "node scripts/generate-references.mjs && node scripts/generate-vocab-lint.mjs",
+    "lint:frontmatter": "node scripts/lint-frontmatter.mjs",
+    "lint:nav": "node scripts/lint-nav.mjs",
+    "lint:fixtures": "node scripts/validate-fixtures.mjs",
+    "lint:product-name": "node scripts/lint-product-name.mjs",
+    "lint:javadoc-links": "node scripts/lint-javadoc-links.mjs",
+    "lint": "npm run lint:frontmatter && npm run lint:nav && npm run lint:fixtures && npm run lint:product-name",
+    "javadoc": "node scripts/build-javadoc.mjs",
+    "release:stage": "node scripts/release-stage.mjs",
+    "docs:scratch-cut": "node scripts/release-scratch-cut.mjs",
+    "a11y": "node scripts/a11y.mjs",
+    "site:assemble": "node scripts/assemble-site.mjs",
+    "test": "node --test scripts/vocab.test.mjs scripts/generate-references.test.mjs scripts/include.test.mjs scripts/fixtures.test.mjs scripts/javadoc.test.mjs scripts/dematerialize.test.mjs scripts/support-window.test.mjs scripts/product-name.test.mjs scripts/assemble-site.test.mjs scripts/lint-javadoc-links.test.mjs",
+    "check": "npm run generate && npm run lint && npm run typecheck && npm run test && npm run build"
+  },
+  "dependencies": {
+    "@docusaurus/core": "3.10.1",
+    "@docusaurus/faster": "3.10.1",
+    "@docusaurus/plugin-client-redirects": "3.10.1",
+    "@docusaurus/preset-classic": "3.10.1",
+    "@easyops-cn/docusaurus-search-local": "^0.52.1",
+    "@mdx-js/react": "^3.0.0",
+    "clsx": "^2.0.0",
+    "prism-react-renderer": "^2.3.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "@docusaurus/module-type-aliases": "3.10.1",
+    "@docusaurus/tsconfig": "3.10.1",
+    "@docusaurus/types": "3.10.1",
+    "@types/react": "^19.0.0",
+    "ajv": "^8.17.1",
+    "ajv-formats": "^3.0.1",
+    "gray-matter": "^4.0.3",
+    "pa11y-ci": "^3.1.0",
+    "remark-frontmatter": "^5.0.0",
+    "remark-mdx": "^3.1.1",
+    "remark-parse": "^11.0.0",
+    "typescript": "~6.0.2",
+    "unified": "^11.0.5",
+    "unist-util-visit": "^5.1.0"
+  },
+  "browserslist": {
+    "production": [
+      ">0.5%",
+      "not dead",
+      "not op_mini all"
+    ],
+    "development": [
+      "last 3 chrome version",
+      "last 3 firefox version",
+      "last 5 safari version"
+    ]
+  }
+}

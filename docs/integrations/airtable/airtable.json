@@ -1,0 +1,63 @@
+{
+  "id": "airtable",
+  "displayName": "Airtable",
+  "type": "HTTP_TOOL",
+  "active": true,
+  "config": [
+  {
+    "capability": "airtable.list_records",
+    "displayName": "List records",
+    "description": "List records in an Airtable table",
+    "mutating": false,
+    "method": "GET",
+    "urlTemplate": "https://api.airtable.com/v0/{baseId}/{tableName}",
+    "inputSchema": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["baseId", "tableName"],
+      "properties": {
+        "baseId": { "type": "string" },
+        "tableName": { "type": "string" },
+        "maxRecords": { "type": "integer" },
+        "view": { "type": "string" }
+      }
+    },
+    "outputSchema": null,
+    "queryArgs": ["maxRecords", "view"],
+    "bodyMode": "NONE",
+    "staticHeaders": { "Accept": "application/json" },
+    "secretHeaders": { "Authorization": "AIRTABLE_TOKEN" },
+    "timeout": null,
+    "maxRetries": -1,
+    "retryNonIdempotent": false,
+    "maxResponseBytes": null
+  },
+  {
+    "capability": "airtable.create_record",
+    "displayName": "Create record",
+    "description": "Create a record in an Airtable table",
+    "mutating": true,
+    "method": "POST",
+    "urlTemplate": "https://api.airtable.com/v0/{baseId}/{tableName}",
+    "inputSchema": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["baseId", "tableName", "fields"],
+      "properties": {
+        "baseId": { "type": "string" },
+        "tableName": { "type": "string" },
+        "fields": { "type": "object" }
+      }
+    },
+    "outputSchema": null,
+    "queryArgs": [],
+    "bodyMode": "JSON",
+    "staticHeaders": { "Accept": "application/json" },
+    "secretHeaders": { "Authorization": "AIRTABLE_TOKEN" },
+    "timeout": null,
+    "maxRetries": -1,
+    "retryNonIdempotent": false,
+    "maxResponseBytes": null
+  }
+  ]
+}
