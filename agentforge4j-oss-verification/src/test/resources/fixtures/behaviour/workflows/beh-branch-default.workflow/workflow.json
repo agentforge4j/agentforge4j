@@ -1,5 +1,6 @@
 {
   "kind": "WORKFLOW",
+  "schemaVersion": 1,
   "id": "beh-branch-default",
   "name": "Branch Default",
   "steps": [

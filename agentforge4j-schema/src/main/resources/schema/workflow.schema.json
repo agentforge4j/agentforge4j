@@ -2,10 +2,15 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "WorkflowDefinition",
   "type": "object",
-  "required": ["kind", "id", "name", "steps"],
+  "required": ["kind", "schemaVersion", "id", "name", "steps"],
   "additionalProperties": false,
   "properties": {
     "kind": { "type": "string", "const": "WORKFLOW" },
+    "schemaVersion": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Workflow definition format version this document is authored against. Required; consumers accept only schema versions they know and reject anything else. The framework's supported version is the single compatibility contract across framework, catalog, and builder releases."
+    },
     "id": {
       "type": "string",
       "description": "Unique workflow identifier. Must match the workflow directory name stem."

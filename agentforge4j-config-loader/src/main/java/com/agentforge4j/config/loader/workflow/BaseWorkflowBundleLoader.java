@@ -14,8 +14,12 @@ import com.agentforge4j.core.workflow.step.behaviour.FailBehaviour;
 import com.agentforge4j.core.workflow.step.behaviour.RetryPreviousBehaviour;
 import com.agentforge4j.core.workflow.step.blueprint.BlueprintDefinition;
 import com.agentforge4j.core.workflow.step.blueprint.BlueprintRef;
+import com.agentforge4j.schema.WorkflowSchemaVersion;
 import com.agentforge4j.util.Validate;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.nio.file.Path;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -39,6 +43,7 @@ public abstract class BaseWorkflowBundleLoader {
   private static final int MAX_NESTING_DEPTH = 32;
 
   protected static final String WORKFLOW_DEFINITION_FILE = "workflow.json";
+  protected static final String SCHEMA_VERSION_FIELD = "schemaVersion";
   protected static final String WORKFLOW_DIR_SUFFIX = ".workflow";
   protected static final String BLUEPRINT_SUFFIX = ".blueprint.json";
   protected static final String ARTIFACT_SUFFIX = ".artifact.json";
@@ -132,6 +137,44 @@ public abstract class BaseWorkflowBundleLoader {
         artifacts,
         injectStepPromptsInBlueprintMap(blueprints, stepPrompts),
         injectStepPrompts(workflowDefinition.steps(), stepPrompts));
+  }
+
+  /**
+   * Converts a parsed workflow document tree into a {@link WorkflowDefinition}, enforcing the
+   * wire-format version envelope first.
+   *
+   * <p>Every {@code workflow.json} document must declare the required {@code schemaVersion} field
+   * matching {@link WorkflowSchemaVersion#SUPPORTED_WORKFLOW_SCHEMA_VERSION}; a missing,
+   * non-integer, or unsupported version fails closed with an error naming both the declared and
+   * the supported version. The field is a wire-envelope concern consumed here — it is stripped
+   * before Jackson mapping, so the domain model never carries it and strict mappers never see it
+   * as an unknown property.
+   *
+   * @param document parsed workflow document tree
+   * @param source   human-readable document source (file path or URL) for error messages
+   * @return the mapped workflow definition
+   * @throws JsonProcessingException if the document tree cannot be mapped to the model
+   */
+  protected final WorkflowDefinition toWorkflowDefinition(JsonNode document, String source)
+      throws JsonProcessingException {
+    Validate.notNull(document, "Workflow document must not be null: %s".formatted(source));
+    Validate.isTrue(document.isObject(),
+        "Workflow document '%s' must be a JSON object".formatted(source));
+    JsonNode declared = document.get(SCHEMA_VERSION_FIELD);
+    Validate.isTrue(declared != null && !declared.isNull(),
+        "Workflow document '%s' does not declare the required schemaVersion; this framework supports workflow schema version %s"
+            .formatted(source, WorkflowSchemaVersion.SUPPORTED_WORKFLOW_SCHEMA_VERSION));
+    Validate.isTrue(declared.isIntegralNumber(),
+        "Workflow document '%s' declares a non-integer schemaVersion '%s'; this framework supports workflow schema version %s"
+            .formatted(source, declared.asText(),
+                WorkflowSchemaVersion.SUPPORTED_WORKFLOW_SCHEMA_VERSION));
+    Validate.isTrue(
+        declared.intValue() == WorkflowSchemaVersion.SUPPORTED_WORKFLOW_SCHEMA_VERSION,
+        "Workflow document '%s' declares workflow schema version %s but this framework supports version %s"
+            .formatted(source, declared.intValue(),
+                WorkflowSchemaVersion.SUPPORTED_WORKFLOW_SCHEMA_VERSION));
+    ((ObjectNode) document).remove(SCHEMA_VERSION_FIELD);
+    return workflowMapper.treeToValue(document, WorkflowDefinition.class);
   }
 
   private void validateWorkflow(WorkflowDefinition definition,
