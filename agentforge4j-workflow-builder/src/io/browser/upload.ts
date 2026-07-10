@@ -11,7 +11,9 @@ export async function importWorkflowFromFilePicker(): Promise<WorkflowDefinition
   return new Promise((resolve, reject) => {
     const input = document.createElement('input');
     input.type = 'file';
-    input.accept = 'application/json,.json,application/zip,.zip';
+    // ZIP-only: the plain-JSON draft round-trip carries no schemaVersion and is never
+    // schema-validated on import, unlike the ZIP path (see WorkflowBuilder.tsx's handleExport).
+    input.accept = 'application/zip,.zip';
     input.onchange = () => {
       const file = input.files?.[0];
       if (!file) {
