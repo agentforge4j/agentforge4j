@@ -315,7 +315,9 @@ public final class ReachableStepGraph {
     /**
      * Folds a nested blueprint-subtree result (fresh or replayed, rooted at {@code nestedRefSiteKey})
      * into the enclosing in-progress walk, re-keying the nested records relative to the enclosing
-     * walk's reference site.
+     * walk's reference site. Each copied record counts toward the traversal-size bound: composition
+     * repeats per enclosing nesting level, so uncounted copies would let a crafted deep-and-wide
+     * bundle amplify work past the bound.
      */
     private void composeInto(BlueprintWalk enclosingWalk, boolean nestedComplete,
         Map<String, RelativeStep> nestedRelativeSteps, Set<String> nestedDescendedBlueprintIds,
@@ -327,6 +329,7 @@ public final class ReachableStepGraph {
       }
       String relativePrefix = nestedRefSiteKey.substring(enclosingWalk.prefixLength);
       for (Map.Entry<String, RelativeStep> entry : nestedRelativeSteps.entrySet()) {
+        countVisitedNode();
         RelativeStep nested = entry.getValue();
         enclosingWalk.relativeSteps.putIfAbsent(relativePrefix + entry.getKey(),
             new RelativeStep(relativePrefix + nested.relativeBaseLocation(), nested.step()));
