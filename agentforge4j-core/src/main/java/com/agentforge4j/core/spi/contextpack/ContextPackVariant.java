@@ -22,7 +22,6 @@ public record ContextPackVariant(
     Validate.notBlank(name, "ContextPackVariant name must not be blank");
     Validate.notNull(content, "ContextPackVariant content must not be null for variant: %s"
         .formatted(name));
-    Validate.notBlank(fingerprint,
-        "ContextPackVariant fingerprint must not be blank for variant: %s".formatted(name));
+    Validate.notBlank(fingerprint, "ContextPackVariant fingerprint must not be blank for variant: %s".formatted(name));
   }
 }

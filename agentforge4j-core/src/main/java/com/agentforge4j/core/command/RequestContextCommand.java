@@ -18,8 +18,7 @@ public record RequestContextCommand(
 ) implements LlmCommand {
 
   public RequestContextCommand {
-    Validate.notEmpty(requestedSelectors,
-        "RequestContextCommand requestedSelectors must not be empty");
+    Validate.notEmpty(requestedSelectors, "RequestContextCommand requestedSelectors must not be empty");
     requestedSelectors = List.copyOf(requestedSelectors);
   }
 }
