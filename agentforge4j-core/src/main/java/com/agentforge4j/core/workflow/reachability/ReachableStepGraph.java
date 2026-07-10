@@ -156,11 +156,14 @@ public final class ReachableStepGraph {
 
   /**
    * A fully explored blueprint subtree, valid for replay at any later reference site within the same
-   * {@code enclosing} workflow whose descent chain is disjoint from {@code descendedBlueprintIds}
-   * (identity-compared frames; a subtree truncated by the cycle guard is never memoized). Records are
-   * keyed by their occurrence-suffixed relative location, preserving encounter order.
+   * {@code enclosing} workflow that references it under the same {@code refBlueprintId} (a blueprint
+   * definition can be aliased under more than one id in a workflow's blueprint map; replaying under a
+   * different id would re-prefix locations with the wrong {@code bp:} segment) whose descent chain is
+   * disjoint from {@code descendedBlueprintIds} (identity-compared frames; a subtree truncated by the
+   * cycle guard is never memoized). Records are keyed by their occurrence-suffixed relative location,
+   * preserving encounter order.
    */
-  private record MemoizedBlueprintWalk(WorkflowDefinition enclosing,
+  private record MemoizedBlueprintWalk(WorkflowDefinition enclosing, String refBlueprintId,
       Map<String, RelativeStep> relativeSteps, Set<String> descendedBlueprintIds) {
 
     private MemoizedBlueprintWalk {
@@ -189,9 +192,10 @@ public final class ReachableStepGraph {
 
   /**
    * Mutable traversal state for a single walk: the resolver, the global workflow-id visited set, the
-   * by-location accumulator, the per-walk blueprint-subtree memo (keyed by definition identity, so
-   * duplicate ids can never alias), and the fail-closed depth/size counters. The blueprint-ref path
-   * guard is passed per workflow frame.
+   * by-location accumulator, the per-walk blueprint-subtree memo (keyed by definition identity;
+   * reuse additionally requires the recorded reference id to match, since one definition instance
+   * could otherwise be aliased under more than one id in a workflow's blueprint map), and the
+   * fail-closed depth/size counters. The blueprint-ref path guard is passed per workflow frame.
    */
   private static final class Traversal {
 
@@ -273,6 +277,7 @@ public final class ReachableStepGraph {
       }
       MemoizedBlueprintWalk memoized = memoizedBlueprintWalks.get(blueprint);
       if (memoized != null && memoized.enclosing() == enclosing
+          && memoized.refBlueprintId().equals(ref.blueprintId())
           && Collections.disjoint(memoized.descendedBlueprintIds(), blueprintPath)) {
         replayMemoizedWalk(memoized, containerKey, enclosingWalk);
         return;
@@ -286,8 +291,8 @@ public final class ReachableStepGraph {
       exitRef();
       blueprintPath.remove(ref.blueprintId());
       if (walk.complete) {
-        memoizedBlueprintWalks.put(blueprint,
-            new MemoizedBlueprintWalk(enclosing, walk.relativeSteps, walk.descendedBlueprintIds));
+        memoizedBlueprintWalks.put(blueprint, new MemoizedBlueprintWalk(enclosing,
+            ref.blueprintId(), walk.relativeSteps, walk.descendedBlueprintIds));
       }
       if (enclosingWalk != null) {
         composeInto(enclosingWalk, walk.complete, walk.relativeSteps, walk.descendedBlueprintIds,

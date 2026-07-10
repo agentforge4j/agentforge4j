@@ -385,6 +385,27 @@ class ReachableStepGraphTest {
   }
 
   @Test
+  void walk_doesNotReplayMemoAcrossDifferentIdsAliasingTheSameBlueprintInstance() {
+    // A single BlueprintDefinition instance registered under two ids in one workflow's blueprint map
+    // is a pathological but constructible case (the bundle loader always keys by blueprintId() and
+    // never duplicates an instance across keys, so this cannot occur via JSON bundles). Replay must
+    // key on the reference id the memo was recorded under, not definition identity alone — otherwise
+    // the second alias replays the first alias's relative locations under the unchanged container key,
+    // silently collapsing what should be two distinct structural locations into one.
+    BlueprintDefinition shared = blueprint("shared", step("dup"));
+    WorkflowDefinition root = wf("root", Map.of("shared", shared, "alias", shared),
+        new BlueprintRef("shared"), new BlueprintRef("alias"));
+
+    List<AmbiguousStepId> ambiguous = ReachableStepGraph.findAmbiguousStepIds(root, NO_SUBWORKFLOWS);
+
+    assertThat(ambiguous).singleElement().satisfies(a -> {
+      assertThat(a.stepId()).isEqualTo("dup");
+      assertThat(a.locations()).containsExactlyInAnyOrder(
+          "wf:root/bp:shared/step:dup", "wf:root/bp:alias/step:dup");
+    });
+  }
+
+  @Test
   void walk_throwsOnPathologicallyDeepBlueprintChain() {
     // Fail closed with the load-time IllegalStateException path instead of a StackOverflowError on a
     // crafted arbitrarily deep blueprint-ref chain.
