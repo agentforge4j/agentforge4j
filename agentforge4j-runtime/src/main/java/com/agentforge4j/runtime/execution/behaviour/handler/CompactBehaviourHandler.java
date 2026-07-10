@@ -2,11 +2,15 @@
 package com.agentforge4j.runtime.execution.behaviour.handler;
 
 import com.agentforge4j.core.workflow.WorkflowDefinition;
+import com.agentforge4j.core.workflow.context.ContextMapping;
+import com.agentforge4j.core.workflow.context.ContextProvenance;
+import com.agentforge4j.core.workflow.context.StringContextValue;
 import com.agentforge4j.core.workflow.event.WorkflowEventType;
 import com.agentforge4j.core.workflow.reachability.ReachableStep;
 import com.agentforge4j.core.workflow.reachability.ReachableStepGraph;
 import com.agentforge4j.core.workflow.repository.WorkflowRepository;
 import com.agentforge4j.core.workflow.state.CompactSiblingMetadata;
+import com.agentforge4j.core.workflow.state.ReservedContextKeys;
 import com.agentforge4j.core.workflow.state.WorkflowState;
 import com.agentforge4j.core.workflow.step.ContextSelection;
 import com.agentforge4j.core.workflow.step.ContextSelector;
@@ -28,6 +32,8 @@ import com.agentforge4j.runtime.event.EventRecorder;
 import com.agentforge4j.runtime.execution.ExecutionContext;
 import com.agentforge4j.runtime.execution.ExecutionOutcome;
 import com.agentforge4j.runtime.execution.behaviour.BehaviourHandler;
+import com.agentforge4j.runtime.llm.AgentInvocationResult;
+import com.agentforge4j.runtime.llm.AgentInvoker;
 import com.agentforge4j.util.Validate;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -54,13 +60,14 @@ import java.util.List;
  * per-sub-workflow context isolation), so there is no input mapping to test for whether the source
  * was passed into the sub-workflow — every reachable step already sees the same source.
  *
- * <p>Only {@link DeterministicExtract} is currently implemented, and only for whole-ledger
- * {@code LEDGER_SECTION} sources: it copies the source verbatim except stripping any top-level
- * {@code rationale} field from each entry. {@link LlmSummary} is not invoked: its shape carries a
- * {@code modelTier} but no agent identity, so there is no agent to invoke through the normal {@link
- * com.agentforge4j.runtime.llm.AgentInvoker} path. Reaching an {@code LlmSummary} mode throws
- * {@link UnsupportedOperationException} naming this gap, rather than silently no-opping or
- * fabricating a summary.
+ * <p>{@link DeterministicExtract} is implemented only for whole-ledger {@code LEDGER_SECTION}
+ * sources: it copies the source verbatim except stripping any top-level {@code rationale} field
+ * from each entry. {@link LlmSummary} invokes its declared {@code agentRef} through the normal
+ * {@link AgentInvoker} path — the same mechanism as an {@code AGENT} step, no special-casing. Since
+ * {@code AgentInvoker} only ever renders context from {@code state} via a {@code ContextMapping}
+ * (never from an arbitrary caller-supplied string), the already-resolved source content is first
+ * staged under {@link ReservedContextKeys#llmSummaryInputKey(String)} so a mapping can address it —
+ * the same convention {@code SparBehaviourHandler} uses for its resolution-round prompt.
  */
 public final class CompactBehaviourHandler implements BehaviourHandler<CompactBehaviour> {
 
@@ -71,10 +78,11 @@ public final class CompactBehaviourHandler implements BehaviourHandler<CompactBe
   private final WorkflowRepository workflowRepository;
   private final EventRecorder eventRecorder;
   private final ObjectMapper objectMapper;
+  private final AgentInvoker agentInvoker;
 
   public CompactBehaviourHandler(ContextSourceResolver contextSourceResolver,
       TokenEstimator tokenEstimator, WorkflowRepository workflowRepository,
-      EventRecorder eventRecorder, ObjectMapper objectMapper) {
+      EventRecorder eventRecorder, ObjectMapper objectMapper, AgentInvoker agentInvoker) {
     this.contextSourceResolver = Validate.notNull(contextSourceResolver,
         "contextSourceResolver must not be null");
     this.tokenEstimator = Validate.notNull(tokenEstimator, "tokenEstimator must not be null");
@@ -82,6 +90,7 @@ public final class CompactBehaviourHandler implements BehaviourHandler<CompactBe
         "workflowRepository must not be null");
     this.eventRecorder = Validate.notNull(eventRecorder, "eventRecorder must not be null");
     this.objectMapper = Validate.notNull(objectMapper, "objectMapper must not be null");
+    this.agentInvoker = Validate.notNull(agentInvoker, "agentInvoker must not be null");
   }
 
   @Override
@@ -107,8 +116,8 @@ public final class CompactBehaviourHandler implements BehaviourHandler<CompactBe
       return ExecutionOutcome.COMPLETED;
     }
 
-    performCompaction(step, behaviour, state, source, sourceId, fullContent, sourceFingerprint,
-        estimatedUnitsBefore);
+    performCompaction(step, behaviour, executionContext, source, sourceId, fullContent,
+        sourceFingerprint, estimatedUnitsBefore);
     return ExecutionOutcome.COMPLETED;
   }
 
@@ -161,8 +170,9 @@ public final class CompactBehaviourHandler implements BehaviourHandler<CompactBe
   }
 
   private void performCompaction(StepDefinition step, CompactBehaviour behaviour,
-      WorkflowState state, ContextSelector source, String sourceId, String fullContent,
-      String sourceFingerprint, int estimatedUnitsBefore) {
+      ExecutionContext executionContext, ContextSelector source, String sourceId,
+      String fullContent, String sourceFingerprint, int estimatedUnitsBefore) {
+    WorkflowState state = executionContext.getState();
     String compactContent;
     if (behaviour.mode() instanceof DeterministicExtract) {
       Validate.isTrue(source.kind() == ContextSourceKind.LEDGER_SECTION,
@@ -170,12 +180,8 @@ public final class CompactBehaviourHandler implements BehaviourHandler<CompactBe
               "DeterministicExtract is only implemented for LEDGER_SECTION sources in this runtime "
                   + "version; source kind was %s".formatted(source.kind())));
       compactContent = extractLedgerDeterministically(fullContent);
-    } else if (behaviour.mode() instanceof LlmSummary) {
-      throw new UnsupportedOperationException(
-          "CompactBehaviour source '%s' declares LLM_SUMMARY, but LlmSummary carries no agent "
-              + "identity to invoke through AgentInvoker; this requires a design decision (add an "
-              + "agent reference to LlmSummary, or define an internal invocation convention) that "
-              + "has not been made".formatted(sourceId));
+    } else if (behaviour.mode() instanceof LlmSummary llmSummary) {
+      compactContent = summarizeViaAgent(step, llmSummary, executionContext, sourceId, fullContent);
     } else {
       throw new IllegalStateException("Unhandled CompactionMode: " + behaviour.mode().getClass());
     }
@@ -192,6 +198,29 @@ public final class CompactBehaviourHandler implements BehaviourHandler<CompactBe
     LOG.log(System.Logger.Level.INFO,
         "Compaction performed stepId={0}, sourceId={1}, unitsBefore={2}, unitsAfter={3}",
         step.stepId(), sourceId, estimatedUnitsBefore, estimatedUnitsAfter);
+  }
+
+  /**
+   * Summarizes {@code fullContent} through {@code llmSummary}'s declared agent. The resolved source
+   * content is staged in state under a reserved key (see class Javadoc) and addressed via a
+   * {@code ContextMapping} naming only that key, so the agent's rendered input is exactly the
+   * resolved source — nothing else from the run's shared context leaks in.
+   */
+  private String summarizeViaAgent(StepDefinition step, LlmSummary llmSummary,
+      ExecutionContext executionContext, String sourceId, String fullContent) {
+    WorkflowState state = executionContext.getState();
+    String inputKey = ReservedContextKeys.llmSummaryInputKey(sourceId);
+    state.putContextValue(inputKey,
+        new StringContextValue(fullContent, ContextProvenance.SYSTEM_GENERATED));
+    ContextMapping mapping = new ContextMapping(List.of(inputKey), List.of());
+    AgentInvocationResult result = agentInvoker.invoke(
+        llmSummary.agentRef(),
+        mapping,
+        state,
+        step.stepPrompt(),
+        llmSummary.modelTier(),
+        executionContext.getActiveWorkflowId());
+    return result.rawResponse();
   }
 
   /**
@@ -249,8 +278,8 @@ public final class CompactBehaviourHandler implements BehaviourHandler<CompactBe
 
   private void recordSkipped(WorkflowState state, String stepId, String sourceId,
       String sourceFingerprint, SkipReason reason) {
-    String payload = "sourceId=%s sourceFingerprint=%s reason=%s"
-        .formatted(sourceId, sourceFingerprint, reason);
+    String payload = "sourceId=%s sourceFingerprint=%s reason=%s estimator=%s"
+        .formatted(sourceId, sourceFingerprint, reason, tokenEstimator.getClass().getSimpleName());
     eventRecorder.record(state.getRunId(), stepId, WorkflowEventType.COMPACTION_SKIPPED, payload,
         "runtime");
     LOG.log(System.Logger.Level.DEBUG, "Compaction skipped stepId={0}, reason={1}", stepId, reason);
@@ -258,7 +287,13 @@ public final class CompactBehaviourHandler implements BehaviourHandler<CompactBe
 
   private String toEventPayload(CompactSiblingMetadata metadata) {
     try {
-      return objectMapper.writeValueAsString(metadata);
+      // Audit evidence for which TokenEstimator implementation produced estimatedUnitsBefore/After
+      // — not part of CompactSiblingMetadata itself, since the estimator choice is an audit-log
+      // concern (which implementation was resolved when multiple are registered), not the compact
+      // sibling's own structural provenance.
+      ObjectNode payload = (ObjectNode) objectMapper.valueToTree(metadata);
+      payload.put("estimator", tokenEstimator.getClass().getSimpleName());
+      return objectMapper.writeValueAsString(payload);
     } catch (Exception e) {
       throw new IllegalStateException(
           "Failed to serialize compact sibling metadata: %s".formatted(e.getMessage()), e);

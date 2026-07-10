@@ -3,8 +3,9 @@ package com.agentforge4j.llm.api;
 
 /**
  * Estimates the token count of a piece of text when the provider does not expose a tokenizer. A
- * provider-neutral heuristic used only for advisory evidence — segment-size thresholds and governance
- * metadata — never for gates or limits.
+ * provider-neutral heuristic used only for advisory evidence — segment-size thresholds (for example a
+ * {@code COMPACT} step's {@code minSourceUnits} skip decision) and governance metadata — never for
+ * gates or limits.
  *
  * <p>The shipped default ({@code DefaultTokenEstimator} in {@code agentforge4j.llm}) is a conservative
  * bytes-per-token heuristic. Provider modules may supply a more accurate implementation; consumers

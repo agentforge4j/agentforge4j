@@ -195,7 +195,11 @@ final class RuntimeAssembler {
         .agentInvoker(agentInvoker)
         .eventRecorder(eventRecorder)
         .runExecutionInterceptor(runExecutionInterceptor)
-        .artifactValidators(List.copyOf(artifactValidators));
+        .artifactValidators(List.copyOf(artifactValidators))
+        // Without this, WorkflowRuntimeBuilder defaults to its own bare new ObjectMapper() for
+        // context-selection JSON handling (ledger content, compact siblings), diverging from the
+        // mapper configuration loading and artifact validation above already use.
+        .objectMapper(objectMapper);
 
     if (maxNestingDepth != null) {
       runtimeBuilder.maxNestingDepth(maxNestingDepth);

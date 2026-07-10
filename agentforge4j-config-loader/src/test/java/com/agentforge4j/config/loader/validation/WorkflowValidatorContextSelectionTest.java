@@ -194,19 +194,17 @@ class WorkflowValidatorContextSelectionTest {
   }
 
   @Test
-  void rejectsLlmSummaryCompactStepAtLoadTime() {
-    // LLM_SUMMARY is schema-valid but this runtime version never invokes it (no agent identity to
-    // invoke through) — a publicly valid workflow definition must not be able to fail only at run
-    // start; reject at load, the same fail-early rule as DETERMINISTIC_EXTRACT on a non-ledger source.
+  void acceptsLlmSummaryCompactStepAtLoadTime() {
+    // LLM_SUMMARY invokes its declared agentRef through the normal AgentInvoker path (Option 1,
+    // design rev 6) — context-selection validation has nothing LLM_SUMMARY-specific to reject; the
+    // agentRef itself is checked by validateAgentRefs (see WorkflowAgentRefCollectorTest), not here.
     StepDefinition compact = StepDefinition.builder().withStepId("c").withName("c")
         .withBehaviour(new CompactBehaviour(sel(ContextSourceKind.LEDGER_SECTION, "requirements"),
-            new LlmSummary("STANDARD"), new CompactionPolicy(0, 0)))
+            new LlmSummary("STANDARD", "summarizer-agent"), new CompactionPolicy(0, 0)))
         .build();
     WorkflowDefinition wf = workflow(List.of(compact), List.of(ledger("requirements")));
 
-    assertThatThrownBy(() -> validate(wf))
-        .isInstanceOf(IllegalArgumentException.class)
-        .hasMessageContaining("LLM_SUMMARY");
+    assertThatCode(() -> validate(wf)).doesNotThrowAnyException();
   }
 
   @Test

@@ -7,7 +7,7 @@ import java.nio.charset.StandardCharsets;
 
 /**
  * Shipped OSS {@link TokenEstimator}: a conservative {@code ceil(utf8ByteLength / 4)} heuristic used
- * when the provider does not expose a tokenizer. This is the single implementation of the chars-per-token
+ * when the provider does not expose a tokenizer. This is the single implementation of the bytes-per-token
  * estimate shared across the framework; provider prompt-cache support delegates to
  * {@link #estimateFromUtf8ByteLength(int)} rather than duplicating the formula.
  *

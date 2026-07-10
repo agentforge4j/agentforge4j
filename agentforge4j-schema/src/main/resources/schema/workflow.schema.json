@@ -391,10 +391,11 @@
     "LlmSummary": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["type", "modelTier"],
+      "required": ["type", "modelTier", "agentRef"],
       "properties": {
         "type": { "const": "LLM_SUMMARY" },
-        "modelTier": { "type": "string", "enum": ["LITE", "STANDARD", "POWERFUL", "PREMIUM"] }
+        "modelTier": { "type": "string", "enum": ["LITE", "STANDARD", "POWERFUL", "PREMIUM"] },
+        "agentRef": { "type": "string" }
       }
     },
     "CompactionPolicy": {

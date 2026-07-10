@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-package com.agentforge4j.runtime.context;
+package com.agentforge4j.runtime;
 
 import com.agentforge4j.core.spi.contextpack.ContextPack;
 import com.agentforge4j.util.Validate;

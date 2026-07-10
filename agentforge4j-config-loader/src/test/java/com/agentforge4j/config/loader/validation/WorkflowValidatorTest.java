@@ -166,6 +166,22 @@ class WorkflowValidatorTest {
   }
 
   @Test
+  void validateBlueprintRefs_allowsANestedWorkflowToReuseAParentBlueprintId() {
+    // Blueprint ids are a per-workflow namespace (workflow.blueprints()): a nested
+    // WorkflowDefinition's own "bp-a" is unrelated to the parent's "bp-a" still on the descent
+    // path, so it must not be rejected as a cycle.
+    BlueprintDefinition nestedBp = blueprint("bp-a", terminalStep("nested-step"));
+    WorkflowDefinition nestedWf = wfWithBlueprints("nested-wf", Map.of("bp-a", nestedBp),
+        List.of(new BlueprintRef("bp-a")));
+    BlueprintDefinition parentBp = blueprint("bp-a", nestedWf);
+    WorkflowDefinition wf = wfWithBlueprints("wf1", Map.of("bp-a", parentBp),
+        List.of(new BlueprintRef("bp-a")));
+
+    assertThatCode(() -> validator.validateBlueprintRefs(Map.of("wf1", wf)))
+        .doesNotThrowAnyException();
+  }
+
+  @Test
   void validateArtifactRefs_rejectsUnknownArtifactOnInputStep() {
     StepDefinition step = StepDefinition.builder()
         .withStepId("s1")
@@ -347,6 +363,31 @@ class WorkflowValidatorTest {
 
     assertThatCode(() -> validator.validateValidateBehaviourContracts(Map.of("wf1", wf)))
         .doesNotThrowAnyException();
+  }
+
+  @Test
+  void validateValidateBehaviourContracts_stillChecksANestedWorkflowsBlueprintReusingAParentId() {
+    // If the blueprintChain leaked into the nested workflow's descent, "bp-a" would already be
+    // marked visited and this walker's silent-skip-on-revisit would never descend into the
+    // nested blueprint at all — letting the bad contract inside it pass unchecked.
+    StepDefinition badValidateStep = StepDefinition.builder()
+        .withStepId("validate")
+        .withName("Validate")
+        .withBehaviour(new ValidateBehaviour("agent-bundle", List.of("agent.json"),
+            List.of(new ContextEqualityContract("other.json", "/modelTier", "recommendedTier"))))
+        .withContextMapping(new ContextMapping(List.of("recommendedTier"), List.of()))
+        .build();
+    BlueprintDefinition nestedBp = blueprint("bp-a", badValidateStep);
+    WorkflowDefinition nestedWf = wfWithBlueprints("nested-wf", Map.of("bp-a", nestedBp),
+        List.of(new BlueprintRef("bp-a")));
+    BlueprintDefinition parentBp = blueprint("bp-a", nestedWf);
+    WorkflowDefinition wf = wfWithBlueprints("wf1", Map.of("bp-a", parentBp),
+        List.of(new BlueprintRef("bp-a")));
+
+    assertThatThrownBy(() -> validator.validateValidateBehaviourContracts(Map.of("wf1", wf)))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("other.json")
+        .hasMessageContaining("requiredArtifacts allowlist");
   }
 
   private static WorkflowDefinition wf(String id, List<Executable> steps) {

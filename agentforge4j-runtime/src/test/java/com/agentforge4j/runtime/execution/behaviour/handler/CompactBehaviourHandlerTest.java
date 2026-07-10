@@ -19,16 +19,19 @@ import com.agentforge4j.core.workflow.step.behaviour.DeterministicExtract;
 import com.agentforge4j.core.workflow.step.behaviour.FailBehaviour;
 import com.agentforge4j.core.workflow.step.behaviour.LlmSummary;
 import com.agentforge4j.llm.DefaultTokenEstimator;
+import com.agentforge4j.runtime.ContextPackRegistry;
 import com.agentforge4j.runtime.context.CompactSibling;
 import com.agentforge4j.runtime.context.CompactSiblingStore;
 import com.agentforge4j.runtime.context.ContextFingerprint;
-import com.agentforge4j.runtime.context.ContextPackRegistry;
 import com.agentforge4j.runtime.context.ContextSourceId;
 import com.agentforge4j.runtime.context.ContextSourceResolver;
 import com.agentforge4j.runtime.event.EventRecorder;
 import com.agentforge4j.runtime.execution.ExecutionContext;
 import com.agentforge4j.runtime.execution.ExecutionOutcome;
+import com.agentforge4j.runtime.llm.AgentInvocationResult;
+import com.agentforge4j.runtime.llm.AgentInvoker;
 import com.agentforge4j.runtime.llm.ContextRenderer;
+import com.agentforge4j.runtime.llm.ModelSource;
 import com.agentforge4j.runtime.repository.InMemoryWorkflowEventLog;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.Clock;
@@ -40,6 +43,12 @@ import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 class CompactBehaviourHandlerTest {
 
@@ -83,13 +92,18 @@ class CompactBehaviourHandlerTest {
   }
 
   private CompactBehaviourHandler handler(WorkflowDefinition workflow) {
+    return handler(workflow, mock(AgentInvoker.class));
+  }
+
+  private CompactBehaviourHandler handler(WorkflowDefinition workflow, AgentInvoker agentInvoker) {
     EventRecorder eventRecorder = new EventRecorder(new InMemoryWorkflowEventLog(), CLOCK);
     return new CompactBehaviourHandler(
         new ContextSourceResolver(new ContextRenderer(mapper), mapper, ContextPackRegistry.EMPTY),
         new DefaultTokenEstimator(),
         new InMemoryWorkflowRepository(Map.of(workflow.id(), workflow)),
         eventRecorder,
-        mapper);
+        mapper,
+        agentInvoker);
   }
 
   private ExecutionContext context(WorkflowDefinition workflow) {
@@ -147,6 +161,56 @@ class CompactBehaviourHandlerTest {
     assertThat(stored).isPresent();
     assertThat(stored.get().content()).doesNotContain("rationale").contains("REQ-1").contains("q?");
     assertThat(stored.get().metadata().producedByStepId()).isEqualTo("compact");
+  }
+
+  @Test
+  void recordsTheResolvedEstimatorOnCompactionPerformed() throws Exception {
+    CompactBehaviour behaviour = new CompactBehaviour(source(), new DeterministicExtract(),
+        new CompactionPolicy(0, 1));
+    StepDefinition compact = compactStep(behaviour.policy(), behaviour.mode());
+    WorkflowDefinition workflow = workflow(compact, referencingStep("s1"));
+    ExecutionContext executionContext = context(workflow);
+    var merged = mapper.readTree("""
+        {"entries":[{"id":"REQ-1"}]}""");
+    com.agentforge4j.runtime.ledger.LedgerMerger.writeMerged(executionContext.getState(), ledger(),
+        merged);
+    InMemoryWorkflowEventLog eventLog = new InMemoryWorkflowEventLog();
+    CompactBehaviourHandler handler = new CompactBehaviourHandler(
+        new ContextSourceResolver(new ContextRenderer(mapper), mapper, ContextPackRegistry.EMPTY),
+        new DefaultTokenEstimator(),
+        new InMemoryWorkflowRepository(Map.of(workflow.id(), workflow)),
+        new EventRecorder(eventLog, CLOCK), mapper, mock(AgentInvoker.class));
+
+    handler.handle(compact, behaviour, executionContext);
+
+    var performed = eventLog.getEvents("run-1").stream()
+        .filter(e -> e.eventType() == com.agentforge4j.core.workflow.event.WorkflowEventType.COMPACTION_PERFORMED)
+        .findFirst();
+    assertThat(performed).isPresent();
+    assertThat(performed.get().payload()).contains("\"estimator\":\"DefaultTokenEstimator\"");
+  }
+
+  @Test
+  void recordsTheResolvedEstimatorOnCompactionSkipped() {
+    CompactBehaviour behaviour = new CompactBehaviour(source(), new DeterministicExtract(),
+        new CompactionPolicy(1_000_000, 0));
+    StepDefinition compact = compactStep(behaviour.policy(), behaviour.mode());
+    WorkflowDefinition workflow = workflow(compact);
+    ExecutionContext executionContext = context(workflow);
+    InMemoryWorkflowEventLog eventLog = new InMemoryWorkflowEventLog();
+    CompactBehaviourHandler handler = new CompactBehaviourHandler(
+        new ContextSourceResolver(new ContextRenderer(mapper), mapper, ContextPackRegistry.EMPTY),
+        new DefaultTokenEstimator(),
+        new InMemoryWorkflowRepository(Map.of(workflow.id(), workflow)),
+        new EventRecorder(eventLog, CLOCK), mapper, mock(AgentInvoker.class));
+
+    handler.handle(compact, behaviour, executionContext);
+
+    var skipped = eventLog.getEvents("run-1").stream()
+        .filter(e -> e.eventType() == com.agentforge4j.core.workflow.event.WorkflowEventType.COMPACTION_SKIPPED)
+        .findFirst();
+    assertThat(skipped).isPresent();
+    assertThat(skipped.get().payload()).contains("estimator=DefaultTokenEstimator");
   }
 
   @Test
@@ -243,16 +307,35 @@ class CompactBehaviourHandlerTest {
   }
 
   @Test
-  void llmSummaryThrowsUnsupported() {
-    CompactBehaviour behaviour = new CompactBehaviour(source(), new LlmSummary("STANDARD"),
-        new CompactionPolicy(0, 0));
+  void performsLlmSummaryThroughTheDeclaredAgent() throws Exception {
+    CompactBehaviour behaviour = new CompactBehaviour(source(),
+        new LlmSummary("STANDARD", "summarizer-agent"), new CompactionPolicy(0, 0));
     StepDefinition compact = compactStep(behaviour.policy(), behaviour.mode());
-    WorkflowDefinition workflow = workflow(compact);
+    WorkflowDefinition workflow = workflow(compact, referencingStep("s1"));
     ExecutionContext executionContext = context(workflow);
+    var merged = mapper.readTree("""
+        {"entries":[{"id":"REQ-1"}],"openQuestions":["q?"]}""");
+    com.agentforge4j.runtime.ledger.LedgerMerger.writeMerged(executionContext.getState(), ledger(),
+        merged);
+    AgentInvoker agentInvoker = mock(AgentInvoker.class);
+    when(agentInvoker.invoke(eq("summarizer-agent"), any(), any(), any(), eq("STANDARD"),
+        anyString())).thenReturn(new AgentInvocationResult("summary text", List.of(), null, null,
+        null, ModelSource.PROVIDER_DEFAULT, null));
 
-    assertThatThrownBy(() -> handler(workflow).handle(compact, behaviour, executionContext))
-        .isInstanceOf(UnsupportedOperationException.class)
-        .hasMessageContaining("LLM_SUMMARY");
+    handler(workflow, agentInvoker).handle(compact, behaviour, executionContext);
+
+    var stored = CompactSiblingStore.read(executionContext.getState(), ContextSourceId.of(source()),
+        mapper);
+    assertThat(stored).isPresent();
+    assertThat(stored.get().content()).isEqualTo("summary text");
+    // The staged source content must be addressed as the sole input key — nothing else from the
+    // run's shared context leaks into the summarization agent's rendered input.
+    verify(agentInvoker).invoke(eq("summarizer-agent"),
+        eq(new com.agentforge4j.core.workflow.context.ContextMapping(
+            List.of(com.agentforge4j.core.workflow.state.ReservedContextKeys.llmSummaryInputKey(
+                ContextSourceId.of(source()))),
+            List.of())),
+        any(), any(), eq("STANDARD"), anyString());
   }
 
   @Test

@@ -48,6 +48,17 @@ public final class ReservedContextKeys {
    */
   public static final String EXPANSION_COUNT_KEY_PREFIX = "__expansionCount.";
 
+  /**
+   * Reserved key prefix under which a {@code COMPACT} step's resolved source content is staged before
+   * an {@code LLM_SUMMARY} invocation, one key per canonical source id. The runtime's agent invoker
+   * only ever renders context from {@code state} via a {@code ContextMapping}, never from an arbitrary
+   * caller-supplied string — this key is how the already-resolved source content is made addressable
+   * that way, mirroring the {@code spar.resolution.prompt} convention {@code SparBehaviourHandler} uses
+   * for the same reason. In the protected {@code __} namespace for the same reason as
+   * {@link #LEDGER_KEY_PREFIX}.
+   */
+  public static final String LLM_SUMMARY_INPUT_KEY_PREFIX = "__compactSourceInput.";
+
   private ReservedContextKeys() {
   }
 
@@ -100,5 +111,19 @@ public final class ReservedContextKeys {
    */
   public static String expansionCountKey(int stepExecutionUid) {
     return EXPANSION_COUNT_KEY_PREFIX + stepExecutionUid;
+  }
+
+  /**
+   * Returns the reserved context key staging a COMPACT step's resolved source content for an
+   * {@code LLM_SUMMARY} invocation, for the given canonical source id.
+   *
+   * @param sourceId the canonical source id (see {@code ContextSourceId} in the runtime); must not be
+   *                 blank
+   *
+   * @return the reserved key {@code "__compactSourceInput." + sourceId}; never {@code null}
+   */
+  public static String llmSummaryInputKey(String sourceId) {
+    Validate.notBlank(sourceId, "sourceId must not be blank");
+    return LLM_SUMMARY_INPUT_KEY_PREFIX + sourceId;
   }
 }

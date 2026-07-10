@@ -13,6 +13,7 @@ import com.agentforge4j.core.workflow.context.ContextMapping;
 import com.agentforge4j.core.workflow.context.ContextProvenance;
 import com.agentforge4j.core.workflow.context.StringContextValue;
 import com.agentforge4j.core.workflow.event.WorkflowEvent;
+import com.agentforge4j.core.workflow.state.ReservedContextKeys;
 import com.agentforge4j.core.workflow.event.WorkflowEventType;
 import com.agentforge4j.core.workflow.state.WorkflowState;
 import com.agentforge4j.core.workflow.step.ContextSelection;
@@ -33,7 +34,7 @@ import com.agentforge4j.runtime.command.handler.RequestContextCommandHandler;
 import com.agentforge4j.runtime.command.handler.RunCommandHandler;
 import com.agentforge4j.runtime.command.handler.SetContextCommandHandler;
 import com.agentforge4j.runtime.command.handler.UserPromptCommandHandler;
-import com.agentforge4j.runtime.context.ContextPackRegistry;
+import com.agentforge4j.runtime.ContextPackRegistry;
 import com.agentforge4j.runtime.context.ContextSourceResolver;
 import com.agentforge4j.runtime.event.EventRecorder;
 import com.agentforge4j.runtime.llm.ContextRenderer;
@@ -237,6 +238,20 @@ class CommandApplierTest {
     assertThat(events).extracting(WorkflowEvent::eventType)
         .containsExactly(WorkflowEventType.CONTEXT_EXPANSION_GRANTED,
             WorkflowEventType.CONTEXT_EXPANSION_GRANTED);
+  }
+
+  @Test
+  void apply_failsWithAClearErrorWhenThePersistedExpansionCountIsCorrupted() {
+    WorkflowState state = stateAtStep("s1");
+    state.putContextValue(ReservedContextKeys.expansionCountKey(7),
+        new StringContextValue("not-a-number", ContextProvenance.SYSTEM_GENERATED));
+    CommandApplier applier = applier();
+
+    assertThatThrownBy(() -> applier.apply(List.of(new ContinueCommand(null, null, null)), state,
+        ContextMapping.none(), "agent-1", 7, step("s1"), workflow()))
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessageContaining(ReservedContextKeys.expansionCountKey(7))
+        .hasMessageContaining("not-a-number");
   }
 
   private static WorkflowState stateAtStep(String stepId) {

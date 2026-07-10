@@ -3,8 +3,8 @@ package com.agentforge4j.testkit.consumer;
 
 import com.agentforge4j.llm.api.ModelTier;
 import com.agentforge4j.llm.fake.FakeScript;
+import com.agentforge4j.runtime.ContextPackRegistry;
 import com.agentforge4j.runtime.command.FileSink;
-import com.agentforge4j.runtime.context.ContextPackRegistry;
 import com.agentforge4j.runtime.exception.CompactSiblingUnavailableException;
 import com.agentforge4j.testkit.assertion.WorkflowRunAssert;
 import com.agentforge4j.testkit.capture.CapturingFileSink;
@@ -15,13 +15,13 @@ import com.agentforge4j.testkit.scenario.ScenarioScriptLoader;
  * Exercises representative public testkit signatures whose parameter/return types come from modules
  * the testkit only re-exports transitively: {@link FakeScript} ({@code agentforge4j.llm.fake}),
  * {@link ModelTier} ({@code agentforge4j.llm.api}), and {@link FileSink} ({@code agentforge4j.runtime},
- * the supertype of the testkit's {@link CapturingFileSink}). {@link ContextPackRegistry} and
- * {@link CompactSiblingUnavailableException} are not part of any testkit signature but are
- * exercised directly here as the JPMS export proof for {@code com.agentforge4j.runtime.context}
- * and {@code com.agentforge4j.runtime.exception}: module readability from {@code requires
- * transitive agentforge4j.runtime} extends to every type those packages export, not only the ones
- * the testkit's own API happens to use. This class compiling against a module that {@code requires}
- * only {@code agentforge4j.testkit} is the JPMS contract proof.
+ * the supertype of the testkit's {@link CapturingFileSink}). {@link ContextPackRegistry} (top-level
+ * {@code com.agentforge4j.runtime}) and {@link CompactSiblingUnavailableException}
+ * ({@code com.agentforge4j.runtime.exception}) are not part of any testkit signature but are
+ * exercised directly here as the JPMS export proof for those two types: module readability from
+ * {@code requires transitive agentforge4j.runtime} extends to every type their exported packages
+ * export, not only the ones the testkit's own API happens to use. This class compiling against a
+ * module that {@code requires} only {@code agentforge4j.testkit} is the JPMS contract proof.
  */
 public final class TestkitModuleConsumer {
 
@@ -61,8 +61,8 @@ public final class TestkitModuleConsumer {
   }
 
   /**
-   * Returns the empty {@link ContextPackRegistry} — naming a {@code com.agentforge4j.runtime.context}
-   * type reachable only because that package is exported by {@code agentforge4j.runtime}.
+   * Returns the empty {@link ContextPackRegistry} — naming a top-level {@code com.agentforge4j.runtime}
+   * type used as a {@code WorkflowRuntimeBuilder} parameter.
    *
    * @return the empty registry
    */

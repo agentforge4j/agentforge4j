@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 package com.agentforge4j.core.workflow;
 
+import com.agentforge4j.core.workflow.step.ContextSelector;
+import com.agentforge4j.core.workflow.step.ContextSourceKind;
+import com.agentforge4j.core.workflow.step.ContextVariant;
 import com.agentforge4j.core.workflow.step.StepDefinition;
 import com.agentforge4j.core.workflow.step.StepTransition;
 import com.agentforge4j.core.workflow.step.behaviour.AgentBehaviour;
@@ -8,7 +11,11 @@ import com.agentforge4j.core.workflow.step.behaviour.BranchBehaviour;
 import com.agentforge4j.core.workflow.step.behaviour.BranchPredicate;
 import com.agentforge4j.core.workflow.step.behaviour.BranchPredicateKind;
 import com.agentforge4j.core.workflow.step.behaviour.CollectionBehaviour;
+import com.agentforge4j.core.workflow.step.behaviour.CompactBehaviour;
+import com.agentforge4j.core.workflow.step.behaviour.CompactionPolicy;
+import com.agentforge4j.core.workflow.step.behaviour.DeterministicExtract;
 import com.agentforge4j.core.workflow.step.behaviour.FailBehaviour;
+import com.agentforge4j.core.workflow.step.behaviour.LlmSummary;
 import com.agentforge4j.core.workflow.step.behaviour.SparBehaviour;
 import com.agentforge4j.core.workflow.step.blueprint.BlueprintBehaviour;
 import com.agentforge4j.core.workflow.step.blueprint.BlueprintDefinition;
@@ -115,6 +122,37 @@ class WorkflowAgentRefCollectorTest {
         .withName("Collect CVs")
         .withBehaviour(new CollectionBehaviour(
             null, 0, null, null, 0, null, null, null, null, null, null, null, StepTransition.AUTO))
+        .build();
+    var wf = workflow("root", List.of(step), Map.of());
+
+    assertThat(WorkflowAgentRefCollector.collect(wf)).isEmpty();
+  }
+
+  @Test
+  void collects_llm_summary_agent_ref_from_compact_behaviour() {
+    var step = StepDefinition.builder()
+        .withStepId("compact")
+        .withName("C")
+        .withBehaviour(new CompactBehaviour(
+            new ContextSelector(ContextSourceKind.LEDGER_SECTION, "requirements", ContextVariant.FULL),
+            new LlmSummary("STANDARD", "summarizer-agent"),
+            new CompactionPolicy(0, 0)))
+        .build();
+    var wf = workflow("root", List.of(step), Map.of());
+
+    assertThat(WorkflowAgentRefCollector.collect(wf))
+        .containsExactly(new WorkflowAgentRefCollector.AgentRefSite("summarizer-agent", "root", "compact"));
+  }
+
+  @Test
+  void deterministic_extract_compact_behaviour_contributes_no_agent_refs() {
+    var step = StepDefinition.builder()
+        .withStepId("compact")
+        .withName("C")
+        .withBehaviour(new CompactBehaviour(
+            new ContextSelector(ContextSourceKind.LEDGER_SECTION, "requirements", ContextVariant.FULL),
+            new DeterministicExtract(),
+            new CompactionPolicy(0, 0)))
         .build();
     var wf = workflow("root", List.of(step), Map.of());
 

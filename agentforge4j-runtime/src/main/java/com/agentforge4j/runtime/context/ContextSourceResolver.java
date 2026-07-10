@@ -10,6 +10,7 @@ import com.agentforge4j.core.workflow.state.WorkflowState;
 import com.agentforge4j.core.workflow.step.ContextSelector;
 import com.agentforge4j.core.workflow.step.ContextSourceKind;
 import com.agentforge4j.core.workflow.step.ContextVariant;
+import com.agentforge4j.runtime.ContextPackRegistry;
 import com.agentforge4j.runtime.exception.CompactSiblingUnavailableException;
 import com.agentforge4j.runtime.ledger.LedgerMerger;
 import com.agentforge4j.runtime.llm.ContextRenderer;

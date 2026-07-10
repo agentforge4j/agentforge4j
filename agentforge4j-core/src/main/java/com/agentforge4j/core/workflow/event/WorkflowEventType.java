@@ -223,13 +223,14 @@ public enum WorkflowEventType {
   /**
    * Recorded when a compaction step produces a compact sibling. Payload carries the full compact-sibling metadata:
    * {@code sourceId}, {@code sourceFingerprint}, {@code mode}, {@code estimatedUnitsBefore},
-   * {@code estimatedUnitsAfter}, {@code producedByStepId}, and the policy snapshot.
+   * {@code estimatedUnitsAfter}, {@code producedByStepId}, the policy snapshot, and {@code estimator} (the resolved
+   * {@code TokenEstimator} implementation's simple class name).
    */
   COMPACTION_PERFORMED,
   /**
    * Recorded when a compaction step deterministically declines to compact. Payload fields: {@code sourceId},
    * {@code sourceFingerprint}, {@code reason} ({@code SOURCE_TOO_SMALL} / {@code INSUFFICIENT_REUSE} /
-   * {@code UP_TO_DATE}).
+   * {@code UP_TO_DATE}), {@code estimator} (the resolved {@code TokenEstimator} implementation's simple class name).
    */
   COMPACTION_SKIPPED,
   /**

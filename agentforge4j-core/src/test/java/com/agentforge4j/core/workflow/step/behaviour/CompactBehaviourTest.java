@@ -31,8 +31,8 @@ class CompactBehaviourTest {
 
   @Test
   void deserializesFromCompactType() throws Exception {
-    CompactBehaviour original = new CompactBehaviour(source(), new LlmSummary("STANDARD"),
-        new CompactionPolicy(100, 1));
+    CompactBehaviour original = new CompactBehaviour(source(),
+        new LlmSummary("STANDARD", "summarizer-agent"), new CompactionPolicy(100, 1));
     String json = mapper.writeValueAsString((StepBehaviour) original);
 
     assertThat(json).contains("COMPACT");

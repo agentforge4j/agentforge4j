@@ -19,6 +19,7 @@ import com.agentforge4j.core.workflow.step.StepDefinition;
 import com.agentforge4j.core.workflow.step.behaviour.CompactionPolicy;
 import com.agentforge4j.core.workflow.step.behaviour.DeterministicExtract;
 import com.agentforge4j.core.workflow.step.behaviour.FailBehaviour;
+import com.agentforge4j.runtime.ContextPackRegistry;
 import com.agentforge4j.runtime.exception.CompactSiblingUnavailableException;
 import com.agentforge4j.runtime.ledger.LedgerMerger;
 import com.agentforge4j.runtime.llm.ContextRenderer;

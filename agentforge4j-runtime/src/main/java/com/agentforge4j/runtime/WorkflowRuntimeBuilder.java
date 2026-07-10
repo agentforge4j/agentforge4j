@@ -51,7 +51,6 @@ import com.agentforge4j.runtime.execution.loop.EvaluatorLoopStrategy;
 import com.agentforge4j.runtime.execution.loop.FixedCountLoopStrategy;
 import com.agentforge4j.runtime.execution.loop.ForEachLoopStrategy;
 import com.agentforge4j.runtime.execution.loop.MaxIterationsHandler;
-import com.agentforge4j.runtime.context.ContextPackRegistry;
 import com.agentforge4j.runtime.context.ContextSourceResolver;
 import com.agentforge4j.runtime.interceptor.RunExecutionInterceptor;
 import com.agentforge4j.runtime.llm.AgentInvoker;
@@ -523,7 +522,7 @@ public final class WorkflowRuntimeBuilder {
         new ValidateBehaviourHandler(generatedArtifactStore, artifactValidators, eventRecorder),
         new AssignContextBehaviourHandler(eventRecorder),
         new CompactBehaviourHandler(contextSourceResolver, resolvedTokenEstimator,
-            workflowRepository, eventRecorder, resolvedObjectMapper));
+            workflowRepository, eventRecorder, resolvedObjectMapper, agentInvoker));
     return new StepExecutor(handlers, eventRecorder, resolvedClock, transitionGate);
   }
 

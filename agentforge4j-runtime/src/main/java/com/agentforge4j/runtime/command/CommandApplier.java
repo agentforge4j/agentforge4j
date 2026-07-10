@@ -96,10 +96,21 @@ public final class CommandApplier {
   }
 
   private static int readPersistedExpansionCount(WorkflowState state, int stepExecutionUid) {
-    return state.getContextValue(ReservedContextKeys.expansionCountKey(stepExecutionUid))
+    String key = ReservedContextKeys.expansionCountKey(stepExecutionUid);
+    return state.getContextValue(key)
         .map(CommandApplier::expansionCountContentOf)
-        .map(Integer::parseInt)
+        .map(content -> parseExpansionCount(content, key))
         .orElse(0);
+  }
+
+  private static int parseExpansionCount(String content, String key) {
+    try {
+      return Integer.parseInt(content);
+    } catch (NumberFormatException e) {
+      throw new IllegalStateException(
+          "Persisted expansion-count key '%s' holds a non-numeric value: '%s'"
+              .formatted(key, content), e);
+    }
   }
 
   private static void writePersistedExpansionCount(WorkflowState state, int stepExecutionUid,

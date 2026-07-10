@@ -50,9 +50,19 @@ class TokenGovernanceSchemaContractTest {
     String step = """
         {"kind":"STEP","stepId":"s1","name":"S","behaviour":{"type":"COMPACT",
          "source":{"kind":"LEDGER_SECTION","ref":"requirements"},
-         "mode":{"type":"LLM_SUMMARY","modelTier":"STANDARD"},
+         "mode":{"type":"LLM_SUMMARY","modelTier":"STANDARD","agentRef":"summarizer-agent"},
          "policy":{"minSourceUnits":100,"minDownstreamReuse":1}}}""";
     assertThat(validate(WORKFLOW_SCHEMA, workflowWithStep(step))).isEmpty();
+  }
+
+  @Test
+  void workflow_rejectsLlmSummaryWithoutAgentRef() throws Exception {
+    String step = """
+        {"kind":"STEP","stepId":"s1","name":"S","behaviour":{"type":"COMPACT",
+         "source":{"kind":"LEDGER_SECTION","ref":"requirements"},
+         "mode":{"type":"LLM_SUMMARY","modelTier":"STANDARD"},
+         "policy":{"minSourceUnits":100,"minDownstreamReuse":1}}}""";
+    assertThat(validate(WORKFLOW_SCHEMA, workflowWithStep(step))).isNotEmpty();
   }
 
   @Test
