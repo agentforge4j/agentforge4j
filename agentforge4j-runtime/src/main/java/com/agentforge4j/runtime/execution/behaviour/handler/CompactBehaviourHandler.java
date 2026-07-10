@@ -197,11 +197,14 @@ public final class CompactBehaviourHandler implements BehaviourHandler<CompactBe
     CompactSiblingMetadata metadata = new CompactSiblingMetadata(sourceId, sourceFingerprint,
         behaviour.mode(), estimatedUnitsBefore, estimatedUnitsAfter, step.stepId(),
         behaviour.policy());
+    // Build the event payload before writing the sibling to state: a serialization failure must
+    // never leave a durably-persisted compact sibling with no corresponding audit event.
+    String eventPayload = toEventPayload(metadata);
     CompactSiblingStore.write(state, sourceId, new CompactSibling(compactContent, metadata),
         objectMapper, provenance);
 
     eventRecorder.record(state.getRunId(), step.stepId(), WorkflowEventType.COMPACTION_PERFORMED,
-        toEventPayload(metadata), "runtime");
+        eventPayload, "runtime");
     LOG.log(System.Logger.Level.INFO,
         "Compaction performed stepId={0}, sourceId={1}, unitsBefore={2}, unitsAfter={3}",
         step.stepId(), sourceId, estimatedUnitsBefore, estimatedUnitsAfter);

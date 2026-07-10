@@ -101,4 +101,86 @@ class LedgerSchemaResolverTest {
 
     assertThatCode(() -> customResolver.validate(ledger)).doesNotThrowAnyException();
   }
+
+  @Test
+  void rejectsATypoedRefFragmentInsteadOfSilentlyPassingMergeKeyField() {
+    String envelope = """
+        {"$defs":{"Envelope":{"type":"object","properties":{"entries":{"type":"array",
+         "items":{"type":"object","properties":{"id":{"type":"string"}},
+         "additionalProperties":false}}}}}}""";
+    String wrapper = """
+        {"$ref": "envelope.schema.json#/$defs/Typo"}""";
+    LedgerSchemaResolver customResolver = resolverOver(Map.of(
+        "schema/ledger/wrapper.schema.json", wrapper,
+        "schema/ledger/envelope.schema.json", envelope));
+    LedgerDefinition ledger = new LedgerDefinition("requirements", "ledger/wrapper.schema.json",
+        LedgerMergeStrategy.MERGE_BY_KEY, "bogus");
+
+    assertThatThrownBy(() -> customResolver.validate(ledger))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("does not resolve within");
+  }
+
+  @Test
+  void rejectsAMultiHopRefChainInsteadOfSilentlyPassingMergeKeyField() {
+    // No fragment on the top-level $ref: dereferenceTopLevelRef's single hop lands on
+    // second.schema.json's raw content unchanged, which is itself just another $ref indirection
+    // (no properties.entries.items reachable within the one hop this resolver supports).
+    String firstHop = """
+        {"$ref": "second.schema.json"}""";
+    String secondHop = """
+        {"$ref": "third.schema.json#/$defs/Envelope"}""";
+    String thirdHop = """
+        {"$defs":{"Envelope":{"type":"object","properties":{"entries":{"type":"array",
+         "items":{"type":"object","properties":{"id":{"type":"string"}},
+         "additionalProperties":false}}}}}}""";
+    LedgerSchemaResolver customResolver = resolverOver(Map.of(
+        "schema/ledger/first.schema.json", firstHop,
+        "schema/ledger/second.schema.json", secondHop,
+        "schema/ledger/third.schema.json", thirdHop));
+    LedgerDefinition ledger = new LedgerDefinition("requirements", "ledger/first.schema.json",
+        LedgerMergeStrategy.MERGE_BY_KEY, "bogus");
+
+    assertThatThrownBy(() -> customResolver.validate(ledger))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("does not resolve to a schema shape mergeKeyField can be validated");
+  }
+
+  @Test
+  void rejectsPathTraversalInSchemaRef() {
+    LedgerDefinition ledger = new LedgerDefinition("requirements",
+        "../../../etc/passwd", LedgerMergeStrategy.APPEND, null);
+
+    assertThatThrownBy(() -> resolver.validate(ledger))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("must not contain '..'");
+  }
+
+  @Test
+  void rejectsPathTraversalInASiblingRefFile() {
+    String traversalRef = """
+        {"$ref": "../../secrets.schema.json#/$defs/Envelope"}""";
+    LedgerSchemaResolver customResolver = resolverOver(
+        Map.of("schema/ledger/traversal.schema.json", traversalRef));
+    LedgerDefinition ledger = new LedgerDefinition("requirements", "ledger/traversal.schema.json",
+        LedgerMergeStrategy.MERGE_BY_KEY, "id");
+
+    assertThatThrownBy(() -> customResolver.validate(ledger))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("must not contain '..'");
+  }
+
+  @Test
+  void rejectsAnAbsoluteExternalRefWithADiagnosticMessage() {
+    String externalRef = """
+        {"$ref": "https://example.com/schema.json#/$defs/Envelope"}""";
+    LedgerSchemaResolver customResolver = resolverOver(
+        Map.of("schema/ledger/external.schema.json", externalRef));
+    LedgerDefinition ledger = new LedgerDefinition("requirements", "ledger/external.schema.json",
+        LedgerMergeStrategy.MERGE_BY_KEY, "id");
+
+    assertThatThrownBy(() -> customResolver.validate(ledger))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("absolute/external URL");
+  }
 }

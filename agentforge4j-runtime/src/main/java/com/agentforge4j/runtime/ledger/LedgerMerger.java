@@ -162,7 +162,15 @@ public final class LedgerMerger {
     JsonNode value = entry.get(keyField);
     Validate.notNull(value, () -> new IllegalArgumentException(
         "Ledger entry missing merge key field '%s': %s".formatted(keyField, entry)));
-    return value.asText();
+    // A scalar (non-null) value node only: an explicit JSON null stringifies to the literal text
+    // "null" via asText(), and an object/array stringifies to "" — either would silently collide
+    // with an unrelated entry sharing that same degenerate key. Tagging the key with the node's
+    // type also keeps a numeric 1 and a textual "1" from colliding with each other while still
+    // matching consistently-typed keys across current and delta (the documented, tested contract).
+    Validate.isTrue(value.isValueNode() && !value.isNull(), () -> new IllegalArgumentException(
+        "Ledger entry's merge key field '%s' must be a scalar value, but was %s: %s"
+            .formatted(keyField, value.getNodeType(), entry)));
+    return value.getNodeType() + ":" + value.asText();
   }
 
   private static ArrayNode concat(JsonNode current, JsonNode delta, String field,
@@ -175,7 +183,16 @@ public final class LedgerMerger {
 
   private static ArrayNode arrayOrEmpty(JsonNode node, String field, ObjectMapper mapper) {
     JsonNode value = node.get(field);
-    return value instanceof ArrayNode arrayNode ? arrayNode : mapper.createArrayNode();
+    if (value == null) {
+      return mapper.createArrayNode();
+    }
+    // Only an absent field defaults to empty (see the class Javadoc). A field that is present but
+    // the wrong shape (e.g. a malformed delta sending "entries": "oops") must fail loud, not
+    // silently discard whatever the emitter actually sent.
+    Validate.isTrue(value instanceof ArrayNode, () -> new IllegalArgumentException(
+        "Ledger section field '%s' must be an array, but was %s".formatted(field,
+            value.getNodeType())));
+    return (ArrayNode) value;
   }
 
   private static ObjectNode emptyEnvelope(ObjectMapper mapper) {

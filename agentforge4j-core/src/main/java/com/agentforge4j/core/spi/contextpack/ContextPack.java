@@ -34,6 +34,9 @@ public record ContextPack(
     Validate.notNull(variants, "ContextPack variants must not be null for pack: %s".formatted(name));
     Validate.isTrue(!variants.isEmpty(), "ContextPack must declare at least one variant for pack: %s".formatted(name));
     for (Map.Entry<String, ContextPackVariant> entry : variants.entrySet()) {
+      Validate.notNull(entry.getValue(), () -> new IllegalArgumentException(
+          "ContextPack variant '%s' must not be null for pack: %s"
+              .formatted(entry.getKey(), name)));
       Validate.isTrue(entry.getKey().equals(entry.getValue().name()),
           "ContextPack variant key '%s' must match variant name '%s' for pack: %s"
               .formatted(entry.getKey(), entry.getValue().name(), name));

@@ -96,6 +96,47 @@ class LedgerMergerTest {
   }
 
   @Test
+  void mergeByKeyRejectsAnExplicitJsonNullKeyField() throws Exception {
+    JsonNode delta = json("""
+        {"entries":[{"id":null,"status":"OPEN"}]}""");
+
+    assertThatThrownBy(() -> LedgerMerger.merge(ledger(LedgerMergeStrategy.MERGE_BY_KEY, "id"), null,
+        delta, mapper))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("id");
+  }
+
+  @Test
+  void mergeByKeyRejectsAnObjectOrArrayKeyField() throws Exception {
+    JsonNode objectKeyDelta = json("""
+        {"entries":[{"id":{"nested":true},"status":"OPEN"}]}""");
+    JsonNode arrayKeyDelta = json("""
+        {"entries":[{"id":["a"],"status":"OPEN"}]}""");
+
+    assertThatThrownBy(() -> LedgerMerger.merge(ledger(LedgerMergeStrategy.MERGE_BY_KEY, "id"), null,
+        objectKeyDelta, mapper))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("id");
+    assertThatThrownBy(() -> LedgerMerger.merge(ledger(LedgerMergeStrategy.MERGE_BY_KEY, "id"), null,
+        arrayKeyDelta, mapper))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("id");
+  }
+
+  @Test
+  void mergeByKeyDoesNotCollideKeysOfDifferentJsonTypes() throws Exception {
+    JsonNode current = json("""
+        {"entries":[{"id":1,"status":"NUMERIC"}]}""");
+    JsonNode delta = json("""
+        {"entries":[{"id":"1","status":"TEXTUAL"}]}""");
+
+    JsonNode merged = LedgerMerger.merge(ledger(LedgerMergeStrategy.MERGE_BY_KEY, "id"), current,
+        delta, mapper);
+
+    assertThat(merged.get("entries")).hasSize(2);
+  }
+
+  @Test
   void mergeByKeyKeepsTheLastEntryWhenTheSameDeltaDeclaresADuplicateKey() throws Exception {
     JsonNode delta = json("""
         {"entries":[{"id":"REQ-1","status":"OPEN"},{"id":"REQ-1","status":"DONE"}]}""");
@@ -105,6 +146,17 @@ class LedgerMergerTest {
 
     assertThat(merged.get("entries")).hasSize(1);
     assertThat(merged.get("entries").get(0).get("status").asText()).isEqualTo("DONE");
+  }
+
+  @Test
+  void rejectsAPresentEntriesFieldOfTheWrongType() throws Exception {
+    JsonNode delta = json("""
+        {"entries":"oops"}""");
+
+    assertThatThrownBy(() -> LedgerMerger.merge(ledger(LedgerMergeStrategy.APPEND, null), null,
+        delta, mapper))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("entries");
   }
 
   @Test

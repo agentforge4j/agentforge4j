@@ -39,9 +39,10 @@ public record AgentDefinition(
    * @param author the author of the agent definition
    * @param contact contact information for the agent author
    * @param version version of the agent definition
-   * @param modelTier optional capability tier name ({@code LITE}/{@code STANDARD}/{@code POWERFUL})
-   *                  resolved to a concrete model at invocation time; {@code null} when the agent
-   *                  relies on raw provider model pins or provider defaults. Stored as the tier name
+   * @param modelTier optional capability tier name ({@code LITE}/{@code STANDARD}/{@code POWERFUL}/
+   *                  {@code PREMIUM}) resolved to a concrete model at invocation time; {@code null}
+   *                  when the agent relies on raw provider model pins or provider defaults. Stored as
+   *                  the tier name
    *                  (a String) so {@code core} stays free of the {@code llm-api} enum; the name is
    *                  validated where it is converted, at the runtime invocation boundary
    * @param outputContract optional declaration of the structured output this agent is expected to

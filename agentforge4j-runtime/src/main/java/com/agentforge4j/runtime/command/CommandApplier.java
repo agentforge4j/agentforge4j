@@ -80,14 +80,25 @@ public final class CommandApplier {
       // commands) makes maxExpansions bound the total requested expansions in the batch — packing
       // many selectors into one command must not evade the limit.
       int priorExpansions = 0;
-      if (command instanceof RequestContextCommand requestContext) {
+      int updatedExpansions = requestContextExpansions;
+      boolean requestsContext = command instanceof RequestContextCommand;
+      if (requestsContext) {
         priorExpansions = requestContextExpansions;
-        requestContextExpansions += requestContext.requestedSelectors().size();
-        writePersistedExpansionCount(state, currentStepUid, requestContextExpansions);
+        updatedExpansions = requestContextExpansions
+            + ((RequestContextCommand) command).requestedSelectors().size();
       }
       CommandApplicationRequest request = new CommandApplicationRequest(state, contextMapping,
           agentId, currentStepUid, step, enclosingWorkflow, priorExpansions);
+      // Apply before persisting the updated count: the handler is allowed to throw partway through
+      // a selector loop (e.g. CompactSiblingUnavailableException), and a step retry reuses this same
+      // step execution uid. Persisting the count up front would permanently burn budget on selectors
+      // that never actually completed; persisting only after a successful apply means a retry that
+      // re-requests the same selectors is counted exactly once, on the attempt that actually grants.
       CommandApplicationResult result = applyOne(command, request);
+      if (requestsContext) {
+        requestContextExpansions = updatedExpansions;
+        writePersistedExpansionCount(state, currentStepUid, requestContextExpansions);
+      }
       if (result != CommandApplicationResult.CONTINUE) {
         return result;
       }

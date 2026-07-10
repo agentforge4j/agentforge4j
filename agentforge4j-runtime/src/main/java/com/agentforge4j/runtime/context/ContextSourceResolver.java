@@ -198,7 +198,11 @@ public final class ContextSourceResolver {
     Optional<ContextValue> value = state.getContextValue(key);
     Validate.isTrue(value.isPresent(),
         () -> new IllegalStateException("No context value for key '%s'".formatted(key)));
-    return contextRenderer.renderSingleValue(value.get()).toString();
+    // Canonicalize, same as resolveLedgerSection: an ARTIFACT/STATE_KEY value can be JSON-shaped
+    // (JsonContextValue), and its field order is not stable across re-serializations of
+    // semantically identical content. Fingerprinting non-canonical text would make compact-sibling
+    // staleness and regrant change-detection spuriously flip on incidental key reordering.
+    return CanonicalJson.render(contextRenderer.renderSingleValue(value.get()), objectMapper);
   }
 
   private static String resolveStepOutput(String stepId, WorkflowState state) {

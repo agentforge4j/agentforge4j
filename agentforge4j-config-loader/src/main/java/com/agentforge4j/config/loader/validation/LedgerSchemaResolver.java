@@ -99,6 +99,7 @@ final class LedgerSchemaResolver {
    */
   void validate(LedgerDefinition ledger) {
     Validate.notNull(ledger, "ledger must not be null");
+    rejectPathTraversal(ledger, ledger.schemaRef());
     String resourcePath = CLASSPATH_ROOT + ledger.schemaRef();
     JsonNode schemaNode = readSchemaNode(ledger, resourcePath);
     confirmValidJsonSchema(ledger, schemaNode);
@@ -106,6 +107,18 @@ final class LedgerSchemaResolver {
       JsonNode resolved = dereferenceTopLevelRef(ledger, resourcePath, schemaNode);
       validateMergeKeyField(ledger, resolved);
     }
+  }
+
+  /**
+   * Rejects a {@code schemaRef}/{@code $ref} sibling-file value containing a {@code ..} path
+   * segment, mirroring {@code FileSystemContextPackLoader}'s traversal guard: both build a classpath
+   * resource path by concatenating an author-controlled string onto a fixed root, so both need the
+   * same containment check.
+   */
+  private static void rejectPathTraversal(LedgerDefinition ledger, String refValue) {
+    Validate.isTrue(!refValue.contains(".."), () -> new IllegalArgumentException(
+        "Ledger '%s' schemaRef '%s' must not contain '..' path segments"
+            .formatted(ledger.id(), refValue)));
   }
 
   private JsonNode readSchemaNode(LedgerDefinition ledger, String resourcePath) {
@@ -148,8 +161,13 @@ final class LedgerSchemaResolver {
     String refFile = hashIndex < 0 ? ref : ref.substring(0, hashIndex);
     String refPointer = hashIndex < 0 ? "" : ref.substring(hashIndex + 1);
     if (refFile.isBlank()) {
-      return atOrSelf(schemaNode, refPointer);
+      return atOrThrow(ledger, schemaNode, refPointer, "the schema itself");
     }
+    Validate.isTrue(!refFile.contains("://"), () -> new IllegalArgumentException(
+        "Ledger '%s' schemaRef '%s' has a $ref '%s' to an absolute/external URL, which this "
+            + "single-hop classpath resolver does not support".formatted(ledger.id(),
+            ledger.schemaRef(), refFile)));
+    rejectPathTraversal(ledger, refFile);
     int lastSlash = resourcePath.lastIndexOf('/');
     String baseDir = lastSlash < 0 ? "" : resourcePath.substring(0, lastSlash + 1);
     String siblingPath = baseDir + refFile;
@@ -158,7 +176,8 @@ final class LedgerSchemaResolver {
           ("Ledger '%s' schemaRef '%s' references '%s' via $ref, which does not resolve to "
               + "classpath resource '%s'").formatted(ledger.id(), ledger.schemaRef(), refFile,
               siblingPath)));
-      return atOrSelf(objectMapper.readTree(stream), refPointer);
+      return atOrThrow(ledger, objectMapper.readTree(stream), refPointer, "'%s'".formatted(
+          siblingPath));
     } catch (IOException e) {
       throw new UncheckedIOException(
           "Ledger '%s' schemaRef '%s' $ref target '%s' could not be read: %s"
@@ -166,22 +185,35 @@ final class LedgerSchemaResolver {
     }
   }
 
-  private static JsonNode atOrSelf(JsonNode root, String pointer) {
+  /**
+   * Resolves {@code pointer} within {@code root}, or returns {@code root} unchanged when
+   * {@code pointer} is blank (no fragment). A non-blank pointer that does not resolve fails loud —
+   * silently falling back to {@code root} would mask a typo'd fragment as "nothing to check," letting
+   * an unrelated {@code mergeKeyField} pass validation it should have failed.
+   */
+  private static JsonNode atOrThrow(LedgerDefinition ledger, JsonNode root, String pointer,
+      String refDescription) {
     if (pointer.isBlank()) {
       return root;
     }
     String jsonPointer = pointer.startsWith("/") ? pointer : "/" + pointer;
     JsonNode result = root.at(jsonPointer);
-    return result.isMissingNode() ? root : result;
+    Validate.isTrue(!result.isMissingNode(), () -> new IllegalArgumentException(
+        "Ledger '%s' schemaRef '%s' has a $ref fragment '#%s' that does not resolve within %s"
+            .formatted(ledger.id(), ledger.schemaRef(), pointer, refDescription)));
+    return result;
   }
 
   private static void validateMergeKeyField(LedgerDefinition ledger, JsonNode resolvedSchema) {
     JsonNode items = resolvedSchema.at("/properties/entries/items");
-    if (items.isMissingNode()) {
-      // The schema doesn't declare entries.items in the shape this check understands (see class
-      // Javadoc) — nothing to check mergeKeyField against, so it cannot be proven wrong.
-      return;
-    }
+    // A schema shape this single-hop resolver doesn't understand (see class Javadoc: at most one
+    // $ref hop, entries as a top-level array-of-objects property) fails loud rather than silently
+    // skipping the check — the alternative would let any mergeKeyField pass unvalidated whenever the
+    // schema shape is even slightly unfamiliar, defeating the point of this validation.
+    Validate.isTrue(!items.isMissingNode(), () -> new IllegalArgumentException(
+        ("Ledger '%s' schemaRef '%s' does not resolve to a schema shape mergeKeyField can be "
+            + "validated against (expected 'properties.entries.items' reachable within at most one "
+            + "$ref hop)").formatted(ledger.id(), ledger.schemaRef())));
     JsonNode properties = items.get("properties");
     if (properties != null && properties.has(ledger.mergeKeyField())) {
       return;
