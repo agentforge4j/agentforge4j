@@ -2,8 +2,11 @@
 package com.agentforge4j.runtime.command;
 
 import com.agentforge4j.core.command.LlmCommand;
+import com.agentforge4j.core.command.RequestContextCommand;
+import com.agentforge4j.core.workflow.WorkflowDefinition;
 import com.agentforge4j.core.workflow.context.ContextMapping;
 import com.agentforge4j.core.workflow.state.WorkflowState;
+import com.agentforge4j.core.workflow.step.StepDefinition;
 import com.agentforge4j.util.Validate;
 import java.util.List;
 import java.util.Map;
@@ -41,6 +44,8 @@ public final class CommandApplier {
    * @param contextMapping   allowed output keys for {@code agentId}
    * @param agentId          agent id recorded on events and permission checks
    * @param currentStepUid   step instance id used when recording context writes
+   * @param step             the step whose commands are being applied
+   * @param enclosingWorkflow the workflow definition enclosing {@code step}
    * @return aggregated control-flow result for the batch
    * @throws IllegalArgumentException if any argument is {@code null} or no handler is registered
    *                                  for a command's concrete class
@@ -49,15 +54,23 @@ public final class CommandApplier {
       WorkflowState state,
       ContextMapping contextMapping,
       String agentId,
-      int currentStepUid) {
+      int currentStepUid,
+      StepDefinition step,
+      WorkflowDefinition enclosingWorkflow) {
     Validate.notNull(commands, "commands must not be null");
     Validate.notNull(state, "state must not be null");
     Validate.notNull(contextMapping, "contextMapping must not be null");
     Validate.notNull(agentId, "agentId must not be null");
+    Validate.notNull(step, "step must not be null");
+    Validate.notNull(enclosingWorkflow, "enclosingWorkflow must not be null");
 
-    CommandApplicationRequest request = new CommandApplicationRequest(state, contextMapping,
-        agentId, currentStepUid);
+    int requestContextRound = 0;
     for (LlmCommand command : commands) {
+      if (command instanceof RequestContextCommand) {
+        requestContextRound++;
+      }
+      CommandApplicationRequest request = new CommandApplicationRequest(state, contextMapping,
+          agentId, currentStepUid, step, enclosingWorkflow, requestContextRound);
       CommandApplicationResult result = applyOne(command, request);
       if (result != CommandApplicationResult.CONTINUE) {
         return result;

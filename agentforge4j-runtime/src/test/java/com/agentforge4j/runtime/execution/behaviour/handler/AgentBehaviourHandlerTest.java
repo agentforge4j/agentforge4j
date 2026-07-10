@@ -75,7 +75,7 @@ class AgentBehaviourHandlerTest {
   @Test
   void complete_command_sets_agent_completion_signal_without_changing_outcome() {
     stubAgentResponse(new CompleteCommand(null));
-    when(commandApplier.apply(any(), any(), any(), any(), anyInt()))
+    when(commandApplier.apply(any(), any(), any(), any(), anyInt(), any(), any()))
         .thenReturn(CommandApplicationResult.COMPLETE_SIGNAL);
 
     ExecutionOutcome outcome = handler.handle(step, (AgentBehaviour) step.behaviour(),
@@ -91,7 +91,7 @@ class AgentBehaviourHandlerTest {
     executionContext.setAgentCompletionSignalled(true);
     stubAgentResponse(new SetContextCommand("key",
         new StringContextValue("value", ContextProvenance.LLM_GENERATED)));
-    when(commandApplier.apply(any(), any(), any(), any(), anyInt())).thenReturn(CommandApplicationResult.CONTINUE);
+    when(commandApplier.apply(any(), any(), any(), any(), anyInt(), any(), any())).thenReturn(CommandApplicationResult.CONTINUE);
 
     ExecutionOutcome outcome = handler.handle(step, (AgentBehaviour) step.behaviour(), executionContext);
 

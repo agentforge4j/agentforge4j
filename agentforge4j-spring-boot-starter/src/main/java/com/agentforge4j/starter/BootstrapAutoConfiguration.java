@@ -18,11 +18,13 @@ import com.agentforge4j.starter.mcp.ToolProperties;
 import com.agentforge4j.util.Validate;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.nio.file.Path;
+import java.util.Arrays;
 import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.stream.Collectors;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
@@ -205,8 +207,12 @@ public class BootstrapAutoConfiguration {
     } catch (IllegalArgumentException exception) {
       throw new IllegalStateException(
           ("Invalid tier '%s' for provider '%s' under agentforge4j.llm.model-tiers — "
-              + "valid tiers: LITE, STANDARD, POWERFUL").formatted(tierName, provider),
+              + "valid tiers: %s").formatted(tierName, provider, validTierNames()),
           exception);
     }
+  }
+
+  private static String validTierNames() {
+    return Arrays.stream(ModelTier.values()).map(Enum::name).collect(Collectors.joining(", "));
   }
 }
