@@ -131,8 +131,9 @@ with `{name}` placeholders; host/port fixed, no placeholders before the path), `
 (`JsonNode`, non-null JSON Schema), `outputSchema` (`JsonNode` | null), `queryArgs`
 (`Set<String>`), `bodyMode` (`NONE`/`JSON`), `staticHeaders` (`Map<String,String>`, literal),
 `secretHeaders` (`Map<String,String>` header → **bare secret-reference key**, resolved via
-`SecretResolver.resolve(key)` at invoke), `timeout` (ISO-8601 duration | null), `maxRetries` (`int`,
-`-1` = unset), `retryNonIdempotent` (`boolean`), `maxResponseBytes` (`Long` | null).
+`SecretResolver.resolve(key)` at invoke), `timeout` (ISO-8601 duration | null), `maxRetries`
+(`Integer` | null, null = unset), `retryNonIdempotent` (`boolean`), `maxResponseBytes` (`Long` |
+null).
 
 Loaded through the file-based path (`IntegrationType.HTTP_TOOL`, realised by
 `HttpToolProviderFactory`), or constructed directly:
