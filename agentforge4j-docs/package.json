@@ -25,6 +25,7 @@
     "javadoc:versions": "node scripts/build-javadoc-versions.mjs",
     "release:stage": "node scripts/release-stage.mjs",
     "docs:scratch-cut": "node scripts/release-scratch-cut.mjs",
+    "docs:archive": "node scripts/archive-transition.mjs",
     "docs:archive-scratch": "node scripts/archive-scratch.mjs",
     "docs:javadoc-versions-scratch": "node scripts/javadoc-versions-scratch.mjs",
     "a11y": "node scripts/a11y.mjs",
