@@ -30,11 +30,24 @@ class SchemaContractTest {
   private static final Path SCHEMA_DIR = MODULE_ROOT.resolve("src/main/resources/schema");
   private static final Path FIXTURES_DIR = MODULE_ROOT.resolve("src/test/resources/fixtures");
 
-  private static final Map<String, Path> SCHEMAS = Map.of(
-      "agent.schema.json", SCHEMA_DIR.resolve("agent.schema.json"),
-      "workflow.schema.json", SCHEMA_DIR.resolve("workflow.schema.json"),
-      "blueprint.schema.json", SCHEMA_DIR.resolve("blueprint.schema.json"),
-      "artifact.schema.json", SCHEMA_DIR.resolve("artifact.schema.json")
+  private static final Map<String, Path> SCHEMAS = Map.ofEntries(
+      Map.entry("agent.schema.json", SCHEMA_DIR.resolve("agent.schema.json")),
+      Map.entry("workflow.schema.json", SCHEMA_DIR.resolve("workflow.schema.json")),
+      Map.entry("blueprint.schema.json", SCHEMA_DIR.resolve("blueprint.schema.json")),
+      Map.entry("artifact.schema.json", SCHEMA_DIR.resolve("artifact.schema.json")),
+      Map.entry("context-pack.schema.json", SCHEMA_DIR.resolve("context-pack.schema.json")),
+      Map.entry("ledger/architecture-ledger.schema.json",
+          SCHEMA_DIR.resolve("ledger/architecture-ledger.schema.json")),
+      Map.entry("ledger/decision-ledger.schema.json",
+          SCHEMA_DIR.resolve("ledger/decision-ledger.schema.json")),
+      Map.entry("ledger/epic-ledger.schema.json",
+          SCHEMA_DIR.resolve("ledger/epic-ledger.schema.json")),
+      Map.entry("ledger/requirement-ledger.schema.json",
+          SCHEMA_DIR.resolve("ledger/requirement-ledger.schema.json")),
+      Map.entry("ledger/risk-ledger.schema.json",
+          SCHEMA_DIR.resolve("ledger/risk-ledger.schema.json")),
+      Map.entry("ledger/ledger-envelope.schema.json",
+          SCHEMA_DIR.resolve("ledger/ledger-envelope.schema.json"))
   );
 
   @Test

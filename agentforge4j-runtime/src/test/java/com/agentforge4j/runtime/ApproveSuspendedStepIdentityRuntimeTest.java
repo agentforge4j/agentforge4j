@@ -101,7 +101,7 @@ class ApproveSuspendedStepIdentityRuntimeTest {
         WorkflowLifecycle.ACTIVE,
         Map.of(),
         Map.of(),
-        List.of(a1));
+        List.of(a1), List.of(), List.of());
 
     InMemoryWorkflowStateRepository stateRepository = new InMemoryWorkflowStateRepository();
     WorkflowEventLog eventLog = new InMemoryWorkflowEventLog();

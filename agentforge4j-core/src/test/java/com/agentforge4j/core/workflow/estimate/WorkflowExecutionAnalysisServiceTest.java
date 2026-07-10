@@ -23,7 +23,7 @@ class WorkflowExecutionAnalysisServiceTest {
         .withBehaviour(new AgentBehaviour("agent-a", StepTransition.AUTO, null))
         .build();
     return new WorkflowDefinition("wf", "W", null, null, null, "1.0.0", null, null, null,
-        Map.of(), Map.of(), List.<Executable>of(step));
+        Map.of(), Map.of(), List.<Executable>of(step), List.of(), List.of());
   }
 
   @Test

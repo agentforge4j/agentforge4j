@@ -410,7 +410,9 @@ class RetryContinuationRuntimeTest {
         WorkflowLifecycle.ACTIVE,
         Map.of(),
         blueprints,
-        steps);
+        steps,
+        List.of(),
+        List.of());
   }
 
   private static Fixture fixture(WorkflowDefinition workflow) {

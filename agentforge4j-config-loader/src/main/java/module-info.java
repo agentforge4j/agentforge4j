@@ -32,6 +32,7 @@ module agentforge4j.config.loader {
   exports com.agentforge4j.config.loader.prompt;
   exports com.agentforge4j.config.loader.repository;
   exports com.agentforge4j.config.loader.validation;
+  exports com.agentforge4j.config.loader.contextpack;
 
   provides com.agentforge4j.config.loader.agent.ArtifactValidatorFactory
       with com.agentforge4j.config.loader.agent.AgentBundleArtifactValidatorFactory;

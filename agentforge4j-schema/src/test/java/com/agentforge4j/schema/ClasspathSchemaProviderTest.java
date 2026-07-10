@@ -21,6 +21,7 @@ class ClasspathSchemaProviderTest {
     assertThat(provider.agentSchema()).contains("\"title\": \"AgentDefinition\"");
     assertThat(provider.blueprintSchema()).contains("\"title\": \"BlueprintDefinition\"");
     assertThat(provider.artifactSchema()).contains("\"title\": \"ArtifactDefinition\"");
+    assertThat(provider.contextPackSchema()).contains("\"title\": \"ContextPack\"");
 
     assertThat(provider.workflowSchema()).isNotEqualTo(provider.agentSchema());
     assertThat(provider.blueprintSchema()).isNotEqualTo(provider.artifactSchema());

@@ -305,7 +305,7 @@ class AgentStepAuditRuntimeTest {
         WorkflowLifecycle.ACTIVE,
         Map.of(),
         Map.of(),
-        List.of(step));
+        List.of(step), List.of(), List.of());
 
     InMemoryWorkflowRepository workflowRepository = new InMemoryWorkflowRepository(
         Map.of("wf1", wf));

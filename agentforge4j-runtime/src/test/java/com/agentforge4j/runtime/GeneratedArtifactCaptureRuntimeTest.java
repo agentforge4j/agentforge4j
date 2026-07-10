@@ -164,7 +164,8 @@ class GeneratedArtifactCaptureRuntimeTest {
     }
     WorkflowDefinition wf = new WorkflowDefinition(
         "wf1", "W", null, null, null, null, null,
-        WorkflowSource.CUSTOM, WorkflowLifecycle.ACTIVE, Map.of(), Map.of(), List.copyOf(steps));
+        WorkflowSource.CUSTOM, WorkflowLifecycle.ACTIVE, Map.of(), Map.of(), List.copyOf(steps),
+        List.of(), List.of());
 
     WorkflowStateRepository stateRepository = new InMemoryWorkflowStateRepository();
     WorkflowEventLog eventLog = new InMemoryWorkflowEventLog();
