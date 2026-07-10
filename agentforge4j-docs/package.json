@@ -17,8 +17,15 @@
     "generate": "node scripts/generate-references.mjs && node scripts/generate-vocab-lint.mjs",
     "lint:frontmatter": "node scripts/lint-frontmatter.mjs",
     "lint:nav": "node scripts/lint-nav.mjs",
-    "lint": "npm run lint:frontmatter && npm run lint:nav",
-    "test": "node --test scripts/vocab.test.mjs scripts/generate-references.test.mjs",
+    "lint:fixtures": "node scripts/validate-fixtures.mjs",
+    "lint:product-name": "node scripts/lint-product-name.mjs",
+    "lint": "npm run lint:frontmatter && npm run lint:nav && npm run lint:fixtures && npm run lint:product-name",
+    "javadoc": "node scripts/build-javadoc.mjs",
+    "release:stage": "node scripts/release-stage.mjs",
+    "docs:scratch-cut": "node scripts/release-scratch-cut.mjs",
+    "a11y": "node scripts/a11y.mjs",
+    "site:assemble": "node scripts/assemble-site.mjs",
+    "test": "node --test scripts/vocab.test.mjs scripts/generate-references.test.mjs scripts/include.test.mjs scripts/fixtures.test.mjs scripts/javadoc.test.mjs scripts/dematerialize.test.mjs scripts/support-window.test.mjs scripts/product-name.test.mjs scripts/assemble-site.test.mjs",
     "check": "npm run generate && npm run lint && npm run typecheck && npm run test && npm run build"
   },
   "dependencies": {
@@ -38,8 +45,16 @@
     "@docusaurus/tsconfig": "3.10.1",
     "@docusaurus/types": "3.10.1",
     "@types/react": "^19.0.0",
+    "ajv": "^8.17.1",
+    "ajv-formats": "^3.0.1",
     "gray-matter": "^4.0.3",
-    "typescript": "~6.0.2"
+    "pa11y-ci": "^3.1.0",
+    "remark-frontmatter": "^5.0.0",
+    "remark-mdx": "^3.1.1",
+    "remark-parse": "^11.0.0",
+    "typescript": "~6.0.2",
+    "unified": "^11.0.5",
+    "unist-util-visit": "^5.1.0"
   },
   "browserslist": {
     "production": [
