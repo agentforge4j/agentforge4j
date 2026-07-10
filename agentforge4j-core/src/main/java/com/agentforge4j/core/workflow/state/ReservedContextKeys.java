@@ -39,6 +39,15 @@ public final class ReservedContextKeys {
    */
   public static final String GRANTED_KEY_PREFIX = "__granted.";
 
+  /**
+   * Reserved key prefix under which the persisted count of requested context expansions is stored,
+   * one key per step execution uid. In the protected {@code __} namespace for the same reason as
+   * {@link #LEDGER_KEY_PREFIX} — this total bounds {@code maxExpansions} across every
+   * command-application batch belonging to the same step invocation (a pause/resume or retry that
+   * reuses the same step execution uid), not just the current batch.
+   */
+  public static final String EXPANSION_COUNT_KEY_PREFIX = "__expansionCount.";
+
   private ReservedContextKeys() {
   }
 
@@ -79,5 +88,17 @@ public final class ReservedContextKeys {
   public static String grantedKey(String sourceId) {
     Validate.notBlank(sourceId, "sourceId must not be blank");
     return GRANTED_KEY_PREFIX + sourceId;
+  }
+
+  /**
+   * Returns the reserved context key storing the persisted context-expansion count for the given
+   * step execution uid.
+   *
+   * @param stepExecutionUid the step execution uid (see {@code ExecutionContext#allocateStepSequenceUid})
+   *
+   * @return the reserved key {@code "__expansionCount." + stepExecutionUid}; never {@code null}
+   */
+  public static String expansionCountKey(int stepExecutionUid) {
+    return EXPANSION_COUNT_KEY_PREFIX + stepExecutionUid;
   }
 }

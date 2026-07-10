@@ -422,7 +422,7 @@
         "maxExpansions": {
           "type": ["integer", "null"],
           "minimum": 1,
-          "description": "Maximum requested context expansions evaluated within a single command-application batch — each requested selector counts as one expansion, however the selectors are batched into commands. The count resets on the next batch, so it does not bound expansions across a step's full invocation lifecycle if that step pauses/resumes or is retried. Null defaults to 1; must be positive when present — declare an empty expandableScope to permit no expansion."
+          "description": "Maximum requested context expansions evaluated across a step invocation's whole lifetime — each requested selector counts as one expansion, however the selectors are batched into commands or spread across separate command-application batches (for example a pause/resume cycle, or a retry) for the same step invocation. The count is persisted and survives across those batches; a genuinely new step invocation starts fresh. Null defaults to 1; must be positive when present — declare an empty expandableScope to permit no expansion."
         }
       }
     },

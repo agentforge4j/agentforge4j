@@ -5,6 +5,10 @@ import com.agentforge4j.core.command.LlmCommand;
 import com.agentforge4j.core.command.RequestContextCommand;
 import com.agentforge4j.core.workflow.WorkflowDefinition;
 import com.agentforge4j.core.workflow.context.ContextMapping;
+import com.agentforge4j.core.workflow.context.ContextProvenance;
+import com.agentforge4j.core.workflow.context.ContextValue;
+import com.agentforge4j.core.workflow.context.StringContextValue;
+import com.agentforge4j.core.workflow.state.ReservedContextKeys;
 import com.agentforge4j.core.workflow.state.WorkflowState;
 import com.agentforge4j.core.workflow.step.StepDefinition;
 import com.agentforge4j.util.Validate;
@@ -64,7 +68,12 @@ public final class CommandApplier {
     Validate.notNull(step, "step must not be null");
     Validate.notNull(enclosingWorkflow, "enclosingWorkflow must not be null");
 
-    int requestContextExpansions = 0;
+    // Starts from the count already persisted for this step execution uid, not zero, so
+    // maxExpansions bounds the total requested expansions across every command-application batch
+    // belonging to the same step invocation (a pause/resume or retry that reuses the same uid), not
+    // just this batch. A genuinely new step invocation gets a new uid (see
+    // ExecutionContext#allocateStepSequenceUid), so its count naturally starts at zero.
+    int requestContextExpansions = readPersistedExpansionCount(state, currentStepUid);
     for (LlmCommand command : commands) {
       // The prior-expansion count is meaningful only on a RequestContextCommand; every other
       // command type carries 0, as CommandApplicationRequest documents. Counting SELECTORS (not
@@ -74,6 +83,7 @@ public final class CommandApplier {
       if (command instanceof RequestContextCommand requestContext) {
         priorExpansions = requestContextExpansions;
         requestContextExpansions += requestContext.requestedSelectors().size();
+        writePersistedExpansionCount(state, currentStepUid, requestContextExpansions);
       }
       CommandApplicationRequest request = new CommandApplicationRequest(state, contextMapping,
           agentId, currentStepUid, step, enclosingWorkflow, priorExpansions);
@@ -83,6 +93,28 @@ public final class CommandApplier {
       }
     }
     return CommandApplicationResult.CONTINUE;
+  }
+
+  private static int readPersistedExpansionCount(WorkflowState state, int stepExecutionUid) {
+    return state.getContextValue(ReservedContextKeys.expansionCountKey(stepExecutionUid))
+        .map(CommandApplier::expansionCountContentOf)
+        .map(Integer::parseInt)
+        .orElse(0);
+  }
+
+  private static void writePersistedExpansionCount(WorkflowState state, int stepExecutionUid,
+      int count) {
+    state.putContextValue(ReservedContextKeys.expansionCountKey(stepExecutionUid),
+        new StringContextValue(Integer.toString(count), ContextProvenance.SYSTEM_GENERATED));
+  }
+
+  private static String expansionCountContentOf(ContextValue value) {
+    if (value instanceof StringContextValue text) {
+      return text.value();
+    }
+    throw new IllegalStateException(
+        "Persisted expansion-count key holds an unexpected value type: %s"
+            .formatted(value.getClass()));
   }
 
   private CommandApplicationResult applyOne(LlmCommand command, CommandApplicationRequest request) {

@@ -10,7 +10,12 @@ import com.agentforge4j.core.workflow.WorkflowDefinition;
 import com.agentforge4j.core.workflow.WorkflowLifecycle;
 import com.agentforge4j.core.workflow.WorkflowSource;
 import com.agentforge4j.core.workflow.context.ContextMapping;
+import com.agentforge4j.core.workflow.context.ContextProvenance;
+import com.agentforge4j.core.workflow.context.StringContextValue;
+import com.agentforge4j.core.workflow.event.WorkflowEvent;
+import com.agentforge4j.core.workflow.event.WorkflowEventType;
 import com.agentforge4j.core.workflow.state.WorkflowState;
+import com.agentforge4j.core.workflow.step.ContextSelection;
 import com.agentforge4j.core.workflow.step.ContextSelector;
 import com.agentforge4j.core.workflow.step.ContextSourceKind;
 import com.agentforge4j.core.workflow.step.ContextVariant;
@@ -24,11 +29,16 @@ import com.agentforge4j.runtime.command.handler.ContinueCommandHandler;
 import com.agentforge4j.runtime.command.handler.CreateFileCommandHandler;
 import com.agentforge4j.runtime.command.handler.EscalateCommandHandler;
 import com.agentforge4j.runtime.command.handler.GeneralQuestionCommandHandler;
+import com.agentforge4j.runtime.command.handler.RequestContextCommandHandler;
 import com.agentforge4j.runtime.command.handler.RunCommandHandler;
 import com.agentforge4j.runtime.command.handler.SetContextCommandHandler;
 import com.agentforge4j.runtime.command.handler.UserPromptCommandHandler;
+import com.agentforge4j.runtime.context.ContextPackRegistry;
+import com.agentforge4j.runtime.context.ContextSourceResolver;
 import com.agentforge4j.runtime.event.EventRecorder;
+import com.agentforge4j.runtime.llm.ContextRenderer;
 import com.agentforge4j.runtime.repository.InMemoryWorkflowEventLog;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
@@ -159,6 +169,74 @@ class CommandApplierTest {
 
     assertThat(requestContextPriors).containsExactly(0, 1, 3);
     assertThat(continuePriors).containsExactly(0, 0);
+  }
+
+  @Test
+  void apply_enforcesMaxExpansionsAcrossSeparateBatchesForTheSameStepExecutionUid() {
+    // Two separate apply() calls sharing the same currentStepUid model a step invocation that
+    // pauses and resumes (or is retried) between command-application batches. The second batch
+    // must see the count persisted by the first, not restart from zero.
+    ContextSelector selector = new ContextSelector(ContextSourceKind.STATE_KEY, "k",
+        ContextVariant.FULL);
+    ContextSelection selection = new ContextSelection(List.of(), List.of(selector), 1);
+    StepDefinition step = StepDefinition.builder().withStepId("s1").withName("s1")
+        .withBehaviour(new FailBehaviour("stop")).withContextSelection(selection).build();
+    WorkflowDefinition workflow = new WorkflowDefinition("wf-1", "W", null, null, null, "1.0.0",
+        null, WorkflowSource.CUSTOM, WorkflowLifecycle.ACTIVE, Map.of(), Map.of(), List.of(step),
+        List.of(), List.of());
+    WorkflowState state = stateAtStep("s1");
+    state.putContextValue("k", new StringContextValue("v", ContextProvenance.SYSTEM_GENERATED));
+    ObjectMapper mapper = new ObjectMapper();
+    InMemoryWorkflowEventLog eventLog = new InMemoryWorkflowEventLog();
+    RequestContextCommandHandler handler = new RequestContextCommandHandler(
+        new ContextSourceResolver(new ContextRenderer(mapper), mapper, ContextPackRegistry.EMPTY),
+        new EventRecorder(eventLog, CLOCK));
+    CommandApplier applier = new CommandApplier(List.of(handler));
+    int sharedStepExecutionUid = 7;
+
+    applier.apply(List.of(new RequestContextCommand(List.of(selector))), state,
+        ContextMapping.none(), "agent-1", sharedStepExecutionUid, step, workflow);
+    applier.apply(List.of(new RequestContextCommand(List.of(selector))), state,
+        ContextMapping.none(), "agent-1", sharedStepExecutionUid, step, workflow);
+
+    List<WorkflowEvent> events = eventLog.getEvents("run-1");
+    assertThat(events).hasSize(2);
+    assertThat(events.get(0).eventType()).isEqualTo(WorkflowEventType.CONTEXT_EXPANSION_GRANTED);
+    assertThat(events.get(1).eventType()).isEqualTo(WorkflowEventType.CONTEXT_EXPANSION_DENIED);
+    assertThat(events.get(1).payload()).contains("MAX_EXPANSIONS_REACHED");
+  }
+
+  @Test
+  void apply_startsACleanExpansionCountForADifferentStepExecutionUid() {
+    // A genuinely new step invocation (different currentStepUid, e.g. the next loop iteration)
+    // must not inherit another invocation's persisted count.
+    ContextSelector selector = new ContextSelector(ContextSourceKind.STATE_KEY, "k",
+        ContextVariant.FULL);
+    ContextSelection selection = new ContextSelection(List.of(), List.of(selector), 1);
+    StepDefinition step = StepDefinition.builder().withStepId("s1").withName("s1")
+        .withBehaviour(new FailBehaviour("stop")).withContextSelection(selection).build();
+    WorkflowDefinition workflow = new WorkflowDefinition("wf-1", "W", null, null, null, "1.0.0",
+        null, WorkflowSource.CUSTOM, WorkflowLifecycle.ACTIVE, Map.of(), Map.of(), List.of(step),
+        List.of(), List.of());
+    WorkflowState state = stateAtStep("s1");
+    state.putContextValue("k", new StringContextValue("v", ContextProvenance.SYSTEM_GENERATED));
+    ObjectMapper mapper = new ObjectMapper();
+    InMemoryWorkflowEventLog eventLog = new InMemoryWorkflowEventLog();
+    RequestContextCommandHandler handler = new RequestContextCommandHandler(
+        new ContextSourceResolver(new ContextRenderer(mapper), mapper, ContextPackRegistry.EMPTY),
+        new EventRecorder(eventLog, CLOCK));
+    CommandApplier applier = new CommandApplier(List.of(handler));
+
+    applier.apply(List.of(new RequestContextCommand(List.of(selector))), state,
+        ContextMapping.none(), "agent-1", 7, step, workflow);
+    applier.apply(List.of(new RequestContextCommand(List.of(selector))), state,
+        ContextMapping.none(), "agent-1", 8, step, workflow);
+
+    List<WorkflowEvent> events = eventLog.getEvents("run-1");
+    assertThat(events).hasSize(2);
+    assertThat(events).extracting(WorkflowEvent::eventType)
+        .containsExactly(WorkflowEventType.CONTEXT_EXPANSION_GRANTED,
+            WorkflowEventType.CONTEXT_EXPANSION_GRANTED);
   }
 
   private static WorkflowState stateAtStep(String stepId) {
