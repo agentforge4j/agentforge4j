@@ -116,6 +116,30 @@ class TokenGovernanceSchemaContractTest {
   }
 
   @Test
+  void workflow_acceptsContextSelectionWithMaxExpansions() throws Exception {
+    String step = """
+        {"kind":"STEP","stepId":"s1","name":"S",
+         "behaviour":{"type":"FAIL","reason":"r"},
+         "contextSelection":{
+           "selectors":[],
+           "expandableScope":[{"kind":"CONTEXT_PACK","ref":"coding-standards"}],
+           "maxExpansions":3}}""";
+    assertThat(validate(WORKFLOW_SCHEMA, workflowWithStep(step))).isEmpty();
+  }
+
+  @Test
+  void workflow_rejectsNonPositiveMaxExpansions() throws Exception {
+    String step = """
+        {"kind":"STEP","stepId":"s1","name":"S",
+         "behaviour":{"type":"FAIL","reason":"r"},
+         "contextSelection":{
+           "selectors":[],
+           "expandableScope":[{"kind":"CONTEXT_PACK","ref":"coding-standards"}],
+           "maxExpansions":0}}""";
+    assertThat(validate(WORKFLOW_SCHEMA, workflowWithStep(step))).isNotEmpty();
+  }
+
+  @Test
   void workflow_acceptsLedgersWithMergeByKey() throws Exception {
     String json = """
         {"kind":"WORKFLOW","id":"x","name":"X",

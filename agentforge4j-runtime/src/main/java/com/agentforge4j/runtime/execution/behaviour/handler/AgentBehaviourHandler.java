@@ -83,7 +83,9 @@ public final class AgentBehaviourHandler implements BehaviourHandler<AgentBehavi
         executionContext.getState(),
         step.contextMapping(),
         behaviour.agentRef(),
-        Validate.notNull(currentStepUid, "currentStepUid must not be null"));
+        Validate.notNull(currentStepUid, "currentStepUid must not be null"),
+        step,
+        executionContext.getEnclosingWorkflow());
 
     UserPromptPauseGuard.afterCommandApplication(step, executionContext.getState(),
         applicationResult);

@@ -3,11 +3,16 @@ package com.agentforge4j.runtime.command.handler;
 
 import com.agentforge4j.core.command.CreateFileCommand;
 import com.agentforge4j.core.exception.StepExecutionException;
+import com.agentforge4j.core.workflow.WorkflowDefinition;
+import com.agentforge4j.core.workflow.WorkflowLifecycle;
+import com.agentforge4j.core.workflow.WorkflowSource;
 import com.agentforge4j.core.workflow.context.ContextMapping;
 import com.agentforge4j.core.workflow.event.WorkflowEvent;
 import com.agentforge4j.core.workflow.event.WorkflowEventType;
 import com.agentforge4j.core.workflow.file.ArtifactDescriptor;
 import com.agentforge4j.core.workflow.state.WorkflowState;
+import com.agentforge4j.core.workflow.step.StepDefinition;
+import com.agentforge4j.core.workflow.step.behaviour.FailBehaviour;
 import com.agentforge4j.runtime.InMemoryGeneratedArtifactStore;
 import com.agentforge4j.runtime.command.CommandApplicationRequest;
 import com.agentforge4j.runtime.command.CommandApplicationResult;
@@ -18,6 +23,7 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.List;
+import java.util.Map;
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -39,7 +45,13 @@ class CreateFileCommandHandlerTest {
   }
 
   private static CommandApplicationRequest request(WorkflowState state) {
-    return new CommandApplicationRequest(state, ContextMapping.none(), "agent-1", 1);
+    StepDefinition step = StepDefinition.builder().withStepId("generate").withName("generate")
+        .withBehaviour(new FailBehaviour("stop")).build();
+    WorkflowDefinition workflow = new WorkflowDefinition("wf-1", "W", null, null, null, "1.0.0",
+        null, WorkflowSource.CUSTOM, WorkflowLifecycle.ACTIVE, Map.of(), Map.of(), List.of(step),
+        List.of(), List.of());
+    return new CommandApplicationRequest(state, ContextMapping.none(), "agent-1", 1, step, workflow,
+        0);
   }
 
   @Test

@@ -23,6 +23,7 @@ import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import java.nio.file.Path;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 
 /**
  * Builds the {@link ObjectMapper} and {@link LoadedConfiguration} used by
@@ -79,6 +80,8 @@ final class ConfigurationLoader {
    * @param workflowsDir         optional filesystem workflows directory
    * @param loadShippedAgents    whether to load classpath-bundled agents
    * @param loadShippedWorkflows whether to load classpath-bundled workflows
+   * @param loadedPackNames      names of the context packs actually loaded for this assembly;
+   *                             empty when none are configured
    *
    * @return loaded configuration; never {@code null}
    *
@@ -88,7 +91,8 @@ final class ConfigurationLoader {
       Path agentsDir,
       Path workflowsDir,
       boolean loadShippedAgents,
-      boolean loadShippedWorkflows) {
+      boolean loadShippedWorkflows,
+      Set<String> loadedPackNames) {
     WorkflowDirectoryLoader workflowDirectoryLoader = new FileSystemWorkflowLoader(objectMapper);
 
     ClasspathAgentLoader shippedClasspathAgentLoader = null;
@@ -114,7 +118,8 @@ final class ConfigurationLoader {
           Optional.ofNullable(agentsDir),
           Optional.ofNullable(workflowsDir),
           classpathAgentLoader,
-          classpathWorkflowLoader);
+          classpathWorkflowLoader,
+          loadedPackNames);
     } catch (RuntimeException exception) {
       throw new IllegalStateException("Failed to load AgentForge4j configuration", exception);
     }

@@ -6,6 +6,7 @@ import com.agentforge4j.core.workflow.WorkflowDefinition;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import lombok.RequiredArgsConstructor;
 
 /**
@@ -19,12 +20,15 @@ public final class WorkflowDraftValidator {
   /**
    * Validates draft workflows against global agents and cross-reference rules.
    *
-   * @param workflows workflows to validate
-   * @param globalAgents agents available to workflow references
+   * @param workflows       workflows to validate
+   * @param globalAgents    agents available to workflow references
+   * @param loadedPackNames names of the context packs actually loaded for this assembly; empty when
+   *                        none are configured
    * @return validation report containing any errors captured during checks
    */
   public ValidationReport validate(Map<String, WorkflowDefinition> workflows,
-                                   Map<String, AgentDefinition> globalAgents) {
+                                   Map<String, AgentDefinition> globalAgents,
+                                   Set<String> loadedPackNames) {
     List<ValidationError> errors = new ArrayList<>();
     runValidation(errors, "validateAgentRefs", () -> validator.validateAgentRefs(workflows, globalAgents));
     runValidation(errors, "validateWorkflowRefs", () -> validator.validateWorkflowRefs(workflows));
@@ -36,7 +40,7 @@ public final class WorkflowDraftValidator {
     runValidation(errors, "validateValidateBehaviourContracts",
         () -> validator.validateValidateBehaviourContracts(workflows));
     runValidation(errors, "validateContextSelectionRefs",
-        () -> validator.validateContextSelectionRefs(workflows));
+        () -> validator.validateContextSelectionRefs(workflows, loadedPackNames));
     return new ValidationReport(errors);
   }
 

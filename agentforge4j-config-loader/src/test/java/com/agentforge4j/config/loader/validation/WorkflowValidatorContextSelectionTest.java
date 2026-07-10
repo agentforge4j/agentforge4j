@@ -23,6 +23,7 @@ import com.agentforge4j.core.workflow.step.blueprint.BlueprintDefinition;
 import com.agentforge4j.core.workflow.step.blueprint.BlueprintRef;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThatCode;
@@ -69,7 +70,11 @@ class WorkflowValidatorContextSelectionTest {
   }
 
   private void validate(WorkflowDefinition wf) {
-    validator.validateContextSelectionRefs(Map.of("wf", wf));
+    validate(wf, Set.of());
+  }
+
+  private void validate(WorkflowDefinition wf, Set<String> loadedPackNames) {
+    validator.validateContextSelectionRefs(Map.of("wf", wf), loadedPackNames);
   }
 
   @Test
@@ -77,7 +82,7 @@ class WorkflowValidatorContextSelectionTest {
     ContextSelection selection = new ContextSelection(
         List.of(sel(ContextSourceKind.LEDGER_SECTION, "requirements.entries"),
             sel(ContextSourceKind.STEP_OUTPUT, "s1")),
-        List.of());
+        List.of(), null);
     WorkflowDefinition wf = workflow(
         List.of(step("s1"), stepWithSelection("s2", selection)),
         List.of(ledger("requirements")));
@@ -88,7 +93,7 @@ class WorkflowValidatorContextSelectionTest {
   @Test
   void rejectsUnknownLedgerSelector() {
     ContextSelection selection = new ContextSelection(
-        List.of(sel(ContextSourceKind.LEDGER_SECTION, "nope")), List.of());
+        List.of(sel(ContextSourceKind.LEDGER_SECTION, "nope")), List.of(), null);
     WorkflowDefinition wf = workflow(List.of(stepWithSelection("s1", selection)), List.of());
 
     assertThatThrownBy(() -> validate(wf))
@@ -99,7 +104,7 @@ class WorkflowValidatorContextSelectionTest {
   @Test
   void rejectsUnknownStepOutputSelector() {
     ContextSelection selection = new ContextSelection(
-        List.of(sel(ContextSourceKind.STEP_OUTPUT, "ghost")), List.of());
+        List.of(sel(ContextSourceKind.STEP_OUTPUT, "ghost")), List.of(), null);
     WorkflowDefinition wf = workflow(List.of(stepWithSelection("s1", selection)), List.of());
 
     assertThatThrownBy(() -> validate(wf))
@@ -110,7 +115,7 @@ class WorkflowValidatorContextSelectionTest {
   @Test
   void rejectsUnknownArtifactSelector() {
     ContextSelection selection = new ContextSelection(
-        List.of(sel(ContextSourceKind.ARTIFACT, "missing")), List.of());
+        List.of(sel(ContextSourceKind.ARTIFACT, "missing")), List.of(), null);
     WorkflowDefinition wf = workflow(List.of(stepWithSelection("s1", selection)), List.of());
 
     assertThatThrownBy(() -> validate(wf))
@@ -119,20 +124,38 @@ class WorkflowValidatorContextSelectionTest {
   }
 
   @Test
-  void skipsContextPackAndStateKeySelectors() {
+  void skipsStateKeySelectors() {
     ContextSelection selection = new ContextSelection(
-        List.of(sel(ContextSourceKind.CONTEXT_PACK, "any-pack"),
-            sel(ContextSourceKind.STATE_KEY, "some-key")),
-        List.of());
+        List.of(sel(ContextSourceKind.STATE_KEY, "some-key")), List.of(), null);
     WorkflowDefinition wf = workflow(List.of(stepWithSelection("s1", selection)), List.of());
 
     assertThatCode(() -> validate(wf)).doesNotThrowAnyException();
   }
 
   @Test
+  void acceptsContextPackSelectorInLoadedPackNames() {
+    ContextSelection selection = new ContextSelection(
+        List.of(sel(ContextSourceKind.CONTEXT_PACK, "coding-standards")), List.of(), null);
+    WorkflowDefinition wf = workflow(List.of(stepWithSelection("s1", selection)), List.of());
+
+    assertThatCode(() -> validate(wf, Set.of("coding-standards"))).doesNotThrowAnyException();
+  }
+
+  @Test
+  void rejectsContextPackSelectorNotInLoadedPackNames() {
+    ContextSelection selection = new ContextSelection(
+        List.of(sel(ContextSourceKind.CONTEXT_PACK, "unknown-pack")), List.of(), null);
+    WorkflowDefinition wf = workflow(List.of(stepWithSelection("s1", selection)), List.of());
+
+    assertThatThrownBy(() -> validate(wf, Set.of("coding-standards")))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("unknown context pack 'unknown-pack'");
+  }
+
+  @Test
   void validatesExpandableScopeSelectors() {
     ContextSelection selection = new ContextSelection(List.of(),
-        List.of(sel(ContextSourceKind.LEDGER_SECTION, "nope")));
+        List.of(sel(ContextSourceKind.LEDGER_SECTION, "nope")), null);
     WorkflowDefinition wf = workflow(List.of(stepWithSelection("s1", selection)), List.of());
 
     assertThatThrownBy(() -> validate(wf))
@@ -156,7 +179,7 @@ class WorkflowValidatorContextSelectionTest {
   @Test
   void acceptsResolvableSelectorInsideBranchChild() {
     ContextSelection selection = new ContextSelection(
-        List.of(sel(ContextSourceKind.STEP_OUTPUT, "branch-target-a")), List.of());
+        List.of(sel(ContextSourceKind.STEP_OUTPUT, "branch-target-a")), List.of(), null);
     StepDefinition branchTargetA = step("branch-target-a");
     StepDefinition branchTargetB = stepWithSelection("branch-target-b", selection);
     BranchBehaviour branch = new BranchBehaviour("route",
@@ -171,7 +194,7 @@ class WorkflowValidatorContextSelectionTest {
   @Test
   void rejectsUnknownSelectorInsideBranchChild() {
     ContextSelection selection = new ContextSelection(
-        List.of(sel(ContextSourceKind.LEDGER_SECTION, "nope")), List.of());
+        List.of(sel(ContextSourceKind.LEDGER_SECTION, "nope")), List.of(), null);
     StepDefinition branchTarget = stepWithSelection("branch-target", selection);
     BranchBehaviour branch = new BranchBehaviour("route", Map.of("a", branchTarget), List.of(),
         null, false);
@@ -187,7 +210,7 @@ class WorkflowValidatorContextSelectionTest {
   @Test
   void acceptsResolvableSelectorInsideBlueprintRefSteps() {
     ContextSelection selection = new ContextSelection(
-        List.of(sel(ContextSourceKind.STEP_OUTPUT, "bp-step-a")), List.of());
+        List.of(sel(ContextSourceKind.STEP_OUTPUT, "bp-step-a")), List.of(), null);
     StepDefinition bpStepA = step("bp-step-a");
     StepDefinition bpStepB = stepWithSelection("bp-step-b", selection);
     BlueprintDefinition bp = blueprint("bp1", List.of(bpStepA, bpStepB));
@@ -200,7 +223,7 @@ class WorkflowValidatorContextSelectionTest {
   @Test
   void rejectsUnknownSelectorInsideBlueprintRefSteps() {
     ContextSelection selection = new ContextSelection(
-        List.of(sel(ContextSourceKind.LEDGER_SECTION, "nope")), List.of());
+        List.of(sel(ContextSourceKind.LEDGER_SECTION, "nope")), List.of(), null);
     BlueprintDefinition bp = blueprint("bp1", List.of(stepWithSelection("bp-step", selection)));
     WorkflowDefinition wf = workflow("wf", List.of(new BlueprintRef("bp1")), List.of(),
         Map.of("bp1", bp));
@@ -213,9 +236,9 @@ class WorkflowValidatorContextSelectionTest {
   @Test
   void nestedWorkflowValidatesItsOwnLedgerScopeIndependently() {
     ContextSelection parentSelection = new ContextSelection(
-        List.of(sel(ContextSourceKind.LEDGER_SECTION, "parentLedger.entries")), List.of());
+        List.of(sel(ContextSourceKind.LEDGER_SECTION, "parentLedger.entries")), List.of(), null);
     ContextSelection nestedSelection = new ContextSelection(
-        List.of(sel(ContextSourceKind.LEDGER_SECTION, "nestedLedger.entries")), List.of());
+        List.of(sel(ContextSourceKind.LEDGER_SECTION, "nestedLedger.entries")), List.of(), null);
     WorkflowDefinition nestedWf = workflow("nested-wf",
         List.of(stepWithSelection("nested-step", nestedSelection)),
         List.of(ledger("nestedLedger")), Map.of());
@@ -229,7 +252,7 @@ class WorkflowValidatorContextSelectionTest {
   @Test
   void rejectsNestedWorkflowLedgerSelectorReferencedFromParentScope() {
     ContextSelection parentSelection = new ContextSelection(
-        List.of(sel(ContextSourceKind.LEDGER_SECTION, "nestedLedger.entries")), List.of());
+        List.of(sel(ContextSourceKind.LEDGER_SECTION, "nestedLedger.entries")), List.of(), null);
     WorkflowDefinition nestedWf = workflow("nested-wf", List.of(step("nested-step")),
         List.of(ledger("nestedLedger")), Map.of());
     WorkflowDefinition wf = workflow("wf",
@@ -244,7 +267,7 @@ class WorkflowValidatorContextSelectionTest {
   @Test
   void rejectsParentWorkflowLedgerSelectorReferencedFromNestedScope() {
     ContextSelection nestedSelection = new ContextSelection(
-        List.of(sel(ContextSourceKind.LEDGER_SECTION, "parentLedger.entries")), List.of());
+        List.of(sel(ContextSourceKind.LEDGER_SECTION, "parentLedger.entries")), List.of(), null);
     WorkflowDefinition nestedWf = workflow("nested-wf",
         List.of(stepWithSelection("nested-step", nestedSelection)), List.of(), Map.of());
     WorkflowDefinition wf = workflow("wf", List.of(nestedWf), List.of(ledger("parentLedger")),

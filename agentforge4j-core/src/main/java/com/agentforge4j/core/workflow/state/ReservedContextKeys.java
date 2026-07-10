@@ -24,6 +24,13 @@ public final class ReservedContextKeys {
    */
   public static final String LEDGER_KEY_PREFIX = "__ledger.";
 
+  /**
+   * Reserved key prefix under which a compaction step's compact sibling is stored, one key per
+   * canonical source id. In the protected {@code __} namespace for the same reason as
+   * {@link #LEDGER_KEY_PREFIX}.
+   */
+  public static final String COMPACT_KEY_PREFIX = "__compact.";
+
   private ReservedContextKeys() {
   }
 
@@ -37,5 +44,18 @@ public final class ReservedContextKeys {
   public static String ledgerKey(String ledgerId) {
     Validate.notBlank(ledgerId, "ledgerId must not be blank");
     return LEDGER_KEY_PREFIX + ledgerId;
+  }
+
+  /**
+   * Returns the reserved context key storing the compact sibling for the given canonical source id.
+   *
+   * @param sourceId the canonical source id (see {@code ContextSourceId} in the runtime); must not be
+   *                 blank
+   *
+   * @return the reserved key {@code "__compact." + sourceId}; never {@code null}
+   */
+  public static String compactKey(String sourceId) {
+    Validate.notBlank(sourceId, "sourceId must not be blank");
+    return COMPACT_KEY_PREFIX + sourceId;
   }
 }

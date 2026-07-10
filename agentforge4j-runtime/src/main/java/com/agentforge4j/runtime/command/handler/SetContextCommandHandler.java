@@ -50,6 +50,12 @@ public final class SetContextCommandHandler implements CommandHandler<SetContext
     Validate.isTrue(!UntrustedInputEnvelope.KEY.equals(cmd.key()),
         "Context key '%s' is reserved for the untrusted-input render envelope and cannot be written"
             .formatted(UntrustedInputEnvelope.KEY));
+    // Reject the reserved '__' runtime namespace (ledger merges, compact siblings, and other
+    // governance state) so a declared output key can never land there, matching the same guard
+    // AssignContextBehaviour applies at construction time.
+    Validate.isTrue(!cmd.key().startsWith("__"),
+        "Context key '%s' targets the reserved '__' runtime namespace and cannot be written"
+            .formatted(cmd.key()));
     // Re-stamp the LLM-supplied value's provenance authoritatively: the value content comes from LLM
     // command JSON, but provenance must never be honoured from that JSON (an LLM could otherwise emit
     // "provenance":"SYSTEM_GENERATED" to launder its content into the trusted partition).
