@@ -18,9 +18,11 @@ import com.agentforge4j.core.workflow.step.blueprint.BlueprintDefinition;
 import com.agentforge4j.core.workflow.step.blueprint.BlueprintRef;
 import org.junit.jupiter.api.Test;
 
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
@@ -307,6 +309,158 @@ class ReachableStepGraphTest {
       List<ReachableStep> reached = ReachableStepGraph.walk(root, NO_SUBWORKFLOWS);
       assertThat(reached).extracting(ReachableStep::stepId).containsExactly("x");
     }).doesNotThrowAnyException();
+  }
+
+  @Test
+  void walk_memoizesRepeatedBlueprintReferences() {
+    // A diamond-shaped reference chain: bp0 references bp1 twice, bp1 references bp2 twice, and so
+    // on. Every level's locations collapse (same definition, same container), but an unmemoized walk
+    // re-walks each level per reference — 2^(depth-1) visits of the deepest blueprint, observable as
+    // resolver calls from its WORKFLOW step. A memoized walk explores each blueprint subtree once.
+    int depth = 12;
+    Map<String, BlueprintDefinition> blueprints = new HashMap<>();
+    for (int i = 0; i < depth - 1; i++) {
+      blueprints.put("bp" + i, blueprint("bp" + i,
+          new BlueprintRef("bp" + (i + 1)), new BlueprintRef("bp" + (i + 1)), step("s" + i)));
+    }
+    blueprints.put("bp" + (depth - 1),
+        blueprint("bp" + (depth - 1), workflowStep("leaf-call", "leaf"), step("s" + (depth - 1))));
+    WorkflowDefinition root = wf("root", blueprints, new BlueprintRef("bp0"));
+    AtomicInteger resolutions = new AtomicInteger();
+    WorkflowRefResolver countingResolver = ref -> {
+      resolutions.incrementAndGet();
+      return null;
+    };
+
+    List<ReachableStep> reached = ReachableStepGraph.walk(root, countingResolver);
+
+    assertThat(resolutions.get()).isLessThanOrEqualTo(depth);
+    assertThat(reached).extracting(ReachableStep::stepId)
+        .contains("s0", "s" + (depth - 1), "leaf-call");
+    assertThat(ReachableStepGraph.findAmbiguousStepIds(root, countingResolver)).isEmpty();
+  }
+
+  @Test
+  void walk_replayedBlueprintKeepsDistinctLocationsPerReferenceChain() {
+    // The same blueprint referenced via two different chains occupies two structural locations; a
+    // memoized replay must re-prefix the cached locations at the new reference site, not reuse the
+    // first chain's locations (which would silently collapse a genuine ambiguity).
+    BlueprintDefinition shared = blueprint("shared", step("dup"));
+    BlueprintDefinition viaA = blueprint("bp-a", new BlueprintRef("shared"));
+    BlueprintDefinition viaB = blueprint("bp-b", new BlueprintRef("shared"));
+    WorkflowDefinition root = wf("root",
+        Map.of("shared", shared, "bp-a", viaA, "bp-b", viaB),
+        new BlueprintRef("bp-a"), new BlueprintRef("bp-b"));
+
+    List<AmbiguousStepId> ambiguous = ReachableStepGraph.findAmbiguousStepIds(root, NO_SUBWORKFLOWS);
+
+    assertThat(ambiguous).singleElement().satisfies(a -> {
+      assertThat(a.stepId()).isEqualTo("dup");
+      assertThat(a.locations()).containsExactlyInAnyOrder(
+          "wf:root/bp:bp-a/bp:shared/step:dup", "wf:root/bp:bp-b/bp:shared/step:dup");
+    });
+  }
+
+  @Test
+  void walk_replayedBlueprintKeepsSameIdBranchArmOccurrencesDistinct() {
+    // A repeated reference to a blueprint containing two branch arms that define distinct same-id
+    // steps must keep exactly the original walk's occurrences: two (identity-deduplicated,
+    // occurrence-suffixed), not one (collapsed) and not four (double-counted).
+    StepDefinition armYes = step("dup");
+    StepDefinition armNo = step("dup");
+    StepDefinition router = StepDefinition.builder()
+        .withStepId("router")
+        .withName("router")
+        .withBehaviour(new BranchBehaviour("flag", Map.of("yes", armYes, "no", armNo), List.of(),
+            null, false))
+        .withContextMapping(new ContextMapping(List.of(), List.of()))
+        .build();
+    BlueprintDefinition shared = blueprint("shared", router);
+    WorkflowDefinition root = wf("root", Map.of("shared", shared),
+        new BlueprintRef("shared"), new BlueprintRef("shared"));
+
+    List<ReachableStep> reached = ReachableStepGraph.walk(root, NO_SUBWORKFLOWS);
+
+    assertThat(reached).filteredOn(rs -> rs.stepId().equals("dup")).hasSize(2);
+  }
+
+  @Test
+  void walk_throwsOnPathologicallyDeepBlueprintChain() {
+    // Fail closed with the load-time IllegalStateException path instead of a StackOverflowError on a
+    // crafted arbitrarily deep blueprint-ref chain.
+    int depth = ReachableStepGraph.MAX_REF_DEPTH + 10;
+    Map<String, BlueprintDefinition> blueprints = new HashMap<>();
+    for (int i = 0; i < depth; i++) {
+      if (i < depth - 1) {
+        blueprints.put("bp" + i, blueprint("bp" + i, new BlueprintRef("bp" + (i + 1))));
+      } else {
+        blueprints.put("bp" + i, blueprint("bp" + i, step("leaf")));
+      }
+    }
+    WorkflowDefinition root = wf("root", blueprints, new BlueprintRef("bp0"));
+
+    assertThatThrownBy(() -> ReachableStepGraph.walk(root, NO_SUBWORKFLOWS))
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessageContaining("maximum reference depth");
+  }
+
+  @Test
+  void walk_throwsOnPathologicallyDeepWorkflowRefChain() {
+    // Same fail-closed guarantee for a deep acyclic workflow-ref chain.
+    int depth = ReachableStepGraph.MAX_REF_DEPTH + 10;
+    Map<String, WorkflowDefinition> workflows = new HashMap<>();
+    for (int i = 1; i < depth; i++) {
+      if (i < depth - 1) {
+        workflows.put("w" + i, wf("w" + i, Map.of(), workflowStep("call" + i, "w" + (i + 1))));
+      } else {
+        workflows.put("w" + i, wf("w" + i, Map.of(), step("leaf")));
+      }
+    }
+    WorkflowDefinition root = wf("w0", Map.of(), workflowStep("call0", "w1"));
+
+    assertThatThrownBy(() -> ReachableStepGraph.walk(root, workflows::get))
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessageContaining("maximum reference depth");
+  }
+
+  @Test
+  void walk_walksDeepAcyclicBlueprintChainWithinBound() {
+    // A deep-but-sane acyclic chain must still be walked in full — the bound only cuts pathology.
+    int depth = 100;
+    Map<String, BlueprintDefinition> blueprints = new HashMap<>();
+    for (int i = 0; i < depth; i++) {
+      if (i < depth - 1) {
+        blueprints.put("bp" + i, blueprint("bp" + i, new BlueprintRef("bp" + (i + 1))));
+      } else {
+        blueprints.put("bp" + i, blueprint("bp" + i, step("leaf")));
+      }
+    }
+    WorkflowDefinition root = wf("root", blueprints, new BlueprintRef("bp0"));
+
+    List<ReachableStep> reached = ReachableStepGraph.walk(root, NO_SUBWORKFLOWS);
+
+    assertThat(reached).extracting(ReachableStep::stepId).contains("leaf");
+  }
+
+  @Test
+  void walk_failsClosedOnCyclicFanOutExceedingTraversalBound() {
+    // A cycle poisons memoization (a subtree truncated by the path guard is not valid for replay),
+    // so a crafted cyclic fan-out chain still re-walks each level; the traversal-size backstop
+    // throws instead of letting the walk run for ~2^30 nodes.
+    int depth = 30;
+    Map<String, BlueprintDefinition> blueprints = new HashMap<>();
+    for (int i = 0; i < depth - 1; i++) {
+      blueprints.put("bp" + i, blueprint("bp" + i,
+          new BlueprintRef("bp" + (i + 1)), new BlueprintRef("bp" + (i + 1)),
+          new BlueprintRef("bp0"), step("s" + i)));
+    }
+    blueprints.put("bp" + (depth - 1),
+        blueprint("bp" + (depth - 1), new BlueprintRef("bp0"), step("tail")));
+    WorkflowDefinition root = wf("root", blueprints, new BlueprintRef("bp0"));
+
+    assertThatThrownBy(() -> ReachableStepGraph.walk(root, NO_SUBWORKFLOWS))
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessageContaining("maximum traversal size");
   }
 
   private static StepDefinition step(String stepId) {
