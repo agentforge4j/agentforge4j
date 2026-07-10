@@ -12,21 +12,21 @@ sidebar_position: 1
 Goal-oriented guide for wiring up an LLM provider. It assumes you already have
 AgentForge4j on your classpath (see the [Quick start](../get-started/quick-start.mdx)).
 
-:::note Work in progress
-The configuration keys and provider names on this page are produced from source by the
-generated [Configuration reference](../reference/config.mdx) and [Provider support](../reference/providers.mdx).
-Until those generators are wired in, use those reference pages as the authoritative list.
+:::note Authoritative lists
+The configuration keys and provider names are generated from source — see the
+[Configuration reference](../reference/config/index.mdx) and [Provider support](../reference/providers/index.mdx)
+for the authoritative lists.
 :::
 
 ## Choosing a provider
 
 Providers are discovered at runtime through a service-provider interface. The set of
 supported providers and whether each requires an API key is listed on the
-[Provider support](../reference/providers.mdx) page.
+[Provider support](../reference/providers/index.mdx) page.
 
 ## Supplying configuration
 
 AgentForge4j accepts configuration through more than one surface — the framework-agnostic
 bootstrap builder, environment variables and system properties, and (when you use the
 Spring Boot starter) Spring configuration properties. All surfaces are documented in the
-[Configuration reference](../reference/config.mdx).
+[Configuration reference](../reference/config/index.mdx).

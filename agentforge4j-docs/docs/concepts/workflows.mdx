@@ -18,8 +18,12 @@ step-by-step instructions — see the [How-to Guides](../how-to/configure-llm-pr
 An AgentForge4j workflow is a declarative document: a set of steps, each with a
 **behaviour** that determines what the step does, connected by **transitions** that
 determine what runs next. Definitions are data, validated against the published
-[schemas](../reference/schemas.mdx) before execution, so a malformed workflow fails fast rather
-than partway through a run.
+[schemas](../reference/schemas/index.mdx) before execution, so a malformed workflow fails fast rather
+than partway through a run. The shortest such document — the `quick-start` example's single agent
+step — looks like this:
+
+```json file=agentforge4j-examples/framework-examples/quick-start/src/main/resources/workflows/quick-start.workflow/workflow.json title="quick-start.workflow/workflow.json"
+```
 
 ## Why declarative
 
@@ -29,7 +33,10 @@ the runtime can reason about them (reachability, transitions) ahead of execution
 
 ## Vocabulary
 
-The execution vocabulary is fixed and documented in the reference section:
+The execution vocabulary is fixed and documented in the reference section. For example, a
+conditional step uses the `vocab:behaviour:BRANCH` behaviour, and an LLM step can emit a
+`vocab:command:CREATE_FILE` command; these identifiers are checked against the generated
+reference at build time, so a typo or a removed identifier fails the build.
 
 - [Behaviours](../reference/behaviours.mdx) — what a step can do.
 - [Commands](../reference/commands.mdx) — the instructions an LLM step can emit.

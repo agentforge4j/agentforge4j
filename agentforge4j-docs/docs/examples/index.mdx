@@ -7,11 +7,117 @@ sidebar_position: 1
 
 # Examples
 
-A gallery of runnable AgentForge4j examples. Every sample shown here is compiled and built
-from the framework examples sources and included into the docs, never copy-pasted — so a
-sample that no longer compiles fails the build.
+Every example is a real, runnable module under `agentforge4j-examples/`. The workflow definition
+shown for each is **included from source** and validated against the published schema at build time —
+never copy-pasted — so an example that drifts from its schema or stops compiling fails the build. Each
+example runs deterministically offline against the test provider (no network, no API key).
 
-:::note Work in progress
-The gallery entries and their included sources are wired in with the snippet-include
-mechanism in a later phase. The examples themselves live in the framework examples module.
-:::
+## Framework examples
+
+End-to-end programs that embed the framework. Best read in the [integrating](../get-started/integrating.mdx)
+order.
+
+### Quick start
+
+The shortest path from nothing to a running workflow.
+
+```json file=agentforge4j-examples/framework-examples/quick-start/src/main/resources/workflows/quick-start.workflow/workflow.json title="workflow.json"
+```
+
+[Full source](https://github.com/agentforge4j/agentforge4j/tree/main/agentforge4j-examples/framework-examples/quick-start)
+
+### Human approval
+
+A workflow that pauses for human approval before continuing.
+
+```json file=agentforge4j-examples/framework-examples/human-approval/src/main/resources/workflows/human-approval.workflow/workflow.json title="workflow.json"
+```
+
+[Full source](https://github.com/agentforge4j/agentforge4j/tree/main/agentforge4j-examples/framework-examples/human-approval)
+
+### MCP tools
+
+An agent that calls tools exposed over the Model Context Protocol.
+
+```json file=agentforge4j-examples/framework-examples/mcp/src/main/resources/workflows/mcp-demo.workflow/workflow.json title="workflow.json"
+```
+
+[Full source](https://github.com/agentforge4j/agentforge4j/tree/main/agentforge4j-examples/framework-examples/mcp)
+
+### Spring Boot
+
+The same workflow wired through the Spring Boot starter.
+
+```json file=agentforge4j-examples/framework-examples/spring-boot/src/main/resources/workflows/spring-boot-demo.workflow/workflow.json title="workflow.json"
+```
+
+[Full source](https://github.com/agentforge4j/agentforge4j/tree/main/agentforge4j-examples/framework-examples/spring-boot)
+
+### HTTP tools
+
+An agent that invokes an HTTP tool.
+
+```json file=agentforge4j-examples/framework-examples/tools-http/src/main/resources/workflows/tools-http-demo.workflow/workflow.json title="workflow.json"
+```
+
+[Full source](https://github.com/agentforge4j/agentforge4j/tree/main/agentforge4j-examples/framework-examples/tools-http)
+
+## Workflow-language examples
+
+Focused examples of the workflow language — one per behaviour or authoring construct. Best read
+alongside the [authoring](../get-started/authoring.mdx) and [behaviours](../reference/behaviours.mdx)
+reference.
+
+### Branch
+
+Conditional routing with the `vocab:behaviour:BRANCH` behaviour.
+
+```json file=agentforge4j-examples/workflow-language-examples/wl-branch/src/main/resources/workflows/wl-branch.workflow/workflow.json title="workflow.json"
+```
+
+[Full source](https://github.com/agentforge4j/agentforge4j/tree/main/agentforge4j-examples/workflow-language-examples/wl-branch)
+
+### Human in the loop
+
+A pause for input with a schema-validated artifact form.
+
+```json file=agentforge4j-examples/workflow-language-examples/wl-human-in-the-loop/src/main/resources/workflows/wl-human-in-the-loop.workflow/workflow.json title="workflow.json"
+```
+
+[Full source](https://github.com/agentforge4j/agentforge4j/tree/main/agentforge4j-examples/workflow-language-examples/wl-human-in-the-loop)
+
+### Loop
+
+A bounded loop over a fixed blueprint body.
+
+```json file=agentforge4j-examples/workflow-language-examples/wl-loop/src/main/resources/workflows/wl-loop-fixed.workflow/workflow.json title="workflow.json"
+```
+
+[Full source](https://github.com/agentforge4j/agentforge4j/tree/main/agentforge4j-examples/workflow-language-examples/wl-loop)
+
+### Resource
+
+A `vocab:behaviour:RESOURCE` step that loads context without an LLM call.
+
+```json file=agentforge4j-examples/workflow-language-examples/wl-resource/src/main/resources/workflows/wl-resource.workflow/workflow.json title="workflow.json"
+```
+
+[Full source](https://github.com/agentforge4j/agentforge4j/tree/main/agentforge4j-examples/workflow-language-examples/wl-resource)
+
+### Retry
+
+Re-running a previous step with the `vocab:behaviour:RETRY_PREVIOUS` behaviour.
+
+```json file=agentforge4j-examples/workflow-language-examples/wl-retry/src/main/resources/workflows/wl-retry.workflow/workflow.json title="workflow.json"
+```
+
+[Full source](https://github.com/agentforge4j/agentforge4j/tree/main/agentforge4j-examples/workflow-language-examples/wl-retry)
+
+### SPAR
+
+A solve-plan-act-review loop with the `vocab:behaviour:SPAR` behaviour.
+
+```json file=agentforge4j-examples/workflow-language-examples/wl-spar/src/main/resources/workflows/wl-spar.workflow/workflow.json title="workflow.json"
+```
+
+[Full source](https://github.com/agentforge4j/agentforge4j/tree/main/agentforge4j-examples/workflow-language-examples/wl-spar)
