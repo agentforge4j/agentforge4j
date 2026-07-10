@@ -484,6 +484,32 @@ class ReachableStepGraphTest {
         .hasMessageContaining("maximum traversal size");
   }
 
+  @Test
+  void walk_replayingMemoizedSubtreeAtRefDepthBoundDoesNotCountTowardIt() {
+    // replayMemoizedWalk never calls enterRef()/exitRef() (replay is a flat iteration over a cached
+    // map, not a recursive descent), so replaying an already-memoized subtree must never itself
+    // consume any of the MAX_REF_DEPTH budget. Pin this by building a purely linear chain exactly
+    // MAX_REF_DEPTH hops deep (already at the bound) that, at its deepest point, additionally
+    // replays a separately memoized "shared" blueprint: if replay wrongly counted toward refDepth,
+    // this would push the walk one hop past the bound and throw; it must succeed instead.
+    int depth = ReachableStepGraph.MAX_REF_DEPTH;
+    Map<String, BlueprintDefinition> blueprints = new HashMap<>();
+    blueprints.put("shared", blueprint("shared", step("shared-step")));
+    for (int i = 0; i < depth; i++) {
+      if (i < depth - 1) {
+        blueprints.put("bp" + i, blueprint("bp" + i, new BlueprintRef("bp" + (i + 1))));
+      } else {
+        blueprints.put("bp" + i, blueprint("bp" + i, new BlueprintRef("shared"), step("leaf")));
+      }
+    }
+    WorkflowDefinition root = wf("root", blueprints,
+        new BlueprintRef("shared"), new BlueprintRef("shared"), new BlueprintRef("bp0"));
+
+    List<ReachableStep> reached = ReachableStepGraph.walk(root, NO_SUBWORKFLOWS);
+
+    assertThat(reached).extracting(ReachableStep::stepId).contains("leaf", "shared-step");
+  }
+
   private static StepDefinition step(String stepId) {
     return StepDefinition.builder()
         .withStepId(stepId)

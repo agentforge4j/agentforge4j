@@ -51,6 +51,12 @@ import java.util.Set;
  * or the maximum traversal size throws {@link IllegalStateException} instead of exhausting the stack
  * or the CPU; both consumers (the runtime's step resolution and the loader's uniqueness guard)
  * inherit these bounds through {@link #walk}.
+ *
+ * <p>Because a completed blueprint subtree's records are re-composed into every enclosing
+ * blueprint-subtree accumulator as they propagate up (see {@link #MAX_TRAVERSAL_NODES}), a
+ * bundle's effective capacity under the traversal-size bound scales with nesting depth, not with
+ * distinct step count alone — a deeply blueprint-nested bundle reaches the bound with far fewer
+ * distinct steps than a shallow one.
  */
 public final class ReachableStepGraph {
 
@@ -62,8 +68,17 @@ public final class ReachableStepGraph {
   static final int MAX_REF_DEPTH = 500;
 
   /**
-   * Fail-closed bound on total traversal work (visited executables plus replayed memoized records) —
-   * a backstop for crafted bundles whose cycles defeat memoization.
+   * Fail-closed bound on total traversal work: every executable visited, every replayed memoized
+   * record, <strong>and</strong> every record re-composed into an enclosing blueprint-subtree
+   * accumulator as a completed subtree's results propagate up through each level of blueprint
+   * nesting above it (see {@link #composeInto}). Counting that per-level recomposition is
+   * deliberate — without it, a crafted bundle combining deep nesting with an already-counted
+   * subtree could perform uncounted {@code O(size * depth)} copy work at each ancestor level. The
+   * consequence is that a bundle's <em>effective</em> capacity is closer to
+   * {@code MAX_TRAVERSAL_NODES / (average blueprint-nesting depth above its steps)} than to a flat
+   * count of distinct steps — e.g. roughly 1,000 distinct steps at 100 levels of blueprint
+   * nesting, or roughly 10,000 at 10 levels. A legitimate bundle combining a large step count with
+   * deep blueprint-reuse nesting may need this constant raised.
    */
   static final int MAX_TRAVERSAL_NODES = 100_000;
 
@@ -322,7 +337,8 @@ public final class ReachableStepGraph {
      * into the enclosing in-progress walk, re-keying the nested records relative to the enclosing
      * walk's reference site. Each copied record counts toward the traversal-size bound: composition
      * repeats per enclosing nesting level, so uncounted copies would let a crafted deep-and-wide
-     * bundle amplify work past the bound.
+     * bundle amplify work past the bound — see {@link #MAX_TRAVERSAL_NODES} for the resulting
+     * effective-capacity trade-off this creates for legitimately deep (not just cyclic) bundles.
      */
     private void composeInto(BlueprintWalk enclosingWalk, boolean nestedComplete,
         Map<String, RelativeStep> nestedRelativeSteps, Set<String> nestedDescendedBlueprintIds,
