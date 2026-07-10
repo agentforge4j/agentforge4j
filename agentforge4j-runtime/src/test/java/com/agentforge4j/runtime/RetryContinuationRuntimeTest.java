@@ -268,6 +268,47 @@ class RetryContinuationRuntimeTest {
   }
 
   @Test
+  void continue_after_a_self_terminating_loop_already_completed_does_not_reemit_phantom_iteration_events() {
+    // FIXED_COUNT/FOR_EACH loops are never marked "completed" the way signal-terminated loops are
+    // (BlueprintExecutor.resolveExecutionOutcome only skip-guards AGENT_SIGNAL/EVALUATOR, since
+    // FOR_EACH must keep re-checking its list for mutation), so a self-terminating loop is re-entered
+    // on every later top-level redrive of the workflow. Every body step is already recorded from the
+    // original completed pass, so StepSequenceExecutor's resume-skip guard skips the whole body —
+    // there must be no phantom LOOP_ITERATION_STARTED/COMPLETED events for iterations that genuinely
+    // executed nothing.
+    StepDefinition body = resourceStep("body", "/examples/sample.txt", "body.out");
+    BlueprintDefinition loopBp = new BlueprintDefinition("loop-bp", "loop-bp",
+        new BlueprintBehaviour(
+            LoopConfig.withDefaults(LoopTerminationStrategy.FIXED_COUNT, null, null, 2, null),
+            StepTransition.AUTO),
+        List.of(body));
+    StepDefinition s2 = resourceStep("s2", "/workflow-resources/info.txt", "k2");
+    WorkflowDefinition workflow = workflow("wf-completed-loop-redrive",
+        Map.of("loop-bp", loopBp), List.of(new BlueprintRef("loop-bp"), s2));
+
+    Fixture fixture = fixture(workflow);
+    String runId = "completed-loop-run";
+    WorkflowState seeded = new WorkflowState(runId, workflow.id(), null,
+        Instant.parse("2026-05-01T12:00:00Z"));
+    seeded.putStepOutput("body", "done");
+    seeded.putStepExecutionUid("body", 2);
+    seeded.setCurrentStepId("s2");
+    seeded.setPendingUserPrompt("waiting for a condition");
+    seeded.setStatus(WorkflowStatus.PAUSED);
+    fixture.stateRepository().save(seeded);
+
+    fixture.runtime().continueRun(runId, "user");
+
+    WorkflowState after = fixture.runtime().getState(runId);
+    assertThat(after.getStatus()).isEqualTo(WorkflowStatus.COMPLETED);
+    assertThat(countEvents(fixture, runId, "loop-bp", WorkflowEventType.LOOP_ITERATION_STARTED))
+        .isZero();
+    assertThat(countEvents(fixture, runId, "loop-bp", WorkflowEventType.LOOP_ITERATION_COMPLETED))
+        .isZero();
+    assertThat(countEvents(fixture, runId, "body", WorkflowEventType.STEP_STARTED)).isZero();
+  }
+
+  @Test
   void resume_drive_allocates_uids_above_persisted_ones() {
     StepDefinition s1 = resourceStep("s1", "/examples/sample.txt", "k1");
     StepDefinition s2 = resourceStep("s2", "/workflow-resources/info.txt", "k2");

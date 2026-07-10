@@ -84,7 +84,21 @@ abstract class AbstractLoopStrategy implements LoopStrategy {
   }
 
   /**
-   * Execute a single iteration of the blueprint body, emitting start and complete loop events.
+   * Execute a single iteration of the blueprint body, emitting start and complete loop events —
+   * unless nothing in the body actually executed.
+   *
+   * <p>A self-terminating loop ({@code FIXED_COUNT}/{@code FOR_EACH}) that already ran to
+   * completion is still re-entered on every later top-level workflow redrive (it is never marked
+   * complete the way signal-terminated loops are, since {@code FOR_EACH} must keep re-checking its
+   * list for mutation). On such a redrive every body step is already in {@code stepOutputs} from the
+   * original pass, so {@code StepSequenceExecutor}'s resume-skip guard skips the whole body — no
+   * step, nested or otherwise, allocates a new execution uid. Emitting the iteration events in that
+   * case would claim an iteration happened when nothing did, the same audit-integrity defect this
+   * class exists to prevent for the body itself. Comparing {@link ExecutionContext#peekNextStepSequenceUid()}
+   * before and after detects this generically (it only advances when a real step executes,
+   * regardless of nesting), so the events are deferred until after the body runs and only recorded
+   * when at least one step genuinely executed — including a step that started and then paused, which
+   * still allocates its uid before pausing.
    */
   protected ExecutionOutcome executeIteration(BlueprintDefinition blueprint,
       int iteration,
@@ -92,11 +106,15 @@ abstract class AbstractLoopStrategy implements LoopStrategy {
     if (executionContext.getState().getStatus() == WorkflowStatus.CANCELLED) {
       return ExecutionOutcome.PAUSED;
     }
+    int uidBeforeIteration = executionContext.peekNextStepSequenceUid();
+    ExecutionOutcome outcome = stepSequenceExecutor.executeAll(blueprint.steps(), executionContext);
+    if (executionContext.peekNextStepSequenceUid() == uidBeforeIteration) {
+      return outcome;
+    }
     String runId = executionContext.getState().getRunId();
     String payload = "iteration=%d".formatted(iteration);
     eventRecorder.record(runId, blueprint.blueprintId(),
         WorkflowEventType.LOOP_ITERATION_STARTED, payload, "runtime");
-    ExecutionOutcome outcome = stepSequenceExecutor.executeAll(blueprint.steps(), executionContext);
     eventRecorder.record(runId, blueprint.blueprintId(),
         WorkflowEventType.LOOP_ITERATION_COMPLETED, payload, "runtime");
     return outcome;
