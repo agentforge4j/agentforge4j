@@ -164,7 +164,7 @@ public abstract class BaseWorkflowBundleLoader {
     Validate.isTrue(declared != null && !declared.isNull(),
         "Workflow document '%s' does not declare the required schemaVersion; this framework supports workflow schema version %s"
             .formatted(source, WorkflowSchemaVersion.SUPPORTED_WORKFLOW_SCHEMA_VERSION));
-    Validate.isTrue(declared.isIntegralNumber(),
+    Validate.isTrue(declared.isIntegralNumber() && declared.canConvertToInt(),
         "Workflow document '%s' declares a non-integer schemaVersion '%s'; this framework supports workflow schema version %s"
             .formatted(source, declared.asText(),
                 WorkflowSchemaVersion.SUPPORTED_WORKFLOW_SCHEMA_VERSION));
