@@ -18,7 +18,7 @@
     "lint:frontmatter": "node scripts/lint-frontmatter.mjs",
     "lint:nav": "node scripts/lint-nav.mjs",
     "lint": "npm run lint:frontmatter && npm run lint:nav",
-    "test": "node --test scripts/vocab.test.mjs",
+    "test": "node --test scripts/vocab.test.mjs scripts/generate-references.test.mjs",
     "check": "npm run generate && npm run lint && npm run typecheck && npm run test && npm run build"
   },
   "dependencies": {
