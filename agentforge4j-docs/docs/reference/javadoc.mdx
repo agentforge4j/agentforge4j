@@ -9,8 +9,27 @@ sidebar_position: 8
 
 # Javadoc
 
-:::note Work in progress
-The API reference is published as a separate Javadoc artifact, versioned alongside the
-docs, and linked from here. The Javadoc surface and the version-pinned deep links are
-added in a later phase.
-:::
+The full API reference is published as a separate Javadoc artifact, served alongside these docs at
+[`/javadoc/next/`](pathname:///javadoc/next/surfaces.html). Start at the
+[**surfaces overview**](pathname:///javadoc/next/surfaces.html), which links the three surfaces and
+explains how they are split.
+
+## How the API reference is organised
+
+The reference is built from source as three stitched surfaces:
+
+- [**Core API**](pathname:///javadoc/next/) — the aggregate of the framework's named modules that
+  export public API (`core`, `runtime`, `bootstrap`, `llm`, `config-loader`, `schema`, and more).
+- [**MCP integration**](pathname:///javadoc/next/mcp/) — `agentforge4j-mcp`.
+- [**Spring Boot starter**](pathname:///javadoc/next/spring-boot-starter/) — `agentforge4j-spring-boot-starter`.
+
+The MCP and Spring Boot starter modules are documented separately because they are intentionally
+classpath-only (no module descriptor), so Javadoc cannot place them in the same modular aggregate.
+Provider modules that only register a service-provider implementation export no public API and are
+intentionally absent — there is nothing public to document.
+
+## Linking to a type
+
+Throughout the docs, an API type links straight into the reference — for example
+`javadoc:com.agentforge4j.bootstrap.AgentForge4jBootstrap` is the framework-agnostic entry point, and
+`javadoc:com.agentforge4j.llm.api.LlmClient` is the provider client interface.
