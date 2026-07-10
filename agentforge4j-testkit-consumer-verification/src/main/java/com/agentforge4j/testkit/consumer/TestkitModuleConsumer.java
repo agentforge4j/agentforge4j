@@ -4,6 +4,7 @@ package com.agentforge4j.testkit.consumer;
 import com.agentforge4j.llm.api.ModelTier;
 import com.agentforge4j.llm.fake.FakeScript;
 import com.agentforge4j.runtime.command.FileSink;
+import com.agentforge4j.runtime.context.ContextPackRegistry;
 import com.agentforge4j.testkit.assertion.WorkflowRunAssert;
 import com.agentforge4j.testkit.capture.CapturingFileSink;
 import com.agentforge4j.testkit.capture.WorkflowRunResult;
@@ -13,8 +14,12 @@ import com.agentforge4j.testkit.scenario.ScenarioScriptLoader;
  * Exercises representative public testkit signatures whose parameter/return types come from modules
  * the testkit only re-exports transitively: {@link FakeScript} ({@code agentforge4j.llm.fake}),
  * {@link ModelTier} ({@code agentforge4j.llm.api}), and {@link FileSink} ({@code agentforge4j.runtime},
- * the supertype of the testkit's {@link CapturingFileSink}). This class compiling against a module
- * that {@code requires} only {@code agentforge4j.testkit} is the JPMS contract proof.
+ * the supertype of the testkit's {@link CapturingFileSink}). {@link ContextPackRegistry} is not part
+ * of any testkit signature but is exercised directly here as the JPMS export proof for
+ * {@code com.agentforge4j.runtime.context}: module readability from {@code requires transitive
+ * agentforge4j.runtime} extends to every type that package exports, not only the ones the testkit's
+ * own API happens to use. This class compiling against a module that {@code requires} only
+ * {@code agentforge4j.testkit} is the JPMS contract proof.
  */
 public final class TestkitModuleConsumer {
 
@@ -51,5 +56,15 @@ public final class TestkitModuleConsumer {
    */
   public WorkflowRunAssert assertProviderTier(WorkflowRunResult result, ModelTier tier) {
     return WorkflowRunAssert.assertThat(result).providerCallTier(tier);
+  }
+
+  /**
+   * Returns the empty {@link ContextPackRegistry} — naming a {@code com.agentforge4j.runtime.context}
+   * type reachable only because that package is exported by {@code agentforge4j.runtime}.
+   *
+   * @return the empty registry
+   */
+  public ContextPackRegistry emptyContextPackRegistry() {
+    return ContextPackRegistry.EMPTY;
   }
 }
