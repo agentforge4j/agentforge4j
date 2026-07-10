@@ -20,6 +20,12 @@
 /docs/reference/events.mdx
 /docs/reference/statuses.mdx
 
+# Release-staging scratch area (materialised snapshot + swap backup; never committed).
+/.release-staging
+
+# Assembled GitHub Pages artifact (docs + javadoc), built at deploy time — never committed.
+/_site
+
 # Misc
 .DS_Store
 .env.local

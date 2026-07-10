@@ -15,11 +15,11 @@ import {dirname, join} from 'node:path';
 import {fileURLToPath} from 'node:url';
 
 const here = dirname(fileURLToPath(import.meta.url));
-const DEFAULT_VOCAB_DIR = join(here, '..', 'vocab');
+export const DEFAULT_VOCAB_DIR = join(here, '..', 'vocab');
 
 const cache = new Map();
 
-function loadSets(vocabDir) {
+export function loadSets(vocabDir) {
   if (cache.has(vocabDir)) {
     return cache.get(vocabDir);
   }
@@ -39,7 +39,7 @@ function loadSets(vocabDir) {
   return sets;
 }
 
-const PATTERN = /^vocab:([a-z]+):(.+)$/;
+export const PATTERN = /^vocab:([a-z]+):(.+)$/;
 
 function walk(node, onInlineCode) {
   if (!node || typeof node !== 'object') {

@@ -16,7 +16,10 @@
 // is narrow: it throws on a non-AgentForge4j FQCN or an unresolvable module, so a bad reference fails
 // the build rather than producing a dead link.
 
-const VERSION = 'next'; // current docs version; versioned/`latest` routing arrives with the release phase.
+// The current (editable) docs version. Live builds resolve against `next`; the release-staging
+// de-materialiser passes the snapshot's own version so a frozen page links into its
+// own Javadoc surface (`/javadoc/<version>/…`) instead of the moving `next`.
+export const DEFAULT_VERSION = 'next';
 
 // Surfaces. The aggregate documents named modules under a module directory; mcp/starter are flat
 // (classpath-mode) surfaces. The module set MUST match the agentforge4j-docs-javadoc aggregator's
@@ -56,8 +59,13 @@ function splitFqcn(fqcn) {
   };
 }
 
-/** Resolve an AgentForge4j FQCN to its /javadoc/<version>/ URL. Throws if it cannot be placed. */
-export function resolveJavadocUrl(fqcn) {
+/**
+ * Resolve an AgentForge4j FQCN to its /javadoc/<version>/ URL. Throws if it cannot be placed.
+ *
+ * @param {string} fqcn the fully-qualified com.agentforge4j.* class name
+ * @param {string} [version] the Javadoc surface version to pin the link to (default `next`)
+ */
+export function resolveJavadocUrl(fqcn, version = DEFAULT_VERSION) {
   if (!fqcn.startsWith('com.agentforge4j.')) {
     throw new Error(`javadoc: '${fqcn}' is not a com.agentforge4j.* type`);
   }
@@ -72,7 +80,7 @@ export function resolveJavadocUrl(fqcn) {
   );
   if (flat) {
     return {
-      url: `pathname:///javadoc/${VERSION}/${flat.surface}/${parts.pkgPath}/${parts.classFile}`,
+      url: `pathname:///javadoc/${version}/${flat.surface}/${parts.pkgPath}/${parts.classFile}`,
       simpleName: parts.simpleName,
     };
   }
@@ -85,12 +93,12 @@ export function resolveJavadocUrl(fqcn) {
     throw new Error(`javadoc: no Javadoc surface owns package '${comStrippedPkg}' (from '${fqcn}')`);
   }
   return {
-    url: `pathname:///javadoc/${VERSION}/${module}/${parts.pkgPath}/${parts.classFile}`,
+    url: `pathname:///javadoc/${version}/${module}/${parts.pkgPath}/${parts.classFile}`,
     simpleName: parts.simpleName,
   };
 }
 
-const PATTERN = /^javadoc:(com\.agentforge4j\.[\w.$]+)$/;
+export const PATTERN = /^javadoc:(com\.agentforge4j\.[\w.$]+)$/;
 
 function walk(node, visit) {
   if (!node || typeof node !== 'object') {
@@ -108,14 +116,19 @@ function walk(node, visit) {
   }
 }
 
-/** Remark plugin: rewrite `javadoc:<fqcn>` inline code into a link into the Javadoc surface. */
-export default function javadocRemarkPlugin() {
+/**
+ * Remark plugin: rewrite `javadoc:<fqcn>` inline code into a link into the Javadoc surface.
+ *
+ * @param {{version?: string}} [options] optional Javadoc-surface version to pin links to (default `next`)
+ */
+export default function javadocRemarkPlugin(options = {}) {
+  const version = options.version || DEFAULT_VERSION;
   return (tree, file) => {
     walk(tree, (parent, index, node) => {
       const fqcn = PATTERN.exec(node.value)[1];
       let resolved;
       try {
-        resolved = resolveJavadocUrl(fqcn);
+        resolved = resolveJavadocUrl(fqcn, version);
       } catch (err) {
         const where = file && file.path ? ` (${file.path})` : '';
         throw new Error(`${err.message}${where}`);
