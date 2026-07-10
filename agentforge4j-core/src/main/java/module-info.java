@@ -25,6 +25,7 @@ module agentforge4j.core {
   exports com.agentforge4j.core.spi.validation;
   exports com.agentforge4j.core.runtime;
   exports com.agentforge4j.core.workflow;
+  exports com.agentforge4j.core.workflow.estimate;
   exports com.agentforge4j.core.workflow.requirement;
   exports com.agentforge4j.core.workflow.collection;
   exports com.agentforge4j.core.workflow.artifact;

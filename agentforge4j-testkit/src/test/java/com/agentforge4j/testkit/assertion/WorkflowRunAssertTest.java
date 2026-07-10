@@ -118,6 +118,40 @@ class WorkflowRunAssertTest {
   }
 
   @Test
+  void outputsHaveNoForbiddenTermsPassesWhenCleanAndFailsOnContextHit() {
+    state.putContextValue("report",
+        new StringContextValue("execution shape only", ContextProvenance.SYSTEM_GENERATED));
+
+    assertThatCode(() -> assertRun().outputsHaveNoForbiddenTerms(List.of("$", "billing")))
+        .doesNotThrowAnyException();
+
+    state.putContextValue("leak",
+        new StringContextValue("this mentions Billing", ContextProvenance.SYSTEM_GENERATED));
+    assertThatThrownBy(() -> assertRun().outputsHaveNoForbiddenTerms(List.of("billing")))
+        .isInstanceOf(AssertionError.class)
+        .hasMessageContaining("billing");
+  }
+
+  @Test
+  void outputsHaveNoForbiddenTermsScansCapturedFiles() {
+    files.add(new CapturedFile("run-1", "s1", "/out/report.json", "{\"note\":\"costs $5\"}"));
+
+    assertThatThrownBy(() -> assertRun().outputsHaveNoForbiddenTerms(List.of("$")))
+        .isInstanceOf(AssertionError.class)
+        .hasMessageContaining("report.json");
+  }
+
+  @Test
+  void outputsHaveNoForbiddenTermsScansStepOutputs() {
+    state.putStepOutput("step-a", "raw model response mentions billing");
+
+    assertThatThrownBy(() -> assertRun().outputsHaveNoForbiddenTerms(List.of("billing")))
+        .isInstanceOf(AssertionError.class)
+        .hasMessageContaining("stepOutput['step-a']")
+        .hasMessageContaining("billing");
+  }
+
+  @Test
   void artifactVerbs() {
     files.add(new CapturedFile("run-1", "step-a", "out/result.txt", "hello"));
 
