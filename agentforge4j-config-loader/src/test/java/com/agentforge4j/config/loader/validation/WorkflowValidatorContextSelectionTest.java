@@ -18,6 +18,7 @@ import com.agentforge4j.core.workflow.step.behaviour.CompactBehaviour;
 import com.agentforge4j.core.workflow.step.behaviour.CompactionPolicy;
 import com.agentforge4j.core.workflow.step.behaviour.DeterministicExtract;
 import com.agentforge4j.core.workflow.step.behaviour.FailBehaviour;
+import com.agentforge4j.core.workflow.step.behaviour.LlmSummary;
 import com.agentforge4j.core.workflow.step.blueprint.BlueprintBehaviour;
 import com.agentforge4j.core.workflow.step.blueprint.BlueprintDefinition;
 import com.agentforge4j.core.workflow.step.blueprint.BlueprintRef;
@@ -190,6 +191,32 @@ class WorkflowValidatorContextSelectionTest {
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("DETERMINISTIC_EXTRACT")
         .hasMessageContaining("STATE_KEY");
+  }
+
+  @Test
+  void rejectsLlmSummaryCompactStepAtLoadTime() {
+    // LLM_SUMMARY is schema-valid but this runtime version never invokes it (no agent identity to
+    // invoke through) — a publicly valid workflow definition must not be able to fail only at run
+    // start; reject at load, the same fail-early rule as DETERMINISTIC_EXTRACT on a non-ledger source.
+    StepDefinition compact = StepDefinition.builder().withStepId("c").withName("c")
+        .withBehaviour(new CompactBehaviour(sel(ContextSourceKind.LEDGER_SECTION, "requirements"),
+            new LlmSummary("STANDARD"), new CompactionPolicy(0, 0)))
+        .build();
+    WorkflowDefinition wf = workflow(List.of(compact), List.of(ledger("requirements")));
+
+    assertThatThrownBy(() -> validate(wf))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("LLM_SUMMARY");
+  }
+
+  @Test
+  void rejectsDuplicateLedgerIds() {
+    WorkflowDefinition wf = workflow(List.of(step("s1")),
+        List.of(ledger("requirements"), ledger("requirements")));
+
+    assertThatThrownBy(() -> validate(wf))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("duplicate ledger id 'requirements'");
   }
 
   @Test
