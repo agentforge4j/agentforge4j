@@ -102,6 +102,42 @@ describe('workflow zip io', () => {
     await expect(importWorkflowZip(file)).rejects.toThrow(/workflow\.json not found/);
   });
 
+  it('rejects a workflow.json missing schemaVersion, on the raw document rather than the re-exported one', async () => {
+    // Regression: toRuntimeWorkflowDocument always writes the current schemaVersion when the
+    // draft is re-exported, so a check against that regenerated document would never see what
+    // the imported file actually declared. This must reject before draft conversion.
+    const zip = new JSZip();
+    zip.file(
+      'demo.workflow/workflow.json',
+      JSON.stringify({ kind: 'WORKFLOW', id: 'demo', name: 'Demo', steps: [] }),
+    );
+    const blob = await zip.generateAsync({ type: 'blob' });
+    const file = new File([blob], 'no-version.zip', { type: 'application/zip' });
+    await expect(importWorkflowZip(file)).rejects.toThrow(/must declare a schemaVersion/);
+  });
+
+  it('rejects a workflow.json declaring an unsupported schemaVersion', async () => {
+    const zip = new JSZip();
+    zip.file(
+      'demo.workflow/workflow.json',
+      JSON.stringify({ kind: 'WORKFLOW', schemaVersion: 2, id: 'demo', name: 'Demo', steps: [] }),
+    );
+    const blob = await zip.generateAsync({ type: 'blob' });
+    const file = new File([blob], 'future-version.zip', { type: 'application/zip' });
+    await expect(importWorkflowZip(file)).rejects.toThrow(/schemaVersion 2 is not supported/);
+  });
+
+  it('rejects a workflow.json declaring a non-integer schemaVersion', async () => {
+    const zip = new JSZip();
+    zip.file(
+      'demo.workflow/workflow.json',
+      JSON.stringify({ kind: 'WORKFLOW', schemaVersion: 'one', id: 'demo', name: 'Demo', steps: [] }),
+    );
+    const blob = await zip.generateAsync({ type: 'blob' });
+    const file = new File([blob], 'non-integer-version.zip', { type: 'application/zip' });
+    await expect(importWorkflowZip(file)).rejects.toThrow(/must be an integer/);
+  });
+
   it('sanitizeObject strips dangerous keys', () => {
     const cleaned = sanitizeObject({
       id: 'safe',

@@ -9,7 +9,12 @@ import type {
   TopLevelScheduleEntry,
   WorkflowDefinition,
 } from '../../api/types';
-import { normalizeRuntimeDocumentForSchema, toRuntimeWorkflowDocument, validateAgainstSchema } from '../../validation/schemaValidator';
+import {
+  normalizeRuntimeDocumentForSchema,
+  toRuntimeWorkflowDocument,
+  validateAgainstSchema,
+  validateSchemaVersion,
+} from '../../validation/schemaValidator';
 import { sanitizeObject, WorkflowParseError } from '../core';
 
 export { sanitizeObject } from '../core';
@@ -305,6 +310,14 @@ export async function importWorkflowZip(file: File): Promise<WorkflowDefinition>
     runtimeDoc = sanitizeObject(JSON.parse(workflowJsonText) as Record<string, unknown>);
   } catch {
     throw new WorkflowParseError('Invalid workflow.json in ZIP');
+  }
+
+  // Checked against the raw document, before conversion to the internal draft shape: the draft
+  // carries no schemaVersion of its own, and re-export always regenerates one, so validating
+  // anything past this point would silently accept whatever version the ZIP actually declared.
+  const schemaVersionResult = validateSchemaVersion(runtimeDoc);
+  if (!schemaVersionResult.valid) {
+    throw new WorkflowParseError(schemaVersionResult.errors[0]?.message ?? 'Unsupported schemaVersion');
   }
 
   const folderPrefix = workflowJsonPath.slice(0, workflowJsonPath.lastIndexOf('/') + 1);
