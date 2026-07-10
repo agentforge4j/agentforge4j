@@ -2,7 +2,7 @@
   "kind": "WORKFLOW",
   "id": "workflow-execution-estimator",
   "name": "Workflow Execution Estimator",
-  "description": "Estimates the execution shape of a workflow run before it executes: token range, agent turns, tool invocations, complexity, confidence inputs, structural risk flags, and a continue/narrow/stop recommendation. The caller pre-analyzes the target workflow deterministically and supplies the result here as structural facts. Execution shape only — never a monetary or account-balance concept.",
+  "description": "Estimates the execution shape of a workflow run (Mode 1) or an SDLC epic-package breakdown (Mode 2) before it executes: token range, agent turns, tool invocations, complexity, confidence inputs, structural risk flags, and a continue/narrow/stop recommendation. The caller resolves the mode and pre-analyzes the target deterministically before starting this run, supplying the result here as structural facts — both modes converge on the same structural-summary shape, so this workflow's own routing is mode-agnostic. Execution shape only — never a monetary or account-balance concept.",
   "steps": [
     {
       "kind": "STEP",
@@ -15,6 +15,7 @@
       },
       "contextMapping": {
         "outputKeys": [
+          "mode",
           "structuralSummaryJson",
           "complexity",
           "ceilingDerivable",
@@ -51,7 +52,7 @@
             "transition": "HUMAN_APPROVAL"
           },
           "contextMapping": {
-            "inputKeys": ["structuralSummaryJson", "complexity"],
+            "inputKeys": ["mode", "structuralSummaryJson", "complexity"],
             "outputKeys": [
               "estimatedInputTokensPerAgentTurn",
               "estimatedOutputTokensPerAgentTurn",

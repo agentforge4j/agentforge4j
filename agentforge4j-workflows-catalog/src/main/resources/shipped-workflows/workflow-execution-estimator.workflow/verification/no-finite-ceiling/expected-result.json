@@ -4,6 +4,7 @@
     {
       "type": "input",
       "answers": {
+        "mode": "WORKFLOW_RUN",
         "structuralSummaryJson": "{\"workflowId\":\"unbounded-refinement-loop\",\"stepCount\":3,\"agentStepCount\":2,\"branchCount\":0,\"loopCount\":1,\"agentDrivenLoopCount\":1,\"humanGateCount\":0,\"maxNestingDepth\":1,\"minAgentTurns\":2,\"expectedAgentTurns\":2,\"maxAgentTurns\":2,\"iterationCeiling\":1,\"ceilingDerivable\":false,\"noCeilingReason\":\"Agent-driven loop with no maximum iteration bound and no derivable termination.\",\"minimumRequiredTokens\":500,\"complexityClass\":\"HIGH_RISK\",\"riskFlags\":[\"AGENT_DRIVEN_LOOP\"]}",
         "complexity": "HIGH_RISK",
         "ceilingDerivable": "false",
@@ -18,6 +19,7 @@
     "notVisitedSteps": ["estimate"],
     "emittedEvents": ["RUN_FAILED"],
     "context": {
+      "mode": "WORKFLOW_RUN",
       "complexity": "HIGH_RISK",
       "ceilingDerivable": "false",
       "noCeilingReason": "Agent-driven loop with no maximum iteration bound and no derivable termination."
