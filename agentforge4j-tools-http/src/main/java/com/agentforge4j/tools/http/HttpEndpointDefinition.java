@@ -35,7 +35,7 @@ import java.util.Set;
  * @param secretHeaders      header name to secret-reference key; resolved at invoke, never inlined
  * @param timeout            endpoint-level timeout ceiling, or {@code null}; restricts, never
  *                           expands
- * @param maxRetries         endpoint-level retry cap, or {@code -1} when unset; restricts, never
+ * @param maxRetries         endpoint-level retry cap, or {@code null} when unset; restricts, never
  *                           expands
  * @param retryNonIdempotent opt-in to retry {@code POST}/{@code PATCH}; meaningless on other
  *                           methods
@@ -55,7 +55,7 @@ public record HttpEndpointDefinition(
     Map<String, String> staticHeaders,
     Map<String, String> secretHeaders,
     Duration timeout,
-    int maxRetries,
+    Integer maxRetries,
     boolean retryNonIdempotent,
     Long maxResponseBytes) {
 
@@ -69,8 +69,8 @@ public record HttpEndpointDefinition(
     Validate.notBlank(urlTemplate, "HttpEndpointDefinition urlTemplate must not be blank");
     Validate.notNull(inputSchema, "HttpEndpointDefinition inputSchema must not be null");
     Validate.notNull(bodyMode, "HttpEndpointDefinition bodyMode must not be null");
-    Validate.isTrue(maxRetries >= -1,
-        "HttpEndpointDefinition maxRetries must be >= -1 (use -1 for unset)");
+    Validate.isTrue(maxRetries == null || maxRetries >= 0,
+        "HttpEndpointDefinition maxRetries must be null (unset) or >= 0");
     if (maxResponseBytes != null) {
       Validate.isGreaterThanZero(maxResponseBytes,
           "HttpEndpointDefinition maxResponseBytes must be greater than zero");
@@ -86,7 +86,7 @@ public record HttpEndpointDefinition(
    * {@code urlTemplate}, {@code inputSchema}, {@code bodyMode}) are validated when
    * {@link Builder#build()} delegates to the canonical constructor; every other field may be left
    * unset and takes the same default the canonical constructor already applies to a {@code null}
-   * (or, for {@code maxRetries}, {@code -1}) argument.
+   * argument.
    *
    * @return new builder; never {@code null}
    */
@@ -116,7 +116,7 @@ public record HttpEndpointDefinition(
     private Map<String, String> staticHeaders;
     private Map<String, String> secretHeaders;
     private Duration timeout;
-    private int maxRetries = -1;
+    private Integer maxRetries;
     private boolean retryNonIdempotent;
     private Long maxResponseBytes;
 
@@ -287,14 +287,14 @@ public record HttpEndpointDefinition(
 
     /**
      * Sets the endpoint-level retry cap. Never calling this method leaves {@code maxRetries}
-     * unset (the same {@code -1} the canonical constructor requires callers to pass explicitly),
-     * so builder callers never need to know or write the sentinel themselves.
+     * {@code null} (unset).
      *
-     * @param maxRetries retry cap; must be {@code >= -1}, restricts, never expands
+     * @param maxRetries retry cap, or {@code null} for unset; must be {@code >= 0} when set,
+     *                   restricts, never expands
      *
      * @return this builder
      */
-    public Builder withMaxRetries(int maxRetries) {
+    public Builder withMaxRetries(Integer maxRetries) {
       this.maxRetries = maxRetries;
       return this;
     }

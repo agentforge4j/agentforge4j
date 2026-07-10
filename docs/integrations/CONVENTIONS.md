@@ -108,7 +108,7 @@ Record components, in order: `capability`, `displayName`, `description`, `method
 placeholders), `inputSchema` (`JsonNode`, non-null JSON Schema), `outputSchema` (`JsonNode` \| null),
 `queryArgs` (`Set<String>`), `bodyMode` (`NONE`/`JSON`), `staticHeaders` (`Map<String,String>`),
 `secretHeaders` (`Map<String,String>` header → **secret-reference key**, resolved at invoke),
-`timeout` (`Duration` \| null), `maxRetries` (`int`, `-1` = unset), `retryNonIdempotent`
+`timeout` (`Duration` \| null), `maxRetries` (`Integer` \| null, null = unset), `retryNonIdempotent`
 (`boolean`), `maxResponseBytes` (`Long` \| null). Construct a `HttpToolProvider(name, definitions,
 secretResolver, httpClient, defaultOptions, defaultMaxResponseBytes)` and pass it to
 `AgentForge4jBootstrap.defaults().withToolProviders(...)`.

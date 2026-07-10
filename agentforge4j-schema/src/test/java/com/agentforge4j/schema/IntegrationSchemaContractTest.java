@@ -77,7 +77,7 @@ class IntegrationSchemaContractTest {
               "bodyMode": "NONE",
               "secretHeaders": { "Authorization": "AIRTABLE_TOKEN" },
               "timeout": null,
-              "maxRetries": -1,
+              "maxRetries": null,
               "maxResponseBytes": null
             }
           ]

@@ -21,7 +21,7 @@
     "staticHeaders": { "Accept": "application/json" },
     "secretHeaders": { "Authorization": "SECRET_KEY" },
     "timeout": null,
-    "maxRetries": -1,
+    "maxRetries": null,
     "retryNonIdempotent": false,
     "maxResponseBytes": null
   }

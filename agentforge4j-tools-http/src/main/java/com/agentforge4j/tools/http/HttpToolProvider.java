@@ -507,7 +507,7 @@ public final class HttpToolProvider implements ToolProvider {
       return 0;
     }
     int runtime = options.maxRetries();
-    return definition.maxRetries() >= 0 ? Math.min(definition.maxRetries(), runtime) : runtime;
+    return definition.maxRetries() != null ? Math.min(definition.maxRetries(), runtime) : runtime;
   }
 
   private static boolean allowsBody(HttpMethod method) {

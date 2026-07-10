@@ -100,9 +100,9 @@
           "description": "ISO-8601 duration (e.g. PT30S), or null for the provider default."
         },
         "maxRetries": {
-          "type": "integer",
-          "minimum": -1,
-          "description": "Retry budget; -1 means unset."
+          "type": ["integer", "null"],
+          "minimum": 0,
+          "description": "Retry budget, or null for unset."
         },
         "retryNonIdempotent": { "type": "boolean" },
         "maxResponseBytes": {

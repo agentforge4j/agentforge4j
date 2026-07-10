@@ -41,9 +41,8 @@ class HttpEndpointDefinitionTest {
     assertThat(definition.staticHeaders()).isEmpty();
     assertThat(definition.secretHeaders()).isEmpty();
     assertThat(definition.timeout()).isNull();
-    // maxRetries: never set stays at the same -1 "unset" sentinel the canonical constructor uses;
-    // builder callers never need to know or write it themselves.
-    assertThat(definition.maxRetries()).isEqualTo(-1);
+    // maxRetries: never set stays null, the same "unset" the canonical constructor uses.
+    assertThat(definition.maxRetries()).isNull();
     assertThat(definition.retryNonIdempotent()).isFalse();
     assertThat(definition.maxResponseBytes()).isNull();
   }
@@ -150,17 +149,17 @@ class HttpEndpointDefinitionTest {
   }
 
   @Test
-  void rejectsMaxRetriesBelowNegativeOne() {
+  void rejectsNegativeMaxRetries() {
     assertThatThrownBy(() -> HttpEndpointDefinition.builder()
         .withCapability("items.get")
         .withMethod(HttpMethod.GET)
         .withUrlTemplate("https://example.com/items")
         .withInputSchema(objectSchema())
         .withBodyMode(BodyMode.NONE)
-        .withMaxRetries(-2)
+        .withMaxRetries(-1)
         .build())
         .isInstanceOf(IllegalArgumentException.class)
-        .hasMessageContaining("HttpEndpointDefinition maxRetries must be >= -1");
+        .hasMessageContaining("HttpEndpointDefinition maxRetries must be null (unset) or >= 0");
   }
 
   private static JsonNode objectSchema(String... properties) {

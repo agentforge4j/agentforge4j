@@ -23,7 +23,7 @@
     "staticHeaders": { "Accept": "application/json" },
     "secretHeaders": { "Authorization": "AIRTABLE_TOKEN" },
     "timeout": null,
-    "maxRetries": -1,
+    "maxRetries": null,
     "retryNonIdempotent": false,
     "maxResponseBytes": null
   },
@@ -50,7 +50,7 @@
     "staticHeaders": { "Accept": "application/json" },
     "secretHeaders": { "Authorization": "AIRTABLE_TOKEN" },
     "timeout": null,
-    "maxRetries": -1,
+    "maxRetries": null,
     "retryNonIdempotent": false,
     "maxResponseBytes": null
   }
