@@ -95,7 +95,12 @@ function redirectHtml(to) {
 // satisfies this — the check guards `archive/*.redirects.json` being a plain committed JSON file a
 // future hand-edit or merge-conflict resolution could otherwise corrupt undetected.
 function isSafeManifestPath(path) {
-  return typeof path === 'string' && path.startsWith('/docs/') && !path.split('/').includes('..');
+  return (
+    typeof path === 'string' &&
+    path.startsWith('/docs/') &&
+    !path.includes('\\') &&
+    !path.split('/').includes('..')
+  );
 }
 
 /**
@@ -113,7 +118,6 @@ function writeRedirectStubs(siteDir, manifestPath, exit = process.exit) {
       console.error(`[assemble-site] refusing an unsafe redirect manifest entry: ${JSON.stringify({from, to})}`);
       console.error('  Both `from` and `to` must be rooted at /docs/ with no `..` segments.');
       exit(1);
-      return manifest.length;
     }
     const dir = join(siteDir, ...from.split('/').filter(Boolean));
     const stub = join(dir, 'index.html');
@@ -125,7 +129,6 @@ function writeRedirectStubs(siteDir, manifestPath, exit = process.exit) {
       console.error(`[assemble-site] redirect stub would overwrite a live page: ${from}`);
       console.error('  The archived version is still part of the live build — archive/ and versions.json disagree.');
       exit(1);
-      return manifest.length;
     }
     mkdirSync(dir, {recursive: true});
     writeFileSync(stub, redirectHtml(`${to}/`), 'utf8');

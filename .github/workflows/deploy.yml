@@ -52,8 +52,8 @@ jobs:
           emitter-maven-phases: compile
 
       - name: Build the version-pinned Javadoc surfaces (from release tags)
-        # One frozen /javadoc/<version>/ per active released version — the versioned docs snapshots
-        # link these. No-op pre-first-release (versions.json absent).
+        # One frozen /javadoc/<version>/ per active OR archived released version — the versioned
+        # docs snapshots link these. No-op pre-first-release (versions.json absent).
         working-directory: agentforge4j-docs
         run: node scripts/build-javadoc-versions.mjs
 

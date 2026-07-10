@@ -233,3 +233,38 @@ test('writeRedirectStubs fails closed on a manifest entry that is not rooted at 
   // The traversal segment must never be resolved into a real write outside siteDir.
   assert.ok(!existsSync(join(root, 'etc')));
 });
+
+test('writeRedirectStubs fails closed on a manifest entry with an embedded backslash traversal segment', () => {
+  const {root, buildDir, javadocDir, siteDir} = fixture();
+  const archiveDir = join(root, 'archive');
+  mkdirSync(join(archiveDir, '1.0.0'), {recursive: true});
+  writeFileSync(join(archiveDir, '1.0.0', 'index.html'), '<html>archived</html>');
+  // A backslash-delimited segment must be rejected on its own terms — independent of whether the
+  // host OS's path.join would actually resolve it outside siteDir (it only would on Windows; CI
+  // runs Ubuntu, where `\` is not a separator) — the guard's own stated purpose is defense-in-depth
+  // against a corrupted manifest, not just against what the current host happens to interpret.
+  writeFileSync(
+    join(archiveDir, '1.0.0.redirects.json'),
+    JSON.stringify([{from: '/docs/1.0.0\\..\\..\\etc\\passwd', to: '/docs/archive/1.0.0'}]),
+  );
+
+  const exitCodes = [];
+  const fakeExit = (code) => {
+    exitCodes.push(code);
+    throw new Error(`exit(${code})`);
+  };
+  assert.throws(
+    () =>
+      assembleSite({
+        buildDir,
+        javadocDir,
+        archiveDir,
+        siteDir,
+        docsEntry: '/docs/next/',
+        customDomain: null,
+        exit: fakeExit,
+      }),
+    /exit\(1\)/,
+  );
+  assert.deepEqual(exitCodes, [1]);
+});

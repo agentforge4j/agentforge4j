@@ -127,12 +127,14 @@ function buildFromTag(version, outDir) {
     // the tag's own build-javadoc.mjs child, which invokes plain `mvn`) — not MAVEN_ARGS, which
     // only Maven >= 3.9 reads and would silently fall back to the shared repository.
     const env = {...process.env, MAVEN_OPTS: isolatedMavenOpts(process.env.MAVEN_OPTS, ISOLATED_M2)};
-    // The wrapper script is platform-specific: `mvnw.cmd` on Windows, `./mvnw` elsewhere.
+    // The wrapper script is platform-specific: `mvnw.cmd` on Windows, `./mvnw` elsewhere. Windows
+    // batch files cannot be spawned directly and need a shell; POSIX spawns the wrapper directly —
+    // no shell, no argument re-interpretation (same convention as build-javadoc.mjs's `run()`).
     const mvnw = process.platform === 'win32' ? 'mvnw.cmd' : './mvnw';
     execFileSync(mvnw, ['-B', '-q', '-DskipTests', '-Dmaven.test.skip=true', 'install'], {
       cwd: srcDir,
       stdio: 'inherit',
-      shell: true,
+      shell: process.platform === 'win32',
       env,
     });
     // The tag's own surface builder, so the surface matches what that release shipped.
