@@ -10,6 +10,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -30,7 +31,8 @@ class AgentForgeLoaderCatalogGateTest {
         Optional.empty(),
         Optional.empty(),
         Optional.empty(),
-        Optional.of(new ClasspathWorkflowLoader(mapper)));
+        Optional.of(new ClasspathWorkflowLoader(mapper)),
+        Set.of());
 
     assertThat(loaded.workflows()).containsKey("loader-fixture");
     assertThat(loaded.agents()).containsKey("loader-fixture-agent");

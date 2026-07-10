@@ -150,7 +150,7 @@ class TransitionGateRuntimeIT {
         .build();
     WorkflowDefinition workflow = new WorkflowDefinition("wf-input", "wf-input", null, null, null,
         null, null, WorkflowSource.CUSTOM, WorkflowLifecycle.ACTIVE, Map.of("form", artifact),
-        Map.of(), List.of(inputStep));
+        Map.of(), List.of(inputStep), List.of(), List.of());
     WorkflowRuntime runtime = runtime(workflow);
 
     String runId = runtime.start(workflow.id());
@@ -212,7 +212,8 @@ class TransitionGateRuntimeIT {
         List.of(resourceStep("inner", StepTransition.AUTO)));
     WorkflowDefinition workflow = new WorkflowDefinition("wf-bp", "wf-bp", null, null, null, null,
         null, WorkflowSource.CUSTOM, WorkflowLifecycle.ACTIVE, Map.of(), Map.of("bp", blueprint),
-        List.of(new BlueprintRef("bp"), resourceStep("after", StepTransition.AUTO)));
+        List.of(new BlueprintRef("bp"), resourceStep("after", StepTransition.AUTO)),
+        List.of(), List.of());
     WorkflowRuntime runtime = runtime(workflow);
 
     String runId = runtime.start(workflow.id());
@@ -267,7 +268,8 @@ class TransitionGateRuntimeIT {
     WorkflowDefinition workflow = new WorkflowDefinition("wf-bp-badstep", "wf-bp-badstep", null, null,
         null, null, null, WorkflowSource.CUSTOM, WorkflowLifecycle.ACTIVE, Map.of(),
         Map.of("bp", blueprint),
-        List.of(new BlueprintRef("bp"), resourceStep("after", StepTransition.AUTO)));
+        List.of(new BlueprintRef("bp"), resourceStep("after", StepTransition.AUTO)),
+        List.of(), List.of());
     WorkflowRuntime runtime = runtime(workflow);
     String runId = runtime.start(workflow.id());
     assertThat(runtime.getState(runId).getStatus()).isEqualTo(WorkflowStatus.AWAITING_REVIEW);
@@ -308,7 +310,8 @@ class TransitionGateRuntimeIT {
         .build();
     WorkflowDefinition parent = new WorkflowDefinition("wf-outer", "wf-outer", null, null, null,
         null, null, WorkflowSource.CUSTOM, WorkflowLifecycle.ACTIVE, Map.of(), Map.of(),
-        List.of(callNested, resourceStep("after", StepTransition.AUTO)));
+        List.of(callNested, resourceStep("after", StepTransition.AUTO)),
+        List.of(), List.of());
     WorkflowRuntime runtime = runtime(Map.of(parent.id(), parent, nested.id(), nested));
 
     String runId = runtime.start(parent.id());
@@ -345,7 +348,7 @@ class TransitionGateRuntimeIT {
         .build();
     WorkflowDefinition sub = new WorkflowDefinition("wf-sub", "wf-sub", null, null, null, null, null,
         WorkflowSource.CUSTOM, WorkflowLifecycle.ACTIVE, Map.of("form", form), Map.of(),
-        List.of(collect, gate));
+        List.of(collect, gate), List.of(), List.of());
     StepDefinition invoke = StepDefinition.builder()
         .withStepId("invoke").withName("invoke")
         .withBehaviour(new WorkflowBehaviour("wf-sub", StepTransition.AUTO)).build();
@@ -406,6 +409,7 @@ class TransitionGateRuntimeIT {
 
   private static WorkflowDefinition workflow(String id, Executable... steps) {
     return new WorkflowDefinition(id, id, null, null, null, null, null, WorkflowSource.CUSTOM,
-        WorkflowLifecycle.ACTIVE, Map.of(), Map.of(), List.of(steps));
+        WorkflowLifecycle.ACTIVE, Map.of(), Map.of(), List.of(steps),
+        List.of(), List.of());
   }
 }

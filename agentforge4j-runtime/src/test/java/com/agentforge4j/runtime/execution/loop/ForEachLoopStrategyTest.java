@@ -97,7 +97,9 @@ class ForEachLoopStrategyTest {
         WorkflowLifecycle.ACTIVE,
         Map.of(),
         Map.of(),
-        List.of(dummyStep()));
+        List.of(dummyStep()),
+        List.of(),
+        List.of());
     executionContext = new ExecutionContext(state, workflow, 32);
     blueprint = new BlueprintDefinition(
         BLUEPRINT_ID,

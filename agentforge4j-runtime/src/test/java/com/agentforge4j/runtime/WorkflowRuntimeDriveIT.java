@@ -91,7 +91,9 @@ class WorkflowRuntimeDriveIT {
         WorkflowLifecycle.ACTIVE,
         Map.of(),
         Map.of(),
-        List.of(step));
+        List.of(step),
+        List.of(),
+        List.of());
 
     Clock clock = Clock.fixed(Instant.parse("2026-05-01T12:00:00Z"), ZoneOffset.UTC);
     InMemoryWorkflowEventLog eventLog = new InMemoryWorkflowEventLog();
@@ -276,7 +278,9 @@ class WorkflowRuntimeDriveIT {
         WorkflowLifecycle.ACTIVE,
         artifacts,
         blueprints,
-        steps);
+        steps,
+        List.of(),
+        List.of());
   }
 
   private static final class MapAgentRepository implements AgentRepository {

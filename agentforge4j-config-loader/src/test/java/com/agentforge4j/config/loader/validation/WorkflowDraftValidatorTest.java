@@ -18,6 +18,7 @@ import org.junit.jupiter.api.Test;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -28,7 +29,7 @@ class WorkflowDraftValidatorTest {
     WorkflowDraftValidator draftValidator =
         new WorkflowDraftValidator(new WorkflowValidator());
 
-    ValidationReport report = draftValidator.validate(Map.of(), Map.of());
+    ValidationReport report = draftValidator.validate(Map.of(), Map.of(), Set.of());
 
     assertThat(report.isValid()).isTrue();
     assertThat(report.errors()).isEmpty();
@@ -46,10 +47,10 @@ class WorkflowDraftValidatorTest {
         .build();
     WorkflowDefinition wf = new WorkflowDefinition(
         "wf1", "W", "d", null, null, null, null, WorkflowSource.CUSTOM, WorkflowLifecycle.ACTIVE,
-        Map.of(), Map.of(), List.of(step));
+        Map.of(), Map.of(), List.of(step), List.of(), List.of());
 
     ValidationReport report =
-        draftValidator.validate(Map.of("wf1", wf), Map.of());
+        draftValidator.validate(Map.of("wf1", wf), Map.of(), Set.of());
 
     assertThat(report.isValid()).isFalse();
     assertThat(report.errors())
@@ -69,7 +70,7 @@ class WorkflowDraftValidatorTest {
         .build();
     WorkflowDefinition wf = new WorkflowDefinition(
         "wf1", "W", "d", null, null, null, null, WorkflowSource.CUSTOM, WorkflowLifecycle.ACTIVE,
-        Map.of(), Map.of(), List.of(step));
+        Map.of(), Map.of(), List.of(step), List.of(), List.of());
     AgentDefinition agent = AgentDefinition.builder()
         .withId("ok")
         .withName("Ok")
@@ -82,7 +83,7 @@ class WorkflowDraftValidatorTest {
         .build();
 
     ValidationReport report =
-        draftValidator.validate(Map.of("wf1", wf), Map.of("ok", agent));
+        draftValidator.validate(Map.of("wf1", wf), Map.of("ok", agent), Set.of());
 
     assertThat(report.isValid()).isTrue();
   }
@@ -105,9 +106,9 @@ class WorkflowDraftValidatorTest {
         .build();
     WorkflowDefinition wf = new WorkflowDefinition(
         "wf1", "W", "d", null, null, null, null, WorkflowSource.CUSTOM, WorkflowLifecycle.ACTIVE,
-        Map.of(), Map.of(), List.of(badAgent, badRetry));
+        Map.of(), Map.of(), List.of(badAgent, badRetry), List.of(), List.of());
 
-    ValidationReport report = draftValidator.validate(Map.of("wf1", wf), Map.of());
+    ValidationReport report = draftValidator.validate(Map.of("wf1", wf), Map.of(), Set.of());
 
     assertThat(report.isValid()).isFalse();
     assertThat(report.errors())

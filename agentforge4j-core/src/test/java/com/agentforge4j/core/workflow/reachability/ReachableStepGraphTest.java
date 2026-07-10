@@ -220,6 +220,7 @@ class ReachableStepGraphTest {
   private static WorkflowDefinition wf(String id, Map<String, BlueprintDefinition> blueprints,
       Executable... steps) {
     return new WorkflowDefinition(id, "W", "d", null, null, null, null,
-        WorkflowSource.CUSTOM, WorkflowLifecycle.ACTIVE, Map.of(), blueprints, List.of(steps));
+        WorkflowSource.CUSTOM, WorkflowLifecycle.ACTIVE, Map.of(), blueprints, List.of(steps),
+        List.of(), List.of());
   }
 }

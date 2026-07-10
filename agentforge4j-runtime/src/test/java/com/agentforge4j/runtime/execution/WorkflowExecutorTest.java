@@ -128,6 +128,8 @@ class WorkflowExecutorTest {
         WorkflowLifecycle.ACTIVE,
         Map.of(),
         Map.of(),
-        steps);
+        steps,
+        List.of(),
+        List.of());
   }
 }

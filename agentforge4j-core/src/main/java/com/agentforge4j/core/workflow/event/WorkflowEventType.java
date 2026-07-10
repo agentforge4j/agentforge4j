@@ -197,5 +197,38 @@ public enum WorkflowEventType {
    * Recorded when an external deadline close arrives for a collection gate. Carries the reserved system actor
    * ({@code "runtime"}) and {@code reason=DEADLINE}.
    */
-  COLLECTION_DEADLINE_CLOSE_REQUESTED
+  COLLECTION_DEADLINE_CLOSE_REQUESTED,
+  /**
+   * Recorded when a step's context is assembled from its declared selection (or from full context when the step
+   * declares none). Payload fields: {@code stepId}, {@code mode} ({@code SCOPED} / {@code UNSCOPED_FULL}), the
+   * selector list, per-selector fingerprints, and estimated units.
+   */
+  CONTEXT_SCOPE_APPLIED,
+  /**
+   * Recorded when a step's run-time request for additional context is granted (the requested selector is within the
+   * step's declared expandable scope). Payload fields: {@code stepId}, {@code selector}, {@code round}.
+   */
+  CONTEXT_EXPANSION_GRANTED,
+  /**
+   * Recorded when a step's run-time request for additional context is denied. Payload fields: {@code stepId},
+   * {@code selector}, {@code round}, {@code reason} ({@code NOT_IN_EXPANDABLE_SCOPE} / {@code MAX_EXPANSIONS_REACHED}).
+   */
+  CONTEXT_EXPANSION_DENIED,
+  /**
+   * Recorded when a compaction step produces a compact sibling. Payload carries the full compact-sibling metadata:
+   * {@code sourceId}, {@code sourceFingerprint}, {@code mode}, {@code estimatedUnitsBefore},
+   * {@code estimatedUnitsAfter}, {@code producedByStepId}, and the policy snapshot.
+   */
+  COMPACTION_PERFORMED,
+  /**
+   * Recorded when a compaction step deterministically declines to compact. Payload fields: {@code sourceId},
+   * {@code sourceFingerprint}, {@code reason} ({@code SOURCE_TOO_SMALL} / {@code INSUFFICIENT_REUSE} /
+   * {@code UP_TO_DATE}).
+   */
+  COMPACTION_SKIPPED,
+  /**
+   * Recorded when deterministic waste detection emits an advisory signal. Payload carries the signal kind, the
+   * relevant fingerprints, and the step/loop coordinates. Advisory only: the OSS default never blocks on it.
+   */
+  TOKEN_GOVERNANCE_SIGNAL
 }
