@@ -5,6 +5,7 @@ import com.agentforge4j.llm.api.ModelTier;
 import com.agentforge4j.llm.fake.FakeScript;
 import com.agentforge4j.runtime.command.FileSink;
 import com.agentforge4j.runtime.context.ContextPackRegistry;
+import com.agentforge4j.runtime.exception.CompactSiblingUnavailableException;
 import com.agentforge4j.testkit.assertion.WorkflowRunAssert;
 import com.agentforge4j.testkit.capture.CapturingFileSink;
 import com.agentforge4j.testkit.capture.WorkflowRunResult;
@@ -14,12 +15,13 @@ import com.agentforge4j.testkit.scenario.ScenarioScriptLoader;
  * Exercises representative public testkit signatures whose parameter/return types come from modules
  * the testkit only re-exports transitively: {@link FakeScript} ({@code agentforge4j.llm.fake}),
  * {@link ModelTier} ({@code agentforge4j.llm.api}), and {@link FileSink} ({@code agentforge4j.runtime},
- * the supertype of the testkit's {@link CapturingFileSink}). {@link ContextPackRegistry} is not part
- * of any testkit signature but is exercised directly here as the JPMS export proof for
- * {@code com.agentforge4j.runtime.context}: module readability from {@code requires transitive
- * agentforge4j.runtime} extends to every type that package exports, not only the ones the testkit's
- * own API happens to use. This class compiling against a module that {@code requires} only
- * {@code agentforge4j.testkit} is the JPMS contract proof.
+ * the supertype of the testkit's {@link CapturingFileSink}). {@link ContextPackRegistry} and
+ * {@link CompactSiblingUnavailableException} are not part of any testkit signature but are
+ * exercised directly here as the JPMS export proof for {@code com.agentforge4j.runtime.context}
+ * and {@code com.agentforge4j.runtime.exception}: module readability from {@code requires
+ * transitive agentforge4j.runtime} extends to every type those packages export, not only the ones
+ * the testkit's own API happens to use. This class compiling against a module that {@code requires}
+ * only {@code agentforge4j.testkit} is the JPMS contract proof.
  */
 public final class TestkitModuleConsumer {
 
@@ -66,5 +68,23 @@ public final class TestkitModuleConsumer {
    */
   public ContextPackRegistry emptyContextPackRegistry() {
     return ContextPackRegistry.EMPTY;
+  }
+
+  /**
+   * Constructs a {@link CompactSiblingUnavailableException} and returns its message — naming a
+   * {@code com.agentforge4j.runtime.exception} type reachable only because that package is
+   * exported by {@code agentforge4j.runtime}. This is the exception a {@code COMPACT_ONLY}
+   * context-expansion grant propagates to an embedder when no fresh compact sibling exists.
+   *
+   * @param sourceId             the source id the exception names; must not be blank
+   * @param expectedFingerprint  the compact sibling's expected fingerprint
+   * @param actualFingerprint    the source's actual current fingerprint
+   *
+   * @return the exception's message
+   */
+  public String describeCompactSiblingUnavailable(String sourceId, String expectedFingerprint,
+      String actualFingerprint) {
+    return new CompactSiblingUnavailableException(sourceId, expectedFingerprint, actualFingerprint)
+        .getMessage();
   }
 }

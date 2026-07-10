@@ -76,4 +76,12 @@ class TestkitModuleConsumerTest {
     assertThat(registry).isSameAs(ContextPackRegistry.EMPTY);
     assertThat(registry.names()).isEmpty();
   }
+
+  @Test
+  void constructsCompactSiblingUnavailableExceptionFromAnExternalModule() {
+    String message = consumer.describeCompactSiblingUnavailable("ledger:requirements", "abc",
+        "def");
+
+    assertThat(message).contains("ledger:requirements").contains("abc").contains("def");
+  }
 }
