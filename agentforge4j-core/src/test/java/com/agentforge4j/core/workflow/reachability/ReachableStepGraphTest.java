@@ -9,6 +9,8 @@ import com.agentforge4j.core.workflow.context.ContextMapping;
 import com.agentforge4j.core.workflow.step.StepDefinition;
 import com.agentforge4j.core.workflow.step.StepTransition;
 import com.agentforge4j.core.workflow.step.behaviour.BranchBehaviour;
+import com.agentforge4j.core.workflow.step.behaviour.BranchPredicate;
+import com.agentforge4j.core.workflow.step.behaviour.BranchPredicateKind;
 import com.agentforge4j.core.workflow.step.behaviour.FailBehaviour;
 import com.agentforge4j.core.workflow.step.behaviour.WorkflowBehaviour;
 import com.agentforge4j.core.workflow.step.blueprint.BlueprintBehaviour;
@@ -18,6 +20,7 @@ import org.junit.jupiter.api.Test;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
@@ -115,6 +118,49 @@ class ReachableStepGraphTest {
         .withStepId("router")
         .withName("router")
         .withBehaviour(new BranchBehaviour("flag", Map.of("yes", gated), List.of(), null, false))
+        .withContextMapping(new ContextMapping(List.of(), List.of()))
+        .build();
+    WorkflowDefinition root = wf("root", Map.of(), branching);
+
+    List<ReachableStep> reached = ReachableStepGraph.walk(root, NO_SUBWORKFLOWS);
+
+    assertThat(reached).extracting(ReachableStep::stepId)
+        .containsExactlyInAnyOrder("router", "gated");
+    assertThat(reached).extracting(ReachableStep::location).contains("wf:root/step:gated");
+  }
+
+  @Test
+  void walk_descendsBranchDefaultTarget() {
+    // Same regression class as walk_descendsDirectBranchStepTargets, but the gated step is reachable
+    // only via BranchBehaviour.defaultBranch() — no exact-match key or predicate matches it.
+    StepDefinition gated = step("gated");
+    StepDefinition branching = StepDefinition.builder()
+        .withStepId("router")
+        .withName("router")
+        .withBehaviour(new BranchBehaviour("flag", Map.of("unrelated", step("decoy")), List.of(),
+            gated, false))
+        .withContextMapping(new ContextMapping(List.of(), List.of()))
+        .build();
+    WorkflowDefinition root = wf("root", Map.of(), branching);
+
+    List<ReachableStep> reached = ReachableStepGraph.walk(root, NO_SUBWORKFLOWS);
+
+    assertThat(reached).extracting(ReachableStep::stepId)
+        .containsExactlyInAnyOrder("router", "decoy", "gated");
+    assertThat(reached).extracting(ReachableStep::location).contains("wf:root/step:gated");
+  }
+
+  @Test
+  void walk_descendsBranchPredicateTarget() {
+    // Same regression class again, but the gated step is reachable only via a matched predicate's
+    // target — neither an exact-match branch nor the default.
+    StepDefinition gated = step("gated");
+    BranchPredicate predicate = new BranchPredicate(BranchPredicateKind.MEMBER_OF,
+        Set.of("yes", "go"), gated);
+    StepDefinition branching = StepDefinition.builder()
+        .withStepId("router")
+        .withName("router")
+        .withBehaviour(new BranchBehaviour("flag", Map.of(), List.of(predicate), null, false))
         .withContextMapping(new ContextMapping(List.of(), List.of()))
         .build();
     WorkflowDefinition root = wf("root", Map.of(), branching);

@@ -61,4 +61,36 @@ class BranchGateResolutionTest {
         .emittedEvent(WorkflowEventType.STEP_AWAITING_REVIEW)
         .didNotEmitEvent(WorkflowEventType.RUN_COMPLETED);
   }
+
+  /**
+   * Same regression, routed through {@code childExecutables()}'s <b>default-branch</b> arm: the
+   * resolved decision ({@code "go"}) matches no exact-match key ({@code "stop"} is the only one),
+   * so the gated {@code INPUT} step is reached only via {@code BranchBehaviour.defaultBranch()}.
+   */
+  @Test
+  void submittingAnswerToGatedInputUnderBranchDefaultSuspendsForReview() {
+    WorkflowRunResult result = harness().run("gate-under-branch-default",
+        List.of(GateResponse.input(Map.of("name", "Alice"))));
+
+    WorkflowRunAssert.assertThat(result)
+        .reachedPendingState(WorkflowStatus.AWAITING_REVIEW)
+        .emittedEvent(WorkflowEventType.STEP_AWAITING_REVIEW)
+        .didNotEmitEvent(WorkflowEventType.RUN_COMPLETED);
+  }
+
+  /**
+   * Same regression, routed through {@code childExecutables()}'s <b>predicate</b> arm: the gated
+   * {@code INPUT} step is reached only via a matched {@code MEMBER_OF} predicate's target, not an
+   * exact-match branch or the default.
+   */
+  @Test
+  void submittingAnswerToGatedInputUnderBranchPredicateSuspendsForReview() {
+    WorkflowRunResult result = harness().run("gate-under-branch-predicate",
+        List.of(GateResponse.input(Map.of("name", "Alice"))));
+
+    WorkflowRunAssert.assertThat(result)
+        .reachedPendingState(WorkflowStatus.AWAITING_REVIEW)
+        .emittedEvent(WorkflowEventType.STEP_AWAITING_REVIEW)
+        .didNotEmitEvent(WorkflowEventType.RUN_COMPLETED);
+  }
 }
