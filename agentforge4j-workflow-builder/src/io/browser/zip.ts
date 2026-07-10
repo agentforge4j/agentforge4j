@@ -233,9 +233,14 @@ function stripPromptsFromRuntimeDocument(doc: Record<string, unknown>): Record<s
   return clone;
 }
 
+/** Falls back to a plain name when the draft has no id yet, matching downloadWorkflowJson's convention. */
+function workflowFileBase(workflow: WorkflowDefinition): string {
+  return workflow.id.trim() || 'workflow';
+}
+
 export async function buildWorkflowZipBlob(workflow: WorkflowDefinition): Promise<Blob> {
   const zip = new JSZip();
-  const folderName = `${workflow.id}.workflow`;
+  const folderName = `${workflowFileBase(workflow)}.workflow`;
   const folder = zip.folder(folderName);
   if (!folder) {
     throw new WorkflowParseError('Failed to create ZIP folder');
@@ -273,7 +278,7 @@ function triggerDownload(blob: Blob, filename: string): void {
 
 export async function exportWorkflowZip(workflow: WorkflowDefinition): Promise<void> {
   const blob = await buildWorkflowZipBlob(workflow);
-  triggerDownload(blob, `${workflow.id}.workflow.zip`);
+  triggerDownload(blob, `${workflowFileBase(workflow)}.workflow.zip`);
 }
 
 function countSteps(workflow: WorkflowDefinition): number {
