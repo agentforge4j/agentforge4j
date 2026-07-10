@@ -191,7 +191,7 @@ public record StepDefinition(
 
     /**
      * Sets the optional step-level capability tier name ({@code LITE}/{@code STANDARD}/
-     * {@code POWERFUL}) that overrides the agent tier for this step.
+     * {@code POWERFUL}/{@code PREMIUM}) that overrides the agent tier for this step.
      *
      * @param modelTier capability tier name, or {@code null} to inherit the agent tier
      *

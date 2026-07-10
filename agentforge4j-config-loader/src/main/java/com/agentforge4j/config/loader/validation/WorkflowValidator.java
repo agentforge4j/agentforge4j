@@ -570,16 +570,18 @@ public final class WorkflowValidator {
             ("COMPACT step '%s' in workflow '%s' declares DETERMINISTIC_EXTRACT, which is only "
                 + "implemented for LEDGER_SECTION sources; source kind is %s")
                 .formatted(step.stepId(), workflow.id(), compact.source().kind()));
-      }
-      // LLM_SUMMARY's agentRef is validated like any other agent reference — see
-      // WorkflowAgentRefCollector's CompactBehaviour/LlmSummary branch, checked by validateAgentRefs.
-      // A deterministic extract operates on the whole ledger envelope; a section subpath resolves
-      // to a bare array, which the extractor cannot compact — reject it here rather than letting a
-      // run produce an empty compact form of a non-empty ledger.
-      if (compact.source().kind() == ContextSourceKind.LEDGER_SECTION) {
-        Validate.isTrue(!compact.source().ref().contains("."),
-            "COMPACT step '%s' in workflow '%s' must compact a whole ledger; source '%s' names a ledger section"
-                .formatted(step.stepId(), workflow.id(), compact.source().ref()));
+        // A deterministic extract operates on the whole ledger envelope; a section subpath
+        // resolves to a bare array, which the extractor cannot compact — reject it here rather
+        // than letting a run produce an empty compact form of a non-empty ledger. This
+        // restriction is specific to DeterministicExtract: LLM_SUMMARY's agent can summarize a
+        // ledger section just as well as a whole ledger (its agentRef is validated like any
+        // other agent reference — see WorkflowAgentRefCollector's CompactBehaviour/LlmSummary
+        // branch, checked by validateAgentRefs), so it must not be rejected here.
+        if (compact.source().kind() == ContextSourceKind.LEDGER_SECTION) {
+          Validate.isTrue(!compact.source().ref().contains("."),
+              "COMPACT step '%s' in workflow '%s' must compact a whole ledger; source '%s' names a ledger section"
+                  .formatted(step.stepId(), workflow.id(), compact.source().ref()));
+        }
       }
     }
   }

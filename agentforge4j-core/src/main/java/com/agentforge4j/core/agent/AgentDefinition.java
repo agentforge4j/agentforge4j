@@ -221,7 +221,8 @@ public record AgentDefinition(
     }
 
     /**
-     * Sets the optional capability tier name ({@code LITE}/{@code STANDARD}/{@code POWERFUL}).
+     * Sets the optional capability tier name ({@code LITE}/{@code STANDARD}/{@code POWERFUL}/
+     * {@code PREMIUM}).
      *
      * @param modelTier capability tier name, or {@code null} for none
      *

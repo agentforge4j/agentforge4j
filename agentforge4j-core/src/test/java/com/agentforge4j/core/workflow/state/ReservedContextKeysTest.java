@@ -46,4 +46,24 @@ class ReservedContextKeysTest {
     assertThatThrownBy(() -> ReservedContextKeys.grantedKey(" "))
         .isInstanceOf(IllegalArgumentException.class);
   }
+
+  @Test
+  void expansionCountKeyIsNamespacedUnderReservedPrefix() {
+    assertThat(ReservedContextKeys.expansionCountKey(7))
+        .isEqualTo("__expansionCount.7")
+        .startsWith(ReservedContextKeys.EXPANSION_COUNT_KEY_PREFIX);
+  }
+
+  @Test
+  void llmSummaryInputKeyIsNamespacedUnderReservedPrefix() {
+    assertThat(ReservedContextKeys.llmSummaryInputKey("LEDGER_SECTION:requirements"))
+        .isEqualTo("__compactSourceInput.LEDGER_SECTION:requirements")
+        .startsWith(ReservedContextKeys.LLM_SUMMARY_INPUT_KEY_PREFIX);
+  }
+
+  @Test
+  void llmSummaryInputKeyRejectsBlankSourceId() {
+    assertThatThrownBy(() -> ReservedContextKeys.llmSummaryInputKey(" "))
+        .isInstanceOf(IllegalArgumentException.class);
+  }
 }

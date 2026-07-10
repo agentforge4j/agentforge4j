@@ -296,6 +296,21 @@ class WorkflowValidatorContextSelectionTest {
   }
 
   @Test
+  void acceptsLlmSummaryCompactStepOnALedgerSectionSubpath() {
+    // The "must compact a whole ledger" restriction is specific to DETERMINISTIC_EXTRACT (the
+    // shipped extractor only understands the whole envelope shape); LLM_SUMMARY's agent can
+    // summarize a section just as well as a whole ledger, so a section subpath must be accepted.
+    StepDefinition compact = StepDefinition.builder().withStepId("c").withName("c")
+        .withBehaviour(new CompactBehaviour(
+            sel(ContextSourceKind.LEDGER_SECTION, "requirements.entries"),
+            new LlmSummary("STANDARD", "summarizer-agent"), new CompactionPolicy(0, 0)))
+        .build();
+    WorkflowDefinition wf = workflow(List.of(compact), List.of(ledger("requirements")));
+
+    assertThatCode(() -> validate(wf)).doesNotThrowAnyException();
+  }
+
+  @Test
   void acceptsResolvableSelectorInsideBranchChild() {
     ContextSelection selection = new ContextSelection(
         List.of(sel(ContextSourceKind.STEP_OUTPUT, "branch-target-a")), List.of(), null);

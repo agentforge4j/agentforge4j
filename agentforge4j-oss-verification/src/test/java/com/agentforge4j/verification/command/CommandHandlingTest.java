@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package com.agentforge4j.verification.command;
 
+import com.agentforge4j.core.workflow.event.WorkflowEvent;
 import com.agentforge4j.core.workflow.event.WorkflowEventType;
 import com.agentforge4j.core.workflow.state.WorkflowStatus;
 import com.agentforge4j.llm.fake.FakeScript;
@@ -12,7 +13,10 @@ import com.agentforge4j.verification.support.Fixtures;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.file.Files;
+import java.util.List;
 import org.junit.jupiter.api.Test;
+
+import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * Black-box coverage of the LLM command handlers an agent can emit (9 of the 10; {@code TOOL_INVOCATION}
@@ -107,6 +111,19 @@ class CommandHandlingTest {
         .eventCount(WorkflowEventType.CONTEXT_EXPANSION_DENIED, 2)
         .eventsInOrder(WorkflowEventType.CONTEXT_EXPANSION_GRANTED,
             WorkflowEventType.CONTEXT_EXPANSION_DENIED);
+    // The aggregate assertions above would pass even if the two denials swapped reason codes;
+    // pin the specific reason each denied selector carries, in request order.
+    List<String> deniedPayloadsInOrder = result.captures().events().stream()
+        .filter(event -> event.eventType() == WorkflowEventType.CONTEXT_EXPANSION_DENIED)
+        .map(WorkflowEvent::payload)
+        .toList();
+    assertThat(deniedPayloadsInOrder).hasSize(2);
+    assertThat(deniedPayloadsInOrder.get(0))
+        .contains("selector=STATE_KEY:__reserved")
+        .contains("reason=RESERVED_NAMESPACE");
+    assertThat(deniedPayloadsInOrder.get(1))
+        .contains("selector=STATE_KEY:not-declared")
+        .contains("reason=NOT_IN_EXPANDABLE_SCOPE");
   }
 
   @Test
