@@ -75,8 +75,12 @@ public final class EpicPackageComplexityAnalyzer {
     long maxTurns = (long) epicCount * PHASES_PER_EPIC * DEFAULT_MAX_REWORK_ITERATIONS_PER_PHASE
         + FINAL_PACKAGE_PHASES;
     for (Epic epic : epicPackage.epics()) {
+      // The hint is advisory and capped at the per-phase rework ceiling: expected turns feed the
+      // expected token figure, which must stay within the [min, max] envelope, and maxTurns above
+      // is derived from the same ceiling. A hint at or above the ceiling therefore means
+      // "expect the worst case", not a wider envelope.
       long expectedIterations = epic.expectedReworkIterations() != null
-          ? epic.expectedReworkIterations()
+          ? Math.min(epic.expectedReworkIterations(), DEFAULT_MAX_REWORK_ITERATIONS_PER_PHASE)
           : Math.max(1, (DEFAULT_MAX_REWORK_ITERATIONS_PER_PHASE + 1) / 2);
       expectedTurns += (long) PHASES_PER_EPIC * expectedIterations;
     }

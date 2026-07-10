@@ -14,7 +14,10 @@ import com.agentforge4j.util.Validate;
  * @param expectedReworkIterations  optional expected-case rework-loop iteration hint (the
  *                                  expected-case companion to the analyzer's assumed per-phase
  *                                  rework ceiling); {@code null} when no hint is supplied. When
- *                                  present it must be at least one. Advisory only
+ *                                  present it must be at least one. Advisory only: the analyzer
+ *                                  caps it at its per-phase rework ceiling, so a larger hint
+ *                                  means "expect the worst case" rather than widening the
+ *                                  envelope
  */
 public record Epic(String epicId, String name, Integer expectedReworkIterations) {
 

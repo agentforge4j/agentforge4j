@@ -78,6 +78,41 @@ class EpicPackageComplexityAnalyzerTest {
   }
 
   @Test
+  void hintAboveReworkCeilingIsCappedSoExpectedNeverExceedsMax() {
+    EpicPackage pkg = new EpicPackage("pkg", List.of(new Epic("e1", "E1",
+        EpicPackageComplexityAnalyzer.DEFAULT_MAX_REWORK_ITERATIONS_PER_PHASE + 5)));
+
+    WorkflowComplexityAnalysis analysis = EpicPackageComplexityAnalyzer.analyze(pkg);
+
+    assertThat(analysis.expectedAgentTurns()).isEqualTo(analysis.maxAgentTurns());
+  }
+
+  @Test
+  void hintEqualToReworkCeilingYieldsExpectedEqualToMax() {
+    EpicPackage pkg = new EpicPackage("pkg", List.of(new Epic("e1", "E1",
+        EpicPackageComplexityAnalyzer.DEFAULT_MAX_REWORK_ITERATIONS_PER_PHASE)));
+
+    WorkflowComplexityAnalysis analysis = EpicPackageComplexityAnalyzer.analyze(pkg);
+
+    assertThat(analysis.expectedAgentTurns())
+        .isEqualTo(1 + (long) EpicPackageComplexityAnalyzer.PHASES_PER_EPIC
+            * EpicPackageComplexityAnalyzer.DEFAULT_MAX_REWORK_ITERATIONS_PER_PHASE)
+        .isEqualTo(analysis.maxAgentTurns());
+  }
+
+  @Test
+  void cappedHintSurvivesAggregationIntoAValidEstimate() {
+    EpicPackage pkg = new EpicPackage("pkg", List.of(new Epic("e1", "E1", 100)));
+    WorkflowComplexityAnalysis analysis = EpicPackageComplexityAnalyzer.analyze(pkg);
+
+    ExecutionEstimate estimate = WorkflowExecutionAggregator.aggregate(
+        analysis, new SizingInputs(400, 800, 0));
+
+    assertThat(estimate.estimatedExpectedTokens())
+        .isBetween(estimate.estimatedMinTokens(), estimate.estimatedMaxTokens());
+  }
+
+  @Test
   void rejectsEmptyEpicList() {
     assertThatThrownBy(() -> new EpicPackage("pkg", List.of()))
         .isInstanceOf(IllegalArgumentException.class);

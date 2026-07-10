@@ -6,8 +6,8 @@ How to use a **shipped catalog workflow** rather than authoring your own, and ho
 expected to behave around it: analyse a target workflow deterministically, run the shipped
 estimator bundle to its approval pause, aggregate the sized figures it produced, and show the full
 disclosure — token range, minimum required tokens, confidence, complexity, risk flags, and a
-continue/narrow/stop recommendation — before deciding whether to approve. No network, no real LLM
-keys, no Cloud or Platform dependency.
+continue/narrow/stop recommendation — before deciding whether to approve. No network calls, no
+real LLM keys, and no external service dependency.
 
 ## AgentForge4j capability demonstrated
 
