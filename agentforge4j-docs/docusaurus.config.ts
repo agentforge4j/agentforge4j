@@ -27,6 +27,15 @@ const docsRedirects = redirectConfig(supportedVersions);
 // supported stable version once one exists. Inert today (resolves to `next`, byte-identical to before).
 const docsEntry = docsEntryPath(supportedVersions);
 
+// Archive static-export mode (design §7/§12). `AF4J_ARCHIVE_VERSION=<v>` builds exactly ONE released
+// version as a self-contained static artifact mounted at `/docs/archive/<v>/`: only that version is
+// included, it serves at the archive root (path ''), the root/`latest` redirect toggle is dropped
+// (an archive owns no moving alias), and the navbar/footer point inside the archived version itself.
+// Driven by scripts/archive-transition.mjs; absent (the default), the config is the live site's.
+const archiveVersion = process.env.AF4J_ARCHIVE_VERSION || null;
+// Route prefix for navbar/footer targets: inside an archive the archived version IS the site root.
+const entryBase = archiveVersion ? '' : `/${docsEntry}`;
+
 const config: Config = {
   title: 'AgentForge4j',
   tagline: 'An embeddable Java framework for building agentic LLM workflows',
@@ -43,7 +52,9 @@ const config: Config = {
   // baseUrl + routeBasePath + version-path + slug — yielding `/docs/next/...`
   // with no `/docs/docs/...` duplication.
   url: 'https://agentforge4j.org',
-  baseUrl: '/docs/',
+  // In archive mode the artifact is mounted under its own frozen subpath (design §7), so every
+  // generated asset/route reference resolves inside `/docs/archive/<v>/` — self-contained by build.
+  baseUrl: archiveVersion ? `/docs/archive/${archiveVersion}/` : '/docs/',
 
   organizationName: 'agentforge4j',
   projectName: 'agentforge4j',
@@ -79,21 +90,40 @@ const config: Config = {
           editUrl:
             'https://github.com/agentforge4j/agentforge4j/tree/main/agentforge4j-docs/',
           // The current (editable) docs set is the forthcoming release: served at
-          // `/docs/next`, labelled "Next — Unreleased" with a persistent banner.
-          // Released/archived versions are added by the release sequence (later phase).
-          versions: {
-            current: {
-              label: 'Next — Unreleased',
-              path: 'next',
-              banner: 'unreleased',
-            },
-            // Every released version is served at its own explicit `/<version>/` path. Without
-            // this, Docusaurus serves the newest release at the docs root (its default for the
-            // last version), which collides with the computed `/`,`/latest` -> `/<version>/`
-            // routing above and leaves every redirect/navbar target pointing at a route that
-            // does not exist. Inert pre-release (`releasedVersions` is empty).
-            ...Object.fromEntries(releasedVersions.map((version) => [version, {path: version}])),
-          },
+          // `/docs/next`, labelled "Next — Unreleased" with a persistent banner. Released versions
+          // join this list via the release cut (release-cut.mjs); archived versions leave it via the
+          // archive transition (archive-transition.mjs).
+          //
+          // Archive mode instead includes exactly the one archived version, served at the artifact
+          // root with the unmaintained banner (design §7). `lastVersion` is set explicitly so the
+          // intent does not ride on Docusaurus's post-filter default.
+          ...(archiveVersion
+            ? {
+                onlyIncludeVersions: [archiveVersion],
+                lastVersion: archiveVersion,
+                versions: {
+                  [archiveVersion]: {
+                    label: archiveVersion,
+                    path: '',
+                    banner: 'unmaintained',
+                  },
+                },
+              }
+            : {
+                versions: {
+                  current: {
+                    label: 'Next — Unreleased',
+                    path: 'next',
+                    banner: 'unreleased',
+                  },
+                  // Every released version is served at its own explicit `/<version>/` path. Without
+                  // this, Docusaurus serves the newest release at the docs root (its default for the
+                  // last version), which collides with the computed `/`,`/latest` -> `/<version>/`
+                  // routing above and leaves every redirect/navbar target pointing at a route that
+                  // does not exist. Inert pre-release (`releasedVersions` is empty).
+                  ...Object.fromEntries(releasedVersions.map((version) => [version, {path: version}])),
+                },
+              }),
         },
         // No blog surface in the OSS docs.
         blog: false,
@@ -104,17 +134,21 @@ const config: Config = {
     ],
   ],
 
-  plugins: [
-    [
-      '@docusaurus/plugin-client-redirects',
-      {
-        // Routing computed from the support window. Pre-first-release the docs root and
-        // the moving `latest` alias both resolve to `next`; once a stable version exists both flip to
-        // the newest stable version. See scripts/redirect-config.mjs.
-        redirects: docsRedirects,
-      },
-    ],
-  ],
+  // An archive artifact owns no moving alias: the root/`latest` redirect toggle belongs to the live
+  // site only, so archive mode drops the redirects plugin entirely.
+  plugins: archiveVersion
+    ? []
+    : [
+        [
+          '@docusaurus/plugin-client-redirects',
+          {
+            // Routing computed from the support window (design §3). Pre-first-release the docs root and
+            // the moving `latest` alias both resolve to `next`; once a stable version exists this flips to
+            // `/` -> `/latest` -> newest stable. See scripts/redirect-config.mjs.
+            redirects: docsRedirects,
+          },
+        ],
+      ],
 
   themes: [
     [
@@ -140,8 +174,9 @@ const config: Config = {
         alt: 'AgentForge4j',
         src: 'img/logo.svg',
         // The brand links to the current effective docs entry (see docsEntry above): `next`
-        // pre-release, or the newest supported stable version once one exists.
-        href: `/${docsEntry}/`,
+        // pre-release, the newest supported stable version once one exists, or the archived
+        // version itself (the artifact root) in archive mode.
+        href: `${entryBase}/`,
       },
       items: [
         {
@@ -167,19 +202,19 @@ const config: Config = {
         {
           title: 'Docs',
           items: [
-            // Targets the current effective docs entry (see docsEntry above), so these follow the
+            // Targets the current effective docs entry (see entryBase above), so these follow the
             // same version the navbar logo and the `/latest` redirect resolve to.
-            {label: 'Get Started', to: `/${docsEntry}/get-started/evaluating`},
-            {label: 'Reference', to: `/${docsEntry}/reference/config`},
-            {label: 'Examples', to: `/${docsEntry}/examples`},
+            {label: 'Get Started', to: `${entryBase}/get-started/evaluating`},
+            {label: 'Reference', to: `${entryBase}/reference/config`},
+            {label: 'Examples', to: `${entryBase}/examples`},
           ],
         },
         {
           title: 'Project',
           items: [
             {label: 'GitHub', href: 'https://github.com/agentforge4j/agentforge4j'},
-            {label: 'Contributing', to: `/${docsEntry}/contributing`},
-            {label: 'Release Notes', to: `/${docsEntry}/release-notes`},
+            {label: 'Contributing', to: `${entryBase}/contributing`},
+            {label: 'Release Notes', to: `${entryBase}/release-notes`},
           ],
         },
       ],

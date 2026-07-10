@@ -36,6 +36,11 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v6
+        with:
+          # Full history + tags: the version-pinned Javadoc surfaces are built from each release
+          # tag (build-javadoc-versions.mjs resolves refs/tags/v<version>), which a shallow,
+          # tagless default checkout cannot see.
+          fetch-depth: 0
 
       - name: Configure Pages
         uses: actions/configure-pages@v5
@@ -45,6 +50,12 @@ jobs:
         with:
           # The Docs gate is the emitter's test stage; the deploy only needs the compiled classes.
           emitter-maven-phases: compile
+
+      - name: Build the version-pinned Javadoc surfaces (from release tags)
+        # One frozen /javadoc/<version>/ per active OR archived released version — the versioned
+        # docs snapshots link these. No-op pre-first-release (versions.json absent).
+        working-directory: agentforge4j-docs
+        run: node scripts/build-javadoc-versions.mjs
 
       - name: Assemble the Pages artifact (/docs + /javadoc)
         working-directory: agentforge4j-docs
