@@ -10,7 +10,7 @@ Proposed
 
 ## Context
 
-Before running a large workflow — especially deep multi-bundle compositions — users need to understand its execution shape: how many steps and agent calls it can produce, how branches and loops bound that range, and roughly what token magnitude to expect. Today the only way to learn a workflow's shape is to run it.
+Before running a large workflow — especially deep multi-bundle compositions — users need to understand its execution shape: how many steps and agent calls it can produce, how branches and loops bound that range, and roughly what token magnitude to expect. Today a workflow user has no way to learn a workflow's shape short of running it.
 
 Constraints and forces:
 
@@ -26,7 +26,7 @@ Two cooperating parts:
 - **Framework utilities**: a deterministic complexity analyzer and execution aggregator in core, behind a facade — walking a workflow definition to produce a structural estimate (step counts, branch/loop bounds, a deterministic input-token floor). Per-turn token and tool-call magnitudes are supplied by the `execution-estimator` agent's own sizing today; once ADR-0016's shared `TokenEstimator` SPI lands, that agent-supplied sizing is the intended integration point for it, replacing today's agent-only figures with SPI-backed ones.
 - **A shipped estimator workflow** in the catalog: runs the deterministic analysis, then uses a lightweight agent step to classify the result into an actionable verdict — continue, narrow scope, or stop — before the target workflow is executed. The agent classifies; deterministic steps route (the determinism boundary holds).
 
-Estimation output is advisory evidence, surfaced as context and audit events — it never gates execution by itself.
+Estimation output is advisory evidence; the exact surfacing vehicle — context values, dedicated events, or both — is an open question. It never gates execution by itself.
 
 ## Alternatives under consideration
 

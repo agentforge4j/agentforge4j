@@ -24,13 +24,14 @@ Constraints and forces:
 Adopt a strict publication sequencing rule and the supporting release machinery:
 
 1. **Documentation and project site go live first** — the docs site and project domain must be serving before any artifact referencing them is published.
-2. **Maven Central publication second** — signed artifacts with full metadata, sources, and javadoc, published via the Central portal tooling from a dedicated release profile.
-3. **Root README lands last** — it merges only when every other release gate is satisfied, as the final gate.
+2. **Maven Central publication second** — the framework and the catalog, as signed artifacts with full metadata, sources, and javadoc, published via the Central portal tooling from a dedicated release profile.
+3. **Builder npm publication third** — the workflow builder publishes to npm once the site is live and Central carries the framework and catalog; a documentation surface (the project site's visualizer embed) pins the supported builder version, so it follows the same docs-before-artifacts invariant as the other two.
+4. **Root README lands last** — it merges only when every other release gate is satisfied, as the final gate.
 
 Supporting decisions:
 
-- **Independent catalog releases**: the catalog publishes on its own tag-driven cadence with a flattened POM, so catalog versions can iterate without framework releases.
-- **Release automation** runs in CI from tags; no manual artifact assembly.
+- **Three independently versioned, prefix-tagged release tracks**: `framework-v*` (the full Maven reactor, to Central), `catalog-v*` (the shipped workflow catalog, to Central with a flattened POM so its published POM stands alone), and `builder-v*` (the workflow builder, published to npm). Each track iterates on its own cadence; no track's release blocks another's.
+- **Release automation** runs in CI from tags, one workflow per track; no manual artifact assembly.
 - **Versioning**: 0.x with the clean-break policy; the version itself signals contract fluidity.
 
 ## Alternatives under consideration
@@ -79,10 +80,10 @@ Supporting decisions:
 
 1. Complete portal-mandatory POM metadata and the release profile (done in part).
 2. Signing setup and publication plugin wiring; dry-run validation.
-3. Tag-driven release CI for the framework; separate tag-driven catalog deploy with POM flattening.
-4. Execute the sequence: docs/site live → publication → README merge.
+3. Tag-driven release CI per track: framework, catalog (with POM flattening), and builder (npm publish).
+4. Execute the sequence: docs/site live → framework and catalog to Central → builder to npm → README merge.
 
-**Verification note:** POM metadata and the release profile have landed; no release, deploy, or publish workflow exists yet in CI, and signing and the catalog deploy job remain open. The wire-format `schemaVersion` question referenced in ADR-0001's follow-up work is also still unresolved. Confirm against `main` and CI configuration before moving this ADR to Accepted.
+**Verification note:** POM metadata and the release profile have landed; no release, deploy, or publish workflow exists yet in CI (confirmed against current `main`), and signing and the catalog deploy job remain open. No prefixed release tags (`framework-v*`, `catalog-v*`, `builder-v*`) exist yet either. The wire-format `schemaVersion` field referenced in ADR-0001's follow-up work is a decided requirement — not an open question — but it remains unimplemented on `main`: it must land in the workflow schema before framework 0.1.0 is cut. Confirm against `main` and CI configuration before moving this ADR to Accepted.
 
 ## Related documents
 
