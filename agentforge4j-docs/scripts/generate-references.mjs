@@ -11,7 +11,7 @@
 // Generated output is gitignored and regenerated at build time, so it cannot drift from source.
 // Run AFTER the emitter (see scripts/README or the module README for the full sequence).
 
-import {existsSync, mkdirSync, readFileSync, rmSync, writeFileSync} from 'node:fs';
+import {existsSync, mkdirSync, readFileSync, writeFileSync} from 'node:fs';
 import {dirname, join} from 'node:path';
 import {fileURLToPath} from 'node:url';
 
@@ -86,11 +86,28 @@ function write(relPath, content) {
 
 // --- Providers -------------------------------------------------------------------------------
 
-function generateProviders(providers) {
+/**
+ * Build the provider-matrix table rows and header, one column per emitted model tier — so a
+ * legitimate new tier (e.g. a future PREMIUM) appears in the docs without a generator edit. Pure
+ * (no file I/O), so it is directly unit-testable.
+ *
+ * @param {Array<{name: string, requiresApiKey: boolean, tiers?: Record<string, string>}>} providers
+ * @param {string[]} tiers the emitted `contracts.modelTiers`, in declaration order
+ * @returns {{header: string, separator: string, rows: string[]}}
+ */
+export function buildProviderTable(providers, tiers) {
+  const header = `| Provider | API key required | ${tiers.join(' | ')} |`;
+  const separator = `|---|---|${tiers.map(() => '---').join('|')}|`;
   const rows = providers.map((p) => {
     const t = p.tiers || {};
-    return `| \`${cell(p.name)}\` | ${p.requiresApiKey ? 'Yes' : 'No'} | ${cell(t.LITE)} | ${cell(t.STANDARD)} | ${cell(t.POWERFUL)} |`;
+    const tierCells = tiers.map((tier) => cell(t[tier])).join(' | ');
+    return `| \`${cell(p.name)}\` | ${p.requiresApiKey ? 'Yes' : 'No'} | ${tierCells} |`;
   });
+  return {header, separator, rows};
+}
+
+function generateProviders(providers, tiers) {
+  const {header, separator, rows} = buildProviderTable(providers, tiers);
   const body = [
     frontmatter({
       id: 'reference-providers',
@@ -104,8 +121,8 @@ function generateProviders(providers) {
     'Generated from the provider service-provider registrations and the shipped model-tier defaults.',
     'The deterministic test-only `fake` provider is intentionally excluded.',
     '',
-    '| Provider | API key required | LITE | STANDARD | POWERFUL |',
-    '|---|---|---|---|---|',
+    header,
+    separator,
     ...rows,
     '',
   ].join('\n');
@@ -389,18 +406,6 @@ function generateSchemasIndex(names) {
 
 // --- Main ------------------------------------------------------------------------------------
 
-function removeFlatStubsBeingReplaced() {
-  // Phase 1 shipped flat stubs for these areas; Phase 2 replaces them with generated content.
-  // config/schemas/providers move into subdirectories, so their flat stubs must be removed to
-  // avoid duplicate routes; behaviours/commands/events/statuses are regenerated in place.
-  for (const stub of ['config.mdx', 'schemas.mdx', 'providers.mdx']) {
-    const path = join(REFERENCE_DIR, stub);
-    if (existsSync(path)) {
-      rmSync(path);
-    }
-  }
-}
-
 function main() {
   const providers = readJson(join(EMITTER_OUT, 'providers.json'), 'providers.json (emitter output)');
   const contracts = readJson(join(EMITTER_OUT, 'contract-sets.json'), 'contract-sets.json (emitter output)');
@@ -417,9 +422,7 @@ function main() {
     }
   }
 
-  removeFlatStubsBeingReplaced();
-
-  generateProviders(providers);
+  generateProviders(providers, contracts.modelTiers);
 
   generateConfigIndex();
   generateSpringConfig(springMetadata);
@@ -477,4 +480,8 @@ function main() {
   console.log('generate-references: wrote provider matrix, config (spring/bootstrap/env), schemas, and contract tables.');
 }
 
-main();
+// CLI entry. Guarded so pure exports (e.g. buildProviderTable) can be unit-tested without
+// requiring the emitter output / OSS build main() depends on.
+if (process.argv[1]?.endsWith('generate-references.mjs')) {
+  main();
+}

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 //
-// Vocabulary-lint remark plugin (design §11). Authors mark a generated identifier inline as
+// Vocabulary-lint remark plugin. Authors mark a generated identifier inline as
 // `vocab:<set>:<VALUE>` (an inline code span), e.g. `vocab:behaviour:BRANCH`. At build time this
 // plugin checks <VALUE> against the authoritative set emitted to src/vocab/<set>.json and:
 //   - throws (failing the build) if the set is unknown or the value is not a member — so a reference
