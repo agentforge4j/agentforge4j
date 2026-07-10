@@ -1,5 +1,6 @@
 {
   "kind": "WORKFLOW",
+  "schemaVersion": 1,
   "id": "cmd-create-file",
   "name": "Create File Command",
   "steps": [

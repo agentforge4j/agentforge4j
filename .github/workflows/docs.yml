@@ -1,0 +1,49 @@
+name: Docs
+
+# Build + quality gate for the OSS documentation site (agentforge4j-docs). The build itself (JDK 17
+# -> OSS reactor -> emitter -> examples -> Node generate/lint/type-check/test/build -> accessibility)
+# lives in the shared .github/actions/build-docs-site composite action, which the Pages deploy
+# workflow also consumes — one pipeline definition, so the gate and the deploy cannot drift apart.
+#
+# This job ALWAYS runs the full pipeline on every push/PR to `main` — it does NOT gate on a changed-
+# paths filter. The generated reference (via the emitter's reflection over the *installed* artifacts)
+# and the aggregate Javadoc surface depend on essentially the whole OSS reactor: any public class,
+# config property, provider, event, status, or behaviour in any module can change what the docs gate
+# must validate. A path allowlist narrow enough to be accurate would have to enumerate (and keep in
+# sync forever) every framework module, which is exactly the kind of list that silently goes stale as
+# modules are added — so under-triggering is the greater risk, and this workflow always runs instead.
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+concurrency:
+  group: docs-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  docs:
+    name: docs
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Build the documentation site
+        uses: ./.github/actions/build-docs-site
+
+      - name: Upload the built site
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: docs-site
+          path: agentforge4j-docs/build/**
+          if-no-files-found: ignore
+          retention-days: 7

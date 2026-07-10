@@ -1,5 +1,6 @@
 {
   "kind": "WORKFLOW",
+  "schemaVersion": 1,
   "id": "beh-nested-outer",
   "name": "Nested Outer",
   "steps": [
