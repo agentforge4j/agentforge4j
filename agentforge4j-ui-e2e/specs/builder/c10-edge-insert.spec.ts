@@ -12,13 +12,19 @@ import { BUILDER_FIXTURE } from '../../fixtures/builder-fixture';
  * construction would need a flaky React Flow handle-drag.)
  */
 test.describe('C10 — edge-insert', () => {
-  test('"+" affordances render on the linear continuation edges', async ({ page }) => {
+  test('"+" affordances render only on the scope-free linear continuation edges', async ({ page }) => {
     const builder = new BuilderPage(page);
     await builder.goto('?caps=export');
 
-    // The sample's four continuation edges are all linear → four insert points.
-    await expect(builder.insertButtons).toHaveCount(4);
+    // Of the sample's four linear continuation edges, only the two head edges
+    // are scope-free. The decision-branch chain (decision → save → loop) is
+    // branch-owned, so its edges are excluded (see isInsertableEdge and the
+    // "does NOT treat a branch-owned linear edge as insertable" unit test).
+    await expect(builder.insertButtons).toHaveCount(2);
     await expect(page.getByTestId('edge-insert-e-0-1')).toBeVisible();
+    await expect(page.getByTestId('edge-insert-e-1-2')).toBeVisible();
+    await expect(page.getByTestId('edge-insert-e-2-3')).toHaveCount(0);
+    await expect(page.getByTestId('edge-insert-e-3-4')).toHaveCount(0);
   });
 
   test('clicking "+" splices a new step between the two endpoints in serialized order', async ({
