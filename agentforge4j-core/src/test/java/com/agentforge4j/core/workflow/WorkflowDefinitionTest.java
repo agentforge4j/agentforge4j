@@ -3,8 +3,14 @@ package com.agentforge4j.core.workflow;
 
 import com.agentforge4j.core.workflow.artifact.ArtifactDefinition;
 import com.agentforge4j.core.workflow.artifact.TextArtifactItem;
+import com.agentforge4j.core.workflow.requirement.RequirementScope;
+import com.agentforge4j.core.workflow.requirement.ResolutionMode;
+import com.agentforge4j.core.workflow.requirement.WorkflowRequirement;
 import com.agentforge4j.core.workflow.step.StepDefinition;
+import com.agentforge4j.core.workflow.step.StepTransition;
 import com.agentforge4j.core.workflow.step.behaviour.FailBehaviour;
+import com.agentforge4j.core.workflow.step.blueprint.BlueprintBehaviour;
+import com.agentforge4j.core.workflow.step.blueprint.BlueprintDefinition;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.NullAndEmptySource;
@@ -129,5 +135,90 @@ class WorkflowDefinitionTest {
     assertThat(wf.artifacts()).containsKey("art");
     assertThatThrownBy(() -> wf.artifacts().clear())
         .isInstanceOf(UnsupportedOperationException.class);
+  }
+
+  @Test
+  void builder_maps_every_field_to_its_record_component() {
+    var item = new TextArtifactItem("q1", "Question", false, null);
+    Map<String, ArtifactDefinition> artifacts = Map.of("art", new ArtifactDefinition("art", List.of(item)));
+    Map<String, BlueprintDefinition> blueprints = Map.of("bp", new BlueprintDefinition(
+        "bp", "Blueprint", new BlueprintBehaviour(null, StepTransition.AUTO), List.of(failStep("b1"))));
+    List<Executable> steps = List.of(failStep("s1"));
+    List<WorkflowRequirement> requirements = List.of(new WorkflowRequirement(
+        "req-1", "role", RequirementScope.WORKFLOW, null, null, true, null, ResolutionMode.INSTALL));
+
+    WorkflowDefinition wf = WorkflowDefinition.builder()
+        .withId("w1")
+        .withName("One")
+        .withDescription("the description")
+        .withAuthor("the author")
+        .withContact("the contact")
+        .withVersion("2.3.4")
+        .withUuid("550e8400-e29b-41d4-a716-446655440000")
+        .withSource(WorkflowSource.SHIPPED)
+        .withLifecycle(WorkflowLifecycle.DRAFT)
+        .withArtifacts(artifacts)
+        .withBlueprints(blueprints)
+        .withSteps(steps)
+        .withRequirements(requirements)
+        .build();
+
+    assertThat(wf.id()).isEqualTo("w1");
+    assertThat(wf.name()).isEqualTo("One");
+    assertThat(wf.description()).isEqualTo("the description");
+    assertThat(wf.author()).isEqualTo("the author");
+    assertThat(wf.contact()).isEqualTo("the contact");
+    assertThat(wf.version()).isEqualTo("2.3.4");
+    assertThat(wf.uuid()).isEqualTo("550e8400-e29b-41d4-a716-446655440000");
+    assertThat(wf.source()).isEqualTo(WorkflowSource.SHIPPED);
+    assertThat(wf.lifecycle()).isEqualTo(WorkflowLifecycle.DRAFT);
+    assertThat(wf.artifacts()).isEqualTo(artifacts);
+    assertThat(wf.blueprints()).isEqualTo(blueprints);
+    assertThat(wf.steps()).isEqualTo(steps);
+    assertThat(wf.requirements()).isEqualTo(requirements);
+  }
+
+  @Test
+  void builder_applies_defaults_when_optional_setters_are_skipped() {
+    WorkflowDefinition wf = WorkflowDefinition.builder()
+        .withId("w1")
+        .withName("One")
+        .withSteps(List.of(failStep("s1")))
+        .build();
+
+    assertThat(wf.description()).isNull();
+    assertThat(wf.author()).isNull();
+    assertThat(wf.contact()).isNull();
+    assertThat(wf.version()).isNull();
+    assertThat(wf.uuid()).isNull();
+    assertThat(wf.source()).isEqualTo(WorkflowSource.CUSTOM);
+    assertThat(wf.lifecycle()).isEqualTo(WorkflowLifecycle.ACTIVE);
+    assertThat(wf.artifacts()).isEmpty();
+    assertThat(wf.blueprints()).isEmpty();
+    assertThat(wf.requirements()).isEmpty();
+  }
+
+  @Test
+  void builder_defers_required_field_validation_to_build() {
+    assertThatThrownBy(() -> WorkflowDefinition.builder()
+        .withName("One")
+        .withSteps(List.of(failStep("s1")))
+        .build())
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("WorkflowDefinition id must not be blank");
+
+    assertThatThrownBy(() -> WorkflowDefinition.builder()
+        .withId("w1")
+        .withSteps(List.of(failStep("s1")))
+        .build())
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("WorkflowDefinition name must not be blank for workflow: w1");
+
+    assertThatThrownBy(() -> WorkflowDefinition.builder()
+        .withId("w1")
+        .withName("One")
+        .build())
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("WorkflowDefinition steps must not be empty for workflow: w1");
   }
 }
