@@ -80,12 +80,12 @@ public final class QuickStartExample {
    * @throws URISyntaxException if a bundled resource directory cannot be resolved to a path
    */
   static AgentForge4j assemble() throws URISyntaxException {
+    // tag::assemble[]
     FakeScript script = new FakeScript(1, Map.of(
         new FakeScriptKey(WORKFLOW_ID, STEP_ID, AGENT_ID, 0),
         new FakeResponse(SCRIPTED_COMPLETE, null)));
     LlmClient fakeLlmClient = new FakeLlmClient(new StaticFakeResponseSource(script));
 
-    // tag::assemble[]
     return AgentForge4jBootstrap.defaults()
         .withWorkflowsDir(resourceDirectory("/workflows"))
         .withAgentsDir(resourceDirectory("/agents"))
