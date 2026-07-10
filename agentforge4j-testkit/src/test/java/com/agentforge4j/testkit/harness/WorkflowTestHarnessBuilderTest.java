@@ -112,4 +112,21 @@ class WorkflowTestHarnessBuilderTest {
     assertThatThrownBy(() -> WorkflowTestHarness.builder().toolPolicy(null))
         .isInstanceOf(IllegalArgumentException.class);
   }
+
+  @Test
+  void collectionAuthorizerRejectsNull() {
+    assertThatThrownBy(() -> WorkflowTestHarness.builder().collectionAuthorizer(null))
+        .isInstanceOf(IllegalArgumentException.class);
+  }
+
+  @Test
+  void buildsWithCollectionAuthorizer() {
+    WorkflowTestHarness harness = WorkflowTestHarness.builder()
+        .shippedCatalog(true)
+        .script(SCRIPT)
+        .collectionAuthorizer(FakeCollectionAuthorizer.allowAll())
+        .build();
+
+    assertThat(harness).isNotNull();
+  }
 }
