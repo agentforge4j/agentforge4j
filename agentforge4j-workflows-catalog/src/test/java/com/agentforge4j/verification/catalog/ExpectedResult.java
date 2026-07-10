@@ -40,14 +40,17 @@ public record ExpectedResult(String workflowId, List<GateSpec> gates, ExpectSpec
    * Assertions to apply. Every field is optional; a {@code null} field is not asserted.
    *
    * @param status         expected terminal/pending {@code WorkflowStatus} name
-   * @param context        expected context key → string value entries
+   * @param context        expected context key → string value entries (exact match)
+   * @param contextPresent context keys that must be present, asserted by presence only (not value)
+   * @param contextMatches context key → regular expression the value must match (shape assertion)
    * @param visitedSteps   step ids that must have been visited
    * @param notVisitedSteps step ids that must not have been visited
    * @param emittedEvents  {@code WorkflowEventType} names that must have been emitted
    * @param createdFiles   file paths that must have been created
    */
   @JsonIgnoreProperties(ignoreUnknown = true)
-  public record ExpectSpec(String status, Map<String, String> context, List<String> visitedSteps,
-      List<String> notVisitedSteps, List<String> emittedEvents, List<String> createdFiles) {
+  public record ExpectSpec(String status, Map<String, String> context, List<String> contextPresent,
+      Map<String, String> contextMatches, List<String> visitedSteps, List<String> notVisitedSteps,
+      List<String> emittedEvents, List<String> createdFiles) {
   }
 }
