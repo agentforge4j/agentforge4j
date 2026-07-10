@@ -13,7 +13,7 @@ public final class RetryableHttpStatuses {
   /**
    * Status codes considered retryable: {@code 429, 500, 502, 503, 504}.
    */
-  public static final Set<Integer> CODES = Set.of(429, 500, 502, 503, 504);
+  private static final Set<Integer> CODES = Set.of(429, 500, 502, 503, 504);
 
   private RetryableHttpStatuses() {
   }
