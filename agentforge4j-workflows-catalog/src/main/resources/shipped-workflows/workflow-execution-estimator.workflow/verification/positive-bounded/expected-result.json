@@ -1,0 +1,34 @@
+{
+  "workflowId": "workflow-execution-estimator",
+  "gates": [
+    {
+      "type": "input",
+      "answers": {
+        "structuralSummaryJson": "{\"workflowId\":\"baby-agent-birth\",\"stepCount\":6,\"agentStepCount\":5,\"branchCount\":0,\"loopCount\":0,\"agentDrivenLoopCount\":0,\"humanGateCount\":1,\"maxNestingDepth\":0,\"minAgentTurns\":5,\"expectedAgentTurns\":5,\"maxAgentTurns\":5,\"iterationCeiling\":1,\"ceilingDerivable\":true,\"noCeilingReason\":null,\"minimumRequiredTokens\":1300,\"complexityClass\":\"SIMPLE\",\"riskFlags\":[]}",
+        "complexity": "SIMPLE",
+        "ceilingDerivable": "true",
+        "minimumRequiredTokens": "1300"
+      }
+    }
+  ],
+  "expect": {
+    "status": "AWAITING_STEP_APPROVAL",
+    "visitedSteps": ["collect-analysis", "route-on-ceiling", "estimate"],
+    "notVisitedSteps": ["no-ceiling"],
+    "context": {
+      "complexity": "SIMPLE",
+      "ceilingDerivable": "true",
+      "minimumRequiredTokens": "1300"
+    },
+    "contextPresent": [
+      "structuralSummaryJson",
+      "estimatedInputTokensPerAgentTurn",
+      "estimatedOutputTokensPerAgentTurn",
+      "estimatedToolInvocationsPerAgentTurn"
+    ],
+    "contextMatches": {
+      "complexity": "SIMPLE|MODERATE|COMPLEX|HIGH_RISK",
+      "estimatedInputTokensPerAgentTurn": "[0-9]+"
+    }
+  }
+}
