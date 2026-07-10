@@ -1,0 +1,47 @@
+{
+  "schemaVersion": 1,
+  "responses": [
+    {
+      "workflowId": "retry-previous-agent-single",
+      "stepId": "seed",
+      "agentId": "retry-agent",
+      "ordinal": 0,
+      "responseText": "[{\"type\":\"COMPLETE\"}]"
+    },
+    {
+      "workflowId": "retry-previous-agent-single",
+      "stepId": "seed",
+      "agentId": "retry-agent",
+      "ordinal": 1,
+      "responseText": "[{\"type\":\"COMPLETE\"}]"
+    },
+    {
+      "workflowId": "retry-previous-agent-from-step",
+      "stepId": "seedA",
+      "agentId": "retry-agent",
+      "ordinal": 0,
+      "responseText": "[{\"type\":\"COMPLETE\"}]"
+    },
+    {
+      "workflowId": "retry-previous-agent-from-step",
+      "stepId": "seedA",
+      "agentId": "retry-agent",
+      "ordinal": 1,
+      "responseText": "[{\"type\":\"COMPLETE\"}]"
+    },
+    {
+      "workflowId": "retry-previous-agent-from-step",
+      "stepId": "seedB",
+      "agentId": "retry-agent",
+      "ordinal": 0,
+      "responseText": "[{\"type\":\"COMPLETE\"}]"
+    },
+    {
+      "workflowId": "retry-previous-agent-from-step",
+      "stepId": "seedB",
+      "agentId": "retry-agent",
+      "ordinal": 1,
+      "responseText": "[{\"type\":\"COMPLETE\"}]"
+    }
+  ]
+}

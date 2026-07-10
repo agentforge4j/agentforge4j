@@ -1,0 +1,38 @@
+{
+  "kind": "WORKFLOW",
+  "id": "retry-previous-agent-single",
+  "name": "Retry Previous To Agent (SINGLE_STEP)",
+  "steps": [
+    {
+      "kind": "STEP",
+      "stepId": "seed",
+      "name": "Seed",
+      "behaviour": {
+        "type": "AGENT",
+        "agentRef": "retry-agent",
+        "transition": "AUTO"
+      }
+    },
+    {
+      "kind": "STEP",
+      "stepId": "retry",
+      "name": "Retry Previous",
+      "behaviour": {
+        "type": "RETRY_PREVIOUS",
+        "retryStepId": "seed",
+        "retryMode": "SINGLE_STEP",
+        "maxAttempts": 1,
+        "fallback": {
+          "kind": "STEP",
+          "stepId": "fallback",
+          "name": "Fallback",
+          "behaviour": {
+            "type": "AGENT",
+            "agentRef": "retry-agent",
+            "transition": "AUTO"
+          }
+        }
+      }
+    }
+  ]
+}
