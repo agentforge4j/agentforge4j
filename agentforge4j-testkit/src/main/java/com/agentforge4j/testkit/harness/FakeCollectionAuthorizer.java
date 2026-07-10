@@ -68,6 +68,6 @@ public final class FakeCollectionAuthorizer implements CollectionAuthorizer {
   }
 
   private static String key(String actorId, CollectionAction action) {
-    return actorId + "|" + action.wire();
+    return "%s|%s".formatted(actorId, action.wire());
   }
 }

@@ -309,13 +309,13 @@
         "maxItems": { "type": ["integer", "null"], "minimum": 1 },
         "maxItemsPerActor": { "type": ["integer", "null"], "minimum": 1 },
         "maxInlinePayloadBytes": { "type": "integer", "minimum": 0 },
-        "duplicatePolicy": { "enum": ["ALLOW", "REJECT_BY_CLIENT_TOKEN", "REJECT_BY_DEDUPE_KEY"] },
-        "replacementPolicy": { "enum": ["NONE", "OWNER_REPLACE", "AUTHORIZED_REPLACE"] },
-        "withdrawalPolicy": { "enum": ["NONE", "OWNER_WITHDRAW", "AUTHORIZED_WITHDRAW"] },
+        "duplicatePolicy": { "type": ["string", "null"], "enum": ["ALLOW", "REJECT_BY_CLIENT_TOKEN", "REJECT_BY_DEDUPE_KEY", null] },
+        "replacementPolicy": { "type": ["string", "null"], "enum": ["NONE", "OWNER_REPLACE", "AUTHORIZED_REPLACE", null] },
+        "withdrawalPolicy": { "type": ["string", "null"], "enum": ["NONE", "OWNER_WITHDRAW", "AUTHORIZED_WITHDRAW", null] },
         "manualClose": { "type": ["boolean", "null"] },
         "externalDeadlineClosable": { "type": ["boolean", "null"] },
-        "reopenPolicy": { "enum": ["NONE", "ALLOWED"] },
-        "authorizationMode": { "enum": ["OPEN", "ENFORCED"] },
+        "reopenPolicy": { "type": ["string", "null"], "enum": ["NONE", "ALLOWED", null] },
+        "authorizationMode": { "type": ["string", "null"], "enum": ["OPEN", "ENFORCED", null] },
         "transition": { "$ref": "#/$defs/StepTransition" }
       }
     },

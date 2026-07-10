@@ -97,13 +97,10 @@ final class CollectionGateService {
     CollectionState gate = requireOpenGate(state, stepId);
     authorize(state, workflow, cfg, stepId, CollectionAction.SUBMIT, actorId);
 
-    // Under REJECT_BY_CLIENT_TOKEN a repeated token is a hard duplicate refusal; the silent
-    // idempotent return applies to the other policies only (a retry is indistinguishable from a
-    // duplicate, and the workflow author chose refusal).
-    if (cfg.duplicatePolicy() == DuplicatePolicy.REJECT_BY_CLIENT_TOKEN
-        && clientTokenSeen(gate, submission.clientToken())) {
-      emitRejected(state, stepId, actorId, CollectionAction.SUBMIT, "DUPLICATE");
-      return new SubmissionResult(SubmissionResult.Status.REJECTED, null, 0, "DUPLICATE");
+    SubmissionResult hardDuplicate = rejectHardDuplicate(state, gate, cfg, stepId,
+        submission.clientToken(), actorId, CollectionAction.SUBMIT);
+    if (hardDuplicate != null) {
+      return hardDuplicate;
     }
     SubmissionResult idempotent = idempotentReturn(gate, submission.clientToken());
     if (idempotent != null) {
@@ -144,10 +141,10 @@ final class CollectionGateService {
     CollectionAction action = resolveReplaceAction(cfg.replacementPolicy(), owns, stepId);
     authorize(state, workflow, cfg, stepId, action, actorId);
 
-    if (cfg.duplicatePolicy() == DuplicatePolicy.REJECT_BY_CLIENT_TOKEN
-        && clientTokenSeen(gate, replacement.clientToken())) {
-      emitRejected(state, stepId, actorId, action, "DUPLICATE");
-      return new SubmissionResult(SubmissionResult.Status.REJECTED, null, 0, "DUPLICATE");
+    SubmissionResult hardDuplicate = rejectHardDuplicate(state, gate, cfg, stepId,
+        replacement.clientToken(), actorId, action);
+    if (hardDuplicate != null) {
+      return hardDuplicate;
     }
     SubmissionResult idempotent = idempotentReturn(gate, replacement.clientToken());
     if (idempotent != null) {
@@ -501,6 +498,25 @@ final class CollectionGateService {
   }
 
   /**
+   * Under {@code REJECT_BY_CLIENT_TOKEN} a repeated token is a hard duplicate refusal; the silent
+   * idempotent return applies to the other policies only (a retry is indistinguishable from a
+   * duplicate, and the workflow author chose refusal).
+   *
+   * @return the rejection result to return to the caller, or {@code null} when this is not a hard
+   *     duplicate
+   */
+  private SubmissionResult rejectHardDuplicate(WorkflowState state, CollectionState gate,
+      CollectionBehaviour cfg, String stepId, String clientToken, String actorId,
+      CollectionAction action) {
+    if (cfg.duplicatePolicy() != DuplicatePolicy.REJECT_BY_CLIENT_TOKEN
+        || !clientTokenSeen(gate, clientToken)) {
+      return null;
+    }
+    emitRejected(state, stepId, actorId, action, "DUPLICATE");
+    return new SubmissionResult(SubmissionResult.Status.REJECTED, null, 0, "DUPLICATE");
+  }
+
+  /**
    * Validates the item's inline JSON against the gate's declared {@code itemSchemaRef}, if any.
    * Fail-closed on every path: a declared reference with no inline JSON, an unresolvable
    * reference, or a schema violation all reject the item.
@@ -515,7 +531,13 @@ final class CollectionGateService {
       return "ITEM_SCHEMA_INVALID: the gate declares itemSchemaRef '%s' but the item carries no inline JSON"
           .formatted(cfg.itemSchemaRef());
     }
-    ValidationResult result = itemSchemaValidator.validate(cfg.itemSchemaRef(), payload.inlineJson());
+    ValidationResult result;
+    try {
+      result = itemSchemaValidator.validate(cfg.itemSchemaRef(), payload.inlineJson());
+    } catch (RuntimeException ex) {
+      LOG.log(System.Logger.Level.WARNING, "CollectionItemSchemaValidator threw; failing closed", ex);
+      return "ITEM_SCHEMA_INVALID: item-schema validator error";
+    }
     if (result == null) {
       return "ITEM_SCHEMA_INVALID: the item-schema validator returned no result";
     }
@@ -534,9 +556,15 @@ final class CollectionGateService {
   private String checkSubmissionValidator(WorkflowState state, WorkflowDefinition workflow,
       CollectionBehaviour cfg, String stepId, CollectionState gate, CollectionSubmission submission,
       String actorId, String replacesSubmissionId) {
-    Decision decision = submissionValidator.validate(new CollectionSubmissionContext(
-        state.getRunId(), workflow.id(), stepId, actorId, submission.payload(),
-        submission.clientToken(), submission.dedupeKey(), replacesSubmissionId, cfg, gate));
+    Decision decision;
+    try {
+      decision = submissionValidator.validate(new CollectionSubmissionContext(
+          state.getRunId(), workflow.id(), stepId, actorId, submission.payload(),
+          submission.clientToken(), submission.dedupeKey(), replacesSubmissionId, cfg, gate));
+    } catch (RuntimeException ex) {
+      LOG.log(System.Logger.Level.WARNING, "CollectionSubmissionValidator threw; failing closed", ex);
+      return "SUBMISSION_VALIDATOR_REJECTED: submission validator error";
+    }
     if (decision == null) {
       return "SUBMISSION_VALIDATOR_REJECTED: the submission validator returned no decision";
     }

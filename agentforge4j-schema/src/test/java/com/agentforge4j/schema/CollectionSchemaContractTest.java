@@ -119,6 +119,32 @@ class CollectionSchemaContractTest {
   }
 
   @Test
+  void workflowSchema_acceptsExplicitNullForOptionalPolicyFields() throws Exception {
+    List<Error> violations = validate("""
+        {
+          "kind": "WORKFLOW",
+          "id": "x",
+          "name": "X",
+          "steps": [{
+            "kind": "STEP",
+            "stepId": "s1",
+            "name": "S",
+            "behaviour": {
+              "type": "COLLECTION",
+              "duplicatePolicy": null,
+              "replacementPolicy": null,
+              "withdrawalPolicy": null,
+              "reopenPolicy": null,
+              "authorizationMode": null
+            }
+          }]
+        }
+        """);
+
+    assertThat(violations).isEmpty();
+  }
+
+  @Test
   void workflowSchema_rejectsUnknownDuplicatePolicyValue() throws Exception {
     List<Error> violations = validate("""
         {
