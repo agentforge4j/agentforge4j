@@ -1,0 +1,120 @@
+/* SPDX-License-Identifier: Apache-2.0 */
+/**
+ * Any CSS included here will be global. The classic template
+ * bundles Infima by default. Infima is a CSS framework designed to
+ * work well for content-centric websites.
+ */
+
+/* You can override the default Infima variables here. */
+:root {
+  --ifm-color-primary: #2e8555;
+  --ifm-color-primary-dark: #29784c;
+  --ifm-color-primary-darker: #277148;
+  --ifm-color-primary-darkest: #205d3b;
+  --ifm-color-primary-light: #33925d;
+  --ifm-color-primary-lighter: #359962;
+  --ifm-color-primary-lightest: #3cad6e;
+  --ifm-code-font-size: 95%;
+  --docusaurus-highlighted-code-line-bg: rgba(0, 0, 0, 0.1);
+}
+
+/* For readability concerns, you should choose a lighter palette in dark mode. */
+[data-theme='dark'] {
+  --ifm-color-primary: #25c2a0;
+  --ifm-color-primary-dark: #21af90;
+  --ifm-color-primary-darker: #1fa588;
+  --ifm-color-primary-darkest: #1a8870;
+  --ifm-color-primary-light: #29d5b0;
+  --ifm-color-primary-lighter: #32d8b4;
+  --ifm-color-primary-lightest: #4fddbf;
+  --docusaurus-highlighted-code-line-bg: rgba(0, 0, 0, 0.3);
+}
+
+/*
+ * Accessibility baseline. Docusaurus already provides a skip-to-content
+ * link and semantic landmarks; these rules harden keyboard focus visibility and honour
+ * reduced-motion preferences.
+ */
+*:focus-visible {
+  outline: 2px solid var(--ifm-color-primary);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/*
+ * Accessible syntax highlighting (enforced by the pa11y-ci gate). The bundled
+ * prism-react-renderer themes emit low-contrast token colours as inline styles (e.g. a teal
+ * `property` at 2.58:1, a pink `string` at 4.32:1), which fail WCAG 2.1 AA (1.4.3) on every code
+ * token. These rules replace the token palette with one that meets >= 4.5:1 on the light and dark
+ * code backgrounds. `!important` is required to override Prism's inline `style="color:…"`.
+ */
+:root {
+  --af4j-tok-comment: #4e5257;
+  --af4j-tok-punct: #1c1e21;
+  --af4j-tok-keyword: #7c2d99;
+  --af4j-tok-string: #0a6640;
+  --af4j-tok-entity: #084ca1;
+}
+
+[data-theme='dark'] {
+  --af4j-tok-comment: #aab3d1;
+  --af4j-tok-punct: #f8f8f2;
+  --af4j-tok-keyword: #d2b3ff;
+  --af4j-tok-string: #8ff0a4;
+  --af4j-tok-entity: #8cc7ff;
+}
+
+.token.comment,
+.token.prolog,
+.token.cdata {
+  color: var(--af4j-tok-comment) !important;
+}
+
+.token.punctuation,
+.token.operator {
+  color: var(--af4j-tok-punct) !important;
+}
+
+.token.keyword,
+.token.atrule,
+.token.rule,
+.token.important,
+.token.boolean,
+.token.constant,
+.token.symbol {
+  color: var(--af4j-tok-keyword) !important;
+}
+
+.token.string,
+.token.char,
+.token.attr-value,
+.token.inserted,
+.token.regex {
+  color: var(--af4j-tok-string) !important;
+}
+
+.token.number,
+.token.tag,
+.token.property,
+.token.class-name,
+.token.function,
+.token.attr-name,
+.token.builtin,
+.token.selector,
+.token.variable,
+.token.deleted,
+.token.entity,
+.token.url,
+.token.namespace {
+  color: var(--af4j-tok-entity) !important;
+}

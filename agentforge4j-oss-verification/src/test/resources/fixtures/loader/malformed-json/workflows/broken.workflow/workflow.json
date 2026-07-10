@@ -1,5 +1,6 @@
 {
   "kind": "WORKFLOW",
+  "schemaVersion": 1,
   "id": "broken",
   "name": "Broken JSON",
   "steps": [

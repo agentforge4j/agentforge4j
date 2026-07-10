@@ -10,8 +10,11 @@
  * tenant, or LLM concerns.
  */
 module agentforge4j.tools.http {
-  requires agentforge4j.core;
-  requires agentforge4j.util;
+  // transitive: the public HttpToolProvider(...) constructor takes ToolExecutionOptions (core)
+  // and OutboundEgressGuard (util) directly, and is documented as directly constructible via the
+  // bootstrap withToolProviders(...) escape hatch.
+  requires transitive agentforge4j.core;
+  requires transitive agentforge4j.util;
   requires com.fasterxml.jackson.databind;
   requires java.net.http;
   requires org.apache.commons.lang3;

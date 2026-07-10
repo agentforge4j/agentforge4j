@@ -14,6 +14,13 @@ type SchemaValidationResult = {
   errors: Array<{ path: string; message: string }>;
 };
 
+/**
+ * Workflow definition format version this builder writes into every exported document.
+ * `schemaVersion` is a required property of the runtime workflow schema; consumers accept only
+ * schema versions they know and reject anything else.
+ */
+export const WORKFLOW_SCHEMA_VERSION = 1;
+
 const ajv = new Ajv({
   strict: false,
   allErrors: true,
@@ -102,6 +109,7 @@ export function toRuntimeWorkflowDocument(workflow: WorkflowDefinition): Record<
 
   const doc: Record<string, unknown> = {
     kind: 'WORKFLOW',
+    schemaVersion: WORKFLOW_SCHEMA_VERSION,
     id: workflow.id,
     name: workflow.name,
     steps,
