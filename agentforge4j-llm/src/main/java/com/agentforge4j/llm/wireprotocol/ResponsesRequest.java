@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-package com.agentforge4j.llm.openai.dto;
+package com.agentforge4j.llm.wireprotocol;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
@@ -7,20 +7,20 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import java.util.List;
 
 /**
- * Request body for OpenAI responses API.
+ * Request body for an OpenAI-style Responses API.
  *
- * @param model the model identifier
- * @param input the list of input items
+ * @param model           the model identifier
+ * @param input           the list of input items
  * @param maxOutputTokens optional output token budget ({@code max_output_tokens})
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)
-public record OpenAiResponsesRequestDto(
+public record ResponsesRequest(
     String model,
-    List<InputItem> input,
+    List<ResponsesInputItem> input,
     @JsonProperty("max_output_tokens") Integer maxOutputTokens
 ) {
 
-  public OpenAiResponsesRequestDto(String model, List<InputItem> input) {
+  public ResponsesRequest(String model, List<ResponsesInputItem> input) {
     this(model, input, null);
   }
 }

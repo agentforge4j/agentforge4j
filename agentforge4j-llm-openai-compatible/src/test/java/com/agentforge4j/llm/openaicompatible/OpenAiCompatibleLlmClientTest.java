@@ -4,9 +4,9 @@ package com.agentforge4j.llm.openaicompatible;
 import com.agentforge4j.llm.api.LlmExecutionRequest;
 import com.agentforge4j.llm.api.LlmInvocationException;
 import com.agentforge4j.llm.api.PromptLayerBoundaries;
-import com.agentforge4j.llm.openaicompatible.dto.InputRole;
-import com.agentforge4j.llm.openaicompatible.dto.OpenAiCompatibleInputItem;
-import com.agentforge4j.llm.openaicompatible.dto.OpenAiCompatibleResponsesRequest;
+import com.agentforge4j.llm.wireprotocol.InputRole;
+import com.agentforge4j.llm.wireprotocol.ResponsesInputItem;
+import com.agentforge4j.llm.wireprotocol.ResponsesRequest;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.ByteArrayOutputStream;
@@ -298,11 +298,11 @@ class OpenAiCompatibleLlmClientTest {
           new LlmExecutionRequest("openai-compatible", null, "Be brief.", "Ping", null, null, null);
 
       String body = collectUtf8RequestBody(client.buildHttpRequest(request));
-      var expected = new OpenAiCompatibleResponsesRequest(
+      var expected = new ResponsesRequest(
           "ada-model",
           List.of(
-              new OpenAiCompatibleInputItem(InputRole.SYSTEM, "Be brief."),
-              new OpenAiCompatibleInputItem(InputRole.USER, "Ping")),
+              new ResponsesInputItem(InputRole.SYSTEM, "Be brief."),
+              new ResponsesInputItem(InputRole.USER, "Ping")),
           request.maxOutputTokens()
       );
 

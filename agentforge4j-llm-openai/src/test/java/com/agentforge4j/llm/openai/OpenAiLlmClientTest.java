@@ -4,9 +4,9 @@ package com.agentforge4j.llm.openai;
 import com.agentforge4j.llm.api.LlmExecutionRequest;
 import com.agentforge4j.llm.api.LlmInvocationException;
 import com.agentforge4j.llm.api.PromptLayerBoundaries;
-import com.agentforge4j.llm.openai.dto.InputItem;
-import com.agentforge4j.llm.openai.dto.InputRole;
-import com.agentforge4j.llm.openai.dto.OpenAiResponsesRequestDto;
+import com.agentforge4j.llm.wireprotocol.InputRole;
+import com.agentforge4j.llm.wireprotocol.ResponsesInputItem;
+import com.agentforge4j.llm.wireprotocol.ResponsesRequest;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
@@ -137,6 +137,26 @@ class OpenAiLlmClientTest {
           .isInstanceOf(LlmInvocationException.class)
           .hasMessageContaining("OpenAI error")
           .hasMessageContaining("Rate limit exceeded");
+    }
+
+    @Test
+    void should_truncate_large_response_body_embedded_in_exception_message() {
+      ObjectMapper mapper = new ObjectMapper();
+      OpenAiLlmClient client = new OpenAiLlmClient(mapper, FixedOpenAiConfiguration.defaults());
+      String largePadding = "X".repeat(2_000) + "_TAIL_MARKER_END";
+      String json = """
+          { "error": null, "output": [], "model": "%s" }
+          """.formatted(largePadding);
+
+      assertThatThrownBy(() -> client.validateAndExtractResponse(json))
+          .isInstanceOf(LlmInvocationException.class)
+          .hasMessageContaining("missing or empty output")
+          .hasMessageContainingAll("XXX")
+          .satisfies(thrown -> {
+            String message = thrown.getMessage();
+            assertThat(message).doesNotContain("_TAIL_MARKER_END");
+            assertThat(message.length()).isLessThan(json.length());
+          });
     }
 
     @Test
@@ -361,11 +381,11 @@ class OpenAiLlmClientTest {
           new LlmExecutionRequest("openai", null, "Be brief.", "Ping", null, null, null);
 
       String body = collectUtf8RequestBody(client.buildHttpRequest(request));
-      var expected = new OpenAiResponsesRequestDto(
+      var expected = new ResponsesRequest(
           "ada-model",
           List.of(
-              new InputItem(InputRole.SYSTEM, "Be brief."),
-              new InputItem(InputRole.USER, "Ping")));
+              new ResponsesInputItem(InputRole.SYSTEM, "Be brief."),
+              new ResponsesInputItem(InputRole.USER, "Ping")));
 
       assertThat(mapper.readTree(body)).isEqualTo(mapper.valueToTree(expected));
     }

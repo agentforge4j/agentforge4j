@@ -2,6 +2,7 @@
 package com.agentforge4j.llm.gemini;
 
 import com.agentforge4j.llm.AbstractHttpLlmClient;
+import com.agentforge4j.llm.LlmHttpErrorBodyTruncate;
 import com.agentforge4j.llm.api.LlmClient;
 import com.agentforge4j.llm.api.LlmExecutionRequest;
 import com.agentforge4j.llm.api.LlmExecutionResponse;
@@ -16,7 +17,7 @@ import com.agentforge4j.llm.gemini.dto.GeminiRequest;
 import com.agentforge4j.llm.gemini.dto.GeminiResponse;
 import com.agentforge4j.llm.gemini.dto.GeminiSystemInstruction;
 import com.agentforge4j.llm.gemini.dto.GeminiUsageMetadata;
-import com.agentforge4j.llm.gemini.dto.InputRole;
+import com.agentforge4j.llm.wireprotocol.InputRole;
 import com.agentforge4j.util.Validate;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
@@ -36,6 +37,8 @@ import org.apache.commons.lang3.StringUtils;
  */
 @ToString(exclude = {"apiKey", "objectMapper"}, callSuper = true)
 public final class GeminiLlmClient extends AbstractHttpLlmClient {
+
+  private static final System.Logger LOG = System.getLogger(GeminiLlmClient.class.getName());
 
   private final GeminiConfiguration geminiConfiguration;
   private final String apiKey;
@@ -106,26 +109,31 @@ public final class GeminiLlmClient extends AbstractHttpLlmClient {
   @Override
   protected LlmExecutionResponse validateAndExtractResponse(String json) throws IOException {
     Validate.notBlank(json, () -> new LlmInvocationException("LLM client json must not be null"));
+    LOG.log(System.Logger.Level.DEBUG, "Gemini response body (full) body={0}", json);
+    String truncatedJson = LlmHttpErrorBodyTruncate.truncateForEmbeddedMessage(json);
     GeminiResponse dto = objectMapper.readValue(json, GeminiResponse.class);
     Validate.notNull(dto,
         () -> new LlmInvocationException(
-            "Gemini response deserialized to null: %s".formatted(json)));
+            "Gemini response deserialized to null: %s".formatted(truncatedJson)));
     Validate.isTrue(dto.error() == null, () ->
         new LlmInvocationException("gemini error: %s".formatted(formatGeminiError(dto.error()))));
     List<GeminiCandidate> candidates = Validate.notEmpty(dto.candidates(),
-        () -> new LlmInvocationException("Gemini response has no candidates: %s".formatted(json)));
+        () -> new LlmInvocationException(
+            "Gemini response has no candidates: %s".formatted(truncatedJson)));
     List<String> textSegments = new ArrayList<>();
     for (GeminiCandidate candidate : candidates) {
       Validate.notNull(candidate,
-          () -> new LlmInvocationException("Gemini candidate is null: %s".formatted(json)));
+          () -> new LlmInvocationException("Gemini candidate is null: %s".formatted(truncatedJson)));
       Validate.isTrue(
           candidate.finishReason() == null || !"SAFETY".equalsIgnoreCase(candidate.finishReason()),
           () -> new LlmInvocationException(
-              "Gemini blocked response for safety: %s".formatted(json)));
+              "Gemini blocked response for safety: %s".formatted(truncatedJson)));
       GeminiContent content = Validate.notNull(candidate.content(),
-          () -> new LlmInvocationException("Gemini candidate content is null: %s".formatted(json)));
+          () -> new LlmInvocationException(
+              "Gemini candidate content is null: %s".formatted(truncatedJson)));
       List<GeminiPart> parts = Validate.notNull(content.parts(),
-          () -> new LlmInvocationException("Gemini candidate parts are null: %s".formatted(json)));
+          () -> new LlmInvocationException(
+              "Gemini candidate parts are null: %s".formatted(truncatedJson)));
       for (GeminiPart part : parts) {
         if (part == null) {
           continue;
@@ -137,7 +145,8 @@ public final class GeminiLlmClient extends AbstractHttpLlmClient {
     }
     String joined = String.join("\n", textSegments);
     String text = Validate.notBlank(joined,
-        () -> new LlmInvocationException("Gemini response text is blank: %s".formatted(json)));
+        () -> new LlmInvocationException(
+            "Gemini response text is blank: %s".formatted(truncatedJson)));
     return new LlmExecutionResponse(
         LlmClient.stripCodeFence(text.strip()),
         StringUtils.trimToNull(dto.modelVersion()),

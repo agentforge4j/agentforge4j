@@ -125,6 +125,25 @@ class OllamaLlmClientTest {
     }
 
     @Test
+    void shouldTruncateLargeResponseBodyEmbeddedInExceptionMessage() {
+      OllamaConfiguration config = new TestOllamaConfiguration();
+      ObjectMapper mapper = new ObjectMapper();
+      OllamaLlmClient client = new OllamaLlmClient(mapper, config);
+      String largePadding = "X".repeat(2_000) + "_TAIL_MARKER_END";
+      String invalidResponse =
+          "{\"error\": null, \"message\": null, \"model\": \"%s\"}".formatted(largePadding);
+
+      assertThatThrownBy(() -> client.validateAndExtractResponse(invalidResponse))
+          .isInstanceOf(LlmInvocationException.class)
+          .hasMessageContaining("missing message")
+          .satisfies(thrown -> {
+            String message = thrown.getMessage();
+            assertThat(message).doesNotContain("_TAIL_MARKER_END");
+            assertThat(message.length()).isLessThan(invalidResponse.length());
+          });
+    }
+
+    @Test
     void shouldThrowWhenMessageContentEmpty() {
       OllamaConfiguration config = new TestOllamaConfiguration();
       ObjectMapper mapper = new ObjectMapper();

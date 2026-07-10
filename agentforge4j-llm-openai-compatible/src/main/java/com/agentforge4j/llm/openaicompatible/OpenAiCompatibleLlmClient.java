@@ -2,38 +2,35 @@
 package com.agentforge4j.llm.openaicompatible;
 
 import com.agentforge4j.llm.AbstractHttpLlmClient;
-import com.agentforge4j.llm.api.LlmClient;
+import com.agentforge4j.llm.LlmHttpErrorBodyTruncate;
 import com.agentforge4j.llm.api.LlmExecutionRequest;
 import com.agentforge4j.llm.api.LlmExecutionResponse;
 import com.agentforge4j.llm.api.LlmInvocationException;
-import com.agentforge4j.llm.api.TokenUsageReport;
-import com.agentforge4j.llm.openaicompatible.dto.InputRole;
-import com.agentforge4j.llm.openaicompatible.dto.OpenAiCompatibleContentItem;
-import com.agentforge4j.llm.openaicompatible.dto.OpenAiCompatibleInputItem;
-import com.agentforge4j.llm.openaicompatible.dto.OpenAiCompatibleOutputItem;
-import com.agentforge4j.llm.openaicompatible.dto.OpenAiCompatibleResponsesInputTokensDetails;
-import com.agentforge4j.llm.openaicompatible.dto.OpenAiCompatibleResponsesRequest;
-import com.agentforge4j.llm.openaicompatible.dto.OpenAiCompatibleResponsesResponse;
-import com.agentforge4j.llm.openaicompatible.dto.OpenAiCompatibleResponsesUsage;
+import com.agentforge4j.llm.wireprotocol.ResponsesApiSupport;
+import com.agentforge4j.llm.wireprotocol.ResponsesRequest;
 import com.agentforge4j.util.Validate;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
 import java.net.URI;
 import java.net.http.HttpRequest;
 import java.time.Duration;
-import java.util.List;
-import java.util.Objects;
-import java.util.Optional;
 import lombok.ToString;
 import org.apache.commons.lang3.StringUtils;
 
 /**
  * OpenAI-compatible LLM client implementation.
  * <p>
- * Sends requests to endpoints that support the OpenAI Responses API format.
+ * Sends requests to endpoints that support the OpenAI Responses API format. The wire protocol
+ * itself (request/response shapes, extraction, validation, and usage mapping) is shared with
+ * {@code OpenAiLlmClient} via {@link ResponsesApiSupport}; only transport concerns (configurable
+ * base URL/path and auth header) differ.
  */
 @ToString(exclude = {"apiKey", "objectMapper"}, callSuper = true)
 public final class OpenAiCompatibleLlmClient extends AbstractHttpLlmClient {
+
+  private static final System.Logger LOG =
+      System.getLogger(OpenAiCompatibleLlmClient.class.getName());
+  private static final String PROVIDER_LABEL = "openai-compatible";
 
   private final String apiKey;
   private final ObjectMapper objectMapper;
@@ -104,73 +101,22 @@ public final class OpenAiCompatibleLlmClient extends AbstractHttpLlmClient {
    */
   @Override
   protected LlmExecutionResponse validateAndExtractResponse(String json) throws IOException {
-    OpenAiCompatibleResponsesResponse dto =
-        objectMapper.readValue(json, OpenAiCompatibleResponsesResponse.class);
-    validateApiError(dto, json);
-    String text = LlmClient.stripCodeFence(extractAssistantText(dto)
-        .orElseThrow(
-            () -> {
-              String truncated = json.substring(0, Math.min(500, json.length()));
-              return new LlmInvocationException(
-                  "openai-compatible response missing assistant output_text in message output item: %s".formatted(
-                      truncated));
-            }
-        ).strip());
-    return new LlmExecutionResponse(
-        text,
-        StringUtils.trimToNull(dto.model()),
-        toTokenUsageReport(dto.usage()));
-  }
-
-  private static TokenUsageReport toTokenUsageReport(OpenAiCompatibleResponsesUsage usage) {
-    if (usage == null) {
-      return null;
-    }
-    Integer cachedInputTokens = null;
-    OpenAiCompatibleResponsesInputTokensDetails details = usage.inputTokensDetails();
-    if (details != null) {
-      cachedInputTokens = details.cachedTokens();
-    }
-    return new TokenUsageReport(
-        usage.inputTokens(),
-        usage.outputTokens(),
-        cachedInputTokens,
-        null);
+    Validate.notBlank(json, () -> new LlmInvocationException("LLM client json must not be blank"));
+    LOG.log(System.Logger.Level.DEBUG, "openai-compatible response body (full) body={0}", json);
+    String truncatedJson = LlmHttpErrorBodyTruncate.truncateForEmbeddedMessage(json);
+    return ResponsesApiSupport.parseResponse(objectMapper, json, truncatedJson, PROVIDER_LABEL);
   }
 
   private String generateRequestBody(LlmExecutionRequest request) {
-    OpenAiCompatibleResponsesRequest body = new OpenAiCompatibleResponsesRequest(
+    ResponsesRequest body = ResponsesApiSupport.buildRequest(
         StringUtils.defaultIfBlank(request.model(), getDefaultModel()),
-        List.of(
-            new OpenAiCompatibleInputItem(InputRole.SYSTEM, request.systemPrompt()),
-            new OpenAiCompatibleInputItem(InputRole.USER, request.userInput())),
+        request.systemPrompt(),
+        request.userInput(),
         request.maxOutputTokens());
     try {
       return objectMapper.writeValueAsString(body);
     } catch (Exception e) {
       throw new LlmInvocationException("Failed to serialize openai-compatible request", e);
     }
-  }
-
-  private static void validateApiError(OpenAiCompatibleResponsesResponse dto, String rawJson) {
-    Validate.notNull(dto, () -> new LlmInvocationException(
-        "openai-compatible response deserialized to null: " + rawJson));
-    Validate.isTrue(dto.error() == null || StringUtils.isBlank(dto.error().message()),
-        () -> new LlmInvocationException("openai-compatible error: " + dto.error().message()));
-    Validate.isTrue(dto.output() != null && !dto.output().isEmpty(),
-        () -> new LlmInvocationException(
-            "openai-compatible response missing or empty output: " + rawJson));
-  }
-
-  private static Optional<String> extractAssistantText(OpenAiCompatibleResponsesResponse dto) {
-    return dto.output().stream()
-        .filter(item -> item != null && "message".equalsIgnoreCase(item.type()))
-        .map(OpenAiCompatibleOutputItem::content)
-        .filter(Objects::nonNull)
-        .flatMap(List::stream)
-        .filter(content -> content != null && "output_text".equalsIgnoreCase(content.type()))
-        .map(OpenAiCompatibleContentItem::text)
-        .filter(StringUtils::isNotBlank)
-        .findFirst();
   }
 }

@@ -8,7 +8,7 @@ import com.agentforge4j.llm.gemini.dto.GeminiContent;
 import com.agentforge4j.llm.gemini.dto.GeminiPart;
 import com.agentforge4j.llm.gemini.dto.GeminiRequest;
 import com.agentforge4j.llm.gemini.dto.GeminiSystemInstruction;
-import com.agentforge4j.llm.gemini.dto.InputRole;
+import com.agentforge4j.llm.wireprotocol.InputRole;
 import com.fasterxml.jackson.core.JsonParseException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;

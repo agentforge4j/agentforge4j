@@ -2,18 +2,19 @@
 package com.agentforge4j.llm.vllm;
 
 import com.agentforge4j.llm.AbstractHttpLlmClient;
+import com.agentforge4j.llm.LlmHttpErrorBodyTruncate;
 import com.agentforge4j.llm.api.LlmClient;
 import com.agentforge4j.llm.api.LlmExecutionRequest;
 import com.agentforge4j.llm.api.LlmExecutionResponse;
 import com.agentforge4j.llm.api.LlmInvocationException;
 import com.agentforge4j.llm.api.TokenUsageReport;
-import com.agentforge4j.llm.vllm.dto.InputRole;
 import com.agentforge4j.llm.vllm.dto.VllmChoice;
 import com.agentforge4j.llm.vllm.dto.VllmMessage;
 import com.agentforge4j.llm.vllm.dto.VllmPromptTokensDetails;
 import com.agentforge4j.llm.vllm.dto.VllmRequest;
 import com.agentforge4j.llm.vllm.dto.VllmResponse;
 import com.agentforge4j.llm.vllm.dto.VllmUsage;
+import com.agentforge4j.llm.wireprotocol.InputRole;
 import com.agentforge4j.util.Validate;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
@@ -29,6 +30,8 @@ import org.apache.commons.lang3.StringUtils;
  * Sends requests to a vLLM server using the chat completions API.
  */
 public final class VllmLlmClient extends AbstractHttpLlmClient {
+
+  private static final System.Logger LOG = System.getLogger(VllmLlmClient.class.getName());
 
   private final ObjectMapper objectMapper;
   private final URI chatCompletionsUri;
@@ -78,17 +81,19 @@ public final class VllmLlmClient extends AbstractHttpLlmClient {
    */
   @Override
   protected LlmExecutionResponse validateAndExtractResponse(String json) throws IOException {
+    LOG.log(System.Logger.Level.DEBUG, "vLLM response body (full) body={0}", json);
+    String truncatedJson = LlmHttpErrorBodyTruncate.truncateForEmbeddedMessage(json);
     VllmResponse response = objectMapper.readValue(json, VllmResponse.class);
     List<VllmChoice> choices = Validate.notEmpty(
         response == null ? null : response.choices(),
         () -> new LlmInvocationException(
-            "vLLM response choices are empty: %s".formatted(json)));
+            "vLLM response choices are empty: %s".formatted(truncatedJson)));
 
     String rawContent = choices.get(0) == null || choices.get(0).message() == null
         ? null
         : choices.get(0).message().content();
     String content = Validate.notBlank(rawContent, () -> new LlmInvocationException(
-        "vLLM response first choice content is blank: %s".formatted(json)));
+        "vLLM response first choice content is blank: %s".formatted(truncatedJson)));
 
     VllmUsage usage = response == null ? null : response.usage();
     String modelUsed = response == null ? null : response.model();
