@@ -17,7 +17,11 @@
 //
 // Pre-`0.1.0` versions.json is absent/empty, so this is a no-op — the wiring is inert until the
 // first release exists. The per-version build is injectable (options.builder) so the orchestration
-// is unit-testable without Maven or tags; the default builder does the real thing.
+// is unit-testable without Maven or tags; the default builder does the real thing. The tag
+// checkout/cleanup lifecycle (`withTagWorktree`) — the part with real failure modes: a missing tag,
+// or a worktree leaking after a failed build — is proven for real against a manufactured release tag
+// by `npm run docs:javadoc-versions-scratch`. The Maven install + the tag's own build-javadoc.mjs
+// step is exercised for real only by an actual release deploy.
 //
 // Run via `npm run javadoc:versions` (usually from the deploy workflow, before assemble-site).
 
@@ -52,6 +56,48 @@ function git(args, opts = {}) {
   return execFileSync('git', args, {cwd: REPO_ROOT, encoding: 'utf8', ...opts});
 }
 
+/**
+ * Compose MAVEN_OPTS with an isolated `-Dmaven.repo.local`, guaranteed to win. `-D` flags are
+ * last-wins on the JVM command line, so simply appending the inherited MAVEN_OPTS after ours would
+ * let an inherited `-Dmaven.repo.local` (e.g. a developer's own override for the shared ~/.m2
+ * clobbering issue) silently beat the isolation this script exists to guarantee — so any inherited
+ * occurrence is stripped before ours is added. Exported so the ordering guarantee is unit-testable.
+ *
+ * @param {string|undefined} inheritedMavenOpts process.env.MAVEN_OPTS
+ * @param {string} isolatedRepoPath
+ * @returns {string}
+ */
+export function isolatedMavenOpts(inheritedMavenOpts, isolatedRepoPath) {
+  const rest = (inheritedMavenOpts || '')
+    .split(/\s+/)
+    .filter((flag) => flag !== '' && !flag.startsWith('-Dmaven.repo.local='));
+  return [`-Dmaven.repo.local=${isolatedRepoPath}`, ...rest].join(' ');
+}
+
+/**
+ * Check out `refs/tags/<releaseTag(version)>` into an isolated detached worktree and run `fn` against
+ * its path, guaranteeing the worktree is removed afterwards — even if `fn` throws. This is the part
+ * of the per-version build with real failure modes (a missing tag; a worktree leaking after a failed
+ * build), so it is factored out to be independently testable against a real tag without requiring a
+ * full Maven install (see `npm run docs:javadoc-versions-scratch`).
+ *
+ * @param {string} version
+ * @param {(srcDir: string) => void} fn
+ */
+export function withTagWorktree(version, fn) {
+  validateVersion(version);
+  const tag = releaseTag(version);
+  const srcDir = join(SRC_ROOT, version);
+  git(['rev-parse', '--verify', `refs/tags/${tag}`]); // fail fast: the release tag must exist
+  rmSync(srcDir, {recursive: true, force: true});
+  git(['worktree', 'add', '--detach', srcDir, tag], {stdio: 'inherit'});
+  try {
+    fn(srcDir);
+  } finally {
+    git(['worktree', 'remove', '--force', srcDir], {stdio: 'inherit'});
+  }
+}
+
 /** The real per-version builder: detached-worktree checkout of the tag, isolated install, surface build. */
 function buildFromTag(version, outDir) {
   if (/\s/.test(ISOLATED_M2)) {
@@ -60,20 +106,12 @@ function buildFromTag(version, outDir) {
         'MAVEN_OPTS cannot carry it. Set AF4J_JAVADOC_M2 to a space-free directory and rerun.',
     );
   }
-  const tag = releaseTag(version);
-  const srcDir = join(SRC_ROOT, version);
-  git(['rev-parse', '--verify', `refs/tags/${tag}`]); // fail fast: the release tag must exist
-  rmSync(srcDir, {recursive: true, force: true});
-  git(['worktree', 'add', '--detach', srcDir, tag], {stdio: 'inherit'});
-  try {
+  withTagWorktree(version, (srcDir) => {
     // Isolated local repository: the tag's snapshot artifacts must never overwrite the shared
     // ~/.m2. MAVEN_OPTS (a JVM system property, honored by EVERY Maven version and inherited by
     // the tag's own build-javadoc.mjs child, which invokes plain `mvn`) — not MAVEN_ARGS, which
     // only Maven >= 3.9 reads and would silently fall back to the shared repository.
-    const mavenOpts = [`-Dmaven.repo.local=${ISOLATED_M2}`, process.env.MAVEN_OPTS]
-      .filter(Boolean)
-      .join(' ');
-    const env = {...process.env, MAVEN_OPTS: mavenOpts};
+    const env = {...process.env, MAVEN_OPTS: isolatedMavenOpts(process.env.MAVEN_OPTS, ISOLATED_M2)};
     // The wrapper script is platform-specific: `mvnw.cmd` on Windows, `./mvnw` elsewhere.
     const mvnw = process.platform === 'win32' ? 'mvnw.cmd' : './mvnw';
     execFileSync(mvnw, ['-B', '-q', '-DskipTests', '-Dmaven.test.skip=true', 'install'], {
@@ -90,12 +128,10 @@ function buildFromTag(version, outDir) {
     });
     const built = join(srcDir, 'agentforge4j-docs-javadoc', 'build-javadoc', 'next');
     if (!pathExists(join(built, 'index.html'))) {
-      throw new Error(`javadoc-versions: the ${tag} build produced no surface at ${built}`);
+      throw new Error(`javadoc-versions: the ${releaseTag(version)} build produced no surface at ${built}`);
     }
     cpSync(built, outDir, {recursive: true});
-  } finally {
-    git(['worktree', 'remove', '--force', srcDir], {stdio: 'inherit'});
-  }
+  });
 }
 
 /**
