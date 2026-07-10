@@ -1,0 +1,32 @@
+{
+  "kind": "WORKFLOW",
+  "id": "beh-compact",
+  "name": "Compact",
+  "steps": [
+    {
+      "kind": "STEP",
+      "stepId": "compact-1",
+      "name": "Compact 1",
+      "behaviour": {
+        "type": "COMPACT",
+        "source": { "kind": "LEDGER_SECTION", "ref": "notes" },
+        "mode": { "type": "DETERMINISTIC_EXTRACT" },
+        "policy": { "minSourceUnits": 0, "minDownstreamReuse": 0 }
+      }
+    },
+    {
+      "kind": "STEP",
+      "stepId": "compact-2",
+      "name": "Compact 2",
+      "behaviour": {
+        "type": "COMPACT",
+        "source": { "kind": "LEDGER_SECTION", "ref": "notes" },
+        "mode": { "type": "DETERMINISTIC_EXTRACT" },
+        "policy": { "minSourceUnits": 0, "minDownstreamReuse": 0 }
+      }
+    }
+  ],
+  "ledgers": [
+    { "id": "notes", "schemaRef": "schema/notes.json", "mergeStrategy": "APPEND" }
+  ]
+}

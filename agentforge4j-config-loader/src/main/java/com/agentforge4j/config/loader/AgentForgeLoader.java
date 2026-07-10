@@ -9,6 +9,7 @@ import com.agentforge4j.config.loader.workflow.WorkflowDirectoryLoader;
 import com.agentforge4j.core.agent.AgentDefinition;
 import com.agentforge4j.core.exception.DuplicateAgentIdException;
 import com.agentforge4j.core.exception.DuplicateWorkflowIdException;
+import com.agentforge4j.core.spi.contextpack.ContextPack;
 import com.agentforge4j.core.workflow.WorkflowDefinition;
 import com.agentforge4j.util.Validate;
 import java.nio.file.Path;
@@ -16,7 +17,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.Set;
 
 /**
  * Loads and validates agent and workflow configuration from filesystem and optional classpath
@@ -136,8 +136,8 @@ public final class AgentForgeLoader {
    * @param workflowsDir            optional filesystem directory containing workflow bundles
    * @param classpathAgentLoader    optional loader for shipped agents
    * @param classpathWorkflowLoader optional loader for shipped workflows
-   * @param loadedPackNames         names of the context packs actually loaded for this assembly;
-   *                                empty when none are configured (every {@code CONTEXT_PACK}
+   * @param loadedPacksByName       the context packs actually loaded for this assembly, keyed by
+   *                                name; empty when none are configured (every {@code CONTEXT_PACK}
    *                                selector then fails validation)
    * @return loaded and validated configuration snapshot
    * @throws RuntimeException when loading fails, duplicate ids are found, or validation fails
@@ -146,7 +146,7 @@ public final class AgentForgeLoader {
       Optional<Path> workflowsDir,
       Optional<ClasspathAgentLoader> classpathAgentLoader,
       Optional<ClasspathWorkflowLoader> classpathWorkflowLoader,
-      Set<String> loadedPackNames) {
+      Map<String, ContextPack> loadedPacksByName) {
     Map<String, AgentDefinition> agents = new LinkedHashMap<>();
     Map<String, WorkflowDefinition> workflows = new LinkedHashMap<>();
 
@@ -157,7 +157,7 @@ public final class AgentForgeLoader {
 
     LOG.log(System.Logger.Level.INFO, "Loaded configuration agents={0}, workflows={1}",
         agents.size(), workflows.size());
-    validate(workflows, agents, loadedPackNames);
+    validate(workflows, agents, loadedPacksByName);
     return new LoadedConfiguration(Map.copyOf(agents), Map.copyOf(workflows));
   }
 
@@ -181,15 +181,15 @@ public final class AgentForgeLoader {
   /**
    * Runs the full workflow validation suite.
    *
-   * @param workflows       workflows to validate
-   * @param agents          agents available to workflow steps
-   * @param loadedPackNames names of the context packs actually loaded for this assembly; empty
-   *                        when none are configured
+   * @param workflows         workflows to validate
+   * @param agents            agents available to workflow steps
+   * @param loadedPacksByName the context packs actually loaded for this assembly, keyed by name;
+   *                          empty when none are configured
    * @throws RuntimeException when any validation rule fails
    */
   public void validate(Map<String, WorkflowDefinition> workflows,
-      Map<String, AgentDefinition> agents, Set<String> loadedPackNames) {
-    Validate.notNull(loadedPackNames, "loadedPackNames must not be null");
+      Map<String, AgentDefinition> agents, Map<String, ContextPack> loadedPacksByName) {
+    Validate.notNull(loadedPacksByName, "loadedPacksByName must not be null");
     WorkflowValidator validator = new WorkflowValidator();
     runValidation("workflow refs", () -> validator.validateWorkflowRefs(workflows));
     runValidation("blueprint refs", () -> validator.validateBlueprintRefs(workflows));
@@ -201,7 +201,7 @@ public final class AgentForgeLoader {
     runValidation("requirement refs", () -> validator.validateRequirements(workflows));
     runValidation("validate contracts", () -> validator.validateValidateBehaviourContracts(workflows));
     runValidation("context selection refs",
-        () -> validator.validateContextSelectionRefs(workflows, loadedPackNames));
+        () -> validator.validateContextSelectionRefs(workflows, loadedPacksByName));
   }
 
   /**

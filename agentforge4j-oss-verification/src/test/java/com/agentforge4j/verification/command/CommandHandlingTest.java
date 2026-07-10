@@ -15,7 +15,7 @@ import java.nio.file.Files;
 import org.junit.jupiter.api.Test;
 
 /**
- * Black-box coverage of the LLM command handlers an agent can emit (8 of the 9; {@code TOOL_INVOCATION}
+ * Black-box coverage of the LLM command handlers an agent can emit (9 of the 10; {@code TOOL_INVOCATION}
  * is exercised by the tool tier). Each scenario drives a single AGENT step whose fake response is the
  * command array under test, and asserts the observable effect (context, file, pause state, event,
  * failure). Also covers {@code supportedCommands} gating: a restricted agent emitting a disallowed
@@ -91,5 +91,35 @@ class CommandHandlingTest {
     WorkflowRunAssert.assertThat(result)
         .isFailed()
         .contextMissing("x");
+  }
+
+  @Test
+  void requestContextGrantsDeniesReservedAndOutOfScopeInOrder() {
+    // The requested selectors, in order: shared-note (declared in expandableScope, resolvable) ->
+    // GRANTED; __reserved (declared, but the '__' runtime namespace is always denied at grant time)
+    // -> DENIED reason=RESERVED_NAMESPACE; not-declared (never in expandableScope) -> DENIED
+    // reason=NOT_IN_EXPANDABLE_SCOPE. maxExpansions=3 keeps all three under the round limit so the
+    // limit check never masks the scope/reserved-namespace checks this scenario targets.
+    WorkflowRunResult result = harness().run("cmd-request-context");
+    WorkflowRunAssert.assertThat(result)
+        .isCompleted()
+        .eventCount(WorkflowEventType.CONTEXT_EXPANSION_GRANTED, 1)
+        .eventCount(WorkflowEventType.CONTEXT_EXPANSION_DENIED, 2)
+        .eventsInOrder(WorkflowEventType.CONTEXT_EXPANSION_GRANTED,
+            WorkflowEventType.CONTEXT_EXPANSION_DENIED);
+  }
+
+  @Test
+  void requestContextDeniesBeyondMaxExpansions() {
+    // Two in-scope, resolvable selectors requested against the default maxExpansions=1: the first
+    // is granted, the second exceeds the round limit and is denied reason=MAX_EXPANSIONS_REACHED —
+    // even though it would otherwise have been a legitimate grant.
+    WorkflowRunResult result = harness().run("cmd-request-context-max-expansions");
+    WorkflowRunAssert.assertThat(result)
+        .isCompleted()
+        .eventCount(WorkflowEventType.CONTEXT_EXPANSION_GRANTED, 1)
+        .eventCount(WorkflowEventType.CONTEXT_EXPANSION_DENIED, 1)
+        .eventsInOrder(WorkflowEventType.CONTEXT_EXPANSION_GRANTED,
+            WorkflowEventType.CONTEXT_EXPANSION_DENIED);
   }
 }

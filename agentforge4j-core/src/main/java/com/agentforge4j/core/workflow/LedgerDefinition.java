@@ -9,7 +9,7 @@ import com.agentforge4j.util.Validate;
  *
  * <p>{@code schemaRef} is an <strong>opaque string</strong> in {@code core}: reference resolution and
  * validation of the ledger schema (and of {@code mergeKeyField} against that schema) are config-load
- * concerns, not performed here.
+ * concerns, not performed here; the shipped loader does not yet perform them either.
  *
  * @param id            non-blank ledger id, for example {@code "requirements"}
  * @param schemaRef     non-blank id of the JSON schema each ledger entry conforms to

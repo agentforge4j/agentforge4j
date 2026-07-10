@@ -142,7 +142,10 @@ class FileSystemContextPackLoaderTest {
   }
 
   @Test
-  void aggregatesRecordValidationFailureWithOtherPackErrors() throws Exception {
+  void aggregatesSchemaValidationFailureWithOtherPackErrors() throws Exception {
+    // A whitespace-only name is now caught at schema validation (context-pack.schema.json's
+    // non-whitespace pattern), not at ContextPack's record constructor — this pins the aggregation
+    // behaviour survives regardless of which layer catches the individual pack's failure.
     pack("no-manifest");
     Path dir = pack("blank-name");
     write(dir, "pack.json", """
@@ -152,11 +155,14 @@ class FileSystemContextPackLoaderTest {
     assertThatThrownBy(() -> loader().load())
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("missing pack.json")
-        .hasMessageContaining("ContextPack name must not be blank");
+        .hasMessageContaining("/name: does not match the regex pattern");
   }
 
   @Test
-  void rejectsWhitespaceOnlyVariantKeyThatPassesSchema() throws Exception {
+  void rejectsWhitespaceOnlyVariantKeyAtSchemaValidation() throws Exception {
+    // context-pack.schema.json's variants propertyNames pattern now rejects a whitespace-only key
+    // itself, before ContextPackVariant's own Validate.notBlank would ever run — closing the gap
+    // this test used to pin (schema passed, only the Java record constructor caught it).
     Path dir = pack("whitespace-variant-key");
     write(dir, "pack.json", """
         {"name":"whitespace-variant-key","version":"1.0.0","variants":{" ":"c.md"}}""");
@@ -164,7 +170,8 @@ class FileSystemContextPackLoaderTest {
 
     assertThatThrownBy(() -> loader().load())
         .isInstanceOf(IllegalArgumentException.class)
-        .hasMessageContaining("ContextPackVariant name must not be blank");
+        .hasMessageContaining("/variants")
+        .hasMessageContaining("does not match the regex pattern");
   }
 
   @Test

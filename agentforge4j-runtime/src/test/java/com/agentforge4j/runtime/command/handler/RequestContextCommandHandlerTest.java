@@ -8,6 +8,7 @@ import com.agentforge4j.core.workflow.WorkflowDefinition;
 import com.agentforge4j.core.workflow.WorkflowLifecycle;
 import com.agentforge4j.core.workflow.WorkflowSource;
 import com.agentforge4j.core.workflow.context.ContextMapping;
+import com.agentforge4j.core.workflow.context.ContextProvenance;
 import com.agentforge4j.core.workflow.event.WorkflowEvent;
 import com.agentforge4j.core.workflow.event.WorkflowEventType;
 import com.agentforge4j.core.workflow.state.CompactSiblingMetadata;
@@ -299,7 +300,8 @@ class RequestContextCommandHandlerTest {
     CompactSiblingMetadata metadata = new CompactSiblingMetadata(sourceId,
         ContextFingerprint.of(fullContent), new DeterministicExtract(), 100, 10, "compact-step",
         new CompactionPolicy(0, 0));
-    CompactSiblingStore.write(state, sourceId, new CompactSibling("compact form", metadata), mapper);
+    CompactSiblingStore.write(state, sourceId, new CompactSibling("compact form", metadata), mapper,
+        ContextProvenance.SYSTEM_GENERATED);
     RequestContextCommand command = new RequestContextCommand(List.of(compactSelector));
 
     handler.apply(command, request(state, step, workflow, 0));
@@ -366,7 +368,8 @@ class RequestContextCommandHandlerTest {
     CompactSiblingMetadata metadata = new CompactSiblingMetadata(sourceId,
         ContextFingerprint.of(fullContent), new DeterministicExtract(), 100, 10, "compact-step",
         new CompactionPolicy(0, 0));
-    CompactSiblingStore.write(state, sourceId, new CompactSibling("compact form", metadata), mapper);
+    CompactSiblingStore.write(state, sourceId, new CompactSibling("compact form", metadata), mapper,
+        ContextProvenance.SYSTEM_GENERATED);
     ContextSelector requestedFull = ledgerSelector("requirements", ContextVariant.FULL);
     RequestContextCommand command = new RequestContextCommand(List.of(requestedFull));
 
@@ -401,7 +404,7 @@ class RequestContextCommandHandlerTest {
         ContextFingerprint.of(fullContent), new DeterministicExtract(), 100, 10, "compact-step",
         new CompactionPolicy(0, 0));
     CompactSiblingStore.write(state, sourceId, new CompactSibling("compact only form", metadata),
-        mapper);
+        mapper, ContextProvenance.SYSTEM_GENERATED);
     ContextSelector requestedFull = ledgerSelector("requirements", ContextVariant.FULL);
     RequestContextCommand command = new RequestContextCommand(List.of(requestedFull));
 

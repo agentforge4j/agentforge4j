@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package com.agentforge4j.config.loader.validation;
 
+import com.agentforge4j.core.spi.contextpack.ContextPack;
+import com.agentforge4j.core.spi.contextpack.ContextPackVariant;
 import com.agentforge4j.core.workflow.Executable;
 import com.agentforge4j.core.workflow.LedgerDefinition;
 import com.agentforge4j.core.workflow.LedgerMergeStrategy;
@@ -24,7 +26,6 @@ import com.agentforge4j.core.workflow.step.blueprint.BlueprintDefinition;
 import com.agentforge4j.core.workflow.step.blueprint.BlueprintRef;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThatCode;
@@ -36,6 +37,18 @@ class WorkflowValidatorContextSelectionTest {
 
   private static ContextSelector sel(ContextSourceKind kind, String ref) {
     return new ContextSelector(kind, ref, ContextVariant.FULL);
+  }
+
+  private static ContextSelector sel(ContextSourceKind kind, String ref, ContextVariant variant) {
+    return new ContextSelector(kind, ref, variant);
+  }
+
+  private static ContextPack pack(String name, String... variantNames) {
+    Map<String, ContextPackVariant> variants = new java.util.LinkedHashMap<>();
+    for (String variantName : variantNames) {
+      variants.put(variantName, new ContextPackVariant(variantName, "content", "fp-" + variantName));
+    }
+    return new ContextPack(name, "1.0.0", null, List.of(), variants);
   }
 
   private static LedgerDefinition ledger(String id) {
@@ -71,11 +84,11 @@ class WorkflowValidatorContextSelectionTest {
   }
 
   private void validate(WorkflowDefinition wf) {
-    validate(wf, Set.of());
+    validate(wf, Map.of());
   }
 
-  private void validate(WorkflowDefinition wf, Set<String> loadedPackNames) {
-    validator.validateContextSelectionRefs(Map.of("wf", wf), loadedPackNames);
+  private void validate(WorkflowDefinition wf, Map<String, ContextPack> loadedPacksByName) {
+    validator.validateContextSelectionRefs(Map.of("wf", wf), loadedPacksByName);
   }
 
   @Test
@@ -138,8 +151,10 @@ class WorkflowValidatorContextSelectionTest {
     ContextSelection selection = new ContextSelection(
         List.of(sel(ContextSourceKind.CONTEXT_PACK, "coding-standards")), List.of(), null);
     WorkflowDefinition wf = workflow(List.of(stepWithSelection("s1", selection)), List.of());
+    ContextPack pack = pack("coding-standards", "full", "compact");
 
-    assertThatCode(() -> validate(wf, Set.of("coding-standards"))).doesNotThrowAnyException();
+    assertThatCode(() -> validate(wf, Map.of("coding-standards", pack)))
+        .doesNotThrowAnyException();
   }
 
   @Test
@@ -147,10 +162,56 @@ class WorkflowValidatorContextSelectionTest {
     ContextSelection selection = new ContextSelection(
         List.of(sel(ContextSourceKind.CONTEXT_PACK, "unknown-pack")), List.of(), null);
     WorkflowDefinition wf = workflow(List.of(stepWithSelection("s1", selection)), List.of());
+    ContextPack pack = pack("coding-standards", "full", "compact");
 
-    assertThatThrownBy(() -> validate(wf, Set.of("coding-standards")))
+    assertThatThrownBy(() -> validate(wf, Map.of("coding-standards", pack)))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("unknown context pack 'unknown-pack'");
+  }
+
+  @Test
+  void rejectsFullVariantSelectorWhenPackDeclaresNoFullVariant() {
+    ContextSelection selection = new ContextSelection(
+        List.of(sel(ContextSourceKind.CONTEXT_PACK, "compact-only-pack", ContextVariant.FULL)),
+        List.of(), null);
+    WorkflowDefinition wf = workflow(List.of(stepWithSelection("s1", selection)), List.of());
+    ContextPack pack = pack("compact-only-pack", "compact");
+
+    assertThatThrownBy(() -> validate(wf, Map.of("compact-only-pack", pack)))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("FULL")
+        .hasMessageContaining("no 'full' variant");
+  }
+
+  @Test
+  void rejectsCompactOnlyVariantSelectorWhenPackDeclaresNoCompactVariant() {
+    // COMPACT_ONLY never falls back to full at resolution time, so a pack with only a full variant
+    // must fail load-time validation, not fail closed on every run.
+    ContextSelection selection = new ContextSelection(
+        List.of(sel(ContextSourceKind.CONTEXT_PACK, "full-only-pack", ContextVariant.COMPACT_ONLY)),
+        List.of(), null);
+    WorkflowDefinition wf = workflow(List.of(stepWithSelection("s1", selection)), List.of());
+    ContextPack pack = pack("full-only-pack", "full");
+
+    assertThatThrownBy(() -> validate(wf, Map.of("full-only-pack", pack)))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("COMPACT_ONLY")
+        .hasMessageContaining("no 'compact' variant");
+  }
+
+  @Test
+  void acceptsCompactPreferredVariantSelectorWhenPackDeclaresOnlyFullVariant() {
+    // COMPACT_PREFERRED falls back to full at resolution time when compact is absent — a pack with
+    // only a full variant is a legitimate, resolvable combination, not a load-time failure.
+    ContextSelection selection = new ContextSelection(
+        List.of(sel(ContextSourceKind.CONTEXT_PACK, "full-only-pack",
+            ContextVariant.COMPACT_PREFERRED)),
+        List.of(), null);
+    WorkflowDefinition wf = workflow(List.of(stepWithSelection("s1", selection)), List.of());
+    ContextPack pack = pack("full-only-pack", "full");
+
+    assertThatCode(() -> validate(wf, Map.of("full-only-pack", pack)))
+        .doesNotThrowAnyException();
   }
 
   @Test

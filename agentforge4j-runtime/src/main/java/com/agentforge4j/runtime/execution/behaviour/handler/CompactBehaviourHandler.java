@@ -174,14 +174,21 @@ public final class CompactBehaviourHandler implements BehaviourHandler<CompactBe
       String fullContent, String sourceFingerprint, int estimatedUnitsBefore) {
     WorkflowState state = executionContext.getState();
     String compactContent;
+    ContextProvenance provenance;
     if (behaviour.mode() instanceof DeterministicExtract) {
       Validate.isTrue(source.kind() == ContextSourceKind.LEDGER_SECTION,
           () -> new UnsupportedOperationException(
               "DeterministicExtract is only implemented for LEDGER_SECTION sources in this runtime "
                   + "version; source kind was %s".formatted(source.kind())));
       compactContent = extractLedgerDeterministically(fullContent);
+      // Deterministic, non-LLM transform of framework-owned ledger content: inherits the source's
+      // own SYSTEM_GENERATED trust level (see CompactSiblingStore.write's Javadoc).
+      provenance = ContextProvenance.SYSTEM_GENERATED;
     } else if (behaviour.mode() instanceof LlmSummary llmSummary) {
       compactContent = summarizeViaAgent(step, llmSummary, executionContext, sourceId, fullContent);
+      // The content is an LLM's own generated text regardless of what it summarized — the
+      // compaction step's determinism does not launder the LLM authorship of its output.
+      provenance = ContextProvenance.LLM_GENERATED;
     } else {
       throw new IllegalStateException("Unhandled CompactionMode: " + behaviour.mode().getClass());
     }
@@ -191,7 +198,7 @@ public final class CompactBehaviourHandler implements BehaviourHandler<CompactBe
         behaviour.mode(), estimatedUnitsBefore, estimatedUnitsAfter, step.stepId(),
         behaviour.policy());
     CompactSiblingStore.write(state, sourceId, new CompactSibling(compactContent, metadata),
-        objectMapper);
+        objectMapper, provenance);
 
     eventRecorder.record(state.getRunId(), step.stepId(), WorkflowEventType.COMPACTION_PERFORMED,
         toEventPayload(metadata), "runtime");
@@ -204,7 +211,10 @@ public final class CompactBehaviourHandler implements BehaviourHandler<CompactBe
    * Summarizes {@code fullContent} through {@code llmSummary}'s declared agent. The resolved source
    * content is staged in state under a reserved key (see class Javadoc) and addressed via a
    * {@code ContextMapping} naming only that key, so the agent's rendered input is exactly the
-   * resolved source — nothing else from the run's shared context leaks in.
+   * resolved source — nothing else from the run's shared context leaks in. The staging key is
+   * scratch, not durable governance state (unlike the ledger/compact/granted reserved keys) — it is
+   * always removed once the invocation completes, whether it succeeds or throws, so a failed
+   * compaction never leaves the resolved source content sitting in run state under a synthetic key.
    */
   private String summarizeViaAgent(StepDefinition step, LlmSummary llmSummary,
       ExecutionContext executionContext, String sourceId, String fullContent) {
@@ -212,15 +222,19 @@ public final class CompactBehaviourHandler implements BehaviourHandler<CompactBe
     String inputKey = ReservedContextKeys.llmSummaryInputKey(sourceId);
     state.putContextValue(inputKey,
         new StringContextValue(fullContent, ContextProvenance.SYSTEM_GENERATED));
-    ContextMapping mapping = new ContextMapping(List.of(inputKey), List.of());
-    AgentInvocationResult result = agentInvoker.invoke(
-        llmSummary.agentRef(),
-        mapping,
-        state,
-        step.stepPrompt(),
-        llmSummary.modelTier(),
-        executionContext.getActiveWorkflowId());
-    return result.rawResponse();
+    try {
+      ContextMapping mapping = new ContextMapping(List.of(inputKey), List.of());
+      AgentInvocationResult result = agentInvoker.invoke(
+          llmSummary.agentRef(),
+          mapping,
+          state,
+          step.stepPrompt(),
+          llmSummary.modelTier(),
+          executionContext.getActiveWorkflowId());
+      return result.rawResponse();
+    } finally {
+      state.removeContextValue(inputKey);
+    }
   }
 
   /**

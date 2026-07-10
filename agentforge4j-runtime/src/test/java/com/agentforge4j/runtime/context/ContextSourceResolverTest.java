@@ -255,7 +255,8 @@ class ContextSourceResolverTest {
     String sourceId = ContextSourceId.of(selector);
     CompactSiblingMetadata metadata = new CompactSiblingMetadata(sourceId, freshFingerprint,
         new DeterministicExtract(), 100, 10, "compact-step", new CompactionPolicy(0, 0));
-    CompactSiblingStore.write(state, sourceId, new CompactSibling("compact form", metadata), mapper);
+    CompactSiblingStore.write(state, sourceId, new CompactSibling("compact form", metadata), mapper,
+        ContextProvenance.SYSTEM_GENERATED);
 
     assertThat(resolver.resolve(selector, state, wf)).isEqualTo("compact form");
 
@@ -287,7 +288,8 @@ class ContextSourceResolverTest {
     CompactSiblingMetadata metadata = new CompactSiblingMetadata(sourceId,
         ContextFingerprint.of(fullContent), new DeterministicExtract(), 100, 10, "compact-step",
         new CompactionPolicy(0, 0));
-    CompactSiblingStore.write(state, sourceId, new CompactSibling("compact only", metadata), mapper);
+    CompactSiblingStore.write(state, sourceId, new CompactSibling("compact only", metadata), mapper,
+        ContextProvenance.SYSTEM_GENERATED);
 
     assertThat(resolver.resolve(selector, state, wf)).isEqualTo("compact only");
   }

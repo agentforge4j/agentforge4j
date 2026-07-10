@@ -8,6 +8,7 @@ import com.agentforge4j.core.agent.ProviderPreference;
 import com.agentforge4j.core.workflow.LedgerDefinition;
 import com.agentforge4j.core.workflow.LedgerMergeStrategy;
 import com.agentforge4j.core.workflow.context.ContextMapping;
+import com.agentforge4j.core.workflow.context.ContextProvenance;
 import com.agentforge4j.core.workflow.state.CompactSiblingMetadata;
 import com.agentforge4j.core.workflow.state.ReservedContextKeys;
 import com.agentforge4j.core.workflow.state.WorkflowState;
@@ -78,7 +79,7 @@ class TokenGovernancePromptCacheStabilityTest {
         new CompactSibling("REQ-1 (compacted)",
             new CompactSiblingMetadata(sourceId, "fp-1", new DeterministicExtract(),
                 500, 20, "compact-step", new CompactionPolicy(0, 0))),
-        mapper);
+        mapper, ContextProvenance.SYSTEM_GENERATED);
     invoker.invoke("a1", mapping, state, "step prompt");
 
     ArgumentCaptor<LlmExecutionRequest> captor = ArgumentCaptor.forClass(LlmExecutionRequest.class);

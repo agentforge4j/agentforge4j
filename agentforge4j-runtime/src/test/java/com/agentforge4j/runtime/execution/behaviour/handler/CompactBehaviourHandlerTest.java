@@ -7,6 +7,8 @@ import com.agentforge4j.core.workflow.LedgerMergeStrategy;
 import com.agentforge4j.core.workflow.WorkflowDefinition;
 import com.agentforge4j.core.workflow.WorkflowLifecycle;
 import com.agentforge4j.core.workflow.WorkflowSource;
+import com.agentforge4j.core.workflow.context.ContextProvenance;
+import com.agentforge4j.core.workflow.state.ReservedContextKeys;
 import com.agentforge4j.core.workflow.state.WorkflowState;
 import com.agentforge4j.core.workflow.step.ContextSelection;
 import com.agentforge4j.core.workflow.step.ContextSelector;
@@ -161,6 +163,16 @@ class CompactBehaviourHandlerTest {
     assertThat(stored).isPresent();
     assertThat(stored.get().content()).doesNotContain("rationale").contains("REQ-1").contains("q?");
     assertThat(stored.get().metadata().producedByStepId()).isEqualTo("compact");
+    // A deterministic, non-LLM transform of framework-owned ledger content inherits the source's
+    // own trust level — never LLM_GENERATED, which would over-trust nothing an LLM ever touched.
+    assertThat(storedProvenance(executionContext.getState(), ContextSourceId.of(source())))
+        .isEqualTo(ContextProvenance.SYSTEM_GENERATED);
+  }
+
+  private static ContextProvenance storedProvenance(WorkflowState state, String sourceId) {
+    return state.getContextValue(ReservedContextKeys.compactKey(sourceId))
+        .orElseThrow(() -> new AssertionError("No compact sibling stored for " + sourceId))
+        .provenance();
   }
 
   @Test
@@ -330,12 +342,18 @@ class CompactBehaviourHandlerTest {
     assertThat(stored.get().content()).isEqualTo("summary text");
     // The staged source content must be addressed as the sole input key — nothing else from the
     // run's shared context leaks into the summarization agent's rendered input.
+    String inputKey = com.agentforge4j.core.workflow.state.ReservedContextKeys.llmSummaryInputKey(
+        ContextSourceId.of(source()));
     verify(agentInvoker).invoke(eq("summarizer-agent"),
-        eq(new com.agentforge4j.core.workflow.context.ContextMapping(
-            List.of(com.agentforge4j.core.workflow.state.ReservedContextKeys.llmSummaryInputKey(
-                ContextSourceId.of(source()))),
-            List.of())),
+        eq(new com.agentforge4j.core.workflow.context.ContextMapping(List.of(inputKey), List.of())),
         any(), any(), eq("STANDARD"), anyString());
+    // The staging key is scratch, not durable governance state — it must not survive the invocation.
+    assertThat(executionContext.getState().getContextValue(inputKey)).isEmpty();
+    // The compact sibling's content is an LLM's own generated text, regardless of what it
+    // summarized — LLM_GENERATED, never the framework-owned SYSTEM_GENERATED label DeterministicExtract
+    // earns.
+    assertThat(storedProvenance(executionContext.getState(), ContextSourceId.of(source())))
+        .isEqualTo(ContextProvenance.LLM_GENERATED);
   }
 
   @Test

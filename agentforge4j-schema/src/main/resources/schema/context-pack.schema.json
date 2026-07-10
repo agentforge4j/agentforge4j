@@ -8,11 +8,13 @@
     "name": {
       "type": "string",
       "minLength": 1,
+      "pattern": ".*\\S.*",
       "description": "Pack name; referenced by a ContextSelector of kind CONTEXT_PACK."
     },
     "version": {
       "type": "string",
       "minLength": 1,
+      "pattern": ".*\\S.*",
       "description": "Pack version. Packs are immutable per run."
     },
     "description": {
@@ -25,8 +27,8 @@
     "variants": {
       "type": "object",
       "minProperties": 1,
-      "propertyNames": { "minLength": 1 },
-      "additionalProperties": { "type": "string", "minLength": 1 },
+      "propertyNames": { "minLength": 1, "pattern": ".*\\S.*" },
+      "additionalProperties": { "type": "string", "minLength": 1, "pattern": ".*\\S.*" },
       "description": "Map of variant name (e.g. full, compact) to the content file within the pack directory."
     }
   }

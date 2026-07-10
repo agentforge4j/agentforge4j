@@ -1,0 +1,31 @@
+{
+  "kind": "WORKFLOW",
+  "id": "cmd-request-context",
+  "name": "Request Context",
+  "steps": [
+    {
+      "kind": "STEP",
+      "stepId": "seed",
+      "name": "Seed",
+      "behaviour": {
+        "type": "ASSIGN_CONTEXT",
+        "contextKey": "shared-note",
+        "value": { "type": "STRING", "value": "hello" }
+      }
+    },
+    {
+      "kind": "STEP",
+      "stepId": "run",
+      "name": "Run Agent",
+      "behaviour": { "type": "AGENT", "agentRef": "context-agent", "transition": "AUTO" },
+      "contextSelection": {
+        "selectors": [],
+        "expandableScope": [
+          { "kind": "STATE_KEY", "ref": "shared-note", "variant": "FULL" },
+          { "kind": "STATE_KEY", "ref": "__reserved", "variant": "FULL" }
+        ],
+        "maxExpansions": 3
+      }
+    }
+  ]
+}

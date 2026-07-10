@@ -59,6 +59,34 @@ class ContextPackLedgerSchemaContractTest {
     assertThat(validate(CONTEXT_PACK_SCHEMA, json)).isNotEmpty();
   }
 
+  @Test
+  void contextPack_rejectsWhitespaceOnlyName() throws Exception {
+    String json = """
+        {"name":" ","version":"1.0.0","variants":{"full":"c.md"}}""";
+    assertThat(validate(CONTEXT_PACK_SCHEMA, json)).isNotEmpty();
+  }
+
+  @Test
+  void contextPack_rejectsWhitespaceOnlyVersion() throws Exception {
+    String json = """
+        {"name":"p","version":" ","variants":{"full":"c.md"}}""";
+    assertThat(validate(CONTEXT_PACK_SCHEMA, json)).isNotEmpty();
+  }
+
+  @Test
+  void contextPack_rejectsWhitespaceOnlyVariantKey() throws Exception {
+    String json = """
+        {"name":"p","version":"1.0.0","variants":{" ":"c.md"}}""";
+    assertThat(validate(CONTEXT_PACK_SCHEMA, json)).isNotEmpty();
+  }
+
+  @Test
+  void contextPack_rejectsWhitespaceOnlyVariantValue() throws Exception {
+    String json = """
+        {"name":"p","version":"1.0.0","variants":{"full":" "}}""";
+    assertThat(validate(CONTEXT_PACK_SCHEMA, json)).isNotEmpty();
+  }
+
   @ParameterizedTest
   @MethodSource("ledgerSchemaFileNames")
   void ledger_acceptsEnvelopeWithIdentifiedEntries(String schemaFileName) throws Exception {

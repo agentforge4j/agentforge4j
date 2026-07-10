@@ -63,7 +63,6 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Map.Entry;
-import java.util.Set;
 import java.util.function.Function;
 import org.apache.commons.lang3.ObjectUtils;
 
@@ -698,14 +697,14 @@ public final class AgentForge4jBootstrap {
       Clock resolvedClock = ObjectUtils.getIfNull(clock, Clock::systemUTC);
       ObjectMapper resolvedMapper = ObjectUtils.getIfNull(objectMapper, ConfigurationLoader::defaultObjectMapper);
 
-      // Context-pack names for CONTEXT_PACK selector validation. The bootstrap has no way to load
-      // packs yet (no withContextPacks*/pack-directory option exists), so the actual loaded set is
-      // empty and every CONTEXT_PACK selector fails validation here — matching the runtime, whose
-      // default ContextPackRegistry.EMPTY rejects the same selectors. When bootstrap pack loading
-      // is added, the names of the packs it loads flow through this argument.
+      // Context packs for CONTEXT_PACK selector validation. The bootstrap has no way to load packs
+      // yet (no withContextPacks*/pack-directory option exists), so the actual loaded set is empty
+      // and every CONTEXT_PACK selector fails validation here — matching the runtime, whose default
+      // ContextPackRegistry.EMPTY rejects the same selectors. When bootstrap pack loading is added,
+      // the packs it loads (keyed by name) flow through this argument.
       LoadedConfiguration loadedConfiguration = ConfigurationLoader.load(
           resolvedMapper, agentsDir, workflowsDir, loadShippedAgents, loadShippedWorkflows,
-          Set.of());
+          Map.of());
 
       AgentRepository resolvedAgentRepo = ObjectUtils.getIfNull(agentRepository,
           () -> ComponentDefaults.agentRepository(loadedConfiguration));

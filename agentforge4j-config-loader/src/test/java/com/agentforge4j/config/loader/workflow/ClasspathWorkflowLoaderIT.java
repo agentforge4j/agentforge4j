@@ -13,8 +13,8 @@ import org.junit.jupiter.api.io.TempDir;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Map;
 import java.util.Optional;
-import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -102,7 +102,7 @@ class ClasspathWorkflowLoaderIT {
         Optional.of(workflowsRoot),
         Optional.empty(),
         Optional.empty(),
-        Set.of());
+        Map.of());
 
     assertThat(loaded.agents()).containsKeys("global", "sample-local");
     assertThat(loaded.workflows()).containsKey("sample");

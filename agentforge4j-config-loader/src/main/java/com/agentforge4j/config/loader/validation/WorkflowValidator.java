@@ -3,6 +3,7 @@ package com.agentforge4j.config.loader.validation;
 
 import com.agentforge4j.core.agent.AgentDefinition;
 import com.agentforge4j.core.exception.UnresolvedAgentReferenceException;
+import com.agentforge4j.core.spi.contextpack.ContextPack;
 import com.agentforge4j.core.workflow.Executable;
 import com.agentforge4j.core.workflow.LedgerDefinition;
 import com.agentforge4j.core.workflow.WorkflowAgentRefCollector;
@@ -15,6 +16,7 @@ import com.agentforge4j.core.workflow.requirement.WorkflowRequirement;
 import com.agentforge4j.core.workflow.step.ContextSelection;
 import com.agentforge4j.core.workflow.step.ContextSelector;
 import com.agentforge4j.core.workflow.step.ContextSourceKind;
+import com.agentforge4j.core.workflow.step.ContextVariant;
 import com.agentforge4j.core.workflow.step.StepDefinition;
 import com.agentforge4j.core.workflow.step.behaviour.BranchBehaviour;
 import com.agentforge4j.core.workflow.step.behaviour.CompactBehaviour;
@@ -36,6 +38,9 @@ import java.util.Map;
 import java.util.Set;
 
 public final class WorkflowValidator {
+
+  private static final String CONTEXT_PACK_FULL_VARIANT = "full";
+  private static final String CONTEXT_PACK_COMPACT_VARIANT = "compact";
 
   /**
    * Verifies that workflow references point to known workflows.
@@ -434,23 +439,28 @@ public final class WorkflowValidator {
    * Verifies that every context selector a step declares — its {@code contextSelection} selectors and expandable
    * scope, and a {@code COMPACT} step's source — references something that exists: a {@code LEDGER_SECTION} names a
    * declared ledger, an {@code ARTIFACT} names a declared artifact, a {@code STEP_OUTPUT} names a real step, and a
-   * {@code CONTEXT_PACK} names a pack in {@code loadedPackNames} (the real loaded pack registry/source, supplied by
-   * the caller once packs are wired into bootstrap/runtime). {@code STATE_KEY} is unconstrained.
+   * {@code CONTEXT_PACK} names a pack in {@code loadedPacksByName} whose declared variants can actually satisfy the
+   * selector's {@code ContextVariant} at resolution time — {@code FULL} requires a {@code "full"} variant,
+   * {@code COMPACT_ONLY} requires a {@code "compact"} variant, {@code COMPACT_PREFERRED} requires either (its
+   * fallback-to-full is legitimate). These are the same variant names and fallback rule
+   * {@code ContextSourceResolver.resolveContextPack} applies at run time — a pack that passes here can never fail
+   * closed there for a missing variant. {@code STATE_KEY} is unconstrained.
    *
-   * @param workflows       workflows to validate
-   * @param loadedPackNames names of the context packs actually loaded for this assembly; empty when none are
-   *                        configured (every {@code CONTEXT_PACK} selector then fails)
+   * @param workflows        workflows to validate
+   * @param loadedPacksByName the context packs actually loaded for this assembly, keyed by name; empty when none are
+   *                         configured (every {@code CONTEXT_PACK} selector then fails)
    *
-   * @throws IllegalArgumentException when a selector references an unknown ledger, artifact, step, or pack
+   * @throws IllegalArgumentException when a selector references an unknown ledger, artifact, step, or pack, or a
+   *                                  pack that cannot satisfy the selector's declared variant
    */
   public void validateContextSelectionRefs(Map<String, WorkflowDefinition> workflows,
-      Set<String> loadedPackNames) {
+      Map<String, ContextPack> loadedPacksByName) {
     workflows.values().forEach(
-        workflow -> validateScopeSelectors(workflow, loadedPackNames));
+        workflow -> validateScopeSelectors(workflow, loadedPacksByName));
   }
 
   private static void validateScopeSelectors(WorkflowDefinition workflow,
-      Set<String> loadedPackNames) {
+      Map<String, ContextPack> loadedPacksByName) {
     Set<String> ledgerIds = new HashSet<>();
     for (LedgerDefinition ledger : workflow.ledgers()) {
       Validate.isTrue(ledgerIds.add(ledger.id()),
@@ -459,7 +469,7 @@ public final class WorkflowValidator {
     Set<String> artifactIds = workflow.artifacts().keySet();
     Set<String> stepIds = new HashSet<>();
     collectScopeStepIds(workflow.steps(), workflow, stepIds, new LinkedHashSet<>());
-    walkScopeSelectors(workflow.steps(), workflow, ledgerIds, artifactIds, stepIds, loadedPackNames,
+    walkScopeSelectors(workflow.steps(), workflow, ledgerIds, artifactIds, stepIds, loadedPacksByName,
         new LinkedHashSet<>());
   }
 
@@ -491,44 +501,44 @@ public final class WorkflowValidator {
 
   private static void walkScopeSelectors(List<Executable> steps, WorkflowDefinition workflow,
       Set<String> ledgerIds, Set<String> artifactIds, Set<String> stepIds,
-      Set<String> loadedPackNames, Set<String> blueprintChain) {
+      Map<String, ContextPack> loadedPacksByName, Set<String> blueprintChain) {
     for (Executable executable : steps) {
       if (executable instanceof StepDefinition step) {
-        checkStepSelectors(step, workflow, ledgerIds, artifactIds, stepIds, loadedPackNames);
+        checkStepSelectors(step, workflow, ledgerIds, artifactIds, stepIds, loadedPacksByName);
         if (step.behaviour() instanceof BranchBehaviour branch) {
           walkScopeSelectors(branch.childExecutables(), workflow, ledgerIds, artifactIds, stepIds,
-              loadedPackNames, blueprintChain);
+              loadedPacksByName, blueprintChain);
         }
       } else if (executable instanceof BlueprintRef ref) {
         BlueprintDefinition blueprint = workflow.blueprints().get(ref.blueprintId());
         if (blueprint != null && blueprintChain.add(ref.blueprintId())) {
           walkScopeSelectors(blueprint.steps(), workflow, ledgerIds, artifactIds, stepIds,
-              loadedPackNames, blueprintChain);
+              loadedPacksByName, blueprintChain);
           blueprintChain.remove(ref.blueprintId());
         }
       } else if (executable instanceof WorkflowDefinition nested) {
-        validateScopeSelectors(nested, loadedPackNames);
+        validateScopeSelectors(nested, loadedPacksByName);
       }
     }
   }
 
   private static void checkStepSelectors(StepDefinition step, WorkflowDefinition workflow,
       Set<String> ledgerIds, Set<String> artifactIds, Set<String> stepIds,
-      Set<String> loadedPackNames) {
+      Map<String, ContextPack> loadedPacksByName) {
     ContextSelection selection = step.contextSelection();
     if (selection != null) {
       for (ContextSelector selector : selection.selectors()) {
         checkSelector(selector, step.stepId(), workflow, ledgerIds, artifactIds, stepIds,
-            loadedPackNames);
+            loadedPacksByName);
       }
       for (ContextSelector selector : selection.expandableScope()) {
         checkSelector(selector, step.stepId(), workflow, ledgerIds, artifactIds, stepIds,
-            loadedPackNames);
+            loadedPacksByName);
       }
     }
     if (step.behaviour() instanceof CompactBehaviour compact) {
       checkSelector(compact.source(), step.stepId(), workflow, ledgerIds, artifactIds, stepIds,
-          loadedPackNames);
+          loadedPacksByName);
       if (compact.mode() instanceof DeterministicExtract) {
         // The shipped extractor only understands the ledger envelope shape — reject other source
         // kinds at load rather than failing mid-run, matching the fail-early rule below.
@@ -552,7 +562,7 @@ public final class WorkflowValidator {
 
   private static void checkSelector(ContextSelector selector, String stepId,
       WorkflowDefinition workflow, Set<String> ledgerIds, Set<String> artifactIds,
-      Set<String> stepIds, Set<String> loadedPackNames) {
+      Set<String> stepIds, Map<String, ContextPack> loadedPacksByName) {
     ContextSourceKind kind = selector.kind();
     if (kind == ContextSourceKind.LEDGER_SECTION) {
       String ledgerId = ledgerId(selector.ref());
@@ -568,11 +578,43 @@ public final class WorkflowValidator {
           "Step '%s' in workflow '%s' selects output of unknown step '%s'"
               .formatted(stepId, workflow.id(), selector.ref()));
     } else if (kind == ContextSourceKind.CONTEXT_PACK) {
-      Validate.isTrue(loadedPackNames.contains(selector.ref()),
-          "Step '%s' in workflow '%s' selects unknown context pack '%s'"
-              .formatted(stepId, workflow.id(), selector.ref()));
+      checkContextPackSelector(selector, stepId, workflow, loadedPacksByName);
     }
     // STATE_KEY is unconstrained.
+  }
+
+  /**
+   * Same {@code "full"}/{@code "compact"} variant names and fallback rule as
+   * {@code ContextSourceResolver.resolveContextPack} (runtime module; duplicated here rather than shared, since
+   * config-loader does not depend on runtime): {@code FULL} requires {@code "full"}; {@code COMPACT_ONLY} requires
+   * {@code "compact"} with no fallback; {@code COMPACT_PREFERRED} requires either (it falls back to {@code "full"}
+   * at resolution time when {@code "compact"} is absent).
+   */
+  private static void checkContextPackSelector(ContextSelector selector, String stepId,
+      WorkflowDefinition workflow, Map<String, ContextPack> loadedPacksByName) {
+    ContextPack pack = loadedPacksByName.get(selector.ref());
+    Validate.isTrue(pack != null,
+        "Step '%s' in workflow '%s' selects unknown context pack '%s'"
+            .formatted(stepId, workflow.id(), selector.ref()));
+    boolean hasFull = pack.variants().containsKey(CONTEXT_PACK_FULL_VARIANT);
+    boolean hasCompact = pack.variants().containsKey(CONTEXT_PACK_COMPACT_VARIANT);
+    if (selector.variant() == ContextVariant.FULL) {
+      Validate.isTrue(hasFull,
+          ("Step '%s' in workflow '%s' selects context pack '%s' as FULL, but the pack declares no "
+              + "'%s' variant").formatted(stepId, workflow.id(), selector.ref(),
+              CONTEXT_PACK_FULL_VARIANT));
+    } else if (selector.variant() == ContextVariant.COMPACT_ONLY) {
+      Validate.isTrue(hasCompact,
+          ("Step '%s' in workflow '%s' selects context pack '%s' as COMPACT_ONLY, but the pack "
+              + "declares no '%s' variant (COMPACT_ONLY never falls back to '%s')").formatted(
+              stepId, workflow.id(), selector.ref(), CONTEXT_PACK_COMPACT_VARIANT,
+              CONTEXT_PACK_FULL_VARIANT));
+    } else {
+      Validate.isTrue(hasFull || hasCompact,
+          ("Step '%s' in workflow '%s' selects context pack '%s' as COMPACT_PREFERRED, but the "
+              + "pack declares neither a '%s' nor a '%s' variant").formatted(stepId, workflow.id(),
+              selector.ref(), CONTEXT_PACK_COMPACT_VARIANT, CONTEXT_PACK_FULL_VARIANT));
+    }
   }
 
   private static String ledgerId(String ref) {

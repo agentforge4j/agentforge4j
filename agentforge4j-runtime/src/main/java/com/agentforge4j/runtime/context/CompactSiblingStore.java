@@ -50,30 +50,36 @@ public final class CompactSiblingStore {
   }
 
   /**
-   * Writes {@code sibling} to the reserved compact-sibling context key for {@code sourceId}, as
-   * {@link ContextProvenance#SYSTEM_GENERATED} content. Deliberate, not a default: a compact sibling
-   * is a deterministic, non-LLM transform ({@code DeterministicExtract}) of a whole-ledger
-   * {@code LEDGER_SECTION} source (the only source kind {@code COMPACT} steps may target), and ledger
-   * content itself is produced only by {@code LedgerMerger}'s deterministic merge — no LLM
-   * participates in either step, so the compact form inherits the same framework-owned trust level as
-   * its source.
+   * Writes {@code sibling} to the reserved compact-sibling context key for {@code sourceId}, stamped
+   * with {@code provenance}. The provenance is caller-supplied, not defaulted, because it depends on
+   * how the sibling's content was produced: {@code DeterministicExtract} is a deterministic,
+   * non-LLM transform of framework-owned ledger content (itself produced only by
+   * {@code LedgerMerger}'s deterministic merge), so it inherits the source's own trust level —
+   * {@link ContextProvenance#SYSTEM_GENERATED} is correct there. {@code LlmSummary} content is an
+   * LLM's own generated text (via {@code AgentInvoker}), so it must be stamped
+   * {@link ContextProvenance#LLM_GENERATED} regardless of the source it summarized — the compaction
+   * step's own determinism does not launder the LLM authorship of its output. Callers (see
+   * {@code CompactBehaviourHandler}) choose the value per {@code CompactionMode}, mirroring
+   * {@code RequestContextCommandHandler.grantedProvenance}'s per-source-kind reasoning.
    *
-   * @param state    run state to write to; must not be {@code null}
-   * @param sourceId the canonical source id; must not be blank
-   * @param sibling  the compact sibling to persist; must not be {@code null}
-   * @param mapper   used to serialize the sibling; must not be {@code null}
+   * @param state      run state to write to; must not be {@code null}
+   * @param sourceId   the canonical source id; must not be blank
+   * @param sibling    the compact sibling to persist; must not be {@code null}
+   * @param mapper     used to serialize the sibling; must not be {@code null}
+   * @param provenance the provenance to stamp on the stored content; must not be {@code null}
    */
   public static void write(WorkflowState state, String sourceId, CompactSibling sibling,
-      ObjectMapper mapper) {
+      ObjectMapper mapper, ContextProvenance provenance) {
     Validate.notNull(state, "state must not be null");
     Validate.notBlank(sourceId, "sourceId must not be blank");
     Validate.notNull(sibling, "sibling must not be null");
     Validate.notNull(mapper, "mapper must not be null");
+    Validate.notNull(provenance, "provenance must not be null");
     ObjectNode root = mapper.createObjectNode();
     root.put(CONTENT_FIELD, sibling.content());
     root.set(METADATA_FIELD, mapper.valueToTree(sibling.metadata()));
     state.putContextValue(ReservedContextKeys.compactKey(sourceId),
-        new JsonContextValue(root.toString(), ContextProvenance.SYSTEM_GENERATED));
+        new JsonContextValue(root.toString(), provenance));
   }
 
   private static CompactSibling parse(JsonContextValue value, String sourceId, ObjectMapper mapper) {

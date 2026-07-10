@@ -49,6 +49,20 @@
       "agentId": "restricted-agent",
       "ordinal": 0,
       "responseText": "[{\"type\":\"SET_CONTEXT\",\"key\":\"x\",\"value\":{\"type\":\"STRING\",\"value\":\"y\"}}]"
+    },
+    {
+      "workflowId": "cmd-request-context",
+      "stepId": "run",
+      "agentId": "context-agent",
+      "ordinal": 0,
+      "responseText": "[{\"type\":\"REQUEST_CONTEXT\",\"requestedSelectors\":[{\"kind\":\"STATE_KEY\",\"ref\":\"shared-note\",\"variant\":\"FULL\"},{\"kind\":\"STATE_KEY\",\"ref\":\"__reserved\",\"variant\":\"FULL\"},{\"kind\":\"STATE_KEY\",\"ref\":\"not-declared\",\"variant\":\"FULL\"}]},{\"type\":\"COMPLETE\"}]"
+    },
+    {
+      "workflowId": "cmd-request-context-max-expansions",
+      "stepId": "run",
+      "agentId": "context-agent",
+      "ordinal": 0,
+      "responseText": "[{\"type\":\"REQUEST_CONTEXT\",\"requestedSelectors\":[{\"kind\":\"STATE_KEY\",\"ref\":\"note-a\",\"variant\":\"FULL\"},{\"kind\":\"STATE_KEY\",\"ref\":\"note-b\",\"variant\":\"FULL\"}]},{\"type\":\"COMPLETE\"}]"
     }
   ]
 }
