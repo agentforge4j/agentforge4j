@@ -390,6 +390,52 @@ class WorkflowValidatorTest {
         .hasMessageContaining("requiredArtifacts allowlist");
   }
 
+  @Test
+  void validateLedgerSchemas_rejectsAnUnresolvableSchemaRef() {
+    com.agentforge4j.core.workflow.LedgerDefinition ledger =
+        new com.agentforge4j.core.workflow.LedgerDefinition("requirements",
+            "ledger/does-not-exist.schema.json",
+            com.agentforge4j.core.workflow.LedgerMergeStrategy.APPEND, null);
+    WorkflowDefinition wf = wfWithLedgers("wf1", List.of(ledger));
+
+    assertThatThrownBy(() -> validator.validateLedgerSchemas(Map.of("wf1", wf)))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("does not resolve to classpath resource");
+  }
+
+  @Test
+  void validateLedgerSchemas_acceptsAResolvableShippedSchema() {
+    com.agentforge4j.core.workflow.LedgerDefinition ledger =
+        new com.agentforge4j.core.workflow.LedgerDefinition("requirements",
+            "ledger/requirement-ledger.schema.json",
+            com.agentforge4j.core.workflow.LedgerMergeStrategy.MERGE_BY_KEY, "id");
+    WorkflowDefinition wf = wfWithLedgers("wf1", List.of(ledger));
+
+    assertThatCode(() -> validator.validateLedgerSchemas(Map.of("wf1", wf)))
+        .doesNotThrowAnyException();
+  }
+
+  private static WorkflowDefinition wfWithLedgers(String id,
+      List<com.agentforge4j.core.workflow.LedgerDefinition> ledgers) {
+    StepDefinition stub = StepDefinition.builder().withStepId("s1").withName("S1")
+        .withBehaviour(new FailBehaviour("stop")).build();
+    return new WorkflowDefinition(
+        id,
+        "W",
+        "d",
+        null,
+        null,
+        null,
+        null,
+        WorkflowSource.CUSTOM,
+        WorkflowLifecycle.ACTIVE,
+        Map.of(),
+        Map.of(),
+        List.of(stub),
+        List.of(),
+        ledgers);
+  }
+
   private static WorkflowDefinition wf(String id, List<Executable> steps) {
     return new WorkflowDefinition(
         id,

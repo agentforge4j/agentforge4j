@@ -104,7 +104,7 @@
         },
         "contextSelection": {
           "$ref": "#/$defs/ContextSelection",
-          "description": "Optional declaration of the context this step receives (and may request). Absent keeps the current full-context behaviour."
+          "description": "Optional context-governance declaration for this step. Absent keeps the current full-context behaviour. NOTE (0.1.0): 'selectors' is validated and counted toward compaction-reuse thresholds, but does not yet restrict what the agent actually receives — an agent's rendered input still flows through the step's own contextMapping, unchanged. Only 'expandableScope' is functional today (it governs runtime REQUEST_CONTEXT grants). See ContextSelection.selectors' own description."
         }
       }
     },
@@ -413,7 +413,8 @@
       "properties": {
         "selectors": {
           "type": "array",
-          "items": { "$ref": "#/$defs/ContextSelector" }
+          "items": { "$ref": "#/$defs/ContextSelector" },
+          "description": "NOT YET ENFORCED (0.1.0): validated at load time and counted toward COMPACT's compaction-reuse thresholds, but the runtime does not assemble a step's rendered agent context from this list — an agent still receives whatever its own contextMapping renders, unaffected by this declaration. Declaring selectors here does not restrict or scope what the agent sees. Tracked as an open Phase 5 deferral, not a bug."
         },
         "expandableScope": {
           "type": "array",

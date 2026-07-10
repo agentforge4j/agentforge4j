@@ -41,6 +41,7 @@ public final class WorkflowDraftValidator {
         () -> validator.validateValidateBehaviourContracts(workflows));
     runValidation(errors, "validateContextSelectionRefs",
         () -> validator.validateContextSelectionRefs(workflows, loadedPacksByName));
+    runValidation(errors, "validateLedgerSchemas", () -> validator.validateLedgerSchemas(workflows));
     return new ValidationReport(errors);
   }
 

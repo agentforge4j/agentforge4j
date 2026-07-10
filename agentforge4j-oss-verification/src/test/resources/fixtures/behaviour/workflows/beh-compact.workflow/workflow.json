@@ -27,6 +27,6 @@
     }
   ],
   "ledgers": [
-    { "id": "notes", "schemaRef": "schema/notes.json", "mergeStrategy": "APPEND" }
+    { "id": "notes", "schemaRef": "ledger/requirement-ledger.schema.json", "mergeStrategy": "APPEND" }
   ]
 }

@@ -202,6 +202,7 @@ public final class AgentForgeLoader {
     runValidation("validate contracts", () -> validator.validateValidateBehaviourContracts(workflows));
     runValidation("context selection refs",
         () -> validator.validateContextSelectionRefs(workflows, loadedPacksByName));
+    runValidation("ledger schemas", () -> validator.validateLedgerSchemas(workflows));
   }
 
   /**

@@ -29,6 +29,7 @@ import com.agentforge4j.core.workflow.step.behaviour.WorkflowBehaviour;
 import com.agentforge4j.core.workflow.step.blueprint.BlueprintDefinition;
 import com.agentforge4j.core.workflow.step.blueprint.BlueprintRef;
 import com.agentforge4j.util.Validate;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -457,6 +458,29 @@ public final class WorkflowValidator {
       Map<String, ContextPack> loadedPacksByName) {
     workflows.values().forEach(
         workflow -> validateScopeSelectors(workflow, loadedPacksByName));
+  }
+
+  /**
+   * Verifies that every declared {@link LedgerDefinition#schemaRef()} resolves to a valid JSON
+   * schema, and that {@link LedgerDefinition#mergeKeyField()} names a field the resolved schema
+   * permits on a ledger entry when {@code mergeStrategy} is {@code MERGE_BY_KEY}. See
+   * {@link LedgerSchemaResolver}'s class Javadoc for the resolution mechanism and its scope
+   * (classpath-relative only; the mergeKeyField check assumes the shipped ledger-envelope
+   * convention).
+   *
+   * @param workflows workflows whose ledgers are checked
+   *
+   * @throws IllegalArgumentException when a ledger's {@code schemaRef} does not resolve, is not a
+   *                                  valid JSON schema, or (for {@code MERGE_BY_KEY}) its
+   *                                  {@code mergeKeyField} is not a field the schema permits
+   */
+  public void validateLedgerSchemas(Map<String, WorkflowDefinition> workflows) {
+    LedgerSchemaResolver resolver = new LedgerSchemaResolver(new ObjectMapper());
+    for (WorkflowDefinition workflow : workflows.values()) {
+      for (LedgerDefinition ledger : workflow.ledgers()) {
+        resolver.validate(ledger);
+      }
+    }
   }
 
   private static void validateScopeSelectors(WorkflowDefinition workflow,

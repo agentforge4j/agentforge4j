@@ -5,22 +5,27 @@ import com.agentforge4j.util.Validate;
 import java.util.List;
 
 /**
- * Optional declaration on a {@link StepDefinition} of the context a step receives by default, and the
+ * Optional declaration on a {@link StepDefinition} of the context a step is scoped to, and the
  * additional context it <em>may</em> request at run time. A step with no {@link ContextSelection}
  * keeps the full-context behaviour.
  *
- * <p>What the runtime currently does with this declaration: selectors are validated at load time
- * against the enclosing workflow's declared sources, {@code expandableScope} governs run-time
- * context-expansion grants ({@code RequestContextCommand}), and compact-form references count toward
- * compaction-reuse thresholds. The runtime does not yet assemble a step's rendered agent context
- * from {@code selectors} — an agent's input context still flows through its
- * {@code ContextMapping}.
+ * <p><strong>{@code selectors} is not yet enforced (0.1.0 status).</strong> It is validated at load
+ * time against the enclosing workflow's declared sources and counted toward COMPACT's
+ * compaction-reuse thresholds, but the runtime does not yet assemble a step's rendered agent context
+ * from it — an agent's actual input still flows entirely through its own {@code ContextMapping},
+ * unaffected by whatever {@code selectors} declares. Declaring {@code selectors} today does not
+ * scope or restrict what the agent receives; treat it as reserved/tracked, not functional. This is
+ * an open Phase 5 deferral (see the token-governance design's STATUS notes), not a bug. By contrast,
+ * {@code expandableScope} <em>is</em> functional: it governs run-time context-expansion grants
+ * ({@code RequestContextCommand}).
  *
- * <p>This is the token-efficient subset chosen <em>within</em> the boundary an inheritance scope
- * decides; it never widens context beyond that boundary.
+ * <p>Once implemented, {@code selectors} is intended to be the token-efficient subset chosen
+ * <em>within</em> the boundary an inheritance scope decides; it would never widen context beyond
+ * that boundary.
  *
- * @param selectors       the context sources the step receives; never {@code null} ({@code null}
- *                        becomes an empty list, defensively copied)
+ * @param selectors       the context sources the step declares as its scope; <strong>not yet
+ *                        enforced at invocation — see the class Javadoc</strong>. Never {@code null}
+ *                        ({@code null} becomes an empty list, defensively copied)
  * @param expandableScope the additional sources the step may request; empty means no expansion is
  *                        permitted. Never {@code null} ({@code null} becomes an empty list, copied)
  * @param maxExpansions   maximum number of requested context expansions evaluated across a step
