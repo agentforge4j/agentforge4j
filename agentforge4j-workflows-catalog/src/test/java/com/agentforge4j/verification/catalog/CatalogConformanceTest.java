@@ -24,9 +24,10 @@ import org.junit.jupiter.api.Test;
  * <p>Each scenario must carry a {@code README.md}, a parseable {@code script.json}, and an
  * {@code expected-result.json} naming the same workflow as the folder that owns it.
  *
- * <p>The clean-slate window ended with the first shipped workflow (workflow-execution-estimator):
- * the shipped index and scenario ownership are now asserted non-empty, and the coverage/orphan
- * checks below exercise the genuine cross-check, not a vacuous one.
+ * <p>During the clean-slate window — the catalog has been wiped and PR B has not yet re-added a
+ * workflow — the catalog is intentionally empty: the emptiness is asserted directly and the
+ * coverage/orphan checks hold vacuously. PR B restores the non-empty assertions when it ships a
+ * workflow.
  */
 class CatalogConformanceTest {
 
@@ -39,17 +40,21 @@ class CatalogConformanceTest {
   }
 
   @Test
-  void shippedCatalogOwnsTheExecutionEstimatorWorkflow() {
+  void shippedCatalogIsEmptyDuringCleanSlate() {
+    // Clean-slate window: the catalog has been wiped and PR B has not yet re-added a workflow, so the
+    // shipped index must enumerate nothing. PR B restores the non-empty assertion when it ships one.
     assertThat(shippedWorkflows())
-        .as("the shipped workflow index must enumerate the shipped catalog's workflows")
-        .contains("workflow-execution-estimator");
+        .as("during the clean-slate window the shipped workflow index must be empty")
+        .isEmpty();
   }
 
   @Test
-  void scenariosExistForTheShippedWorkflow() {
+  void noScenariosExistDuringCleanSlate() {
+    // Clean-slate window: with no shipped workflows there are no owned verification scenarios. PR B
+    // restores the at-least-one-scenario assertion when it ships a workflow.
     assertThat(CatalogScenarios.discover())
-        .as("the shipped workflow must own at least one verification scenario")
-        .isNotEmpty();
+        .as("during the clean-slate window no verification scenarios are owned")
+        .isEmpty();
   }
 
   @Test

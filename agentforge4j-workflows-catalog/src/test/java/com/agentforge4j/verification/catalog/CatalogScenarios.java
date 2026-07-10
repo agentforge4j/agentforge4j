@@ -190,16 +190,15 @@ public final class CatalogScenarios {
     String base = verificationPath(classpathRoot, ref);
     String displayName = ref.workflowId() + "/" + ref.scenarioName();
     String scriptJson = readResource(base + SCRIPT_FILE, displayName);
-    String expectedResultJson = readResource(base + EXPECTED_RESULT_FILE, displayName);
     ExpectedResult expected;
     try {
-      expected = MAPPER.readValue(expectedResultJson, ExpectedResult.class);
+      expected = MAPPER.readValue(readResource(base + EXPECTED_RESULT_FILE, displayName),
+          ExpectedResult.class);
     } catch (IOException exception) {
       throw new UncheckedIOException("Failed to parse " + base + EXPECTED_RESULT_FILE, exception);
     }
     boolean readme = CatalogScenarios.class.getResource(base + README_FILE) != null;
-    return new ScenarioCase(displayName, ref.workflowId(), scriptJson, expectedResultJson, expected,
-        readme);
+    return new ScenarioCase(displayName, ref.workflowId(), scriptJson, expected, readme);
   }
 
   private static String verificationPath(String classpathRoot, ScenarioRef ref) {
