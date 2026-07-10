@@ -225,11 +225,14 @@ class WorkflowRunAssertTest {
 
     assertThatCode(() -> assertRun()
         .invokedTool("http:get")
+        .didNotInvokeTool("http:post")
         .toolCallCount(1)
         .providerCallCount(1)
         .providerCallTier(ModelTier.STANDARD))
         .doesNotThrowAnyException();
     assertThatThrownBy(() -> assertRun().invokedTool("http:post"))
+        .isInstanceOf(AssertionError.class);
+    assertThatThrownBy(() -> assertRun().didNotInvokeTool("http:get"))
         .isInstanceOf(AssertionError.class);
     assertThatThrownBy(() -> assertRun().providerCallTier(ModelTier.POWERFUL))
         .isInstanceOf(AssertionError.class);

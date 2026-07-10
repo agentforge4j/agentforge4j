@@ -243,6 +243,9 @@ public abstract class BaseWorkflowBundleLoader {
     Validate.isGreaterThanZero(behaviour.maxAttempts(),
         "RetryPreviousBehaviour maxAttempts must be greater than zero in step '%s' of workflow '%s'"
             .formatted(step.stepId(), workflowId));
+    // The compact constructor already guarantees a non-null fallback; this check is kept
+    // deliberately so a violation here reports the friendlier loader-context message (with
+    // stepId/workflowId) instead of the record's generic one.
     Validate.notNull(behaviour.fallback(),
         "RetryPreviousBehaviour fallback must not be null in step '%s' of workflow '%s'"
             .formatted(step.stepId(), workflowId));

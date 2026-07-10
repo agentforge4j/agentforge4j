@@ -448,7 +448,7 @@ class RetryPreviousBehaviourHandlerTest {
     private String retryStepId = "s2";
     private RetryMode retryMode = RetryMode.SINGLE_STEP;
     private int maxAttempts = 5;
-    private Executable fallback;
+    private Executable fallback = fallbackStep("fallback");
     private String owningStepId = "s3";
     private List<String> sequence = List.of("s1", "s2", "s3");
     private Integer retryUid;
