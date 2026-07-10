@@ -30,6 +30,7 @@ import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -198,11 +199,23 @@ class RetryPreviousBehaviourHandlerTest {
           .attemptCounter("1")
           .build();
 
+      int firstReallocatedUid = f.state().getStepExecutionUid().values().stream()
+          .mapToInt(Integer::intValue)
+          .max()
+          .orElse(0) + 1;
+
       f.handle();
 
       assertThat(f.state().getContext()).containsKey(f.attemptKey());
       assertThat(f.state().getContext()).doesNotContainKey("ctxX");
-      assertThat(f.state().getStepExecutionUid()).doesNotContainKey("s2");
+      // s2 and s3's pre-retry uids/outputs are cleared by clearEntriesFromUid, then each is
+      // re-allocated a fresh uid (continuing above the highest pre-retry uid) as it is
+      // re-dispatched — no output is set for either since the mocked executableExecutor never
+      // calls putStepOutput.
+      assertThat(f.state().getStepExecutionUid())
+          .containsEntry("s2", firstReallocatedUid)
+          .containsEntry("s3", firstReallocatedUid + 1);
+      assertThat(f.state().getStepOutputs()).doesNotContainKey("s2");
       assertThat(f.state().getStepOutputs()).doesNotContainKey("s3");
     }
   }
@@ -435,7 +448,7 @@ class RetryPreviousBehaviourHandlerTest {
     private String retryStepId = "s2";
     private RetryMode retryMode = RetryMode.SINGLE_STEP;
     private int maxAttempts = 5;
-    private Executable fallback;
+    private Executable fallback = fallbackStep("fallback");
     private String owningStepId = "s3";
     private List<String> sequence = List.of("s1", "s2", "s3");
     private Integer retryUid;
@@ -570,6 +583,11 @@ class RetryPreviousBehaviourHandlerTest {
       when(context.getState()).thenReturn(state);
       when(context.getCurrentSequenceStepIds()).thenReturn(sequence);
       when(context.getCurrentSequenceExecutables()).thenReturn(executables);
+      // Mirrors the real ExecutionContext's monotonic-uid-seeded-from-persisted-state behaviour, so
+      // a retry target dispatched via executeStep (which allocates a fresh uid) gets a deterministic,
+      // always-higher-than-anything-seeded value instead of Mockito's default 0 for every call.
+      AtomicInteger uidCounter = new AtomicInteger(highestSeededUid(state) + 1);
+      when(context.allocateStepSequenceUid()).thenAnswer(invocation -> uidCounter.getAndIncrement());
 
       RetryPreviousBehaviourHandler resolvedHandler =
           handler != null ? handler : defaultHandler;
@@ -584,6 +602,13 @@ class RetryPreviousBehaviourHandlerTest {
           executables,
           attemptKey,
           outcomesByStep);
+    }
+
+    private static int highestSeededUid(WorkflowState state) {
+      return state.getStepExecutionUid().values().stream()
+          .mapToInt(Integer::intValue)
+          .max()
+          .orElse(0);
     }
 
     private static Executable mockStepExecutable(String stepId) {

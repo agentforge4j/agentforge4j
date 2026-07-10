@@ -159,9 +159,9 @@ These are non-negotiable. Flag any existing code that violates them.
 
 ### Workflow concepts
 - `WorkflowDefinition` — record implementing `Executable`: `id`, `name`, nullable `description`, `Map<String, ArtifactDefinition> artifacts`, `Map<String, BlueprintDefinition> blueprints`, `List<Executable> steps`
-- `Executable` — non-sealed interface, Jackson discriminator `kind`, subtypes: `STEP`, `BLUEPRINT` (ref), `WORKFLOW`
+- `Executable` — sealed interface (`permits WorkflowDefinition, StepDefinition, BlueprintRef`), Jackson discriminator `kind`, subtypes: `WORKFLOW`, `STEP`, `BLUEPRINT` (ref)
 - `StepDefinition` — record: `stepId`, `name`, `StepBehaviour`, `ContextMapping`
-- `StepBehaviour` — sealed interface with **8 subtypes**: `AgentBehaviour`, `SparBehaviour`, `WorkflowBehaviour`, `InputBehaviour`, `ResourceBehaviour`, `BranchBehaviour`, `FailBehaviour`, `RetryPreviousBehaviour`
+- `StepBehaviour` — sealed interface with **11 subtypes**: `AgentBehaviour`, `SparBehaviour`, `WorkflowBehaviour`, `InputBehaviour`, `ResourceBehaviour`, `BranchBehaviour`, `FailBehaviour`, `RetryPreviousBehaviour`, `ValidateBehaviour`, `AssignContextBehaviour`, `CollectionBehaviour`
 - `BlueprintDefinition` — reusable named sequence of steps defined inside a workflow directory
 - `BlueprintRef` — reference to a blueprint, resolved at execution time
 - `LoopConfig` — record on `BlueprintRef` for iteration
@@ -169,9 +169,22 @@ These are non-negotiable. Flag any existing code that violates them.
 
 ### State concepts
 - `WorkflowState` — mutable final class with `@Getter`. Final fields: `runId`, `workflowId`, nullable `parentRunId`, `startedAt`. Mutable with `@Setter`: `currentStepId`, `status`, `lastUpdatedAt`, nullable `pendingArtifact`. Mutable maps (no setters): `stepOutputs`, `context`, `stepExecutionUid`, `contextKeyWrittenAtUid`
-- `WorkflowStatus` — enum: `RUNNING`, `PAUSED`, `AWAITING_INPUT`, `AWAITING_APPROVAL`, `COMPLETED`, `FAILED`, `CANCELLED`
+- `WorkflowStatus` — enum: `RUNNING`, `PAUSED`, `AWAITING_INPUT`, `AWAITING_APPROVAL`, `AWAITING_TOOL_APPROVAL`, `AWAITING_TOOL_DECISION`, `AWAITING_REVIEW`, `AWAITING_STEP_APPROVAL`, `AWAITING_COLLECTION`, `COMPLETED`, `FAILED`, `CANCELLED`
 - `WorkflowEvent` — immutable append-only audit record
-- `WorkflowEventType` — enum: `RUN_STARTED`, `STEP_STARTED`, `STEP_COMPLETED`, `STEP_FAILED`, `STEP_RETRIED`, `AWAITING_INPUT`, `AWAITING_APPROVAL`, `APPROVED`, `REJECTED`, `LLM_OUTPUT`, `CONTEXT_UPDATED`, `LOOP_ITERATION_STARTED`, `LOOP_ITERATION_COMPLETED`, `RUN_COMPLETED`, `RUN_FAILED`, `RUN_CANCELLED`, `AGENT_SWAPPED`, `PROMPT_OVERRIDDEN`, `USER_PROMPT_LIMIT_REACHED`
+- `WorkflowEventType` — a large and growing enum (40+ values as of this writing — check the source,
+  do not hardcode a count in a prompt or doc). Categories: run lifecycle (`RUN_STARTED`,
+  `RUN_COMPLETED`, `RUN_FAILED`, `RUN_CANCELLED`, `RUN_BLOCKED`), step lifecycle (`STEP_STARTED`,
+  `STEP_COMPLETED`, `STEP_FAILED`, `STEP_RETRIED`, `STEP_AWAITING_REVIEW`/`STEP_REVIEWED`,
+  `STEP_AWAITING_APPROVAL`/`STEP_APPROVED`/`STEP_REJECTED`), gates (`AWAITING_INPUT`,
+  `AWAITING_APPROVAL`, `APPROVED`, `REJECTED`), tool invocation (`TOOL_INVOCATION_REQUESTED`,
+  `TOOL_INVOCATION_COMPLETED`, `TOOL_INVOCATION_DENIED`, `TOOL_INVOCATION_APPROVAL_PENDING`,
+  `TOOL_INVOCATION_FAILED`), collection gates (`COLLECTION_OPENED`, `COLLECTION_ITEM_SUBMITTED`,
+  `COLLECTION_ITEM_REPLACED`, `COLLECTION_ITEM_WITHDRAWN`, `COLLECTION_ITEM_REJECTED`,
+  `COLLECTION_CLOSE_REQUESTED`, `COLLECTION_CLOSE_REJECTED`, `COLLECTION_CLOSED`,
+  `COLLECTION_REOPENED`, `COLLECTION_AUTHORIZATION_DENIED`, `COLLECTION_DEADLINE_CLOSE_REQUESTED`),
+  and loop/context/LLM diagnostics (`LOOP_ITERATION_STARTED`, `LOOP_ITERATION_COMPLETED`,
+  `CONTEXT_UPDATED`, `LLM_OUTPUT`, `LLM_CALL_COMPLETED`, `USAGE_RECORD_FAILED`, `AGENT_SWAPPED`,
+  `PROMPT_OVERRIDDEN`, `USER_PROMPT_LIMIT_REACHED`).
 - `ContextValue` — sealed interface: `StringContextValue`, `NumberContextValue`, `BooleanContextValue`, `JsonContextValue`, `ContextValueList`. All records.
 
 ### Retry and loop concepts
