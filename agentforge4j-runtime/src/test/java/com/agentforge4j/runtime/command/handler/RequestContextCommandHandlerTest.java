@@ -381,6 +381,41 @@ class RequestContextCommandHandlerTest {
   }
 
   @Test
+  void grantHonoursACompactOnlyDeclaredVariantEvenWhenFullIsRequested() {
+    // Same widening-denial contract as grantHonoursTheDeclaredVariantNotTheRequestedOne, for the
+    // stricter COMPACT_ONLY declaration: a requester asking for FULL must still be served the
+    // compact sibling, never the full disclosure the author restricted the scope to.
+    LedgerDefinition ledgerDef = ledger("requirements");
+    ContextSelector declaredCompactOnly = ledgerSelector("requirements", ContextVariant.COMPACT_ONLY);
+    ContextSelection selection = new ContextSelection(List.of(), List.of(declaredCompactOnly), null);
+    StepDefinition step = step(selection);
+    WorkflowDefinition workflow = workflowWithLedger(step, ledgerDef);
+    WorkflowState state = state();
+    LedgerMerger.writeMerged(state, ledgerDef,
+        mapper.valueToTree(Map.of("entries", List.of(Map.of("id", "REQ-1")))));
+    String fullContent = new ContextSourceResolver(new ContextRenderer(mapper), mapper,
+        ContextPackRegistry.EMPTY)
+        .resolveFull(declaredCompactOnly, state, workflow);
+    String sourceId = ContextSourceId.of(declaredCompactOnly);
+    CompactSiblingMetadata metadata = new CompactSiblingMetadata(sourceId,
+        ContextFingerprint.of(fullContent), new DeterministicExtract(), 100, 10, "compact-step",
+        new CompactionPolicy(0, 0));
+    CompactSiblingStore.write(state, sourceId, new CompactSibling("compact only form", metadata),
+        mapper);
+    ContextSelector requestedFull = ledgerSelector("requirements", ContextVariant.FULL);
+    RequestContextCommand command = new RequestContextCommand(List.of(requestedFull));
+
+    handler.apply(command, request(state, step, workflow, 0));
+
+    assertThat(eventLog.getEvents("run-1").get(0).eventType())
+        .isEqualTo(WorkflowEventType.CONTEXT_EXPANSION_GRANTED);
+    assertThat(state.getContextValue(ReservedContextKeys.grantedKey(sourceId)))
+        .get()
+        .extracting(value -> ((com.agentforge4j.core.workflow.context.JsonContextValue) value).json())
+        .isEqualTo("compact only form");
+  }
+
+  @Test
   void grantedStepOutputIsStoredAsStringContent() {
     // A step's raw output is arbitrary text, not JSON — storing it as a JSON context value would
     // hand downstream JSON consumers unparseable content.
@@ -402,6 +437,70 @@ class RequestContextCommandHandlerTest {
         .extracting(
             value -> ((com.agentforge4j.core.workflow.context.StringContextValue) value).value())
         .isEqualTo("plain text, not JSON");
+  }
+
+  @Test
+  void grantedStateKeyContentCopiesTheSourceValuesOwnProvenanceForward() {
+    // "design.md" is USER_SUPPLIED (untrusted). Granting it must copy that provenance forward, never
+    // elevate it to SYSTEM_GENERATED (trusted) — that would let a grant launder untrusted content past
+    // the untrusted-input envelope.
+    ContextSelection selection = new ContextSelection(List.of(), List.of(selector("design.md")),
+        null);
+    StepDefinition step = step(selection);
+    WorkflowState state = state();
+    RequestContextCommand command = new RequestContextCommand(List.of(selector("design.md")));
+
+    handler.apply(command, request(state, step, 0));
+
+    assertThat(state.getContextValue(
+        ReservedContextKeys.grantedKey(ContextSourceId.of(selector("design.md")))))
+        .get()
+        .extracting(com.agentforge4j.core.workflow.context.ContextValue::provenance)
+        .isEqualTo(com.agentforge4j.core.workflow.context.ContextProvenance.USER_SUPPLIED);
+  }
+
+  @Test
+  void grantedStepOutputContentIsStampedLlmGenerated() {
+    // A step's raw output is the step's LLM response text (AgentBehaviourHandler/SparBehaviourHandler
+    // capture it as such) — a grant must never stamp it SYSTEM_GENERATED, which would launder
+    // LLM-authored content into the framework-owned label the design reserves for deterministic,
+    // non-LLM content.
+    ContextSelector stepOutput = new ContextSelector(ContextSourceKind.STEP_OUTPUT, "s0",
+        ContextVariant.FULL);
+    ContextSelection selection = new ContextSelection(List.of(), List.of(stepOutput), null);
+    StepDefinition step = step(selection);
+    WorkflowState state = state();
+    state.putStepOutput("s0", "raw agent response");
+    RequestContextCommand command = new RequestContextCommand(List.of(stepOutput));
+
+    handler.apply(command, request(state, step, 0));
+
+    assertThat(state.getContextValue(ReservedContextKeys.grantedKey(ContextSourceId.of(stepOutput))))
+        .get()
+        .extracting(com.agentforge4j.core.workflow.context.ContextValue::provenance)
+        .isEqualTo(com.agentforge4j.core.workflow.context.ContextProvenance.LLM_GENERATED);
+  }
+
+  @Test
+  void grantedLedgerSectionContentIsStampedSystemGenerated() {
+    // Ledger content is produced only by LedgerMerger's deterministic, non-LLM merge — a grant of it
+    // is framework-owned content, correctly SYSTEM_GENERATED.
+    LedgerDefinition ledgerDef = ledger("requirements");
+    ContextSelector ledgerSelector = ledgerSelector("requirements", ContextVariant.FULL);
+    ContextSelection selection = new ContextSelection(List.of(), List.of(ledgerSelector), null);
+    StepDefinition step = step(selection);
+    WorkflowDefinition workflow = workflowWithLedger(step, ledgerDef);
+    WorkflowState state = state();
+    LedgerMerger.writeMerged(state, ledgerDef,
+        mapper.valueToTree(Map.of("entries", List.of(Map.of("id", "REQ-1")))));
+    RequestContextCommand command = new RequestContextCommand(List.of(ledgerSelector));
+
+    handler.apply(command, request(state, step, workflow, 0));
+
+    assertThat(state.getContextValue(ReservedContextKeys.grantedKey(ContextSourceId.of(ledgerSelector))))
+        .get()
+        .extracting(com.agentforge4j.core.workflow.context.ContextValue::provenance)
+        .isEqualTo(com.agentforge4j.core.workflow.context.ContextProvenance.SYSTEM_GENERATED);
   }
 
   @Test
