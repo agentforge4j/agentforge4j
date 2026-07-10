@@ -69,7 +69,17 @@
         "visitedSteps": { "type": "array", "items": { "type": "string" } },
         "notVisitedSteps": { "type": "array", "items": { "type": "string" } },
         "emittedEvents": { "type": "array", "items": { "type": "string" } },
-        "createdFiles": { "type": "array", "items": { "type": "string" } }
+        "createdFiles": { "type": "array", "items": { "type": "string" } },
+        "stepVisitCounts": {
+          "type": "object",
+          "additionalProperties": { "type": "integer", "minimum": 0},
+          "description": "Step id -> the exact number of times it must have been visited. Use for repeat-count assertions (e.g. SPAR rounds, retry attempts) rather than simple visited/not-visited presence."
+        },
+        "orderedSteps": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "A subsequence of step ids that must occur in this relative order among all visited steps. Use to assert relative ordering rather than visitedSteps' unordered presence check."
+        }
       }
     }
   }

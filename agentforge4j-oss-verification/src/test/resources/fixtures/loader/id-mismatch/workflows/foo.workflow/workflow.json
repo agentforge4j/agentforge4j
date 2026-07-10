@@ -1,5 +1,6 @@
 {
   "kind": "WORKFLOW",
+  "schemaVersion": 1,
   "id": "bar",
   "name": "Id Mismatches Directory",
   "steps": [

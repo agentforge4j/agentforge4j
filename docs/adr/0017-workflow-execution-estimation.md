@@ -19,7 +19,7 @@ Constraints and forces:
 - Branch and loop constructs make execution a *range*, not a number; min/max semantics must be correct. Turn-counting for SPAR/EVALUATOR steps was found to undercount and has since been fixed. Branch-arm aggregation sums every reachable arm's turns into the range rather than selecting one — a documented, deliberate upper-bound approximation, not a defect, but still an open design question about whether that is the right semantics for deeply-nested branches.
 - Token estimation must not be reinvented here: the shared `TokenEstimator` SPI (ADR-0016) is the single estimation home.
 
-## Proposed decision
+## Decision
 
 Two cooperating parts:
 
@@ -28,13 +28,13 @@ Two cooperating parts:
 
 Estimation output is advisory evidence; the exact surfacing vehicle — context values, dedicated events, or both — is an open question. It never gates execution by itself.
 
-## Alternatives under consideration
+## Alternatives considered
 
 1. **Dry-run execution** against the deterministic fake provider: accurate for one scripted path, but explores a single trajectory rather than the definition's full range, and costs a full run.
 2. **Static docs guidance only** (author-annotated expectations): zero code, but unverifiable and immediately stale.
 3. **Analyzer utilities only, no shipped workflow**: smaller surface, but loses the demonstrable end-user verdict flow that motivates the feature.
 
-## Expected consequences
+## Consequences
 
 ### Positive
 
@@ -57,12 +57,6 @@ Estimation output is advisory evidence; the exact surfacing vehicle — context 
 - How estimates integrate with downstream consumers: context values only, dedicated events, or both.
 - Whether the estimator workflow gains a mode tailored to multi-bundle compositions or stays generic.
 
-## Decision criteria
-
-- **Accept** when the analyzer's results are verified against known workflow fixtures and the shipped workflow passes catalog verification.
-- **Revise** if the branch-arm summing question above shows the aggregate model needs a different shape than the current utilities expose.
-- **Reject** the shipped-workflow half (keep utilities, alternative 3) if the verdict flow cannot be made deterministic-by-record.
-
 ## Compatibility impact
 
 - **API**: analyzer/aggregator facade in core (additive). Consuming ADR-0016's `TokenEstimator` SPI is the intended final architecture, contingent on that ADR's implementation stack merging; the facade does not consume it today.
@@ -72,14 +66,13 @@ Estimation output is advisory evidence; the exact surfacing vehicle — context 
 - **Docs/examples**: estimator guide with explicit bounds-vs-heuristics framing; a runnable example.
 - **Users**: opt-in; no effect on existing runs.
 
-## Implementation outline
+## Verification note
 
-1. Core analyzer/aggregator utilities behind the facade (initial increment landed).
-2. Resolve range semantics; correct the aggregation model.
-3. Shipped estimator workflow (agent + bundle) with catalog verification scenarios.
-4. Runnable example; documentation.
+Becomes Accepted once the analyzer's results are verified against known workflow fixtures, the shipped estimator workflow (open pull request #59, targeting `main`) has merged, and catalog verification passes. The core analyzer/aggregator utilities have already landed on `main`, including the turn-counting fix, using today's agent-supplied sizing — not ADR-0016's `TokenEstimator` SPI, which does not exist on `main`. If this record's SPI-integration language is to describe landed behaviour rather than target architecture, the facade must also be confirmed to actually delegate to ADR-0016's SPI before Accepted applies.
 
-**Verification note:** the core analyzer/aggregator utilities have landed on `main`, including the turn-counting fix, using today's agent-supplied sizing — not ADR-0016's `TokenEstimator` SPI, which does not exist on `main`. The shipped estimator workflow itself remains unmerged: open pull request #59 carries it, targeting `main`. Before moving this ADR to Accepted, confirm: #59 has merged and catalog verification passes; and, if this record's SPI-integration language is to describe landed behaviour rather than target architecture, that the facade has been updated to actually delegate to ADR-0016's SPI.
+## Follow-up work
+
+If the branch-arm summing open question above shows the aggregate model needs a different shape than the current utilities expose, this decision needs revision. The shipped-workflow half specifically (not the utilities) may be rejected — falling back to utilities-only, alternative 3 — if the verdict flow cannot be made deterministic-by-record.
 
 ## Related documents
 

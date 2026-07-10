@@ -112,6 +112,22 @@ class ScenarioSchemaContractTest {
   }
 
   @Test
+  void schemaAcceptsStepVisitCountsAndOrderedSteps() throws IOException {
+    List<Error> violations = SCENARIO_SCHEMA.validate(MAPPER.readTree("""
+        {
+          "workflowId": "demo",
+          "expect": {
+            "status": "COMPLETED",
+            "stepVisitCounts": {"revise": 2},
+            "orderedSteps": ["draft", "revise", "publish"]
+          }
+        }
+        """));
+
+    assertThat(violations).isEmpty();
+  }
+
+  @Test
   void schemaRejectsAMissingWorkflowId() throws IOException {
     assertThat(SCENARIO_SCHEMA.validate(MAPPER.readTree("{\"gates\": []}"))).isNotEmpty();
   }

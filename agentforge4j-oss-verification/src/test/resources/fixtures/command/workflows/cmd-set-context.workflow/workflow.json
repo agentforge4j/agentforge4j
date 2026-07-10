@@ -1,5 +1,6 @@
 {
   "kind": "WORKFLOW",
+  "schemaVersion": 1,
   "id": "cmd-set-context",
   "name": "Set Context Command",
   "steps": [

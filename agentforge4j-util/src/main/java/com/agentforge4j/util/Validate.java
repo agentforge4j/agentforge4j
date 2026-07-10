@@ -291,7 +291,10 @@ public final class Validate {
    * @return the validated value
    */
   public static Number isNotNegative(Number value, Supplier<RuntimeException> exceptionSupplier) {
-    return isGreaterThan(value, -1, exceptionSupplier);
+    notNull(exceptionSupplier, "Exception supplier must not be null");
+    notNull(value, exceptionSupplier);
+    isTrue(value.doubleValue() >= 0, exceptionSupplier);
+    return value;
   }
 
   /**

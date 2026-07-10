@@ -1,5 +1,6 @@
 {
   "kind": "WORKFLOW",
+  "schemaVersion": 1,
   "id": "cmd-user-prompt",
   "name": "User Prompt Command",
   "steps": [

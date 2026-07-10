@@ -1,9 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 package com.agentforge4j.config.loader.workflow;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
-
 import com.agentforge4j.config.loader.WorkflowDirectoryLoad;
 import com.agentforge4j.core.workflow.Executable;
 import com.agentforge4j.core.workflow.WorkflowDefinition;
@@ -22,6 +19,9 @@ import java.util.concurrent.ExecutionException;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
 class FileSystemWorkflowLoaderTest {
 
   @TempDir
@@ -34,6 +34,7 @@ class FileSystemWorkflowLoaderTest {
         """
             {
               "kind": "WORKFLOW",
+              "schemaVersion": 1,
               "id": "sample",
               "name": "Sample",
               "description": "Sample",
@@ -73,6 +74,7 @@ class FileSystemWorkflowLoaderTest {
         """
             {
               "kind": "WORKFLOW",
+              "schemaVersion": 1,
               "id": "different-id",
               "name": "Mismatch",
               "description": "Mismatch",
@@ -105,6 +107,7 @@ class FileSystemWorkflowLoaderTest {
         """
             {
               "kind": "WORKFLOW",
+              "schemaVersion": 1,
               "id": "sample",
               "name": "Sample",
               "description": "Sample",
@@ -211,6 +214,7 @@ class FileSystemWorkflowLoaderTest {
         """
             {
               "kind": "WORKFLOW",
+              "schemaVersion": 1,
               "id": "sample",
               "name": "Sample",
               "description": "Sample",
@@ -299,6 +303,98 @@ class FileSystemWorkflowLoaderTest {
         .isTrue();
   }
 
+  @Test
+  void loadWorkflows_rejectsMissingSchemaVersion() throws IOException {
+    Path workflowsRoot = createWorkflowBundle(
+        "sample",
+        """
+            {
+              "kind": "WORKFLOW",
+              "id": "sample",
+              "name": "Sample",
+              "steps": [
+                {
+                  "kind": "STEP",
+                  "stepId": "s1",
+                  "name": "S1",
+                  "behaviour": {
+                    "type": "FAIL",
+                    "reason": "stop"
+                  }
+                }
+              ]
+            }
+            """);
+
+    assertThatThrownBy(
+        () -> new FileSystemWorkflowLoader(new ObjectMapper()).loadWorkflows(workflowsRoot))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("does not declare the required schemaVersion")
+        .hasMessageContaining("supports workflow schema version 1");
+  }
+
+  @Test
+  void loadWorkflows_rejectsUnsupportedSchemaVersion() throws IOException {
+    Path workflowsRoot = createWorkflowBundle(
+        "sample",
+        """
+            {
+              "kind": "WORKFLOW",
+              "schemaVersion": 2,
+              "id": "sample",
+              "name": "Sample",
+              "steps": [
+                {
+                  "kind": "STEP",
+                  "stepId": "s1",
+                  "name": "S1",
+                  "behaviour": {
+                    "type": "FAIL",
+                    "reason": "stop"
+                  }
+                }
+              ]
+            }
+            """);
+
+    assertThatThrownBy(
+        () -> new FileSystemWorkflowLoader(new ObjectMapper()).loadWorkflows(workflowsRoot))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("declares workflow schema version 2")
+        .hasMessageContaining("supports version 1");
+  }
+
+  @Test
+  void loadWorkflows_rejectsNonIntegerSchemaVersion() throws IOException {
+    Path workflowsRoot = createWorkflowBundle(
+        "sample",
+        """
+            {
+              "kind": "WORKFLOW",
+              "schemaVersion": "one",
+              "id": "sample",
+              "name": "Sample",
+              "steps": [
+                {
+                  "kind": "STEP",
+                  "stepId": "s1",
+                  "name": "S1",
+                  "behaviour": {
+                    "type": "FAIL",
+                    "reason": "stop"
+                  }
+                }
+              ]
+            }
+            """);
+
+    assertThatThrownBy(
+        () -> new FileSystemWorkflowLoader(new ObjectMapper()).loadWorkflows(workflowsRoot))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("declares a non-integer schemaVersion 'one'")
+        .hasMessageContaining("supports workflow schema version 1");
+  }
+
   private Path createWorkflowBundle(String dirId, String workflowJson)
       throws IOException {
     Path workflowsRoot = tempDir.resolve("workflows");
@@ -332,6 +428,7 @@ class FileSystemWorkflowLoaderTest {
     return """
         {
           "kind": "WORKFLOW",
+          "schemaVersion": 1,
           "id": "%s",
           "name": "Sample",
           "description": "Sample",
@@ -351,5 +448,98 @@ class FileSystemWorkflowLoaderTest {
           ]
         }
         """.formatted(workflowId, agentRef);
+  }
+
+  @Test
+  void loadWorkflows_rejectsSchemaVersionAboveIntegerRange() throws IOException {
+    Path workflowsRoot = createWorkflowBundle(
+        "sample",
+        """
+            {
+              "kind": "WORKFLOW",
+              "schemaVersion": 2147483648,
+              "id": "sample",
+              "name": "Sample",
+              "steps": [
+                {
+                  "kind": "STEP",
+                  "stepId": "s1",
+                  "name": "S1",
+                  "behaviour": {
+                    "type": "FAIL",
+                    "reason": "stop"
+                  }
+                }
+              ]
+            }
+            """);
+
+    assertThatThrownBy(
+        () -> new FileSystemWorkflowLoader(new ObjectMapper()).loadWorkflows(workflowsRoot))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("schemaVersion")
+        .hasMessageContaining("supports");
+  }
+
+  @Test
+  void loadWorkflows_rejectsLargeSchemaVersionThatWouldNarrowToSupportedVersion() throws IOException {
+    Path workflowsRoot = createWorkflowBundle(
+        "sample",
+        """
+            {
+              "kind": "WORKFLOW",
+              "schemaVersion": 4294967297,
+              "id": "sample",
+              "name": "Sample",
+              "steps": [
+                {
+                  "kind": "STEP",
+                  "stepId": "s1",
+                  "name": "S1",
+                  "behaviour": {
+                    "type": "FAIL",
+                    "reason": "stop"
+                  }
+                }
+              ]
+            }
+            """);
+
+    assertThatThrownBy(
+        () -> new FileSystemWorkflowLoader(new ObjectMapper()).loadWorkflows(workflowsRoot))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("schemaVersion")
+        .hasMessageContaining("supports");
+  }
+
+  @Test
+  void loadWorkflows_rejectsSchemaVersionBelowIntegerRange() throws IOException {
+    Path workflowsRoot = createWorkflowBundle(
+        "sample",
+        """
+            {
+              "kind": "WORKFLOW",
+              "schemaVersion": -2147483649,
+              "id": "sample",
+              "name": "Sample",
+              "steps": [
+                {
+                  "kind": "STEP",
+                  "stepId": "s1",
+                  "name": "S1",
+                  "behaviour": {
+                    "type": "FAIL",
+                    "reason": "stop"
+                  }
+                }
+              ]
+            }
+            """);
+
+    assertThatThrownBy(
+        () -> new FileSystemWorkflowLoader(new ObjectMapper()).loadWorkflows(workflowsRoot))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("schemaVersion")
+        .hasMessageContaining("supports");
   }
 }

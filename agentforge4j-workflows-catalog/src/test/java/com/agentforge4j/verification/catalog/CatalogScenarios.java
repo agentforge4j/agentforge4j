@@ -276,6 +276,18 @@ public final class CatalogScenarios {
     if (expect.createdFiles() != null) {
       expect.createdFiles().forEach(assertion::createdFile);
     }
+    if (expect.stepVisitCounts() != null) {
+      expect.stepVisitCounts().forEach((stepId, count) -> {
+        if (count == null) {
+          throw new AssertionError(
+              "expect.stepVisitCounts value for step '%s' must not be null".formatted(stepId));
+        }
+        assertion.stepVisitCount(stepId, count);
+      });
+    }
+    if (expect.orderedSteps() != null) {
+      assertion.stepsInOrderedSubsequence(expect.orderedSteps().toArray(new String[0]));
+    }
   }
 
   private static List<GateResponse> toGateResponses(List<ExpectedResult.GateSpec> specs) {
