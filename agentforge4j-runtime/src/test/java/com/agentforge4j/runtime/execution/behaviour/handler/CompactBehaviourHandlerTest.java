@@ -84,7 +84,8 @@ class CompactBehaviourHandlerTest {
   private CompactBehaviourHandler handler(WorkflowDefinition workflow) {
     EventRecorder eventRecorder = new EventRecorder(new InMemoryWorkflowEventLog(), CLOCK);
     return new CompactBehaviourHandler(
-        new ContextSourceResolver(new ContextRenderer(mapper), mapper),
+        new ContextSourceResolver(new ContextRenderer(mapper), mapper,
+            com.agentforge4j.runtime.context.ContextPackRegistry.EMPTY),
         new DefaultTokenEstimator(),
         new InMemoryWorkflowRepository(Map.of(workflow.id(), workflow)),
         eventRecorder,

@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package com.agentforge4j.runtime.context;
 
+import com.agentforge4j.core.spi.contextpack.ContextPack;
+import com.agentforge4j.core.spi.contextpack.ContextPackVariant;
 import com.agentforge4j.core.workflow.LedgerDefinition;
 import com.agentforge4j.core.workflow.LedgerMergeStrategy;
 import com.agentforge4j.core.workflow.WorkflowDefinition;
@@ -34,7 +36,7 @@ class ContextSourceResolverTest {
 
   private final ObjectMapper mapper = new ObjectMapper();
   private final ContextSourceResolver resolver =
-      new ContextSourceResolver(new ContextRenderer(mapper), mapper);
+      new ContextSourceResolver(new ContextRenderer(mapper), mapper, ContextPackRegistry.EMPTY);
 
   private static LedgerDefinition ledger(String id) {
     return new LedgerDefinition(id, "ledger/requirement-ledger.schema.json",
@@ -150,13 +152,76 @@ class ContextSourceResolverTest {
   }
 
   @Test
-  void contextPackIsUnsupported() {
+  void contextPackUnknownNameThrows() {
     WorkflowState state = state();
     WorkflowDefinition wf = workflow(List.of());
 
     assertThatThrownBy(() -> resolver.resolveFull(
         selector(ContextSourceKind.CONTEXT_PACK, "any-pack", ContextVariant.FULL), state, wf))
-        .isInstanceOf(UnsupportedOperationException.class);
+        .isInstanceOf(IllegalArgumentException.class);
+  }
+
+  private static ContextPack pack(String name, boolean withCompactVariant) {
+    java.util.Map<String, ContextPackVariant> variants = new java.util.LinkedHashMap<>();
+    variants.put("full", new ContextPackVariant("full", "FULL CONTENT", "fp-full"));
+    if (withCompactVariant) {
+      variants.put("compact", new ContextPackVariant("compact", "COMPACT CONTENT", "fp-compact"));
+    }
+    return new ContextPack(name, "1.0.0", null, List.of(), variants);
+  }
+
+  @Test
+  void contextPackFullVariantResolvesDirectly() {
+    ContextSourceResolver withPacks = new ContextSourceResolver(new ContextRenderer(mapper), mapper,
+        ContextPackRegistry.of(List.of(pack("coding-standards", true))));
+    WorkflowState state = state();
+    WorkflowDefinition wf = workflow(List.of());
+
+    String content = withPacks.resolve(
+        selector(ContextSourceKind.CONTEXT_PACK, "coding-standards", ContextVariant.FULL), state, wf);
+
+    assertThat(content).isEqualTo("FULL CONTENT");
+  }
+
+  @Test
+  void contextPackCompactPreferredUsesCompactVariantWhenDeclared() {
+    ContextSourceResolver withPacks = new ContextSourceResolver(new ContextRenderer(mapper), mapper,
+        ContextPackRegistry.of(List.of(pack("coding-standards", true))));
+    WorkflowState state = state();
+    WorkflowDefinition wf = workflow(List.of());
+
+    String content = withPacks.resolve(
+        selector(ContextSourceKind.CONTEXT_PACK, "coding-standards", ContextVariant.COMPACT_PREFERRED),
+        state, wf);
+
+    assertThat(content).isEqualTo("COMPACT CONTENT");
+  }
+
+  @Test
+  void contextPackCompactPreferredFallsBackToFullWhenNoCompactVariant() {
+    ContextSourceResolver withPacks = new ContextSourceResolver(new ContextRenderer(mapper), mapper,
+        ContextPackRegistry.of(List.of(pack("coding-standards", false))));
+    WorkflowState state = state();
+    WorkflowDefinition wf = workflow(List.of());
+
+    String content = withPacks.resolve(
+        selector(ContextSourceKind.CONTEXT_PACK, "coding-standards", ContextVariant.COMPACT_PREFERRED),
+        state, wf);
+
+    assertThat(content).isEqualTo("FULL CONTENT");
+  }
+
+  @Test
+  void contextPackCompactOnlyFailsClosedWhenNoCompactVariant() {
+    ContextSourceResolver withPacks = new ContextSourceResolver(new ContextRenderer(mapper), mapper,
+        ContextPackRegistry.of(List.of(pack("coding-standards", false))));
+    WorkflowState state = state();
+    WorkflowDefinition wf = workflow(List.of());
+
+    assertThatThrownBy(() -> withPacks.resolve(
+        selector(ContextSourceKind.CONTEXT_PACK, "coding-standards", ContextVariant.COMPACT_ONLY),
+        state, wf))
+        .isInstanceOf(IllegalStateException.class);
   }
 
   @Test

@@ -51,6 +51,7 @@ import com.agentforge4j.runtime.execution.loop.EvaluatorLoopStrategy;
 import com.agentforge4j.runtime.execution.loop.FixedCountLoopStrategy;
 import com.agentforge4j.runtime.execution.loop.ForEachLoopStrategy;
 import com.agentforge4j.runtime.execution.loop.MaxIterationsHandler;
+import com.agentforge4j.runtime.context.ContextPackRegistry;
 import com.agentforge4j.runtime.context.ContextSourceResolver;
 import com.agentforge4j.runtime.interceptor.RunExecutionInterceptor;
 import com.agentforge4j.runtime.llm.AgentInvoker;
@@ -102,6 +103,7 @@ public final class WorkflowRuntimeBuilder {
   private List<ArtifactValidator> artifactValidators = List.of();
   private ObjectMapper objectMapper;
   private TokenEstimator tokenEstimator;
+  private ContextPackRegistry contextPackRegistry;
 
   /**
    * Configures the workflow definition source.
@@ -354,6 +356,21 @@ public final class WorkflowRuntimeBuilder {
   }
 
   /**
+   * Configures the {@link ContextPackRegistry} used to resolve {@code CONTEXT_PACK} context
+   * selectors. Defaults to {@link ContextPackRegistry#EMPTY} (no packs configured) when not set — a
+   * {@code CONTEXT_PACK} selector then fails with a clear "unknown context pack" error rather than
+   * silently resolving nothing.
+   *
+   * @param value context pack registry
+   *
+   * @return this builder
+   */
+  public WorkflowRuntimeBuilder contextPackRegistry(ContextPackRegistry value) {
+    this.contextPackRegistry = Validate.notNull(value, "contextPackRegistry must not be null");
+    return this;
+  }
+
+  /**
    * Validates required dependencies, wires executors and handlers, and returns a runnable
    * {@link com.agentforge4j.core.runtime.WorkflowRuntime}.
    *
@@ -374,8 +391,11 @@ public final class WorkflowRuntimeBuilder {
     ObjectMapper resolvedObjectMapper = ObjectUtils.getIfNull(objectMapper, ObjectMapper::new);
     TokenEstimator resolvedTokenEstimator = ObjectUtils.getIfNull(tokenEstimator,
         TokenEstimatorResolver::resolve);
+    ContextPackRegistry resolvedContextPackRegistry = ObjectUtils.getIfNull(contextPackRegistry,
+        ContextPackRegistry.EMPTY);
     ContextSourceResolver contextSourceResolver = new ContextSourceResolver(
-        new ContextRenderer(resolvedObjectMapper), resolvedObjectMapper);
+        new ContextRenderer(resolvedObjectMapper), resolvedObjectMapper,
+        resolvedContextPackRegistry);
 
     CommandApplier commandApplier = new CommandApplier(determineCommandHandlers(
         resolvedEventRecorder, resolvedFileSink, resolvedShell, resolvedClock,

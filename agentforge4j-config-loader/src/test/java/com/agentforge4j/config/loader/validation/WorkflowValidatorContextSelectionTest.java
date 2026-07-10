@@ -23,6 +23,7 @@ import com.agentforge4j.core.workflow.step.blueprint.BlueprintDefinition;
 import com.agentforge4j.core.workflow.step.blueprint.BlueprintRef;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThatCode;
@@ -69,7 +70,11 @@ class WorkflowValidatorContextSelectionTest {
   }
 
   private void validate(WorkflowDefinition wf) {
-    validator.validateContextSelectionRefs(Map.of("wf", wf));
+    validate(wf, Set.of());
+  }
+
+  private void validate(WorkflowDefinition wf, Set<String> loadedPackNames) {
+    validator.validateContextSelectionRefs(Map.of("wf", wf), loadedPackNames);
   }
 
   @Test
@@ -119,14 +124,32 @@ class WorkflowValidatorContextSelectionTest {
   }
 
   @Test
-  void skipsContextPackAndStateKeySelectors() {
+  void skipsStateKeySelectors() {
     ContextSelection selection = new ContextSelection(
-        List.of(sel(ContextSourceKind.CONTEXT_PACK, "any-pack"),
-            sel(ContextSourceKind.STATE_KEY, "some-key")),
-        List.of(), null);
+        List.of(sel(ContextSourceKind.STATE_KEY, "some-key")), List.of(), null);
     WorkflowDefinition wf = workflow(List.of(stepWithSelection("s1", selection)), List.of());
 
     assertThatCode(() -> validate(wf)).doesNotThrowAnyException();
+  }
+
+  @Test
+  void acceptsContextPackSelectorInLoadedPackNames() {
+    ContextSelection selection = new ContextSelection(
+        List.of(sel(ContextSourceKind.CONTEXT_PACK, "coding-standards")), List.of(), null);
+    WorkflowDefinition wf = workflow(List.of(stepWithSelection("s1", selection)), List.of());
+
+    assertThatCode(() -> validate(wf, Set.of("coding-standards"))).doesNotThrowAnyException();
+  }
+
+  @Test
+  void rejectsContextPackSelectorNotInLoadedPackNames() {
+    ContextSelection selection = new ContextSelection(
+        List.of(sel(ContextSourceKind.CONTEXT_PACK, "unknown-pack")), List.of(), null);
+    WorkflowDefinition wf = workflow(List.of(stepWithSelection("s1", selection)), List.of());
+
+    assertThatThrownBy(() -> validate(wf, Set.of("coding-standards")))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("unknown context pack 'unknown-pack'");
   }
 
   @Test
