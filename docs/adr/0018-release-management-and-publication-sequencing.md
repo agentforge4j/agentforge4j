@@ -74,7 +74,7 @@ Supporting decisions:
 
 ## Verification note
 
-Becomes Accepted once the release profile produces complete, signed, portal-valid artifacts in a dry run and every sequencing gate is reachable. POM metadata and the release profile have landed; no release, deploy, or publish workflow exists yet in CI (confirmed against current `main`), and signing and the catalog deploy job remain open. No prefixed release tags (`framework-v*`, `catalog-v*`, `builder-v*`) exist yet either. The wire-format `schemaVersion` field referenced in ADR-0001's follow-up work is a decided requirement — not an open question — but it remains unimplemented on `main`: it must land in the workflow schema before framework 0.1.0 is cut.
+Becomes Accepted once the release profile produces complete, signed, portal-valid artifacts in a dry run and every sequencing gate is reachable. POM metadata and the release profile have landed. No artifact release or publication workflow for Maven Central or npm exists yet in CI. The only deploy workflow currently on `main` publishes the documentation site to GitHub Pages. Signing and the catalog deploy job remain open. No prefixed release tags (`framework-v*`, `catalog-v*`, `builder-v*`) exist yet either. The wire-format `schemaVersion` field referenced in ADR-0001's follow-up work is a decided requirement — not an open question — but it remains unimplemented on `main`: it must land in the workflow schema before framework 0.1.0 is cut.
 
 ## Follow-up work
 
