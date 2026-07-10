@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 //
-// Source-backed snippet include (design §6/§8/§11). A fenced code block whose info string names a
+// Source-backed snippet include. A fenced code block whose info string names a
 // repo file (and optionally a named region) is filled, at build time, with the real source:
 //
 //   ```java file=agentforge4j-examples/.../QuickStartExample.java region=assemble

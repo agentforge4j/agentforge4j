@@ -50,13 +50,16 @@ class DocsEmitterTest {
   @Test
   void providerMatrixExcludesFakeAndCarriesTiers() {
     assertTrue(providers.size() > 0, "expected at least one provider");
+    final List<String> modelTiers = new ArrayList<>();
+    contracts.get("modelTiers").forEach(node -> modelTiers.add(node.asText()));
     final List<String> names = new ArrayList<>();
     for (final JsonNode provider : providers) {
       names.add(provider.get("name").asText());
       assertTrue(provider.has("requiresApiKey"));
       final JsonNode tiers = provider.get("tiers");
-      assertTrue(tiers.has("LITE") && tiers.has("STANDARD") && tiers.has("POWERFUL"),
-          "every provider must carry all model tiers");
+      for (final String tier : modelTiers) {
+        assertTrue(tiers.has(tier), "every provider must carry every emitted model tier, missing " + tier);
+      }
     }
     assertFalse(names.contains("fake"), "the fake provider must not appear in the user-facing matrix");
     assertTrue(names.contains("openai"), "expected the openai provider to be present");
@@ -76,9 +79,11 @@ class DocsEmitterTest {
     assertTrue(contracts.get("workflowEventTypes").size() > 0);
     assertTrue(contracts.get("workflowStatuses").size() > 0);
 
+    // Containment, not an exact list: a legitimate new tier (e.g. PREMIUM) must not break this test.
     final List<String> tiers = new ArrayList<>();
     contracts.get("modelTiers").forEach(node -> tiers.add(node.asText()));
-    assertEquals(List.of("LITE", "STANDARD", "POWERFUL"), tiers);
+    assertTrue(tiers.containsAll(List.of("LITE", "STANDARD", "POWERFUL")),
+        "modelTiers must include the baseline LITE/STANDARD/POWERFUL tiers");
   }
 
   @Test
