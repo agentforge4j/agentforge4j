@@ -266,6 +266,79 @@ class ForEachLoopStrategyTest {
   }
 
   @Test
+  void retry_across_a_paused_iteration_with_a_changed_list_restarts_instead_of_throwing() {
+    putList("a", "b");
+    AtomicInteger calls = new AtomicInteger();
+    when(stepSequenceExecutor.executeAll(anyList(), any()))
+        .thenAnswer(inv -> {
+          if (calls.getAndIncrement() == 0) {
+            int uid = executionContext.allocateStepSequenceUid();
+            state.putStepExecutionUid("dummy", uid);
+            return ExecutionOutcome.PAUSED;
+          }
+          return ExecutionOutcome.COMPLETED;
+        });
+
+    assertThat(strategy.iterate(blueprint, forEachConfig(false), executionContext))
+        .isEqualTo(ExecutionOutcome.PAUSED);
+    assertThat(state.getLoopIterationCursor(BLUEPRINT_ID)).isEqualTo(1);
+    assertThat(state.getForEachListFingerprint(BLUEPRINT_ID)).isPresent();
+
+    // Simulate a retry/rewind crossing this loop's in-progress iteration: WorkflowState's rewind
+    // chokepoint (WorkflowState.clearEntriesFromUid) clears the cursor, body-start-uid, and list
+    // fingerprint together.
+    int bodyStartUid = state.getLoopIterationBodyStartUid(BLUEPRINT_ID);
+    state.clearEntriesFromUid(bodyStartUid);
+    assertThat(state.getLoopIterationCursor(BLUEPRINT_ID)).isZero();
+
+    // The redrive's upstream step legitimately produces a different list on this retry — the
+    // ordinary reason to retry it — which must not be misread as a disallowed pause/resume
+    // mutation now that the cursor and fingerprint are consistently cleared together.
+    putList("x", "y");
+
+    assertThat(strategy.iterate(blueprint, forEachConfig(false), executionContext))
+        .isEqualTo(ExecutionOutcome.COMPLETED);
+    // A fresh entry re-runs both iterations of the new list rather than throwing
+    // IllegalStateException for a "list changed between pause and resume".
+    assertThat(calls.get()).isEqualTo(3);
+    assertThat(state.getLoopIterationCursor(BLUEPRINT_ID)).isZero();
+    assertThat(state.getForEachListFingerprint(BLUEPRINT_ID)).isEmpty();
+  }
+
+  @Test
+  void disallowed_mutation_throw_path_also_evicts_the_abandoned_iterations_generated_artifact_bytes() {
+    putList("a", "b");
+    AtomicInteger calls = new AtomicInteger();
+    when(stepSequenceExecutor.executeAll(anyList(), any()))
+        .thenAnswer(inv -> {
+          if (calls.getAndIncrement() == 0) {
+            int uid = executionContext.allocateStepSequenceUid();
+            state.putStepExecutionUid("dummy", uid);
+            state.addGeneratedArtifactDescriptor(
+                new ArtifactDescriptor("abandoned.txt", "hash", "dummy", uid));
+            generatedArtifactStore.register("run-1", "dummy", "abandoned.txt", "stale bytes");
+            return ExecutionOutcome.PAUSED;
+          }
+          return ExecutionOutcome.COMPLETED;
+        });
+
+    assertThat(strategy.iterate(blueprint, forEachConfig(false), executionContext))
+        .isEqualTo(ExecutionOutcome.PAUSED);
+    assertThat(generatedArtifactStore.find("run-1", "abandoned.txt")).isPresent();
+    putList("x", "y");
+
+    // With allowForEachListMutation=false the strategy throws instead of restarting, but the
+    // abandoned iteration's captured artifact bytes must still be evicted before it does — the
+    // same guarantee the allowed-mutation restart path gives, so this throw path does not leak
+    // artifact bytes against the run's artifact-count bound if a future change relaxes the
+    // terminal-status cleanup this currently relies on.
+    assertThatThrownBy(
+        () -> strategy.iterate(blueprint, forEachConfig(false), executionContext))
+        .isInstanceOf(IllegalStateException.class);
+    assertThat(generatedArtifactStore.find("run-1", "abandoned.txt")).isEmpty();
+  }
+
+  @Test
   void cancelled_clears_cursor_and_fingerprint() {
     putList("a", "b");
     when(stepSequenceExecutor.executeAll(anyList(), any()))

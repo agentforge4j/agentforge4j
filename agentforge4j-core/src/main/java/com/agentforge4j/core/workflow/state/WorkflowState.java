@@ -66,7 +66,10 @@ public final class WorkflowState {
   private final Map<String, Integer> loopIterationCursorByBlueprintId;
   /**
    * For {@code FOR_EACH} loops only: stable fingerprint of the list under
-   * {@code forEachContextKey}, keyed by blueprint id.
+   * {@code forEachContextKey}, keyed by blueprint id. A retry/rewind crossing the loop's
+   * in-progress iteration clears this together with {@link #loopIterationCursorByBlueprintId} and
+   * {@link #loopIterationBodyStartUidByBlueprintId}, via {@link #clearEntriesFromUid(int)} — a
+   * fingerprint surviving on its own would otherwise still read as an in-progress resume.
    */
   private final Map<String, String> forEachListFingerprintByBlueprintId;
   /**
@@ -549,13 +552,16 @@ public final class WorkflowState {
    * {@code stepOutputs}), so a rewind past a file-emitting step does not leave a stale descriptor for a path the
    * re-drive may not re-emit.
    *
-   * <p>A loop's {@link #loopIterationCursorByBlueprintId cursor} and
-   * {@link #loopIterationBodyStartUidByBlueprintId body-start-uid marker} are also dropped together when the
-   * marker's uid is at or after {@code retryUid}: the loop's currently in-progress iteration began within the
-   * rewound range, so — whether that loop is still actively iterating or sitting paused (e.g. an
-   * {@code AWAIT_USER} max-iterations pause) — it is no longer meaningfully in progress once its body outputs
-   * are cleared, and must restart from iteration one on the next drive rather than resume mid-way with a stale
-   * cursor.
+   * <p>A loop's {@link #loopIterationCursorByBlueprintId cursor}, {@link #loopIterationBodyStartUidByBlueprintId
+   * body-start-uid marker}, and (for {@code FOR_EACH} loops) {@link #forEachListFingerprintByBlueprintId list
+   * fingerprint} are also dropped together when the body-start-uid marker's uid is at or after {@code retryUid}:
+   * the loop's currently in-progress iteration began within the rewound range, so — whether that loop is still
+   * actively iterating or sitting paused (e.g. an {@code AWAIT_USER} max-iterations pause) — it is no longer
+   * meaningfully in progress once its body outputs are cleared, and must restart from iteration one on the next
+   * drive rather than resume mid-way with a stale cursor. Dropping the list fingerprint too matters specifically
+   * for {@code FOR_EACH}: a fingerprint surviving without its cursor would still read as an in-progress resume to
+   * {@code ForEachLoopStrategy}, and a redrive that legitimately produces a different list (the common reason to
+   * retry an upstream step) would then be misread as a disallowed list mutation instead of a fresh loop entry.
    *
    * @param retryUid the uid threshold; entries with uid &gt;= this value are cleared
    */
@@ -583,6 +589,7 @@ public final class WorkflowState {
       Map.Entry<String, Integer> entry = loopBodyStartUidIterator.next();
       if (entry.getValue() >= retryUid) {
         loopIterationCursorByBlueprintId.remove(entry.getKey());
+        forEachListFingerprintByBlueprintId.remove(entry.getKey());
         loopBodyStartUidIterator.remove();
       }
     }

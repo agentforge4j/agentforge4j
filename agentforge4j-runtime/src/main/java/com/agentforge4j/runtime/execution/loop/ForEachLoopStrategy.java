@@ -79,7 +79,7 @@ public final class ForEachLoopStrategy extends AbstractLoopStrategy {
       state.setForEachListFingerprint(blueprintId, currentFingerprint);
     } else if (!currentFingerprint.equals(storedFingerprint)) {
       if (!config.allowForEachListMutation()) {
-        clearLoopState(state, blueprintId);
+        restartLoop(state, blueprintId);
         throw new IllegalStateException(
             "FOR_EACH list under context key '%s' changed between pause and resume for blueprint '%s' (run '%s'). Set LoopConfig.allowForEachListMutation=true on the blueprint to permit this."
                 .formatted(config.forEachContextKey(), blueprintId, state.getRunId()));

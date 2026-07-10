@@ -485,6 +485,25 @@ class WorkflowStateTest {
   }
 
   @Test
+  void clearEntriesFromUid_drops_stale_for_each_list_fingerprint_alongside_the_cursor() {
+    WorkflowState state = new WorkflowState("run-1", "wf-1", null, t());
+    // A FOR_EACH loop's list fingerprint is a third piece of per-loop resume state, alongside the
+    // cursor and body-start-uid; it must be dropped together or a stale fingerprint alone still
+    // reads as an in-progress resume to ForEachLoopStrategy.
+    state.setLoopIterationCursor("paused-for-each", 2);
+    state.setLoopIterationBodyStartUid("paused-for-each", 5);
+    state.setForEachListFingerprint("paused-for-each", "stale-fingerprint");
+    state.setLoopIterationCursor("later-for-each", 1);
+    state.setLoopIterationBodyStartUid("later-for-each", 2);
+    state.setForEachListFingerprint("later-for-each", "kept-fingerprint");
+
+    state.clearEntriesFromUid(5);
+
+    assertThat(state.getForEachListFingerprint("paused-for-each")).isEmpty();
+    assertThat(state.getForEachListFingerprint("later-for-each")).contains("kept-fingerprint");
+  }
+
+  @Test
   void generated_artifact_descriptors_append_in_order_and_getter_is_unmodifiable() {
     WorkflowState state = new WorkflowState("run-1", "wf-1", null, t());
     ArtifactDescriptor first = new ArtifactDescriptor("agent.json", "h1", "generate", 1);
