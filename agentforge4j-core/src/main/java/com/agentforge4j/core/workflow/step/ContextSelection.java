@@ -24,11 +24,16 @@ import java.util.List;
  * @param expandableScope the additional sources the step may request; empty means no expansion is
  *                        permitted. Never {@code null} ({@code null} becomes an empty list, copied)
  * @param maxExpansions   maximum number of requested context expansions evaluated within a single
- *                        step invocation — each selector requested via {@code RequestContextCommand}
- *                        counts as one expansion, however the selectors are batched into commands;
- *                        {@code null} defaults to {@value #DEFAULT_MAX_EXPANSIONS}. Must be positive
- *                        when present — "no expansion permitted" is declared with an empty
- *                        {@code expandableScope}, not a zero limit
+ *                        command-application batch (one {@code AGENT}/{@code SPAR} call's commands)
+ *                        — each selector requested via {@code RequestContextCommand} counts as one
+ *                        expansion, however the selectors are batched into commands. The count
+ *                        resets on the next batch, so it does not bound expansions across a step's
+ *                        full invocation lifecycle if that step pauses and resumes (for example an
+ *                        {@code AWAITING_TOOL_APPROVAL} cycle) or is retried — each resumption or
+ *                        retry starts a fresh count. {@code null} defaults to
+ *                        {@value #DEFAULT_MAX_EXPANSIONS}. Must be positive when present — "no
+ *                        expansion permitted" is declared with an empty {@code expandableScope}, not
+ *                        a zero limit
  */
 public record ContextSelection(
     List<ContextSelector> selectors,
