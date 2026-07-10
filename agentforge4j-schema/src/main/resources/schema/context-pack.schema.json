@@ -25,6 +25,7 @@
     "variants": {
       "type": "object",
       "minProperties": 1,
+      "propertyNames": { "minLength": 1 },
       "additionalProperties": { "type": "string", "minLength": 1 },
       "description": "Map of variant name (e.g. full, compact) to the content file within the pack directory."
     }

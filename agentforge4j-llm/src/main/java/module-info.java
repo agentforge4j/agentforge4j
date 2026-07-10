@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import com.agentforge4j.llm.LlmClientFactory;
+import com.agentforge4j.llm.api.TokenEstimator;
 
 /**
  * Provider-neutral LLM client contracts and {@link LlmClientFactory} service interface.
@@ -18,4 +19,5 @@ module agentforge4j.llm {
   requires agentforge4j.util;
   exports com.agentforge4j.llm;
   uses LlmClientFactory;
+  uses TokenEstimator;
 }

@@ -12,6 +12,10 @@ import com.agentforge4j.core.workflow.WorkflowDefinition;
 import com.agentforge4j.core.workflow.WorkflowLifecycle;
 import com.agentforge4j.core.workflow.WorkflowSource;
 import com.agentforge4j.core.workflow.context.ContextMapping;
+import com.agentforge4j.core.workflow.step.ContextSelection;
+import com.agentforge4j.core.workflow.step.ContextSelector;
+import com.agentforge4j.core.workflow.step.ContextSourceKind;
+import com.agentforge4j.core.workflow.step.ContextVariant;
 import com.agentforge4j.core.workflow.step.StepDefinition;
 import com.agentforge4j.core.workflow.step.StepTransition;
 import com.agentforge4j.core.workflow.step.behaviour.AgentBehaviour;
@@ -24,6 +28,7 @@ import java.util.List;
 import java.util.Map;
 import java.nio.file.Path;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -205,11 +210,67 @@ class AgentForgeLoaderTest {
     Path workflowsRoot = Path.of("target/explicit-workflows");
 
     LoadedConfiguration loaded = loader.load(Optional.empty(), Optional.of(workflowsRoot),
-        Optional.empty(), Optional.empty());
+        Optional.empty(), Optional.empty(), Set.of());
 
     assertThat(capturedPath.get()).isEqualTo(workflowsRoot);
     assertThat(loaded.workflows()).isEmpty();
     assertThat(loaded.agents()).isEmpty();
+  }
+
+  @Test
+  void load_rejectsWorkflowWithUnresolvedContextSelectionRef() {
+    ContextSelection selection = new ContextSelection(
+        List.of(new ContextSelector(ContextSourceKind.LEDGER_SECTION, "nope", ContextVariant.FULL)),
+        List.of(), null);
+    StepDefinition step = StepDefinition.builder()
+        .withStepId("s1")
+        .withName("S1")
+        .withBehaviour(new FailBehaviour("stop"))
+        .withContextMapping(new ContextMapping(List.of(), List.of()))
+        .withContextSelection(selection)
+        .build();
+    WorkflowDefinition workflow = new WorkflowDefinition(
+        "wf", "W", "d", null, null, null, null, WorkflowSource.CUSTOM, WorkflowLifecycle.ACTIVE,
+        Map.of(), Map.of(), List.of(step), List.of(), List.of());
+    WorkflowDirectoryLoader directoryLoader =
+        root -> new WorkflowDirectoryLoad(Map.of("wf", workflow), Map.of());
+    AgentForgeLoader loader = new AgentForgeLoader(emptyAgentLoader(), directoryLoader);
+
+    assertThatThrownBy(() -> loader.load(Optional.empty(), Optional.of(Path.of("target/workflows")),
+        Optional.empty(), Optional.empty(), Set.of()))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("unknown ledger 'nope'");
+  }
+
+  @Test
+  void load_validatesContextPackSelectorsAgainstSuppliedPackNames() {
+    ContextSelection selection = new ContextSelection(
+        List.of(new ContextSelector(ContextSourceKind.CONTEXT_PACK, "coding-standards",
+            ContextVariant.FULL)),
+        List.of(), null);
+    StepDefinition step = StepDefinition.builder()
+        .withStepId("s1")
+        .withName("S1")
+        .withBehaviour(new FailBehaviour("stop"))
+        .withContextMapping(new ContextMapping(List.of(), List.of()))
+        .withContextSelection(selection)
+        .build();
+    WorkflowDefinition workflow = new WorkflowDefinition(
+        "wf", "W", "d", null, null, null, null, WorkflowSource.CUSTOM, WorkflowLifecycle.ACTIVE,
+        Map.of(), Map.of(), List.of(step), List.of(), List.of());
+    WorkflowDirectoryLoader directoryLoader =
+        root -> new WorkflowDirectoryLoad(Map.of("wf", workflow), Map.of());
+    AgentForgeLoader loader = new AgentForgeLoader(emptyAgentLoader(), directoryLoader);
+
+    // The pack is named in the supplied loaded-pack set: the load passes.
+    loader.load(Optional.empty(), Optional.of(Path.of("target/workflows")),
+        Optional.empty(), Optional.empty(), Set.of("coding-standards"));
+
+    // With no packs loaded, the same selector fails validation.
+    assertThatThrownBy(() -> loader.load(Optional.empty(), Optional.of(Path.of("target/workflows")),
+        Optional.empty(), Optional.empty(), Set.of()))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("unknown context pack 'coding-standards'");
   }
 
   @Test
@@ -223,7 +284,7 @@ class AgentForgeLoaderTest {
         });
 
     LoadedConfiguration loaded = loader.load(Optional.empty(), Optional.empty(),
-        Optional.empty(), Optional.empty());
+        Optional.empty(), Optional.empty(), Set.of());
 
     assertThat(capturedPath.get()).isNull();
     assertThat(loaded.agents()).isEmpty();
