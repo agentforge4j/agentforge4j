@@ -254,6 +254,20 @@ class CommandApplierTest {
         .hasMessageContaining("not-a-number");
   }
 
+  @Test
+  void apply_failsWithAClearErrorWhenThePersistedExpansionCountHoldsTheWrongValueType() {
+    WorkflowState state = stateAtStep("s1");
+    state.putContextValue(ReservedContextKeys.expansionCountKey(7),
+        new com.agentforge4j.core.workflow.context.JsonContextValue("{\"count\":3}",
+            ContextProvenance.SYSTEM_GENERATED));
+    CommandApplier applier = applier();
+
+    assertThatThrownBy(() -> applier.apply(List.of(new ContinueCommand(null, null, null)), state,
+        ContextMapping.none(), "agent-1", 7, step("s1"), workflow()))
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessageContaining("unexpected value type");
+  }
+
   private static WorkflowState stateAtStep(String stepId) {
     WorkflowState state = new WorkflowState(
         "run-1",

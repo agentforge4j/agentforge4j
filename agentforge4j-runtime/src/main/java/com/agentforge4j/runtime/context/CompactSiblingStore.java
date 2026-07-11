@@ -82,6 +82,24 @@ public final class CompactSiblingStore {
         new JsonContextValue(root.toString(), provenance));
   }
 
+  /**
+   * Returns whether {@code sibling} is fresh against {@code currentFingerprint}: present and its
+   * stored {@code sourceFingerprint} matches. Centralizes the compact-sibling staleness predicate so
+   * every caller of {@link #read} that needs a freshness decision applies the identical rule.
+   *
+   * @param sibling            the result of a prior {@link #read} call; must not be {@code null}
+   * @param currentFingerprint the freshly computed source fingerprint to compare against; must not
+   *                           be blank
+   *
+   * @return {@code true} when {@code sibling} is present and its fingerprint matches
+   */
+  public static boolean isFresh(Optional<CompactSibling> sibling, String currentFingerprint) {
+    Validate.notNull(sibling, "sibling must not be null");
+    Validate.notBlank(currentFingerprint, "currentFingerprint must not be blank");
+    return sibling.isPresent()
+        && sibling.get().metadata().sourceFingerprint().equals(currentFingerprint);
+  }
+
   private static CompactSibling parse(JsonContextValue value, String sourceId, ObjectMapper mapper) {
     try {
       JsonNode node = mapper.readTree(value.json());

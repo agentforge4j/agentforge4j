@@ -3,6 +3,7 @@ package com.agentforge4j.config.loader.agent;
 
 import com.agentforge4j.core.agent.AgentDefinition;
 import com.agentforge4j.core.agent.AgentLocality;
+import com.agentforge4j.core.agent.OutputContract;
 import com.agentforge4j.core.agent.ProviderPreference;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import lombok.Getter;
@@ -30,6 +31,7 @@ public final class AgentDefinitionFile {
   private String contact;
   private String version;
   private String modelTier;
+  private OutputContract outputContract;
 
   /**
    * Converts this DTO into an {@link AgentDefinition} using the resolved system prompt content.
@@ -50,6 +52,7 @@ public final class AgentDefinitionFile {
         .withContact(contact)
         .withVersion(version)
         .withModelTier(modelTier)
+        .withOutputContract(outputContract)
         .build();
   }
 }

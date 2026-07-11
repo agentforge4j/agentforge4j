@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package com.agentforge4j.runtime.execution.behaviour.handler;
 
+import com.agentforge4j.core.command.LlmCommand;
 import com.agentforge4j.core.workflow.WorkflowDefinition;
 import com.agentforge4j.core.workflow.context.ContextMapping;
 import com.agentforge4j.core.workflow.context.ContextProvenance;
@@ -40,6 +41,9 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Handles a {@link CompactBehaviour}: deterministically decides whether compacting the declared source
@@ -48,12 +52,20 @@ import java.util.List;
  * <p><strong>Reuse counting:</strong> a referencing step counts toward
  * {@link CompactionPolicy#minDownstreamReuse()} when it is reachable in the resolved workflow
  * graph ({@link ReachableStepGraph#walk}) from the run root and its declared {@code contextSelection}
- * — its {@code selectors} or its {@code expandableScope} (a granted expansion reads the compact
- * form too, so a potential reader counts as reuse) — references this
- * step's source with variant {@code COMPACT_PREFERRED} or {@code COMPACT_ONLY}. There is no
- * before/after-the-COMPACT-step ordering check: a step that reads the source before compaction ran
- * either fails closed ({@code COMPACT_ONLY}) or falls back to the full source
- * ({@code COMPACT_PREFERRED}) at read time regardless, so ordering cannot make the count unsafe.
+ * {@code expandableScope} (a granted expansion reads the compact form too, so a potential reader
+ * counts as reuse) references this step's source with variant {@code COMPACT_PREFERRED} or
+ * {@code COMPACT_ONLY}. {@code contextSelection.selectors} is deliberately excluded from this count:
+ * it is not yet enforced anywhere in the runtime (see {@code ContextSelection}'s class Javadoc), so
+ * counting it would trigger real compaction work — potentially an {@code LLM_SUMMARY} invocation —
+ * for a declaration with no actual downstream effect. There is no before/after-the-COMPACT-step
+ * ordering check: a step that reads the source before compaction ran either fails closed
+ * ({@code COMPACT_ONLY}) or falls back to the full source ({@code COMPACT_PREFERRED}) at read time
+ * regardless, so ordering cannot make the count unsafe.
+ *
+ * <p>The reachable-step graph is walked once per distinct root workflow id and cached for the
+ * lifetime of this handler instance: {@link ReachableStepGraph#walk} is a pure function of the
+ * (immutable) workflow definition tree, so re-walking it on every {@code COMPACT} execution in a
+ * loop-heavy workflow would pay the same cost repeatedly for an unchanging answer.
  *
  * <p>A referencing step inside a reached sub-workflow counts individually, not collapsed to its
  * {@code WORKFLOW} step: this runtime shares one flat context map for the whole run (no
@@ -63,11 +75,15 @@ import java.util.List;
  * <p>{@link DeterministicExtract} is implemented only for whole-ledger {@code LEDGER_SECTION}
  * sources: it copies the source verbatim except stripping any top-level {@code rationale} field
  * from each entry. {@link LlmSummary} invokes its declared {@code agentRef} through the normal
- * {@link AgentInvoker} path — the same mechanism as an {@code AGENT} step, no special-casing. Since
- * {@code AgentInvoker} only ever renders context from {@code state} via a {@code ContextMapping}
- * (never from an arbitrary caller-supplied string), the already-resolved source content is first
- * staged under {@link ReservedContextKeys#llmSummaryInputKey(String)} so a mapping can address it —
- * the same convention {@code SparBehaviourHandler} uses for its resolution-round prompt.
+ * {@link AgentInvoker} path, the same mechanism an {@code AGENT} step uses to call the model — but
+ * unlike an {@code AGENT} step, this handler never applies the invocation's parsed commands: a
+ * compaction step has no command-application semantics (no pause states, no escalation path), so an
+ * {@code agentRef} that emits any command other than plain text fails the step loudly rather than
+ * having the command silently discarded. Since {@code AgentInvoker} only ever renders context from
+ * {@code state} via a {@code ContextMapping} (never from an arbitrary caller-supplied string), the
+ * already-resolved source content is first staged under
+ * {@link ReservedContextKeys#llmSummaryInputKey(String)} so a mapping can address it — the same
+ * convention {@code SparBehaviourHandler} uses for its resolution-round prompt.
  */
 public final class CompactBehaviourHandler implements BehaviourHandler<CompactBehaviour> {
 
@@ -79,6 +95,8 @@ public final class CompactBehaviourHandler implements BehaviourHandler<CompactBe
   private final EventRecorder eventRecorder;
   private final ObjectMapper objectMapper;
   private final AgentInvoker agentInvoker;
+  private final Map<String, List<ReachableStep>> reachableStepsByRootWorkflowId =
+      new ConcurrentHashMap<>();
 
   public CompactBehaviourHandler(ContextSourceResolver contextSourceResolver,
       TokenEstimator tokenEstimator, WorkflowRepository workflowRepository,
@@ -134,14 +152,16 @@ public final class CompactBehaviourHandler implements BehaviourHandler<CompactBe
         return SkipReason.INSUFFICIENT_REUSE;
       }
     }
-    return CompactSiblingStore.read(executionContext.getState(), sourceId, objectMapper)
-        .filter(sibling -> sibling.metadata().sourceFingerprint().equals(sourceFingerprint))
-        .isPresent() ? SkipReason.UP_TO_DATE : null;
+    Optional<CompactSibling> sibling = CompactSiblingStore.read(executionContext.getState(),
+        sourceId, objectMapper);
+    return CompactSiblingStore.isFresh(sibling, sourceFingerprint) ? SkipReason.UP_TO_DATE : null;
   }
 
   private int countReferencingSteps(WorkflowDefinition root, String sourceId) {
+    List<ReachableStep> reachableSteps = reachableStepsByRootWorkflowId.computeIfAbsent(root.id(),
+        id -> ReachableStepGraph.walk(root, workflowRepository::get));
     int count = 0;
-    for (ReachableStep reachable : ReachableStepGraph.walk(root, workflowRepository::get)) {
+    for (ReachableStep reachable : reachableSteps) {
       if (referencesSource(reachable.step(), sourceId)) {
         count++;
       }
@@ -154,8 +174,9 @@ public final class CompactBehaviourHandler implements BehaviourHandler<CompactBe
     if (selection == null) {
       return false;
     }
-    return referencesSource(selection.selectors(), sourceId)
-        || referencesSource(selection.expandableScope(), sourceId);
+    // Only expandableScope is counted — see the class Javadoc's "Reuse counting" note on why
+    // contextSelection.selectors (not yet enforced anywhere in the runtime) must not be.
+    return referencesSource(selection.expandableScope(), sourceId);
   }
 
   private static boolean referencesSource(List<ContextSelector> selectors, String sourceId) {
@@ -186,6 +207,10 @@ public final class CompactBehaviourHandler implements BehaviourHandler<CompactBe
       provenance = ContextProvenance.SYSTEM_GENERATED;
     } else if (behaviour.mode() instanceof LlmSummary llmSummary) {
       compactContent = summarizeViaAgent(step, llmSummary, executionContext, sourceId, fullContent);
+      // No blank-content guard is needed here: compactContent is exactly result.rawResponse(), and
+      // AgentInvocationResult's own canonical constructor already requires rawResponse to be
+      // non-blank (Validate.notBlank) — a degenerate/empty LLM response fails one layer up, inside
+      // the invocation itself, before summarizeViaAgent can ever return.
       // The content is an LLM's own generated text regardless of what it summarized — the
       // compaction step's determinism does not launder the LLM authorship of its output.
       provenance = ContextProvenance.LLM_GENERATED;
@@ -218,6 +243,10 @@ public final class CompactBehaviourHandler implements BehaviourHandler<CompactBe
    * scratch, not durable governance state (unlike the ledger/compact/granted reserved keys) — it is
    * always removed once the invocation completes, whether it succeeds or throws, so a failed
    * compaction never leaves the resolved source content sitting in run state under a synthetic key.
+   *
+   * <p>The invocation's parsed commands are never applied (see the class Javadoc): if the agent
+   * emits any command, the step fails loudly naming what was discarded, rather than silently
+   * dropping it and treating the raw response as a successful summary.
    */
   private String summarizeViaAgent(StepDefinition step, LlmSummary llmSummary,
       ExecutionContext executionContext, String sourceId, String fullContent) {
@@ -234,6 +263,15 @@ public final class CompactBehaviourHandler implements BehaviourHandler<CompactBe
           step.stepPrompt(),
           llmSummary.modelTier(),
           executionContext.getActiveWorkflowId());
+      List<LlmCommand> commands = result.commands();
+      if (!commands.isEmpty()) {
+        List<String> commandTypes = commands.stream().map(c -> c.getClass().getSimpleName()).toList();
+        throw new IllegalStateException(
+            ("LLM_SUMMARY agent '%s' for step '%s' emitted %d command(s) (%s); LLM_SUMMARY "
+                + "compaction does not apply commands — the agent must respond with plain "
+                + "summary text only").formatted(llmSummary.agentRef(), step.stepId(),
+                commands.size(), commandTypes));
+      }
       return result.rawResponse();
     } finally {
       state.removeContextValue(inputKey);

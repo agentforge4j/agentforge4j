@@ -20,6 +20,8 @@ import com.agentforge4j.core.workflow.step.ContextVariant;
 import com.agentforge4j.core.workflow.step.StepDefinition;
 import com.agentforge4j.core.workflow.step.behaviour.BranchBehaviour;
 import com.agentforge4j.core.workflow.step.behaviour.CompactBehaviour;
+import com.agentforge4j.core.workflow.step.behaviour.CompactionMode;
+import com.agentforge4j.core.workflow.step.behaviour.CompactionPolicy;
 import com.agentforge4j.core.workflow.step.behaviour.ContextEqualityContract;
 import com.agentforge4j.core.workflow.step.behaviour.DeterministicExtract;
 import com.agentforge4j.core.workflow.step.behaviour.InputBehaviour;
@@ -494,7 +496,7 @@ public final class WorkflowValidator {
     Set<String> stepIds = new HashSet<>();
     collectScopeStepIds(workflow.steps(), workflow, stepIds, new LinkedHashSet<>());
     walkScopeSelectors(workflow.steps(), workflow, ledgerIds, artifactIds, stepIds, loadedPacksByName,
-        new LinkedHashSet<>());
+        new LinkedHashSet<>(), new LinkedHashMap<>());
   }
 
   // A second, deliberately different step-id collector from collectStepIds above: this one descends into
@@ -525,19 +527,21 @@ public final class WorkflowValidator {
 
   private static void walkScopeSelectors(List<Executable> steps, WorkflowDefinition workflow,
       Set<String> ledgerIds, Set<String> artifactIds, Set<String> stepIds,
-      Map<String, ContextPack> loadedPacksByName, Set<String> blueprintChain) {
+      Map<String, ContextPack> loadedPacksByName, Set<String> blueprintChain,
+      Map<String, CompactSourceClaim> compactSourceOwners) {
     for (Executable executable : steps) {
       if (executable instanceof StepDefinition step) {
-        checkStepSelectors(step, workflow, ledgerIds, artifactIds, stepIds, loadedPacksByName);
+        checkStepSelectors(step, workflow, ledgerIds, artifactIds, stepIds, loadedPacksByName,
+            compactSourceOwners);
         if (step.behaviour() instanceof BranchBehaviour branch) {
           walkScopeSelectors(branch.childExecutables(), workflow, ledgerIds, artifactIds, stepIds,
-              loadedPacksByName, blueprintChain);
+              loadedPacksByName, blueprintChain, compactSourceOwners);
         }
       } else if (executable instanceof BlueprintRef ref) {
         BlueprintDefinition blueprint = workflow.blueprints().get(ref.blueprintId());
         if (blueprint != null && blueprintChain.add(ref.blueprintId())) {
           walkScopeSelectors(blueprint.steps(), workflow, ledgerIds, artifactIds, stepIds,
-              loadedPacksByName, blueprintChain);
+              loadedPacksByName, blueprintChain, compactSourceOwners);
           blueprintChain.remove(ref.blueprintId());
         }
       } else if (executable instanceof WorkflowDefinition nested) {
@@ -548,7 +552,7 @@ public final class WorkflowValidator {
 
   private static void checkStepSelectors(StepDefinition step, WorkflowDefinition workflow,
       Set<String> ledgerIds, Set<String> artifactIds, Set<String> stepIds,
-      Map<String, ContextPack> loadedPacksByName) {
+      Map<String, ContextPack> loadedPacksByName, Map<String, CompactSourceClaim> compactSourceOwners) {
     ContextSelection selection = step.contextSelection();
     if (selection != null) {
       for (ContextSelector selector : selection.selectors()) {
@@ -563,6 +567,24 @@ public final class WorkflowValidator {
     if (step.behaviour() instanceof CompactBehaviour compact) {
       checkSelector(compact.source(), step.stepId(), workflow, ledgerIds, artifactIds, stepIds,
           loadedPacksByName);
+      // Two COMPACT steps targeting the identical source with DIFFERENT mode/policy would collide at
+      // run time: compact siblings are keyed only by source id, so whichever step executes first
+      // wins and the second silently no-ops as "already up to date," its own configuration never
+      // applied. Two steps with the IDENTICAL mode+policy on the same source are fine (a legitimate,
+      // shipped pattern: re-checking whether the source changed since the last compaction) — only
+      // the divergent-configuration case is rejected here.
+      String compactSourceId = compact.source().kind().name() + ":" + compact.source().ref();
+      CompactSourceClaim claim = new CompactSourceClaim(step.stepId(), compact.mode(),
+          compact.policy());
+      CompactSourceClaim priorClaim = compactSourceOwners.putIfAbsent(compactSourceId, claim);
+      Validate.isTrue(priorClaim == null || (priorClaim.mode().equals(claim.mode())
+              && priorClaim.policy().equals(claim.policy())),
+          ("Workflow '%s' declares two COMPACT steps ('%s' and '%s') targeting the same "
+              + "source '%s' with different mode or policy; a compact sibling is keyed only by "
+              + "source, so the second step would silently no-op instead of applying its own "
+              + "configuration").formatted(workflow.id(),
+              priorClaim == null ? step.stepId() : priorClaim.stepId(), step.stepId(),
+              compactSourceId));
       if (compact.mode() instanceof DeterministicExtract) {
         // The shipped extractor only understands the ledger envelope shape — reject other source
         // kinds at load rather than failing mid-run, matching the fail-early rule below.
@@ -646,5 +668,12 @@ public final class WorkflowValidator {
   private static String ledgerId(String ref) {
     int dot = ref.indexOf('.');
     return dot < 0 ? ref : ref.substring(0, dot);
+  }
+
+  /**
+   * The first {@code COMPACT} step claiming a given source within one scope, so a later step
+   * targeting the same source can be compared against it (see {@code checkStepSelectors}).
+   */
+  private record CompactSourceClaim(String stepId, CompactionMode mode, CompactionPolicy policy) {
   }
 }

@@ -76,11 +76,14 @@ class CompactBehaviourHandlerTest {
   }
 
   private static StepDefinition referencingStep(String id) {
+    // Must be in expandableScope, not selectors: only expandableScope counts toward
+    // minDownstreamReuse (see CompactBehaviourHandler's class Javadoc) since selectors is not yet
+    // enforced anywhere in the runtime.
     ContextSelector selector = new ContextSelector(ContextSourceKind.LEDGER_SECTION, "requirements",
         ContextVariant.COMPACT_PREFERRED);
     return StepDefinition.builder().withStepId(id).withName(id)
         .withBehaviour(new FailBehaviour("stop"))
-        .withContextSelection(new ContextSelection(List.of(selector), List.of(), null))
+        .withContextSelection(new ContextSelection(List.of(), List.of(selector), null))
         .build();
   }
 
@@ -250,6 +253,29 @@ class CompactBehaviourHandlerTest {
   }
 
   @Test
+  void doesNotCountSelectorsOnlyReferenceTowardReuse() {
+    // Only expandableScope counts toward minDownstreamReuse; contextSelection.selectors is not yet
+    // enforced anywhere in the runtime, so counting it would trigger compaction for a declaration
+    // with no actual downstream effect.
+    CompactBehaviour behaviour = new CompactBehaviour(source(), new DeterministicExtract(),
+        new CompactionPolicy(0, 1));
+    StepDefinition compact = compactStep(behaviour.policy(), behaviour.mode());
+    ContextSelector selectorsOnly = new ContextSelector(ContextSourceKind.LEDGER_SECTION,
+        "requirements", ContextVariant.COMPACT_PREFERRED);
+    StepDefinition selectorsOnlyStep = StepDefinition.builder().withStepId("s1").withName("s1")
+        .withBehaviour(new FailBehaviour("stop"))
+        .withContextSelection(new ContextSelection(List.of(selectorsOnly), List.of(), null))
+        .build();
+    WorkflowDefinition workflow = workflow(compact, selectorsOnlyStep);
+    ExecutionContext executionContext = context(workflow);
+
+    handler(workflow).handle(compact, behaviour, executionContext);
+
+    assertThat(CompactSiblingStore.read(executionContext.getState(), ContextSourceId.of(source()),
+        mapper)).isEmpty();
+  }
+
+  @Test
   void skipsWhenAlreadyUpToDate() {
     CompactBehaviour behaviour = new CompactBehaviour(source(), new DeterministicExtract(),
         new CompactionPolicy(0, 1));
@@ -354,6 +380,69 @@ class CompactBehaviourHandlerTest {
     // earns.
     assertThat(storedProvenance(executionContext.getState(), ContextSourceId.of(source())))
         .isEqualTo(ContextProvenance.LLM_GENERATED);
+  }
+
+  @Test
+  void llmSummaryFailsLoudWhenTheAgentEmitsCommands() throws Exception {
+    // A compaction step has no command-application semantics (no pause states, no escalation
+    // path); an agent that emits a command must fail the step loudly, not have it silently dropped.
+    CompactBehaviour behaviour = new CompactBehaviour(source(),
+        new LlmSummary("STANDARD", "summarizer-agent"), new CompactionPolicy(0, 0));
+    StepDefinition compact = compactStep(behaviour.policy(), behaviour.mode());
+    WorkflowDefinition workflow = workflow(compact);
+    ExecutionContext executionContext = context(workflow);
+    var merged = mapper.readTree("""
+        {"entries":[{"id":"REQ-1"}]}""");
+    com.agentforge4j.runtime.ledger.LedgerMerger.writeMerged(executionContext.getState(), ledger(),
+        merged);
+    AgentInvoker agentInvoker = mock(AgentInvoker.class);
+    com.agentforge4j.core.command.SetContextCommand emittedCommand =
+        new com.agentforge4j.core.command.SetContextCommand("k",
+            new com.agentforge4j.core.workflow.context.StringContextValue("v",
+                ContextProvenance.LLM_GENERATED));
+    when(agentInvoker.invoke(eq("summarizer-agent"), any(), any(), any(), eq("STANDARD"),
+        anyString())).thenReturn(new AgentInvocationResult("summary text",
+        List.of(emittedCommand), null, null, null, ModelSource.PROVIDER_DEFAULT, null));
+
+    assertThatThrownBy(() -> handler(workflow, agentInvoker).handle(compact, behaviour,
+        executionContext))
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessageContaining("summarizer-agent")
+        .hasMessageContaining("compact")
+        .hasMessageContaining("SetContextCommand");
+    assertThat(CompactSiblingStore.read(executionContext.getState(), ContextSourceId.of(source()),
+        mapper)).isEmpty();
+    String inputKey = com.agentforge4j.core.workflow.state.ReservedContextKeys.llmSummaryInputKey(
+        ContextSourceId.of(source()));
+    assertThat(executionContext.getState().getContextValue(inputKey)).isEmpty();
+  }
+
+  @Test
+  void llmSummaryPropagatesInvocationFailureAndCleansUpStagingKey() throws Exception {
+    CompactBehaviour behaviour = new CompactBehaviour(source(),
+        new LlmSummary("STANDARD", "summarizer-agent"), new CompactionPolicy(0, 0));
+    StepDefinition compact = compactStep(behaviour.policy(), behaviour.mode());
+    WorkflowDefinition workflow = workflow(compact);
+    ExecutionContext executionContext = context(workflow);
+    var merged = mapper.readTree("""
+        {"entries":[{"id":"REQ-1"}]}""");
+    com.agentforge4j.runtime.ledger.LedgerMerger.writeMerged(executionContext.getState(), ledger(),
+        merged);
+    AgentInvoker agentInvoker = mock(AgentInvoker.class);
+    when(agentInvoker.invoke(eq("summarizer-agent"), any(), any(), any(), eq("STANDARD"),
+        anyString())).thenThrow(new RuntimeException("provider unavailable"));
+
+    assertThatThrownBy(() -> handler(workflow, agentInvoker).handle(compact, behaviour,
+        executionContext))
+        .isInstanceOf(RuntimeException.class)
+        .hasMessage("provider unavailable");
+    // The failed-invocation cleanup guarantee: a failed compaction must never leave the resolved
+    // source content sitting in run state under the synthetic staging key.
+    String inputKey = com.agentforge4j.core.workflow.state.ReservedContextKeys.llmSummaryInputKey(
+        ContextSourceId.of(source()));
+    assertThat(executionContext.getState().getContextValue(inputKey)).isEmpty();
+    assertThat(CompactSiblingStore.read(executionContext.getState(), ContextSourceId.of(source()),
+        mapper)).isEmpty();
   }
 
   @Test

@@ -45,7 +45,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /**
- * Verifies design §4.8's cache-stability guarantee end-to-end for token-governance content
+ * Verifies the prompt-cache stability guarantee end-to-end for token-governance content
  * specifically: {@link AgentInvoker#assembleSystemPrompt} takes no {@link WorkflowState} or rendered
  * context as input, so no content that compaction, ledger merge, or context expansion writes into
  * {@link WorkflowState} — regardless of how much it varies between invocations — can ever reach the

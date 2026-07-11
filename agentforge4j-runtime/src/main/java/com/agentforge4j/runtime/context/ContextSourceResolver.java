@@ -74,8 +74,7 @@ public final class ContextSourceResolver {
     String fullContent = resolveFull(selector, state, workflow);
     String currentFingerprint = ContextFingerprint.of(fullContent);
     Optional<CompactSibling> sibling = CompactSiblingStore.read(state, sourceId, objectMapper);
-    boolean fresh = sibling.isPresent()
-        && sibling.get().metadata().sourceFingerprint().equals(currentFingerprint);
+    boolean fresh = CompactSiblingStore.isFresh(sibling, currentFingerprint);
     if (fresh) {
       return sibling.get().content();
     }

@@ -311,6 +311,63 @@ class WorkflowValidatorContextSelectionTest {
   }
 
   @Test
+  void rejectsTwoCompactStepsTargetingTheIdenticalSourceWithDifferentModes() {
+    // Compact siblings are keyed only by source id (kind+ref), not by producing step or mode/policy;
+    // two COMPACT steps sharing a source with DIFFERENT configuration would collide silently at run
+    // time (the second treated as "already up to date," its own mode never applied), so this must
+    // fail at load instead.
+    StepDefinition first = StepDefinition.builder().withStepId("c1").withName("c1")
+        .withBehaviour(new CompactBehaviour(sel(ContextSourceKind.LEDGER_SECTION, "requirements"),
+            new DeterministicExtract(), new CompactionPolicy(0, 0)))
+        .build();
+    StepDefinition second = StepDefinition.builder().withStepId("c2").withName("c2")
+        .withBehaviour(new CompactBehaviour(sel(ContextSourceKind.LEDGER_SECTION, "requirements"),
+            new LlmSummary("STANDARD", "summarizer-agent"), new CompactionPolicy(0, 0)))
+        .build();
+    WorkflowDefinition wf = workflow(List.of(first, second), List.of(ledger("requirements")));
+
+    assertThatThrownBy(() -> validate(wf))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("c1")
+        .hasMessageContaining("c2")
+        .hasMessageContaining("LEDGER_SECTION:requirements");
+  }
+
+  @Test
+  void acceptsTwoCompactStepsTargetingTheIdenticalSourceWithTheIdenticalModeAndPolicy() {
+    // A legitimate, shipped pattern (see beh-compact.workflow): re-checking the same source with
+    // identical configuration is safe — the second step correctly no-ops as UP_TO_DATE at run time
+    // rather than colliding, since there's no configuration divergence to lose.
+    StepDefinition first = StepDefinition.builder().withStepId("c1").withName("c1")
+        .withBehaviour(new CompactBehaviour(sel(ContextSourceKind.LEDGER_SECTION, "requirements"),
+            new DeterministicExtract(), new CompactionPolicy(0, 0)))
+        .build();
+    StepDefinition second = StepDefinition.builder().withStepId("c2").withName("c2")
+        .withBehaviour(new CompactBehaviour(sel(ContextSourceKind.LEDGER_SECTION, "requirements"),
+            new DeterministicExtract(), new CompactionPolicy(0, 0)))
+        .build();
+    WorkflowDefinition wf = workflow(List.of(first, second), List.of(ledger("requirements")));
+
+    assertThatCode(() -> validate(wf)).doesNotThrowAnyException();
+  }
+
+  @Test
+  void acceptsTwoCompactStepsTargetingDifferentSources() {
+    StepDefinition first = StepDefinition.builder().withStepId("c1").withName("c1")
+        .withBehaviour(new CompactBehaviour(sel(ContextSourceKind.LEDGER_SECTION, "requirements"),
+            new DeterministicExtract(), new CompactionPolicy(0, 0)))
+        .build();
+    StepDefinition second = StepDefinition.builder().withStepId("c2").withName("c2")
+        .withBehaviour(new CompactBehaviour(sel(ContextSourceKind.LEDGER_SECTION, "risks"),
+            new DeterministicExtract(), new CompactionPolicy(0, 0)))
+        .build();
+    WorkflowDefinition wf = workflow(List.of(first, second),
+        List.of(ledger("requirements"), ledger("risks")));
+
+    assertThatCode(() -> validate(wf)).doesNotThrowAnyException();
+  }
+
+  @Test
   void acceptsResolvableSelectorInsideBranchChild() {
     ContextSelection selection = new ContextSelection(
         List.of(sel(ContextSourceKind.STEP_OUTPUT, "branch-target-a")), List.of(), null);

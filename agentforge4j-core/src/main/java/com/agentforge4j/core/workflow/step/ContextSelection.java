@@ -10,14 +10,15 @@ import java.util.List;
  * keeps the full-context behaviour.
  *
  * <p><strong>{@code selectors} is not yet enforced (0.1.0 status).</strong> It is validated at load
- * time against the enclosing workflow's declared sources and counted toward COMPACT's
- * compaction-reuse thresholds, but the runtime does not yet assemble a step's rendered agent context
- * from it — an agent's actual input still flows entirely through its own {@code ContextMapping},
- * unaffected by whatever {@code selectors} declares. Declaring {@code selectors} today does not
- * scope or restrict what the agent receives; treat it as reserved/tracked, not functional. This is
- * an open Phase 5 deferral (see the token-governance design's STATUS notes), not a bug. By contrast,
+ * time against the enclosing workflow's declared sources, but the runtime does not yet assemble a
+ * step's rendered agent context from it — an agent's actual input still flows entirely through its
+ * own {@code ContextMapping}, unaffected by whatever {@code selectors} declares. Declaring
+ * {@code selectors} today does not scope or restrict what the agent receives, and it is deliberately
+ * excluded from COMPACT's compaction-reuse counting for the same reason (counting an unenforced
+ * declaration would trigger real compaction work for no actual downstream effect); treat it as
+ * reserved/tracked, not functional. This is an open, tracked deferral, not a bug. By contrast,
  * {@code expandableScope} <em>is</em> functional: it governs run-time context-expansion grants
- * ({@code RequestContextCommand}).
+ * ({@code RequestContextCommand}) and does count toward compaction reuse.
  *
  * <p>Once implemented, {@code selectors} is intended to be the token-efficient subset chosen
  * <em>within</em> the boundary an inheritance scope decides; it would never widen context beyond
