@@ -8,6 +8,9 @@ import com.agentforge4j.core.spi.tool.PendingToolInvocationStore;
 import com.agentforge4j.core.spi.tool.ToolCatalog;
 import com.agentforge4j.core.spi.tool.ToolExecutionService;
 import com.agentforge4j.core.spi.validation.ArtifactValidator;
+import com.agentforge4j.core.spi.validation.CollectionItemSchemaValidator;
+import com.agentforge4j.core.workflow.collection.CollectionAuthorizer;
+import com.agentforge4j.core.workflow.collection.CollectionSubmissionValidator;
 import com.agentforge4j.core.workflow.event.WorkflowEventLog;
 import com.agentforge4j.core.workflow.repository.WorkflowRepository;
 import com.agentforge4j.core.workflow.repository.WorkflowStateRepository;
@@ -176,6 +179,9 @@ final class RuntimeAssembler {
       PendingToolInvocationStore pendingToolInvocationStore,
       RequirementResolver requirementResolver,
       RunExecutionInterceptor runExecutionInterceptor,
+      CollectionAuthorizer collectionAuthorizer,
+      CollectionItemSchemaValidator collectionItemSchemaValidator,
+      CollectionSubmissionValidator collectionSubmissionValidator,
       ObjectMapper objectMapper,
       List<ArtifactValidator> embedderArtifactValidators) {
     // Built-in ArtifactValidators are discovered via ServiceLoader (the built-in agent-bundle validator stays present
@@ -208,6 +214,18 @@ final class RuntimeAssembler {
     }
     if (requirementResolver != null) {
       runtimeBuilder.requirementResolver(requirementResolver);
+    }
+    if (collectionAuthorizer != null) {
+      runtimeBuilder.collectionAuthorizer(collectionAuthorizer);
+    }
+    if (collectionItemSchemaValidator != null) {
+      runtimeBuilder.collectionItemSchemaValidator(collectionItemSchemaValidator);
+    }
+    if (collectionSubmissionValidator != null) {
+      runtimeBuilder.collectionSubmissionValidator(collectionSubmissionValidator);
+    }
+    if (objectMapper != null) {
+      runtimeBuilder.objectMapper(objectMapper);
     }
 
     return runtimeBuilder.build();

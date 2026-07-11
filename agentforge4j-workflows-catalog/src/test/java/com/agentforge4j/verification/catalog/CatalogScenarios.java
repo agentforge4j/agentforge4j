@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package com.agentforge4j.verification.catalog;
 
+import com.agentforge4j.core.workflow.collection.CloseReason;
 import com.agentforge4j.core.workflow.event.WorkflowEventType;
 import com.agentforge4j.core.workflow.state.WorkflowStatus;
 import com.agentforge4j.llm.fake.FakeScript;
@@ -8,6 +9,7 @@ import com.agentforge4j.llm.fake.FakeScriptParser;
 import com.agentforge4j.testkit.assertion.WorkflowRunAssert;
 import com.agentforge4j.testkit.capture.WorkflowRunResult;
 import com.agentforge4j.testkit.harness.WorkflowTestHarness;
+import com.agentforge4j.testkit.scenario.CollectionOp;
 import com.agentforge4j.testkit.scenario.GateResponse;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
@@ -301,7 +303,13 @@ public final class CatalogScenarios {
     return responses;
   }
 
-  private static GateResponse toGateResponse(ExpectedResult.GateSpec spec) {
+  /**
+   * Package-visible (rather than {@code private}) solely so {@code CatalogScenariosCollectionOpTest}
+   * can exercise the scenario-DSL to {@link CollectionOp} conversion directly — the scenario-owning
+   * catalog is empty during the clean-slate window, so there is no shipped fixture to drive the
+   * {@code collection} gate type through {@link #run(ScenarioCase)} end to end.
+   */
+  static GateResponse toGateResponse(ExpectedResult.GateSpec spec) {
     String toolId = spec.toolInvocationId();
     return switch (spec.type()) {
       case "input" -> GateResponse.input(spec.answers() == null ? Map.of() : spec.answers());
@@ -322,7 +330,42 @@ public final class CatalogScenarios {
       case "toolRetry" -> toolId == null
           ? GateResponse.toolRetry()
           : GateResponse.toolRetry(toolId);
+      case "collection" -> GateResponse.collection(toCollectionOps(spec.ops()));
       default -> throw new IllegalArgumentException("Unknown gate type: " + spec.type());
     };
+  }
+
+  private static List<CollectionOp> toCollectionOps(List<ExpectedResult.GateSpec.CollectionOpSpec> specs) {
+    if (specs == null) {
+      return List.of();
+    }
+    List<CollectionOp> ops = new ArrayList<>();
+    for (ExpectedResult.GateSpec.CollectionOpSpec spec : specs) {
+      ops.add(switch (spec.op()) {
+        case "submit" -> new CollectionOp.Submit(spec.payloadRef(), spec.clientToken(),
+            spec.dedupeKey(), spec.actorId());
+        case "replace" -> new CollectionOp.Replace(ordinal(spec), spec.payloadRef(), spec.actorId());
+        case "withdraw" -> new CollectionOp.Withdraw(ordinal(spec), spec.actorId());
+        case "close" ->
+            new CollectionOp.Close(closeReason(spec), Boolean.TRUE.equals(spec.override()));
+        default -> throw new IllegalArgumentException("Unknown collection op: " + spec.op());
+      });
+    }
+    return ops;
+  }
+
+  private static int ordinal(ExpectedResult.GateSpec.CollectionOpSpec spec) {
+    if (spec.submissionId() == null) {
+      throw new IllegalArgumentException(
+          "collection '%s' op requires submissionId (the 0-based submit ordinal)".formatted(spec.op()));
+    }
+    return spec.submissionId();
+  }
+
+  private static CloseReason closeReason(ExpectedResult.GateSpec.CollectionOpSpec spec) {
+    if (spec.reason() == null) {
+      throw new IllegalArgumentException("collection 'close' op requires a reason");
+    }
+    return CloseReason.valueOf(spec.reason());
   }
 }

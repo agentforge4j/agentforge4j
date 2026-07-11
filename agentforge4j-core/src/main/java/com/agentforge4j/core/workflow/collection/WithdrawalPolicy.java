@@ -14,7 +14,10 @@ public enum WithdrawalPolicy {
    */
   OWNER_WITHDRAW,
   /**
-   * Any actor authorized for the {@code withdraw_any} action may withdraw an item.
+   * Withdrawal always requires authorization, resolved per attempt: the submitting actor's own
+   * withdrawal still requires a {@code withdraw_own} authorization, and any other actor's
+   * withdrawal requires {@code withdraw_any}. This is distinct from {@link #OWNER_WITHDRAW}, where
+   * the submitter needs no authorization at all.
    */
   AUTHORIZED_WITHDRAW
 }

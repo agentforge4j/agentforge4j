@@ -66,6 +66,18 @@ class CollectionBehaviourTest {
   }
 
   @Test
+  void rejectsBlankItemSchemaRef() {
+    // Blank is neither "no schema" (null) nor a resolvable reference; rejecting it at
+    // construction keeps the runtime's declared-schema check unambiguous.
+    assertThatThrownBy(() ->
+        new CollectionBehaviour("  ", 0, null, null, 0, null, null, null, null, null, null, null, null))
+        .isInstanceOf(IllegalArgumentException.class);
+    assertThatThrownBy(() ->
+        new CollectionBehaviour("", 0, null, null, 0, null, null, null, null, null, null, null, null))
+        .isInstanceOf(IllegalArgumentException.class);
+  }
+
+  @Test
   void serialisesAndDeserialisesViaSealedDiscriminator() throws Exception {
     StepBehaviour original = new CollectionBehaviour("cv-schema", 1, 10, 3, 2048,
         DuplicatePolicy.REJECT_BY_CLIENT_TOKEN, ReplacementPolicy.OWNER_REPLACE,

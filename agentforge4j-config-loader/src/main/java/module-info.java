@@ -27,6 +27,7 @@ module agentforge4j.config.loader {
   exports com.agentforge4j.config.loader;
   exports com.agentforge4j.config.loader.agent;
   exports com.agentforge4j.config.loader.catalog;
+  exports com.agentforge4j.config.loader.collection;
   exports com.agentforge4j.config.loader.integration;
   exports com.agentforge4j.config.loader.workflow;
   exports com.agentforge4j.config.loader.prompt;

@@ -2,9 +2,15 @@
 package com.agentforge4j.runtime;
 
 import com.agentforge4j.core.exception.ExecutionNotFoundException;
+import com.agentforge4j.core.runtime.CloseRequest;
+import com.agentforge4j.core.runtime.CloseResult;
+import com.agentforge4j.core.runtime.CollectionGateRuntime;
+import com.agentforge4j.core.runtime.CollectionSubmission;
+import com.agentforge4j.core.runtime.CollectionView;
 import com.agentforge4j.core.runtime.StepApprovalDecision;
 import com.agentforge4j.core.runtime.StepApprovalDecision.Approve;
 import com.agentforge4j.core.runtime.StepApprovalDecision.Reject;
+import com.agentforge4j.core.runtime.SubmissionResult;
 import com.agentforge4j.core.runtime.WorkflowRuntime;
 import com.agentforge4j.core.spi.tool.ApprovalDecision;
 import com.agentforge4j.core.spi.tool.PendingToolInvocation;
@@ -15,6 +21,8 @@ import com.agentforge4j.core.spi.tool.ToolExecutionService;
 import com.agentforge4j.core.workflow.Executable;
 import com.agentforge4j.core.workflow.WorkflowCapturePathCollector;
 import com.agentforge4j.core.workflow.WorkflowDefinition;
+import com.agentforge4j.core.workflow.collection.CollectionPhase;
+import com.agentforge4j.core.workflow.collection.CollectionState;
 import com.agentforge4j.core.workflow.artifact.ArtifactDefinition;
 import com.agentforge4j.core.workflow.context.ContextProvenance;
 import com.agentforge4j.core.workflow.context.StringContextValue;
@@ -26,6 +34,7 @@ import com.agentforge4j.core.workflow.state.RunFailure;
 import com.agentforge4j.core.workflow.state.WorkflowState;
 import com.agentforge4j.core.workflow.state.WorkflowStatus;
 import com.agentforge4j.core.workflow.step.StepDefinition;
+import com.agentforge4j.core.workflow.step.behaviour.CollectionBehaviour;
 import com.agentforge4j.core.workflow.step.behaviour.WorkflowBehaviour;
 import com.agentforge4j.core.workflow.step.blueprint.BlueprintDefinition;
 import com.agentforge4j.core.workflow.step.blueprint.BlueprintRef;
@@ -46,8 +55,13 @@ import java.time.Clock;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.locks.ReentrantLock;
+import java.util.function.Function;
 import org.apache.commons.lang3.StringUtils;
 
 /**
@@ -59,13 +73,15 @@ import org.apache.commons.lang3.StringUtils;
  *
  * <p>Not thread-safe per run — a single run is driven by the caller's thread at
  * any given time. The embedding application is responsible for preventing concurrent drives of the same run.
+ * The {@code CollectionGateRuntime} surface is the one exception: collection gates are naturally
+ * multi-actor, so its operations are internally serialised per run rather than left to the caller.
  *
  * <p>Construction is package-private and goes through {@link WorkflowRuntimeBuilder}. The
  * constructors take internal collaborators ({@link StepSequenceExecutor}, {@link ExecutableExecutor}) from the
  * non-exported {@code com.agentforge4j.runtime.execution} package, so they must not be part of the exported public
  * API.
  */
-public final class DefaultWorkflowRuntime implements WorkflowRuntime {
+public final class DefaultWorkflowRuntime implements WorkflowRuntime, CollectionGateRuntime {
 
   private static final System.Logger LOG = System.getLogger(DefaultWorkflowRuntime.class.getName());
 
@@ -89,7 +105,18 @@ public final class DefaultWorkflowRuntime implements WorkflowRuntime {
   private final RequirementResolver requirementResolver;
   private final TransitionGate transitionGate;
   private final RunExecutionInterceptor runExecutionInterceptor;
+  private final CollectionGateService collectionGateService;
   private final GeneratedArtifactStore generatedArtifactStore;
+  /**
+   * Serialises collection-gate mutations per run: the gate's state-write lock. Concurrent
+   * submit/replace/withdraw/close/reopen/view calls for the same {@code runId} are naturally
+   * multi-actor, unlike the rest of this runtime's caller-serialized drive contract, so this map fills
+   * that gap. Entries are reference-counted and removed once no caller holds or awaits them (see
+   * {@link #withCollectionRunLock}) rather than tied to run status, so the map stays bounded by
+   * concurrently-active callers regardless of how many runs are ever cancelled or visit collection
+   * handling.
+   */
+  private final ConcurrentMap<String, CountedLock> collectionRunLocks = new ConcurrentHashMap<>();
 
   DefaultWorkflowRuntime(WorkflowRepository workflowRepository,
       WorkflowStateRepository workflowStateRepository,
@@ -103,7 +130,8 @@ public final class DefaultWorkflowRuntime implements WorkflowRuntime {
       RequirementResolver requirementResolver,
       TransitionGate transitionGate,
       RunExecutionInterceptor runExecutionInterceptor,
-      GeneratedArtifactStore generatedArtifactStore) {
+      GeneratedArtifactStore generatedArtifactStore,
+      CollectionGateService collectionGateService) {
     this.workflowRepository = Validate.notNull(workflowRepository,
         "workflowRepository must not be null");
     this.workflowStateRepository = Validate.notNull(workflowStateRepository,
@@ -126,6 +154,8 @@ public final class DefaultWorkflowRuntime implements WorkflowRuntime {
     this.transitionGate = Validate.notNull(transitionGate, "transitionGate must not be null");
     this.runExecutionInterceptor = Validate.notNull(runExecutionInterceptor,
         "runExecutionInterceptor must not be null");
+    this.collectionGateService = Validate.notNull(collectionGateService,
+        "collectionGateService must not be null");
     this.generatedArtifactStore = Validate.notNull(generatedArtifactStore,
         "generatedArtifactStore must not be null");
   }
@@ -168,6 +198,13 @@ public final class DefaultWorkflowRuntime implements WorkflowRuntime {
       LOG.log(System.Logger.Level.INFO, "Continuing run runId={0}, currentStatus={1}", runId,
           state.getStatus());
       ensureNotCancelled(state, "continue");
+      if (state.getStatus() == WorkflowStatus.AWAITING_COLLECTION) {
+        // A closed collection gate with an ALLOWED reopen policy holds the run here until an explicit
+        // continuation advances it (the reopen window). Advancing publishes the materialized
+        // collection, marks the gate step complete, and re-drives past it.
+        continueClosedCollection(runId);
+        return;
+      }
       Validate.isTrue(state.getStatus() == WorkflowStatus.PAUSED,
           "Cannot continue run '%s' in status %s".formatted(runId, state.getStatus()));
       rewindLoopAwaitingMaxIterationsDecision(state);
@@ -176,6 +213,24 @@ public final class DefaultWorkflowRuntime implements WorkflowRuntime {
       WorkflowDefinition workflow = workflowRepository.get(state.getWorkflowId());
       drive(state, workflow);
     }
+  }
+
+  private void continueClosedCollection(String runId) {
+    withCollectionRunLock(runId, state -> {
+      // Re-verified under the lock: a concurrent reopen (or cancellation) between the caller's
+      // status probe and this lock acquisition invalidates the continuation.
+      Validate.isTrue(state.getStatus() == WorkflowStatus.AWAITING_COLLECTION,
+          "Cannot continue run '%s' in status %s".formatted(runId, state.getStatus()));
+      String stepId = Validate.notBlank(state.getCurrentStepId(),
+          "Run '%s' is AWAITING_COLLECTION but has no current step".formatted(state.getRunId()));
+      WorkflowDefinition workflow = workflowRepository.get(state.getWorkflowId());
+      collectionGateService.advanceClosed(state, stepId, currentStepOutputKeys(workflow, stepId));
+      workflowStateRepository.save(state);
+      if (!gateCompletedStep(state, workflow)) {
+        drive(state, workflow);
+      }
+      return null;
+    });
   }
 
   /**
@@ -233,6 +288,16 @@ public final class DefaultWorkflowRuntime implements WorkflowRuntime {
       LOG.log(System.Logger.Level.INFO, "Retry requested runId={0}, stepId={1}", runId, stepId);
       WorkflowDefinition workflow = workflowRepository.get(state.getWorkflowId());
       StepDefinition target = resolveTopLevelRetryTarget(workflow, stepId);
+      // A closed collection gate is never reopened by a retry (CollectionBehaviourHandler enforces
+      // this on re-entry too, since a RETRY_PREVIOUS step behaviour can reach the same target without
+      // going through this method). Rejecting here, before any mutation, keeps the failed attempt's
+      // original failure and state intact instead of discarding them for a retry that cannot succeed.
+      if (target.behaviour() instanceof CollectionBehaviour) {
+        Optional<CollectionState> gate = state.getCollectionState(target.stepId());
+        Validate.isTrue(gate.isEmpty() || gate.get().phase() != CollectionPhase.CLOSED,
+            ("Cannot retry step '%s': its collection gate is already closed and a closed collection "
+                + "is never reopened by retry").formatted(target.stepId()));
+      }
 
       // A loop paused at maxIterations under AWAIT_USER can never itself be the retry target (a
       // BlueprintRef is not a StepDefinition), so a target positioned after such a loop — or one
@@ -466,6 +531,209 @@ public final class DefaultWorkflowRuntime implements WorkflowRuntime {
     }
   }
 
+  // ---- CollectionGateRuntime ----------------------------------------------------------------
+
+  @Override
+  public CollectionGateRuntime collections() {
+    return this;
+  }
+
+  @Override
+  public SubmissionResult submitItem(String runId, String stepId, CollectionSubmission submission,
+      String actorId) {
+    Validate.notBlank(stepId, "stepId must not be blank");
+    Validate.notNull(submission, "submission must not be null");
+    Validate.notBlank(actorId, "actorId must not be blank");
+    return withCollectionRunLock(runId, state -> {
+      try (RunContextManager.Scope ignored = runContextManager.open(runId, state.getWorkflowId(), stepId, null)) {
+        requireAwaitingCollection(state, stepId, "submit item");
+        WorkflowDefinition workflow = workflowRepository.get(state.getWorkflowId());
+        CollectionBehaviour cfg = requireCollectionBehaviour(workflow, stepId);
+        SubmissionResult result = collectionGateService.submit(state, workflow, cfg, stepId, submission, actorId);
+        workflowStateRepository.save(state);
+        return result;
+      }
+    });
+  }
+
+  @Override
+  public SubmissionResult replaceItem(String runId, String stepId, String submissionId,
+      CollectionSubmission replacement, String actorId) {
+    Validate.notBlank(stepId, "stepId must not be blank");
+    Validate.notBlank(submissionId, "submissionId must not be blank");
+    Validate.notNull(replacement, "replacement must not be null");
+    Validate.notBlank(actorId, "actorId must not be blank");
+    return withCollectionRunLock(runId, state -> {
+      try (RunContextManager.Scope ignored = runContextManager.open(runId, state.getWorkflowId(), stepId, null)) {
+        requireAwaitingCollection(state, stepId, "replace item");
+        WorkflowDefinition workflow = workflowRepository.get(state.getWorkflowId());
+        CollectionBehaviour cfg = requireCollectionBehaviour(workflow, stepId);
+        SubmissionResult result = collectionGateService.replace(state, workflow, cfg, stepId,
+            submissionId, replacement, actorId);
+        workflowStateRepository.save(state);
+        return result;
+      }
+    });
+  }
+
+  @Override
+  public void withdrawItem(String runId, String stepId, String submissionId, String actorId) {
+    Validate.notBlank(stepId, "stepId must not be blank");
+    Validate.notBlank(submissionId, "submissionId must not be blank");
+    Validate.notBlank(actorId, "actorId must not be blank");
+    withCollectionRunLock(runId, state -> {
+      try (RunContextManager.Scope ignored = runContextManager.open(runId, state.getWorkflowId(), stepId, null)) {
+        requireAwaitingCollection(state, stepId, "withdraw item");
+        WorkflowDefinition workflow = workflowRepository.get(state.getWorkflowId());
+        CollectionBehaviour cfg = requireCollectionBehaviour(workflow, stepId);
+        collectionGateService.withdraw(state, workflow, cfg, stepId, submissionId, actorId);
+        workflowStateRepository.save(state);
+        return null;
+      }
+    });
+  }
+
+  @Override
+  public CloseResult closeCollection(String runId, String stepId, CloseRequest request) {
+    Validate.notBlank(stepId, "stepId must not be blank");
+    Validate.notNull(request, "request must not be null");
+    return withCollectionRunLock(runId, state -> {
+      try (RunContextManager.Scope ignored = runContextManager.open(runId, state.getWorkflowId(), stepId, null)) {
+        requireAwaitingCollection(state, stepId, "close collection");
+        WorkflowDefinition workflow = workflowRepository.get(state.getWorkflowId());
+        CollectionBehaviour cfg = requireCollectionBehaviour(workflow, stepId);
+        CloseResult result = collectionGateService.close(state, workflow, cfg, stepId, request,
+            currentStepOutputKeys(workflow, stepId));
+        workflowStateRepository.save(state);
+        if (result.advanced()) {
+          // The gate closed and its reopen policy is NONE: advance past it, honouring any transition gate.
+          // The save above already persisted the close before this call, so a throw in step resolution
+          // or the transition gate cannot lose the closed gate while its audit event already recorded.
+          if (!gateCompletedStep(state, workflow)) {
+            drive(state, workflow);
+          }
+        }
+        return result;
+      }
+    });
+  }
+
+  @Override
+  public void reopenCollection(String runId, String stepId, String actorId) {
+    Validate.notBlank(stepId, "stepId must not be blank");
+    Validate.notBlank(actorId, "actorId must not be blank");
+    withCollectionRunLock(runId, state -> {
+      try (RunContextManager.Scope ignored = runContextManager.open(runId, state.getWorkflowId(), stepId, null)) {
+        requireAwaitingCollection(state, stepId, "reopen collection");
+        WorkflowDefinition workflow = workflowRepository.get(state.getWorkflowId());
+        CollectionBehaviour cfg = requireCollectionBehaviour(workflow, stepId);
+        collectionGateService.reopen(state, workflow, cfg, stepId, actorId);
+        workflowStateRepository.save(state);
+        return null;
+      }
+    });
+  }
+
+  /**
+   * {@inheritDoc}
+   *
+   * <p>Only {@link #ensureNotCancelled} is checked here — a {@code COMPLETED}/{@code FAILED} run's
+   * collection stays readable for audit/review, per the contract on
+   * {@link CollectionGateRuntime#getCollection}.
+   *
+   * @throws ExecutionNotFoundException if no state exists for {@code runId}
+   * @throws IllegalArgumentException   if {@code stepId}/{@code actorId} is blank or the run is cancelled
+   */
+  @Override
+  public CollectionView getCollection(String runId, String stepId, String actorId) {
+    Validate.notBlank(stepId, "stepId must not be blank");
+    Validate.notBlank(actorId, "actorId must not be blank");
+    return withCollectionRunLock(runId, state -> {
+      try (RunContextManager.Scope ignored = runContextManager.open(runId, state.getWorkflowId(), stepId, null)) {
+        ensureNotCancelled(state, "view collection");
+        WorkflowDefinition workflow = workflowRepository.get(state.getWorkflowId());
+        CollectionBehaviour cfg = requireCollectionBehaviour(workflow, stepId);
+        return collectionGateService.view(state, workflow, cfg, stepId, actorId);
+      }
+    });
+  }
+
+  /**
+   * Runs {@code operation} against a freshly loaded copy of the run's state while holding the
+   * run's collection lock. The pre-lock load fails invalid run ids with
+   * {@link ExecutionNotFoundException} before any lock-map entry is created; the state is loaded
+   * again once the lock is held so the operation always mutates the current persisted state. A
+   * state loaded before lock acquisition may be a stale snapshot on repositories that return
+   * defensive copies, and saving it would silently discard a concurrent, already-persisted
+   * mutation.
+   *
+   * <p>{@link #collectionRunLocks} entries are reference-counted rather than never evicted: acquiring
+   * increments the count and (on first acquisition) creates the entry within a single atomic
+   * {@link ConcurrentMap#compute}; releasing decrements the count and removes the entry only when it
+   * reaches zero, also within a single atomic {@code compute}. Because {@code compute} calls for the
+   * same key never interleave, no caller can observe an entry removed while another caller still holds
+   * a reference to it — the naive-eviction race (removing the map entry and unlocking being two
+   * separate, non-atomic steps) cannot occur here. The map therefore stays bounded by the number of
+   * runs with an in-flight collection-guarded operation, not by the number of runs ever cancelled or
+   * that visited the collection surface.
+   */
+  private <T> T withCollectionRunLock(String runId, Function<WorkflowState, T> operation) {
+    loadState(runId);
+    CountedLock entry = acquireCollectionRunLock(runId);
+    entry.lock.lock();
+    try {
+      WorkflowState state = loadState(runId);
+      return operation.apply(state);
+    } finally {
+      entry.lock.unlock();
+      releaseCollectionRunLock(runId);
+    }
+  }
+
+  private CountedLock acquireCollectionRunLock(String runId) {
+    return collectionRunLocks.compute(runId, (id, existing) -> {
+      CountedLock entry = existing != null ? existing : new CountedLock();
+      entry.holders++;
+      return entry;
+    });
+  }
+
+  private void releaseCollectionRunLock(String runId) {
+    collectionRunLocks.compute(runId, (id, entry) -> {
+      entry.holders--;
+      return entry.holders == 0 ? null : entry;
+    });
+  }
+
+  /**
+   * A per-run collection lock plus the count of callers currently holding or awaiting it, so
+   * {@link #collectionRunLocks} can safely remove an entry exactly when it becomes unreferenced.
+   */
+  private static final class CountedLock {
+
+    private final ReentrantLock lock = new ReentrantLock();
+    private int holders;
+  }
+
+  private void requireAwaitingCollection(WorkflowState state, String stepId, String operation) {
+    ensureNotCancelled(state, operation);
+    Validate.isTrue(state.getStatus() == WorkflowStatus.AWAITING_COLLECTION,
+        "Cannot %s on run '%s' in status %s"
+            .formatted(operation, state.getRunId(), state.getStatus()));
+    Validate.isTrue(stepId.equals(state.getCurrentStepId()),
+        "Cannot %s on step '%s': run '%s' is awaiting collection on step '%s'"
+            .formatted(operation, stepId, state.getRunId(), state.getCurrentStepId()));
+  }
+
+  private CollectionBehaviour requireCollectionBehaviour(WorkflowDefinition workflow, String stepId) {
+    StepDefinition step = stepTreeSearcher.findStepAcrossWorkflows(workflow, stepId, workflowRepository);
+    if (step != null && step.behaviour() instanceof CollectionBehaviour cfg) {
+      return cfg;
+    }
+    throw new IllegalArgumentException(
+        "Step '%s' is not a collection step in workflow '%s'".formatted(stepId, workflow.id()));
+  }
+
   /**
    * {@inheritDoc}
    *
@@ -477,24 +745,21 @@ public final class DefaultWorkflowRuntime implements WorkflowRuntime {
    *                                    pending invocation matches, or an id/argument is blank or null
    */
   @Override
-  public WorkflowState continueAfterToolApproval(String runId, String toolInvocationId,
-      ApprovalDecision decision) {
+  public WorkflowState continueAfterToolApproval(String runId, String toolInvocationId, ApprovalDecision decision) {
     validateToolResumeConfigured(runId, toolInvocationId);
     Validate.notNull(decision, "decision must not be null");
 
     WorkflowState state = loadState(runId);
     try (RunContextManager.Scope ignored = runContextManager.open(runId, state.getWorkflowId(),
         state.getCurrentStepId(), null)) {
-      validateToolResumeStatus(runId, state, WorkflowStatus.AWAITING_TOOL_APPROVAL,
-          "continueAfterToolApproval");
+      validateToolResumeStatus(runId, state, WorkflowStatus.AWAITING_TOOL_APPROVAL, "continueAfterToolApproval");
       String capability = determineCapability(runId, toolInvocationId);
 
       LOG.log(System.Logger.Level.INFO,
           "Continuing after tool approval runId={0}, toolInvocationId={1}, decision={2}",
           runId, toolInvocationId, decision.getClass().getSimpleName());
 
-      ToolExecutionOutcome outcome =
-          toolExecutionService.resume(runId, toolInvocationId, decision);
+      ToolExecutionOutcome outcome = toolExecutionService.resume(runId, toolInvocationId, decision);
       String actor = approverActor(decision);
       if (outcome.status() == ToolExecutionOutcome.Status.EXECUTED) {
         toolResultApplier.apply(capability, outcome.result(), state, actor);
@@ -630,6 +895,12 @@ public final class DefaultWorkflowRuntime implements WorkflowRuntime {
   /**
    * {@inheritDoc}
    *
+   * <p>Goes through the same per-run collection lock as the {@code CollectionGateRuntime}
+   * verbs, not just runs with a collection step: a run may reach {@code AWAITING_COLLECTION}
+   * at cancellation time, and an unlocked read-modify-write here could race a concurrent
+   * submit/close/reopen and silently overwrite one or the other's save on a repository that
+   * returns defensive copies.
+   *
    * @throws ExecutionNotFoundException if no state exists for {@code runId}
    * @throws IllegalArgumentException   if status is {@link WorkflowStatus#COMPLETED} or {@link WorkflowStatus#FAILED},
    *                                    or {@code runId} is blank
@@ -637,20 +908,22 @@ public final class DefaultWorkflowRuntime implements WorkflowRuntime {
   @Override
   public void cancel(String runId, String actorId) {
     Validate.notBlank(actorId, "actorId must not be blank");
-    WorkflowState state = loadState(runId);
-    try (RunContextManager.Scope ignored = runContextManager.open(runId, state.getWorkflowId(),
-        state.getCurrentStepId(), null)) {
-      WorkflowStatus status = state.getStatus();
-      if (status == WorkflowStatus.CANCELLED) {
-        return;
+    withCollectionRunLock(runId, state -> {
+      try (RunContextManager.Scope ignored = runContextManager.open(runId, state.getWorkflowId(),
+          state.getCurrentStepId(), null)) {
+        WorkflowStatus status = state.getStatus();
+        if (status == WorkflowStatus.CANCELLED) {
+          return null;
+        }
+        Validate.isTrue(status != WorkflowStatus.COMPLETED && status != WorkflowStatus.FAILED,
+            "Cannot cancel run '%s' in status %s".formatted(runId, status));
+        state.setStatus(WorkflowStatus.CANCELLED);
+        state.setLastUpdatedAt(clock.instant());
+        workflowStateRepository.save(state);
+        eventRecorder.record(runId, state.getCurrentStepId(), WorkflowEventType.RUN_CANCELLED, null, actorId);
+        return null;
       }
-      Validate.isTrue(status != WorkflowStatus.COMPLETED && status != WorkflowStatus.FAILED,
-          "Cannot cancel run '%s' in status %s".formatted(runId, status));
-      state.setStatus(WorkflowStatus.CANCELLED);
-      state.setLastUpdatedAt(clock.instant());
-      workflowStateRepository.save(state);
-      eventRecorder.record(runId, state.getCurrentStepId(), WorkflowEventType.RUN_CANCELLED, null, actorId);
-    }
+    });
   }
 
   /**

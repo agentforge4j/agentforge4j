@@ -154,6 +154,37 @@ class ScenarioSchemaContractTest {
   }
 
   @Test
+  void schemaAcceptsACollectionCloseWithAManualReason() throws IOException {
+    List<Error> violations = SCENARIO_SCHEMA.validate(MAPPER.readTree("""
+        {
+          "workflowId": "demo",
+          "gates": [
+            {"type": "collection", "ops": [{"op": "close", "reason": "MANUAL"}]}
+          ],
+          "expect": {"status": "COMPLETED"}
+        }
+        """));
+
+    assertThat(violations).isEmpty();
+  }
+
+  @Test
+  void schemaRejectsACollectionCloseWithAnOverrideReason() throws IOException {
+    // OVERRIDE is a derived outcome CloseRequest rejects as a requestable reason (see
+    // CloseRequest's compact constructor) -- a schema-valid scenario declaring it would always
+    // crash at run time. The enum must not offer it.
+    assertThat(SCENARIO_SCHEMA.validate(MAPPER.readTree("""
+        {
+          "workflowId": "demo",
+          "gates": [
+            {"type": "collection", "ops": [{"op": "close", "reason": "OVERRIDE"}]}
+          ],
+          "expect": {"status": "COMPLETED"}
+        }
+        """))).isNotEmpty();
+  }
+
+  @Test
   void schemaRejectsAnUnknownTopLevelProperty() throws IOException {
     assertThat(SCENARIO_SCHEMA.validate(
         MAPPER.readTree("{\"workflowId\": \"w\", \"surprise\": true}")))

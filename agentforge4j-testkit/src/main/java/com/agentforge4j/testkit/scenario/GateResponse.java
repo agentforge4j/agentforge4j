@@ -2,6 +2,7 @@
 package com.agentforge4j.testkit.scenario;
 
 import com.agentforge4j.util.Validate;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -18,7 +19,8 @@ import java.util.Map;
  */
 public sealed interface GateResponse
     permits GateResponse.Input, GateResponse.Review, GateResponse.StepApproval,
-    GateResponse.Escalation, GateResponse.ToolApproval, GateResponse.ToolDecision {
+    GateResponse.Escalation, GateResponse.ToolApproval, GateResponse.ToolDecision,
+    GateResponse.Collection {
 
   /**
    * Answers for an {@code AWAITING_INPUT} pause, keyed by artifact item id.
@@ -123,6 +125,27 @@ public sealed interface GateResponse
   }
 
   /**
+   * An ordered collection-gate interaction for an {@code AWAITING_COLLECTION} pause: zero or more
+   * submits/replaces/withdraws followed by a close, applied in order by the harness through
+   * {@code CollectionGateRuntime}. A single response models the whole many-operation interaction at the
+   * one pause; when the ops end with a close, the harness advances the run past the gate.
+   *
+   * @param ops the ordered operations; must not be {@code null} (defensively copied)
+   */
+  record Collection(List<CollectionOp> ops) implements GateResponse {
+
+    /**
+     * Validates and defensively copies the ops.
+     *
+     * @param ops the ordered operations; must not be {@code null}
+     */
+    public Collection {
+      Validate.notNull(ops, "Collection ops must not be null");
+      ops = List.copyOf(ops);
+    }
+  }
+
+  /**
    * Creates an {@link Input} response.
    *
    * @param answers item-id → answer map
@@ -131,6 +154,17 @@ public sealed interface GateResponse
    */
   static GateResponse input(Map<String, String> answers) {
     return new Input(answers);
+  }
+
+  /**
+   * Creates a {@link Collection} response from an ordered op list.
+   *
+   * @param ops the ordered collection operations
+   *
+   * @return the response
+   */
+  static GateResponse collection(List<CollectionOp> ops) {
+    return new Collection(ops);
   }
 
   /**

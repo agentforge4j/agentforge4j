@@ -6,6 +6,11 @@ import com.agentforge4j.core.runtime.WorkflowRuntime;
 import com.agentforge4j.core.spi.tool.PendingToolInvocationStore;
 import com.agentforge4j.core.spi.validation.ArtifactValidator;
 import com.agentforge4j.core.spi.tool.ToolExecutionService;
+import com.agentforge4j.core.spi.validation.CollectionItemSchemaValidator;
+import com.agentforge4j.core.workflow.collection.CollectionAuthorizer;
+import com.agentforge4j.core.workflow.collection.CollectionSubmissionValidator;
+import com.agentforge4j.core.workflow.collection.DefaultCollectionAuthorizer;
+import com.agentforge4j.core.workflow.collection.DefaultCollectionSubmissionValidator;
 import com.agentforge4j.core.workflow.event.WorkflowEventLog;
 import com.agentforge4j.core.workflow.repository.WorkflowRepository;
 import com.agentforge4j.core.workflow.repository.WorkflowStateRepository;
@@ -35,6 +40,7 @@ import com.agentforge4j.runtime.execution.behaviour.BehaviourHandler;
 import com.agentforge4j.runtime.execution.behaviour.handler.AgentBehaviourHandler;
 import com.agentforge4j.runtime.execution.behaviour.handler.AssignContextBehaviourHandler;
 import com.agentforge4j.runtime.execution.behaviour.handler.BranchBehaviourHandler;
+import com.agentforge4j.runtime.execution.behaviour.handler.CollectionBehaviourHandler;
 import com.agentforge4j.runtime.execution.behaviour.handler.FailBehaviourHandler;
 import com.agentforge4j.runtime.execution.behaviour.handler.InputBehaviourHandler;
 import com.agentforge4j.runtime.execution.behaviour.handler.ResourceBehaviourHandler;
@@ -54,6 +60,7 @@ import com.agentforge4j.runtime.llm.AgentInvoker;
 import com.agentforge4j.runtime.tool.ToolInvocationCommandHandler;
 import com.agentforge4j.runtime.tool.ToolResultApplier;
 import com.agentforge4j.util.Validate;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.Clock;
 import java.util.ArrayList;
 import java.util.List;
@@ -91,6 +98,10 @@ public final class WorkflowRuntimeBuilder {
   private PendingToolInvocationStore pendingToolInvocationStore;
   private RequirementResolver requirementResolver;
   private RunExecutionInterceptor runExecutionInterceptor = RunExecutionInterceptor.NO_OP;
+  private CollectionAuthorizer collectionAuthorizer;
+  private CollectionItemSchemaValidator collectionItemSchemaValidator;
+  private CollectionSubmissionValidator collectionSubmissionValidator;
+  private ObjectMapper objectMapper;
   private GeneratedArtifactStore generatedArtifactStore;
   private List<ArtifactValidator> artifactValidators = List.of();
 
@@ -290,6 +301,53 @@ public final class WorkflowRuntimeBuilder {
   }
 
   /**
+   * Configures the validator that checks each submitted collection item's inline JSON against the
+   * JSON schema its gate declares via {@code itemSchemaRef}. Defaults to
+   * {@link CollectionItemSchemaValidator#unconfigured()} (reject every declared reference,
+   * fail-closed) when omitted, so a declared item contract is never silently unenforced. Gates
+   * that declare no {@code itemSchemaRef} never consult this validator.
+   *
+   * @param value item-schema validator instance
+   *
+   * @return this builder
+   */
+  public WorkflowRuntimeBuilder collectionItemSchemaValidator(CollectionItemSchemaValidator value) {
+    this.collectionItemSchemaValidator =
+        Validate.notNull(value, "collectionItemSchemaValidator must not be null");
+    return this;
+  }
+
+  /**
+   * Configures the embedding application's submission policy, consulted on every collection-gate
+   * submit and replace after the gate's declared constraints pass. Defaults to
+   * {@link DefaultCollectionSubmissionValidator} when omitted, which guards runtime integrity only
+   * (unsafe file paths) and imposes no application policy.
+   *
+   * @param value submission validator instance
+   *
+   * @return this builder
+   */
+  public WorkflowRuntimeBuilder collectionSubmissionValidator(CollectionSubmissionValidator value) {
+    this.collectionSubmissionValidator =
+        Validate.notNull(value, "collectionSubmissionValidator must not be null");
+    return this;
+  }
+
+  /**
+   * Configures the authorizer consulted before guarded collection-gate operations in {@code ENFORCED} mode. Defaults to
+   * {@link DefaultCollectionAuthorizer} (deny-all, fail-closed) when omitted, so a pure-{@code core} runtime admits no
+   * {@code ENFORCED} operation until a richer authorizer is wired.
+   *
+   * @param value collection authorizer instance
+   *
+   * @return this builder
+   */
+  public WorkflowRuntimeBuilder collectionAuthorizer(CollectionAuthorizer value) {
+    this.collectionAuthorizer = Validate.notNull(value, "collectionAuthorizer must not be null");
+    return this;
+  }
+
+  /**
    * Configures the run-scoped store that captures emitted {@code CREATE_FILE} bytes for in-process
    * artifact validation. Defaults to a retaining {@link InMemoryGeneratedArtifactStore} when omitted.
    *
@@ -300,6 +358,19 @@ public final class WorkflowRuntimeBuilder {
   public WorkflowRuntimeBuilder generatedArtifactStore(GeneratedArtifactStore value) {
     this.generatedArtifactStore =
         Validate.notNull(value, "generatedArtifactStore must not be null");
+    return this;
+  }
+
+  /**
+   * Configures the {@link ObjectMapper} used to serialise a materialized collection to the step's output context key.
+   * Defaults to a module-registered mapper when omitted.
+   *
+   * @param value object mapper instance
+   *
+   * @return this builder
+   */
+  public WorkflowRuntimeBuilder objectMapper(ObjectMapper value) {
+    this.objectMapper = Validate.notNull(value, "objectMapper must not be null");
     return this;
   }
 
@@ -347,6 +418,8 @@ public final class WorkflowRuntimeBuilder {
 
     RequirementResolver resolvedRequirementResolver = ObjectUtils.getIfNull(requirementResolver,
         DefaultRequirementResolver::new);
+    ObjectMapper resolvedObjectMapper =
+        ObjectUtils.getIfNull(objectMapper, () -> new ObjectMapper().findAndRegisterModules());
 
     // The executor graph has a cycle: ExecutableExecutor needs BlueprintExecutor
     // and WorkflowExecutor; both of those need a StepSequenceExecutor that in
@@ -369,7 +442,8 @@ public final class WorkflowRuntimeBuilder {
         branchBehaviourHandler,
         retryPreviousBehaviourHandler,
         transitionGate,
-        resolvedGeneratedArtifactStore);
+        resolvedGeneratedArtifactStore,
+        resolvedObjectMapper);
 
     ExecutableExecutor executableExecutor =
         new ExecutableExecutor(stepExecutor, blueprintExecutor, workflowExecutor,
@@ -386,6 +460,15 @@ public final class WorkflowRuntimeBuilder {
     blueprintExecutor.setTransitionGate(transitionGate);
     workflowExecutor.setStepSequenceExecutor(stepSequenceExecutor);
 
+    CollectionGateService collectionGateService = new CollectionGateService(
+        resolvedEventRecorder,
+        resolvedClock,
+        resolvedRequirementResolver,
+        ObjectUtils.getIfNull(collectionAuthorizer, DefaultCollectionAuthorizer::new),
+        ObjectUtils.getIfNull(collectionItemSchemaValidator, CollectionItemSchemaValidator::unconfigured),
+        ObjectUtils.getIfNull(collectionSubmissionValidator, DefaultCollectionSubmissionValidator::new),
+        resolvedObjectMapper);
+
     return new DefaultWorkflowRuntime(
         workflowRepository,
         workflowStateRepository,
@@ -399,7 +482,8 @@ public final class WorkflowRuntimeBuilder {
         resolvedRequirementResolver,
         transitionGate,
         runExecutionInterceptor,
-        resolvedGeneratedArtifactStore);
+        resolvedGeneratedArtifactStore,
+        collectionGateService);
   }
 
   private static void setupBlueprintLoopStrategies(BlueprintExecutor blueprintExecutor,
@@ -444,7 +528,8 @@ public final class WorkflowRuntimeBuilder {
       BranchBehaviourHandler branchBehaviourHandler,
       RetryPreviousBehaviourHandler retryPreviousBehaviourHandler,
       TransitionGate transitionGate,
-      GeneratedArtifactStore generatedArtifactStore) {
+      GeneratedArtifactStore generatedArtifactStore,
+      ObjectMapper resolvedObjectMapper) {
     List<BehaviourHandler<? extends StepBehaviour>> handlers = List.of(
         new AgentBehaviourHandler(agentInvoker, commandApplier, eventRecorder),
         new SparBehaviourHandler(agentInvoker, commandApplier, eventRecorder),
@@ -455,7 +540,8 @@ public final class WorkflowRuntimeBuilder {
         new FailBehaviourHandler(),
         retryPreviousBehaviourHandler,
         new ValidateBehaviourHandler(generatedArtifactStore, artifactValidators, eventRecorder),
-        new AssignContextBehaviourHandler(eventRecorder));
+        new AssignContextBehaviourHandler(eventRecorder),
+        new CollectionBehaviourHandler(eventRecorder, resolvedClock, resolvedObjectMapper));
     return new StepExecutor(handlers, eventRecorder, resolvedClock, transitionGate);
   }
 

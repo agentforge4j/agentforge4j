@@ -117,7 +117,7 @@
       "properties": {
         "type": {
           "type": "string",
-          "enum": ["AGENT", "SPAR", "WORKFLOW", "INPUT", "RESOURCE", "BRANCH", "FAIL", "RETRY_PREVIOUS", "VALIDATE", "ASSIGN_CONTEXT"]
+          "enum": ["AGENT", "SPAR", "WORKFLOW", "INPUT", "RESOURCE", "BRANCH", "FAIL", "RETRY_PREVIOUS", "VALIDATE", "ASSIGN_CONTEXT", "COLLECTION"]
         }
       },
       "required": ["type"],
@@ -134,7 +134,8 @@
         { "$ref": "#/$defs/FailBehaviour" },
         { "$ref": "#/$defs/RetryPreviousBehaviour" },
         { "$ref": "#/$defs/ValidateBehaviour" },
-        { "$ref": "#/$defs/AssignContextBehaviour" }
+        { "$ref": "#/$defs/AssignContextBehaviour" },
+        { "$ref": "#/$defs/CollectionBehaviour" }
       ]
     },
     "AgentBehaviour": {
@@ -310,6 +311,27 @@
       "properties": {
         "type": { "type": "string", "enum": ["STRING", "NUMBER", "BOOLEAN"] },
         "value": {}
+      }
+    },
+    "CollectionBehaviour": {
+      "type": "object",
+      "required": ["type"],
+      "additionalProperties": false,
+      "properties": {
+        "type": { "type": "string", "const": "COLLECTION" },
+        "itemSchemaRef": { "type": ["string", "null"], "minLength": 1 },
+        "minItems": { "type": "integer", "minimum": 0 },
+        "maxItems": { "type": ["integer", "null"], "minimum": 1 },
+        "maxItemsPerActor": { "type": ["integer", "null"], "minimum": 1 },
+        "maxInlinePayloadBytes": { "type": "integer", "minimum": 0 },
+        "duplicatePolicy": { "type": ["string", "null"], "enum": ["ALLOW", "REJECT_BY_CLIENT_TOKEN", "REJECT_BY_DEDUPE_KEY", null] },
+        "replacementPolicy": { "type": ["string", "null"], "enum": ["NONE", "OWNER_REPLACE", "AUTHORIZED_REPLACE", null] },
+        "withdrawalPolicy": { "type": ["string", "null"], "enum": ["NONE", "OWNER_WITHDRAW", "AUTHORIZED_WITHDRAW", null] },
+        "manualClose": { "type": ["boolean", "null"] },
+        "externalDeadlineClosable": { "type": ["boolean", "null"] },
+        "reopenPolicy": { "type": ["string", "null"], "enum": ["NONE", "ALLOWED", null] },
+        "authorizationMode": { "type": ["string", "null"], "enum": ["OPEN", "ENFORCED", null] },
+        "transition": { "$ref": "#/$defs/StepTransition" }
       }
     },
     "StepTransition": {

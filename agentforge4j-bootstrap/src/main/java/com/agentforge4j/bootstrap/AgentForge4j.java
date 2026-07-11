@@ -13,7 +13,9 @@ import java.util.List;
  * via {@link AgentForge4jBootstrap#defaults()}.
  *
  * <p>For full runtime control (state queries, input submission, approval, cancellation),
- * use {@link #runtime()}.
+ * use {@link #runtime()}. Collection-gate operations are exposed via
+ * {@link com.agentforge4j.core.runtime.WorkflowRuntime#collections()} on that same runtime —
+ * no cast required.
  */
 public final class AgentForge4j {
 

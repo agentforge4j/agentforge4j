@@ -14,7 +14,10 @@ public enum ReplacementPolicy {
    */
   OWNER_REPLACE,
   /**
-   * Any actor authorized for the {@code replace_any} action may replace an item.
+   * Replacement always requires authorization, resolved per attempt: the submitting actor's own
+   * replace still requires a {@code replace_own} authorization, and any other actor's replace
+   * requires {@code replace_any}. This is distinct from {@link #OWNER_REPLACE}, where the
+   * submitter needs no authorization at all.
    */
   AUTHORIZED_REPLACE
 }

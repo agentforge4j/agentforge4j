@@ -3,14 +3,20 @@ package com.agentforge4j.testkit.harness;
 
 import com.agentforge4j.bootstrap.AgentForge4j;
 import com.agentforge4j.bootstrap.AgentForge4jBootstrap;
+import com.agentforge4j.core.runtime.CloseRequest;
+import com.agentforge4j.core.runtime.CollectionGateRuntime;
+import com.agentforge4j.core.runtime.CollectionSubmission;
 import com.agentforge4j.core.runtime.StepApprovalDecision;
+import com.agentforge4j.core.runtime.SubmissionResult;
 import com.agentforge4j.core.runtime.WorkflowRuntime;
+import com.agentforge4j.core.workflow.collection.CollectionPayload;
 import com.agentforge4j.core.spi.tool.ApprovalDecision;
 import com.agentforge4j.core.spi.tool.PendingToolInvocation;
 import com.agentforge4j.core.spi.tool.PendingToolInvocationStore;
 import com.agentforge4j.core.spi.tool.ToolDecision;
 import com.agentforge4j.core.spi.tool.ToolPolicy;
 import com.agentforge4j.core.spi.tool.ToolProvider;
+import com.agentforge4j.core.workflow.collection.CollectionAuthorizer;
 import com.agentforge4j.core.workflow.state.WorkflowState;
 import com.agentforge4j.core.workflow.state.WorkflowStatus;
 import com.agentforge4j.llm.LlmClientResolver;
@@ -27,12 +33,14 @@ import com.agentforge4j.testkit.capture.CapturedFile;
 import com.agentforge4j.testkit.capture.CapturingFileSink;
 import com.agentforge4j.testkit.capture.CapturingWorkflowEventLog;
 import com.agentforge4j.testkit.capture.WorkflowRunResult;
+import com.agentforge4j.testkit.scenario.CollectionOp;
 import com.agentforge4j.testkit.scenario.GateResponse;
 import com.agentforge4j.util.Validate;
 import java.nio.file.Path;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -59,6 +67,7 @@ public final class WorkflowTestHarness {
   private final List<ToolProvider> toolProviders;
   private final ToolPolicy toolPolicy;
   private final Path fileSinkDir;
+  private final CollectionAuthorizer collectionAuthorizer;
 
   private WorkflowTestHarness(Builder builder) {
     this.workflowsDir = builder.workflowsDir;
@@ -69,6 +78,7 @@ public final class WorkflowTestHarness {
     this.toolProviders = builder.toolProviders;
     this.toolPolicy = builder.toolPolicy;
     this.fileSinkDir = builder.fileSinkDir;
+    this.collectionAuthorizer = builder.collectionAuthorizer;
     Validate.isTrue(shippedCatalog || workflowsDir != null,
         "either shippedCatalog(true) or workflowsDir must be set");
     Validate.isTrue(!(shippedCatalog && workflowsDir != null),
@@ -130,6 +140,7 @@ public final class WorkflowTestHarness {
     PendingToolInvocationStore pendingStore = new InMemoryPendingToolInvocationStore();
     AgentForge4j application = assemble(eventLog, fileSink, pendingStore);
     WorkflowRuntime runtime = application.runtime();
+    CollectionGateRuntime collections = runtime.collections();
     String runId = runtime.start(workflowId);
     WorkflowState state = runtime.getState(runId);
     for (int i = 0; i < responses.size(); i++) {
@@ -139,7 +150,7 @@ public final class WorkflowTestHarness {
                 + "unconsumed; the scenario queued more responses than the run paused for")
                 .formatted(runId, state.getStatus(), responses.size() - i));
       }
-      applyResponse(runtime, runId, state, responses.get(i), pendingStore);
+      applyResponse(runtime, collections, runId, state, responses.get(i), pendingStore);
       state = runtime.getState(runId);
     }
     List<CapturedFile> files =
@@ -154,11 +165,15 @@ public final class WorkflowTestHarness {
         || status == WorkflowStatus.CANCELLED;
   }
 
-  private static void applyResponse(WorkflowRuntime runtime, String runId, WorkflowState state,
-      GateResponse response, PendingToolInvocationStore pendingStore) {
+  private static void applyResponse(WorkflowRuntime runtime, CollectionGateRuntime collections,
+      String runId, WorkflowState state, GateResponse response,
+      PendingToolInvocationStore pendingStore) {
     WorkflowStatus status = state.getStatus();
     String stepId = state.getCurrentStepId();
-    if (response instanceof GateResponse.Input input) {
+    if (response instanceof GateResponse.Collection collection) {
+      requireStatus(status, WorkflowStatus.AWAITING_COLLECTION, response, stepId);
+      applyCollectionOps(runtime, collections, runId, stepId, collection.ops());
+    } else if (response instanceof GateResponse.Input input) {
       requireStatus(status, WorkflowStatus.AWAITING_INPUT, response, stepId);
       runtime.submitInput(runId, input.answers(), ACTOR);
     } else if (response instanceof GateResponse.Review review) {
@@ -192,6 +207,94 @@ public final class WorkflowTestHarness {
     } else {
       throw new IllegalStateException("Unsupported gate response: " + response);
     }
+  }
+
+  /**
+   * Applies an ordered collection-gate interaction at a single {@code AWAITING_COLLECTION} pause:
+   * submits/replaces/withdraws then close, through {@code CollectionGateRuntime}. Replace/withdraw
+   * target a prior submit by its 0-based ordinal (runtime ids are non-deterministic), mapped to the
+   * real id captured at submit time. Each submit/replace/withdraw op runs under its own
+   * {@link CollectionOp} {@code actorId} when scripted, defaulting to the harness's {@link #ACTOR}
+   * otherwise, so a scenario can drive a multi-submitter collection or assert an owner-scoped
+   * denial. A rejected submit or replace (a configured constraint refusal, not an authorization
+   * denial, which throws) fails the harness immediately rather than silently continuing the
+   * scenario with a masked outcome. When the ops include a close that left the run still at the
+   * gate (reopen policy {@code ALLOWED}), the run is advanced so one response drives the whole
+   * interaction.
+   */
+  private static void applyCollectionOps(WorkflowRuntime runtime, CollectionGateRuntime collections,
+      String runId, String stepId, List<CollectionOp> ops) {
+    List<String> submissionIds = new ArrayList<>();
+    boolean closed = false;
+    for (CollectionOp op : ops) {
+      if (op instanceof CollectionOp.Submit submit) {
+        SubmissionResult result = collections.submitItem(runId, stepId,
+            new CollectionSubmission(payload(submit.payload()), submit.clientToken(),
+                submit.dedupeKey()), actorOrDefault(submit.actorId()));
+        requireAccepted(result, stepId, "submit");
+        submissionIds.add(requireSubmissionId(result, stepId, submissionIds.size()));
+      } else if (op instanceof CollectionOp.Replace replace) {
+        SubmissionResult result = collections.replaceItem(runId, stepId,
+            targetId(submissionIds, replace.target()),
+            new CollectionSubmission(payload(replace.payload()), null, null),
+            actorOrDefault(replace.actorId()));
+        requireAccepted(result, stepId, "replace");
+      } else if (op instanceof CollectionOp.Withdraw withdraw) {
+        collections.withdrawItem(runId, stepId, targetId(submissionIds, withdraw.target()),
+            actorOrDefault(withdraw.actorId()));
+      } else if (op instanceof CollectionOp.Close close) {
+        collections.closeCollection(runId, stepId,
+            new CloseRequest(ACTOR, close.reason(), close.override(), null));
+        closed = true;
+      }
+    }
+    if (closed && runtime.getState(runId).getStatus() == WorkflowStatus.AWAITING_COLLECTION) {
+      runtime.continueRun(runId, ACTOR);
+    }
+  }
+
+  private static String actorOrDefault(String actorId) {
+    return actorId != null ? actorId : ACTOR;
+  }
+
+  /**
+   * Fails the harness immediately when a scripted submit/replace was rejected by a configured gate
+   * constraint, instead of silently continuing the scenario with a masked {@code null} submission id.
+   */
+  private static void requireAccepted(SubmissionResult result, String stepId, String opName) {
+    if (result.status() == SubmissionResult.Status.REJECTED) {
+      throw new IllegalStateException(
+          "Collection %s op at step '%s' was rejected: %s".formatted(opName, stepId,
+              result.reason()));
+    }
+  }
+
+  /**
+   * Guards against recording a {@code null} submission id as a future {@code Replace}/{@code
+   * Withdraw} target. A {@code Submit} op can return {@code Status.IDEMPOTENT} with a {@code
+   * null} submissionId when its clientToken replays an id whose item was already replaced or
+   * withdrawn earlier in this op list; letting that {@code null} flow into {@code submissionIds}
+   * would otherwise fail later, deep inside the runtime, with a generic "submissionId must not be
+   * blank" instead of naming the ordinal and the replay.
+   */
+  private static String requireSubmissionId(SubmissionResult result, String stepId, int ordinal) {
+    Validate.isTrue(result.submissionId() != null,
+        ("Collection submit op at step '%s' (ordinal %d) returned no submissionId: the client "
+            + "token replayed an id whose item was already replaced or withdrawn, so this submit "
+            + "cannot be targeted by a later Replace/Withdraw op in this list")
+            .formatted(stepId, ordinal));
+    return result.submissionId();
+  }
+
+  private static CollectionPayload payload(String inlineJson) {
+    return new CollectionPayload(inlineJson, List.of());
+  }
+
+  private static String targetId(List<String> submissionIds, int target) {
+    Validate.isTrue(target < submissionIds.size(),
+        "Collection op targets submit ordinal %d but only %d submit(s) precede it"
+            .formatted(target, submissionIds.size()));
+    return submissionIds.get(target);
   }
 
   /**
@@ -245,6 +348,9 @@ public final class WorkflowTestHarness {
     if (toolPolicy != null) {
       bootstrap.withToolPolicy(toolPolicy);
     }
+    if (collectionAuthorizer != null) {
+      bootstrap.withCollectionAuthorizer(collectionAuthorizer);
+    }
     return bootstrap.build();
   }
 
@@ -263,6 +369,7 @@ public final class WorkflowTestHarness {
     private List<ToolProvider> toolProviders = List.of();
     private ToolPolicy toolPolicy;
     private Path fileSinkDir;
+    private CollectionAuthorizer collectionAuthorizer;
 
     private Builder() {
     }
@@ -372,6 +479,22 @@ public final class WorkflowTestHarness {
      */
     public Builder toolPolicy(ToolPolicy value) {
       this.toolPolicy = Validate.notNull(value, "toolPolicy must not be null");
+      return this;
+    }
+
+    /**
+     * Overrides the authorizer consulted before guarded collection-gate operations in
+     * {@code ENFORCED} mode. Defaults to a deny-all authorizer when unset, so exercising an
+     * {@code ENFORCED} gate's allow path through a {@link GateResponse.Collection} response
+     * requires wiring one here — for example {@link FakeCollectionAuthorizer#allowAll()} or
+     * {@link FakeCollectionAuthorizer#permitting}.
+     *
+     * @param value the collection authorizer; must not be {@code null}
+     *
+     * @return this builder
+     */
+    public Builder collectionAuthorizer(CollectionAuthorizer value) {
+      this.collectionAuthorizer = Validate.notNull(value, "collectionAuthorizer must not be null");
       return this;
     }
 
