@@ -31,6 +31,7 @@ import com.agentforge4j.core.workflow.collection.ReopenPolicy;
 import com.agentforge4j.core.workflow.collection.ReplacementPolicy;
 import com.agentforge4j.core.workflow.collection.WithdrawalPolicy;
 import com.agentforge4j.core.workflow.context.ContextMapping;
+import com.agentforge4j.core.workflow.context.JsonContextValue;
 import com.agentforge4j.core.workflow.event.WorkflowEvent;
 import com.agentforge4j.core.workflow.event.WorkflowEventType;
 import com.agentforge4j.core.workflow.repository.WorkflowStateRepository;
@@ -130,8 +131,86 @@ class CollectionGateRuntimeTest {
     SubmissionResult rejected = gate.submitItem(runId, STEP, submission("b", null, null), ACTOR);
 
     assertThat(rejected.status()).isEqualTo(SubmissionResult.Status.REJECTED);
-    assertThat(rejected.reason()).isEqualTo("MAX_ITEMS");
+    assertThat(rejected.reason()).isEqualTo("MAX_ITEMS: have 1, cap 1");
     assertThat(eventTypes(runId)).contains(WorkflowEventType.COLLECTION_ITEM_REJECTED);
+  }
+
+  @Test
+  void maxItemsPerActorRejectsTheCappedActorButNotAnother() {
+    CollectionBehaviour cfg = new CollectionBehaviour(null, 0, null, 1, 0, DuplicatePolicy.ALLOW,
+        ReplacementPolicy.NONE, WithdrawalPolicy.NONE, true, false, ReopenPolicy.NONE,
+        AuthorizationMode.OPEN, StepTransition.AUTO);
+    WorkflowRuntime runtime = runtime(cfg);
+    CollectionGateRuntime gate = (CollectionGateRuntime) runtime;
+    String runId = runtime.start("wf");
+    gate.submitItem(runId, STEP, submission("a", null, null), ACTOR);
+
+    SubmissionResult rejected = gate.submitItem(runId, STEP, submission("b", null, null), ACTOR);
+    assertThat(rejected.status()).isEqualTo(SubmissionResult.Status.REJECTED);
+    assertThat(rejected.reason()).isEqualTo("PER_ACTOR_CAP: actor has 1, cap 1");
+
+    SubmissionResult accepted =
+        gate.submitItem(runId, STEP, submission("c", null, null), "recruiter-2");
+    assertThat(accepted.status()).isEqualTo(SubmissionResult.Status.ACCEPTED);
+  }
+
+  @Test
+  void oversizePayloadIsRejectedButExactCapIsAccepted() {
+    CollectionBehaviour cfg = new CollectionBehaviour(null, 0, null, null, 9, DuplicatePolicy.ALLOW,
+        ReplacementPolicy.NONE, WithdrawalPolicy.NONE, true, false, ReopenPolicy.NONE,
+        AuthorizationMode.OPEN, StepTransition.AUTO);
+    WorkflowRuntime runtime = runtime(cfg);
+    CollectionGateRuntime gate = (CollectionGateRuntime) runtime;
+    String runId = runtime.start("wf");
+
+    // {"v":"a"} is exactly 9 bytes -- at the cap, not over it, so it is accepted.
+    SubmissionResult accepted = gate.submitItem(runId, STEP, submission("a", null, null), ACTOR);
+    assertThat(accepted.status()).isEqualTo(SubmissionResult.Status.ACCEPTED);
+
+    // {"v":"bb"} is 10 bytes -- one over the 9-byte cap.
+    SubmissionResult rejected = gate.submitItem(runId, STEP, submission("bb", null, null), ACTOR);
+    assertThat(rejected.status()).isEqualTo(SubmissionResult.Status.REJECTED);
+    assertThat(rejected.reason()).isEqualTo("OVERSIZE: payload is 10 bytes, cap 9");
+  }
+
+  // ---- nested collection gate (declaring-workflow scope) -------------------------------------
+
+  @Test
+  void nestedCollectionGateHonorsARequirementDeclaredOnItsDeclaringWorkflowNotTheRoot() {
+    // The gate's STEP_ACTION requirement is declared on the NESTED workflow that actually contains
+    // the step, not on the root -- authorize() must resolve against the declaring workflow (like
+    // RequirementCheckpoint does elsewhere), not always the run's root workflow.
+    CollectionBehaviour cfg = behaviour(0, null, ReopenPolicy.NONE, AuthorizationMode.ENFORCED);
+    StepDefinition step = StepDefinition.builder()
+        .withStepId(STEP)
+        .withName("CV intake")
+        .withBehaviour(cfg)
+        .withContextMapping(new ContextMapping(List.of(), List.of(OUTPUT_KEY)))
+        .build();
+    WorkflowRequirement submitReq = new WorkflowRequirement("req-submit", "rbac_step_action_allowed",
+        RequirementScope.STEP_ACTION, STEP, "submit", false, "\"recruiter\"", ResolutionMode.DEFERRED);
+    WorkflowDefinition nested = new WorkflowDefinition("nested-wf", "nested-wf", null, null, null,
+        "1.0.0", null, WorkflowSource.CUSTOM, WorkflowLifecycle.ACTIVE, Map.of(), Map.of(),
+        List.of(step), List.of(submitReq));
+    WorkflowDefinition root = new WorkflowDefinition("wf", "wf", null, null, null, "1.0.0", null,
+        WorkflowSource.CUSTOM, WorkflowLifecycle.ACTIVE, Map.of(), Map.of(), List.of(nested));
+
+    eventLog = new InMemoryWorkflowEventLog();
+    stateRepo = new InMemoryWorkflowStateRepository();
+    WorkflowRuntime runtime = new WorkflowRuntimeBuilder()
+        .workflowRepository(new InMemoryWorkflowRepository(Map.of("wf", root)))
+        .workflowStateRepository(stateRepo)
+        .workflowEventLog(eventLog)
+        .clock(CLOCK)
+        .agentInvoker(mock(AgentInvoker.class))
+        .collectionAuthorizer((actorId, stepId, action, descriptor, context) -> Decision.allow())
+        .build();
+    CollectionGateRuntime gate = (CollectionGateRuntime) runtime;
+    String runId = runtime.start("wf");
+
+    SubmissionResult result = gate.submitItem(runId, STEP, submission("a", null, null), ACTOR);
+
+    assertThat(result.status()).isEqualTo(SubmissionResult.Status.ACCEPTED);
   }
 
   @Test
@@ -163,6 +242,26 @@ class CollectionGateRuntimeTest {
     assertThat(state.getStatus()).isEqualTo(WorkflowStatus.COMPLETED);
     assertThat(state.getContextValue(OUTPUT_KEY)).isPresent();
     assertThat(eventTypes(runId)).contains(WorkflowEventType.COLLECTION_CLOSED);
+  }
+
+  @Test
+  void naturalEmptyCollectionCloseAdvancesRunAndPublishesAnEmptyArray() {
+    // minItems=0, zero submissions, a plain non-override MANUAL close -- the natural empty-close
+    // path, distinct from the override-bypass tests elsewhere in this file.
+    WorkflowRuntime runtime = runtime(behaviour(0, null, ReopenPolicy.NONE, AuthorizationMode.OPEN));
+    CollectionGateRuntime gate = (CollectionGateRuntime) runtime;
+    String runId = runtime.start("wf");
+
+    CloseResult result = gate.closeCollection(runId, STEP, new CloseRequest(ACTOR, CloseReason.MANUAL, false, null));
+
+    assertThat(result.closed()).isTrue();
+    assertThat(result.advanced()).isTrue();
+    assertThat(result.finalCount()).isEqualTo(0);
+    WorkflowState state = runtime.getState(runId);
+    assertThat(state.getStatus()).isEqualTo(WorkflowStatus.COMPLETED);
+    assertThat(state.getContextValue(OUTPUT_KEY)).isPresent();
+    JsonContextValue published = (JsonContextValue) state.getContextValue(OUTPUT_KEY).orElseThrow();
+    assertThat(published.json()).isEqualTo("[]");
   }
 
   @Test
@@ -206,6 +305,23 @@ class CollectionGateRuntimeTest {
     assertThatThrownBy(() -> gate.closeCollection(runId, STEP,
         new CloseRequest(ACTOR, CloseReason.MANUAL, true, null)))
         .isInstanceOf(CollectionAuthorizationException.class);
+  }
+
+  @Test
+  void overrideFlagSetButNotNeededDoesNotRequireOverrideAuthorization() {
+    // minItems=0 is always met -- a defensively-set override=true must not demand OVERRIDE
+    // authorization when it is not actually substituting for an unmet minimum, so an actor
+    // authorized only for CLOSE (not OVERRIDE) still succeeds.
+    CollectionBehaviour cfg = behaviour(0, null, ReopenPolicy.NONE, AuthorizationMode.ENFORCED);
+    WorkflowRuntime runtime = runtime(cfg, overrideCloseRequirements(), ALLOW_CLOSE_ONLY);
+    CollectionGateRuntime gate = (CollectionGateRuntime) runtime;
+    String runId = runtime.start("wf");
+
+    CloseResult result = gate.closeCollection(runId, STEP,
+        new CloseRequest(ACTOR, CloseReason.MANUAL, true, null));
+
+    assertThat(result.closed()).isTrue();
+    assertThat(runtime.getState(runId).getStatus()).isEqualTo(WorkflowStatus.COMPLETED);
   }
 
   // ---- stale-step / retry hardening ----------------------------------------------------------
@@ -774,7 +890,7 @@ class CollectionGateRuntimeTest {
 
     SubmissionResult rejected = gate.submitItem(runId, STEP, submission("b", null, "dk-1"), ACTOR);
     assertThat(rejected.status()).isEqualTo(SubmissionResult.Status.REJECTED);
-    assertThat(rejected.reason()).isEqualTo("DUPLICATE");
+    assertThat(rejected.reason()).isEqualTo("DUPLICATE: dedupeKey 'dk-1' collides with a live item");
   }
 
   // ---- replace dedupe-key policy -------------------------------------------------------------
@@ -793,7 +909,7 @@ class CollectionGateRuntimeTest {
         submission("a2", null, "dk-b"), ACTOR);
 
     assertThat(replaced.status()).isEqualTo(SubmissionResult.Status.REJECTED);
-    assertThat(replaced.reason()).isEqualTo("DUPLICATE");
+    assertThat(replaced.reason()).isEqualTo("DUPLICATE: dedupeKey 'dk-b' collides with a live item");
     assertThat(eventTypes(runId)).contains(WorkflowEventType.COLLECTION_ITEM_REJECTED);
     assertThat(gate.getCollection(runId, STEP, ACTOR).liveCount()).isEqualTo(2);
   }
@@ -934,9 +1050,9 @@ class CollectionGateRuntimeTest {
 
     SubmissionResult repeat = gate.submitItem(runId, STEP, submission("b", "token-1", null), ACTOR);
     assertThat(repeat.status()).isEqualTo(SubmissionResult.Status.REJECTED);
-    assertThat(repeat.reason()).isEqualTo("DUPLICATE");
+    assertThat(repeat.reason()).isEqualTo("DUPLICATE: clientToken 'token-1' was already seen at this gate");
     assertThat(payloadOf(runId, WorkflowEventType.COLLECTION_ITEM_REJECTED).get("reason").asText())
-        .isEqualTo("DUPLICATE");
+        .isEqualTo("DUPLICATE: clientToken 'token-1' was already seen at this gate");
 
     SubmissionResult fresh = gate.submitItem(runId, STEP, submission("c", "token-2", null), ACTOR);
     assertThat(fresh.status()).isEqualTo(SubmissionResult.Status.ACCEPTED);
@@ -1207,6 +1323,30 @@ class CollectionGateRuntimeTest {
     // ...but the replacing actor, now the recorded owner, can.
     gate.withdrawItem(runId, STEP, submitted.submissionId(), "admin-actor");
     assertThat(gate.getCollection(runId, STEP, ACTOR).liveCount()).isZero();
+  }
+
+  @Test
+  void authorizedReplacePolicyRequiresAnOwnActionForTheSubmittersOwnReplace() {
+    // Under AUTHORIZED_REPLACE, the submitter's own replace resolves to REPLACE_OWN, not
+    // REPLACE_ANY (see ReplacementPolicy.AUTHORIZED_REPLACE): declaring only a replace_any
+    // requirement does not authorize the owner's own replace, since it is a distinct action.
+    WorkflowRequirement submitReq = new WorkflowRequirement("req-submit", "rbac_step_action_allowed",
+        RequirementScope.STEP_ACTION, STEP, "submit", false, "\"recruiter\"", ResolutionMode.DEFERRED);
+    WorkflowRequirement replaceAnyReq = new WorkflowRequirement("req-replace-any",
+        "rbac_step_action_allowed", RequirementScope.STEP_ACTION, STEP, "replace_any", false,
+        "\"admin\"", ResolutionMode.DEFERRED);
+    CollectionAuthorizer allowAll = (actorId, stepId, action, descriptor, context) -> Decision.allow();
+    CollectionBehaviour cfg = behaviourFull(0, null, ReopenPolicy.NONE, AuthorizationMode.ENFORCED,
+        ReplacementPolicy.AUTHORIZED_REPLACE, WithdrawalPolicy.NONE);
+    WorkflowRuntime runtime = runtime(cfg, List.of(submitReq, replaceAnyReq), allowAll);
+    CollectionGateRuntime gate = (CollectionGateRuntime) runtime;
+    String runId = runtime.start("wf");
+    SubmissionResult submitted = gate.submitItem(runId, STEP, submission("a", null, null), ACTOR);
+
+    assertThatThrownBy(() -> gate.replaceItem(runId, STEP, submitted.submissionId(),
+        submission("b", null, null), ACTOR))
+        .isInstanceOf(CollectionAuthorizationException.class)
+        .hasMessageContaining("replace_own");
   }
 
   // ---- helpers ------------------------------------------------------------------------------

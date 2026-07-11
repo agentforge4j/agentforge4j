@@ -63,6 +63,8 @@ final class CollectionGateService {
 
   private static final System.Logger LOG = System.getLogger(CollectionGateService.class.getName());
 
+  private final StepTreeSearcher stepTreeSearcher = new StepTreeSearcher();
+
   private final EventRecorder eventRecorder;
   private final Clock clock;
   private final RequirementResolver requirementResolver;
@@ -217,9 +219,6 @@ final class CollectionGateService {
       String stepId, CloseRequest request, List<String> outputKeys) {
     CollectionState gate = requireGate(state, stepId);
     authorize(state, workflow, cfg, stepId, CollectionAction.CLOSE, request.actorId());
-    if (request.override()) {
-      authorize(state, workflow, cfg, stepId, CollectionAction.OVERRIDE, request.actorId());
-    }
     if (request.reason() == CloseReason.DEADLINE) {
       // A DEADLINE reason carries real security semantics -- it can satisfy externalDeadlineClosable
       // even when manualClose is false -- so it needs its own authorization independent of the
@@ -258,6 +257,12 @@ final class CollectionGateService {
       String reason = "minimum %d items required, have %d".formatted(cfg.minItems(), liveCount);
       emitCloseRejected(state, stepId, request.actorId(), reason, liveCount, cfg.minItems());
       return new CloseResult(false, false, 0, reason);
+    }
+    if (minUnmet) {
+      // OVERRIDE authorization is only demanded when it is actually substituting for an unmet
+      // minimum -- an actor authorized only for CLOSE is not blocked by a defensively-set
+      // override=true flag on a close that would have succeeded anyway.
+      authorize(state, workflow, cfg, stepId, CollectionAction.OVERRIDE, request.actorId());
     }
 
     CloseReason effectiveReason = minUnmet ? CloseReason.OVERRIDE : request.reason();
@@ -422,7 +427,8 @@ final class CollectionGateService {
       }
       return;
     }
-    WorkflowRequirement requirement = findStepActionRequirement(workflow, stepId, action);
+    WorkflowDefinition declaringWorkflow = stepTreeSearcher.findDeclaringWorkflow(workflow, stepId);
+    WorkflowRequirement requirement = findStepActionRequirement(declaringWorkflow, stepId, action);
     if (requirement == null) {
       denyAndThrow(state, stepId, action, actorId,
           "no STEP_ACTION requirement declared for action '%s'".formatted(action.wire()));
@@ -502,19 +508,21 @@ final class CollectionGateService {
       CollectionSubmission submission, String actorId) {
     List<CollectionItem> live = liveItems(gate);
     if (cfg.maxItems() != null && live.size() >= cfg.maxItems()) {
-      return "MAX_ITEMS";
+      return "MAX_ITEMS: have %d, cap %d".formatted(live.size(), cfg.maxItems());
     }
-    if (cfg.maxItemsPerActor() != null
-        && live.stream().filter(item -> item.submittedByActorId().equals(actorId)).count()
-        >= cfg.maxItemsPerActor()) {
-      return "PER_ACTOR_CAP";
+    if (cfg.maxItemsPerActor() != null) {
+      long actorCount =
+          live.stream().filter(item -> item.submittedByActorId().equals(actorId)).count();
+      if (actorCount >= cfg.maxItemsPerActor()) {
+        return "PER_ACTOR_CAP: actor has %d, cap %d".formatted(actorCount, cfg.maxItemsPerActor());
+      }
     }
     String oversize = checkOversize(cfg, submission.payload());
     if (oversize != null) {
       return oversize;
     }
     if (dedupeCollides(live, cfg.duplicatePolicy(), submission.dedupeKey(), null)) {
-      return "DUPLICATE";
+      return "DUPLICATE: dedupeKey '%s' collides with a live item".formatted(submission.dedupeKey());
     }
     return null;
   }
@@ -526,7 +534,7 @@ final class CollectionGateService {
       return oversize;
     }
     if (dedupeCollides(liveItems(gate), cfg.duplicatePolicy(), replacement.dedupeKey(), submissionId)) {
-      return "DUPLICATE";
+      return "DUPLICATE: dedupeKey '%s' collides with a live item".formatted(replacement.dedupeKey());
     }
     return null;
   }
@@ -551,8 +559,9 @@ final class CollectionGateService {
         || !clientTokenSeen(gate, clientToken)) {
       return null;
     }
-    emitRejected(state, stepId, actorId, action, "DUPLICATE");
-    return new SubmissionResult(SubmissionResult.Status.REJECTED, null, 0, "DUPLICATE");
+    String reason = "DUPLICATE: clientToken '%s' was already seen at this gate".formatted(clientToken);
+    emitRejected(state, stepId, actorId, action, reason);
+    return new SubmissionResult(SubmissionResult.Status.REJECTED, null, 0, reason);
   }
 
   /**
@@ -629,10 +638,12 @@ final class CollectionGateService {
   }
 
   private static String checkOversize(CollectionBehaviour cfg, CollectionPayload payload) {
-    if (payload.inlineJson() != null
-        && payload.inlineJson().getBytes(StandardCharsets.UTF_8).length
-        > cfg.maxInlinePayloadBytes()) {
-      return "OVERSIZE";
+    if (payload.inlineJson() != null) {
+      int payloadBytes = payload.inlineJson().getBytes(StandardCharsets.UTF_8).length;
+      if (payloadBytes > cfg.maxInlinePayloadBytes()) {
+        return "OVERSIZE: payload is %d bytes, cap %d".formatted(payloadBytes,
+            cfg.maxInlinePayloadBytes());
+      }
     }
     return null;
   }

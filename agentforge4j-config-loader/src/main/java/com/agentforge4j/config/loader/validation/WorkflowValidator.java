@@ -7,12 +7,15 @@ import com.agentforge4j.core.workflow.Executable;
 import com.agentforge4j.core.workflow.WorkflowAgentRefCollector;
 import com.agentforge4j.core.workflow.WorkflowAgentRefCollector.AgentRefSite;
 import com.agentforge4j.core.workflow.WorkflowDefinition;
+import com.agentforge4j.core.workflow.collection.AuthorizationMode;
+import com.agentforge4j.core.workflow.collection.CollectionAction;
+import com.agentforge4j.core.workflow.collection.ReopenPolicy;
 import com.agentforge4j.core.workflow.reachability.AmbiguousStepId;
 import com.agentforge4j.core.workflow.reachability.ReachableStepGraph;
 import com.agentforge4j.core.workflow.reachability.WorkflowRefResolver;
+import com.agentforge4j.core.workflow.requirement.RequirementScope;
 import com.agentforge4j.core.workflow.requirement.WorkflowRequirement;
 import com.agentforge4j.core.workflow.step.StepDefinition;
-import com.agentforge4j.core.workflow.collection.ReopenPolicy;
 import com.agentforge4j.core.workflow.step.behaviour.BranchBehaviour;
 import com.agentforge4j.core.workflow.step.behaviour.CollectionBehaviour;
 import com.agentforge4j.core.workflow.step.behaviour.ContextEqualityContract;
@@ -246,7 +249,7 @@ public final class WorkflowValidator {
     for (Executable executable : steps) {
       if (executable instanceof StepDefinition step) {
         if (step.behaviour() instanceof CollectionBehaviour behaviour) {
-          validateCollectionConfig(behaviour, step.stepId(), workflow.id());
+          validateCollectionConfig(behaviour, step.stepId(), workflow);
         } else if (step.behaviour() instanceof BranchBehaviour bb) {
           walkForCollectionGates(bb.childExecutables(), workflow);
         }
@@ -305,13 +308,42 @@ public final class WorkflowValidator {
   }
 
   private static void validateCollectionConfig(CollectionBehaviour behaviour, String stepId,
-      String workflowId) {
+      WorkflowDefinition workflow) {
+    String workflowId = workflow.id();
     Validate.isTrue(behaviour.manualClose() || behaviour.externalDeadlineClosable(),
         ("Collection step '%s' in workflow '%s' must be closable: enable manualClose or "
             + "externalDeadlineClosable").formatted(stepId, workflowId));
     Validate.isTrue(behaviour.reopenPolicy() != ReopenPolicy.ALLOWED || behaviour.manualClose(),
         "Collection step '%s' in workflow '%s' with reopenPolicy=ALLOWED requires manualClose"
             .formatted(stepId, workflowId));
+    if (behaviour.externalDeadlineClosable()) {
+      // authorize() unconditionally denies DEADLINE_CLOSE under OPEN mode regardless of
+      // manualClose, so a declared deadline-close capability is silently dead unless ENFORCED is
+      // also declared -- this holds whether or not manualClose is also enabled.
+      Validate.isTrue(behaviour.authorizationMode() == AuthorizationMode.ENFORCED,
+          ("Collection step '%s' in workflow '%s' declares externalDeadlineClosable and must "
+              + "declare authorizationMode=ENFORCED: OPEN mode never permits a deadline-triggered "
+              + "close, so the gate's deadline path could never close").formatted(stepId,
+              workflowId));
+      // close() authorizes the generic CLOSE action before the reason-specific DEADLINE_CLOSE
+      // check, so both STEP_ACTION requirements must be declared or every deadline close is
+      // denied at the authorization step regardless of who is authorized for what.
+      Validate.isTrue(
+          hasStepActionRequirement(workflow, stepId, CollectionAction.CLOSE)
+              && hasStepActionRequirement(workflow, stepId, CollectionAction.DEADLINE_CLOSE),
+          ("Collection step '%s' in workflow '%s' declares externalDeadlineClosable and must "
+              + "declare STEP_ACTION requirements for both 'close' and 'deadline_close': without "
+              + "them authorize() always denies, so the gate's deadline path could never close")
+              .formatted(stepId, workflowId));
+    }
+  }
+
+  private static boolean hasStepActionRequirement(WorkflowDefinition workflow, String stepId,
+      CollectionAction action) {
+    return workflow.requirements().stream()
+        .anyMatch(requirement -> requirement.scope() == RequirementScope.STEP_ACTION
+            && stepId.equals(requirement.stepId())
+            && action.wire().equals(requirement.action()));
   }
 
   private void walkForArtifactRefs(List<Executable> steps, WorkflowDefinition workflow) {

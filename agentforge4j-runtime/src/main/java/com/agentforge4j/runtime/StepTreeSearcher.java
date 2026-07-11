@@ -101,4 +101,39 @@ final class StepTreeSearcher {
     }
     return null;
   }
+
+  /**
+   * Returns the {@link WorkflowDefinition} that declares {@code stepId} — the nearest enclosing
+   * workflow, walking into blueprint bodies (which stay attached to their enclosing workflow) and
+   * nested {@code WorkflowDefinition} entries exactly as {@link #findInSteps} does. Falls back to
+   * {@code root} itself when {@code stepId} is not found nested under any entry, including when it
+   * is not found at all — callers that must distinguish "not found" resolve the step first via
+   * {@link #findStep} or {@link #findStepAcrossWorkflows}.
+   */
+  WorkflowDefinition findDeclaringWorkflow(WorkflowDefinition root, String stepId) {
+    WorkflowDefinition declaring = findDeclaringWorkflowIn(root.steps(), root, stepId);
+    return declaring == null ? root : declaring;
+  }
+
+  private WorkflowDefinition findDeclaringWorkflowIn(List<Executable> steps,
+      WorkflowDefinition enclosing, String stepId) {
+    for (Executable executable : steps) {
+      if (executable instanceof StepDefinition step && step.stepId().equals(stepId)) {
+        return enclosing;
+      } else if (executable instanceof BlueprintRef ref) {
+        BlueprintDefinition bp = enclosing.blueprints().get(ref.blueprintId());
+        WorkflowDefinition found =
+            bp == null ? null : findDeclaringWorkflowIn(bp.steps(), enclosing, stepId);
+        if (found != null) {
+          return found;
+        }
+      } else if (executable instanceof WorkflowDefinition nested) {
+        WorkflowDefinition found = findDeclaringWorkflowIn(nested.steps(), nested, stepId);
+        if (found != null) {
+          return found;
+        }
+      }
+    }
+    return null;
+  }
 }

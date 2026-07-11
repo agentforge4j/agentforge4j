@@ -42,7 +42,7 @@ public final class DefaultCollectionSubmissionValidator implements CollectionSub
       return true;
     }
     for (String segment : normalised.split("/", -1)) {
-      if ("..".equals(segment)) {
+      if ("..".equals(segment.strip())) {
         return true;
       }
     }

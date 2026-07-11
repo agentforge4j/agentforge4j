@@ -12,6 +12,9 @@ import com.agentforge4j.core.workflow.collection.DuplicatePolicy;
 import com.agentforge4j.core.workflow.collection.ReopenPolicy;
 import com.agentforge4j.core.workflow.collection.ReplacementPolicy;
 import com.agentforge4j.core.workflow.collection.WithdrawalPolicy;
+import com.agentforge4j.core.workflow.requirement.RequirementScope;
+import com.agentforge4j.core.workflow.requirement.ResolutionMode;
+import com.agentforge4j.core.workflow.requirement.WorkflowRequirement;
 import com.agentforge4j.core.workflow.step.StepDefinition;
 import com.agentforge4j.core.workflow.step.StepTransition;
 import com.agentforge4j.core.workflow.step.behaviour.BranchBehaviour;
@@ -37,7 +40,56 @@ class WorkflowValidatorCollectionTest {
   @Test
   void acceptsDeadlineOnlyClosableGate() {
     assertThatCode(() -> validator.validateCollectionGates(
-        workflows(gate(false, true, ReopenPolicy.NONE)))).doesNotThrowAnyException();
+        workflows(gate(false, true, ReopenPolicy.NONE, AuthorizationMode.ENFORCED),
+            deadlineCloseRequirements())))
+        .doesNotThrowAnyException();
+  }
+
+  @Test
+  void acceptsManuallyAndDeadlineClosableGateUnderEnforcedModeWithBothRequirements() {
+    assertThatCode(() -> validator.validateCollectionGates(
+        workflows(gate(true, true, ReopenPolicy.NONE, AuthorizationMode.ENFORCED),
+            deadlineCloseRequirements())))
+        .doesNotThrowAnyException();
+  }
+
+  @Test
+  void rejectsDeadlineOnlyClosableGateUnderOpenMode() {
+    assertThatThrownBy(() -> validator.validateCollectionGates(
+        workflows(gate(false, true, ReopenPolicy.NONE, AuthorizationMode.OPEN))))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("authorizationMode=ENFORCED");
+  }
+
+  @Test
+  void rejectsManuallyAndDeadlineClosableGateUnderOpenMode() {
+    // externalDeadlineClosable=true, manualClose=true, authorizationMode=OPEN: the manual-close
+    // escape hatch does not make the deadline path reachable -- authorize() still denies
+    // DEADLINE_CLOSE unconditionally under OPEN, so this combination must also be rejected.
+    assertThatThrownBy(() -> validator.validateCollectionGates(
+        workflows(gate(true, true, ReopenPolicy.NONE, AuthorizationMode.OPEN))))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("authorizationMode=ENFORCED");
+  }
+
+  @Test
+  void rejectsDeadlineClosableGateMissingStepActionRequirements() {
+    assertThatThrownBy(() -> validator.validateCollectionGates(
+        workflows(gate(false, true, ReopenPolicy.NONE, AuthorizationMode.ENFORCED))))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("'close' and 'deadline_close'");
+  }
+
+  @Test
+  void rejectsDeadlineClosableGateMissingOnlyTheDeadlineCloseRequirement() {
+    List<WorkflowRequirement> closeOnly = List.of(
+        new WorkflowRequirement("req-close", "rbac_step_action_allowed",
+            RequirementScope.STEP_ACTION, "cv-intake", "close", false, null,
+            ResolutionMode.DEFERRED));
+    assertThatThrownBy(() -> validator.validateCollectionGates(
+        workflows(gate(false, true, ReopenPolicy.NONE, AuthorizationMode.ENFORCED), closeOnly)))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("'close' and 'deadline_close'");
   }
 
   @Test
@@ -92,6 +144,20 @@ class WorkflowValidatorCollectionTest {
   }
 
   @Test
+  void rejectsUnclosableGateInsideNestedWorkflowDefinition() {
+    StepDefinition nestedGate = step("nested-gate", gate(false, false, ReopenPolicy.NONE));
+    WorkflowDefinition nested = new WorkflowDefinition("nested", "nested", null, null, null,
+        "1.0.0", null, WorkflowSource.CUSTOM, WorkflowLifecycle.ACTIVE, Map.of(), Map.of(),
+        List.of(nestedGate));
+    WorkflowDefinition workflow = new WorkflowDefinition("w", "w", null, null, null, "1.0.0", null,
+        WorkflowSource.CUSTOM, WorkflowLifecycle.ACTIVE, Map.of(), Map.of(), List.of(nested));
+
+    assertThatThrownBy(() -> validator.validateCollectionGates(Map.of("w", workflow)))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("closable");
+  }
+
+  @Test
   void acceptsValidGateInsideBlueprintBody() {
     StepDefinition nestedGate = step("bp-gate", gate(true, false, ReopenPolicy.NONE));
     BlueprintDefinition blueprint = new BlueprintDefinition("bp", "bp",
@@ -114,19 +180,40 @@ class WorkflowValidatorCollectionTest {
 
   private static CollectionBehaviour gate(boolean manualClose, boolean deadlineClosable,
       ReopenPolicy reopen) {
+    return gate(manualClose, deadlineClosable, reopen, AuthorizationMode.OPEN);
+  }
+
+  private static CollectionBehaviour gate(boolean manualClose, boolean deadlineClosable,
+      ReopenPolicy reopen, AuthorizationMode authorizationMode) {
     return new CollectionBehaviour(null, 0, null, null, 0, DuplicatePolicy.ALLOW,
         ReplacementPolicy.NONE, WithdrawalPolicy.NONE, manualClose, deadlineClosable, reopen,
-        AuthorizationMode.OPEN, StepTransition.AUTO);
+        authorizationMode, StepTransition.AUTO);
   }
 
   private static Map<String, WorkflowDefinition> workflows(CollectionBehaviour gate) {
+    return workflows(gate, List.of());
+  }
+
+  private static Map<String, WorkflowDefinition> workflows(CollectionBehaviour gate,
+      List<WorkflowRequirement> requirements) {
     StepDefinition step = StepDefinition.builder()
         .withStepId("cv-intake")
         .withName("CV intake")
         .withBehaviour(gate)
         .build();
     WorkflowDefinition workflow = new WorkflowDefinition("w", "w", null, null, null, "1.0.0", null,
-        WorkflowSource.CUSTOM, WorkflowLifecycle.ACTIVE, Map.of(), Map.of(), List.of(step));
+        WorkflowSource.CUSTOM, WorkflowLifecycle.ACTIVE, Map.of(), Map.of(), List.of(step),
+        requirements);
     return Map.of("w", workflow);
+  }
+
+  private static List<WorkflowRequirement> deadlineCloseRequirements() {
+    return List.of(
+        new WorkflowRequirement("req-close", "rbac_step_action_allowed",
+            RequirementScope.STEP_ACTION, "cv-intake", "close", false, null,
+            ResolutionMode.DEFERRED),
+        new WorkflowRequirement("req-deadline-close", "rbac_step_action_allowed",
+            RequirementScope.STEP_ACTION, "cv-intake", "deadline_close", false, null,
+            ResolutionMode.DEFERRED));
   }
 }

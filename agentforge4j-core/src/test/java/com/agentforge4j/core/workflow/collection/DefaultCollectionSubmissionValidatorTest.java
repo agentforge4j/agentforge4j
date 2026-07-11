@@ -38,6 +38,13 @@ class DefaultCollectionSubmissionValidatorTest {
   }
 
   @Test
+  void deniesUpwardTraversalSegmentsWithSurroundingWhitespace() {
+    assertDenied(".. /escape.txt");
+    assertDenied(" ../escape.txt");
+    assertDenied("a/.. /escape.txt");
+  }
+
+  @Test
   void deniesAbsoluteAndQualifiedPaths() {
     assertDenied("/etc/passwd");
     assertDenied("\\\\share\\file.txt");

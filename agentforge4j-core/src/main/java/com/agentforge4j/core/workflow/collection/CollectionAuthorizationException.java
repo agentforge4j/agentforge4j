@@ -19,7 +19,7 @@ public final class CollectionAuthorizationException extends RuntimeException {
 
   private final String actorId;
   private final String stepId;
-  private final transient CollectionAction action;
+  private final CollectionAction action;
 
   /**
    * @param actorId the denied actor (may be {@code null}/blank when the denial was for a missing actor)
