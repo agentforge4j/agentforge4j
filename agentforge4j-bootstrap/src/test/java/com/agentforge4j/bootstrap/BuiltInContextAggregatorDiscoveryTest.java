@@ -39,7 +39,7 @@ class BuiltInContextAggregatorDiscoveryTest {
 
   private static final List<String> DECLARED_INPUT_KEYS = List.of(
       "complexity", "stepCount", "minimumRequiredTokens", "minAgentTurns", "expectedAgentTurns",
-      "maxAgentTurns", "riskFlags", "estimatedInputTokensPerAgentTurn",
+      "maxAgentTurns", "iterationCeiling", "riskFlags", "estimatedInputTokensPerAgentTurn",
       "estimatedOutputTokensPerAgentTurn", "estimatedToolInvocationsPerAgentTurn");
 
   @Test
@@ -88,6 +88,8 @@ class BuiltInContextAggregatorDiscoveryTest {
         assign("assign-expectedAgentTurns", "expectedAgentTurns",
             new NumberContextValue(1, ContextProvenance.SYSTEM_GENERATED)),
         assign("assign-maxAgentTurns", "maxAgentTurns", new NumberContextValue(1, ContextProvenance.SYSTEM_GENERATED)),
+        assign("assign-iterationCeiling", "iterationCeiling",
+            new NumberContextValue(1, ContextProvenance.SYSTEM_GENERATED)),
         assign("assign-riskFlags", "riskFlags",
             new StringContextValue("NONE", ContextProvenance.SYSTEM_GENERATED)),
         assign("assign-estimatedInputTokensPerAgentTurn", "estimatedInputTokensPerAgentTurn",

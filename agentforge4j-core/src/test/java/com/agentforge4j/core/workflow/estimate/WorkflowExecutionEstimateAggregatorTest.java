@@ -42,6 +42,7 @@ class WorkflowExecutionEstimateAggregatorTest {
     values.put("minAgentTurns", string("52"));
     values.put("expectedAgentTurns", string("88"));
     values.put("maxAgentTurns", string("220"));
+    values.put("iterationCeiling", string("15"));
     values.put("riskFlags", string(riskFlags));
     values.put("estimatedInputTokensPerAgentTurn", number(900));
     values.put("estimatedOutputTokensPerAgentTurn", number(500));
@@ -62,13 +63,13 @@ class WorkflowExecutionEstimateAggregatorTest {
     Map<String, ContextValue> result = AGGREGATOR.aggregate(() -> declared);
 
     WorkflowComplexityAnalysis analysis = new WorkflowComplexityAnalysis(
-        "workflow-execution-estimate", 58, 0, 0, 0, 0, 0, 0, 52, 88, 220, 0, true, null, 10500,
+        "workflow-execution-estimate", 58, 0, 0, 0, 0, 0, 0, 52, 88, 220, 15, true, null, 10500,
         ComplexityClass.HIGH_RISK,
         List.of(RiskFlag.AGENT_DRIVEN_LOOP, RiskFlag.LLM_DECIDED_BRANCHING, RiskFlag.LARGE_STRUCTURE));
     SizingInputs sizing = new SizingInputs(900, 500, 1);
     ExecutionEstimate expected = WorkflowExecutionAggregator.aggregate(analysis, sizing);
 
-    assertThat(result).hasSize(8);
+    assertThat(result).hasSize(9);
     assertThat(stringValue(result, "recommendation")).isEqualTo(expected.recommendation().name());
     assertThat(stringValue(result, "confidence")).isEqualTo(expected.confidence().name());
     assertThat(stringValue(result, "complexity")).isEqualTo(expected.complexity().name());
@@ -76,6 +77,7 @@ class WorkflowExecutionEstimateAggregatorTest {
     assertThat(numberValue(result, "estimatedMinTokens")).isEqualTo(expected.estimatedMinTokens());
     assertThat(numberValue(result, "estimatedExpectedTokens")).isEqualTo(expected.estimatedExpectedTokens());
     assertThat(numberValue(result, "estimatedMaxTokens")).isEqualTo(expected.estimatedMaxTokens());
+    assertThat(numberValue(result, "iterationCeiling")).isEqualTo(analysis.iterationCeiling());
     assertThat(riskFlagNames(result)).containsExactlyElementsOf(
         expected.riskFlags().stream().map(RiskFlag::name).toList());
   }
@@ -177,6 +179,15 @@ class WorkflowExecutionEstimateAggregatorTest {
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("estimatedInputTokensPerAgentTurn")
         .hasMessageContaining("900.5");
+  }
+
+  @Test
+  void trailingCommaInRiskFlagsFailsClosed() {
+    Map<String, ContextValue> declared = declaredValues("AGENT_DRIVEN_LOOP,");
+
+    assertThatThrownBy(() -> AGGREGATOR.aggregate(() -> declared))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("riskFlags");
   }
 
   @Test

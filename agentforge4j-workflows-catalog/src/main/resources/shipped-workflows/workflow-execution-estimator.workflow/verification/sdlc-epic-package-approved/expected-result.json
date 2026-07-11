@@ -46,7 +46,8 @@
       "executionEstimate.minimumRequiredTokens",
       "executionEstimate.estimatedMinTokens",
       "executionEstimate.estimatedExpectedTokens",
-      "executionEstimate.estimatedMaxTokens"
+      "executionEstimate.estimatedMaxTokens",
+      "executionEstimate.iterationCeiling"
     ],
     "contextMatches": {
       "executionEstimate.recommendation": "NARROW",
@@ -55,7 +56,8 @@
       "executionEstimate.minimumRequiredTokens": "9900",
       "executionEstimate.estimatedMinTokens": "103000",
       "executionEstimate.estimatedExpectedTokens": "194200",
-      "executionEstimate.estimatedMaxTokens": "285400"
+      "executionEstimate.estimatedMaxTokens": "285400",
+      "executionEstimate.iterationCeiling": "3"
     }
   }
 }

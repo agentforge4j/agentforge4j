@@ -227,6 +227,7 @@ public final class WorkflowExecutionEstimatorExample {
     System.out.println("estimatedMaxTokens: " + estimateContext(state, "estimatedMaxTokens"));
     System.out.println("minimumRequiredTokens: " + estimateContext(state, "minimumRequiredTokens"));
     System.out.println("riskFlags: " + estimateContext(state, "riskFlags"));
+    System.out.println("iterationCeiling: " + estimateContext(state, "iterationCeiling"));
     System.out.println("recommendation: " + estimateContext(state, "recommendation"));
   }
 

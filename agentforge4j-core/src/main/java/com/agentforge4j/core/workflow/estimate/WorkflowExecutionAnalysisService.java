@@ -8,9 +8,10 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 /**
- * Facade over the deterministic estimation building blocks — the two genuinely Java-shaped concerns
- * a host owns when driving the {@code workflow-execution-estimator} workflow: turning a target
- * definition into a structural summary before the run, and aggregating the sized figures after it.
+ * Facade over the deterministic estimation building blocks — the Java-shaped concerns a host owns
+ * when driving an estimation-style workflow: turning a target definition into a structural summary
+ * before the run, and, for a custom (non-catalog) workflow that does not use the {@code AGGREGATE}
+ * step behaviour, aggregating the sized figures after it.
  *
  * <ol>
  *   <li>{@link #analyze(WorkflowDefinition)} (Mode 1) or {@link #analyze(EpicPackage)} (Mode 2) runs
@@ -22,8 +23,12 @@ import com.fasterxml.jackson.databind.ObjectMapper;
  *       answer — the workflow never receives the {@code WorkflowDefinition} or {@code EpicPackage}
  *       object itself.</li>
  *   <li>{@link #aggregate(WorkflowComplexityAnalysis, SizingInputs)} combines the analysis with the
- *       per-turn sizing the {@code execution-estimator} agent produced into the final
- *       {@link ExecutionEstimate}.</li>
+ *       per-turn sizing produced by an execution-sizing agent into the final
+ *       {@link ExecutionEstimate}. The shipped {@code workflow-execution-estimator} catalog bundle
+ *       no longer calls this host-side: it aggregates in-workflow via the {@code AGGREGATE} step
+ *       behaviour and the built-in {@code workflow-execution-estimate} {@code ContextAggregator},
+ *       which wraps {@link WorkflowExecutionAggregator#aggregate} directly. This method remains for
+ *       a custom, non-catalog workflow that drives aggregation from host Java instead.</li>
  * </ol>
  *
  * <p>This facade holds no run state and performs no run orchestration; starting the workflow,

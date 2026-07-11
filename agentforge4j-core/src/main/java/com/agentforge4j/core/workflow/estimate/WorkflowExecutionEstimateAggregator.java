@@ -20,11 +20,13 @@ import java.util.Map;
  * needs from the step's declared context values — the {@code structural-summary} artifact fields
  * always arrive as {@link StringContextValue} (submitted as {@code INPUT} answers), while the
  * {@code execution-estimator} agent's sizing figures arrive as {@link NumberContextValue} — and
- * emits exactly the 8 fields the estimator design names:
- * {@code recommendation, confidence, complexity, riskFlags, minimumRequiredTokens,
- * estimatedMinTokens, estimatedExpectedTokens, estimatedMaxTokens}. Excludes {@code workflowId},
- * {@code estimatedAgentTurns}, {@code estimatedToolInvocations}, and {@code estimatedSteps} by
- * design.
+ * emits the 8 fields the estimator design names ({@code recommendation, confidence, complexity,
+ * riskFlags, minimumRequiredTokens, estimatedMinTokens, estimatedExpectedTokens,
+ * estimatedMaxTokens}) plus {@code iterationCeiling}, the submitted structural-summary value passed
+ * through unmodified for disclosure alongside the risk flags it may have contributed to (it is
+ * never itself part of {@link WorkflowExecutionAggregator#aggregate}'s token-envelope math).
+ * Excludes {@code workflowId}, {@code estimatedAgentTurns}, {@code estimatedToolInvocations}, and
+ * {@code estimatedSteps} by design.
  *
  * <p>{@code riskFlags} is carried through unmodified from whichever analyzer produced the
  * structural summary (never re-derived here): {@code WorkflowComplexityAnalyzer} (Mode 1) and
@@ -55,6 +57,7 @@ public final class WorkflowExecutionEstimateAggregator implements ContextAggrega
   public Map<String, ContextValue> aggregate(AggregationContext context) {
     Validate.notNull(context, "context must not be null");
     Map<String, ContextValue> values = context.values();
+    long iterationCeiling = asLong(values, "iterationCeiling");
 
     WorkflowComplexityAnalysis analysis = new WorkflowComplexityAnalysis(
         AGGREGATOR_ID,
@@ -68,7 +71,7 @@ public final class WorkflowExecutionEstimateAggregator implements ContextAggrega
         asLong(values, "minAgentTurns"),
         asLong(values, "expectedAgentTurns"),
         asLong(values, "maxAgentTurns"),
-        0,
+        iterationCeiling,
         true,
         null,
         asLong(values, "minimumRequiredTokens"),
@@ -90,7 +93,8 @@ public final class WorkflowExecutionEstimateAggregator implements ContextAggrega
         Map.entry("minimumRequiredTokens", numberValue(estimate.minimumRequiredTokens())),
         Map.entry("estimatedMinTokens", numberValue(estimate.estimatedMinTokens())),
         Map.entry("estimatedExpectedTokens", numberValue(estimate.estimatedExpectedTokens())),
-        Map.entry("estimatedMaxTokens", numberValue(estimate.estimatedMaxTokens())));
+        Map.entry("estimatedMaxTokens", numberValue(estimate.estimatedMaxTokens())),
+        Map.entry("iterationCeiling", numberValue(iterationCeiling)));
   }
 
   private static ContextValue stringValue(String value) {
@@ -183,7 +187,7 @@ public final class WorkflowExecutionEstimateAggregator implements ContextAggrega
       return List.of();
     }
     List<RiskFlag> flags = new ArrayList<>();
-    for (String token : string.value().split(",")) {
+    for (String token : string.value().split(",", -1)) {
       String trimmed = token.trim();
       RiskFlag flag;
       try {

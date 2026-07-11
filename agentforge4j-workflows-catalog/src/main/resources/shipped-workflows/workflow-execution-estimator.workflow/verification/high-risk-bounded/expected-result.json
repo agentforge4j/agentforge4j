@@ -48,7 +48,8 @@
       "executionEstimate.minimumRequiredTokens",
       "executionEstimate.estimatedMinTokens",
       "executionEstimate.estimatedExpectedTokens",
-      "executionEstimate.estimatedMaxTokens"
+      "executionEstimate.estimatedMaxTokens",
+      "executionEstimate.iterationCeiling"
     ],
     "contextMatches": {
       "estimatedInputTokensPerAgentTurn": "[0-9]+",
@@ -58,7 +59,8 @@
       "executionEstimate.minimumRequiredTokens": "10500",
       "executionEstimate.estimatedMinTokens": "[0-9]+",
       "executionEstimate.estimatedExpectedTokens": "[0-9]+",
-      "executionEstimate.estimatedMaxTokens": "[0-9]+"
+      "executionEstimate.estimatedMaxTokens": "[0-9]+",
+      "executionEstimate.iterationCeiling": "15"
     }
   }
 }

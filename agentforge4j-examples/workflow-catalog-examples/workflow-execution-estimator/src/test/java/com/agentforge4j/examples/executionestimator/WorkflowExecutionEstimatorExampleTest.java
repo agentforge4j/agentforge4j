@@ -50,6 +50,7 @@ class WorkflowExecutionEstimatorExampleTest {
     assertThat(numberValueOf(state, "estimatedMinTokens")).isEqualTo(7_600);
     assertThat(numberValueOf(state, "estimatedExpectedTokens")).isEqualTo(7_600);
     assertThat(numberValueOf(state, "estimatedMaxTokens")).isEqualTo(7_600);
+    assertThat(numberValueOf(state, "iterationCeiling")).isEqualTo(1);
     assertThat(stringValueOf(state, "recommendation")).isEqualTo("CONTINUE");
   }
 

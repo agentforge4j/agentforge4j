@@ -44,7 +44,11 @@ Add `AGGREGATE` as a new `StepBehaviour` sealed-hierarchy variant, with a `Conte
 
 - **API**: new `core.spi.aggregation` package (`ContextAggregator`, `AggregationContext`) — additive public SPI. New `AggregateBehaviour` record joins the sealed `StepBehaviour` hierarchy (additive; exhaustive consumers of the sealed type must be extended, verified done for all existing ones). New `AgentForge4jBootstrap.Builder.withContextAggregators(...)` embedder hook, mirroring `withArtifactValidators(...)`.
 - **Workflow definitions**: new `"type": "AGGREGATE"` step-behaviour discriminator — additive to the workflow JSON schema.
-- **Runtime behaviour**: none for existing step types; purely additive.
+- **Runtime behaviour**: none for existing step types at the engine/behaviour-type level; purely
+  additive. The shipped `workflow-execution-estimator` bundle itself does change: its `estimate`
+  step's transition moves from `HUMAN_APPROVAL` to `AUTO`, and the new `aggregate-estimate` step
+  becomes the run's approval-pause point instead — a real, user-visible change to that one bundle's
+  pause semantics, not to the engine.
 - **Configuration**: none beyond `ContextAggregator` ServiceLoader registration (module-path `provides` and classpath-mode `META-INF/services`, both required — module-path-only registration is invisible to classpath-mode test/embedding execution).
 
 ## Verification note

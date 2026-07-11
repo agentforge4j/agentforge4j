@@ -101,6 +101,7 @@
           "minAgentTurns",
           "expectedAgentTurns",
           "maxAgentTurns",
+          "iterationCeiling",
           "riskFlags",
           "estimatedInputTokensPerAgentTurn",
           "estimatedOutputTokensPerAgentTurn",
@@ -114,7 +115,8 @@
           "executionEstimate.minimumRequiredTokens",
           "executionEstimate.estimatedMinTokens",
           "executionEstimate.estimatedExpectedTokens",
-          "executionEstimate.estimatedMaxTokens"
+          "executionEstimate.estimatedMaxTokens",
+          "executionEstimate.iterationCeiling"
         ]
       }
     }
