@@ -30,7 +30,10 @@ import java.util.Map;
  * structural summary (never re-derived here): {@code WorkflowComplexityAnalyzer} (Mode 1) and
  * {@code EpicPackageComplexityAnalyzer} (Mode 2) raise the same flags from different, mode-specific
  * thresholds, so a generic re-derivation from the other structural fields would misclassify one mode
- * or the other.
+ * or the other. {@link RiskFlag#WIDE_TOKEN_ENVELOPE} is the sole exception: it is only ever
+ * computed post-sizing by {@link WorkflowExecutionAggregator#aggregate}, so no structural analyzer
+ * can legitimately submit it here — a submitted {@code WIDE_TOKEN_ENVELOPE} is rejected fail-closed
+ * rather than silently passed through.
  *
  * <p>{@code WorkflowComplexityAnalysis.workflowId()} is required non-blank by that record's
  * constructor but is excluded from this aggregator's output and not exposed by
@@ -112,6 +115,15 @@ public final class WorkflowExecutionEstimateAggregator implements ContextAggrega
   }
 
   private static long asLong(Map<String, ContextValue> values, String key) {
+    long parsed = parseLong(values, key);
+    if (parsed < 0) {
+      throw new IllegalArgumentException(
+          "Context value for key '%s' must not be negative but was %d".formatted(key, parsed));
+    }
+    return parsed;
+  }
+
+  private static long parseLong(Map<String, ContextValue> values, String key) {
     ContextValue value = require(values, key);
     if (value instanceof NumberContextValue number) {
       double raw = number.value().doubleValue();
@@ -147,7 +159,13 @@ public final class WorkflowExecutionEstimateAggregator implements ContextAggrega
   private static ComplexityClass asComplexityClass(Map<String, ContextValue> values, String key) {
     ContextValue value = require(values, key);
     if (value instanceof StringContextValue string) {
-      return ComplexityClass.valueOf(string.value());
+      try {
+        return ComplexityClass.valueOf(string.value());
+      } catch (IllegalArgumentException e) {
+        throw new IllegalArgumentException(
+            "Context value for key '%s' is not a valid complexity class: '%s'"
+                .formatted(key, string.value()), e);
+      }
     }
     throw new IllegalArgumentException(
         "Context value for key '%s' must be a string but was %s"
@@ -166,7 +184,22 @@ public final class WorkflowExecutionEstimateAggregator implements ContextAggrega
     }
     List<RiskFlag> flags = new ArrayList<>();
     for (String token : string.value().split(",")) {
-      flags.add(RiskFlag.valueOf(token.trim()));
+      String trimmed = token.trim();
+      RiskFlag flag;
+      try {
+        flag = RiskFlag.valueOf(trimmed);
+      } catch (IllegalArgumentException e) {
+        throw new IllegalArgumentException(
+            "Context value for key '%s' contains an unknown risk flag: '%s'"
+                .formatted(key, trimmed), e);
+      }
+      if (flag == RiskFlag.WIDE_TOKEN_ENVELOPE) {
+        throw new IllegalArgumentException(
+            ("Context value for key '%s' must not submit WIDE_TOKEN_ENVELOPE: it is only ever "
+                + "computed post-sizing from the aggregated token range, never a structural input")
+                    .formatted(key));
+      }
+      flags.add(flag);
     }
     return List.copyOf(flags);
   }

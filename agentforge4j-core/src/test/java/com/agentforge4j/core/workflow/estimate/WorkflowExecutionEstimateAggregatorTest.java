@@ -126,11 +126,45 @@ class WorkflowExecutionEstimateAggregatorTest {
   }
 
   @Test
-  void unknownRiskFlagNameFailsClosed() {
+  void unknownRiskFlagNameFailsClosedWithKeyAndValue() {
     Map<String, ContextValue> declared = declaredValues("NOT_A_REAL_FLAG");
 
     assertThatThrownBy(() -> AGGREGATOR.aggregate(() -> declared))
-        .isInstanceOf(IllegalArgumentException.class);
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("riskFlags")
+        .hasMessageContaining("NOT_A_REAL_FLAG");
+  }
+
+  @Test
+  void unknownComplexityClassFailsClosedWithKeyAndValue() {
+    Map<String, ContextValue> declared = new LinkedHashMap<>(declaredValues("NONE"));
+    declared.put("complexity", string("NOT_A_REAL_CLASS"));
+
+    assertThatThrownBy(() -> AGGREGATOR.aggregate(() -> declared))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("complexity")
+        .hasMessageContaining("NOT_A_REAL_CLASS");
+  }
+
+  @Test
+  void submittedWideTokenEnvelopeRiskFlagFailsClosed() {
+    Map<String, ContextValue> declared = declaredValues("WIDE_TOKEN_ENVELOPE");
+
+    assertThatThrownBy(() -> AGGREGATOR.aggregate(() -> declared))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("riskFlags")
+        .hasMessageContaining("WIDE_TOKEN_ENVELOPE");
+  }
+
+  @Test
+  void negativeNumericValueFailsClosedWithKeyAndValue() {
+    Map<String, ContextValue> declared = new LinkedHashMap<>(declaredValues("NONE"));
+    declared.put("minAgentTurns", string("-1"));
+
+    assertThatThrownBy(() -> AGGREGATOR.aggregate(() -> declared))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("minAgentTurns")
+        .hasMessageContaining("-1");
   }
 
   @Test

@@ -111,8 +111,7 @@
         "HIGH_ITERATION_CEILING",
         "LLM_DECIDED_BRANCHING",
         "DEEP_NESTING",
-        "LARGE_STRUCTURE",
-        "WIDE_TOKEN_ENVELOPE"
+        "LARGE_STRUCTURE"
       ]
     }
   ]
