@@ -51,6 +51,19 @@ class EpicPackageComplexityAnalyzerTest {
   }
 
   @Test
+  void noHintDefaultsExpectedIterationsToHalfTheReworkCeiling() {
+    // packageOf() supplies no hint, so expectedIterations defaults to
+    // Math.max(1, (DEFAULT_MAX_REWORK_ITERATIONS_PER_PHASE + 1) / 2) per epic — the branch none of
+    // the other tests below exercise, since they all supply an explicit hint.
+    WorkflowComplexityAnalysis analysis = EpicPackageComplexityAnalyzer.analyze(packageOf(1));
+
+    long expectedIterationsPerPhase = Math.max(1,
+        (EpicPackageComplexityAnalyzer.DEFAULT_MAX_REWORK_ITERATIONS_PER_PHASE + 1) / 2);
+    assertThat(analysis.expectedAgentTurns())
+        .isEqualTo(1 + EpicPackageComplexityAnalyzer.PHASES_PER_EPIC * expectedIterationsPerPhase);
+  }
+
+  @Test
   void twelveEpicsLoopCountModel() {
     WorkflowComplexityAnalysis analysis = EpicPackageComplexityAnalyzer.analyze(packageOf(12));
 
