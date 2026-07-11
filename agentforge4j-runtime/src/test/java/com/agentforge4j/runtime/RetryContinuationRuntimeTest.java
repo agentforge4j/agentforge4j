@@ -328,6 +328,61 @@ class RetryContinuationRuntimeTest {
   }
 
   @Test
+  void continue_across_a_nested_loop_paused_at_max_iterations_restarts_only_the_inner_loop_from_iteration_one() {
+    // A loop's body can itself contain a BlueprintRef to another loop-configured blueprint, so an
+    // AWAIT_USER max-iterations pause can occur while an *enclosing* loop's own iteration is still in
+    // progress. The rewind sweep (WorkflowState.clearEntriesFromUid, driven from
+    // rewindLoopAwaitingMaxIterationsDecision) must restart only the paused inner loop's
+    // cursor/body-start-uid/fingerprint — the outer loop's own bookkeeping, still legitimately in
+    // progress, must survive untouched. The outer loop's body-start-uid is always numerically lower
+    // than the nested inner loop's (the inner loop starts later within the outer iteration's body),
+    // so this proves the sweep's uid-threshold comparison correctly separates the two.
+    StepDefinition innerBody = agentStep("inner-body");
+    BlueprintDefinition innerLoopBp = new BlueprintDefinition("inner-loop-bp", "inner-loop-bp",
+        new BlueprintBehaviour(
+            LoopConfig.withDefaults(LoopTerminationStrategy.AGENT_SIGNAL, null, null, 2,
+                MaxIterationsAction.AWAIT_USER),
+            StepTransition.AUTO),
+        List.of(innerBody));
+    BlueprintDefinition outerLoopBp = new BlueprintDefinition("outer-loop-bp", "outer-loop-bp",
+        new BlueprintBehaviour(
+            LoopConfig.withDefaults(LoopTerminationStrategy.FIXED_COUNT, null, null, 1, null),
+            StepTransition.AUTO),
+        List.of(new BlueprintRef("inner-loop-bp")));
+    WorkflowDefinition workflow = workflow("wf-nested-loop-paused",
+        Map.of("outer-loop-bp", outerLoopBp, "inner-loop-bp", innerLoopBp),
+        List.of(new BlueprintRef("outer-loop-bp")));
+
+    Fixture fixture = fixture(workflow, continuingAgentInvoker());
+    String runId = fixture.runtime().start(workflow.id());
+
+    // The inner agent always CONTINUEs, so the inner loop never signals completion and reaches its
+    // own maxIterations=2, pausing via AWAIT_USER — while the outer loop's single (maxIterations=1)
+    // iteration is still in progress, since its body (the inner BlueprintRef) has not yet returned.
+    WorkflowState pausedState = fixture.runtime().getState(runId);
+    assertThat(pausedState.getStatus()).isEqualTo(WorkflowStatus.PAUSED);
+    assertThat(countEvents(fixture, runId, "inner-body", WorkflowEventType.STEP_STARTED)).isEqualTo(2);
+    int outerCursorBeforeResume = pausedState.getLoopIterationCursor("outer-loop-bp");
+    int outerBodyStartUidBeforeResume = pausedState.getLoopIterationBodyStartUid("outer-loop-bp");
+    assertThat(outerCursorBeforeResume).isEqualTo(1);
+    assertThat(outerBodyStartUidBeforeResume).isGreaterThan(0);
+
+    fixture.runtime().continueRun(runId, "user");
+
+    // The generic AWAIT_USER rewind sweep must restart only the inner loop at iteration 1 (four total
+    // inner-body starts) while the outer loop's own in-progress cursor/body-start-uid survive
+    // untouched — a regression here would either fail to restart the inner loop (no progress, count
+    // stays 2) or wipe the outer loop's own bookkeeping (a stale-cursor bug for nested loops
+    // specifically).
+    WorkflowState afterResume = fixture.runtime().getState(runId);
+    assertThat(afterResume.getStatus()).isEqualTo(WorkflowStatus.PAUSED);
+    assertThat(countEvents(fixture, runId, "inner-body", WorkflowEventType.STEP_STARTED)).isEqualTo(4);
+    assertThat(afterResume.getLoopIterationCursor("outer-loop-bp")).isEqualTo(outerCursorBeforeResume);
+    assertThat(afterResume.getLoopIterationBodyStartUid("outer-loop-bp"))
+        .isEqualTo(outerBodyStartUidBeforeResume);
+  }
+
+  @Test
   void retry_blueprint_inner_step_is_rejected_with_enclosing_id() {
     StepDefinition inner = resourceStep("inner", "/examples/sample.txt", "inner.result");
     BlueprintDefinition blueprint = blueprint("bp1", List.of(inner));
