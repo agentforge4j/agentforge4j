@@ -56,6 +56,43 @@ repository root first, then `./mvnw verify` inside `agentforge4j-examples`.
 
 Maintainers review and merge; please don't merge your own PR.
 
+## Releases
+
+> **How releases work.** `main` is always the development line for the next release. Large
+> experimental work lives on `initiative/*` branches and merges into `main` only once accepted.
+> A release is a Git tag with a track prefix — `framework-v0.2.0` for the framework, `catalog-v*`
+> for the shipped-workflow catalog, `builder-v*` for the npm builder package; pushing a tag
+> triggers automated verification and publishing, and the tagged tree contains its own release
+> notes and changelog entry. Bug fixes for a released version land on a `release/<track>-0.N.x`
+> maintenance branch and ship as a patch tag; the same fix then reaches `main` through a reviewed
+> forward-port PR. Only the latest minor of each track is supported before 1.0.0. Track version
+> numbers are independent — what works together is defined by the workflow **schemaVersion** (a
+> required field in every workflow definition, incremented on every format change); see the
+> compatibility matrix in the docs. Report bugs against the latest release of the relevant track
+> (use the component field in the issue template).
+
+Three release tracks, independently versioned:
+
+| Track | Tag prefix | Where it publishes |
+|---|---|---|
+| Framework (this Maven reactor) | `framework-v*` | Maven Central |
+| Shipped workflow catalog | `catalog-v*` | Maven Central |
+| Workflow builder | `builder-v*` | npm (`@agentforge4j/workflow-builder-react`) |
+
+**Patch flow.** A fix for an already-released version is applied on that version's
+`release/<track>-0.N.x` branch, not by cherry-picking onto `main`. The same fix then reaches
+`main` through a reviewed forward-port pull request — reuse the fix commit when the branches
+haven't diverged, adapt it in the PR when they have, with equivalent regression coverage either
+way. Direct or unreviewed cherry-picks are never used.
+
+**Which version do I report against?** Each track supports only its latest minor before 1.0.0 —
+see [SECURITY.md](SECURITY.md) for the full policy. When filing an issue, use the component
+dropdown in the issue template to say which track you mean, and report against that track's
+latest release; an older minor is already end-of-life and won't receive a fix directly (only a
+forward-port to the current line). See [`docs/releases/README.md`](docs/releases/README.md) for
+the maintainer's own release checklist, and the per-track `CHANGELOG.md` files for release
+history.
+
 ## Architecture decision records
 
 Significant architectural decisions are recorded as ADRs in [`docs/adr/`](docs/adr/README.md).

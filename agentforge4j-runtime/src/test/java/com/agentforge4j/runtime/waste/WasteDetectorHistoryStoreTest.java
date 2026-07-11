@@ -63,7 +63,7 @@ class WasteDetectorHistoryStoreTest {
 
     // Simulates a RETRY_PREVIOUS rewind clearing everything from step-execution uid 0 onward —
     // the most aggressive possible rewind.
-    state.clearEntriesFromUid(0);
+    state.clearEntriesFromUid(0, Set.of());
 
     assertThat(WasteDetectorHistoryStore.readInvocation(state, "step-1", mapper)).isPresent();
   }
@@ -74,7 +74,7 @@ class WasteDetectorHistoryStoreTest {
     WasteDetectorHistoryStore.writeLoop(state,
         new WasteDetectorLoopHistory("bp-1", "ctx-fp", Set.of("out-fp-1")), mapper);
 
-    state.clearEntriesFromUid(0);
+    state.clearEntriesFromUid(0, Set.of());
 
     assertThat(WasteDetectorHistoryStore.readLoop(state, "bp-1", mapper)).isPresent();
   }

@@ -9,6 +9,7 @@ import java.util.ArrayDeque;
 import java.util.Deque;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import lombok.Getter;
 import lombok.Setter;
 import org.apache.commons.lang3.ObjectUtils;
@@ -63,6 +64,17 @@ public final class ExecutionContext {
   private Map<String, Executable> currentSequenceExecutables = Map.of();
 
   /**
+   * Stack of blueprint ids of loops whose iteration body is currently executing (innermost at the head) —
+   * bracketed by {@link #pushActiveLoopBlueprint(String)}/{@link #popActiveLoopBlueprint()} around each loop
+   * strategy's call to run an iteration's body. Lets a rewind issued from <em>inside</em> one of these
+   * loops' own currently-active iteration (for example {@code RetryPreviousBehaviourHandler} retrying that
+   * iteration's own first-executed step) exclude that loop from {@code WorkflowState.clearEntriesFromUid}'s
+   * loop-cursor sweep — the loop is not being externally re-entered, it is still on the call stack and will
+   * correctly advance its own bookkeeping when it next starts an iteration.
+   */
+  private final Deque<String> activeLoopBlueprintIds = new ArrayDeque<>();
+
+  /**
    * Transient, per-drive flag set when an agent applies a {@code COMPLETE} command. An {@code AGENT_SIGNAL} loop reads
    * it after each iteration to detect that the agent signalled clean loop completion. Not persisted: it is always set
    * and read within the same synchronous drive as the {@code COMPLETE}, so a pause/resume starts a fresh context with
@@ -99,6 +111,14 @@ public final class ExecutionContext {
    */
   public int allocateStepSequenceUid() {
     return ++stepSequenceUidCounter;
+  }
+
+  /**
+   * Returns the uid the next call to {@link #allocateStepSequenceUid()} would assign, without
+   * allocating it. Used by loop strategies to record where a loop iteration's body begins.
+   */
+  public int peekNextStepSequenceUid() {
+    return stepSequenceUidCounter + 1;
   }
 
   /**
@@ -149,5 +169,31 @@ public final class ExecutionContext {
 
   public void setCurrentSequenceExecutables(Map<String, Executable> executables) {
     this.currentSequenceExecutables = Validate.notNull(executables, "executables must not be null");
+  }
+
+  /**
+   * Marks {@code blueprintId}'s loop as currently running an iteration's body. Callers must pair this with
+   * {@link #popActiveLoopBlueprint()} (typically in a {@code finally} block) once that body finishes, pauses,
+   * or throws.
+   */
+  public void pushActiveLoopBlueprint(String blueprintId) {
+    activeLoopBlueprintIds.push(Validate.notBlank(blueprintId, "blueprintId must not be blank"));
+  }
+
+  /**
+   * Unmarks the innermost loop pushed via {@link #pushActiveLoopBlueprint(String)}.
+   */
+  public void popActiveLoopBlueprint() {
+    Validate.isTrue(!activeLoopBlueprintIds.isEmpty(),
+        "No active loop blueprint to pop for run '" + state.getRunId() + "'");
+    activeLoopBlueprintIds.pop();
+  }
+
+  /**
+   * Returns the blueprint ids of every loop whose iteration body is currently executing (this loop, and any
+   * enclosing loop it is nested inside), or an empty set when none is active.
+   */
+  public Set<String> activeLoopBlueprintIds() {
+    return activeLoopBlueprintIds.isEmpty() ? Set.of() : Set.copyOf(activeLoopBlueprintIds);
   }
 }

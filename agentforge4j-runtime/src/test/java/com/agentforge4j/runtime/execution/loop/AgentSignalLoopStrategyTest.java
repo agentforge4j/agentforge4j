@@ -5,6 +5,7 @@ import com.agentforge4j.core.spi.governance.WasteSignalPolicy;
 import com.agentforge4j.core.workflow.WorkflowDefinition;
 import com.agentforge4j.core.workflow.WorkflowLifecycle;
 import com.agentforge4j.core.workflow.WorkflowSource;
+import com.agentforge4j.core.workflow.event.WorkflowEventType;
 import com.agentforge4j.core.workflow.state.WorkflowState;
 import com.agentforge4j.core.workflow.state.WorkflowStatus;
 import com.agentforge4j.core.workflow.step.StepDefinition;
@@ -30,9 +31,11 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -157,6 +160,28 @@ class AgentSignalLoopStrategyTest {
         executionContext)).isEqualTo(ExecutionOutcome.COMPLETED);
     assertThat(firstSeen.get()).isEqualTo(3);
     assertThat(state.getLoopIterationCursor(BLUEPRINT_ID)).isZero();
+  }
+
+  @Test
+  void records_loop_iteration_started_when_the_body_throws_after_allocating_a_step_uid() {
+    // StepSequenceExecutor allocates a step's execution uid before invoking its behaviour, so a
+    // step that throws has still advanced the uid counter by the time the exception propagates.
+    // The pre-PR behaviour recorded LOOP_ITERATION_STARTED unconditionally; deferring it until after
+    // executeAll (to avoid phantom events on an already-completed loop's redrive) must not silently
+    // drop it for a genuine mid-body failure.
+    when(stepSequenceExecutor.executeAll(anyList(), any())).thenAnswer(inv -> {
+      executionContext.allocateStepSequenceUid();
+      throw new IllegalStateException("boom");
+    });
+
+    assertThatThrownBy(() -> strategy.iterate(blueprint, loopConfig, executionContext))
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessage("boom");
+
+    verify(eventRecorder).record("run-1", BLUEPRINT_ID, WorkflowEventType.LOOP_ITERATION_STARTED,
+        "iteration=1", "runtime");
+    verify(eventRecorder, never()).record("run-1", BLUEPRINT_ID,
+        WorkflowEventType.LOOP_ITERATION_COMPLETED, "iteration=1", "runtime");
   }
 
   private static LoopConfig agentSignalConfig(int maxIterations, MaxIterationsAction action) {

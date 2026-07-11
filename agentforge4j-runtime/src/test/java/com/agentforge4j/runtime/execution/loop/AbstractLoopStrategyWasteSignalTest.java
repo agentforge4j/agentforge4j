@@ -50,12 +50,15 @@ class AbstractLoopStrategyWasteSignalTest {
     InMemoryWorkflowEventLog eventLog = new InMemoryWorkflowEventLog();
     EventRecorder eventRecorder = recorder(eventLog);
     StepSequenceExecutor stepSequenceExecutor = mock(StepSequenceExecutor.class);
-    when(stepSequenceExecutor.executeAll(anyList(), any())).thenReturn(ExecutionOutcome.COMPLETED);
     FixedCountLoopStrategy strategy = new FixedCountLoopStrategy(stepSequenceExecutor,
         eventRecorder, new MaxIterationsHandler(eventRecorder, CLOCK), new ObjectMapper(),
         WasteSignalPolicy.NO_OP);
     WorkflowState state = state();
     ExecutionContext executionContext = executionContext(state);
+    when(stepSequenceExecutor.executeAll(anyList(), any())).thenAnswer(invocation -> {
+      executionContext.allocateStepSequenceUid();
+      return ExecutionOutcome.COMPLETED;
+    });
     LoopConfig config = fixedCountConfig(2);
 
     strategy.iterate(blueprint(config), config, executionContext);
@@ -76,6 +79,7 @@ class AbstractLoopStrategyWasteSignalTest {
     StepSequenceExecutor stepSequenceExecutor = mock(StepSequenceExecutor.class);
     when(stepSequenceExecutor.executeAll(anyList(), any())).thenAnswer(invocation -> {
       ExecutionContext context = invocation.getArgument(1);
+      context.allocateStepSequenceUid();
       context.getState().putStepOutput("s1", "same output");
       return ExecutionOutcome.COMPLETED;
     });
@@ -102,6 +106,7 @@ class AbstractLoopStrategyWasteSignalTest {
     StepSequenceExecutor stepSequenceExecutor = mock(StepSequenceExecutor.class);
     when(stepSequenceExecutor.executeAll(anyList(), any())).thenAnswer(invocation -> {
       ExecutionContext context = invocation.getArgument(1);
+      context.allocateStepSequenceUid();
       int iteration = context.getState().getLoopIterationCursor(BLUEPRINT_ID);
       context.getState().putStepOutput("s1", "output-" + iteration);
       return ExecutionOutcome.COMPLETED;
@@ -124,12 +129,15 @@ class AbstractLoopStrategyWasteSignalTest {
     InMemoryWorkflowEventLog eventLog = new InMemoryWorkflowEventLog();
     EventRecorder eventRecorder = recorder(eventLog);
     StepSequenceExecutor stepSequenceExecutor = mock(StepSequenceExecutor.class);
-    when(stepSequenceExecutor.executeAll(anyList(), any())).thenReturn(ExecutionOutcome.COMPLETED);
     WasteSignalPolicy policy = mock(WasteSignalPolicy.class);
     FixedCountLoopStrategy strategy = new FixedCountLoopStrategy(stepSequenceExecutor,
         eventRecorder, new MaxIterationsHandler(eventRecorder, CLOCK), new ObjectMapper(), policy);
     WorkflowState state = state();
     ExecutionContext executionContext = executionContext(state);
+    when(stepSequenceExecutor.executeAll(anyList(), any())).thenAnswer(invocation -> {
+      executionContext.allocateStepSequenceUid();
+      return ExecutionOutcome.COMPLETED;
+    });
     LoopConfig config = fixedCountConfig(2);
 
     strategy.iterate(blueprint(config), config, executionContext);

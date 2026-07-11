@@ -34,6 +34,7 @@ import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Set;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
@@ -211,13 +212,18 @@ class AgentInvokerTest {
     String runId = "run-retry-ok";
     String firstRaw = "{}";
     String secondRaw = "[{\"type\":\"COMPLETE\"}]";
+    TokenUsageReport discardedAttemptUsage = new TokenUsageReport(10, 5, null, null);
+    TokenUsageReport winningAttemptUsage = new TokenUsageReport(20, 8, null, null);
 
     LlmClient client = mock(LlmClient.class);
     when(client.getProviderName()).thenReturn("openai");
-    when(client.execute(any())).thenReturn(llmResponse(firstRaw), llmResponse(secondRaw));
+    when(client.execute(any())).thenReturn(
+        llmResponse(firstRaw, "gpt-4o-mini", discardedAttemptUsage),
+        llmResponse(secondRaw, "gpt-4o-mini", winningAttemptUsage));
 
     AgentInvoker invoker = invokerWithAudit(mapper, client, recorder);
     WorkflowState state = workflowState(runId);
+    state.putStepExecutionUid("step-1", 5);
 
     AgentInvocationResult result = invoker.invoke("agent-x", ContextMapping.none(), state, null);
 
@@ -235,6 +241,21 @@ class AgentInvokerTest {
         .toList();
     assertThat(llmOutputs.get(0).payload()).isEqualTo(firstRaw);
     assertThat(llmOutputs.get(1).payload()).isEqualTo(secondRaw);
+
+    // ENF-2 regression: the discarded (parse-failed) attempt consumed real, metered tokens and must
+    // not be lost — each attempt gets its own LLM_CALL_COMPLETED event, sharing the dispatch's stepUid
+    // but carrying a distinct callAttempt ordinal, so a downstream usage consumer can account for both.
+    List<com.agentforge4j.core.workflow.event.WorkflowEvent> completedEvents =
+        llmCallCompletedEvents(eventLog, runId);
+    assertThat(completedEvents).hasSize(2);
+    assertThat(completedEvents.get(0).payload())
+        .contains("\"stepUid\":\"5\"")
+        .contains("\"callAttempt\":1")
+        .contains("\"inputTokens\":10");
+    assertThat(completedEvents.get(1).payload())
+        .contains("\"stepUid\":\"5\"")
+        .contains("\"callAttempt\":2")
+        .contains("\"inputTokens\":20");
   }
 
   @Test
@@ -262,6 +283,15 @@ class AgentInvokerTest {
     int expectedLlmCalls = 2;
     verify(client, times(expectedLlmCalls)).execute(any());
     assertThat(llmOutputEventCount(eventLog, runId)).isEqualTo(expectedLlmCalls);
+
+    // ENF-2 regression: even when EVERY attempt fails parsing (no winning attempt ever calls
+    // observe()), each real provider call still gets its own metered LLM_CALL_COMPLETED via
+    // recordAttempt — nothing here is dropped just because the whole invocation ultimately throws.
+    List<com.agentforge4j.core.workflow.event.WorkflowEvent> completedEvents =
+        llmCallCompletedEvents(eventLog, runId);
+    assertThat(completedEvents).hasSize(2);
+    assertThat(completedEvents.get(0).payload()).contains("\"callAttempt\":1");
+    assertThat(completedEvents.get(1).payload()).contains("\"callAttempt\":2");
   }
 
   @Test
@@ -1129,7 +1159,7 @@ class AgentInvokerTest {
     WorkflowState state = workflowState("run-dup-rewind");
 
     invoker.invoke("agent-x", ContextMapping.none(), state, null);
-    state.clearEntriesFromUid(0);
+    state.clearEntriesFromUid(0, Set.of());
     invoker.invoke("agent-x", ContextMapping.none(), state, null);
 
     assertThat(tokenGovernanceSignalPayloads(eventLog, "run-dup-rewind"))
@@ -1283,6 +1313,13 @@ class AgentInvokerTest {
     return eventLog.getEvents(runId).stream()
         .filter(e -> e.eventType() == WorkflowEventType.LLM_OUTPUT)
         .count();
+  }
+
+  private static List<com.agentforge4j.core.workflow.event.WorkflowEvent> llmCallCompletedEvents(
+      InMemoryWorkflowEventLog eventLog, String runId) {
+    return eventLog.getEvents(runId).stream()
+        .filter(e -> e.eventType() == WorkflowEventType.LLM_CALL_COMPLETED)
+        .toList();
   }
 
   private static EventRecorder recorder(InMemoryWorkflowEventLog eventLog) {

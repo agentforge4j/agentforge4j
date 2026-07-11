@@ -444,7 +444,7 @@ public final class WorkflowRuntimeBuilder {
 
     setupBlueprintLoopStrategies(blueprintExecutor, stepSequenceExecutor, resolvedEventRecorder,
         maxIterationsHandler,
-        resolvedEvaluator, resolvedObjectMapper);
+        resolvedEvaluator, resolvedObjectMapper, resolvedGeneratedArtifactStore);
     blueprintExecutor.setStepSequenceExecutor(stepSequenceExecutor);
     blueprintExecutor.setTransitionGate(transitionGate);
     workflowExecutor.setStepSequenceExecutor(stepSequenceExecutor);
@@ -468,7 +468,7 @@ public final class WorkflowRuntimeBuilder {
   private static void setupBlueprintLoopStrategies(BlueprintExecutor blueprintExecutor,
       StepSequenceExecutor stepSequenceExecutor, EventRecorder eventRecorder,
       MaxIterationsHandler maxIterationsHandler, LoopEvaluator resolvedEvaluator,
-      ObjectMapper resolvedObjectMapper) {
+      ObjectMapper resolvedObjectMapper, GeneratedArtifactStore resolvedGeneratedArtifactStore) {
     // WasteSignalPolicy is not yet exposed as a builder option (see AgentInvoker, which has the
     // same NO_OP default) — only the waste-signal emission side is wired in this pass, not policy
     // configurability.
@@ -477,7 +477,7 @@ public final class WorkflowRuntimeBuilder {
         new FixedCountLoopStrategy(stepSequenceExecutor, eventRecorder, maxIterationsHandler,
             resolvedObjectMapper, wasteSignalPolicy),
         new ForEachLoopStrategy(stepSequenceExecutor, eventRecorder, maxIterationsHandler,
-            resolvedObjectMapper, wasteSignalPolicy),
+            resolvedObjectMapper, wasteSignalPolicy, resolvedGeneratedArtifactStore),
         new AgentSignalLoopStrategy(stepSequenceExecutor, eventRecorder, maxIterationsHandler,
             resolvedObjectMapper, wasteSignalPolicy),
         new EvaluatorLoopStrategy(stepSequenceExecutor, eventRecorder, maxIterationsHandler,

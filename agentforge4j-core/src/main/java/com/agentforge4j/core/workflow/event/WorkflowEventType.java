@@ -69,8 +69,8 @@ public enum WorkflowEventType {
   /**
    * Recorded once per LLM provider call, carrying token usage and model metadata. Payload is a JSON object with fields:
    * {@code agentId}, {@code provider}, {@code modelUsed}, {@code resolvedModel}, {@code modelSource},
-   * {@code requestedModelTier}, {@code inputTokens}, {@code outputTokens}, {@code totalTokens}, {@code cachedTokens}.
-   * Null token fields are emitted as JSON {@code null}, never {@code 0}.
+   * {@code requestedModelTier}, {@code inputTokens}, {@code outputTokens}, {@code totalTokens}, {@code cachedTokens},
+   * {@code stepUid}, {@code callAttempt}. Null token fields are emitted as JSON {@code null}, never {@code 0}.
    */
   LLM_CALL_COMPLETED,
   /**
