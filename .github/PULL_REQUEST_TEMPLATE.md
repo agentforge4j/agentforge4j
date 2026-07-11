@@ -25,6 +25,10 @@
 - [ ] Public/protected members have Javadoc
 - [ ] Follows the project conventions in [CONTRIBUTING.md](https://github.com/agentforge4j/agentforge4j/blob/main/CONTRIBUTING.md)
 - [ ] Change is focused — no unrelated refactors
+- [ ] This PR does not introduce or change an architectural decision, OR: it does, and a
+      corresponding ADR (new, status Proposed) is included.
+- [ ] If this PR completes the implementation of an already-Proposed ADR, a separate
+      follow-up PR to promote it to Accepted is planned (not bundled into this one).
 
 ## Notes for reviewers
 

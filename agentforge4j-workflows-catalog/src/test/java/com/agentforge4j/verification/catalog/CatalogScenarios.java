@@ -60,129 +60,163 @@ public final class CatalogScenarios {
   private static final String SCRIPT_FILE = "script.json";
   private static final String EXPECTED_RESULT_FILE = "expected-result.json";
   private static final String README_FILE = "README.md";
-  /** Matches {@code shipped-workflows/<id>.workflow/verification/expected-result.json} jar entries. */
-  private static final Pattern JAR_OWNER_ENTRY = Pattern.compile(
-      "^shipped-workflows/([^/]+)\\.workflow/" + VERIFICATION_SUBDIR + "/"
-          + Pattern.quote(EXPECTED_RESULT_FILE) + "$");
   private static final ObjectMapper MAPPER = new ObjectMapper();
 
   private CatalogScenarios() {
   }
 
+  /** One discovered scenario location: the owning workflow folder id and the scenario sub-folder. */
+  private record ScenarioRef(String workflowId, String scenarioName) {
+  }
+
   /**
-   * Discovers every scenario the shipped-workflow catalog owns, one per workflow folder that carries
-   * a {@code verification/expected-result.json}.
+   * Discovers every scenario the shipped-workflow catalog owns. A workflow folder may own several
+   * scenarios: each lives under its own {@code verification/<scenario>/} sub-folder carrying an
+   * {@code expected-result.json}.
    *
-   * @return the discovered scenarios, sorted by owning workflow id (empty if the catalog is absent)
+   * @return the discovered scenarios, sorted by display name (empty if the catalog is absent)
    */
   public static List<ScenarioCase> discover() {
+    return discoverFrom(SHIPPED_WORKFLOWS_ROOT);
+  }
+
+  /**
+   * Enumerates the ids of shipped-workflow folders that own at least one verification scenario, read
+   * straight from the catalog tree on the classpath (no central registry, no hard-coded list).
+   *
+   * @return owning workflow ids (empty if the catalog root is absent)
+   */
+  public static Set<String> scenarioOwningWorkflowIds() {
+    return owningWorkflowIds(SHIPPED_WORKFLOWS_ROOT);
+  }
+
+  /**
+   * Discovers scenarios under an arbitrary classpath root. Package-private so tests can exercise the
+   * 1:N discovery against a fixture tree without polluting the real {@code /shipped-workflows} root.
+   *
+   * @param classpathRoot absolute classpath root, e.g. {@code /shipped-workflows}
+   *
+   * @return the discovered scenarios, sorted by display name
+   */
+  static List<ScenarioCase> discoverFrom(String classpathRoot) {
     List<ScenarioCase> cases = new ArrayList<>();
-    for (String workflowId : scenarioOwningWorkflowIds()) {
-      cases.add(load(workflowId));
+    for (ScenarioRef ref : scenarioRefs(classpathRoot)) {
+      cases.add(load(classpathRoot, ref));
     }
     cases.sort(Comparator.comparing(ScenarioCase::name));
     return cases;
   }
 
-  /**
-   * Enumerates the ids of shipped-workflow folders that own a verification scenario, read straight
-   * from the catalog tree on the classpath (no central registry, no hard-coded list).
-   *
-   * @return owning workflow ids (empty if the catalog root is absent)
-   */
-  public static Set<String> scenarioOwningWorkflowIds() {
-    URL root = CatalogScenarios.class.getResource(SHIPPED_WORKFLOWS_ROOT);
+  static Set<String> owningWorkflowIds(String classpathRoot) {
+    Set<String> ids = new LinkedHashSet<>();
+    for (ScenarioRef ref : scenarioRefs(classpathRoot)) {
+      ids.add(ref.workflowId());
+    }
+    return ids;
+  }
+
+  private static List<ScenarioRef> scenarioRefs(String classpathRoot) {
+    URL root = CatalogScenarios.class.getResource(classpathRoot);
     if (root == null) {
-      return Set.of();
+      return List.of();
     }
     return switch (root.getProtocol()) {
-      case "file" -> owningIdsFromDirectory(root);
-      case "jar" -> owningIdsFromJar(root);
+      case "file" -> refsFromDirectory(root);
+      case "jar" -> refsFromJar(classpathRoot, root);
       default -> throw new IllegalStateException(
           "Unsupported shipped-workflows catalog URL protocol: " + root);
     };
   }
 
-  /**
-   * Reads a scenario's raw {@code expected-result.json} from its owning workflow folder.
-   *
-   * @param workflowId the owning shipped workflow id
-   *
-   * @return the raw JSON text
-   */
-  public static String readExpectedResultJson(String workflowId) {
-    return readResource(verificationPath(workflowId) + EXPECTED_RESULT_FILE, workflowId);
-  }
-
-  private static Set<String> owningIdsFromDirectory(URL root) {
+  private static List<ScenarioRef> refsFromDirectory(URL root) {
     try {
       Path rootDir = Path.of(root.toURI());
+      List<ScenarioRef> refs = new ArrayList<>();
+      List<Path> workflowDirs;
       try (Stream<Path> entries = Files.list(rootDir)) {
-        Set<String> ids = new LinkedHashSet<>();
-        entries
+        workflowDirs = entries
             .filter(Files::isDirectory)
             .filter(dir -> dir.getFileName().toString().endsWith(WORKFLOW_SUFFIX))
-            .filter(dir -> Files.exists(
-                dir.resolve(VERIFICATION_SUBDIR).resolve(EXPECTED_RESULT_FILE)))
-            .forEach(dir -> ids.add(workflowIdOf(dir.getFileName().toString())));
-        return ids;
+            .sorted()
+            .toList();
       }
+      for (Path workflowDir : workflowDirs) {
+        String workflowId = workflowIdOf(workflowDir.getFileName().toString());
+        Path verificationDir = workflowDir.resolve(VERIFICATION_SUBDIR);
+        if (!Files.isDirectory(verificationDir)) {
+          continue;
+        }
+        try (Stream<Path> scenarioDirs = Files.list(verificationDir)) {
+          scenarioDirs
+              .filter(Files::isDirectory)
+              .filter(dir -> Files.exists(dir.resolve(EXPECTED_RESULT_FILE)))
+              .sorted()
+              .forEach(dir -> refs.add(new ScenarioRef(workflowId, dir.getFileName().toString())));
+        }
+      }
+      return refs;
     } catch (URISyntaxException | IOException exception) {
       throw new UncheckedIOException(
           "Failed to enumerate shipped-workflows catalog at " + root, new IOException(exception));
     }
   }
 
-  private static Set<String> owningIdsFromJar(URL root) {
+  private static List<ScenarioRef> refsFromJar(String classpathRoot, URL root) {
+    String prefix = classpathRoot.startsWith("/") ? classpathRoot.substring(1) : classpathRoot;
+    Pattern ownerEntry = Pattern.compile("^" + Pattern.quote(prefix) + "/([^/]+)\\."
+        + Pattern.quote(WORKFLOW_SUFFIX.substring(1)) + "/" + VERIFICATION_SUBDIR + "/([^/]+)/"
+        + Pattern.quote(EXPECTED_RESULT_FILE) + "$");
     try {
       JarURLConnection connection = (JarURLConnection) root.openConnection();
       connection.setUseCaches(true);
       // The JarFile is owned by the URL connection cache; it is deliberately not closed here.
       JarFile jar = connection.getJarFile();
-      Set<String> ids = new LinkedHashSet<>();
+      List<ScenarioRef> refs = new ArrayList<>();
       Enumeration<JarEntry> entries = jar.entries();
       while (entries.hasMoreElements()) {
-        Matcher matcher = JAR_OWNER_ENTRY.matcher(entries.nextElement().getName());
+        Matcher matcher = ownerEntry.matcher(entries.nextElement().getName());
         if (matcher.matches()) {
-          ids.add(matcher.group(1));
+          refs.add(new ScenarioRef(matcher.group(1), matcher.group(2)));
         }
       }
-      return ids;
+      return refs;
     } catch (IOException exception) {
       throw new UncheckedIOException(
           "Failed to enumerate shipped-workflows catalog jar at " + root, exception);
     }
   }
 
-  private static ScenarioCase load(String workflowId) {
-    String base = verificationPath(workflowId);
-    String scriptJson = readResource(base + SCRIPT_FILE, workflowId);
+  private static ScenarioCase load(String classpathRoot, ScenarioRef ref) {
+    String base = verificationPath(classpathRoot, ref);
+    String displayName = ref.workflowId() + "/" + ref.scenarioName();
+    String scriptJson = readResource(base + SCRIPT_FILE, displayName);
+    String expectedResultJson = readResource(base + EXPECTED_RESULT_FILE, displayName);
     ExpectedResult expected;
     try {
-      expected = MAPPER.readValue(readResource(base + EXPECTED_RESULT_FILE, workflowId),
-          ExpectedResult.class);
+      expected = MAPPER.readValue(expectedResultJson, ExpectedResult.class);
     } catch (IOException exception) {
       throw new UncheckedIOException("Failed to parse " + base + EXPECTED_RESULT_FILE, exception);
     }
     boolean readme = CatalogScenarios.class.getResource(base + README_FILE) != null;
-    return new ScenarioCase(workflowId, scriptJson, expected, readme);
+    return new ScenarioCase(displayName, ref.workflowId(), scriptJson, expectedResultJson, expected,
+        readme);
   }
 
-  private static String verificationPath(String workflowId) {
-    return SHIPPED_WORKFLOWS_ROOT + "/" + workflowId + WORKFLOW_SUFFIX + "/" + VERIFICATION_SUBDIR
-        + "/";
+  private static String verificationPath(String classpathRoot, ScenarioRef ref) {
+    return classpathRoot + "/" + ref.workflowId() + WORKFLOW_SUFFIX + "/" + VERIFICATION_SUBDIR + "/"
+        + ref.scenarioName() + "/";
   }
 
   private static String workflowIdOf(String folderName) {
     return folderName.substring(0, folderName.length() - WORKFLOW_SUFFIX.length());
   }
 
-  private static String readResource(String classpathPath, String workflowId) {
+  private static String readResource(String classpathPath, String scenarioLabel) {
     try (InputStream stream = CatalogScenarios.class.getResourceAsStream(classpathPath)) {
       if (stream == null) {
         throw new IllegalStateException(
-            "Shipped workflow '%s' is missing its verification resource: %s"
-                .formatted(workflowId, classpathPath));
+            "Scenario '%s' is missing its verification resource: %s"
+                .formatted(scenarioLabel, classpathPath));
       }
       return new String(stream.readAllBytes(), StandardCharsets.UTF_8);
     } catch (IOException exception) {
@@ -224,6 +258,12 @@ public final class CatalogScenarios {
     if (expect.context() != null) {
       expect.context().forEach(assertion::contextEquals);
     }
+    if (expect.contextPresent() != null) {
+      expect.contextPresent().forEach(assertion::contextHas);
+    }
+    if (expect.contextMatches() != null) {
+      expect.contextMatches().forEach(assertion::contextMatchesRegex);
+    }
     if (expect.visitedSteps() != null) {
       expect.visitedSteps().forEach(assertion::visitedStep);
     }
@@ -235,6 +275,18 @@ public final class CatalogScenarios {
     }
     if (expect.createdFiles() != null) {
       expect.createdFiles().forEach(assertion::createdFile);
+    }
+    if (expect.stepVisitCounts() != null) {
+      expect.stepVisitCounts().forEach((stepId, count) -> {
+        if (count == null) {
+          throw new AssertionError(
+              "expect.stepVisitCounts value for step '%s' must not be null".formatted(stepId));
+        }
+        assertion.stepVisitCount(stepId, count);
+      });
+    }
+    if (expect.orderedSteps() != null) {
+      assertion.stepsInOrderedSubsequence(expect.orderedSteps().toArray(new String[0]));
     }
   }
 

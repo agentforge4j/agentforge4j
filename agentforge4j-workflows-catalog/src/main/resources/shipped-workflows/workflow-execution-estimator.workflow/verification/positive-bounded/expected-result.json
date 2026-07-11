@@ -1,0 +1,44 @@
+{
+  "workflowId": "workflow-execution-estimator",
+  "gates": [
+    {
+      "type": "input",
+      "answers": {
+        "mode": "WORKFLOW_RUN",
+        "complexity": "MODERATE",
+        "ceilingDerivable": "true",
+        "minimumRequiredTokens": "1300",
+        "stepCount": "7",
+        "agentStepCount": "6",
+        "branchCount": "0",
+        "loopCount": "0",
+        "agentDrivenLoopCount": "0",
+        "humanGateCount": "1",
+        "maxNestingDepth": "0"
+      }
+    }
+  ],
+  "expect": {
+    "status": "AWAITING_STEP_APPROVAL",
+    "visitedSteps": ["collect-analysis", "route-on-ceiling", "estimate"],
+    "notVisitedSteps": ["no-ceiling"],
+    "context": {
+      "mode": "WORKFLOW_RUN",
+      "complexity": "MODERATE",
+      "ceilingDerivable": "true",
+      "minimumRequiredTokens": "1300",
+      "agentStepCount": "6",
+      "humanGateCount": "1"
+    },
+    "contextPresent": [
+      "stepCount",
+      "agentStepCount",
+      "estimatedInputTokensPerAgentTurn",
+      "estimatedOutputTokensPerAgentTurn",
+      "estimatedToolInvocationsPerAgentTurn"
+    ],
+    "contextMatches": {
+      "estimatedInputTokensPerAgentTurn": "[0-9]+"
+    }
+  }
+}

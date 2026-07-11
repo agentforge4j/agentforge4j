@@ -112,8 +112,7 @@ public final class RetryPreviousBehaviourHandler implements
     List<String> orderedIds = executionContext.getCurrentSequenceStepIds();
     Executable target = resolveExecutable(behaviour.retryStepId(), orderedIds, executionContext,
         step.stepId());
-    allocateFreshUid(target, executionContext);
-    return executableExecutor.execute(target, executionContext);
+    return executeStep(target, executionContext);
   }
 
   private ExecutionOutcome executeFromStep(StepDefinition step,
@@ -137,8 +136,7 @@ public final class RetryPreviousBehaviourHandler implements
     for (String rangeStepId : orderedIds.subList(fromIndex, toIndex)) {
       Executable target = resolveExecutable(rangeStepId, orderedIds, executionContext,
           step.stepId());
-      allocateFreshUid(target, executionContext);
-      last = executableExecutor.execute(target, executionContext);
+      last = executeStep(target, executionContext);
       if (last != ExecutionOutcome.COMPLETED) {
         return last;
       }
@@ -147,28 +145,19 @@ public final class RetryPreviousBehaviourHandler implements
   }
 
   /**
-   * Executes the fallback executable, allocating a fresh step-execution uid first.
+   * Executes a retry target (single-step, from-step range, or fallback), allocating a fresh
+   * step-execution uid for a {@link StepDefinition} first. Every retry target runs outside
+   * {@code StepSequenceExecutor}, which is where a step's uid is normally allocated — the retry
+   * uid range has just been cleared via {@code clearEntriesFromUid}, so without this an AGENT (or
+   * any uid-dependent) target would see a {@code null} current-step uid. Mirrors the uid allocation
+   * {@code BranchBehaviourHandler} performs for a directly executed branch step.
    */
   private ExecutionOutcome executeStep(Executable executable, ExecutionContext executionContext) {
-    allocateFreshUid(executable, executionContext);
-    return executableExecutor.execute(executable, executionContext);
-  }
-
-  /**
-   * Allocates a fresh step-execution uid for {@code executable} when it is a {@link StepDefinition},
-   * mirroring the uid allocation {@code StepSequenceExecutor}/{@code BranchBehaviourHandler} perform
-   * for a normal dispatch. A {@code RETRY_PREVIOUS} re-dispatch (fallback, single-step, or from-step)
-   * runs outside {@code StepSequenceExecutor}, which is where a step's uid is normally (re)allocated —
-   * without this, a retried AGENT step would either see a stale (pre-retry) uid or, after
-   * {@link WorkflowState#clearEntriesFromUid}, no uid at all, and any per-call signal keyed on that uid
-   * (e.g. {@code LLM_CALL_COMPLETED}'s {@code stepUid}) would collide with, or be indistinguishable
-   * from, the original dispatch's.
-   */
-  private static void allocateFreshUid(Executable executable, ExecutionContext executionContext) {
     if (executable instanceof StepDefinition stepDefinition) {
       executionContext.getState().putStepExecutionUid(stepDefinition.stepId(),
           executionContext.allocateStepSequenceUid());
     }
+    return executableExecutor.execute(executable, executionContext);
   }
 
   private Executable resolveExecutable(String stepId,

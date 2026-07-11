@@ -164,7 +164,7 @@ public final class HttpToolExample {
     HttpEndpointDefinition endpoint = new HttpEndpointDefinition(
         CAPABILITY, "Weather lookup", "Reads the current weather for a city", false, HttpMethod.GET,
         "http://127.0.0.1:%d/weather/{city}".formatted(stubPort), citySchema(), null,
-        Set.of(), BodyMode.NONE, Map.of(), Map.of(), null, -1, false, null);
+        Set.of(), BodyMode.NONE, Map.of(), Map.of(), null, null, false, null);
     // The endpoint is this example's own in-process loopback server (127.0.0.1). The fail-closed
     // egress guard blocks loopback and private addresses by default, so this deterministic local
     // demo opts into private-network egress with new HttpEgressGuard(true). This is a local-demo

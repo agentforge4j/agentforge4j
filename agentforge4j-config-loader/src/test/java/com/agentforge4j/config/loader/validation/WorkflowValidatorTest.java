@@ -131,7 +131,7 @@ class WorkflowValidatorTest {
         WorkflowLifecycle.ACTIVE,
         Map.of(),
         Map.of(),
-        List.of(new BlueprintRef("ghost-bp")));
+        List.of(new BlueprintRef("ghost-bp")), List.of());
 
     assertThatThrownBy(() -> validator.validateBlueprintRefs(Map.of("wf1", wf)))
         .isInstanceOf(IllegalArgumentException.class)
@@ -269,7 +269,7 @@ class WorkflowValidatorTest {
   private static WorkflowDefinition wfWithBlueprints(String id,
       Map<String, BlueprintDefinition> blueprints, List<Executable> steps) {
     return new WorkflowDefinition(id, "W", "d", null, null, null, null,
-        WorkflowSource.CUSTOM, WorkflowLifecycle.ACTIVE, Map.of(), blueprints, steps);
+        WorkflowSource.CUSTOM, WorkflowLifecycle.ACTIVE, Map.of(), blueprints, steps, List.of());
   }
 
   private static StepDefinition terminalStep(String stepId) {
@@ -335,6 +335,6 @@ class WorkflowValidatorTest {
         WorkflowLifecycle.ACTIVE,
         Map.of(),
         Map.of(),
-        steps);
+        steps, List.of());
   }
 }

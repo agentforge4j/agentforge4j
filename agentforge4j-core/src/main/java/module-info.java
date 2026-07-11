@@ -12,8 +12,12 @@
  */
 module agentforge4j.core {
   requires static lombok;
-  requires agentforge4j.util;
-  requires com.fasterxml.jackson.databind;
+  // transitive: com.agentforge4j.core.spi.integration.ToolProviderFactoryContext (exported)
+  // exposes agentforge4j.util.net.OutboundEgressGuard directly to every SPI implementor.
+  requires transitive agentforge4j.util;
+  // transitive: com.agentforge4j.core.command.schema.CommandSchemaFactory (exported) takes
+  // com.fasterxml.jackson.databind.ObjectMapper directly as a parameter.
+  requires transitive com.fasterxml.jackson.databind;
   requires com.fasterxml.jackson.annotation;
   requires org.apache.commons.lang3;
 
@@ -25,6 +29,7 @@ module agentforge4j.core {
   exports com.agentforge4j.core.spi.validation;
   exports com.agentforge4j.core.runtime;
   exports com.agentforge4j.core.workflow;
+  exports com.agentforge4j.core.workflow.estimate;
   exports com.agentforge4j.core.workflow.requirement;
   exports com.agentforge4j.core.workflow.collection;
   exports com.agentforge4j.core.workflow.artifact;

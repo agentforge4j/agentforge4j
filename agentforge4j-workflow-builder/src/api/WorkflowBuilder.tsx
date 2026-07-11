@@ -287,7 +287,10 @@ export function WorkflowBuilder({
 
   const handleExport = () =>
     runAction('export', async () => {
-      await resolvedAdapters.exportBundle(state.draft, 'json');
+      // 'zip' is the only schemaVersion-stamped export format; the plain-'json' draft round-trip
+      // carries no schemaVersion at all. Schema validation itself happens on import, not export,
+      // for either format.
+      await resolvedAdapters.exportBundle(state.draft, 'zip');
     });
 
   const handleSave = () =>

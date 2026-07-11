@@ -60,6 +60,11 @@
           "type": "string",
           "enum": ["AWAIT_USER", "FAIL"],
           "default": "AWAIT_USER"
+        },
+        "expectedIterations": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Optional execution-estimation hint: expected-case iteration count (companion to the maxIterations ceiling). Must not exceed maxIterations. Advisory only; never affects runtime loop driving."
         }
       }
     },

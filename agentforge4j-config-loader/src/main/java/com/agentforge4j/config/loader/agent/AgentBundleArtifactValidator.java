@@ -31,13 +31,6 @@ public final class AgentBundleArtifactValidator implements ArtifactValidator {
   private final AgentDefinitionAssembler assembler;
 
   /**
-   * Creates a validator with a default {@link ObjectMapper}.
-   */
-  public AgentBundleArtifactValidator() {
-    this(new ObjectMapper());
-  }
-
-  /**
    * Creates a validator over the given mapper.
    *
    * @param objectMapper the mapper used to parse {@code agent.json}; must not be {@code null}

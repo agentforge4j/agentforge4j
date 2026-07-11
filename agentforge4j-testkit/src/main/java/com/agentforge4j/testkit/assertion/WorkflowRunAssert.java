@@ -13,13 +13,17 @@ import com.agentforge4j.core.workflow.state.ReservedContextKeys;
 import com.agentforge4j.core.workflow.state.RunFailure;
 import com.agentforge4j.core.workflow.state.WorkflowStatus;
 import com.agentforge4j.llm.api.ModelTier;
+import com.agentforge4j.testkit.capture.CapturedFile;
 import com.agentforge4j.testkit.capture.WorkflowRunResult;
 import com.agentforge4j.util.Validate;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.List;
+import java.util.Locale;
 import java.util.regex.Pattern;
 
 /**
@@ -308,6 +312,47 @@ public final class WorkflowRunAssert {
     return this;
   }
 
+  /**
+   * Asserts that no forbidden term appears in any generated run output — neither in a context value
+   * nor in a captured file's content. Matching is case-insensitive and substring-based, so it catches
+   * currency codes, money words, and other terms an OSS output must never carry. All violations are
+   * reported together.
+   *
+   * @param forbiddenTerms the terms that must be absent; must not be empty
+   *
+   * @return this
+   */
+  public WorkflowRunAssert outputsHaveNoForbiddenTerms(Collection<String> forbiddenTerms) {
+    Validate.notEmpty(forbiddenTerms, "forbiddenTerms must not be empty");
+    List<String> violations = new ArrayList<>();
+    result.finalState().getContext().forEach((key, value) -> {
+      String text = asString(value);
+      for (String term : forbiddenTerms) {
+        if (containsIgnoreCase(text, term)) {
+          violations.add("context['%s'] contains forbidden term '%s'".formatted(key, term));
+        }
+      }
+    });
+    for (CapturedFile file : result.captures().files()) {
+      for (String term : forbiddenTerms) {
+        if (containsIgnoreCase(file.content(), term)) {
+          violations.add("artifact '%s' contains forbidden term '%s'".formatted(file.path(), term));
+        }
+      }
+    }
+    result.finalState().getStepOutputs().forEach((stepId, output) -> {
+      for (String term : forbiddenTerms) {
+        if (containsIgnoreCase(output, term)) {
+          violations.add("stepOutput['%s'] contains forbidden term '%s'".formatted(stepId, term));
+        }
+      }
+    });
+    if (!violations.isEmpty()) {
+      throw error("Expected run outputs to contain no forbidden terms but found: " + violations);
+    }
+    return this;
+  }
+
   // --- artifacts ----------------------------------------------------------------------------
 
   /**
@@ -536,10 +581,23 @@ public final class WorkflowRunAssert {
    */
   public WorkflowRunAssert invokedTool(String capabilityId) {
     Validate.notBlank(capabilityId, "capabilityId must not be blank");
-    boolean found = eventsOfType(WorkflowEventType.TOOL_INVOCATION_REQUESTED).stream()
-        .anyMatch(event -> capabilityId.equals(jsonField(event.payload(), "capability")));
-    if (!found) {
+    if (!toolInvoked(capabilityId)) {
       throw error("Expected tool '%s' to be invoked".formatted(capabilityId));
+    }
+    return this;
+  }
+
+  /**
+   * Asserts the given tool capability was never invoked.
+   *
+   * @param capabilityId the capability id; must not be blank
+   *
+   * @return this
+   */
+  public WorkflowRunAssert didNotInvokeTool(String capabilityId) {
+    Validate.notBlank(capabilityId, "capabilityId must not be blank");
+    if (toolInvoked(capabilityId)) {
+      throw error("Expected tool '%s' to never be invoked".formatted(capabilityId));
     }
     return this;
   }
@@ -652,6 +710,11 @@ public final class WorkflowRunAssert {
     return eventsForStep(WorkflowEventType.STEP_STARTED, stepId).size();
   }
 
+  private boolean toolInvoked(String capabilityId) {
+    return eventsOfType(WorkflowEventType.TOOL_INVOCATION_REQUESTED).stream()
+        .anyMatch(event -> capabilityId.equals(jsonField(event.payload(), "capability")));
+  }
+
   private long countEvents(WorkflowEventType type) {
     return result.captures().events().stream()
         .filter(event -> event.eventType() == type)
@@ -742,6 +805,13 @@ public final class WorkflowRunAssert {
 
   private static boolean isBlank(String value) {
     return value == null || value.isBlank();
+  }
+
+  private static boolean containsIgnoreCase(String haystack, String needle) {
+    if (haystack == null || needle == null || needle.isEmpty()) {
+      return false;
+    }
+    return haystack.toLowerCase(Locale.ROOT).contains(needle.toLowerCase(Locale.ROOT));
   }
 
   /**
