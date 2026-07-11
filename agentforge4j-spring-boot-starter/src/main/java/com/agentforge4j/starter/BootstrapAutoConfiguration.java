@@ -205,7 +205,7 @@ public class BootstrapAutoConfiguration {
     } catch (IllegalArgumentException exception) {
       throw new IllegalStateException(
           ("Invalid tier '%s' for provider '%s' under agentforge4j.llm.model-tiers — "
-              + "valid tiers: LITE, STANDARD, POWERFUL").formatted(tierName, provider),
+              + "valid tiers: %s").formatted(tierName, provider, ModelTier.joinedNames()),
           exception);
     }
   }

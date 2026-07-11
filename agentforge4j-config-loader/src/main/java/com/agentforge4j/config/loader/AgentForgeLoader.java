@@ -9,6 +9,7 @@ import com.agentforge4j.config.loader.workflow.WorkflowDirectoryLoader;
 import com.agentforge4j.core.agent.AgentDefinition;
 import com.agentforge4j.core.exception.DuplicateAgentIdException;
 import com.agentforge4j.core.exception.DuplicateWorkflowIdException;
+import com.agentforge4j.core.spi.contextpack.ContextPack;
 import com.agentforge4j.core.workflow.WorkflowDefinition;
 import com.agentforge4j.util.Validate;
 import java.nio.file.Path;
@@ -126,13 +127,17 @@ public final class AgentForgeLoader {
    * @param workflowsDir            optional filesystem directory containing workflow bundles
    * @param classpathAgentLoader    optional loader for shipped agents
    * @param classpathWorkflowLoader optional loader for shipped workflows
+   * @param loadedPacksByName       the context packs actually loaded for this assembly, keyed by
+   *                                name; empty when none are configured (every {@code CONTEXT_PACK}
+   *                                selector then fails validation)
    * @return loaded and validated configuration snapshot
    * @throws RuntimeException when loading fails, duplicate ids are found, or validation fails
    */
   public LoadedConfiguration load(Optional<Path> agentsDir,
       Optional<Path> workflowsDir,
       Optional<ClasspathAgentLoader> classpathAgentLoader,
-      Optional<ClasspathWorkflowLoader> classpathWorkflowLoader) {
+      Optional<ClasspathWorkflowLoader> classpathWorkflowLoader,
+      Map<String, ContextPack> loadedPacksByName) {
     Map<String, AgentDefinition> agents = new LinkedHashMap<>();
     Map<String, WorkflowDefinition> workflows = new LinkedHashMap<>();
 
@@ -143,7 +148,7 @@ public final class AgentForgeLoader {
 
     LOG.log(System.Logger.Level.INFO, "Loaded configuration agents={0}, workflows={1}",
         agents.size(), workflows.size());
-    validate(workflows, agents);
+    validate(workflows, agents, loadedPacksByName);
     return new LoadedConfiguration(Map.copyOf(agents), Map.copyOf(workflows));
   }
 
@@ -167,12 +172,15 @@ public final class AgentForgeLoader {
   /**
    * Runs the full workflow validation suite.
    *
-   * @param workflows workflows to validate
-   * @param agents    agents available to workflow steps
+   * @param workflows         workflows to validate
+   * @param agents            agents available to workflow steps
+   * @param loadedPacksByName the context packs actually loaded for this assembly, keyed by name;
+   *                          empty when none are configured
    * @throws RuntimeException when any validation rule fails
    */
   public void validate(Map<String, WorkflowDefinition> workflows,
-      Map<String, AgentDefinition> agents) {
+      Map<String, AgentDefinition> agents, Map<String, ContextPack> loadedPacksByName) {
+    Validate.notNull(loadedPacksByName, "loadedPacksByName must not be null");
     WorkflowValidator validator = new WorkflowValidator();
     runValidation("workflow refs", () -> validator.validateWorkflowRefs(workflows));
     runValidation("blueprint refs", () -> validator.validateBlueprintRefs(workflows));
@@ -183,6 +191,9 @@ public final class AgentForgeLoader {
     runValidation("retry refs", () -> validator.validateRetryStepRefs(workflows));
     runValidation("requirement refs", () -> validator.validateRequirements(workflows));
     runValidation("validate contracts", () -> validator.validateValidateBehaviourContracts(workflows));
+    runValidation("context selection refs",
+        () -> validator.validateContextSelectionRefs(workflows, loadedPacksByName));
+    runValidation("ledger schemas", () -> validator.validateLedgerSchemas(workflows));
   }
 
   /**

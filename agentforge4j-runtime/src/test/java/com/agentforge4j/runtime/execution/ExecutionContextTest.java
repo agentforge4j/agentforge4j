@@ -114,6 +114,7 @@ class ExecutionContextTest {
         .build());
     return new WorkflowDefinition(
         id, id, null, null, null, null, null,
-        WorkflowSource.CUSTOM, WorkflowLifecycle.ACTIVE, Map.of(), Map.of(), steps, List.of());
+        WorkflowSource.CUSTOM, WorkflowLifecycle.ACTIVE, Map.of(), Map.of(), steps,
+        List.of(), List.of());
   }
 }

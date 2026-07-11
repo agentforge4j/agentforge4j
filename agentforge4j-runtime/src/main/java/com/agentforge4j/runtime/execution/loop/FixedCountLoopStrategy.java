@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package com.agentforge4j.runtime.execution.loop;
 
+import com.agentforge4j.core.spi.governance.WasteSignalPolicy;
 import com.agentforge4j.core.workflow.state.WorkflowState;
 import com.agentforge4j.core.workflow.state.WorkflowStatus;
 import com.agentforge4j.core.workflow.step.blueprint.BlueprintDefinition;
@@ -10,6 +11,7 @@ import com.agentforge4j.runtime.event.EventRecorder;
 import com.agentforge4j.runtime.execution.ExecutionContext;
 import com.agentforge4j.runtime.execution.ExecutionOutcome;
 import com.agentforge4j.runtime.execution.StepSequenceExecutor;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 /**
  * Executes the blueprint body exactly {@code maxIterations} times — or until an iteration pauses or
@@ -21,8 +23,11 @@ public final class FixedCountLoopStrategy extends AbstractLoopStrategy {
 
   public FixedCountLoopStrategy(StepSequenceExecutor stepSequenceExecutor,
       EventRecorder eventRecorder,
-      MaxIterationsHandler maxIterationsHandler) {
-    super(stepSequenceExecutor, eventRecorder, maxIterationsHandler);
+      MaxIterationsHandler maxIterationsHandler,
+      ObjectMapper objectMapper,
+      WasteSignalPolicy wasteSignalPolicy) {
+    super(stepSequenceExecutor, eventRecorder, maxIterationsHandler, objectMapper,
+        wasteSignalPolicy);
   }
 
   @Override

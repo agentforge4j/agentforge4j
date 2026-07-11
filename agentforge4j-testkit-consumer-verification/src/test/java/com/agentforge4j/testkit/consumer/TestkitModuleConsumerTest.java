@@ -4,11 +4,14 @@ package com.agentforge4j.testkit.consumer;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 
+import com.agentforge4j.core.spi.contextpack.ContextPack;
+import com.agentforge4j.core.spi.governance.WasteSignalKind;
 import com.agentforge4j.core.workflow.event.WorkflowEvent;
 import com.agentforge4j.core.workflow.event.WorkflowEventType;
 import com.agentforge4j.core.workflow.state.WorkflowState;
 import com.agentforge4j.llm.api.ModelTier;
 import com.agentforge4j.llm.fake.FakeScript;
+import com.agentforge4j.runtime.ContextPackRegistry;
 import com.agentforge4j.runtime.command.FileSink;
 import com.agentforge4j.testkit.capture.CaptureBundle;
 import com.agentforge4j.testkit.capture.CapturingFileSink;
@@ -66,5 +69,36 @@ class TestkitModuleConsumerTest {
 
     assertThatCode(() -> consumer.assertProviderTier(result, ModelTier.STANDARD))
         .doesNotThrowAnyException();
+  }
+
+  @Test
+  void resolvesContextPackRegistryFromAnExternalModule() {
+    ContextPackRegistry registry = consumer.emptyContextPackRegistry();
+
+    assertThat(registry).isSameAs(ContextPackRegistry.EMPTY);
+    assertThat(registry.names()).isEmpty();
+  }
+
+  @Test
+  void constructsCompactSiblingUnavailableExceptionFromAnExternalModule() {
+    String message = consumer.describeCompactSiblingUnavailable("ledger:requirements", "abc",
+        "def");
+
+    assertThat(message).contains("ledger:requirements").contains("abc").contains("def");
+  }
+
+  @Test
+  void constructsContextPackFromAnExternalModule() {
+    ContextPack pack = consumer.contextPackOf("my-pack", "full", "content");
+
+    assertThat(pack.name()).isEqualTo("my-pack");
+    assertThat(pack.variants().get("full").content()).isEqualTo("content");
+  }
+
+  @Test
+  void constructsAndReactsToTokenGovernanceSignalFromAnExternalModule() {
+    WasteSignalKind kind = consumer.describeWasteSignal("step-1", "duplicate detected");
+
+    assertThat(kind).isEqualTo(WasteSignalKind.DUPLICATE_INVOCATION);
   }
 }

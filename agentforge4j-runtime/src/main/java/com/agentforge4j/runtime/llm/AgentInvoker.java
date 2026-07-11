@@ -9,11 +9,15 @@ import com.agentforge4j.core.command.schema.CommandResponseSchema;
 import com.agentforge4j.core.command.schema.CommandResponseSchemaRenderer;
 import com.agentforge4j.core.command.schema.CommandSchemaFactory;
 import com.agentforge4j.core.command.schema.SystemRulesProvider;
+import com.agentforge4j.core.spi.governance.TokenGovernanceSignal;
+import com.agentforge4j.core.spi.governance.WasteSignalPolicy;
 import com.agentforge4j.core.spi.tool.ToolCatalog;
 import com.agentforge4j.core.spi.tool.ToolDescriptor;
 import com.agentforge4j.core.spi.tool.ToolScope;
 import com.agentforge4j.core.workflow.context.ContextMapping;
+import com.agentforge4j.core.workflow.context.ContextValue;
 import com.agentforge4j.core.workflow.event.WorkflowEventType;
+import com.agentforge4j.core.workflow.state.ReservedContextKeys;
 import com.agentforge4j.core.workflow.state.WorkflowState;
 import com.agentforge4j.llm.LlmClientResolver;
 import com.agentforge4j.llm.api.LlmClient;
@@ -24,13 +28,23 @@ import com.agentforge4j.llm.api.ModelTier;
 import com.agentforge4j.llm.api.ModelTierResolutionException;
 import com.agentforge4j.llm.api.ModelTierResolver;
 import com.agentforge4j.llm.api.PromptLayerBoundaries;
+import com.agentforge4j.runtime.context.CanonicalJson;
+import com.agentforge4j.runtime.context.ContextFingerprint;
 import com.agentforge4j.runtime.event.EventRecorder;
 import com.agentforge4j.runtime.interceptor.LlmCallContext;
 import com.agentforge4j.runtime.interceptor.RunExecutionInterceptor;
+import com.agentforge4j.runtime.waste.WasteDetector;
+import com.agentforge4j.runtime.waste.WasteDetectorHistoryStore;
+import com.agentforge4j.runtime.waste.WasteDetectorInvocationHistory;
 import com.agentforge4j.util.Validate;
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.nio.charset.StandardCharsets;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.stream.Collectors;
 import org.apache.commons.lang3.StringUtils;
 
 /**
@@ -61,6 +75,7 @@ public final class AgentInvoker {
   private final ModelTierResolver modelTierResolver;
   private final ToolCatalog toolCatalog;
   private final RunExecutionInterceptor runExecutionInterceptor;
+  private final WasteSignalPolicy wasteSignalPolicy;
   private final CommandResponseSchemaRenderer schemaRenderer = new CommandResponseSchemaRenderer();
   private final SystemRulesProvider systemRulesProvider = new SystemRulesProvider();
 
@@ -92,6 +107,7 @@ public final class AgentInvoker {
     this.modelTierResolver = builder.modelTierResolver;
     this.toolCatalog = builder.toolCatalog;
     this.runExecutionInterceptor = builder.runExecutionInterceptor;
+    this.wasteSignalPolicy = builder.wasteSignalPolicy;
   }
 
   /**
@@ -112,6 +128,7 @@ public final class AgentInvoker {
     private boolean promptCacheEnabled = false;
     private ToolCatalog toolCatalog;
     private RunExecutionInterceptor runExecutionInterceptor = RunExecutionInterceptor.NO_OP;
+    private WasteSignalPolicy wasteSignalPolicy = WasteSignalPolicy.NO_OP;
 
     private Builder() {
 
@@ -259,6 +276,21 @@ public final class AgentInvoker {
     }
 
     /**
+     * Overrides the policy reacting to {@link TokenGovernanceSignal}s raised by {@link WasteDetector}
+     * for this invoker's calls. Defaults to {@link WasteSignalPolicy#NO_OP} — every raised signal is
+     * still recorded as a {@code TOKEN_GOVERNANCE_SIGNAL} audit event regardless of this policy.
+     *
+     * @param wasteSignalPolicy policy instance; must not be {@code null}
+     *
+     * @return this builder
+     */
+    public Builder wasteSignalPolicy(WasteSignalPolicy wasteSignalPolicy) {
+      this.wasteSignalPolicy = Validate.notNull(wasteSignalPolicy,
+          "wasteSignalPolicy must not be null");
+      return this;
+    }
+
+    /**
      * Builds the {@link AgentInvoker}.
      *
      * @return configured invoker; never {@code null}
@@ -365,7 +397,7 @@ public final class AgentInvoker {
 
     String userInput = contextRenderer.render(state.getContext(), contextMapping);
     return invokeWithAudit(agent, userInput, stepPrompt, stepModelTier, state, agentId,
-        activeWorkflowId);
+        activeWorkflowId, contextMapping);
   }
 
   private AgentInvocationResult invokeWithAudit(AgentDefinition agent,
@@ -374,13 +406,15 @@ public final class AgentInvoker {
       String stepModelTier,
       WorkflowState state,
       String actorIdForEvents,
-      String activeWorkflowId) {
+      String activeWorkflowId,
+      ContextMapping contextMapping) {
     ProviderPreference preference = llmProviderSelectionStrategy.selectInitialProvider(
         agent, llmClientResolver.listAvailableClients());
     ModelResolution resolution = resolveModel(agent, preference, stepModelTier);
     LOG.log(System.Logger.Level.DEBUG,
         "Agent invoker entry agentId={0}, provider={1}, model={2}, modelSource={3}",
         agent.id(), preference.provider(), resolution.resolvedModel(), resolution.modelSource());
+    evaluateWasteSignals(state, agent, contextMapping, stepPrompt, resolution.requestedModelTier());
     LlmClient client = llmClientResolver.resolve(preference.provider());
     CommandResponseSchema schema = CommandSchemaFactory.build(agent.supportedCommands(),
         objectMapper);
@@ -413,6 +447,106 @@ public final class AgentInvoker {
   }
 
   /**
+   * Evaluates {@link WasteDetector#evaluateDuplicateInvocation} and (when a tier was resolved)
+   * {@link WasteDetector#evaluateUnjustifiedTierEscalation} against this step's persisted prior
+   * invocation (see {@link WasteDetectorHistoryStore}), records any raised signal, then persists
+   * this invocation as the new "prior" for next time.
+   *
+   * <p>{@code scopedContextFingerprint} fingerprints the mapping-filtered context, re-rendered
+   * with the reserved {@code __}-prefixed keys excluded rather than the literal {@code userInput}
+   * sent to the LLM: {@code ContextMapping.none()} (empty {@code inputKeys}) renders every
+   * context entry, including runtime bookkeeping such as
+   * {@code ReservedContextKeys#LLM_TOKENS_TOTAL}, which {@code LlmCallObserver} updates after
+   * every call — fingerprinting that raw render would make the "unchanged context" comparison
+   * spuriously fail on the very next invocation regardless of whether anything task-relevant
+   * changed. {@link ReservedContextKeys#GRANTED_KEY_PREFIX} is the one reserved prefix kept in
+   * the fingerprint despite the exclusion: it holds content a {@code REQUEST_CONTEXT} grant
+   * actually served to the agent, not runtime bookkeeping, so excluding it would make a
+   * re-invocation whose only change is newly granted context fingerprint identically to the
+   * prior one. The rendered JSON is canonicalized ({@link CanonicalJson}) before hashing, the
+   * same way {@code AbstractLoopStrategy}'s context fingerprint is, so semantically identical
+   * context that merely serializes with a different field order (map iteration order is not
+   * guaranteed) still fingerprints identically — falling back to the raw rendered text unchanged
+   * when it is not parseable JSON (in production {@link ContextRenderer#render} always produces
+   * JSON, but waste-signal evaluation is advisory-only and must never fail an invocation over a
+   * fingerprinting concern, e.g. a test double stubbing a non-JSON {@code ContextRenderer}).
+   * {@code inputFingerprint} fingerprints that same filtered, canonicalized context together with
+   * the step's static prompt material, so a signal distinguishes "only the context changed" from
+   * "the effective input is unchanged" when a step declares its own {@code stepPrompt}.
+   *
+   * <p><strong>Known limitation:</strong> the evaluators' {@code isRetry} parameter (which exists
+   * so a deliberate {@code RETRY_PREVIOUS} re-invocation is never flagged) is always passed
+   * {@code false} here — {@code AgentInvoker} has no signal distinguishing a runtime-driven retry
+   * from an ordinary repeat invocation, and adding one is a larger change than this wiring pass.
+   * Advisory-only and safe by construction: {@link WasteSignalPolicy#NO_OP} is the shipped
+   * default, so this can only ever produce an extra, harmless audit event, never alter execution.
+   */
+  private void evaluateWasteSignals(WorkflowState state, AgentDefinition agent,
+      ContextMapping contextMapping, String stepPrompt, ModelTier requestedTier) {
+    String stepId = state.getCurrentStepId();
+    if (stepId == null) {
+      return;
+    }
+    Map<String, ContextValue> nonReservedContext = state.getContext().entrySet().stream()
+        .filter(entry -> !entry.getKey().startsWith("__")
+            || entry.getKey().startsWith(ReservedContextKeys.GRANTED_KEY_PREFIX))
+        .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue,
+            (first, second) -> first, LinkedHashMap::new));
+    String renderedContext = contextRenderer.render(nonReservedContext, contextMapping);
+    String fingerprintSource = canonicalizeFingerprintSource(renderedContext);
+    String scopedContextFingerprint = ContextFingerprint.of(fingerprintSource);
+    String inputFingerprint = ContextFingerprint.of(
+        fingerprintSource + '\0' + StringUtils.defaultString(stepPrompt));
+    Optional<WasteDetectorInvocationHistory> prior = WasteDetectorHistoryStore.readInvocation(
+        state, stepId, objectMapper);
+    String priorContextFingerprint = prior.map(WasteDetectorInvocationHistory::scopedContextFingerprint)
+        .orElse(null);
+    String priorInputFingerprint = prior.map(WasteDetectorInvocationHistory::inputFingerprint)
+        .orElse(null);
+    ModelTier priorResolvedTier = prior.map(WasteDetectorInvocationHistory::resolvedTier)
+        .orElse(null);
+
+    WasteDetector.evaluateDuplicateInvocation(stepId, agent.id(), scopedContextFingerprint,
+        inputFingerprint, priorContextFingerprint, priorInputFingerprint, false)
+        .ifPresent(signal -> recordWasteSignal(state, signal));
+    if (requestedTier != null) {
+      WasteDetector.evaluateUnjustifiedTierEscalation(stepId, agent.id(), requestedTier,
+          priorResolvedTier, scopedContextFingerprint, priorContextFingerprint, inputFingerprint,
+          priorInputFingerprint)
+          .ifPresent(signal -> recordWasteSignal(state, signal));
+    }
+
+    WasteDetectorHistoryStore.writeInvocation(state, new WasteDetectorInvocationHistory(stepId,
+        agent.id(), scopedContextFingerprint, inputFingerprint, requestedTier), objectMapper);
+  }
+
+  /**
+   * Canonicalizes {@code renderedContext} (expected to be JSON, since {@link ContextRenderer}
+   * always produces it in production) before hashing, so semantically identical context that
+   * merely serializes with a different field order still fingerprints identically. Falls back to
+   * the raw text unchanged when it is not parseable JSON, mirroring
+   * {@link WasteDetector#normalizeOutput}'s own parse-or-fall-through pattern: waste-signal
+   * evaluation is advisory-only and must never fail an invocation over a fingerprinting concern.
+   */
+  private String canonicalizeFingerprintSource(String renderedContext) {
+    try {
+      return CanonicalJson.render(objectMapper.readTree(renderedContext), objectMapper);
+    } catch (JsonProcessingException exception) {
+      return renderedContext;
+    }
+  }
+
+  private void recordWasteSignal(WorkflowState state, TokenGovernanceSignal signal) {
+    // WasteSignalPolicy's contract (see its class Javadoc) requires the audit event to be
+    // recorded regardless of policy outcome, and onSignal to be called only after that recording
+    // — record first, notify second.
+    String agentIdPart = signal.agentId() != null ? " agentId=%s".formatted(signal.agentId()) : "";
+    eventRecorder.record(state.getRunId(), signal.stepId(), WorkflowEventType.TOKEN_GOVERNANCE_SIGNAL,
+        "kind=%s%s detail=%s".formatted(signal.kind(), agentIdPart, signal.detail()), "runtime");
+    wasteSignalPolicy.onSignal(signal);
+  }
+
+  /**
    * Resolves the concrete model and its source for this call, applying precedence: a raw model pin on the selected
    * provider preference wins; otherwise an effective tier (step tier overriding agent tier) is resolved via the
    * {@link ModelTierResolver}; otherwise no model is sent and the provider default is used. A declared tier that cannot
@@ -441,8 +575,8 @@ public final class AgentInvoker {
       return ModelTier.fromName(tierName);
     } catch (IllegalArgumentException e) {
       throw new ModelTierResolutionException(
-          "Invalid model tier '%s' for agent '%s'; valid tiers: LITE, STANDARD, POWERFUL".formatted(
-              tierName, agentId));
+          "Invalid model tier '%s' for agent '%s'; valid tiers: %s".formatted(
+              tierName, agentId, ModelTier.joinedNames()));
     }
   }
 

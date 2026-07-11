@@ -30,7 +30,8 @@ class AgentForgeLoaderCatalogGateTest {
         Optional.empty(),
         Optional.empty(),
         Optional.empty(),
-        Optional.of(new ClasspathWorkflowLoader(mapper)));
+        Optional.of(new ClasspathWorkflowLoader(mapper)),
+        Map.of());
 
     assertThat(loaded.workflows()).containsKey("loader-fixture");
     assertThat(loaded.agents()).containsKey("loader-fixture-agent");

@@ -3,6 +3,8 @@ package com.agentforge4j.core.workflow;
 
 import com.agentforge4j.core.workflow.step.StepDefinition;
 import com.agentforge4j.core.workflow.step.behaviour.AgentBehaviour;
+import com.agentforge4j.core.workflow.step.behaviour.CompactBehaviour;
+import com.agentforge4j.core.workflow.step.behaviour.LlmSummary;
 import com.agentforge4j.core.workflow.step.behaviour.SparBehaviour;
 import com.agentforge4j.core.workflow.step.behaviour.StepBehaviour;
 import com.agentforge4j.util.Validate;
@@ -62,6 +64,8 @@ public final class WorkflowAgentRefCollector {
     } else if (behaviour instanceof SparBehaviour sb) {
       out.add(new AgentRefSite(sb.agentRef(), workflowId, step.stepId()));
       out.add(new AgentRefSite(sb.sparConfig().challengerAgentId(), workflowId, step.stepId()));
+    } else if (behaviour instanceof CompactBehaviour cb && cb.mode() instanceof LlmSummary ls) {
+      out.add(new AgentRefSite(ls.agentRef(), workflowId, step.stepId()));
     }
   }
 }

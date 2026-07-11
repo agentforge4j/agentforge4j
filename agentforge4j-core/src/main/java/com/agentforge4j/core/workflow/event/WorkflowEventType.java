@@ -197,5 +197,54 @@ public enum WorkflowEventType {
    * Recorded when an external deadline close arrives for a collection gate. Carries the reserved system actor
    * ({@code "runtime"}) and {@code reason=DEADLINE}.
    */
-  COLLECTION_DEADLINE_CLOSE_REQUESTED
+  COLLECTION_DEADLINE_CLOSE_REQUESTED,
+  /**
+   * Recorded when a step's context is assembled from its declared selection (or from full context when the step
+   * declares none). Payload fields: {@code stepId}, {@code mode} ({@code SCOPED} / {@code UNSCOPED_FULL}), the
+   * selector list, per-selector fingerprints, and estimated units. Reserved for scoped context assembly, which the
+   * runtime does not perform yet — no code records this event.
+   */
+  CONTEXT_SCOPE_APPLIED,
+  /**
+   * Recorded when a step's run-time request for additional context is granted (the requested selector is within the
+   * step's declared expandable scope). Payload fields: {@code stepId}, {@code selector}, {@code variant} (the
+   * granted content's effective {@code ContextVariant} — the scope entry's declared variant, never the requester's),
+   * {@code expansion} (the request's 1-based expansion ordinal within the command-application batch); when the
+   * source was granted before and its content has changed since, additionally
+   * {@code changedSincePriorGrant=true}, {@code priorFingerprint}, and {@code newFingerprint}.
+   */
+  CONTEXT_EXPANSION_GRANTED,
+  /**
+   * Recorded when a step's run-time request for additional context is denied. Payload fields: {@code stepId},
+   * {@code selector}, {@code expansion}, {@code reason} ({@code NOT_IN_EXPANDABLE_SCOPE} /
+   * {@code MAX_EXPANSIONS_REACHED} / {@code RESERVED_NAMESPACE}).
+   */
+  CONTEXT_EXPANSION_DENIED,
+  /**
+   * Recorded when a compaction step produces a compact sibling. Payload carries the full compact-sibling metadata:
+   * {@code sourceId}, {@code sourceFingerprint}, {@code mode}, {@code estimatedUnitsBefore},
+   * {@code estimatedUnitsAfter}, {@code producedByStepId}, the policy snapshot, and {@code estimator} (the resolved
+   * {@code TokenEstimator} implementation's simple class name).
+   */
+  COMPACTION_PERFORMED,
+  /**
+   * Recorded when a compaction step deterministically declines to compact. Payload fields: {@code sourceId},
+   * {@code sourceFingerprint}, {@code reason} ({@code SOURCE_TOO_SMALL} / {@code INSUFFICIENT_REUSE} /
+   * {@code UP_TO_DATE}), {@code estimator} (the resolved {@code TokenEstimator} implementation's simple class name).
+   */
+  COMPACTION_SKIPPED,
+  /**
+   * Recorded when deterministic waste detection emits an advisory signal. Payload is
+   * {@code kind=<WasteSignalKind> [agentId=<agentId>] detail=<detail>}. Advisory only: the shipped
+   * {@code WasteSignalPolicy.NO_OP} default never blocks or alters execution on it — this event is
+   * recorded regardless of the configured policy. Raised from two sites: {@code AgentInvoker}
+   * (per-step invocation history — {@code DUPLICATE_INVOCATION}, {@code UNJUSTIFIED_TIER_ESCALATION})
+   * and {@code AbstractLoopStrategy} (per-loop iteration history, shared by every
+   * {@code LoopStrategy} — {@code UNCHANGED_LOOP_CONTEXT}, {@code REPEATED_LOOP_OUTPUT}).
+   * {@code REDUNDANT_COMPACTION} and {@code OVERBROAD_CONTEXT} are not currently raised: the former
+   * is always caught by {@code CompactBehaviourHandler}'s own {@code UP_TO_DATE} skip rule first
+   * (see {@code WasteSignalKind}'s Javadoc); the latter needs a call site with both the enclosing
+   * {@code WorkflowDefinition} and {@code StepDefinition}, which neither wired call site has.
+   */
+  TOKEN_GOVERNANCE_SIGNAL
 }

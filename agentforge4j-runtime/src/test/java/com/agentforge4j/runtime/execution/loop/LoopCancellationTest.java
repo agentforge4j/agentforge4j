@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package com.agentforge4j.runtime.execution.loop;
 
+import com.agentforge4j.core.spi.governance.WasteSignalPolicy;
 import com.agentforge4j.core.workflow.WorkflowDefinition;
 import com.agentforge4j.core.workflow.WorkflowLifecycle;
 import com.agentforge4j.core.workflow.WorkflowSource;
@@ -18,6 +19,7 @@ import com.agentforge4j.runtime.event.EventRecorder;
 import com.agentforge4j.runtime.execution.ExecutionContext;
 import com.agentforge4j.runtime.execution.ExecutionOutcome;
 import com.agentforge4j.runtime.execution.StepSequenceExecutor;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 
 import java.time.Clock;
@@ -42,7 +44,8 @@ class LoopCancellationTest {
   void cancelled_mid_iteration_clears_loop_cursor_for_fixed_count() {
     Fixture f = fixture();
     FixedCountLoopStrategy strategy = new FixedCountLoopStrategy(
-        f.stepSequenceExecutor(), f.eventRecorder(), f.maxIterationsHandler());
+        f.stepSequenceExecutor(), f.eventRecorder(), f.maxIterationsHandler(),
+        new ObjectMapper(), WasteSignalPolicy.NO_OP);
 
     assertCancelledClearsCursor(strategy, f);
   }
@@ -53,7 +56,8 @@ class LoopCancellationTest {
     LoopEvaluator evaluator = mock(LoopEvaluator.class);
     when(evaluator.shouldTerminate(anyString(), anyInt(), any())).thenReturn(false);
     EvaluatorLoopStrategy strategy = new EvaluatorLoopStrategy(
-        f.stepSequenceExecutor(), f.eventRecorder(), f.maxIterationsHandler(), evaluator);
+        f.stepSequenceExecutor(), f.eventRecorder(), f.maxIterationsHandler(), evaluator,
+        new ObjectMapper(), WasteSignalPolicy.NO_OP);
 
     assertCancelledClearsCursor(strategy, f);
   }
@@ -62,7 +66,8 @@ class LoopCancellationTest {
   void cancelled_mid_iteration_clears_loop_cursor_for_agent_signal() {
     Fixture f = fixture();
     AgentSignalLoopStrategy strategy = new AgentSignalLoopStrategy(
-        f.stepSequenceExecutor(), f.eventRecorder(), f.maxIterationsHandler());
+        f.stepSequenceExecutor(), f.eventRecorder(), f.maxIterationsHandler(),
+        new ObjectMapper(), WasteSignalPolicy.NO_OP);
 
     assertCancelledClearsCursor(strategy, f);
   }
@@ -73,7 +78,8 @@ class LoopCancellationTest {
     when(f.stepSequenceExecutor().executeAll(anyList(), any()))
         .thenReturn(ExecutionOutcome.PAUSED);
     FixedCountLoopStrategy strategy = new FixedCountLoopStrategy(
-        f.stepSequenceExecutor(), f.eventRecorder(), f.maxIterationsHandler());
+        f.stepSequenceExecutor(), f.eventRecorder(), f.maxIterationsHandler(),
+        new ObjectMapper(), WasteSignalPolicy.NO_OP);
 
     assertThat(strategy.iterate(f.blueprint(), f.loopConfig(), f.executionContext()))
         .isEqualTo(ExecutionOutcome.PAUSED);
@@ -106,7 +112,9 @@ class LoopCancellationTest {
         WorkflowLifecycle.ACTIVE,
         Map.of(),
         Map.of(),
-        List.of(dummyStep()), List.of());
+        List.of(dummyStep()),
+        List.of(),
+        List.of());
     ExecutionContext executionContext = new ExecutionContext(state, workflow, 32);
     BlueprintDefinition blueprint = new BlueprintDefinition(
         BLUEPRINT_ID,

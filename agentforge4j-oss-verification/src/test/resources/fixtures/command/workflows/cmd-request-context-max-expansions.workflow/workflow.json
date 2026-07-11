@@ -1,0 +1,41 @@
+{
+  "kind": "WORKFLOW",
+  "schemaVersion": 1,
+  "id": "cmd-request-context-max-expansions",
+  "name": "Request Context Max Expansions",
+  "steps": [
+    {
+      "kind": "STEP",
+      "stepId": "seed-a",
+      "name": "Seed A",
+      "behaviour": {
+        "type": "ASSIGN_CONTEXT",
+        "contextKey": "note-a",
+        "value": { "type": "STRING", "value": "a" }
+      }
+    },
+    {
+      "kind": "STEP",
+      "stepId": "seed-b",
+      "name": "Seed B",
+      "behaviour": {
+        "type": "ASSIGN_CONTEXT",
+        "contextKey": "note-b",
+        "value": { "type": "STRING", "value": "b" }
+      }
+    },
+    {
+      "kind": "STEP",
+      "stepId": "run",
+      "name": "Run Agent",
+      "behaviour": { "type": "AGENT", "agentRef": "context-agent", "transition": "AUTO" },
+      "contextSelection": {
+        "selectors": [],
+        "expandableScope": [
+          { "kind": "STATE_KEY", "ref": "note-a", "variant": "FULL" },
+          { "kind": "STATE_KEY", "ref": "note-b", "variant": "FULL" }
+        ]
+      }
+    }
+  ]
+}

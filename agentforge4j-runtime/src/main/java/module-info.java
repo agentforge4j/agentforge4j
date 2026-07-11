@@ -24,7 +24,8 @@ module agentforge4j.runtime {
   requires com.fasterxml.jackson.core;
   requires org.apache.commons.lang3;
 
-  // PUBLIC API + SPI: WorkflowRuntimeBuilder entry point and the RunContextManager SPI.
+  // PUBLIC API + SPI: WorkflowRuntimeBuilder entry point, the RunContextManager SPI, and
+  // ContextPackRegistry (a WorkflowRuntimeBuilder builder parameter type).
   exports com.agentforge4j.runtime;
   // PUBLIC: command-application wiring types (FileSink and its implementations).
   exports com.agentforge4j.runtime.command;
@@ -39,6 +40,20 @@ module agentforge4j.runtime {
   exports com.agentforge4j.runtime.llm;
   // PUBLIC SPI: run-execution interceptor seam for embedding applications.
   exports com.agentforge4j.runtime.interceptor;
+  // com.agentforge4j.runtime.context stays UNEXPORTED: it is compaction/context-resolution
+  // internals (CanonicalJson, CompactSibling(Store), ContextFingerprint, ContextSourceId,
+  // ContextSourceResolver). ContextPackRegistry — the only public type from that package, a
+  // WorkflowRuntimeBuilder#contextPackRegistry(...) parameter type — lives in the top-level
+  // com.agentforge4j.runtime package (already exported above) instead.
+  // PUBLIC: exceptions that propagate out of command application to embedders
+  // (CompactSiblingUnavailableException from a COMPACT_ONLY expansion grant;
+  // UserPromptLimitExceededException from the user-prompt pause guard).
+  exports com.agentforge4j.runtime.exception;
 
   opens com.agentforge4j.runtime.llm to com.fasterxml.jackson.databind;
+  // com.agentforge4j.runtime.waste stays UNEXPORTED (WasteDetector and its persisted-history
+  // types are pure runtime-internal bookkeeping, mirroring com.agentforge4j.runtime.context) but
+  // needs reflective access for Jackson to serialize WasteDetectorInvocationHistory/
+  // WasteDetectorLoopHistory to and from the reserved __wasteDetectorHistory.* context keys.
+  opens com.agentforge4j.runtime.waste to com.fasterxml.jackson.databind;
 }

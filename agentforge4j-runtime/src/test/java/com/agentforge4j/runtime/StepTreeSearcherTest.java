@@ -120,7 +120,8 @@ class StepTreeSearcherTest {
   private static WorkflowDefinition workflow(String id, Map<String, BlueprintDefinition> blueprints,
       List<Executable> steps) {
     return new WorkflowDefinition(id, id, null, null, null, null, null, WorkflowSource.CUSTOM,
-        WorkflowLifecycle.ACTIVE, Map.of(), blueprints, steps, List.of());
+        WorkflowLifecycle.ACTIVE, Map.of(), blueprints, steps,
+        List.of(), List.of());
   }
 
   private static WorkflowRepository repository(WorkflowDefinition... workflows) {

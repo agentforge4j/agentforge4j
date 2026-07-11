@@ -20,7 +20,8 @@ import com.agentforge4j.util.Validate;
  * @param maxUserPromptRounds optional cap on consecutive blocking {@code USER_PROMPT} pauses;
  *                            {@code null} uses the runtime default
  * @param modelTier           optional capability tier name ({@code LITE}/{@code STANDARD}/
- *                            {@code POWERFUL}) that overrides the agent's tier for this step;
+ *                            {@code POWERFUL}/{@code PREMIUM}) that overrides the agent's tier for
+ *                            this step;
  *                            {@code null} inherits the agent tier. Stored as the tier name (a
  *                            String) so {@code core} stays free of the {@code llm-api} enum; the
  *                            name is validated at the runtime invocation boundary
@@ -32,6 +33,8 @@ import com.agentforge4j.util.Validate;
  *                            generates, for execution estimation; {@code null} when no hint is
  *                            supplied. When present it must not be negative. Advisory only — it
  *                            never affects runtime behaviour
+ * @param contextSelection    optional declaration of the context this step receives (and may
+ *                            request); {@code null} keeps the current full-context behaviour
  */
 public record StepDefinition(
     String stepId,
@@ -42,7 +45,8 @@ public record StepDefinition(
     Integer maxUserPromptRounds,
     String modelTier,
     Integer estimatedInputTokens,
-    Integer estimatedOutputTokens
+    Integer estimatedOutputTokens,
+    ContextSelection contextSelection
 ) implements Executable {
 
   public StepDefinition {
@@ -85,6 +89,7 @@ public record StepDefinition(
         .withModelTier(step.modelTier())
         .withEstimatedInputTokens(step.estimatedInputTokens())
         .withEstimatedOutputTokens(step.estimatedOutputTokens())
+        .withContextSelection(step.contextSelection())
         .build();
   }
 
@@ -105,6 +110,7 @@ public record StepDefinition(
     private String modelTier;
     private Integer estimatedInputTokens;
     private Integer estimatedOutputTokens;
+    private ContextSelection contextSelection;
 
     private Builder() {
       // obtain via StepDefinition.builder()
@@ -185,7 +191,7 @@ public record StepDefinition(
 
     /**
      * Sets the optional step-level capability tier name ({@code LITE}/{@code STANDARD}/
-     * {@code POWERFUL}) that overrides the agent tier for this step.
+     * {@code POWERFUL}/{@code PREMIUM}) that overrides the agent tier for this step.
      *
      * @param modelTier capability tier name, or {@code null} to inherit the agent tier
      *
@@ -223,13 +229,26 @@ public record StepDefinition(
     }
 
     /**
+     * Sets the optional context selection declaring the context this step receives.
+     *
+     * @param contextSelection context selection, or {@code null} to keep full-context behaviour
+     *
+     * @return this builder
+     */
+    public Builder withContextSelection(ContextSelection contextSelection) {
+      this.contextSelection = contextSelection;
+      return this;
+    }
+
+    /**
      * Builds the validated {@link StepDefinition}.
      *
      * @return immutable step definition; never {@code null}
      */
     public StepDefinition build() {
       return new StepDefinition(stepId, name, behaviour, contextMapping, stepPrompt,
-          maxUserPromptRounds, modelTier, estimatedInputTokens, estimatedOutputTokens);
+          maxUserPromptRounds, modelTier, estimatedInputTokens, estimatedOutputTokens,
+          contextSelection);
     }
   }
 }

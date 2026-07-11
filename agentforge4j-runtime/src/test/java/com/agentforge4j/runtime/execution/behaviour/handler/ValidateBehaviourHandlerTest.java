@@ -73,7 +73,8 @@ class ValidateBehaviourHandlerTest {
   private static ExecutionContext context(WorkflowState state, StepDefinition step) {
     WorkflowDefinition wf = new WorkflowDefinition(
         "wf-1", "W", null, null, null, null, null,
-        WorkflowSource.CUSTOM, WorkflowLifecycle.ACTIVE, Map.of(), Map.of(), List.of(step), List.of());
+        WorkflowSource.CUSTOM, WorkflowLifecycle.ACTIVE, Map.of(), Map.of(), List.of(step),
+        List.of(), List.of());
     return new ExecutionContext(state, wf, 32);
   }
 

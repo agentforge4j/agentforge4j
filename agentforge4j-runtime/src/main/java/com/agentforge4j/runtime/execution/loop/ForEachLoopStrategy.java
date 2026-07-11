@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package com.agentforge4j.runtime.execution.loop;
 
+import com.agentforge4j.core.spi.governance.WasteSignalPolicy;
 import com.agentforge4j.core.workflow.context.BooleanContextValue;
 import com.agentforge4j.core.workflow.context.ContextValue;
 import com.agentforge4j.core.workflow.context.ContextValueList;
@@ -18,12 +19,10 @@ import com.agentforge4j.runtime.execution.ExecutionContext;
 import com.agentforge4j.runtime.execution.ExecutionOutcome;
 import com.agentforge4j.runtime.execution.GeneratedArtifactEviction;
 import com.agentforge4j.runtime.execution.StepSequenceExecutor;
+import com.agentforge4j.util.Sha256;
 import com.agentforge4j.util.Validate;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
-import java.util.HexFormat;
 import java.util.List;
 import java.util.Optional;
 import java.util.stream.Collectors;
@@ -49,8 +48,11 @@ public final class ForEachLoopStrategy extends AbstractLoopStrategy {
   public ForEachLoopStrategy(StepSequenceExecutor stepSequenceExecutor,
       EventRecorder eventRecorder,
       MaxIterationsHandler maxIterationsHandler,
+      ObjectMapper objectMapper,
+      WasteSignalPolicy wasteSignalPolicy,
       GeneratedArtifactStore generatedArtifactStore) {
-    super(stepSequenceExecutor, eventRecorder, maxIterationsHandler);
+    super(stepSequenceExecutor, eventRecorder, maxIterationsHandler, objectMapper,
+        wasteSignalPolicy);
     this.generatedArtifactStore = Validate.notNull(generatedArtifactStore,
         "generatedArtifactStore must not be null");
   }
@@ -228,13 +230,7 @@ public final class ForEachLoopStrategy extends AbstractLoopStrategy {
     String payload = list.values().size() + "|"
         + list.values().stream().map(ForEachLoopStrategy::contentSignature)
         .collect(Collectors.joining("|"));
-    try {
-      MessageDigest digest = MessageDigest.getInstance("SHA-256");
-      byte[] hash = digest.digest(payload.getBytes(StandardCharsets.UTF_8));
-      return HexFormat.of().formatHex(hash);
-    } catch (NoSuchAlgorithmException e) {
-      throw new IllegalStateException("SHA-256 unavailable", e);
-    }
+    return Sha256.hex(payload);
   }
 
   /**

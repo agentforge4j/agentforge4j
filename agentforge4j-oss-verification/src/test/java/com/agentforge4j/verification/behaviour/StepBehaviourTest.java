@@ -18,8 +18,9 @@ import java.util.Map;
 import org.junit.jupiter.api.Test;
 
 /**
- * Black-box coverage of the step behaviours (FAIL, BRANCH, RESOURCE, WORKFLOW nesting, INPUT, SPAR). AGENT is exercised
- * throughout the command/loop tiers. Each behaviour drives a focused fixture and asserts its observable effect.
+ * Black-box coverage of the step behaviours (FAIL, BRANCH, RESOURCE, WORKFLOW nesting, INPUT, SPAR, COMPACT). AGENT is
+ * exercised throughout the command/loop tiers. Each behaviour drives a focused fixture and asserts its observable
+ * effect.
  */
 class StepBehaviourTest {
 
@@ -106,5 +107,20 @@ class StepBehaviourTest {
         // model carries no distinct input-supplied event, so the resume is observed as the
         // transition from AWAITING_INPUT to RUN_COMPLETED.
         .eventsInOrder(WorkflowEventType.AWAITING_INPUT, WorkflowEventType.RUN_COMPLETED);
+  }
+
+  @Test
+  void compactPerformsThenSkipsWhenUpToDate() {
+    // Two COMPACT steps against the same never-populated ledger: LEDGER_SECTION resolution
+    // synthesizes a default empty envelope when no delta has been merged (LedgerMerger is unwired
+    // in this runtime version — see its own Javadoc), which is a legitimate, non-trivial source to
+    // compact. The first step performs; the second sees a matching sourceFingerprint and skips
+    // UP_TO_DATE — proving both event-contract paths in one run.
+    WorkflowRunResult result = harness().run("beh-compact");
+    WorkflowRunAssert.assertThat(result)
+        .isCompleted()
+        .eventCount(WorkflowEventType.COMPACTION_PERFORMED, 1)
+        .eventCount(WorkflowEventType.COMPACTION_SKIPPED, 1)
+        .eventsInOrder(WorkflowEventType.COMPACTION_PERFORMED, WorkflowEventType.COMPACTION_SKIPPED);
   }
 }

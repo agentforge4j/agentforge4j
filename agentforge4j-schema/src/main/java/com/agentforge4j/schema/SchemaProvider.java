@@ -40,4 +40,11 @@ public interface SchemaProvider {
    * @return integration schema JSON content
    */
   String integrationSchema();
+
+  /**
+   * Returns the context-pack manifest schema as UTF-8 text.
+   *
+   * @return context-pack schema JSON content
+   */
+  String contextPackSchema();
 }

@@ -130,8 +130,18 @@ public final class ExecutionContext {
    * @return innermost active workflow id; never {@code null}
    */
   public String getActiveWorkflowId() {
-    WorkflowDefinition active = activeWorkflowStack.peek();
-    return ObjectUtils.getIfNull(active, rootWorkflow).id();
+    return getEnclosingWorkflow().id();
+  }
+
+  /**
+   * Returns the innermost workflow definition currently executing: the workflow on top of the active
+   * workflow stack when a nested workflow has been entered, or {@link #rootWorkflow} when none has.
+   * Always non-null.
+   *
+   * @return the enclosing workflow definition; never {@code null}
+   */
+  public WorkflowDefinition getEnclosingWorkflow() {
+    return ObjectUtils.getIfNull(activeWorkflowStack.peek(), rootWorkflow);
   }
 
   public void enterWorkflow(WorkflowDefinition workflow) {

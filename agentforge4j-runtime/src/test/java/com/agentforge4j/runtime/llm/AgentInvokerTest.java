@@ -10,10 +10,15 @@ import com.agentforge4j.core.command.schema.CommandResponseSchema;
 import com.agentforge4j.core.command.schema.CommandResponseSchemaRenderer;
 import com.agentforge4j.core.command.schema.CommandSchemaFactory;
 import com.agentforge4j.core.command.schema.SystemRulesProvider;
+import com.agentforge4j.core.spi.governance.WasteSignalKind;
+import com.agentforge4j.core.spi.governance.WasteSignalPolicy;
 import com.agentforge4j.core.workflow.context.ContextMapping;
 import com.agentforge4j.core.workflow.context.ContextProvenance;
+import com.agentforge4j.core.workflow.context.JsonContextValue;
 import com.agentforge4j.core.workflow.context.StringContextValue;
+import com.agentforge4j.core.workflow.event.WorkflowEvent;
 import com.agentforge4j.core.workflow.event.WorkflowEventType;
+import com.agentforge4j.core.workflow.state.ReservedContextKeys;
 import com.agentforge4j.core.workflow.state.WorkflowState;
 import com.agentforge4j.llm.LlmClientResolver;
 import com.agentforge4j.llm.api.LlmClient;
@@ -31,12 +36,14 @@ import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Set;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -1137,6 +1144,225 @@ class AgentInvokerTest {
     }
     verify(client, times(expectedLlmCalls)).execute(any());
     assertThat(llmOutputEventCount(eventLog, runId)).isEqualTo(expectedLlmCalls);
+  }
+
+  @Test
+  void duplicateInvocationHistorySurvivesAClearEntriesFromUidRewindBetweenCalls() {
+    // The reserved __wasteDetectorHistory.* namespace is exactly why this history is persisted on
+    // WorkflowState rather than kept in an in-memory field: a RETRY_PREVIOUS rewind between two
+    // invocations of the same step (clearEntriesFromUid) must not erase what the detector already
+    // knows about the prior invocation.
+    ObjectMapper mapper = new ObjectMapper();
+    LlmClient client = mock(LlmClient.class);
+    when(client.getProviderName()).thenReturn("openai");
+    when(client.execute(any())).thenReturn(llmResponse("[{\"type\":\"COMPLETE\"}]"));
+    InMemoryWorkflowEventLog eventLog = new InMemoryWorkflowEventLog();
+    AgentInvoker invoker = invokerWithAudit(mapper, client, recorder(eventLog));
+    WorkflowState state = workflowState("run-dup-rewind");
+
+    invoker.invoke("agent-x", ContextMapping.none(), state, null);
+    state.clearEntriesFromUid(0, Set.of());
+    invoker.invoke("agent-x", ContextMapping.none(), state, null);
+
+    assertThat(tokenGovernanceSignalPayloads(eventLog, "run-dup-rewind"))
+        .anySatisfy(payload -> assertThat(payload).contains("kind=DUPLICATE_INVOCATION"));
+  }
+
+  @Test
+  void duplicateInvocationRaisesATokenGovernanceSignalOnTheSecondIdenticalCall() {
+    ObjectMapper mapper = new ObjectMapper();
+    LlmClient client = mock(LlmClient.class);
+    when(client.getProviderName()).thenReturn("openai");
+    when(client.execute(any())).thenReturn(llmResponse("[{\"type\":\"COMPLETE\"}]"));
+    InMemoryWorkflowEventLog eventLog = new InMemoryWorkflowEventLog();
+    AgentInvoker invoker = invokerWithAudit(mapper, client, recorder(eventLog));
+    WorkflowState state = workflowState("run-dup");
+
+    invoker.invoke("agent-x", ContextMapping.none(), state, null);
+    invoker.invoke("agent-x", ContextMapping.none(), state, null);
+
+    List<String> signalPayloads = tokenGovernanceSignalPayloads(eventLog, "run-dup");
+    // The first call has no prior invocation to compare against, so only the second raises.
+    // agentId=a1 (not agent-x): agentSupportingOnlyComplete()'s own id field is "a1" regardless
+    // of the "agent-x" key the mock AgentRepository is stubbed to resolve it from.
+    assertThat(signalPayloads).hasSize(1);
+    assertThat(signalPayloads.get(0)).contains("kind=DUPLICATE_INVOCATION")
+        .contains("agentId=a1");
+  }
+
+  @Test
+  void duplicateInvocationDoesNotFireWhenContextChangesBetweenCalls() {
+    ObjectMapper mapper = new ObjectMapper();
+    LlmClient client = mock(LlmClient.class);
+    when(client.getProviderName()).thenReturn("openai");
+    when(client.execute(any())).thenReturn(llmResponse("[{\"type\":\"COMPLETE\"}]"));
+    InMemoryWorkflowEventLog eventLog = new InMemoryWorkflowEventLog();
+    AgentInvoker invoker = invokerWithAudit(mapper, client, recorder(eventLog));
+    WorkflowState state = workflowState("run-changed-context");
+
+    invoker.invoke("agent-x", ContextMapping.none(), state, null);
+    state.putContextValue("note",
+        new StringContextValue("changed", ContextProvenance.SYSTEM_GENERATED));
+    invoker.invoke("agent-x", ContextMapping.none(), state, null);
+
+    assertThat(tokenGovernanceSignalPayloads(eventLog, "run-changed-context")).isEmpty();
+  }
+
+  @Test
+  void duplicateInvocationDoesNotFireWhenOnlyNewlyGrantedContextChanged() {
+    // Regression for the P0 fingerprint-filter fix: the filter previously stripped every
+    // __-prefixed key, including __granted.* — the reserved namespace
+    // RequestContextCommandHandler.grant() writes REQUEST_CONTEXT-granted content under. A
+    // re-invocation whose only change is newly granted context therefore fingerprinted
+    // identically to the prior call, firing a false DUPLICATE_INVOCATION. Writes directly to the
+    // reserved key (the same write grant() performs) rather than through the full
+    // command-application pipeline, which RequestContextCommandHandlerTest/CommandApplierTest
+    // cover separately.
+    ObjectMapper mapper = new ObjectMapper();
+    LlmClient client = mock(LlmClient.class);
+    when(client.getProviderName()).thenReturn("openai");
+    when(client.execute(any())).thenReturn(llmResponse("[{\"type\":\"COMPLETE\"}]"));
+    InMemoryWorkflowEventLog eventLog = new InMemoryWorkflowEventLog();
+    AgentInvoker invoker = invokerWithAudit(mapper, client, recorder(eventLog));
+    WorkflowState state = workflowState("run-granted-context");
+
+    invoker.invoke("agent-x", ContextMapping.none(), state, null);
+    state.putContextValue(ReservedContextKeys.grantedKey("ARTIFACT:design.md"),
+        new StringContextValue("granted content", ContextProvenance.SYSTEM_GENERATED));
+    invoker.invoke("agent-x", ContextMapping.none(), state, null);
+
+    assertThat(tokenGovernanceSignalPayloads(eventLog, "run-granted-context"))
+        .noneMatch(payload -> payload.contains("DUPLICATE_INVOCATION"));
+  }
+
+  @Test
+  void duplicateInvocationFiresForSemanticallyIdenticalContextWithDifferentJsonFieldOrder() {
+    // Regression for the canonicalization fix: a JsonContextValue's embedded JSON text can parse
+    // with different field order depending on which write path produced it, even when the content
+    // is semantically identical. Without canonicalizing before hashing (this fix brings
+    // AgentInvoker in line with AbstractLoopStrategy's fingerprint, which already canonicalizes),
+    // these two calls would fingerprint differently and DUPLICATE_INVOCATION would spuriously not
+    // fire.
+    ObjectMapper mapper = new ObjectMapper();
+    LlmClient client = mock(LlmClient.class);
+    when(client.getProviderName()).thenReturn("openai");
+    when(client.execute(any())).thenReturn(llmResponse("[{\"type\":\"COMPLETE\"}]"));
+    InMemoryWorkflowEventLog eventLog = new InMemoryWorkflowEventLog();
+    AgentInvoker invoker = invokerWithAudit(mapper, client, recorder(eventLog));
+    WorkflowState state = workflowState("run-canonical");
+
+    state.putContextValue("doc",
+        new JsonContextValue("{\"a\":1,\"b\":2}", ContextProvenance.SYSTEM_GENERATED));
+    invoker.invoke("agent-x", ContextMapping.none(), state, null);
+    state.putContextValue("doc",
+        new JsonContextValue("{\"b\":2,\"a\":1}", ContextProvenance.SYSTEM_GENERATED));
+    invoker.invoke("agent-x", ContextMapping.none(), state, null);
+
+    assertThat(tokenGovernanceSignalPayloads(eventLog, "run-canonical"))
+        .anySatisfy(payload -> assertThat(payload).contains("kind=DUPLICATE_INVOCATION"));
+  }
+
+  @Test
+  void unjustifiedTierEscalationRaisesASignalWhenTierIncreasesWithUnchangedInput() {
+    ObjectMapper mapper = new ObjectMapper();
+    LlmClient client = mock(LlmClient.class);
+    when(client.getProviderName()).thenReturn("openai");
+    when(client.execute(any())).thenReturn(llmResponse("[{\"type\":\"COMPLETE\"}]"));
+    InMemoryWorkflowEventLog eventLog = new InMemoryWorkflowEventLog();
+    AgentInvoker invoker = invokerWithTierResolver(mapper, client, recorder(eventLog),
+        (provider, tier) -> "model-" + tier, WasteSignalPolicy.NO_OP);
+    WorkflowState state = workflowState("run-tier-escalation");
+
+    invoker.invoke("agent-x", ContextMapping.none(), state, null, "STANDARD");
+    invoker.invoke("agent-x", ContextMapping.none(), state, null, "PREMIUM");
+
+    List<String> signalPayloads = tokenGovernanceSignalPayloads(eventLog, "run-tier-escalation");
+    assertThat(signalPayloads).anySatisfy(payload -> assertThat(payload)
+        .contains("kind=UNJUSTIFIED_TIER_ESCALATION")
+        .contains("priorTier=STANDARD")
+        .contains("resolvedTier=PREMIUM"));
+  }
+
+  @Test
+  void unjustifiedTierEscalationDoesNotFireWhenTierIsUnchanged() {
+    ObjectMapper mapper = new ObjectMapper();
+    LlmClient client = mock(LlmClient.class);
+    when(client.getProviderName()).thenReturn("openai");
+    when(client.execute(any())).thenReturn(llmResponse("[{\"type\":\"COMPLETE\"}]"));
+    InMemoryWorkflowEventLog eventLog = new InMemoryWorkflowEventLog();
+    AgentInvoker invoker = invokerWithTierResolver(mapper, client, recorder(eventLog),
+        (provider, tier) -> "model-" + tier, WasteSignalPolicy.NO_OP);
+    WorkflowState state = workflowState("run-tier-unchanged");
+
+    invoker.invoke("agent-x", ContextMapping.none(), state, null, "STANDARD");
+    invoker.invoke("agent-x", ContextMapping.none(), state, null, "STANDARD");
+
+    assertThat(tokenGovernanceSignalPayloads(eventLog, "run-tier-unchanged"))
+        .noneMatch(payload -> payload.contains("UNJUSTIFIED_TIER_ESCALATION"));
+  }
+
+  @Test
+  void configuredWasteSignalPolicyReceivesARaisedSignal() {
+    ObjectMapper mapper = new ObjectMapper();
+    LlmClient client = mock(LlmClient.class);
+    when(client.getProviderName()).thenReturn("openai");
+    when(client.execute(any())).thenReturn(llmResponse("[{\"type\":\"COMPLETE\"}]"));
+    WasteSignalPolicy policy = mock(WasteSignalPolicy.class);
+    InMemoryWorkflowEventLog eventLog = new InMemoryWorkflowEventLog();
+    AgentInvoker invoker = invokerWithTierResolver(mapper, client, recorder(eventLog),
+        (provider, tier) -> null, policy);
+    WorkflowState state = workflowState("run-policy");
+
+    invoker.invoke("agent-x", ContextMapping.none(), state, null);
+    invoker.invoke("agent-x", ContextMapping.none(), state, null);
+
+    // agentId is "a1" (the agent definition's own id field), not "agent-x" (the repository lookup
+    // key the mock is stubbed with) — see invokerWithTierResolver.
+    verify(policy).onSignal(argThat(signal -> signal.kind() == WasteSignalKind.DUPLICATE_INVOCATION
+        && "a1".equals(signal.agentId())));
+  }
+
+  private static List<String> tokenGovernanceSignalPayloads(InMemoryWorkflowEventLog eventLog,
+      String runId) {
+    return eventLog.getEvents(runId).stream()
+        .filter(e -> e.eventType() == WorkflowEventType.TOKEN_GOVERNANCE_SIGNAL)
+        .map(WorkflowEvent::payload)
+        .toList();
+  }
+
+  private static AgentInvoker invokerWithTierResolver(ObjectMapper mapper, LlmClient client,
+      EventRecorder recorder, com.agentforge4j.llm.api.ModelTierResolver modelTierResolver,
+      WasteSignalPolicy wasteSignalPolicy) {
+    AgentRepository repo = mock(AgentRepository.class);
+    // No pinned model on the provider preference: resolveModel's PIN branch would otherwise
+    // short-circuit before ever consulting modelTierResolver, so requestedModelTier would always
+    // be null regardless of the stepModelTier argument these tests pass.
+    when(repo.get("agent-x")).thenReturn(AgentDefinition.builder()
+        .withId("a1")
+        .withName("A")
+        .withLocality(AgentLocality.CLOUD)
+        .withEnabled(true)
+        .withSystemPrompt("sys")
+        .withProviderPreferences(List.of(new ProviderPreference("openai", null)))
+        .withSupportedCommands(List.of("COMPLETE"))
+        .withVersion("1.0.0")
+        .build());
+    LlmClientResolver resolver = mock(LlmClientResolver.class);
+    when(resolver.resolve("openai")).thenReturn(client);
+    when(resolver.isProviderAvailable("openai")).thenReturn(true);
+    when(resolver.listAvailableClients()).thenReturn(List.of("openai"));
+    return AgentInvoker.builder()
+        .agentRepository(repo)
+        .llmClientResolver(resolver)
+        .contextRenderer(new ContextRenderer(mapper))
+        .llmCommandParser(new LlmCommandParser(mapper))
+        .objectMapper(mapper)
+        .eventRecorder(recorder)
+        .llmProviderSelectionStrategy(new FirstAvailableProviderSelectionStrategy())
+        .llmCallObserver(new LlmCallObserver(recorder, mapper))
+        .modelTierResolver(modelTierResolver)
+        .wasteSignalPolicy(wasteSignalPolicy)
+        .build();
   }
 
   private static long llmOutputEventCount(InMemoryWorkflowEventLog eventLog, String runId) {

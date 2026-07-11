@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package com.agentforge4j.runtime.execution.loop;
 
+import com.agentforge4j.core.spi.governance.WasteSignalPolicy;
 import com.agentforge4j.core.workflow.step.blueprint.BlueprintDefinition;
 import com.agentforge4j.core.workflow.step.loop.LoopConfig;
 import com.agentforge4j.core.workflow.step.loop.LoopTerminationStrategy;
@@ -8,6 +9,7 @@ import com.agentforge4j.runtime.event.EventRecorder;
 import com.agentforge4j.runtime.execution.ExecutionContext;
 import com.agentforge4j.runtime.execution.ExecutionOutcome;
 import com.agentforge4j.runtime.execution.StepSequenceExecutor;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 /**
  * Iterates the blueprint body until an agent emits a {@code COMPLETE} command. The command is surfaced via
@@ -23,8 +25,11 @@ public final class AgentSignalLoopStrategy extends AbstractLoopStrategy {
 
   public AgentSignalLoopStrategy(StepSequenceExecutor stepSequenceExecutor,
       EventRecorder eventRecorder,
-      MaxIterationsHandler maxIterationsHandler) {
-    super(stepSequenceExecutor, eventRecorder, maxIterationsHandler);
+      MaxIterationsHandler maxIterationsHandler,
+      ObjectMapper objectMapper,
+      WasteSignalPolicy wasteSignalPolicy) {
+    super(stepSequenceExecutor, eventRecorder, maxIterationsHandler, objectMapper,
+        wasteSignalPolicy);
   }
 
   @Override
