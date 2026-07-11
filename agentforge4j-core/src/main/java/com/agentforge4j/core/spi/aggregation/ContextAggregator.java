@@ -14,6 +14,13 @@ import java.util.Map;
  * {@link java.util.ServiceLoader} directly (no factory indirection) — unlike
  * {@code ArtifactValidatorFactory}, no implementation of this SPI requires a construction-time
  * dependency such as a shared {@code ObjectMapper}.
+ *
+ * <p><b>Provenance.</b> The runtime re-stamps every returned value's provenance as
+ * {@code SYSTEM_GENERATED} unconditionally, regardless of what this method returns and regardless
+ * of the declared input values' own provenance (which may include model-generated content). An
+ * implementation must therefore only return newly derived or computed values (arithmetic results,
+ * classifications, thresholds) — never pass an input value's raw text through unchanged, since doing
+ * so would silently upgrade untrusted, model-influenced content to a trusted provenance tier.
  */
 public interface ContextAggregator {
 
