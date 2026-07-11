@@ -100,13 +100,15 @@ public final class WorkflowState {
   /**
    * The blueprint id of the loop currently paused via {@code MaxIterationsAction.AWAIT_USER}, or
    * {@code null} when no loop is in that specific pause. Set only by the handler that performs that
-   * pause and consumed only by {@code continueRun} — the sole documented resume verb for it — which
-   * rewinds the loop via {@link #clearEntriesFromUid(int, java.util.Set)} using
+   * pause; consumed by every resume/repositioning verb that can be called against a run in that
+   * state, each of which rewinds the loop via {@link #clearEntriesFromUid(int, java.util.Set)} using
    * {@link #getLoopIterationBodyStartUid(String)} as the threshold before clearing this field, so the
    * loop genuinely restarts from iteration one instead of the resume-skip guard mistaking the
-   * already-completed iteration for still in progress. {@code PAUSED} is otherwise ambiguous (an
-   * interceptor veto also leaves the run {@code PAUSED} with no loop rewind due); this field is the
-   * only way to tell the two apart.
+   * already-completed iteration for still in progress. A verb repositioning the run at a target that
+   * would not otherwise reach this loop's own recorded range must still perform this rewind
+   * unconditionally, or the loop's stale bookkeeping survives untouched. {@code PAUSED} is otherwise
+   * ambiguous (an interceptor veto also leaves the run {@code PAUSED} with no loop rewind due); this
+   * field is the only way to tell the two apart.
    */
   @Setter
   private String blueprintIdAwaitingMaxIterationsDecision;
@@ -372,8 +374,7 @@ public final class WorkflowState {
    * {@link #getLoopIterationBodyStartUid(String)}) — the two are always scoped to the same
    * in-progress-or-not loop, so a loop that is no longer in progress must forget both. Also clears
    * {@link #blueprintIdAwaitingMaxIterationsDecision} when it names this blueprint: a loop that just
-   * terminated (or is being rewound) can no longer be the one a pending {@code continueRun} rewind
-   * applies to.
+   * terminated (or is being rewound) can no longer be the one a pending resume rewind applies to.
    */
   public void clearLoopIterationCursor(String blueprintId) {
     String bid = Validate.notBlank(blueprintId, "blueprintId must not be blank");
@@ -583,14 +584,14 @@ public final class WorkflowState {
    * retry an upstream step) would then be misread as a disallowed list mutation instead of a fresh loop entry.
    *
    * <p>{@code activeBlueprintIds} excludes this exact sweep for a loop whose iteration is still genuinely in
-   * progress on the caller's own call stack — for example a {@code RETRY_PREVIOUS} step retrying its own loop
-   * body's first-executed step, where the retry uid happens to equal that loop's own body-start-uid. Such a
-   * rewind is internal to the currently-active iteration, not an external re-entry of the loop, so the loop's
-   * bookkeeping must survive it; the loop strategy that owns that iteration is still on the call stack and will
-   * correctly advance its own bookkeeping when it next calls {@code markLoopIterationStart}. Pass an empty set
-   * for a rewind chokepoint that runs before any loop iteration is active on the call stack ({@code retry},
-   * {@code continueRun}'s max-iterations rewind) or that deliberately restarts its own loop from outside an
-   * active iteration ({@code ForEachLoopStrategy}'s own restart).
+   * progress on the caller's own call stack — for example a rewind whose threshold happens to equal that loop's
+   * own body-start-uid because it targets the first step the loop's own currently-active iteration executed.
+   * Such a rewind is internal to the currently-active iteration, not an external re-entry of the loop, so the
+   * loop's bookkeeping must survive it; whatever owns that iteration is still on the call stack and will
+   * correctly advance its own bookkeeping when it next records the start of a new iteration. Pass an empty set
+   * when the caller has no loop iteration of its own active on the call stack at the point it calls this method
+   * — whether because it runs before any iteration begins, or because it is deliberately abandoning or
+   * restarting a loop from outside that loop's own active iteration.
    *
    * @param retryUid          the uid threshold; entries with uid &gt;= this value are cleared
    * @param activeBlueprintIds blueprint ids whose loop-cursor bookkeeping must not be swept, even if it

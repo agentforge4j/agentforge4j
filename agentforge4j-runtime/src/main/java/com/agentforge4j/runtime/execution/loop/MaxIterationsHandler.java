@@ -56,9 +56,9 @@ public final class MaxIterationsHandler {
       String payload) {
     state.setStatus(WorkflowStatus.PAUSED);
     state.setLastUpdatedAt(clock.instant());
-    // Marks which loop this PAUSED status is about, so continueRun — the documented resume verb for
-    // this pause — can rewind it via clearEntriesFromUid instead of silently resuming into an
-    // already-fully-executed iteration that the resume-skip guard then skips forever.
+    // Marks which loop this PAUSED status is about, so a subsequent continueRun or retry can rewind
+    // it via clearEntriesFromUid instead of silently resuming into an already-fully-executed
+    // iteration that the resume-skip guard then skips forever.
     state.setBlueprintIdAwaitingMaxIterationsDecision(blueprint.blueprintId());
     eventRecorder.record(state.getRunId(), blueprint.blueprintId(),
         WorkflowEventType.LOOP_ITERATION_COMPLETED, payload + " — awaiting user", "runtime");

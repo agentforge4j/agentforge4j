@@ -340,6 +340,54 @@ class ForEachLoopStrategyTest {
   }
 
   @Test
+  void body_exception_rewinds_the_aborted_iterations_stale_body_outputs_before_rethrowing() {
+    putList("a", "b");
+    when(stepSequenceExecutor.executeAll(anyList(), any()))
+        .thenAnswer(inv -> {
+          // Simulate the real executor recording the body step's output before the body throws —
+          // the entry StepSequenceExecutor.shouldSkip keys on during a later retry-driven redrive.
+          int uid = executionContext.allocateStepSequenceUid();
+          state.putStepExecutionUid("dummy", uid);
+          state.putStepOutput("dummy", "stale-output-from-aborted-iteration");
+          throw new IllegalStateException("boom");
+        });
+
+    assertThatThrownBy(() -> strategy.iterate(blueprint, forEachConfig(false), executionContext))
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessage("boom");
+
+    // Pre-fix, the catch block only cleared the cursor/fingerprint (clearLoopState), leaving the
+    // aborted iteration's step output/uid in place — a later retry of a downstream step could then
+    // silently skip-guard this step instead of re-running it. The fix rewinds the full body range
+    // via restartLoop, the same as the sibling mutation/ceiling-exceeded restart paths.
+    assertThat(state.getStepOutput("dummy")).isEmpty();
+    assertThat(state.getStepExecutionUid("dummy")).isEmpty();
+    assertThat(state.getLoopIterationCursor(BLUEPRINT_ID)).isZero();
+    assertThat(state.getForEachListFingerprint(BLUEPRINT_ID)).isEmpty();
+  }
+
+  @Test
+  void body_exception_also_evicts_the_aborted_iterations_generated_artifact_bytes() {
+    putList("a", "b");
+    when(stepSequenceExecutor.executeAll(anyList(), any()))
+        .thenAnswer(inv -> {
+          int uid = executionContext.allocateStepSequenceUid();
+          state.putStepExecutionUid("dummy", uid);
+          state.addGeneratedArtifactDescriptor(
+              new ArtifactDescriptor("aborted.txt", "hash", "dummy", uid));
+          generatedArtifactStore.register("run-1", "dummy", "aborted.txt", "stale bytes");
+          throw new IllegalStateException("boom");
+        });
+
+    assertThatThrownBy(() -> strategy.iterate(blueprint, forEachConfig(false), executionContext))
+        .isInstanceOf(IllegalStateException.class);
+
+    // Mirrors the mutation/ceiling-exceeded restart paths' artifact-eviction guarantee: the thrown
+    // iteration's captured artifact bytes must not leak against the run's artifact-count bound.
+    assertThat(generatedArtifactStore.find("run-1", "aborted.txt")).isEmpty();
+  }
+
+  @Test
   void cancelled_clears_cursor_and_fingerprint() {
     putList("a", "b");
     when(stepSequenceExecutor.executeAll(anyList(), any()))

@@ -112,7 +112,12 @@ public final class ForEachLoopStrategy extends AbstractLoopStrategy {
         outcome = execute(blueprint, executionContext, iteration);
       } catch (RuntimeException e) {
         restorePreviousItem(state, previous);
-        clearLoopState(state, blueprintId);
+        // Mirrors the list-mutation/ceiling-exceeded restarts above: the thrown iteration's own
+        // already-recorded step outputs and artifact bytes must be rewound too, not just the
+        // cursor/fingerprint, or a later retry of a downstream step can silently skip-guard this
+        // aborted iteration's steps instead of re-running them. restartLoop falls back to
+        // clearLoopState when nothing was recorded yet.
+        restartLoop(executionContext, blueprintId);
         throw e;
       }
       if (outcome == ExecutionOutcome.PAUSED) {
@@ -183,24 +188,27 @@ public final class ForEachLoopStrategy extends AbstractLoopStrategy {
   }
 
   /**
-   * Restarts the loop from iteration 1: rewinds the abandoned in-progress iteration's body
-   * execution range (when one is recorded) before forgetting the cursor and fingerprint. Without
-   * the rewind, the abandoned iteration's step outputs would still satisfy
-   * {@code StepSequenceExecutor}'s resume-skip guard and the restarted loop would silently skip
-   * every body step on every iteration.
+   * Rewinds an abandoned in-progress iteration's body execution range (when one is recorded)
+   * before forgetting the cursor and fingerprint — called both when the loop is about to restart
+   * from iteration 1 in this same call (a mutated list or a cursor past the new ceiling) and when
+   * the iteration is abandoned outright by a propagating exception. Without the rewind, the
+   * abandoned iteration's step outputs would still satisfy {@code StepSequenceExecutor}'s
+   * resume-skip guard and either the restarted loop (in-flow) or a later retry of a downstream step
+   * (after the exception) would silently skip every already-recorded body step instead of
+   * re-running it.
    *
    * <p>Evicts the abandoned iteration's captured artifact bytes from {@link GeneratedArtifactStore}
-   * before the rewind, mirroring the other two rewind chokepoints ({@code DefaultWorkflowRuntime.retry}
-   * and {@code RetryPreviousBehaviourHandler}) — otherwise a restarted FOR_EACH iteration that emitted
-   * per-element unique artifact paths would leak them permanently against the run's artifact-count
-   * bound, since {@link WorkflowState#clearEntriesFromUid(int, java.util.Set)} drops the descriptors
-   * but not the bytes. This restart deliberately does not exclude this loop's own blueprint id from
-   * {@code clearEntriesFromUid}'s sweep — restarting from iteration one is the whole point here, unlike
-   * an internal, in-iteration rewind (for example {@code RetryPreviousBehaviourHandler} retrying a step
-   * within this loop's own currently-active iteration), which must leave this loop's bookkeeping alone.
-   * {@code executionContext.activeLoopBlueprintIds()} is still passed so an <em>outer</em> loop whose
-   * iteration is genuinely still in progress on the call stack (this loop nested inside it) is not
-   * itself wiped by this loop's own restart.
+   * before the rewind, mirroring the other rewind chokepoints ({@code DefaultWorkflowRuntime.retry}
+   * and {@code RetryPreviousBehaviourHandler}) — otherwise a per-element unique artifact path emitted
+   * by the abandoned iteration would leak permanently against the run's artifact-count bound, since
+   * {@link WorkflowState#clearEntriesFromUid(int, java.util.Set)} drops the descriptors but not the
+   * bytes. This rewind deliberately does not exclude this loop's own blueprint id from
+   * {@code clearEntriesFromUid}'s sweep — abandoning this loop's own current iteration is the whole
+   * point here, unlike an internal, in-iteration rewind (for example {@code RetryPreviousBehaviourHandler}
+   * retrying a step within this loop's own currently-active iteration), which must leave this loop's
+   * bookkeeping alone. {@code executionContext.activeLoopBlueprintIds()} is still passed so an
+   * <em>outer</em> loop whose iteration is genuinely still in progress on the call stack (this loop
+   * nested inside it) is not itself wiped by this rewind.
    */
   private void restartLoop(ExecutionContext executionContext, String blueprintId) {
     WorkflowState state = executionContext.getState();

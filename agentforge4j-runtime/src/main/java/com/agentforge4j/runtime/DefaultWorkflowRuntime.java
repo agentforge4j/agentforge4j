@@ -181,12 +181,14 @@ public final class DefaultWorkflowRuntime implements WorkflowRuntime {
   /**
    * When the run is {@code PAUSED} because a loop reached {@code maxIterations} under
    * {@code MaxIterationsAction.AWAIT_USER} (see {@link WorkflowState#getBlueprintIdAwaitingMaxIterationsDecision()}),
-   * rewinds that loop's already-completed iteration the same way {@link #retry} rewinds a target — evicting its
-   * generated-artifact bytes and clearing its state via
-   * {@link WorkflowState#clearEntriesFromUid(int, java.util.Set)} — so the loop restarts at iteration one on this
-   * drive instead of the resume-skip guard mistaking the already-executed iteration for still in progress and
-   * re-pausing with no progress on every subsequent {@code continueRun}. A no-op when the run is {@code PAUSED} for
-   * a different reason (for example an interceptor veto). Runs before any {@link ExecutionContext} for this drive
+   * rewinds that loop's already-completed iteration — evicting its generated-artifact bytes and clearing its state
+   * via {@link WorkflowState#clearEntriesFromUid(int, java.util.Set)} — so the loop restarts at iteration one on
+   * this drive instead of the resume-skip guard mistaking the already-executed iteration for still in progress and
+   * re-pausing with no progress. A no-op when the run is {@code PAUSED} for a different reason (for example an
+   * interceptor veto), or when the target-based rewind in {@link #retry} already discharged it. Called
+   * unconditionally by both {@link #continueRun} and {@link #retry}, before either computes its own target-specific
+   * rewind, because a retry target positioned after the paused loop (or with nothing recorded at or after it) would
+   * otherwise leave the loop's stale bookkeeping untouched. Runs before any {@link ExecutionContext} for this drive
    * exists, so no loop iteration can be active on the call stack yet — the exclusion set is always empty.
    */
   private void rewindLoopAwaitingMaxIterationsDecision(WorkflowState state) {
@@ -231,6 +233,13 @@ public final class DefaultWorkflowRuntime implements WorkflowRuntime {
       LOG.log(System.Logger.Level.INFO, "Retry requested runId={0}, stepId={1}", runId, stepId);
       WorkflowDefinition workflow = workflowRepository.get(state.getWorkflowId());
       StepDefinition target = resolveTopLevelRetryTarget(workflow, stepId);
+
+      // A loop paused at maxIterations under AWAIT_USER can never itself be the retry target (a
+      // BlueprintRef is not a StepDefinition), so a target positioned after such a loop — or one
+      // with nothing recorded at or after it — would leave the loop's stale cursor/body-start-uid
+      // untouched by the target-based rewind below. Discharge that independently of the target's
+      // sequence position first, mirroring continueRun.
+      rewindLoopAwaitingMaxIterationsDecision(state);
 
       // Reposition the run at the target: clear the target's output and everything that ran at or
       // after it, so the re-drive re-executes the target and all downstream steps rather than
