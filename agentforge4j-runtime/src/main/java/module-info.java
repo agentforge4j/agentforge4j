@@ -13,7 +13,9 @@
 module agentforge4j.runtime {
   requires static lombok;
   requires agentforge4j.util;
-  requires agentforge4j.core;
+  // transitive: WorkflowRuntimeBuilder (the exported entry point) and RunExecutionContext (the
+  // exported interceptor SPI) both expose agentforge4j.core types directly to callers.
+  requires transitive agentforge4j.core;
   requires agentforge4j.config.loader;
   requires agentforge4j.schema;
   requires agentforge4j.llm.api;

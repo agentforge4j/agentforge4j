@@ -175,7 +175,7 @@ class GeneratedArtifactValidationRuntimeTest {
         .clock(CLOCK)
         .fileSink(FileSink.NO_OP_FILE_SINK)
         .shellCommandRunner(ShellCommandRunner.NO_OP_SHELL_COMMAND_RUNNER)
-        .artifactValidators(List.of(new AgentBundleArtifactValidator()))
+        .artifactValidators(List.of(new AgentBundleArtifactValidator(new ObjectMapper())))
         .build();
 
     return new Fixture(runtime, eventLog, stateRepository);

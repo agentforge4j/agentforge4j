@@ -9,7 +9,12 @@ import type {
   TopLevelScheduleEntry,
   WorkflowDefinition,
 } from '../../api/types';
-import { normalizeRuntimeDocumentForSchema, toRuntimeWorkflowDocument, validateAgainstSchema } from '../../validation/schemaValidator';
+import {
+  normalizeRuntimeDocumentForSchema,
+  toRuntimeWorkflowDocument,
+  validateAgainstSchema,
+  validateSchemaVersion,
+} from '../../validation/schemaValidator';
 import { sanitizeObject, WorkflowParseError } from '../core';
 
 export { sanitizeObject } from '../core';
@@ -228,9 +233,14 @@ function stripPromptsFromRuntimeDocument(doc: Record<string, unknown>): Record<s
   return clone;
 }
 
+/** Falls back to a plain name when the draft has no id yet, matching downloadWorkflowJson's convention. */
+function workflowFileBase(workflow: WorkflowDefinition): string {
+  return workflow.id.trim() || 'workflow';
+}
+
 export async function buildWorkflowZipBlob(workflow: WorkflowDefinition): Promise<Blob> {
   const zip = new JSZip();
-  const folderName = `${workflow.id}.workflow`;
+  const folderName = `${workflowFileBase(workflow)}.workflow`;
   const folder = zip.folder(folderName);
   if (!folder) {
     throw new WorkflowParseError('Failed to create ZIP folder');
@@ -268,7 +278,7 @@ function triggerDownload(blob: Blob, filename: string): void {
 
 export async function exportWorkflowZip(workflow: WorkflowDefinition): Promise<void> {
   const blob = await buildWorkflowZipBlob(workflow);
-  triggerDownload(blob, `${workflow.id}.workflow.zip`);
+  triggerDownload(blob, `${workflowFileBase(workflow)}.workflow.zip`);
 }
 
 function countSteps(workflow: WorkflowDefinition): number {
@@ -305,6 +315,14 @@ export async function importWorkflowZip(file: File): Promise<WorkflowDefinition>
     runtimeDoc = sanitizeObject(JSON.parse(workflowJsonText) as Record<string, unknown>);
   } catch {
     throw new WorkflowParseError('Invalid workflow.json in ZIP');
+  }
+
+  // Checked against the raw document, before conversion to the internal draft shape: the draft
+  // carries no schemaVersion of its own, and re-export always regenerates one, so validating
+  // anything past this point would silently accept whatever version the ZIP actually declared.
+  const schemaVersionResult = validateSchemaVersion(runtimeDoc);
+  if (!schemaVersionResult.valid) {
+    throw new WorkflowParseError(schemaVersionResult.errors[0]?.message ?? 'Unsupported schemaVersion');
   }
 
   const folderPrefix = workflowJsonPath.slice(0, workflowJsonPath.lastIndexOf('/') + 1);

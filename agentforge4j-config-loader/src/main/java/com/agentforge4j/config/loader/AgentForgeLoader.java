@@ -29,15 +29,6 @@ public final class AgentForgeLoader {
   private final AgentLoader agentLoader;
   private final WorkflowDirectoryLoader workflowDirectoryLoader;
 
-  public AgentForgeLoader(AgentLoader agentLoader) {
-    this(agentLoader,
-        root -> {
-          throw new UnsupportedOperationException(
-              "Path-scoped workflow loading is unavailable; construct AgentForgeLoader with "
-                  + "WorkflowDirectoryLoader to use loadWorkflowDirectory/loadWorkflows.");
-        });
-  }
-
   public AgentForgeLoader(AgentLoader agentLoader,
       WorkflowDirectoryLoader workflowDirectoryLoader) {
     this.agentLoader = Validate.notNull(agentLoader, "agentLoader must not be null");

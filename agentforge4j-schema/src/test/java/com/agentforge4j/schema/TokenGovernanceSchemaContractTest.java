@@ -38,7 +38,8 @@ class TokenGovernanceSchemaContractTest {
 
   private static String workflowWithStep(String stepBody) {
     return """
-        {"kind":"WORKFLOW","id":"x","name":"X","steps":[%s]}""".formatted(stepBody);
+        {"kind":"WORKFLOW","schemaVersion":1,"id":"x","name":"X","steps":[%s]}"""
+        .formatted(stepBody);
   }
 
   private static final String AGENT_BASE_FIELDS =
@@ -133,7 +134,7 @@ class TokenGovernanceSchemaContractTest {
   @Test
   void workflow_acceptsLedgersWithMergeByKey() throws Exception {
     String json = """
-        {"kind":"WORKFLOW","id":"x","name":"X",
+        {"kind":"WORKFLOW","schemaVersion":1,"id":"x","name":"X",
          "steps":[{"kind":"STEP","stepId":"s1","name":"S","behaviour":{"type":"FAIL","reason":"r"}}],
          "ledgers":[{"id":"requirements","schemaRef":"schema/req.json",
            "mergeStrategy":"MERGE_BY_KEY","mergeKeyField":"id"}]}""";
@@ -143,7 +144,7 @@ class TokenGovernanceSchemaContractTest {
   @Test
   void workflow_rejectsMergeByKeyLedgerWithoutKeyField() throws Exception {
     String json = """
-        {"kind":"WORKFLOW","id":"x","name":"X",
+        {"kind":"WORKFLOW","schemaVersion":1,"id":"x","name":"X",
          "steps":[{"kind":"STEP","stepId":"s1","name":"S","behaviour":{"type":"FAIL","reason":"r"}}],
          "ledgers":[{"id":"r","schemaRef":"s","mergeStrategy":"MERGE_BY_KEY"}]}""";
     assertThat(validate(WORKFLOW_SCHEMA, json)).isNotEmpty();
@@ -152,7 +153,7 @@ class TokenGovernanceSchemaContractTest {
   @Test
   void workflow_rejectsAppendLedgerWithMergeKeyField() throws Exception {
     String json = """
-        {"kind":"WORKFLOW","id":"x","name":"X",
+        {"kind":"WORKFLOW","schemaVersion":1,"id":"x","name":"X",
          "steps":[{"kind":"STEP","stepId":"s1","name":"S","behaviour":{"type":"FAIL","reason":"r"}}],
          "ledgers":[{"id":"r","schemaRef":"s","mergeStrategy":"APPEND","mergeKeyField":"oops"}]}""";
     assertThat(validate(WORKFLOW_SCHEMA, json)).isNotEmpty();
@@ -161,7 +162,7 @@ class TokenGovernanceSchemaContractTest {
   @Test
   void workflow_rejectsReplaceSectionLedgerWithMergeKeyField() throws Exception {
     String json = """
-        {"kind":"WORKFLOW","id":"x","name":"X",
+        {"kind":"WORKFLOW","schemaVersion":1,"id":"x","name":"X",
          "steps":[{"kind":"STEP","stepId":"s1","name":"S","behaviour":{"type":"FAIL","reason":"r"}}],
          "ledgers":[{"id":"r","schemaRef":"s","mergeStrategy":"REPLACE_SECTION","mergeKeyField":"oops"}]}""";
     assertThat(validate(WORKFLOW_SCHEMA, json)).isNotEmpty();

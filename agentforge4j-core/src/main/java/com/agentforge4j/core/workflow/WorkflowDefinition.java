@@ -60,6 +60,17 @@ public record WorkflowDefinition(
     ledgers = ledgers != null ? List.copyOf(ledgers) : List.of();
   }
 
+  /**
+   * Returns a new {@link Builder} for assembling a {@link WorkflowDefinition} without positional
+   * arguments. Optional fields may be left unset; the required fields are validated when
+   * {@link Builder#build()} is called.
+   *
+   * @return new builder; never {@code null}
+   */
+  public static Builder builder() {
+    return new Builder();
+  }
+
   public static WorkflowDefinition duplicate(WorkflowDefinition workflowDefinition,
       Map<String, BlueprintDefinition> blueprints, List<Executable> loadedStepPrompts) {
     return new WorkflowDefinition(
@@ -98,5 +109,210 @@ public record WorkflowDefinition(
         loadedStepPrompts,
         workflowDefinition.requirements(),
         workflowDefinition.ledgers());
+  }
+
+  /**
+   * Fluent builder for {@link WorkflowDefinition}. Lets callers omit optional fields without
+   * passing a run of trailing {@code null}s to the canonical constructor. Validation is deferred to
+   * {@link #build()}, which delegates to the canonical constructor.
+   */
+  public static final class Builder {
+
+    private String id;
+    private String name;
+    private String description;
+    private String author;
+    private String contact;
+    private String version;
+    private String uuid;
+    private WorkflowSource source;
+    private WorkflowLifecycle lifecycle;
+    private Map<String, ArtifactDefinition> artifacts;
+    private Map<String, BlueprintDefinition> blueprints;
+    private List<Executable> steps;
+    private List<WorkflowRequirement> requirements;
+    private List<LedgerDefinition> ledgers;
+
+    private Builder() {
+      // obtain via WorkflowDefinition.builder()
+    }
+
+    /**
+     * Sets the non-blank workflow id.
+     *
+     * @param id non-blank workflow id
+     *
+     * @return this builder
+     */
+    public Builder withId(String id) {
+      this.id = id;
+      return this;
+    }
+
+    /**
+     * Sets the non-blank display or logical workflow name.
+     *
+     * @param name non-blank name
+     *
+     * @return this builder
+     */
+    public Builder withName(String name) {
+      this.name = name;
+      return this;
+    }
+
+    /**
+     * Sets the optional workflow description.
+     *
+     * @param description description text
+     *
+     * @return this builder
+     */
+    public Builder withDescription(String description) {
+      this.description = description;
+      return this;
+    }
+
+    /**
+     * Sets the optional workflow author.
+     *
+     * @param author author name
+     *
+     * @return this builder
+     */
+    public Builder withAuthor(String author) {
+      this.author = author;
+      return this;
+    }
+
+    /**
+     * Sets the optional author contact.
+     *
+     * @param contact contact information
+     *
+     * @return this builder
+     */
+    public Builder withContact(String contact) {
+      this.contact = contact;
+      return this;
+    }
+
+    /**
+     * Sets the optional workflow version string.
+     *
+     * @param version version string
+     *
+     * @return this builder
+     */
+    public Builder withVersion(String version) {
+      this.version = version;
+      return this;
+    }
+
+    /**
+     * Sets the stable server-side identity used for cost estimates.
+     *
+     * @param uuid stable identity, or {@code null} if not yet assigned
+     *
+     * @return this builder
+     */
+    public Builder withUuid(String uuid) {
+      this.uuid = uuid;
+      return this;
+    }
+
+    /**
+     * Sets the workflow source.
+     *
+     * @param source workflow source; {@code null} becomes {@link WorkflowSource#CUSTOM}
+     *
+     * @return this builder
+     */
+    public Builder withSource(WorkflowSource source) {
+      this.source = source;
+      return this;
+    }
+
+    /**
+     * Sets the workflow lifecycle state.
+     *
+     * @param lifecycle lifecycle state; {@code null} becomes {@link WorkflowLifecycle#ACTIVE}
+     *
+     * @return this builder
+     */
+    public Builder withLifecycle(WorkflowLifecycle lifecycle) {
+      this.lifecycle = lifecycle;
+      return this;
+    }
+
+    /**
+     * Sets the workflow's artifact definitions.
+     *
+     * @param artifacts artifact definitions keyed by id; {@code null} becomes an empty map
+     *
+     * @return this builder
+     */
+    public Builder withArtifacts(Map<String, ArtifactDefinition> artifacts) {
+      this.artifacts = artifacts;
+      return this;
+    }
+
+    /**
+     * Sets the workflow's blueprint definitions.
+     *
+     * @param blueprints blueprint definitions keyed by id; {@code null} becomes an empty map
+     *
+     * @return this builder
+     */
+    public Builder withBlueprints(Map<String, BlueprintDefinition> blueprints) {
+      this.blueprints = blueprints;
+      return this;
+    }
+
+    /**
+     * Sets the workflow's steps.
+     *
+     * @param steps non-empty list of executable steps
+     *
+     * @return this builder
+     */
+    public Builder withSteps(List<Executable> steps) {
+      this.steps = steps;
+      return this;
+    }
+
+    /**
+     * Sets the workflow's self-targeting requirement declarations.
+     *
+     * @param requirements requirement declarations; {@code null} becomes an empty list
+     *
+     * @return this builder
+     */
+    public Builder withRequirements(List<WorkflowRequirement> requirements) {
+      this.requirements = requirements;
+      return this;
+    }
+
+    /**
+     * Sets the workflow's structured ledger declarations.
+     *
+     * @param ledgers ledger declarations; {@code null} becomes an empty list
+     *
+     * @return this builder
+     */
+    public Builder withLedgers(List<LedgerDefinition> ledgers) {
+      this.ledgers = ledgers;
+      return this;
+    }
+
+    /**
+     * Builds the validated {@link WorkflowDefinition}.
+     *
+     * @return immutable workflow definition; never {@code null}
+     */
+    public WorkflowDefinition build() {
+      return new WorkflowDefinition(id, name, description, author, contact, version, uuid, source,
+          lifecycle, artifacts, blueprints, steps, requirements, ledgers);
+    }
   }
 }

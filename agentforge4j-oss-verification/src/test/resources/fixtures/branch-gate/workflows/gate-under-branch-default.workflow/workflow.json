@@ -1,0 +1,40 @@
+{
+  "kind": "WORKFLOW",
+  "schemaVersion": 1,
+  "id": "gate-under-branch-default",
+  "name": "Gated Input Under Branch Default",
+  "steps": [
+    {
+      "kind": "STEP",
+      "stepId": "decide",
+      "name": "Decide",
+      "behaviour": {
+        "type": "AGENT",
+        "agentRef": "branch-agent",
+        "transition": "AUTO"
+      }
+    },
+    {
+      "kind": "STEP",
+      "stepId": "route",
+      "name": "Route",
+      "behaviour": {
+        "type": "BRANCH",
+        "contextKey": "decision",
+        "branches": {
+          "stop": null
+        },
+        "defaultBranch": {
+          "kind": "STEP",
+          "stepId": "gated-input",
+          "name": "Gated Input",
+          "behaviour": {
+            "type": "INPUT",
+            "artifactId": "user-form",
+            "transition": "HUMAN_REVIEW"
+          }
+        }
+      }
+    }
+  ]
+}

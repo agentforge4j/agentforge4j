@@ -115,6 +115,7 @@ class ContextPackBootstrapWiringTest {
     Files.writeString(dir.resolve("workflow.json"), """
         {
           "kind": "WORKFLOW",
+          "schemaVersion": 1,
           "id": "wf1",
           "name": "W",
           "steps": [

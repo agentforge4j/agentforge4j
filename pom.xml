@@ -81,6 +81,8 @@
     <!-- Empty by default; CI overrides with -Dnvd.api.key=$NVD_API_KEY for usable NVD rate limits. -->
     <nvd.api.key></nvd.api.key>
     <json-schema-validator.version>2.0.4</json-schema-validator.version>
+    <maven-gpg-plugin.version>3.2.8</maven-gpg-plugin.version>
+    <central-publishing-maven-plugin.version>0.11.0</central-publishing-maven-plugin.version>
   </properties>
 
   <modules>
@@ -564,9 +566,11 @@
   </build>
 
   <profiles>
-    <!-- Release artifacts: -sources.jar and -javadoc.jar for every published module, as required
-         by Maven Central. Activate with -Prelease. Signing and deployment configuration are
-         deliberately absent — they belong to the release pipeline, not the build. -->
+    <!-- Release artifacts and publishing: -sources.jar and -javadoc.jar for every published
+         module (required by Maven Central), GPG signing, and the Central Portal upload.
+         Activate with -Prelease. Local/CI verify-only runs pass -Dgpg.skip=true; signing and
+         the upload itself happen only in the release workflow's approval-gated publish job
+         (.github/workflows/release-framework.yml), never from a developer machine. -->
     <profile>
       <id>release</id>
       <build>
@@ -617,6 +621,55 @@
                 </goals>
               </execution>
             </executions>
+          </plugin>
+          <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-gpg-plugin</artifactId>
+            <version>${maven-gpg-plugin.version}</version>
+            <configuration>
+              <!-- bestPractices: no passphrase on the command line or in settings; the plugin
+                   reads it from the MAVEN_GPG_PASSPHRASE environment variable (supplied by the
+                   release workflow's publish job from the GPG_PASSPHRASE secret). -->
+              <bestPractices>true</bestPractices>
+            </configuration>
+            <executions>
+              <execution>
+                <id>sign-artifacts</id>
+                <phase>verify</phase>
+                <goals>
+                  <goal>sign</goal>
+                </goals>
+              </execution>
+            </executions>
+          </plugin>
+          <plugin>
+            <groupId>org.sonatype.central</groupId>
+            <artifactId>central-publishing-maven-plugin</artifactId>
+            <version>${central-publishing-maven-plugin.version}</version>
+            <extensions>true</extensions>
+            <configuration>
+              <!-- Server id resolved against the CI-generated settings.xml entry whose
+                   credentials come from the CENTRAL_TOKEN_USERNAME / CENTRAL_TOKEN_PASSWORD
+                   secrets. -->
+              <publishingServerId>central</publishingServerId>
+              <!-- Uploaded deployments stop in VALIDATED state on the Central Portal; the final
+                   release-to-Central click stays a manual owner action there. -->
+              <autoPublish>false</autoPublish>
+              <waitUntil>validated</waitUntil>
+              <!-- Internal verification/fixture modules never publish (they also carry
+                   maven.deploy.skip). The catalog releases on its own catalog-v* track with a
+                   flattened POM through a separate workflow; it is not part of the framework
+                   release. NOTE: exclusion takes effect at deploy time only, so it is
+                   unverifiable until the first publish run — re-check the deployment content on
+                   the Central Portal before the first release click. -->
+              <excludeArtifacts>
+                <artifactId>agentforge4j-workflow-fixtures</artifactId>
+                <artifactId>agentforge4j-oss-verification</artifactId>
+                <artifactId>agentforge4j-starter-verification</artifactId>
+                <artifactId>agentforge4j-testkit-consumer-verification</artifactId>
+                <artifactId>agentforge4j-workflows-catalog</artifactId>
+              </excludeArtifacts>
+            </configuration>
           </plugin>
         </plugins>
       </build>

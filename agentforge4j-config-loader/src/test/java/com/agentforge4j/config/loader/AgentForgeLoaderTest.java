@@ -294,15 +294,6 @@ class AgentForgeLoaderTest {
     assertThat(loaded.workflows()).isEmpty();
   }
 
-  @Test
-  void pathScopedLoadMethods_failClearlyWithoutWorkflowDirectoryLoader() {
-    AgentForgeLoader loader = new AgentForgeLoader(emptyAgentLoader());
-
-    assertThatThrownBy(() -> loader.loadWorkflowDirectory(Path.of("target/any")))
-        .isInstanceOf(UnsupportedOperationException.class)
-        .hasMessageContaining("Path-scoped workflow loading is unavailable");
-  }
-
   private static AgentLoader emptyAgentLoader() {
     return new AgentLoader() {
       @Override

@@ -1,0 +1,82 @@
+{
+  "kind": "WORKFLOW",
+  "schemaVersion": 1,
+  "id": "workflow-execution-estimator",
+  "name": "Workflow Execution Estimator",
+  "description": "Estimates the execution shape of a workflow run (Mode 1) or an SDLC epic-package breakdown (Mode 2) before it executes: token range, agent turns, tool invocations, complexity, confidence inputs, structural risk flags, and a continue/narrow/stop recommendation. The caller resolves the mode and pre-analyzes the target deterministically before starting this run, supplying the result here as structural facts — both modes converge on the same structural-summary shape, so this workflow's own routing is mode-agnostic. Execution shape only — never a monetary or account-balance concept.",
+  "steps": [
+    {
+      "kind": "STEP",
+      "stepId": "collect-analysis",
+      "name": "Collect Structural Analysis",
+      "behaviour": {
+        "type": "INPUT",
+        "artifactId": "structural-summary",
+        "transition": "AUTO"
+      },
+      "contextMapping": {
+        "outputKeys": [
+          "mode",
+          "complexity",
+          "ceilingDerivable",
+          "noCeilingReason",
+          "minimumRequiredTokens",
+          "stepCount",
+          "agentStepCount",
+          "branchCount",
+          "loopCount",
+          "agentDrivenLoopCount",
+          "humanGateCount",
+          "maxNestingDepth"
+        ]
+      }
+    },
+    {
+      "kind": "STEP",
+      "stepId": "route-on-ceiling",
+      "name": "Route On Ceiling",
+      "behaviour": {
+        "type": "BRANCH",
+        "contextKey": "ceilingDerivable",
+        "branches": {
+          "false": {
+            "kind": "STEP",
+            "stepId": "no-ceiling",
+            "name": "No Finite Ceiling",
+            "behaviour": {
+              "type": "FAIL",
+              "reason": "No finite execution ceiling could be derived for the analyzed work."
+            }
+          }
+        },
+        "defaultBranch": {
+          "kind": "STEP",
+          "stepId": "estimate",
+          "name": "Estimate Execution Size",
+          "behaviour": {
+            "type": "AGENT",
+            "agentRef": "execution-estimator",
+            "transition": "HUMAN_APPROVAL"
+          },
+          "contextMapping": {
+            "inputKeys": [
+              "complexity",
+              "stepCount",
+              "agentStepCount",
+              "branchCount",
+              "loopCount",
+              "agentDrivenLoopCount",
+              "humanGateCount",
+              "maxNestingDepth"
+            ],
+            "outputKeys": [
+              "estimatedInputTokensPerAgentTurn",
+              "estimatedOutputTokensPerAgentTurn",
+              "estimatedToolInvocationsPerAgentTurn"
+            ]
+          }
+        }
+      }
+    }
+  ]
+}

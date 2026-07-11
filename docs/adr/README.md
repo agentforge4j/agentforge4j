@@ -1,13 +1,13 @@
 # Architecture Decision Records
 
-This directory holds the framework's architecture decision records (ADRs): short, immutable documents recording the significant design decisions, the alternatives considered, and the consequences accepted. Records follow a common MADR-style structure (Status, Date, Context, Decision, Alternatives considered, Consequences, Compatibility impact, Implementation notes, Follow-up work).
+This directory records the architecture decisions that shape AgentForge4j — the reasoning behind how the framework is built, not a running design log. See `TEMPLATE.md` to start a new one.
 
 ## Conventions
 
-- **Numbering** is sequential and four-digit; a number is never reused. Gaps in the sequence are reserved numbers for decisions still in flight (listed below).
+- **Numbering** is sequential and four-digit; a number is never reused. Gaps in the sequence are reserved numbers for decisions still in flight (see Reserved, below).
 - **Retrospective records are allowed.** A decision that was made and implemented before being recorded carries a "Retrospective note" saying so; its Date is the decision or merge date where history pins one, otherwise the record date.
-- **Records are not rewritten.** Once Accepted, a record's decision substance is fixed. A change of direction is a new ADR that supersedes the old one; the old record's Status is updated to note the superseding record, and nothing else in it changes.
-- **Statuses:** `Proposed` (decision drafted, not yet in force), `Accepted` (in force), `Superseded` (replaced by a later record).
+- **Records are not rewritten.** Once Accepted, a record's decision substance is fixed. A change of direction is a new ADR that supersedes the old one; the old record's Status is updated to note the superseding record, and nothing else in it changes. Editorial fixes (typos, broken links, a renamed class in an Implementation-notes pointer) that don't alter what was decided may still be corrected in place.
+- **Statuses:** `Proposed` (decision drafted, not yet in force), `Accepted` (in force — verified merged to the default branch, not just "PR open" or "stack ready"), `Superseded` (replaced by a later record), `Deprecated` (no longer recommended, with no single successor), `Rejected` (seriously considered and explicitly declined).
 
 ## Index
 
@@ -26,16 +26,21 @@ This directory holds the framework's architecture decision records (ADRs): short
 | [0011](0011-the-runtime-event-contract-is-the-verification-surface.md) | The runtime event contract is the verification surface | Accepted | 2026-06 |
 | [0012](0012-pre-execution-interception-and-blocked-run-resumability.md) | Pre-execution interception and blocked-run resumability | Accepted | 2026-07-09 |
 | [0013](0013-pre-1-0-clean-break-compatibility-policy.md) | Pre-1.0 clean-break compatibility policy | Accepted | 2026-07-09 |
+| [0014](0014-collection-gate-step-behaviour.md) | Collection gate step behaviour | Proposed | 2026-07-10 |
 | [0015](0015-mcp-servers-as-governed-tool-sources.md) | MCP servers as first-class governed tool sources | Accepted | 2026-07-09 |
+| [0016](0016-deterministic-token-efficiency-governance.md) | Deterministic token-efficiency governance | Proposed | 2026-07-10 |
+| [0017](0017-workflow-execution-estimation.md) | Workflow execution estimation | Proposed | 2026-07-10 |
+| [0018](0018-release-management-and-publication-sequencing.md) | Release management and publication sequencing | Proposed | 2026-07-10 |
 | [0019](0019-workflow-requirements-and-transition-enforcement.md) | Workflow requirements and step-transition enforcement | Accepted | 2026-07-09 |
 
-## Reserved numbers
+## Reserved
 
-| ADR | Reserved for |
-|---|---|
-| 0014 | Multiple-submission collection gates |
-| 0016 | Token governance |
-| 0017 | Workflow execution estimation |
-| 0018 | Release management and versioning |
+Numbers claimed for planned ADRs not yet drafted. A reservation exists only once merged
+here on the default branch — an open PR proposing a row does not itself reserve the
+number. Each entry needs an owner and a date; a reservation with neither is
+indistinguishable from an abandoned one.
 
-Reserved records will be written when their decisions are finalised; until then the number is held so cross-references (for example ADR-0013's reference to ADR-0018) stay stable.
+| # | Topic | Reserved by | Date reserved | Reference |
+|---|---|---|---|---|
+
+Nothing currently reserved. New decisions are allocated the next sequential number.

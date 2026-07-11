@@ -190,15 +190,16 @@ public final class CatalogScenarios {
     String base = verificationPath(classpathRoot, ref);
     String displayName = ref.workflowId() + "/" + ref.scenarioName();
     String scriptJson = readResource(base + SCRIPT_FILE, displayName);
+    String expectedResultJson = readResource(base + EXPECTED_RESULT_FILE, displayName);
     ExpectedResult expected;
     try {
-      expected = MAPPER.readValue(readResource(base + EXPECTED_RESULT_FILE, displayName),
-          ExpectedResult.class);
+      expected = MAPPER.readValue(expectedResultJson, ExpectedResult.class);
     } catch (IOException exception) {
       throw new UncheckedIOException("Failed to parse " + base + EXPECTED_RESULT_FILE, exception);
     }
     boolean readme = CatalogScenarios.class.getResource(base + README_FILE) != null;
-    return new ScenarioCase(displayName, ref.workflowId(), scriptJson, expected, readme);
+    return new ScenarioCase(displayName, ref.workflowId(), scriptJson, expectedResultJson, expected,
+        readme);
   }
 
   private static String verificationPath(String classpathRoot, ScenarioRef ref) {
@@ -274,6 +275,18 @@ public final class CatalogScenarios {
     }
     if (expect.createdFiles() != null) {
       expect.createdFiles().forEach(assertion::createdFile);
+    }
+    if (expect.stepVisitCounts() != null) {
+      expect.stepVisitCounts().forEach((stepId, count) -> {
+        if (count == null) {
+          throw new AssertionError(
+              "expect.stepVisitCounts value for step '%s' must not be null".formatted(stepId));
+        }
+        assertion.stepVisitCount(stepId, count);
+      });
+    }
+    if (expect.orderedSteps() != null) {
+      assertion.stepsInOrderedSubsequence(expect.orderedSteps().toArray(new String[0]));
     }
   }
 

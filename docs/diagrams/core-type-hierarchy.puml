@@ -1,8 +1,8 @@
 @startuml core-type-hierarchy
 '==============================================================================
 ' Diagram : agentforge4j-core Type Hierarchy (Class Diagram)
-' Version : v1.2
-' Date    : 2026-06-16
+' Version : v1.3
+' Date    : 2026-07-03
 ' Source  : agentforge4j-core/src/main/java (live source). Packages shown are
 '           the real subpackages of com.agentforge4j.core.
 '==============================================================================
@@ -63,6 +63,9 @@ package "core.workflow.step.behaviour" {
   class BranchBehaviour        <<record>>
   class FailBehaviour          <<record>>
   class RetryPreviousBehaviour <<record>>
+  class ValidateBehaviour <<record>>
+  class AssignContextBehaviour <<record>>
+  class CollectionBehaviour <<record>>
 }
 
 StepBehaviour <|.. AgentBehaviour
@@ -73,19 +76,23 @@ StepBehaviour <|.. ResourceBehaviour
 StepBehaviour <|.. BranchBehaviour
 StepBehaviour <|.. FailBehaviour
 StepBehaviour <|.. RetryPreviousBehaviour
+StepBehaviour <|.. ValidateBehaviour
+StepBehaviour <|.. AssignContextBehaviour
+StepBehaviour <|.. CollectionBehaviour
 
-' Only 5 of the 8 permits are TransitionAware; BlueprintBehaviour also is.
+' Only 6 of the 11 permits are TransitionAware; BlueprintBehaviour also is.
 TransitionAware <|.. AgentBehaviour
 TransitionAware <|.. SparBehaviour
 TransitionAware <|.. WorkflowBehaviour
 TransitionAware <|.. InputBehaviour
 TransitionAware <|.. ResourceBehaviour
+TransitionAware <|.. CollectionBehaviour
 TransitionAware <|.. BlueprintBehaviour
 TransitionAware ..> StepTransition
 note right of TransitionAware
-  BranchBehaviour, FailBehaviour and
-  RetryPreviousBehaviour are NOT TransitionAware.
-  BlueprintBehaviour is a separate record
+  BranchBehaviour, FailBehaviour, RetryPreviousBehaviour,
+  ValidateBehaviour and AssignContextBehaviour are NOT
+  TransitionAware. BlueprintBehaviour is a separate record
   (not a StepBehaviour permit).
 end note
 
@@ -139,8 +146,13 @@ package "core.workflow.event" {
     USER_PROMPT_LIMIT_REACHED
     TOOL_INVOCATION_REQUESTED / TOOL_INVOCATION_COMPLETED
     TOOL_INVOCATION_DENIED / TOOL_INVOCATION_APPROVAL_PENDING
-    TOOL_INVOCATION_FAILED
-    .. 31 values total ..
+    TOOL_INVOCATION_FAILED / RUN_BLOCKED
+    COLLECTION_OPENED / COLLECTION_ITEM_SUBMITTED / COLLECTION_ITEM_REPLACED
+    COLLECTION_ITEM_WITHDRAWN / COLLECTION_ITEM_REJECTED
+    COLLECTION_CLOSE_REQUESTED / COLLECTION_CLOSE_REJECTED / COLLECTION_CLOSED
+    COLLECTION_REOPENED / COLLECTION_AUTHORIZATION_DENIED
+    COLLECTION_DEADLINE_CLOSE_REQUESTED
+    .. 43 values total (check source; this enum grows often) ..
   }
 }
 
