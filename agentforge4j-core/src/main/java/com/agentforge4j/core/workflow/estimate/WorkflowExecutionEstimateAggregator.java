@@ -114,6 +114,12 @@ public final class WorkflowExecutionEstimateAggregator implements ContextAggrega
   private static long asLong(Map<String, ContextValue> values, String key) {
     ContextValue value = require(values, key);
     if (value instanceof NumberContextValue number) {
+      double raw = number.value().doubleValue();
+      if (Double.isNaN(raw) || Double.isInfinite(raw) || raw != Math.rint(raw)) {
+        throw new IllegalArgumentException(
+            "Context value for key '%s' must be an exact integer but was %s"
+                .formatted(key, number.value()));
+      }
       return number.value().longValue();
     }
     if (value instanceof StringContextValue string) {
@@ -130,7 +136,12 @@ public final class WorkflowExecutionEstimateAggregator implements ContextAggrega
   }
 
   private static int asInt(Map<String, ContextValue> values, String key) {
-    return Math.toIntExact(asLong(values, key));
+    long raw = asLong(values, key);
+    if (raw < Integer.MIN_VALUE || raw > Integer.MAX_VALUE) {
+      throw new IllegalArgumentException(
+          "Context value for key '%s' must fit in a 32-bit integer but was %d".formatted(key, raw));
+    }
+    return (int) raw;
   }
 
   private static ComplexityClass asComplexityClass(Map<String, ContextValue> values, String key) {

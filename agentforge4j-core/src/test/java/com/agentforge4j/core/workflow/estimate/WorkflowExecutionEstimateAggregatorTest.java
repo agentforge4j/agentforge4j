@@ -133,6 +133,31 @@ class WorkflowExecutionEstimateAggregatorTest {
         .isInstanceOf(IllegalArgumentException.class);
   }
 
+  @Test
+  void fractionalNumericValueFailsClosedWithKeyAndValue() {
+    Map<String, ContextValue> declared = new LinkedHashMap<>(declaredValues("NONE"));
+    declared.put("estimatedInputTokensPerAgentTurn",
+        new NumberContextValue(900.5, com.agentforge4j.core.workflow.context.ContextProvenance.LLM_GENERATED));
+
+    assertThatThrownBy(() -> AGGREGATOR.aggregate(() -> declared))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("estimatedInputTokensPerAgentTurn")
+        .hasMessageContaining("900.5");
+  }
+
+  @Test
+  void outOfIntRangeNumericValueFailsClosedWithKeyAndValue() {
+    Map<String, ContextValue> declared = new LinkedHashMap<>(declaredValues("NONE"));
+    declared.put("estimatedInputTokensPerAgentTurn",
+        new NumberContextValue(
+            Long.MAX_VALUE, com.agentforge4j.core.workflow.context.ContextProvenance.LLM_GENERATED));
+
+    assertThatThrownBy(() -> AGGREGATOR.aggregate(() -> declared))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("estimatedInputTokensPerAgentTurn")
+        .hasMessageContaining(String.valueOf(Long.MAX_VALUE));
+  }
+
   private static String stringValue(Map<String, ContextValue> result, String key) {
     return ((StringContextValue) result.get(key)).value();
   }
