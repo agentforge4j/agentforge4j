@@ -89,16 +89,18 @@ public final class CommandApplier {
       }
       CommandApplicationRequest request = new CommandApplicationRequest(state, contextMapping,
           agentId, currentStepUid, step, enclosingWorkflow, priorExpansions);
-      // Apply before persisting the updated count: the handler is allowed to throw partway through
-      // a selector loop (e.g. CompactSiblingUnavailableException), and a step retry reuses this same
-      // step execution uid. Persisting the count up front would permanently burn budget on selectors
-      // that never actually completed; persisting only after a successful apply means a retry that
-      // re-requests the same selectors is counted exactly once, on the attempt that actually grants.
-      CommandApplicationResult result = applyOne(command, request);
+      // Persist before applying: a handler is allowed to throw partway through a selector loop
+      // (e.g. CompactSiblingUnavailableException), and by then some selectors may already have
+      // resolved and written granted content to state. Persisting the updated count first ensures
+      // real budget consumption is always durably recorded before the side effect that spends it
+      // is attempted, so a mid-command failure can never leave granted content with no
+      // corresponding record — the safer failure mode for a token-governance budget: at worst a
+      // retry sees slightly less remaining budget than it strictly needed, never more.
       if (requestsContext) {
         requestContextExpansions = updatedExpansions;
         writePersistedExpansionCount(state, currentStepUid, requestContextExpansions);
       }
+      CommandApplicationResult result = applyOne(command, request);
       if (result != CommandApplicationResult.CONTINUE) {
         return result;
       }

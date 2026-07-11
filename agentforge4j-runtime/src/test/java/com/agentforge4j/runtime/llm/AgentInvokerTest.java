@@ -14,9 +14,11 @@ import com.agentforge4j.core.spi.governance.WasteSignalKind;
 import com.agentforge4j.core.spi.governance.WasteSignalPolicy;
 import com.agentforge4j.core.workflow.context.ContextMapping;
 import com.agentforge4j.core.workflow.context.ContextProvenance;
+import com.agentforge4j.core.workflow.context.JsonContextValue;
 import com.agentforge4j.core.workflow.context.StringContextValue;
 import com.agentforge4j.core.workflow.event.WorkflowEvent;
 import com.agentforge4j.core.workflow.event.WorkflowEventType;
+import com.agentforge4j.core.workflow.state.ReservedContextKeys;
 import com.agentforge4j.core.workflow.state.WorkflowState;
 import com.agentforge4j.llm.LlmClientResolver;
 import com.agentforge4j.llm.api.LlmClient;
@@ -1204,6 +1206,60 @@ class AgentInvokerTest {
     invoker.invoke("agent-x", ContextMapping.none(), state, null);
 
     assertThat(tokenGovernanceSignalPayloads(eventLog, "run-changed-context")).isEmpty();
+  }
+
+  @Test
+  void duplicateInvocationDoesNotFireWhenOnlyNewlyGrantedContextChanged() {
+    // Regression for the P0 fingerprint-filter fix: the filter previously stripped every
+    // __-prefixed key, including __granted.* — the reserved namespace
+    // RequestContextCommandHandler.grant() writes REQUEST_CONTEXT-granted content under. A
+    // re-invocation whose only change is newly granted context therefore fingerprinted
+    // identically to the prior call, firing a false DUPLICATE_INVOCATION. Writes directly to the
+    // reserved key (the same write grant() performs) rather than through the full
+    // command-application pipeline, which RequestContextCommandHandlerTest/CommandApplierTest
+    // cover separately.
+    ObjectMapper mapper = new ObjectMapper();
+    LlmClient client = mock(LlmClient.class);
+    when(client.getProviderName()).thenReturn("openai");
+    when(client.execute(any())).thenReturn(llmResponse("[{\"type\":\"COMPLETE\"}]"));
+    InMemoryWorkflowEventLog eventLog = new InMemoryWorkflowEventLog();
+    AgentInvoker invoker = invokerWithAudit(mapper, client, recorder(eventLog));
+    WorkflowState state = workflowState("run-granted-context");
+
+    invoker.invoke("agent-x", ContextMapping.none(), state, null);
+    state.putContextValue(ReservedContextKeys.grantedKey("ARTIFACT:design.md"),
+        new StringContextValue("granted content", ContextProvenance.SYSTEM_GENERATED));
+    invoker.invoke("agent-x", ContextMapping.none(), state, null);
+
+    assertThat(tokenGovernanceSignalPayloads(eventLog, "run-granted-context"))
+        .noneMatch(payload -> payload.contains("DUPLICATE_INVOCATION"));
+  }
+
+  @Test
+  void duplicateInvocationFiresForSemanticallyIdenticalContextWithDifferentJsonFieldOrder() {
+    // Regression for the canonicalization fix: a JsonContextValue's embedded JSON text can parse
+    // with different field order depending on which write path produced it, even when the content
+    // is semantically identical. Without canonicalizing before hashing (this fix brings
+    // AgentInvoker in line with AbstractLoopStrategy's fingerprint, which already canonicalizes),
+    // these two calls would fingerprint differently and DUPLICATE_INVOCATION would spuriously not
+    // fire.
+    ObjectMapper mapper = new ObjectMapper();
+    LlmClient client = mock(LlmClient.class);
+    when(client.getProviderName()).thenReturn("openai");
+    when(client.execute(any())).thenReturn(llmResponse("[{\"type\":\"COMPLETE\"}]"));
+    InMemoryWorkflowEventLog eventLog = new InMemoryWorkflowEventLog();
+    AgentInvoker invoker = invokerWithAudit(mapper, client, recorder(eventLog));
+    WorkflowState state = workflowState("run-canonical");
+
+    state.putContextValue("doc",
+        new JsonContextValue("{\"a\":1,\"b\":2}", ContextProvenance.SYSTEM_GENERATED));
+    invoker.invoke("agent-x", ContextMapping.none(), state, null);
+    state.putContextValue("doc",
+        new JsonContextValue("{\"b\":2,\"a\":1}", ContextProvenance.SYSTEM_GENERATED));
+    invoker.invoke("agent-x", ContextMapping.none(), state, null);
+
+    assertThat(tokenGovernanceSignalPayloads(eventLog, "run-canonical"))
+        .anySatisfy(payload -> assertThat(payload).contains("kind=DUPLICATE_INVOCATION"));
   }
 
   @Test

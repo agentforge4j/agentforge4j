@@ -6,6 +6,7 @@ import com.agentforge4j.core.spi.governance.WasteSignalPolicy;
 import com.agentforge4j.core.workflow.Executable;
 import com.agentforge4j.core.workflow.context.ContextValue;
 import com.agentforge4j.core.workflow.event.WorkflowEventType;
+import com.agentforge4j.core.workflow.state.ReservedContextKeys;
 import com.agentforge4j.core.workflow.state.WorkflowState;
 import com.agentforge4j.core.workflow.state.WorkflowStatus;
 import com.agentforge4j.core.workflow.step.StepDefinition;
@@ -196,8 +197,12 @@ abstract class AbstractLoopStrategy implements LoopStrategy {
    *
    * <p>The context fingerprint covers the run's whole shared context (excluding the reserved
    * {@code __}-prefixed namespace, for the same reason {@code AgentInvoker}'s waste-signal
-   * evaluation excludes it — see that class), since a loop body may write to any part of the
-   * shared context, not just one selector's worth. The output fingerprint is the last
+   * evaluation excludes it — see that class, and see {@link ReservedContextKeys#LEDGER_KEY_PREFIX}
+   * below for the one exception), since a loop body may write to any part of the shared context,
+   * not just one selector's worth. {@link ReservedContextKeys#LEDGER_KEY_PREFIX} is kept in the
+   * fingerprint despite the exclusion: a loop whose per-iteration progress is recorded only via a
+   * declared ledger's merged section would otherwise fingerprint as "unchanged" on every
+   * iteration regardless of real progress. The output fingerprint is the last
    * {@link StepDefinition} in the body's recorded {@code state.getStepOutput(...)}, normalized via
    * {@link WasteDetector#normalizeOutput} — the body's final step is this runtime's closest
    * equivalent to "the iteration's answer"; an iteration whose last step never wrote an output is
@@ -235,7 +240,8 @@ abstract class AbstractLoopStrategy implements LoopStrategy {
 
   private String canonicalNonReservedContext(WorkflowState state) {
     Map<String, ContextValue> nonReservedContext = state.getContext().entrySet().stream()
-        .filter(entry -> !entry.getKey().startsWith("__"))
+        .filter(entry -> !entry.getKey().startsWith("__")
+            || entry.getKey().startsWith(ReservedContextKeys.LEDGER_KEY_PREFIX))
         .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue,
             (first, second) -> first,
             () -> new TreeMap<>(String::compareTo)));
@@ -259,10 +265,13 @@ abstract class AbstractLoopStrategy implements LoopStrategy {
   }
 
   private void recordWasteSignal(WorkflowState state, TokenGovernanceSignal signal) {
-    wasteSignalPolicy.onSignal(signal);
+    // WasteSignalPolicy's contract (see its class Javadoc) requires the audit event to be
+    // recorded regardless of policy outcome, and onSignal to be called only after that recording
+    // — record first, notify second.
     String agentIdPart = signal.agentId() != null ? " agentId=%s".formatted(signal.agentId()) : "";
     eventRecorder.record(state.getRunId(), signal.stepId(), WorkflowEventType.TOKEN_GOVERNANCE_SIGNAL,
         "kind=%s%s detail=%s".formatted(signal.kind(), agentIdPart, signal.detail()), "runtime");
+    wasteSignalPolicy.onSignal(signal);
   }
 
   /**

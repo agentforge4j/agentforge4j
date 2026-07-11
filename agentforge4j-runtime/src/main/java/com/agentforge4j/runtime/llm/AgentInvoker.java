@@ -17,6 +17,7 @@ import com.agentforge4j.core.spi.tool.ToolScope;
 import com.agentforge4j.core.workflow.context.ContextMapping;
 import com.agentforge4j.core.workflow.context.ContextValue;
 import com.agentforge4j.core.workflow.event.WorkflowEventType;
+import com.agentforge4j.core.workflow.state.ReservedContextKeys;
 import com.agentforge4j.core.workflow.state.WorkflowState;
 import com.agentforge4j.llm.LlmClientResolver;
 import com.agentforge4j.llm.api.LlmClient;
@@ -27,6 +28,7 @@ import com.agentforge4j.llm.api.ModelTier;
 import com.agentforge4j.llm.api.ModelTierResolutionException;
 import com.agentforge4j.llm.api.ModelTierResolver;
 import com.agentforge4j.llm.api.PromptLayerBoundaries;
+import com.agentforge4j.runtime.context.CanonicalJson;
 import com.agentforge4j.runtime.context.ContextFingerprint;
 import com.agentforge4j.runtime.event.EventRecorder;
 import com.agentforge4j.runtime.interceptor.LlmCallContext;
@@ -35,6 +37,7 @@ import com.agentforge4j.runtime.waste.WasteDetector;
 import com.agentforge4j.runtime.waste.WasteDetectorHistoryStore;
 import com.agentforge4j.runtime.waste.WasteDetectorInvocationHistory;
 import com.agentforge4j.util.Validate;
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.nio.charset.StandardCharsets;
 import java.util.LinkedHashMap;
@@ -456,9 +459,20 @@ public final class AgentInvoker {
    * {@code ReservedContextKeys#LLM_TOKENS_TOTAL}, which {@code LlmCallObserver} updates after
    * every call — fingerprinting that raw render would make the "unchanged context" comparison
    * spuriously fail on the very next invocation regardless of whether anything task-relevant
-   * changed. {@code inputFingerprint} fingerprints that same filtered context together with the
-   * step's static prompt material, so a signal distinguishes "only the context changed" from "the
-   * effective input is unchanged" when a step declares its own {@code stepPrompt}.
+   * changed. {@link ReservedContextKeys#GRANTED_KEY_PREFIX} is the one reserved prefix kept in
+   * the fingerprint despite the exclusion: it holds content a {@code REQUEST_CONTEXT} grant
+   * actually served to the agent, not runtime bookkeeping, so excluding it would make a
+   * re-invocation whose only change is newly granted context fingerprint identically to the
+   * prior one. The rendered JSON is canonicalized ({@link CanonicalJson}) before hashing, the
+   * same way {@code AbstractLoopStrategy}'s context fingerprint is, so semantically identical
+   * context that merely serializes with a different field order (map iteration order is not
+   * guaranteed) still fingerprints identically — falling back to the raw rendered text unchanged
+   * when it is not parseable JSON (in production {@link ContextRenderer#render} always produces
+   * JSON, but waste-signal evaluation is advisory-only and must never fail an invocation over a
+   * fingerprinting concern, e.g. a test double stubbing a non-JSON {@code ContextRenderer}).
+   * {@code inputFingerprint} fingerprints that same filtered, canonicalized context together with
+   * the step's static prompt material, so a signal distinguishes "only the context changed" from
+   * "the effective input is unchanged" when a step declares its own {@code stepPrompt}.
    *
    * <p><strong>Known limitation:</strong> the evaluators' {@code isRetry} parameter (which exists
    * so a deliberate {@code RETRY_PREVIOUS} re-invocation is never flagged) is always passed
@@ -474,13 +488,15 @@ public final class AgentInvoker {
       return;
     }
     Map<String, ContextValue> nonReservedContext = state.getContext().entrySet().stream()
-        .filter(entry -> !entry.getKey().startsWith("__"))
+        .filter(entry -> !entry.getKey().startsWith("__")
+            || entry.getKey().startsWith(ReservedContextKeys.GRANTED_KEY_PREFIX))
         .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue,
             (first, second) -> first, LinkedHashMap::new));
-    String fingerprintSource = contextRenderer.render(nonReservedContext, contextMapping);
+    String renderedContext = contextRenderer.render(nonReservedContext, contextMapping);
+    String fingerprintSource = canonicalizeFingerprintSource(renderedContext);
     String scopedContextFingerprint = ContextFingerprint.of(fingerprintSource);
     String inputFingerprint = ContextFingerprint.of(
-        fingerprintSource + ' ' + StringUtils.defaultString(stepPrompt));
+        fingerprintSource + '\0' + StringUtils.defaultString(stepPrompt));
     Optional<WasteDetectorInvocationHistory> prior = WasteDetectorHistoryStore.readInvocation(
         state, stepId, objectMapper);
     String priorContextFingerprint = prior.map(WasteDetectorInvocationHistory::scopedContextFingerprint)
@@ -504,11 +520,30 @@ public final class AgentInvoker {
         agent.id(), scopedContextFingerprint, inputFingerprint, requestedTier), objectMapper);
   }
 
+  /**
+   * Canonicalizes {@code renderedContext} (expected to be JSON, since {@link ContextRenderer}
+   * always produces it in production) before hashing, so semantically identical context that
+   * merely serializes with a different field order still fingerprints identically. Falls back to
+   * the raw text unchanged when it is not parseable JSON, mirroring
+   * {@link WasteDetector#normalizeOutput}'s own parse-or-fall-through pattern: waste-signal
+   * evaluation is advisory-only and must never fail an invocation over a fingerprinting concern.
+   */
+  private String canonicalizeFingerprintSource(String renderedContext) {
+    try {
+      return CanonicalJson.render(objectMapper.readTree(renderedContext), objectMapper);
+    } catch (JsonProcessingException exception) {
+      return renderedContext;
+    }
+  }
+
   private void recordWasteSignal(WorkflowState state, TokenGovernanceSignal signal) {
-    wasteSignalPolicy.onSignal(signal);
+    // WasteSignalPolicy's contract (see its class Javadoc) requires the audit event to be
+    // recorded regardless of policy outcome, and onSignal to be called only after that recording
+    // — record first, notify second.
     String agentIdPart = signal.agentId() != null ? " agentId=%s".formatted(signal.agentId()) : "";
     eventRecorder.record(state.getRunId(), signal.stepId(), WorkflowEventType.TOKEN_GOVERNANCE_SIGNAL,
         "kind=%s%s detail=%s".formatted(signal.kind(), agentIdPart, signal.detail()), "runtime");
+    wasteSignalPolicy.onSignal(signal);
   }
 
   /**

@@ -189,4 +189,21 @@ class TokenGovernanceSchemaContractTest {
         + ",\"outputContract\":{\"discipline\":\"STRUCTURED_ONLY\"}}";
     assertThat(validate(AGENT_SCHEMA, json)).isNotEmpty();
   }
+
+  @Test
+  void agent_rejectsBlankSchemaRefUnderFreeform() throws Exception {
+    // schemaRef's minLength:1 constraint applies regardless of discipline, matching
+    // OutputContract's canonical constructor, which rejects a blank (present-but-empty)
+    // schemaRef for every discipline, not just STRUCTURED_ONLY.
+    String json = "{" + AGENT_BASE_FIELDS
+        + ",\"outputContract\":{\"discipline\":\"FREEFORM\",\"schemaRef\":\"\"}}";
+    assertThat(validate(AGENT_SCHEMA, json)).isNotEmpty();
+  }
+
+  @Test
+  void agent_rejectsBlankSchemaRefUnderStructuredPreferred() throws Exception {
+    String json = "{" + AGENT_BASE_FIELDS
+        + ",\"outputContract\":{\"discipline\":\"STRUCTURED_PREFERRED\",\"schemaRef\":\"\"}}";
+    assertThat(validate(AGENT_SCHEMA, json)).isNotEmpty();
+  }
 }

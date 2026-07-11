@@ -12,6 +12,8 @@ import com.networknt.schema.SpecificationVersion;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.UncheckedIOException;
+import java.util.LinkedHashSet;
+import java.util.Set;
 import java.util.function.Function;
 
 /**
@@ -107,6 +109,37 @@ final class LedgerSchemaResolver {
       JsonNode resolved = dereferenceTopLevelRef(ledger, resourcePath, schemaNode);
       validateMergeKeyField(ledger, resolved);
     }
+  }
+
+  /**
+   * Resolves {@code ledger}'s {@code schemaRef} the same way {@link #validate} does and returns the
+   * envelope schema's declared top-level section names (its {@code properties} keys, e.g.
+   * {@code entries}, {@code openQuestions}, {@code conflicts}) — the same shape a
+   * {@code LEDGER_SECTION} selector's dotted subpath names, letting a caller confirm the subpath is
+   * one of them.
+   *
+   * @param ledger the ledger declaration whose schema to resolve; must not be {@code null}
+   *
+   * @return the declared top-level section names; empty when the resolved schema declares no
+   *         {@code properties}; never {@code null}
+   *
+   * @throws IllegalArgumentException when {@code schemaRef} does not resolve to a classpath
+   *                                  resource or the resource is not a valid JSON schema
+   */
+  Set<String> declaredSections(LedgerDefinition ledger) {
+    Validate.notNull(ledger, "ledger must not be null");
+    rejectPathTraversal(ledger, ledger.schemaRef());
+    String resourcePath = CLASSPATH_ROOT + ledger.schemaRef();
+    JsonNode schemaNode = readSchemaNode(ledger, resourcePath);
+    confirmValidJsonSchema(ledger, schemaNode);
+    JsonNode resolved = dereferenceTopLevelRef(ledger, resourcePath, schemaNode);
+    JsonNode properties = resolved.get("properties");
+    if (properties == null) {
+      return Set.of();
+    }
+    Set<String> sections = new LinkedHashSet<>();
+    properties.fieldNames().forEachRemaining(sections::add);
+    return sections;
   }
 
   /**

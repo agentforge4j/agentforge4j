@@ -6,8 +6,11 @@ import com.agentforge4j.core.spi.governance.WasteSignalPolicy;
 import com.agentforge4j.core.workflow.WorkflowDefinition;
 import com.agentforge4j.core.workflow.WorkflowLifecycle;
 import com.agentforge4j.core.workflow.WorkflowSource;
+import com.agentforge4j.core.workflow.context.ContextProvenance;
+import com.agentforge4j.core.workflow.context.StringContextValue;
 import com.agentforge4j.core.workflow.event.WorkflowEvent;
 import com.agentforge4j.core.workflow.event.WorkflowEventType;
+import com.agentforge4j.core.workflow.state.ReservedContextKeys;
 import com.agentforge4j.core.workflow.state.WorkflowState;
 import com.agentforge4j.core.workflow.step.StepDefinition;
 import com.agentforge4j.core.workflow.step.StepTransition;
@@ -28,6 +31,7 @@ import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -70,6 +74,38 @@ class AbstractLoopStrategyWasteSignalTest {
     assertThat(signalPayloads.get(0)).contains("kind=UNCHANGED_LOOP_CONTEXT")
         .contains("blueprintId=" + BLUEPRINT_ID)
         .contains("iteration=2");
+  }
+
+  @Test
+  void unchangedLoopContextDoesNotFireWhenOnlyLedgerProgressChanged() {
+    // Regression for the P0 fingerprint-filter fix: canonicalNonReservedContext previously
+    // stripped every __-prefixed key, including __ledger.* — the reserved namespace a declared
+    // ledger's merged section lives under. A loop whose per-iteration progress is recorded only
+    // via the ledger therefore fingerprinted as "unchanged" every iteration regardless of real
+    // progress.
+    InMemoryWorkflowEventLog eventLog = new InMemoryWorkflowEventLog();
+    EventRecorder eventRecorder = recorder(eventLog);
+    StepSequenceExecutor stepSequenceExecutor = mock(StepSequenceExecutor.class);
+    AtomicInteger iterationCount = new AtomicInteger();
+    when(stepSequenceExecutor.executeAll(anyList(), any())).thenAnswer(invocation -> {
+      ExecutionContext context = invocation.getArgument(1);
+      context.allocateStepSequenceUid();
+      context.getState().putContextValue(ReservedContextKeys.ledgerKey("progress"),
+          new StringContextValue("iteration-" + iterationCount.incrementAndGet(),
+              ContextProvenance.SYSTEM_GENERATED));
+      return ExecutionOutcome.COMPLETED;
+    });
+    FixedCountLoopStrategy strategy = new FixedCountLoopStrategy(stepSequenceExecutor,
+        eventRecorder, new MaxIterationsHandler(eventRecorder, CLOCK), new ObjectMapper(),
+        WasteSignalPolicy.NO_OP);
+    WorkflowState state = state();
+    ExecutionContext executionContext = executionContext(state);
+    LoopConfig config = fixedCountConfig(2);
+
+    strategy.iterate(blueprint(config), config, executionContext);
+
+    assertThat(tokenGovernanceSignalPayloads(eventLog))
+        .noneMatch(payload -> payload.contains("UNCHANGED_LOOP_CONTEXT"));
   }
 
   @Test

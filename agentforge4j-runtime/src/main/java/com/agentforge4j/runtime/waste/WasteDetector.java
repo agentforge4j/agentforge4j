@@ -28,14 +28,19 @@ import java.util.Set;
  * {@code CompactBehaviourHandler}'s own {@code UP_TO_DATE} skip rule before a detector would observe it
  * (see that class and {@link WasteSignalKind#REDUNDANT_COMPACTION}'s Javadoc).
  *
- * <p><strong>Not yet wired into the runtime.</strong> Wiring {@link #evaluateDuplicateInvocation} and
- * {@link #evaluateUnjustifiedTierEscalation} needs a per-step "prior invocation fingerprint" record
- * persisted on {@code WorkflowState} (new state surface, not yet added); wiring
- * {@link #evaluateUnchangedLoopContext} and {@link #evaluateRepeatedLoopOutput} needs each loop
- * strategy ({@code FixedCountLoopStrategy}, {@code ForEachLoopStrategy}, {@code AgentSignalLoopStrategy},
- * {@code EvaluatorLoopStrategy}) to track and pass prior-iteration fingerprints. Until then no
- * {@code TOKEN_GOVERNANCE_SIGNAL} event is recorded; the evaluator itself is complete and
- * independently tested so that wiring can plug into a correct, ready implementation.
+ * <p><strong>Wired into the runtime.</strong> {@code AgentInvoker} calls
+ * {@link #evaluateDuplicateInvocation} and {@link #evaluateUnjustifiedTierEscalation} against a
+ * per-step "prior invocation fingerprint" record it persists on {@code WorkflowState} (see
+ * {@code WasteDetectorHistoryStore}); {@code AbstractLoopStrategy} calls
+ * {@link #evaluateUnchangedLoopContext} and {@link #evaluateRepeatedLoopOutput}, shared by all four
+ * loop strategies ({@code FixedCountLoopStrategy}, {@code ForEachLoopStrategy},
+ * {@code AgentSignalLoopStrategy}, {@code EvaluatorLoopStrategy}), against the same persisted-history
+ * mechanism keyed per loop blueprint. Both call sites record a raised signal as a
+ * {@code TOKEN_GOVERNANCE_SIGNAL} audit event and notify the configured
+ * {@link com.agentforge4j.core.spi.governance.WasteSignalPolicy}. {@link #evaluateOverbroadContext}
+ * is the one evaluator with no production caller yet: it needs a load-time call site with both a
+ * {@link WorkflowDefinition} and a {@link StepDefinition} in scope together, which neither wired
+ * call site has — independently tested and ready to wire when such a call site exists.
  */
 public final class WasteDetector {
 

@@ -10,12 +10,18 @@ import com.agentforge4j.core.workflow.WorkflowDefinition;
 import com.agentforge4j.core.workflow.WorkflowLifecycle;
 import com.agentforge4j.core.workflow.WorkflowSource;
 import com.agentforge4j.core.workflow.context.ContextMapping;
+import com.agentforge4j.core.workflow.step.ContextSelection;
+import com.agentforge4j.core.workflow.step.ContextSelector;
+import com.agentforge4j.core.workflow.step.ContextSourceKind;
+import com.agentforge4j.core.workflow.step.ContextVariant;
 import com.agentforge4j.core.workflow.step.StepDefinition;
 import com.agentforge4j.core.workflow.step.StepTransition;
 import com.agentforge4j.core.workflow.step.behaviour.AgentBehaviour;
 import com.agentforge4j.core.workflow.step.behaviour.ContextEqualityContract;
 import com.agentforge4j.core.workflow.step.behaviour.FailBehaviour;
 import com.agentforge4j.core.workflow.step.behaviour.InputBehaviour;
+import com.agentforge4j.core.workflow.step.behaviour.RetryMode;
+import com.agentforge4j.core.workflow.step.behaviour.RetryPreviousBehaviour;
 import com.agentforge4j.core.workflow.step.behaviour.ValidateBehaviour;
 import com.agentforge4j.core.workflow.step.behaviour.WorkflowBehaviour;
 import com.agentforge4j.core.workflow.step.blueprint.BlueprintBehaviour;
@@ -46,6 +52,21 @@ class WorkflowValidatorTest {
         .withContextMapping(new ContextMapping(List.of(), List.of()))
         .build();
     WorkflowDefinition wf = wf("wf1", List.of(step));
+
+    assertThatThrownBy(() -> validator.validateWorkflowRefs(Map.of("wf1", wf)))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("unknown workflow")
+        .hasMessageContaining("missing-wf");
+  }
+
+  @Test
+  void validateWorkflowRefs_rejectsUnknownWorkflowRefInsideABlueprintBody() {
+    // Previously walkForWorkflowRefExistence skipped BlueprintRef entirely (a "nothing to
+    // validate here" comment), so a bad workflow ref inside a blueprint body passed load-time
+    // validation and only failed mid-run.
+    BlueprintDefinition bp = blueprint("bp-a", workflowRefStep("s1", "missing-wf"));
+    WorkflowDefinition wf = wfWithBlueprints("wf1", Map.of("bp-a", bp),
+        List.of(new BlueprintRef("bp-a")));
 
     assertThatThrownBy(() -> validator.validateWorkflowRefs(Map.of("wf1", wf)))
         .isInstanceOf(IllegalArgumentException.class)
@@ -195,6 +216,66 @@ class WorkflowValidatorTest {
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("unknown artifact")
         .hasMessageContaining("missing-artifact");
+  }
+
+  @Test
+  void validateArtifactRefs_rejectsUnknownArtifactRefInsideABlueprintBody() {
+    StepDefinition badInput = StepDefinition.builder()
+        .withStepId("s1")
+        .withName("S1")
+        .withBehaviour(new InputBehaviour("missing-artifact", StepTransition.AUTO))
+        .withContextMapping(new ContextMapping(List.of(), List.of()))
+        .build();
+    BlueprintDefinition bp = blueprint("bp-a", badInput);
+    WorkflowDefinition wf = wfWithBlueprints("wf1", Map.of("bp-a", bp),
+        List.of(new BlueprintRef("bp-a")));
+
+    assertThatThrownBy(() -> validator.validateArtifactRefs(Map.of("wf1", wf)))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("unknown artifact")
+        .hasMessageContaining("missing-artifact");
+  }
+
+  @Test
+  void validateRetryStepRefs_rejectsUnknownRetryTargetInsideABlueprintBody() {
+    StepDefinition badRetry = StepDefinition.builder()
+        .withStepId("s1")
+        .withName("S1")
+        .withBehaviour(new RetryPreviousBehaviour("missing-step", RetryMode.SINGLE_STEP, 2,
+            terminalStep("fallback")))
+        .withContextMapping(new ContextMapping(List.of(), List.of()))
+        .build();
+    BlueprintDefinition bp = blueprint("bp-a", badRetry);
+    WorkflowDefinition wf = wfWithBlueprints("wf1", Map.of("bp-a", bp),
+        List.of(new BlueprintRef("bp-a")));
+
+    assertThatThrownBy(() -> validator.validateRetryStepRefs(Map.of("wf1", wf)))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("unknown step")
+        .hasMessageContaining("missing-step");
+  }
+
+  @Test
+  void validateRetryStepRefs_acceptsARetryTargetThatOnlyExistsInsideABlueprintBody() {
+    // Previously collectStepIds also skipped BlueprintRef, so this legitimate retry target
+    // (declared inside a blueprint body, referenced from a step at the workflow's top level)
+    // would have been wrongly rejected as "unknown step" — not just under-validated, but
+    // over-rejecting a valid configuration.
+    StepDefinition targetStep = terminalStep("bp-step");
+    BlueprintDefinition bp = blueprint("bp-a", targetStep);
+    StepDefinition retryStep = StepDefinition.builder()
+        .withStepId("s1")
+        .withName("S1")
+        .withBehaviour(new RetryPreviousBehaviour("bp-step", RetryMode.SINGLE_STEP, 2,
+            terminalStep("fallback")))
+        .withContextMapping(new ContextMapping(List.of(), List.of()))
+        .build();
+    WorkflowDefinition wf = new WorkflowDefinition("wf1", "W", "d", null, null, null, null,
+        WorkflowSource.CUSTOM, WorkflowLifecycle.ACTIVE, Map.of(), Map.of("bp-a", bp),
+        List.of(new BlueprintRef("bp-a"), retryStep), List.of(), List.of());
+
+    assertThatCode(() -> validator.validateRetryStepRefs(Map.of("wf1", wf)))
+        .doesNotThrowAnyException();
   }
 
   @Test
@@ -412,6 +493,58 @@ class WorkflowValidatorTest {
     WorkflowDefinition wf = wfWithLedgers("wf1", List.of(ledger));
 
     assertThatCode(() -> validator.validateLedgerSchemas(Map.of("wf1", wf)))
+        .doesNotThrowAnyException();
+  }
+
+  @Test
+  void validateContextSelectionRefs_rejectsLedgerSectionSubpathTheSchemaDoesNotDeclare() {
+    // Previously this subpath was checked only by ContextSourceResolver.resolveLedgerSection at
+    // run time (the first time the selector actually resolved); it now fails at load time.
+    com.agentforge4j.core.workflow.LedgerDefinition ledger =
+        new com.agentforge4j.core.workflow.LedgerDefinition("requirements",
+            "ledger/requirement-ledger.schema.json",
+            com.agentforge4j.core.workflow.LedgerMergeStrategy.APPEND, null);
+    ContextSelector badSection = new ContextSelector(ContextSourceKind.LEDGER_SECTION,
+        "requirements.notASection", ContextVariant.FULL);
+    ContextSelection selection = new ContextSelection(List.of(badSection), List.of(), null);
+    StepDefinition step = StepDefinition.builder()
+        .withStepId("s1")
+        .withName("S1")
+        .withBehaviour(new FailBehaviour("stop"))
+        .withContextMapping(new ContextMapping(List.of(), List.of()))
+        .withContextSelection(selection)
+        .build();
+    WorkflowDefinition wf = new WorkflowDefinition("wf1", "W", "d", null, null, null, null,
+        WorkflowSource.CUSTOM, WorkflowLifecycle.ACTIVE, Map.of(), Map.of(), List.of(step),
+        List.of(), List.of(ledger));
+
+    assertThatThrownBy(() -> validator.validateContextSelectionRefs(Map.of("wf1", wf), Map.of()))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("notASection")
+        .hasMessageContaining("requirements");
+  }
+
+  @Test
+  void validateContextSelectionRefs_acceptsADeclaredLedgerSectionSubpath() {
+    com.agentforge4j.core.workflow.LedgerDefinition ledger =
+        new com.agentforge4j.core.workflow.LedgerDefinition("requirements",
+            "ledger/requirement-ledger.schema.json",
+            com.agentforge4j.core.workflow.LedgerMergeStrategy.APPEND, null);
+    ContextSelector goodSection = new ContextSelector(ContextSourceKind.LEDGER_SECTION,
+        "requirements.openQuestions", ContextVariant.FULL);
+    ContextSelection selection = new ContextSelection(List.of(goodSection), List.of(), null);
+    StepDefinition step = StepDefinition.builder()
+        .withStepId("s1")
+        .withName("S1")
+        .withBehaviour(new FailBehaviour("stop"))
+        .withContextMapping(new ContextMapping(List.of(), List.of()))
+        .withContextSelection(selection)
+        .build();
+    WorkflowDefinition wf = new WorkflowDefinition("wf1", "W", "d", null, null, null, null,
+        WorkflowSource.CUSTOM, WorkflowLifecycle.ACTIVE, Map.of(), Map.of(), List.of(step),
+        List.of(), List.of(ledger));
+
+    assertThatCode(() -> validator.validateContextSelectionRefs(Map.of("wf1", wf), Map.of()))
         .doesNotThrowAnyException();
   }
 

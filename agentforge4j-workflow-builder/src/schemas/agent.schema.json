@@ -96,7 +96,7 @@
       "additionalProperties": false,
       "required": ["discipline"],
       "properties": {
-        "schemaRef": { "type": ["string", "null"] },
+        "schemaRef": { "type": ["string", "null"], "minLength": 1 },
         "discipline": { "type": "string", "enum": ["STRUCTURED_ONLY", "STRUCTURED_PREFERRED", "FREEFORM"] },
         "rationaleAllowed": { "type": "boolean" }
       },
