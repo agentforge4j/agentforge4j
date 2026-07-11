@@ -396,11 +396,11 @@ public final class AgentInvoker {
         resolution.resolvedModel(), null, assembled.text().length() + userInput.length(), true));
 
     ParsedInvocation parsed = invokeLlmRecordAndParseWithRetry(
-        agent, preference, resolution.resolvedModel(), client, assembled, userInput, schema, state,
+        agent, preference, resolution, client, assembled, userInput, schema, state,
         actorIdForEvents, activeWorkflowId);
     llmCallObserver.observe(actorIdForEvents, preference.provider(), parsed.llmResponse(),
         resolution.resolvedModel(), resolution.modelSource(), resolution.requestedModelTier(),
-        state);
+        state, parsed.attempt());
     return AgentInvocationResult.builder()
         .withRawResponse(parsed.llmResponse().text())
         .withCommands(parsed.commands())
@@ -454,7 +454,7 @@ public final class AgentInvoker {
   private ParsedInvocation invokeLlmRecordAndParseWithRetry(
       AgentDefinition agent,
       ProviderPreference preference,
-      String effectiveModel,
+      ModelResolution resolution,
       LlmClient client,
       AssembledSystemPrompt assembled,
       String originalUserInput,
@@ -462,6 +462,7 @@ public final class AgentInvoker {
       WorkflowState state,
       String actorIdForEvents,
       String activeWorkflowId) {
+    String effectiveModel = resolution.resolvedModel();
     String correctionBody = "";
 
     LOG.log(System.Logger.Level.DEBUG, "Dispatching LLM call provider={0}, model={1}",
@@ -489,8 +490,13 @@ public final class AgentInvoker {
 
       recordLlmOutput(state, actorIdForEvents, responseText);
       try {
-        return new ParsedInvocation(response, llmCommandParser.parse(responseText, schema));
+        return new ParsedInvocation(response, llmCommandParser.parse(responseText, schema), attempt);
       } catch (LlmCommandParseException e) {
+        // The provider call above is real and metered regardless of parse outcome — record it now so
+        // a superseded/exhausted attempt's usage is never lost, even though its output is discarded.
+        llmCallObserver.recordAttempt(actorIdForEvents, preference.provider(), response,
+            resolution.resolvedModel(), resolution.modelSource(), resolution.requestedModelTier(),
+            state, attempt);
         lastParseFailure = e;
         if (attempt < RETRY_ATTEMPTS) {
           correctionBody = handleFailedLlmResponseParse(e);
@@ -556,7 +562,8 @@ public final class AgentInvoker {
         responseText.length());
   }
 
-  private record ParsedInvocation(LlmExecutionResponse llmResponse, List<LlmCommand> commands) {
+  private record ParsedInvocation(LlmExecutionResponse llmResponse, List<LlmCommand> commands,
+                                   int attempt) {
 
   }
 
