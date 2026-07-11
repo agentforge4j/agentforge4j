@@ -232,7 +232,7 @@ public final class WorkflowTestHarness {
             new CollectionSubmission(payload(submit.payload()), submit.clientToken(),
                 submit.dedupeKey()), actorOrDefault(submit.actorId()));
         requireAccepted(result, stepId, "submit");
-        submissionIds.add(result.submissionId());
+        submissionIds.add(requireSubmissionId(result, stepId, submissionIds.size()));
       } else if (op instanceof CollectionOp.Replace replace) {
         SubmissionResult result = collections.replaceItem(runId, stepId,
             targetId(submissionIds, replace.target()),
@@ -267,6 +267,23 @@ public final class WorkflowTestHarness {
           "Collection %s op at step '%s' was rejected: %s".formatted(opName, stepId,
               result.reason()));
     }
+  }
+
+  /**
+   * Guards against recording a {@code null} submission id as a future {@code Replace}/{@code
+   * Withdraw} target. A {@code Submit} op can return {@code Status.IDEMPOTENT} with a {@code
+   * null} submissionId when its clientToken replays an id whose item was already replaced or
+   * withdrawn earlier in this op list; letting that {@code null} flow into {@code submissionIds}
+   * would otherwise fail later, deep inside the runtime, with a generic "submissionId must not be
+   * blank" instead of naming the ordinal and the replay.
+   */
+  private static String requireSubmissionId(SubmissionResult result, String stepId, int ordinal) {
+    Validate.isTrue(result.submissionId() != null,
+        ("Collection submit op at step '%s' (ordinal %d) returned no submissionId: the client "
+            + "token replayed an id whose item was already replaced or withdrawn, so this submit "
+            + "cannot be targeted by a later Replace/Withdraw op in this list")
+            .formatted(stepId, ordinal));
+    return result.submissionId();
   }
 
   private static CollectionPayload payload(String inlineJson) {

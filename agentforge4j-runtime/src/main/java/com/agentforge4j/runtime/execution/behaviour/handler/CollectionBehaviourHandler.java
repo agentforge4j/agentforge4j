@@ -46,10 +46,10 @@ public final class CollectionBehaviourHandler implements BehaviourHandler<Collec
   private final Clock clock;
   private final ObjectMapper objectMapper;
 
-  public CollectionBehaviourHandler(EventRecorder eventRecorder, Clock clock) {
+  public CollectionBehaviourHandler(EventRecorder eventRecorder, Clock clock, ObjectMapper objectMapper) {
     this.eventRecorder = Validate.notNull(eventRecorder, "eventRecorder must not be null");
     this.clock = Validate.notNull(clock, "clock must not be null");
-    this.objectMapper = new ObjectMapper();
+    this.objectMapper = Validate.notNull(objectMapper, "objectMapper must not be null");
   }
 
   @Override

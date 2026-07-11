@@ -418,6 +418,8 @@ public final class WorkflowRuntimeBuilder {
 
     RequirementResolver resolvedRequirementResolver = ObjectUtils.getIfNull(requirementResolver,
         DefaultRequirementResolver::new);
+    ObjectMapper resolvedObjectMapper =
+        ObjectUtils.getIfNull(objectMapper, () -> new ObjectMapper().findAndRegisterModules());
 
     // The executor graph has a cycle: ExecutableExecutor needs BlueprintExecutor
     // and WorkflowExecutor; both of those need a StepSequenceExecutor that in
@@ -440,7 +442,8 @@ public final class WorkflowRuntimeBuilder {
         branchBehaviourHandler,
         retryPreviousBehaviourHandler,
         transitionGate,
-        resolvedGeneratedArtifactStore);
+        resolvedGeneratedArtifactStore,
+        resolvedObjectMapper);
 
     ExecutableExecutor executableExecutor =
         new ExecutableExecutor(stepExecutor, blueprintExecutor, workflowExecutor,
@@ -463,7 +466,7 @@ public final class WorkflowRuntimeBuilder {
         ObjectUtils.getIfNull(collectionAuthorizer, DefaultCollectionAuthorizer::new),
         ObjectUtils.getIfNull(collectionItemSchemaValidator, CollectionItemSchemaValidator::unconfigured),
         ObjectUtils.getIfNull(collectionSubmissionValidator, DefaultCollectionSubmissionValidator::new),
-        ObjectUtils.getIfNull(objectMapper, () -> new ObjectMapper().findAndRegisterModules()));
+        resolvedObjectMapper);
 
     return new DefaultWorkflowRuntime(
         workflowRepository,
@@ -522,7 +525,8 @@ public final class WorkflowRuntimeBuilder {
       BranchBehaviourHandler branchBehaviourHandler,
       RetryPreviousBehaviourHandler retryPreviousBehaviourHandler,
       TransitionGate transitionGate,
-      GeneratedArtifactStore generatedArtifactStore) {
+      GeneratedArtifactStore generatedArtifactStore,
+      ObjectMapper resolvedObjectMapper) {
     List<BehaviourHandler<? extends StepBehaviour>> handlers = List.of(
         new AgentBehaviourHandler(agentInvoker, commandApplier, eventRecorder),
         new SparBehaviourHandler(agentInvoker, commandApplier, eventRecorder),
@@ -534,7 +538,7 @@ public final class WorkflowRuntimeBuilder {
         retryPreviousBehaviourHandler,
         new ValidateBehaviourHandler(generatedArtifactStore, artifactValidators, eventRecorder),
         new AssignContextBehaviourHandler(eventRecorder),
-        new CollectionBehaviourHandler(eventRecorder, resolvedClock));
+        new CollectionBehaviourHandler(eventRecorder, resolvedClock, resolvedObjectMapper));
     return new StepExecutor(handlers, eventRecorder, resolvedClock, transitionGate);
   }
 
