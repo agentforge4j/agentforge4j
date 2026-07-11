@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package com.agentforge4j.core.workflow.estimate;
 
+import com.agentforge4j.core.workflow.WorkflowComplexityAnalyzer;
 import com.agentforge4j.util.Validate;
 import java.util.EnumSet;
 import java.util.List;
