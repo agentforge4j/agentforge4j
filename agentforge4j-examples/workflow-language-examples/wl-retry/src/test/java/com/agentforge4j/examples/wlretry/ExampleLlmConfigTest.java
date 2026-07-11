@@ -49,6 +49,17 @@ class ExampleLlmConfigTest {
   }
 
   @Test
+  void explicitFalseWithBlankApiKeyFailsFast() {
+    System.clearProperty(API_KEY_PROP);
+    System.setProperty(FAKE_LLM_PROP, "false");
+
+    assertThatThrownBy(ExampleLlmConfig::load)
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining(API_KEY_PROP)
+        .hasMessageContaining(FAKE_LLM_PROP);
+  }
+
+  @Test
   void invalidToggleFailsFast() {
     System.setProperty(FAKE_LLM_PROP, "treu");
 

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package com.agentforge4j.examples.wlloop;
 
+import com.agentforge4j.util.Validate;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.UncheckedIOException;
@@ -16,7 +17,10 @@ import java.util.Properties;
  * the {@code AGENTFORGE4J_EXAMPLE_FAKE_LLM} environment variable, or the properties file) wins; otherwise
  * the fake is used if and only if no non-blank API key is configured. An explicit toggle must be
  * {@code true} or {@code false} (case-insensitive, surrounding whitespace ignored); any other value is
- * rejected with an {@link IllegalArgumentException} rather than silently treated as {@code false}.
+ * rejected with an {@link IllegalArgumentException} rather than silently treated as {@code false}. An
+ * explicit {@code false} with no non-blank API key configured also fails fast with an
+ * {@link IllegalArgumentException}, rather than deferring to an unclear failure once the real provider is
+ * assembled.
  *
  * <p>This is a per-example copy by design — the examples deliberately share no helper module, so each one
  * is a complete, copy-paste-ready template. It reads its own keys directly rather than through the
@@ -46,6 +50,8 @@ final class ExampleLlmConfig {
    * Loads the configuration, applying the precedence and toggle described on the type.
    *
    * @return the resolved configuration; never {@code null}
+   * @throws IllegalArgumentException if the explicit toggle is neither {@code true} nor {@code false},
+   *         or real mode resolves with no non-blank API key configured
    */
   static ExampleLlmConfig load() {
     Properties properties = loadProperties();
@@ -53,6 +59,11 @@ final class ExampleLlmConfig {
     String apiKey = resolveOrEmpty(API_KEY_PROP, API_KEY_ENV, properties);
     String explicitFake = resolve(FAKE_LLM_PROP, FAKE_LLM_ENV, properties);
     boolean fakeLlm = explicitFake != null ? parseFakeToggle(explicitFake) : isBlank(apiKey);
+    if (!fakeLlm) {
+      Validate.notBlank(apiKey,
+          "%s (or %s) must be set when %s is explicitly \"false\"."
+              .formatted(API_KEY_PROP, API_KEY_ENV, FAKE_LLM_PROP));
+    }
     return new ExampleLlmConfig(fakeLlm, provider, apiKey);
   }
 
@@ -103,15 +114,12 @@ final class ExampleLlmConfig {
 
   private static boolean parseFakeToggle(String value) {
     String normalised = value.trim();
-    if (normalised.equalsIgnoreCase("true")) {
-      return true;
-    }
-    if (normalised.equalsIgnoreCase("false")) {
-      return false;
-    }
-    throw new IllegalArgumentException(
+    boolean isTrueValue = normalised.equalsIgnoreCase("true");
+    boolean isFalseValue = normalised.equalsIgnoreCase("false");
+    Validate.isTrue(isTrueValue || isFalseValue,
         "Invalid value \"%s\" for %s: expected \"true\" or \"false\" (case-insensitive)."
             .formatted(value, FAKE_LLM_PROP));
+    return isTrueValue;
   }
 
   private static boolean isBlank(String value) {
