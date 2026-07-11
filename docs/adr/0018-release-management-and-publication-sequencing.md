@@ -30,7 +30,8 @@ Adopt a strict publication sequencing rule for the coordinated first public laun
 
 After the initial launch, this four-step ordering no longer applies: each track releases independently, subject only to the permanent docs-before-artifacts invariant — any documentation surface an artifact references must be live before that artifact publishes.
 
-Supporting decisions:
+Supporting decisions (each now has its own standalone, detailed record — see Related documents;
+this summary is kept for context and is not itself superseded, only elaborated):
 
 - **Three independently versioned, prefix-tagged release tracks**: `framework-v*` (the full Maven reactor, to Central), `catalog-v*` (the shipped workflow catalog, to Central with a flattened POM so its published POM stands alone), and `builder-v*` (the workflow builder, published to npm). Post-launch, each track iterates on its own cadence; no track's release blocks another's.
 - **Release automation** runs in CI from tags, one workflow per track; no manual artifact assembly.
@@ -74,7 +75,17 @@ Supporting decisions:
 
 ## Verification note
 
-Becomes Accepted once the release profile produces complete, signed, portal-valid artifacts in a dry run and every sequencing gate is reachable. POM metadata and the release profile have landed. No artifact release or publication workflow for Maven Central or npm exists yet in CI. The only deploy workflow currently on `main` publishes the documentation site to GitHub Pages. Signing and the catalog deploy job remain open. No prefixed release tags (`framework-v*`, `catalog-v*`, `builder-v*`) exist yet either. The wire-format `schemaVersion` field referenced in ADR-0001's follow-up work is a decided requirement — not an open question — but it remains unimplemented on `main`: it must land in the workflow schema before framework 0.1.0 is cut.
+Becomes Accepted once the release profile produces complete, signed, portal-valid artifacts in a dry run and every sequencing gate is reachable.
+
+**Updated 2026-07-11 (editorial — reflects current state, does not change the decision):** the
+release/publication *machinery* this ADR anticipated is now built — `release-framework.yml`,
+`release-catalog.yml`, `release-builder.yml`, and `tag-guard.yml` all exist on `main` (ADR-0026),
+and the wire-format `schemaVersion` field is implemented and required (ADR-0023). What remains
+open is specifically the **sequencing** this ADR is actually about: the docs site has not been
+confirmed live, no Central or npm publish has happened yet (`autoPublish=false`, still awaiting
+the first real release), no prefixed release tags have been pushed, and the root README has not
+yet landed as the final gate. The GitHub environments/rulesets the release workflows depend on
+are owner-managed configuration, not yet confirmed created.
 
 ## Follow-up work
 
@@ -85,4 +96,10 @@ If portal validation or catalog POM flattening reveals structural POM changes wi
 - ADR-0006 — independently versioned code-free catalog artifact
 - ADR-0009 — ServiceLoader/JPMS module policy (the module-naming caveat)
 - ADR-0013 — pre-1.0 compatibility policy
+- ADR-0020 — multi-artifact monorepo with prefixed release tracks (standalone elaboration of this
+  ADR's "three tracks" supporting decision)
+- ADR-0023 — required, strict workflow schemaVersion (the field this ADR named as a decided,
+  then-unimplemented prerequisite)
+- ADR-0026 — tag-triggered release CI and environment-gated publishing (standalone elaboration
+  of this ADR's "release automation" supporting decision)
 - `docs/adr/README.md` — index
