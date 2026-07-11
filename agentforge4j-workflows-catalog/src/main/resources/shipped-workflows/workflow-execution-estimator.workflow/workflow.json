@@ -27,7 +27,12 @@
           "loopCount",
           "agentDrivenLoopCount",
           "humanGateCount",
-          "maxNestingDepth"
+          "maxNestingDepth",
+          "minAgentTurns",
+          "expectedAgentTurns",
+          "maxAgentTurns",
+          "iterationCeiling",
+          "riskFlags"
         ]
       }
     },
@@ -56,7 +61,7 @@
           "behaviour": {
             "type": "AGENT",
             "agentRef": "execution-estimator",
-            "transition": "HUMAN_APPROVAL"
+            "transition": "AUTO"
           },
           "contextMapping": {
             "inputKeys": [
@@ -76,6 +81,41 @@
             ]
           }
         }
+      }
+    },
+    {
+      "kind": "STEP",
+      "stepId": "aggregate-estimate",
+      "name": "Aggregate Execution Estimate",
+      "behaviour": {
+        "type": "AGGREGATE",
+        "aggregatorId": "workflow-execution-estimate",
+        "outputContextKeyPrefix": "executionEstimate",
+        "transition": "HUMAN_APPROVAL"
+      },
+      "contextMapping": {
+        "inputKeys": [
+          "complexity",
+          "stepCount",
+          "minimumRequiredTokens",
+          "minAgentTurns",
+          "expectedAgentTurns",
+          "maxAgentTurns",
+          "riskFlags",
+          "estimatedInputTokensPerAgentTurn",
+          "estimatedOutputTokensPerAgentTurn",
+          "estimatedToolInvocationsPerAgentTurn"
+        ],
+        "outputKeys": [
+          "executionEstimate.recommendation",
+          "executionEstimate.confidence",
+          "executionEstimate.complexity",
+          "executionEstimate.riskFlags",
+          "executionEstimate.minimumRequiredTokens",
+          "executionEstimate.estimatedMinTokens",
+          "executionEstimate.estimatedExpectedTokens",
+          "executionEstimate.estimatedMaxTokens"
+        ]
       }
     }
   ]

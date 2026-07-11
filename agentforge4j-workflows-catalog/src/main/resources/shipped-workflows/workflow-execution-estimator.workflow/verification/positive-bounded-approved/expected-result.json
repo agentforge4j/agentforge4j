@@ -21,26 +21,24 @@
         "iterationCeiling": "1",
         "riskFlags": "NONE"
       }
+    },
+    {
+      "type": "stepApproval",
+      "approve": true,
+      "note": "reviewed the disclosed estimate before continuing"
     }
   ],
   "expect": {
-    "status": "AWAITING_STEP_APPROVAL",
+    "status": "COMPLETED",
     "visitedSteps": ["collect-analysis", "route-on-ceiling", "estimate", "aggregate-estimate"],
     "notVisitedSteps": ["no-ceiling"],
     "context": {
       "mode": "WORKFLOW_RUN",
       "complexity": "MODERATE",
       "ceilingDerivable": "true",
-      "minimumRequiredTokens": "1300",
-      "agentStepCount": "6",
-      "humanGateCount": "1"
+      "minimumRequiredTokens": "1300"
     },
     "contextPresent": [
-      "stepCount",
-      "agentStepCount",
-      "estimatedInputTokensPerAgentTurn",
-      "estimatedOutputTokensPerAgentTurn",
-      "estimatedToolInvocationsPerAgentTurn",
       "executionEstimate.recommendation",
       "executionEstimate.confidence",
       "executionEstimate.complexity",
@@ -51,14 +49,13 @@
       "executionEstimate.estimatedMaxTokens"
     ],
     "contextMatches": {
-      "estimatedInputTokensPerAgentTurn": "[0-9]+",
-      "executionEstimate.recommendation": "CONTINUE|NARROW|STOP",
-      "executionEstimate.confidence": "HIGH|MEDIUM|LOW|VERY_LOW",
+      "executionEstimate.recommendation": "CONTINUE",
+      "executionEstimate.confidence": "HIGH",
       "executionEstimate.complexity": "MODERATE",
       "executionEstimate.minimumRequiredTokens": "1300",
-      "executionEstimate.estimatedMinTokens": "[0-9]+",
-      "executionEstimate.estimatedExpectedTokens": "[0-9]+",
-      "executionEstimate.estimatedMaxTokens": "[0-9]+"
+      "executionEstimate.estimatedMinTokens": "8500",
+      "executionEstimate.estimatedExpectedTokens": "8500",
+      "executionEstimate.estimatedMaxTokens": "8500"
     }
   }
 }

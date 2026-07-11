@@ -3,6 +3,7 @@ package com.agentforge4j.runtime;
 
 import com.agentforge4j.core.command.LlmCommand;
 import com.agentforge4j.core.runtime.WorkflowRuntime;
+import com.agentforge4j.core.spi.aggregation.ContextAggregator;
 import com.agentforge4j.core.spi.tool.PendingToolInvocationStore;
 import com.agentforge4j.core.spi.validation.ArtifactValidator;
 import com.agentforge4j.core.spi.tool.ToolExecutionService;
@@ -33,6 +34,7 @@ import com.agentforge4j.runtime.execution.TransitionGate;
 import com.agentforge4j.runtime.execution.WorkflowExecutor;
 import com.agentforge4j.runtime.execution.behaviour.BehaviourHandler;
 import com.agentforge4j.runtime.execution.behaviour.handler.AgentBehaviourHandler;
+import com.agentforge4j.runtime.execution.behaviour.handler.AggregateBehaviourHandler;
 import com.agentforge4j.runtime.execution.behaviour.handler.AssignContextBehaviourHandler;
 import com.agentforge4j.runtime.execution.behaviour.handler.BranchBehaviourHandler;
 import com.agentforge4j.runtime.execution.behaviour.handler.FailBehaviourHandler;
@@ -93,6 +95,7 @@ public final class WorkflowRuntimeBuilder {
   private RunExecutionInterceptor runExecutionInterceptor = RunExecutionInterceptor.NO_OP;
   private GeneratedArtifactStore generatedArtifactStore;
   private List<ArtifactValidator> artifactValidators = List.of();
+  private List<ContextAggregator> contextAggregators = List.of();
 
   /**
    * Configures the workflow definition source.
@@ -318,6 +321,21 @@ public final class WorkflowRuntimeBuilder {
   }
 
   /**
+   * Configures the {@link ContextAggregator}s an {@code AGGREGATE} step may select by
+   * {@code aggregatorId}. Defaults to none; an embedding assembly (for example bootstrap) supplies
+   * the defaults.
+   *
+   * @param value aggregators registered by id (no duplicate ids)
+   *
+   * @return this builder
+   */
+  public WorkflowRuntimeBuilder contextAggregators(List<ContextAggregator> value) {
+    this.contextAggregators =
+        List.copyOf(Validate.notNull(value, "contextAggregators must not be null"));
+    return this;
+  }
+
+  /**
    * Validates required dependencies, wires executors and handlers, and returns a runnable
    * {@link com.agentforge4j.core.runtime.WorkflowRuntime}.
    *
@@ -452,7 +470,8 @@ public final class WorkflowRuntimeBuilder {
         new FailBehaviourHandler(),
         retryPreviousBehaviourHandler,
         new ValidateBehaviourHandler(generatedArtifactStore, artifactValidators, eventRecorder),
-        new AssignContextBehaviourHandler(eventRecorder));
+        new AssignContextBehaviourHandler(eventRecorder),
+        new AggregateBehaviourHandler(contextAggregators, eventRecorder));
     return new StepExecutor(handlers, eventRecorder, resolvedClock, transitionGate);
   }
 
