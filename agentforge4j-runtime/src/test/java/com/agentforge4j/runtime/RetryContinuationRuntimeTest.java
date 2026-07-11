@@ -12,6 +12,9 @@ import com.agentforge4j.core.workflow.WorkflowDefinition;
 import com.agentforge4j.core.workflow.WorkflowLifecycle;
 import com.agentforge4j.core.workflow.WorkflowSource;
 import com.agentforge4j.core.workflow.context.ContextMapping;
+import com.agentforge4j.core.workflow.context.ContextProvenance;
+import com.agentforge4j.core.workflow.context.ContextValueList;
+import com.agentforge4j.core.workflow.context.StringContextValue;
 import com.agentforge4j.core.workflow.event.WorkflowEvent;
 import com.agentforge4j.core.workflow.event.WorkflowEventLog;
 import com.agentforge4j.core.workflow.event.WorkflowEventType;
@@ -274,6 +277,53 @@ class RetryContinuationRuntimeTest {
     // re-pause identically — the loop (and the run, since it is the workflow's only step) completes.
     WorkflowState after = fixture.runtime().getState(runId);
     assertThat(after.getStatus()).isEqualTo(WorkflowStatus.COMPLETED);
+    assertThat(countEvents(fixture, runId, "body", WorkflowEventType.STEP_STARTED)).isEqualTo(4);
+  }
+
+  @Test
+  void continue_across_a_for_each_loop_paused_at_max_iterations_restarts_it_from_iteration_one() {
+    // FOR_EACH has its own distinct AWAIT_USER trigger (list longer than maxIterations, unlike
+    // AGENT_SIGNAL's never-signalled termination above) and its own extra resume state (the list
+    // fingerprint) that the generic rewind sweep must also discard, or a restart would still be
+    // misread as a resume into an already-exhausted loop. The sibling AGENT_SIGNAL tests above never
+    // exercise this combination.
+    StepDefinition body = resourceStep("body", "/examples/sample.txt", "body.out");
+    BlueprintDefinition loopBp = new BlueprintDefinition("loop-bp", "loop-bp",
+        new BlueprintBehaviour(
+            LoopConfig.withDefaults(LoopTerminationStrategy.FOR_EACH, "items", null, 2,
+                MaxIterationsAction.AWAIT_USER),
+            StepTransition.AUTO),
+        List.of(body));
+    WorkflowDefinition workflow = workflow("wf-for-each-paused-loop",
+        Map.of("loop-bp", loopBp), List.of(new BlueprintRef("loop-bp")));
+
+    Fixture fixture = fixture(workflow);
+    String runId = "for-each-paused-run";
+    WorkflowState seeded = new WorkflowState(runId, workflow.id(), null,
+        Instant.parse("2026-05-01T12:00:00Z"));
+    seeded.putContextValue("items", new ContextValueList(
+        List.of(
+            new StringContextValue("a", ContextProvenance.USER_SUPPLIED),
+            new StringContextValue("b", ContextProvenance.USER_SUPPLIED),
+            new StringContextValue("c", ContextProvenance.USER_SUPPLIED)),
+        ContextProvenance.USER_SUPPLIED));
+    seeded.setStatus(WorkflowStatus.PAUSED);
+    fixture.stateRepository().save(seeded);
+
+    // Bootstrap: the list has 3 elements but maxIterations caps the loop at 2, so this first drive
+    // runs iterations 1-2 and pauses via AWAIT_USER before the loop ever reaches element "c".
+    fixture.runtime().continueRun(runId, "user");
+
+    assertThat(fixture.runtime().getState(runId).getStatus()).isEqualTo(WorkflowStatus.PAUSED);
+    assertThat(countEvents(fixture, runId, "body", WorkflowEventType.STEP_STARTED)).isEqualTo(2);
+
+    fixture.runtime().continueRun(runId, "user");
+
+    // The generic AWAIT_USER rewind sweep (added for AGENT_SIGNAL loops) must also correctly
+    // restart a FOR_EACH loop: cursor, body-start-uid, and list fingerprint are all cleared, so the
+    // redrive re-enters as fresh and runs both capped iterations again instead of silently
+    // re-pausing with no progress.
+    assertThat(fixture.runtime().getState(runId).getStatus()).isEqualTo(WorkflowStatus.PAUSED);
     assertThat(countEvents(fixture, runId, "body", WorkflowEventType.STEP_STARTED)).isEqualTo(4);
   }
 

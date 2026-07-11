@@ -282,7 +282,7 @@ public final class DefaultWorkflowRuntime implements WorkflowRuntime {
    * Returns the earliest execution uid recorded for the retry target or anything after it in the workflow's top-level
    * sequence — descending into blueprint bodies (including their gate markers) and nested workflows — or {@code null}
    * when nothing at or after the target has ever executed. This is the rewind threshold for
-   * {@link WorkflowState#clearEntriesFromUid(int)}: uid order can diverge from sequence order across resume drives
+   * {@link WorkflowState#clearEntriesFromUid(int, java.util.Set)}: uid order can diverge from sequence order across resume drives
    * (output-less steps re-execute and take fresh uids), so the earliest downstream uid, not the target's own latest
    * uid, bounds the state that repositioning must discard.
    *
