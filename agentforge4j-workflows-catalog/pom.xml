@@ -183,6 +183,46 @@
           <useModulePath>false</useModulePath>
         </configuration>
       </plugin>
+      <plugin>
+        <!-- Publishes a standalone flattened POM: no <parent> reference to the framework's
+             0.0.1-SNAPSHOT reactor version, and every dependency version resolved to a literal
+             (the in-reactor overrides above use ${project.parent.version}, meaningless outside
+             this reactor). This module deploys alone on its own catalog-v* track. -->
+        <groupId>org.codehaus.mojo</groupId>
+        <artifactId>flatten-maven-plugin</artifactId>
+        <version>1.7.3</version>
+        <configuration>
+          <flattenMode>defaults</flattenMode>
+          <updatePomFile>true</updatePomFile>
+          <!-- Central requires name/description/url/scm/developers on every published artifact;
+               defaults mode drops them, so resolve them explicitly (pulling the inherited root
+               pom's url/scm/developers into this standalone POM; name/description come from this
+               module's own declaration). -->
+          <pomElements>
+            <name>resolve</name>
+            <description>resolve</description>
+            <url>resolve</url>
+            <scm>resolve</scm>
+            <developers>resolve</developers>
+          </pomElements>
+        </configuration>
+        <executions>
+          <execution>
+            <id>flatten</id>
+            <phase>process-resources</phase>
+            <goals>
+              <goal>flatten</goal>
+            </goals>
+          </execution>
+          <execution>
+            <id>flatten-clean</id>
+            <phase>clean</phase>
+            <goals>
+              <goal>clean</goal>
+            </goals>
+          </execution>
+        </executions>
+      </plugin>
     </plugins>
   </build>
 </project>
