@@ -13,6 +13,7 @@ import java.time.Instant;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -225,7 +226,7 @@ class WorkflowStateTest {
     state.putContextValue("regular_key", new StringContextValue("value", ContextProvenance.USER_SUPPLIED));
     state.putContextKeyWrittenAtUid("regular_key", 5);
 
-    state.clearEntriesFromUid(5);
+    state.clearEntriesFromUid(5, Set.of());
 
     assertThat(state.getContext()).doesNotContainKey("regular_key");
     assertThat(state.getContextKeyWrittenAtUid()).doesNotContainKey("regular_key");
@@ -238,7 +239,7 @@ class WorkflowStateTest {
     state.putContextValue("__reserved_key", reservedValue);
     state.putContextKeyWrittenAtUid("__reserved_key", 5);
 
-    state.clearEntriesFromUid(5);
+    state.clearEntriesFromUid(5, Set.of());
 
     assertThat(state.getContext()).containsEntry("__reserved_key", reservedValue);
     assertThat(state.getContextKeyWrittenAtUid()).containsEntry("__reserved_key", 5);
@@ -251,7 +252,7 @@ class WorkflowStateTest {
     state.putContextValue("early_key", earlyValue);
     state.putContextKeyWrittenAtUid("early_key", 3);
 
-    state.clearEntriesFromUid(5);
+    state.clearEntriesFromUid(5, Set.of());
 
     assertThat(state.getContext()).containsEntry("early_key", earlyValue);
     assertThat(state.getContextKeyWrittenAtUid()).containsEntry("early_key", 3);
@@ -264,7 +265,7 @@ class WorkflowStateTest {
     state.putContextValue(ReservedContextKeys.LLM_TOKENS_TOTAL, totalValue);
     state.putContextKeyWrittenAtUid(ReservedContextKeys.LLM_TOKENS_TOTAL, 5);
 
-    state.clearEntriesFromUid(5);
+    state.clearEntriesFromUid(5, Set.of());
 
     assertThat(ReservedContextKeys.LLM_TOKENS_TOTAL).isEqualTo("__llm_tokens_total");
     assertThat(state.getContext()).containsEntry(ReservedContextKeys.LLM_TOKENS_TOTAL, totalValue);
@@ -315,7 +316,7 @@ class WorkflowStateTest {
     state.putStepExecutionUid("step-1", 1);
     state.putContextKeyWrittenAtUid("k", 1);
     state.removeContextValue("k");
-    state.clearEntriesFromUid(1);
+    state.clearEntriesFromUid(1, Set.of());
 
     assertThat(state.getLastUpdatedAt()).isEqualTo(initial);
   }
@@ -442,7 +443,7 @@ class WorkflowStateTest {
     state.setLoopIterationBodyStartUid("paused-loop", 5);
     state.setBlueprintIdAwaitingMaxIterationsDecision("paused-loop");
 
-    state.clearEntriesFromUid(5);
+    state.clearEntriesFromUid(5, Set.of());
 
     assertThat(state.getBlueprintIdAwaitingMaxIterationsDecision()).isNull();
   }
@@ -485,7 +486,7 @@ class WorkflowStateTest {
     state.markLoopCompleted("loop-before", 3); // completed before the rewind point
     state.markLoopCompleted("loop-rewound", 8); // completed within the rewound range
 
-    state.clearEntriesFromUid(5);
+    state.clearEntriesFromUid(5, Set.of());
 
     // A rewind to uid 5 invalidates the loop that completed at/after 5, so it re-runs; the earlier
     // loop's completion survives.
@@ -504,7 +505,7 @@ class WorkflowStateTest {
     state.setLoopIterationCursor("later-loop", 1);
     state.setLoopIterationBodyStartUid("later-loop", 2);
 
-    state.clearEntriesFromUid(5);
+    state.clearEntriesFromUid(5, Set.of());
 
     // A retry/rewind crossing this loop's in-progress iteration must forget the cursor too, so the
     // next drive restarts the loop from iteration 1 instead of resuming mid-way with a stale cursor.
@@ -527,7 +528,7 @@ class WorkflowStateTest {
     state.setLoopIterationBodyStartUid("later-for-each", 2);
     state.setForEachListFingerprint("later-for-each", "kept-fingerprint");
 
-    state.clearEntriesFromUid(5);
+    state.clearEntriesFromUid(5, Set.of());
 
     assertThat(state.getForEachListFingerprint("paused-for-each")).isEmpty();
     assertThat(state.getForEachListFingerprint("later-for-each")).contains("kept-fingerprint");
@@ -564,7 +565,7 @@ class WorkflowStateTest {
     state.addGeneratedArtifactDescriptor(new ArtifactDescriptor("kept.json", "h1", "early", 1));
     state.addGeneratedArtifactDescriptor(new ArtifactDescriptor("dropped.json", "h2", "late", 5));
 
-    state.clearEntriesFromUid(5);
+    state.clearEntriesFromUid(5, Set.of());
 
     assertThat(state.getGeneratedArtifactDescriptors())
         .containsExactly(new ArtifactDescriptor("kept.json", "h1", "early", 1));

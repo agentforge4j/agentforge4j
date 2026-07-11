@@ -106,6 +106,13 @@ abstract class AbstractLoopStrategy implements LoopStrategy {
    * checked (in a {@code catch}, before the exception propagates) so a genuine mid-body failure still
    * leaves a {@code LOOP_ITERATION_STARTED} audit entry — only {@code COMPLETED} is inherently
    * unreachable on this path, since the iteration never actually completed.
+   *
+   * <p>Brackets the body call with {@link ExecutionContext#pushActiveLoopBlueprint(String)}/
+   * {@link ExecutionContext#popActiveLoopBlueprint()} so a rewind issued from inside the body — for
+   * example {@code RetryPreviousBehaviourHandler} retrying this iteration's own first-executed step —
+   * can tell {@code WorkflowState.clearEntriesFromUid} that this loop's iteration is still genuinely in
+   * progress, not being externally re-entered, so its cursor/body-start-uid bookkeeping must survive
+   * the rewind.
    */
   protected ExecutionOutcome executeIteration(BlueprintDefinition blueprint,
       int iteration,
@@ -116,6 +123,7 @@ abstract class AbstractLoopStrategy implements LoopStrategy {
     int uidBeforeIteration = executionContext.peekNextStepSequenceUid();
     String runId = executionContext.getState().getRunId();
     String payload = "iteration=%d".formatted(iteration);
+    executionContext.pushActiveLoopBlueprint(blueprint.blueprintId());
     ExecutionOutcome outcome;
     try {
       outcome = stepSequenceExecutor.executeAll(blueprint.steps(), executionContext);
@@ -125,6 +133,8 @@ abstract class AbstractLoopStrategy implements LoopStrategy {
             WorkflowEventType.LOOP_ITERATION_STARTED, payload, "runtime");
       }
       throw exception;
+    } finally {
+      executionContext.popActiveLoopBlueprint();
     }
     if (executionContext.peekNextStepSequenceUid() == uidBeforeIteration) {
       return outcome;

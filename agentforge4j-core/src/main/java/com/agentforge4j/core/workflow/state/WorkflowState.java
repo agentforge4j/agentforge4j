@@ -68,7 +68,7 @@ public final class WorkflowState {
    * For {@code FOR_EACH} loops only: stable fingerprint of the list under
    * {@code forEachContextKey}, keyed by blueprint id. A retry/rewind crossing the loop's
    * in-progress iteration clears this together with {@link #loopIterationCursorByBlueprintId} and
-   * {@link #loopIterationBodyStartUidByBlueprintId}, via {@link #clearEntriesFromUid(int)} — a
+   * {@link #loopIterationBodyStartUidByBlueprintId}, via {@link #clearEntriesFromUid(int, java.util.Set)} — a
    * fingerprint surviving on its own would otherwise still read as an in-progress resume.
    */
   private final Map<String, String> forEachListFingerprintByBlueprintId;
@@ -84,7 +84,7 @@ public final class WorkflowState {
    * descriptors written by the previous iteration are deliberately not cleared at an iteration
    * boundary — see {@link #clearStepEntriesFromUid(int)}. A retry/rewind crossing this iteration's
    * start uid — whether the loop is still actively iterating or sitting paused — also clears both
-   * maps together, via {@link #clearEntriesFromUid(int)}.
+   * maps together, via {@link #clearEntriesFromUid(int, java.util.Set)}.
    */
   private final Map<String, Integer> loopIterationBodyStartUidByBlueprintId;
   /**
@@ -93,7 +93,7 @@ public final class WorkflowState {
    * {@code stepExecutionUid} among its body steps). A resume re-drives the workflow from the start;
    * a completed loop here is skipped on re-entry (mirroring how a completed step is skipped via
    * {@link #stepOutputs}), so it is not re-entered and spun to {@code maxIterations}. The stored uid
-   * lets {@link #clearEntriesFromUid(int)} drop the marker when a retry/rewind clears the loop's
+   * lets {@link #clearEntriesFromUid(int, java.util.Set)} drop the marker when a retry/rewind clears the loop's
    * execution range, so a completed marker never survives a rewind to at or before the loop.
    */
   private final Map<String, Integer> completedLoopBlueprintUids;
@@ -101,7 +101,7 @@ public final class WorkflowState {
    * The blueprint id of the loop currently paused via {@code MaxIterationsAction.AWAIT_USER}, or
    * {@code null} when no loop is in that specific pause. Set only by the handler that performs that
    * pause and consumed only by {@code continueRun} — the sole documented resume verb for it — which
-   * rewinds the loop via {@link #clearEntriesFromUid(int)} using
+   * rewinds the loop via {@link #clearEntriesFromUid(int, java.util.Set)} using
    * {@link #getLoopIterationBodyStartUid(String)} as the threshold before clearing this field, so the
    * loop genuinely restarts from iteration one instead of the resume-skip guard mistaking the
    * already-completed iteration for still in progress. {@code PAUSED} is otherwise ambiguous (an
@@ -113,7 +113,7 @@ public final class WorkflowState {
   /**
    * Per-step collection-gate state, keyed by collection step id. Each value is an immutable snapshot
    * replaced wholesale by collection operations. Intentionally not uid-scoped: a closed collection is
-   * never cleared by {@link #clearEntriesFromUid(int)}, so a retry or rewind does not reopen it.
+   * never cleared by {@link #clearEntriesFromUid(int, java.util.Set)}, so a retry or rewind does not reopen it.
    */
   private final Map<String, CollectionState> collectionStateByStepId;
   /**
@@ -441,7 +441,7 @@ public final class WorkflowState {
    * Records that a signal-terminated looped blueprint ran to terminal completion at execution uid
    * {@code completionUid} (the highest body-step uid), so a resume re-drive skips it rather than
    * re-entering and spinning it to {@code maxIterations}. The uid lets a later rewind invalidate the
-   * marker via {@link #clearEntriesFromUid(int)}.
+   * marker via {@link #clearEntriesFromUid(int, java.util.Set)}.
    *
    * @param blueprintId   the completed loop's blueprint id; must not be blank
    * @param completionUid the execution uid the loop body completed at; must not be negative
@@ -582,9 +582,22 @@ public final class WorkflowState {
    * {@code ForEachLoopStrategy}, and a redrive that legitimately produces a different list (the common reason to
    * retry an upstream step) would then be misread as a disallowed list mutation instead of a fresh loop entry.
    *
-   * @param retryUid the uid threshold; entries with uid &gt;= this value are cleared
+   * <p>{@code activeBlueprintIds} excludes this exact sweep for a loop whose iteration is still genuinely in
+   * progress on the caller's own call stack — for example a {@code RETRY_PREVIOUS} step retrying its own loop
+   * body's first-executed step, where the retry uid happens to equal that loop's own body-start-uid. Such a
+   * rewind is internal to the currently-active iteration, not an external re-entry of the loop, so the loop's
+   * bookkeeping must survive it; the loop strategy that owns that iteration is still on the call stack and will
+   * correctly advance its own bookkeeping when it next calls {@code markLoopIterationStart}. Pass an empty set
+   * for a rewind chokepoint that runs before any loop iteration is active on the call stack ({@code retry},
+   * {@code continueRun}'s max-iterations rewind) or that deliberately restarts its own loop from outside an
+   * active iteration ({@code ForEachLoopStrategy}'s own restart).
+   *
+   * @param retryUid          the uid threshold; entries with uid &gt;= this value are cleared
+   * @param activeBlueprintIds blueprint ids whose loop-cursor bookkeeping must not be swept, even if it
+   *                           otherwise qualifies; must not be {@code null} (use an empty set when none apply)
    */
-  public void clearEntriesFromUid(int retryUid) {
+  public void clearEntriesFromUid(int retryUid, Set<String> activeBlueprintIds) {
+    Validate.notNull(activeBlueprintIds, "activeBlueprintIds must not be null");
     clearStepEntriesFromUid(retryUid);
 
     Iterator<Map.Entry<String, Integer>> contextUidIterator =
@@ -606,7 +619,7 @@ public final class WorkflowState {
         loopIterationBodyStartUidByBlueprintId.entrySet().iterator();
     while (loopBodyStartUidIterator.hasNext()) {
       Map.Entry<String, Integer> entry = loopBodyStartUidIterator.next();
-      if (entry.getValue() >= retryUid) {
+      if (entry.getValue() >= retryUid && !activeBlueprintIds.contains(entry.getKey())) {
         loopIterationCursorByBlueprintId.remove(entry.getKey());
         forEachListFingerprintByBlueprintId.remove(entry.getKey());
         if (entry.getKey().equals(blueprintIdAwaitingMaxIterationsDecision)) {
@@ -620,7 +633,7 @@ public final class WorkflowState {
   /**
    * Removes step outputs, step execution uids, and completed-loop markers for all steps that began
    * executing at or after {@code fromUid} — the loop-iteration-boundary subset of
-   * {@link #clearEntriesFromUid(int)}. Clearing the step outputs/uids is what makes
+   * {@link #clearEntriesFromUid(int, java.util.Set)}. Clearing the step outputs/uids is what makes
    * {@code StepSequenceExecutor}'s resume-skip guard re-execute a loop body on the next iteration;
    * dropping completed-loop markers in the range makes a nested loop re-execute on the new outer
    * iteration instead of being skipped as already complete.

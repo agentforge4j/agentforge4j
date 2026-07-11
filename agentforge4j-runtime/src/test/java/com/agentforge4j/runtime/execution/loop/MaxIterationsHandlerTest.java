@@ -83,6 +83,7 @@ class MaxIterationsHandlerTest {
 
     assertThat(outcome).isEqualTo(ExecutionOutcome.PAUSED);
     assertThat(state.getStatus()).isEqualTo(WorkflowStatus.PAUSED);
+    assertThat(state.getBlueprintIdAwaitingMaxIterationsDecision()).isEqualTo(BLUEPRINT_ID);
     verify(eventRecorder).record(
         eq("run-1"),
         eq(BLUEPRINT_ID),

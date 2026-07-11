@@ -79,7 +79,7 @@ public final class ForEachLoopStrategy extends AbstractLoopStrategy {
       state.setForEachListFingerprint(blueprintId, currentFingerprint);
     } else if (!currentFingerprint.equals(storedFingerprint)) {
       if (!config.allowForEachListMutation()) {
-        restartLoop(state, blueprintId);
+        restartLoop(executionContext, blueprintId);
         throw new IllegalStateException(
             "FOR_EACH list under context key '%s' changed between pause and resume for blueprint '%s' (run '%s'). Set LoopConfig.allowForEachListMutation=true on the blueprint to permit this."
                 .formatted(config.forEachContextKey(), blueprintId, state.getRunId()));
@@ -87,7 +87,7 @@ public final class ForEachLoopStrategy extends AbstractLoopStrategy {
       LOG.log(System.Logger.Level.INFO,
           "FOR_EACH list mutated under key={0} blueprint={1}, restarting iteration",
           config.forEachContextKey(), blueprintId);
-      restartLoop(state, blueprintId);
+      restartLoop(executionContext, blueprintId);
       state.setForEachListFingerprint(blueprintId, currentFingerprint);
     }
 
@@ -95,7 +95,7 @@ public final class ForEachLoopStrategy extends AbstractLoopStrategy {
     int ceiling = Math.min(total, config.maxIterations());
     int start = firstLoopIterationToRun(state, blueprintId);
     if (start > ceiling) {
-      restartLoop(state, blueprintId);
+      restartLoop(executionContext, blueprintId);
       start = 1;
     }
 
@@ -193,13 +193,24 @@ public final class ForEachLoopStrategy extends AbstractLoopStrategy {
    * before the rewind, mirroring the other two rewind chokepoints ({@code DefaultWorkflowRuntime.retry}
    * and {@code RetryPreviousBehaviourHandler}) — otherwise a restarted FOR_EACH iteration that emitted
    * per-element unique artifact paths would leak them permanently against the run's artifact-count
-   * bound, since {@link WorkflowState#clearEntriesFromUid(int)} drops the descriptors but not the bytes.
+   * bound, since {@link WorkflowState#clearEntriesFromUid(int, java.util.Set)} drops the descriptors
+   * but not the bytes. This restart deliberately does not exclude this loop's own blueprint id from
+   * {@code clearEntriesFromUid}'s sweep — restarting from iteration one is the whole point here, unlike
+   * an internal, in-iteration rewind (for example {@code RetryPreviousBehaviourHandler} retrying a step
+   * within this loop's own currently-active iteration), which must leave this loop's bookkeeping alone.
+   * {@code executionContext.activeLoopBlueprintIds()} is still passed so an <em>outer</em> loop whose
+   * iteration is genuinely still in progress on the call stack (this loop nested inside it) is not
+   * itself wiped by this loop's own restart.
    */
-  private void restartLoop(WorkflowState state, String blueprintId) {
+  private void restartLoop(ExecutionContext executionContext, String blueprintId) {
+    WorkflowState state = executionContext.getState();
     int staleBodyStartUid = state.getLoopIterationBodyStartUid(blueprintId);
     if (staleBodyStartUid > 0) {
       GeneratedArtifactEviction.evictFromUid(generatedArtifactStore, state, staleBodyStartUid);
-      state.clearEntriesFromUid(staleBodyStartUid);
+      // clearEntriesFromUid's own loop sweep already removes this blueprint's cursor, body-start-uid,
+      // and fingerprint at this uid — clearLoopState below would only repeat that.
+      state.clearEntriesFromUid(staleBodyStartUid, executionContext.activeLoopBlueprintIds());
+      return;
     }
     clearLoopState(state, blueprintId);
   }

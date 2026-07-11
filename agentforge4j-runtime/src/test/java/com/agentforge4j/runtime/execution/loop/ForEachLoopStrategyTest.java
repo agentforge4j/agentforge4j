@@ -32,6 +32,7 @@ import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -288,7 +289,7 @@ class ForEachLoopStrategyTest {
     // chokepoint (WorkflowState.clearEntriesFromUid) clears the cursor, body-start-uid, and list
     // fingerprint together.
     int bodyStartUid = state.getLoopIterationBodyStartUid(BLUEPRINT_ID);
-    state.clearEntriesFromUid(bodyStartUid);
+    state.clearEntriesFromUid(bodyStartUid, Set.of());
     assertThat(state.getLoopIterationCursor(BLUEPRINT_ID)).isZero();
 
     // The redrive's upstream step legitimately produces a different list on this retry — the

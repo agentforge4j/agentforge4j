@@ -182,10 +182,12 @@ public final class DefaultWorkflowRuntime implements WorkflowRuntime {
    * When the run is {@code PAUSED} because a loop reached {@code maxIterations} under
    * {@code MaxIterationsAction.AWAIT_USER} (see {@link WorkflowState#getBlueprintIdAwaitingMaxIterationsDecision()}),
    * rewinds that loop's already-completed iteration the same way {@link #retry} rewinds a target — evicting its
-   * generated-artifact bytes and clearing its state via {@link WorkflowState#clearEntriesFromUid(int)} — so the
-   * loop restarts at iteration one on this drive instead of the resume-skip guard mistaking the already-executed
-   * iteration for still in progress and re-pausing with no progress on every subsequent {@code continueRun}. A
-   * no-op when the run is {@code PAUSED} for a different reason (for example an interceptor veto).
+   * generated-artifact bytes and clearing its state via
+   * {@link WorkflowState#clearEntriesFromUid(int, java.util.Set)} — so the loop restarts at iteration one on this
+   * drive instead of the resume-skip guard mistaking the already-executed iteration for still in progress and
+   * re-pausing with no progress on every subsequent {@code continueRun}. A no-op when the run is {@code PAUSED} for
+   * a different reason (for example an interceptor veto). Runs before any {@link ExecutionContext} for this drive
+   * exists, so no loop iteration can be active on the call stack yet — the exclusion set is always empty.
    */
   private void rewindLoopAwaitingMaxIterationsDecision(WorkflowState state) {
     String blueprintId = state.getBlueprintIdAwaitingMaxIterationsDecision();
@@ -195,7 +197,7 @@ public final class DefaultWorkflowRuntime implements WorkflowRuntime {
     int bodyStartUid = state.getLoopIterationBodyStartUid(blueprintId);
     if (bodyStartUid > 0) {
       GeneratedArtifactEviction.evictFromUid(generatedArtifactStore, state, bodyStartUid);
-      state.clearEntriesFromUid(bodyStartUid);
+      state.clearEntriesFromUid(bodyStartUid, Set.of());
     }
     state.setBlueprintIdAwaitingMaxIterationsDecision(null);
   }
@@ -240,11 +242,13 @@ public final class DefaultWorkflowRuntime implements WorkflowRuntime {
       // range. Reserved (__-prefixed) context keys are preserved by clearEntriesFromUid; when
       // nothing at or after the target ever executed there is nothing to clear. Evict the captured
       // bytes for any artifact emitted at or after the threshold first, so the re-drive re-emits
-      // cleanly (upsert) rather than leaving a stale capture for a path it may not re-emit.
+      // cleanly (upsert) rather than leaving a stale capture for a path it may not re-emit. retry()
+      // runs before any ExecutionContext for this drive exists, so no loop iteration can be active
+      // on the call stack yet — the exclusion set is always empty.
       Integer rewindUid = earliestUidAtOrAfter(workflow, target, state);
       if (rewindUid != null) {
         GeneratedArtifactEviction.evictFromUid(generatedArtifactStore, state, rewindUid);
-        state.clearEntriesFromUid(rewindUid);
+        state.clearEntriesFromUid(rewindUid, Set.of());
       }
       // A PAUSED run carries pending suspension state for the step it paused on; clear it so the
       // re-drive starts the target cleanly instead of re-entering the previous pause. The failure
