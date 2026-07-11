@@ -237,7 +237,7 @@ class LlmCallObserverTest {
     assertThat(completedEvents.get(0).payload()).contains("\"callAttempt\":1");
     assertThat(completedEvents.get(1).payload()).contains("\"callAttempt\":2");
     // Only the winning (observe) call's tokens land in the running total — the discarded attempt's
-    // tokens are billed via its own event, not double-counted into the workflow's own bookkeeping.
+    // tokens are accounted for via its own event, not double-counted into the workflow's own bookkeeping.
     assertThat(llmTokensTotalInContext(state)).isEqualTo(28);
   }
 
