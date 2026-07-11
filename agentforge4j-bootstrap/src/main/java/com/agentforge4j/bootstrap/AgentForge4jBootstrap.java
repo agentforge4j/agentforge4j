@@ -2,9 +2,11 @@
 package com.agentforge4j.bootstrap;
 
 import com.agentforge4j.config.loader.LoadedConfiguration;
+import com.agentforge4j.config.loader.contextpack.FileSystemContextPackLoader;
 import com.agentforge4j.config.loader.integration.FileSystemIntegrationConfigLoader;
 import com.agentforge4j.core.agent.AgentRepository;
 import com.agentforge4j.core.runtime.WorkflowRuntime;
+import com.agentforge4j.core.spi.contextpack.ContextPack;
 import com.agentforge4j.core.spi.integration.EnvironmentSecretResolver;
 import com.agentforge4j.core.spi.integration.IntegrationConfigLoader;
 import com.agentforge4j.core.spi.integration.IntegrationRepository;
@@ -32,6 +34,7 @@ import com.agentforge4j.llm.api.LlmClient;
 import com.agentforge4j.llm.api.LlmRetryPolicy;
 import com.agentforge4j.llm.api.ModelTier;
 import com.agentforge4j.llm.api.ModelTierResolver;
+import com.agentforge4j.runtime.ContextPackRegistry;
 import com.agentforge4j.runtime.WorkflowRuntimeBuilder;
 import com.agentforge4j.runtime.command.FileSink;
 import com.agentforge4j.runtime.event.EventRecorder;
@@ -64,6 +67,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.function.Function;
+import java.util.stream.Collectors;
 import org.apache.commons.lang3.ObjectUtils;
 
 /**
@@ -127,6 +131,7 @@ public final class AgentForge4jBootstrap {
     private ToolExecutionOptions toolExecutionOptions;
     private boolean allowPrivateNetworks;
     private Path integrationsDir;
+    private Path contextPacksDir;
     private IntegrationConfigLoader integrationConfigLoader;
     private MutableIntegrationRepository integrationRepository;
     private ToolProviderFactory toolProviderFactory;
@@ -524,6 +529,25 @@ public final class AgentForge4jBootstrap {
     }
 
     /**
+     * Opts in to loading context packs from the given filesystem directory at build time, laid out
+     * as {@code <contextPacksDir>/<name>/pack.json} plus each variant's content file (see
+     * {@link FileSystemContextPackLoader}). Loaded packs both satisfy {@code CONTEXT_PACK} selector
+     * validation at load time and are resolvable by the runtime at invocation time — without this,
+     * every {@code CONTEXT_PACK} selector fails validation, since the loaded pack set defaults to
+     * empty.
+     *
+     * @param contextPacksDir context packs root directory; must be an existing directory
+     *
+     * @return this builder
+     */
+    public Builder withContextPacksDir(Path contextPacksDir) {
+      Validate.notNull(contextPacksDir, "contextPacksDir");
+      this.contextPacksDir = Validate.requireDirectory(contextPacksDir,
+          "contextPacksDir must be a valid directory");
+      return this;
+    }
+
+    /**
      * Overrides the integration definition loader. When set, it is used instead of the filesystem loader over
      * {@link #withIntegrationsDir(Path)}.
      *
@@ -697,14 +721,18 @@ public final class AgentForge4jBootstrap {
       Clock resolvedClock = ObjectUtils.getIfNull(clock, Clock::systemUTC);
       ObjectMapper resolvedMapper = ObjectUtils.getIfNull(objectMapper, ConfigurationLoader::defaultObjectMapper);
 
-      // Context packs for CONTEXT_PACK selector validation. The bootstrap has no way to load packs
-      // yet (no withContextPacks*/pack-directory option exists), so the actual loaded set is empty
-      // and every CONTEXT_PACK selector fails validation here — matching the runtime, whose default
-      // ContextPackRegistry.EMPTY rejects the same selectors. When bootstrap pack loading is added,
-      // the packs it loads (keyed by name) flow through this argument.
+      // Context packs: loaded once, up front, so the same set both satisfies CONTEXT_PACK selector
+      // validation (via loadedPacksByName below) and is resolvable by the runtime (via the
+      // ContextPackRegistry built from the same list, passed to RuntimeAssembler.runtime further
+      // down). Empty (no packs configured) when withContextPacksDir was never called — matching the
+      // runtime's own ContextPackRegistry.EMPTY default, so behaviour is unchanged when unset.
+      List<ContextPack> loadedContextPacks = loadContextPacks(resolvedMapper);
+      Map<String, ContextPack> loadedPacksByName = loadedContextPacks.stream()
+          .collect(Collectors.toMap(ContextPack::name, pack -> pack));
+
       LoadedConfiguration loadedConfiguration = ConfigurationLoader.load(
           resolvedMapper, agentsDir, workflowsDir, loadShippedAgents, loadShippedWorkflows,
-          Map.of());
+          loadedPacksByName);
 
       AgentRepository resolvedAgentRepo = ObjectUtils.getIfNull(agentRepository,
           () -> ComponentDefaults.agentRepository(loadedConfiguration));
@@ -784,7 +812,8 @@ public final class AgentForge4jBootstrap {
           resolvedWorkflowRepo, resolvedStateRepo, resolvedEventLog, resolvedClock,
           resolvedFileSink, resolvedInvoker, resolvedRecorder,
           maxNestingDepth, resolvedToolExecutionService, resolvedPendingStore,
-          requirementResolver, resolvedInterceptor, resolvedMapper, artifactValidators);
+          requirementResolver, resolvedInterceptor, resolvedMapper, artifactValidators,
+          ContextPackRegistry.of(loadedContextPacks));
 
       BootstrapComponents components = new BootstrapComponents(resolvedAgentRepo, resolvedWorkflowRepo,
           resolvedStateRepo, resolvedEventLog, resolvedResolver, resolvedRenderer, resolvedParser, resolvedRecorder,
@@ -809,6 +838,23 @@ public final class AgentForge4jBootstrap {
      * @return the resolver driving tool support plus the integration repository feeding it (the repository only on the
      * integrations path)
      */
+    /**
+     * Loads context packs from {@link #contextPacksDir} when configured, using the same schema
+     * provider convention as {@link #resolveAndSaveIntegrations}.
+     *
+     * @param resolvedMapper the resolved Jackson mapper for the filesystem context-pack loader
+     *
+     * @return the loaded packs; empty when {@code withContextPacksDir} was never called
+     */
+    private List<ContextPack> loadContextPacks(ObjectMapper resolvedMapper) {
+      if (contextPacksDir == null) {
+        return List.of();
+      }
+      FileSystemContextPackLoader loader = new FileSystemContextPackLoader(resolvedMapper,
+          new ClasspathSchemaProvider(), contextPacksDir);
+      return loader.load();
+    }
+
     private ToolSupport resolveToolSupport(ObjectMapper resolvedMapper) {
       if (toolProviderResolver != null) {
         return new ToolSupport(toolProviderResolver, null);
@@ -906,6 +952,8 @@ public final class AgentForge4jBootstrap {
           this::withWorkflowsDir);
       applyConfigPath(integrationsDir, config.get("agentforge4j.integrations.dir"),
           this::withIntegrationsDir);
+      applyConfigPath(contextPacksDir, config.get("agentforge4j.context-packs.dir"),
+          this::withContextPacksDir);
       applyConfigPath(fileSinkPath, config.get("agentforge4j.filesink.path"),
           this::withFileSinkPath);
 

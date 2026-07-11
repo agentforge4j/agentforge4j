@@ -234,9 +234,17 @@ public enum WorkflowEventType {
    */
   COMPACTION_SKIPPED,
   /**
-   * Recorded when deterministic waste detection emits an advisory signal. Payload carries the signal kind, the
-   * relevant fingerprints, and the step/loop coordinates. Advisory only: the OSS default never blocks on it.
-   * Reserved for the waste-detection wiring, which the runtime does not perform yet — no code records this event.
+   * Recorded when deterministic waste detection emits an advisory signal. Payload is
+   * {@code kind=<WasteSignalKind> [agentId=<agentId>] detail=<detail>}. Advisory only: the shipped
+   * {@code WasteSignalPolicy.NO_OP} default never blocks or alters execution on it — this event is
+   * recorded regardless of the configured policy. Raised from two sites: {@code AgentInvoker}
+   * (per-step invocation history — {@code DUPLICATE_INVOCATION}, {@code UNJUSTIFIED_TIER_ESCALATION})
+   * and {@code AbstractLoopStrategy} (per-loop iteration history, shared by every
+   * {@code LoopStrategy} — {@code UNCHANGED_LOOP_CONTEXT}, {@code REPEATED_LOOP_OUTPUT}).
+   * {@code REDUNDANT_COMPACTION} and {@code OVERBROAD_CONTEXT} are not currently raised: the former
+   * is always caught by {@code CompactBehaviourHandler}'s own {@code UP_TO_DATE} skip rule first
+   * (see {@code WasteSignalKind}'s Javadoc); the latter needs a call site with both the enclosing
+   * {@code WorkflowDefinition} and {@code StepDefinition}, which neither wired call site has.
    */
   TOKEN_GOVERNANCE_SIGNAL
 }

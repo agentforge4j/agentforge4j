@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package com.agentforge4j.runtime.execution.loop;
 
+import com.agentforge4j.core.spi.governance.WasteSignalPolicy;
 import com.agentforge4j.core.workflow.context.ContextProvenance;
 import com.agentforge4j.core.workflow.WorkflowDefinition;
 import com.agentforge4j.core.workflow.WorkflowLifecycle;
@@ -21,6 +22,7 @@ import com.agentforge4j.runtime.event.EventRecorder;
 import com.agentforge4j.runtime.execution.ExecutionContext;
 import com.agentforge4j.runtime.execution.ExecutionOutcome;
 import com.agentforge4j.runtime.execution.StepSequenceExecutor;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -83,7 +85,8 @@ class ForEachLoopStrategyTest {
     maxIterationsHandler = new MaxIterationsHandler(eventRecorder,
         Clock.fixed(Instant.parse("2026-05-01T12:00:00Z"), ZoneOffset.UTC));
     stepSequenceExecutor = mock(StepSequenceExecutor.class);
-    strategy = new ForEachLoopStrategy(stepSequenceExecutor, eventRecorder, maxIterationsHandler);
+    strategy = new ForEachLoopStrategy(stepSequenceExecutor, eventRecorder, maxIterationsHandler,
+        new ObjectMapper(), WasteSignalPolicy.NO_OP);
     state = new WorkflowState("run-1", "wf-1", null, Instant.parse("2026-05-01T12:00:00Z"));
     WorkflowDefinition workflow = new WorkflowDefinition(
         "wf-1",

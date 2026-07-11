@@ -59,6 +59,18 @@ public final class ReservedContextKeys {
    */
   public static final String LLM_SUMMARY_INPUT_KEY_PREFIX = "__compactSourceInput.";
 
+  /**
+   * Reserved key prefix under which the token-governance waste detector's persisted history is
+   * stored: one key per step id for per-step invocation history (see
+   * {@link #wasteDetectorInvocationHistoryKey(String)}), and one key per blueprint id for
+   * per-loop iteration history (see {@link #wasteDetectorLoopHistoryKey(String)}). In the
+   * protected {@code __} namespace for the same reason as {@link #LEDGER_KEY_PREFIX} — this
+   * history is runtime bookkeeping and must survive {@code clearEntriesFromUid} resets (a
+   * pause/resume or a {@code RETRY_PREVIOUS} rewind must not silently reset the detector's memory
+   * of what happened before the rewind point).
+   */
+  public static final String WASTE_DETECTOR_HISTORY_KEY_PREFIX = "__wasteDetectorHistory.";
+
   private ReservedContextKeys() {
   }
 
@@ -125,5 +137,34 @@ public final class ReservedContextKeys {
   public static String llmSummaryInputKey(String sourceId) {
     Validate.notBlank(sourceId, "sourceId must not be blank");
     return LLM_SUMMARY_INPUT_KEY_PREFIX + sourceId;
+  }
+
+  /**
+   * Returns the reserved context key storing the waste detector's per-step invocation history
+   * (the fingerprints of a step's most recent agent invocation) for the given step id.
+   *
+   * @param stepId the step id; must not be blank
+   *
+   * @return the reserved key {@code "__wasteDetectorHistory.invocation." + stepId}; never
+   *         {@code null}
+   */
+  public static String wasteDetectorInvocationHistoryKey(String stepId) {
+    Validate.notBlank(stepId, "stepId must not be blank");
+    return WASTE_DETECTOR_HISTORY_KEY_PREFIX + "invocation." + stepId;
+  }
+
+  /**
+   * Returns the reserved context key storing the waste detector's per-loop iteration history (the
+   * previous iteration's context fingerprint and the set of output fingerprints already seen) for
+   * the given blueprint id.
+   *
+   * @param blueprintId the loop's enclosing blueprint id; must not be blank
+   *
+   * @return the reserved key {@code "__wasteDetectorHistory.loop." + blueprintId}; never
+   *         {@code null}
+   */
+  public static String wasteDetectorLoopHistoryKey(String blueprintId) {
+    Validate.notBlank(blueprintId, "blueprintId must not be blank");
+    return WASTE_DETECTOR_HISTORY_KEY_PREFIX + "loop." + blueprintId;
   }
 }

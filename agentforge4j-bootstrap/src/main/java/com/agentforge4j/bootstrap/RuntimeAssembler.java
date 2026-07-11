@@ -17,6 +17,7 @@ import com.agentforge4j.llm.RetryingLlmClientResolver;
 import com.agentforge4j.llm.api.LlmClient;
 import com.agentforge4j.llm.api.LlmRetryPolicy;
 import com.agentforge4j.llm.api.ModelTierResolver;
+import com.agentforge4j.runtime.ContextPackRegistry;
 import com.agentforge4j.runtime.WorkflowRuntimeBuilder;
 import com.agentforge4j.runtime.interceptor.RunExecutionInterceptor;
 import com.agentforge4j.runtime.command.FileSink;
@@ -161,6 +162,8 @@ final class RuntimeAssembler {
    *                                in-process {@code DefaultRequirementResolver}
    * @param runExecutionInterceptor optional run-execution interceptor; when {@code null} the runtime builder defaults
    *                                to its {@code NO_OP} interceptor
+   * @param contextPackRegistry     the context packs loaded by the bootstrap, keyed by name; empty when none are
+   *                                configured — matches {@code WorkflowRuntimeBuilder}'s own {@code EMPTY} default
    *
    * @return assembled runtime; never {@code null}
    */
@@ -177,7 +180,8 @@ final class RuntimeAssembler {
       RequirementResolver requirementResolver,
       RunExecutionInterceptor runExecutionInterceptor,
       ObjectMapper objectMapper,
-      List<ArtifactValidator> embedderArtifactValidators) {
+      List<ArtifactValidator> embedderArtifactValidators,
+      ContextPackRegistry contextPackRegistry) {
     // Built-in ArtifactValidators are discovered via ServiceLoader (the built-in agent-bundle validator stays present
     // so shipped agent-bundle workflows keep working); each factory receives the same configured ObjectMapper the agent
     // loaders use, so validation parses in lockstep with production load. Embedder-supplied validators are appended; a
@@ -199,7 +203,11 @@ final class RuntimeAssembler {
         // Without this, WorkflowRuntimeBuilder defaults to its own bare new ObjectMapper() for
         // context-selection JSON handling (ledger content, compact siblings), diverging from the
         // mapper configuration loading and artifact validation above already use.
-        .objectMapper(objectMapper);
+        .objectMapper(objectMapper)
+        // The same packs loaded for CONTEXT_PACK selector validation (see
+        // AgentForge4jBootstrap.Builder#loadContextPacks) must also be resolvable here, or a
+        // workflow that passed load-time validation would fail at every run.
+        .contextPackRegistry(contextPackRegistry);
 
     if (maxNestingDepth != null) {
       runtimeBuilder.maxNestingDepth(maxNestingDepth);

@@ -66,4 +66,30 @@ class ReservedContextKeysTest {
     assertThatThrownBy(() -> ReservedContextKeys.llmSummaryInputKey(" "))
         .isInstanceOf(IllegalArgumentException.class);
   }
+
+  @Test
+  void wasteDetectorInvocationHistoryKeyIsNamespacedUnderReservedPrefix() {
+    assertThat(ReservedContextKeys.wasteDetectorInvocationHistoryKey("step-1"))
+        .isEqualTo("__wasteDetectorHistory.invocation.step-1")
+        .startsWith(ReservedContextKeys.WASTE_DETECTOR_HISTORY_KEY_PREFIX);
+  }
+
+  @Test
+  void wasteDetectorInvocationHistoryKeyRejectsBlankStepId() {
+    assertThatThrownBy(() -> ReservedContextKeys.wasteDetectorInvocationHistoryKey(" "))
+        .isInstanceOf(IllegalArgumentException.class);
+  }
+
+  @Test
+  void wasteDetectorLoopHistoryKeyIsNamespacedUnderReservedPrefix() {
+    assertThat(ReservedContextKeys.wasteDetectorLoopHistoryKey("bp-1"))
+        .isEqualTo("__wasteDetectorHistory.loop.bp-1")
+        .startsWith(ReservedContextKeys.WASTE_DETECTOR_HISTORY_KEY_PREFIX);
+  }
+
+  @Test
+  void wasteDetectorLoopHistoryKeyRejectsBlankBlueprintId() {
+    assertThatThrownBy(() -> ReservedContextKeys.wasteDetectorLoopHistoryKey(" "))
+        .isInstanceOf(IllegalArgumentException.class);
+  }
 }

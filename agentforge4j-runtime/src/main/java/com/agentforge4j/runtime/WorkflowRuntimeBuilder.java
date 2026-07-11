@@ -3,6 +3,7 @@ package com.agentforge4j.runtime;
 
 import com.agentforge4j.core.command.LlmCommand;
 import com.agentforge4j.core.runtime.WorkflowRuntime;
+import com.agentforge4j.core.spi.governance.WasteSignalPolicy;
 import com.agentforge4j.core.spi.tool.PendingToolInvocationStore;
 import com.agentforge4j.core.spi.validation.ArtifactValidator;
 import com.agentforge4j.core.spi.tool.ToolExecutionService;
@@ -443,7 +444,7 @@ public final class WorkflowRuntimeBuilder {
 
     setupBlueprintLoopStrategies(blueprintExecutor, stepSequenceExecutor, resolvedEventRecorder,
         maxIterationsHandler,
-        resolvedEvaluator);
+        resolvedEvaluator, resolvedObjectMapper);
     blueprintExecutor.setStepSequenceExecutor(stepSequenceExecutor);
     blueprintExecutor.setTransitionGate(transitionGate);
     workflowExecutor.setStepSequenceExecutor(stepSequenceExecutor);
@@ -466,13 +467,21 @@ public final class WorkflowRuntimeBuilder {
 
   private static void setupBlueprintLoopStrategies(BlueprintExecutor blueprintExecutor,
       StepSequenceExecutor stepSequenceExecutor, EventRecorder eventRecorder,
-      MaxIterationsHandler maxIterationsHandler, LoopEvaluator resolvedEvaluator) {
+      MaxIterationsHandler maxIterationsHandler, LoopEvaluator resolvedEvaluator,
+      ObjectMapper resolvedObjectMapper) {
+    // WasteSignalPolicy is not yet exposed as a builder option (see AgentInvoker, which has the
+    // same NO_OP default) — only the waste-signal emission side is wired in this pass, not policy
+    // configurability.
+    WasteSignalPolicy wasteSignalPolicy = WasteSignalPolicy.NO_OP;
     blueprintExecutor.setLoopStrategies(List.of(
-        new FixedCountLoopStrategy(stepSequenceExecutor, eventRecorder, maxIterationsHandler),
-        new ForEachLoopStrategy(stepSequenceExecutor, eventRecorder, maxIterationsHandler),
-        new AgentSignalLoopStrategy(stepSequenceExecutor, eventRecorder, maxIterationsHandler),
-        new EvaluatorLoopStrategy(
-            stepSequenceExecutor, eventRecorder, maxIterationsHandler, resolvedEvaluator)));
+        new FixedCountLoopStrategy(stepSequenceExecutor, eventRecorder, maxIterationsHandler,
+            resolvedObjectMapper, wasteSignalPolicy),
+        new ForEachLoopStrategy(stepSequenceExecutor, eventRecorder, maxIterationsHandler,
+            resolvedObjectMapper, wasteSignalPolicy),
+        new AgentSignalLoopStrategy(stepSequenceExecutor, eventRecorder, maxIterationsHandler,
+            resolvedObjectMapper, wasteSignalPolicy),
+        new EvaluatorLoopStrategy(stepSequenceExecutor, eventRecorder, maxIterationsHandler,
+            resolvedEvaluator, resolvedObjectMapper, wasteSignalPolicy)));
   }
 
   private List<CommandHandler<? extends LlmCommand>> determineCommandHandlers(

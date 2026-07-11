@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package com.agentforge4j.runtime.execution.loop;
 
+import com.agentforge4j.core.spi.governance.WasteSignalPolicy;
 import com.agentforge4j.core.workflow.step.blueprint.BlueprintDefinition;
 import com.agentforge4j.core.workflow.step.loop.LoopConfig;
 import com.agentforge4j.core.workflow.step.loop.LoopTerminationStrategy;
@@ -10,6 +11,7 @@ import com.agentforge4j.runtime.execution.ExecutionContext;
 import com.agentforge4j.runtime.execution.ExecutionOutcome;
 import com.agentforge4j.runtime.execution.StepSequenceExecutor;
 import com.agentforge4j.util.Validate;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 /**
  * Iterates the blueprint body and, after each iteration, delegates to a {@link LoopEvaluator} that
@@ -24,8 +26,11 @@ public final class EvaluatorLoopStrategy extends AbstractLoopStrategy {
   public EvaluatorLoopStrategy(StepSequenceExecutor stepSequenceExecutor,
       EventRecorder eventRecorder,
       MaxIterationsHandler maxIterationsHandler,
-      LoopEvaluator loopEvaluator) {
-    super(stepSequenceExecutor, eventRecorder, maxIterationsHandler);
+      LoopEvaluator loopEvaluator,
+      ObjectMapper objectMapper,
+      WasteSignalPolicy wasteSignalPolicy) {
+    super(stepSequenceExecutor, eventRecorder, maxIterationsHandler, objectMapper,
+        wasteSignalPolicy);
     this.loopEvaluator = Validate.notNull(loopEvaluator, "loopEvaluator must not be null");
   }
 

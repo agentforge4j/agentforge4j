@@ -9,10 +9,13 @@ import com.agentforge4j.core.command.schema.CommandResponseSchema;
 import com.agentforge4j.core.command.schema.CommandResponseSchemaRenderer;
 import com.agentforge4j.core.command.schema.CommandSchemaFactory;
 import com.agentforge4j.core.command.schema.SystemRulesProvider;
+import com.agentforge4j.core.spi.governance.TokenGovernanceSignal;
+import com.agentforge4j.core.spi.governance.WasteSignalPolicy;
 import com.agentforge4j.core.spi.tool.ToolCatalog;
 import com.agentforge4j.core.spi.tool.ToolDescriptor;
 import com.agentforge4j.core.spi.tool.ToolScope;
 import com.agentforge4j.core.workflow.context.ContextMapping;
+import com.agentforge4j.core.workflow.context.ContextValue;
 import com.agentforge4j.core.workflow.event.WorkflowEventType;
 import com.agentforge4j.core.workflow.state.WorkflowState;
 import com.agentforge4j.llm.LlmClientResolver;
@@ -24,13 +27,21 @@ import com.agentforge4j.llm.api.ModelTier;
 import com.agentforge4j.llm.api.ModelTierResolutionException;
 import com.agentforge4j.llm.api.ModelTierResolver;
 import com.agentforge4j.llm.api.PromptLayerBoundaries;
+import com.agentforge4j.runtime.context.ContextFingerprint;
 import com.agentforge4j.runtime.event.EventRecorder;
 import com.agentforge4j.runtime.interceptor.LlmCallContext;
 import com.agentforge4j.runtime.interceptor.RunExecutionInterceptor;
+import com.agentforge4j.runtime.waste.WasteDetector;
+import com.agentforge4j.runtime.waste.WasteDetectorHistoryStore;
+import com.agentforge4j.runtime.waste.WasteDetectorInvocationHistory;
 import com.agentforge4j.util.Validate;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.nio.charset.StandardCharsets;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.stream.Collectors;
 import org.apache.commons.lang3.StringUtils;
 
 /**
@@ -61,6 +72,7 @@ public final class AgentInvoker {
   private final ModelTierResolver modelTierResolver;
   private final ToolCatalog toolCatalog;
   private final RunExecutionInterceptor runExecutionInterceptor;
+  private final WasteSignalPolicy wasteSignalPolicy;
   private final CommandResponseSchemaRenderer schemaRenderer = new CommandResponseSchemaRenderer();
   private final SystemRulesProvider systemRulesProvider = new SystemRulesProvider();
 
@@ -92,6 +104,7 @@ public final class AgentInvoker {
     this.modelTierResolver = builder.modelTierResolver;
     this.toolCatalog = builder.toolCatalog;
     this.runExecutionInterceptor = builder.runExecutionInterceptor;
+    this.wasteSignalPolicy = builder.wasteSignalPolicy;
   }
 
   /**
@@ -112,6 +125,7 @@ public final class AgentInvoker {
     private boolean promptCacheEnabled = false;
     private ToolCatalog toolCatalog;
     private RunExecutionInterceptor runExecutionInterceptor = RunExecutionInterceptor.NO_OP;
+    private WasteSignalPolicy wasteSignalPolicy = WasteSignalPolicy.NO_OP;
 
     private Builder() {
 
@@ -259,6 +273,21 @@ public final class AgentInvoker {
     }
 
     /**
+     * Overrides the policy reacting to {@link TokenGovernanceSignal}s raised by {@link WasteDetector}
+     * for this invoker's calls. Defaults to {@link WasteSignalPolicy#NO_OP} — every raised signal is
+     * still recorded as a {@code TOKEN_GOVERNANCE_SIGNAL} audit event regardless of this policy.
+     *
+     * @param wasteSignalPolicy policy instance; must not be {@code null}
+     *
+     * @return this builder
+     */
+    public Builder wasteSignalPolicy(WasteSignalPolicy wasteSignalPolicy) {
+      this.wasteSignalPolicy = Validate.notNull(wasteSignalPolicy,
+          "wasteSignalPolicy must not be null");
+      return this;
+    }
+
+    /**
      * Builds the {@link AgentInvoker}.
      *
      * @return configured invoker; never {@code null}
@@ -365,7 +394,7 @@ public final class AgentInvoker {
 
     String userInput = contextRenderer.render(state.getContext(), contextMapping);
     return invokeWithAudit(agent, userInput, stepPrompt, stepModelTier, state, agentId,
-        activeWorkflowId);
+        activeWorkflowId, contextMapping);
   }
 
   private AgentInvocationResult invokeWithAudit(AgentDefinition agent,
@@ -374,13 +403,15 @@ public final class AgentInvoker {
       String stepModelTier,
       WorkflowState state,
       String actorIdForEvents,
-      String activeWorkflowId) {
+      String activeWorkflowId,
+      ContextMapping contextMapping) {
     ProviderPreference preference = llmProviderSelectionStrategy.selectInitialProvider(
         agent, llmClientResolver.listAvailableClients());
     ModelResolution resolution = resolveModel(agent, preference, stepModelTier);
     LOG.log(System.Logger.Level.DEBUG,
         "Agent invoker entry agentId={0}, provider={1}, model={2}, modelSource={3}",
         agent.id(), preference.provider(), resolution.resolvedModel(), resolution.modelSource());
+    evaluateWasteSignals(state, agent, contextMapping, stepPrompt, resolution.requestedModelTier());
     LlmClient client = llmClientResolver.resolve(preference.provider());
     CommandResponseSchema schema = CommandSchemaFactory.build(agent.supportedCommands(),
         objectMapper);
@@ -410,6 +441,74 @@ public final class AgentInvoker {
         .withModelSource(resolution.modelSource())
         .withRequestedModelTier(resolution.requestedModelTier())
         .build();
+  }
+
+  /**
+   * Evaluates {@link WasteDetector#evaluateDuplicateInvocation} and (when a tier was resolved)
+   * {@link WasteDetector#evaluateUnjustifiedTierEscalation} against this step's persisted prior
+   * invocation (see {@link WasteDetectorHistoryStore}), records any raised signal, then persists
+   * this invocation as the new "prior" for next time.
+   *
+   * <p>{@code scopedContextFingerprint} fingerprints the mapping-filtered context, re-rendered
+   * with the reserved {@code __}-prefixed keys excluded rather than the literal {@code userInput}
+   * sent to the LLM: {@code ContextMapping.none()} (empty {@code inputKeys}) renders every
+   * context entry, including runtime bookkeeping such as
+   * {@code ReservedContextKeys#LLM_TOKENS_TOTAL}, which {@code LlmCallObserver} updates after
+   * every call — fingerprinting that raw render would make the "unchanged context" comparison
+   * spuriously fail on the very next invocation regardless of whether anything task-relevant
+   * changed. {@code inputFingerprint} fingerprints that same filtered context together with the
+   * step's static prompt material, so a signal distinguishes "only the context changed" from "the
+   * effective input is unchanged" when a step declares its own {@code stepPrompt}.
+   *
+   * <p><strong>Known limitation:</strong> the evaluators' {@code isRetry} parameter (which exists
+   * so a deliberate {@code RETRY_PREVIOUS} re-invocation is never flagged) is always passed
+   * {@code false} here — {@code AgentInvoker} has no signal distinguishing a runtime-driven retry
+   * from an ordinary repeat invocation, and adding one is a larger change than this wiring pass.
+   * Advisory-only and safe by construction: {@link WasteSignalPolicy#NO_OP} is the shipped
+   * default, so this can only ever produce an extra, harmless audit event, never alter execution.
+   */
+  private void evaluateWasteSignals(WorkflowState state, AgentDefinition agent,
+      ContextMapping contextMapping, String stepPrompt, ModelTier requestedTier) {
+    String stepId = state.getCurrentStepId();
+    if (stepId == null) {
+      return;
+    }
+    Map<String, ContextValue> nonReservedContext = state.getContext().entrySet().stream()
+        .filter(entry -> !entry.getKey().startsWith("__"))
+        .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue,
+            (first, second) -> first, LinkedHashMap::new));
+    String fingerprintSource = contextRenderer.render(nonReservedContext, contextMapping);
+    String scopedContextFingerprint = ContextFingerprint.of(fingerprintSource);
+    String inputFingerprint = ContextFingerprint.of(
+        fingerprintSource + ' ' + StringUtils.defaultString(stepPrompt));
+    Optional<WasteDetectorInvocationHistory> prior = WasteDetectorHistoryStore.readInvocation(
+        state, stepId, objectMapper);
+    String priorContextFingerprint = prior.map(WasteDetectorInvocationHistory::scopedContextFingerprint)
+        .orElse(null);
+    String priorInputFingerprint = prior.map(WasteDetectorInvocationHistory::inputFingerprint)
+        .orElse(null);
+    ModelTier priorResolvedTier = prior.map(WasteDetectorInvocationHistory::resolvedTier)
+        .orElse(null);
+
+    WasteDetector.evaluateDuplicateInvocation(stepId, agent.id(), scopedContextFingerprint,
+        inputFingerprint, priorContextFingerprint, priorInputFingerprint, false)
+        .ifPresent(signal -> recordWasteSignal(state, signal));
+    if (requestedTier != null) {
+      WasteDetector.evaluateUnjustifiedTierEscalation(stepId, agent.id(), requestedTier,
+          priorResolvedTier, scopedContextFingerprint, priorContextFingerprint, inputFingerprint,
+          priorInputFingerprint)
+          .ifPresent(signal -> recordWasteSignal(state, signal));
+    }
+
+    WasteDetectorHistoryStore.writeInvocation(state, new WasteDetectorInvocationHistory(stepId,
+        agent.id(), scopedContextFingerprint, inputFingerprint, requestedTier), objectMapper);
+  }
+
+  private void recordWasteSignal(WorkflowState state, TokenGovernanceSignal signal) {
+    wasteSignalPolicy.onSignal(signal);
+    String agentIdPart = signal.agentId() != null ? " agentId=%s".formatted(signal.agentId()) : "";
+    eventRecorder.record(state.getRunId(), signal.stepId(), WorkflowEventType.TOKEN_GOVERNANCE_SIGNAL,
+        "kind=%s%s detail=%s".formatted(signal.kind(), agentIdPart, signal.detail()), "runtime");
   }
 
   /**

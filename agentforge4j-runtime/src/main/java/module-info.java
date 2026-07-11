@@ -49,4 +49,9 @@ module agentforge4j.runtime {
   exports com.agentforge4j.runtime.exception;
 
   opens com.agentforge4j.runtime.llm to com.fasterxml.jackson.databind;
+  // com.agentforge4j.runtime.waste stays UNEXPORTED (WasteDetector and its persisted-history
+  // types are pure runtime-internal bookkeeping, mirroring com.agentforge4j.runtime.context) but
+  // needs reflective access for Jackson to serialize WasteDetectorInvocationHistory/
+  // WasteDetectorLoopHistory to and from the reserved __wasteDetectorHistory.* context keys.
+  opens com.agentforge4j.runtime.waste to com.fasterxml.jackson.databind;
 }

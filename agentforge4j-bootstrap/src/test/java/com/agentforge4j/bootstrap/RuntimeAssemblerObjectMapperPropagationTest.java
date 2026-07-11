@@ -17,6 +17,7 @@ import com.agentforge4j.core.workflow.step.StepDefinition;
 import com.agentforge4j.core.workflow.step.behaviour.CompactBehaviour;
 import com.agentforge4j.core.workflow.step.behaviour.CompactionPolicy;
 import com.agentforge4j.core.workflow.step.behaviour.DeterministicExtract;
+import com.agentforge4j.runtime.ContextPackRegistry;
 import com.agentforge4j.runtime.command.FileSink;
 import com.agentforge4j.runtime.event.EventRecorder;
 import com.agentforge4j.runtime.interceptor.RunExecutionInterceptor;
@@ -84,7 +85,8 @@ class RuntimeAssemblerObjectMapperPropagationTest {
         null,
         RunExecutionInterceptor.NO_OP,
         spyMapper,
-        List.of());
+        List.of(),
+        ContextPackRegistry.EMPTY);
 
     String runId = runtime.start("wf1");
 
