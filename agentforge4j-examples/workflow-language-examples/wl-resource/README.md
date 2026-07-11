@@ -28,9 +28,9 @@ loaded text. To watch it print, run `WlResourceApp.main` from your IDE.
 
 **Offline only.** Unlike the sibling examples, this one makes **no model call**, so it has no
 real-provider path — it always runs offline against the empty fake, with no key and no extra
-dependency. A `example.properties` / `.env.example` pair is bundled for surface consistency with the
-other examples, but the fake/real toggle is **inert here**: setting a key or provider changes nothing,
-because the workflow never invokes an agent.
+dependency. Unlike the other examples, this module ships no `example.properties` / `.env.example`
+fake/real toggle, since the workflow never invokes an agent and there is nothing for the toggle to
+control.
 
 ## Expected behaviour / output
 

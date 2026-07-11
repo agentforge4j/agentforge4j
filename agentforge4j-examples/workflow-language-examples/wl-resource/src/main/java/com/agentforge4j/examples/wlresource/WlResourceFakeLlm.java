@@ -18,8 +18,8 @@ import java.util.Map;
  *
  * <p>This example has no meaningful real-provider execution mode because no agent step is ever invoked, so
  * no model is ever called. That is why it intentionally differs from the other five examples: there is no
- * {@code ExampleLlmConfig} and no real/fake selection — the offline run and the test both use this empty
- * fake, and the {@code example.properties} / {@code .env.example} toggle is inert here.
+ * {@code ExampleLlmConfig}, no real/fake selection, and no {@code example.properties} / {@code .env.example}
+ * toggle — the offline run and the test both use this empty fake unconditionally.
  */
 final class WlResourceFakeLlm {
 

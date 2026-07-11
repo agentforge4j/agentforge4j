@@ -17,8 +17,9 @@ import java.util.Objects;
  *
  * <p>Because this workflow runs no agent, it makes no model call and so has no real-provider path: the
  * offline run and the test both use {@link WlResourceFakeLlm}'s empty fake (the runtime still requires a
- * resolver, but it is never consulted). The bundled {@code example.properties} / {@code .env.example}
- * fake/real toggle is present for surface consistency with the sibling examples but is inert here.
+ * resolver, but it is never consulted). Unlike the sibling examples, this module has no
+ * {@code example.properties} / {@code .env.example} fake/real toggle, since there is nothing here for it
+ * to control.
  */
 public final class WlResourceApp {
 
