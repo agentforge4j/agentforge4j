@@ -10,9 +10,12 @@
 // empirically while writing this script — dist/index.cjs matched /cloud/i and /stripe/i purely
 // from unrelated bundled-dependency text, and this package's own agent.schema.json legitimately
 // uses "CLOUD" as a LOCAL/CLOUD execution-mode enum value, unrelated to the AgentForge4j Cloud
-// product layer). Scanning our own source avoids both classes of false positive. The term list
-// matches ExecutionEstimatorForbiddenTermTest's calibrated monetization vocabulary (design §13),
-// plus "clerk" per this workflow's own design section.
+// product layer). Scanning our own source avoids both classes of false positive. The term list is
+// ExecutionEstimatorForbiddenTermTest's calibrated monetization vocabulary (design §13) minus its
+// two currency-symbol entries ("€", "$") plus "clerk" per this workflow's own design section. The
+// symbols are deliberately dropped, not missed: every pattern below is \b-wrapped, and \b cannot
+// anchor meaningfully around a bare symbol character — applied to "$" it would either never match
+// or false-positive on every "${...}" template literal in this codebase.
 
 import { execSync } from 'node:child_process';
 import { globSync, readFileSync } from 'node:fs';

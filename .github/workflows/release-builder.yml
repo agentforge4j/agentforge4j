@@ -59,6 +59,11 @@ jobs:
             exit 1
           fi
 
+      - name: Set up Node
+        uses: actions/setup-node@v6
+        with:
+          node-version-file: '.nvmrc'
+
       - name: Guard release tag matches package.json's version
         working-directory: agentforge4j-workflow-builder
         run: |
