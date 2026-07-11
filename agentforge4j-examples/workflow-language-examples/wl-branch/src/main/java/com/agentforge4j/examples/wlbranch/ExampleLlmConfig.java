@@ -117,8 +117,8 @@ final class ExampleLlmConfig {
     boolean isTrueValue = normalised.equalsIgnoreCase("true");
     boolean isFalseValue = normalised.equalsIgnoreCase("false");
     Validate.isTrue(isTrueValue || isFalseValue,
-        "Invalid value \"%s\" for %s: expected \"true\" or \"false\" (case-insensitive)."
-            .formatted(value, FAKE_LLM_PROP));
+        "Invalid value \"%s\" for %s (or %s): expected \"true\" or \"false\" (case-insensitive)."
+            .formatted(value, FAKE_LLM_PROP, FAKE_LLM_ENV));
     return isTrueValue;
   }
 

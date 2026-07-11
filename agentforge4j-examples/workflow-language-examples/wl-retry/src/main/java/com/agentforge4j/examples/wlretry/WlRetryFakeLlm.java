@@ -27,7 +27,7 @@ final class WlRetryFakeLlm {
    * The scripted model output for the fallback agent's single call: a lone {@code COMPLETE} finishes
    * the run.
    */
-  static final String SCRIPTED_COMPLETE = "[{\"type\":\"COMPLETE\"}]";
+  private static final String SCRIPTED_COMPLETE = "[{\"type\":\"COMPLETE\"}]";
 
   /**
    * Schema version the {@link FakeScript} is authored against. The fake provider requires a positive
