@@ -67,7 +67,7 @@ class BranchBehaviourHandlerTest {
         WorkflowLifecycle.ACTIVE,
         Map.of(),
         Map.of(),
-        List.of(resourceStep("holder")));
+        List.of(resourceStep("holder")), List.of());
     state = new WorkflowState("run-1", workflow.id(), null, Instant.parse("2026-05-01T00:00:00Z"));
     executionContext = new ExecutionContext(state, workflow, 32);
     executionContext.enterWorkflow(workflow);

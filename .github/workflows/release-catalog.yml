@@ -1,0 +1,253 @@
+name: Release catalog
+
+# Tag-triggered release pipeline for the shipped workflow catalog track (`catalog-v*` tags; the
+# framework and builder release on their own prefixed tracks with their own workflows). Mirrors
+# release-framework.yml's four-stage shape, scoped to the agentforge4j-workflows-catalog module:
+#
+#   release-guard    — fails fast: full tag-format check, tag version equals the catalog module's
+#                      own (independent) POM version and is not a SNAPSHOT, the tagged commit is
+#                      on `main` or a `release/catalog-*` branch, the committed release-note source
+#                      docs/releases/catalog/<version>.md exists with its mandatory headings, and
+#                      the catalog manifest declares a pinned, released framework version
+#                      (minimumAgentForge4jVersion == maximumAgentForge4jVersion == an existing
+#                      framework-v* tag) — an unbounded or unpinned manifest at release time is a
+#                      guard failure, not a warning.
+#   release-verify   — full release-profile build of the catalog module and its ancestor chain
+#                      (needed to compile/test against, never published), on the same OS × JDK
+#                      matrix as CI. Runs the module's own catalog-fixture and forbidden-term
+#                      tests. No secrets, no approval.
+#   release-publish  — installs the ancestor chain locally (never deployed — those publish on
+#                      their own framework-v* track), then signs and deploys only the catalog
+#                      module, flattened (no SNAPSHOT parent, no in-reactor-only property
+#                      references), to the Maven Central Portal. Gated by the `maven-central`
+#                      GitHub environment. Stops in VALIDATED state; the final release-to-Central
+#                      action is a manual portal step.
+#   release-announce — creates the GitHub Release from the tag: title = tag, body = the committed
+#                      release-note source published verbatim. No SBOM attachment — the existing
+#                      CycloneDX setup only produces a framework-wide aggregate BOM, and building
+#                      module-scoped SBOM machinery for this one track is out of scope.
+#
+# Expected configuration (owner-managed): environment `maven-central` with a required
+# reviewer, holding the secrets GPG_PRIVATE_KEY, GPG_PASSPHRASE, CENTRAL_TOKEN_USERNAME,
+# CENTRAL_TOKEN_PASSWORD (shared with release-framework.yml).
+
+on:
+  push:
+    tags:
+      - "catalog-v*"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-catalog-${{ github.ref }}
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  release-guard:
+    name: release-guard
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        # Full history and all branches/tags: the branch-ancestry guard needs origin/main and
+        # origin/release/catalog-*, and the manifest guard needs every framework-v* tag to exist
+        # locally.
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Guard tag format
+        run: |
+          if [[ ! "$GITHUB_REF_NAME" =~ ^catalog-v[0-9]+\.[0-9]+\.[0-9]+(-RC[0-9]+)?$ ]]; then
+            echo "Tag '${GITHUB_REF_NAME}' does not match catalog-v<major>.<minor>.<patch>[-RCn]." >&2
+            exit 1
+          fi
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: maven
+
+      - name: Guard release tag matches the catalog module's own POM version
+        run: |
+          TAG_VERSION="${GITHUB_REF_NAME#catalog-v}"
+          POM_VERSION="$(./mvnw -q -pl agentforge4j-workflows-catalog help:evaluate -Dexpression=project.version -DforceStdout)"
+          if [ "$TAG_VERSION" != "$POM_VERSION" ]; then
+            echo "Tag version (${TAG_VERSION}) does not match catalog module's POM version (${POM_VERSION})." >&2
+            exit 1
+          fi
+          case "$POM_VERSION" in
+            *-SNAPSHOT)
+              echo "Refusing to release SNAPSHOT version ${POM_VERSION}." >&2
+              exit 1
+              ;;
+          esac
+
+      - name: Guard tagged commit is on main or a release branch
+        run: |
+          if git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "Tagged commit is on main."
+            exit 0
+          fi
+          for REF in $(git for-each-ref --format='%(refname:short)' 'refs/remotes/origin/release/catalog-*'); do
+            if git merge-base --is-ancestor "$GITHUB_SHA" "$REF"; then
+              echo "Tagged commit is on ${REF}."
+              exit 0
+            fi
+          done
+          echo "Tagged commit ${GITHUB_SHA} is not on main or any release/catalog-* branch." >&2
+          exit 1
+
+      - name: Guard committed release-note source exists with mandatory headings
+        run: |
+          VERSION="${GITHUB_REF_NAME#catalog-v}"
+          NOTES="docs/releases/catalog/${VERSION}.md"
+          if [ ! -f "$NOTES" ]; then
+            echo "Missing release-note source ${NOTES} in the tagged tree." >&2
+            exit 1
+          fi
+          MISSING=0
+          for HEADING in "Highlights" "Breaking changes" "Compatibility" "Coordinates" "Support"; do
+            if ! grep -Eq "^#{1,6} +${HEADING}" "$NOTES"; then
+              echo "Release-note source ${NOTES} is missing the mandatory heading '${HEADING}'." >&2
+              MISSING=1
+            fi
+          done
+          exit $MISSING
+
+      - name: Guard catalog manifest pins min = max = a released framework version
+        # Pre-1.0 the compatibility model promises no cross-version read support (design §4 rule
+        # 3): a released catalog must declare it works against exactly one framework version, not
+        # a range. Dev-time the manifest is intentionally unbounded (maximumAgentForge4jVersion:
+        # null) so in-reactor builds against a moving framework SNAPSHOT don't need constant
+        # edits; this guard only fires at release-tag time.
+        run: |
+          MANIFEST="agentforge4j-workflows-catalog/src/main/resources/shipped-workflows/agentforge4j-catalog.json"
+          MIN="$(jq -r '.minimumAgentForge4jVersion' "$MANIFEST")"
+          MAX="$(jq -r '.maximumAgentForge4jVersion' "$MANIFEST")"
+          if [ "$MIN" = "null" ] || [ -z "$MIN" ]; then
+            echo "Manifest ${MANIFEST} is missing minimumAgentForge4jVersion." >&2
+            exit 1
+          fi
+          if [ "$MAX" = "null" ] || [ -z "$MAX" ]; then
+            echo "Manifest ${MANIFEST} has an unbounded maximumAgentForge4jVersion (null); a release must pin an exact framework version." >&2
+            exit 1
+          fi
+          if [ "$MIN" != "$MAX" ]; then
+            echo "Manifest ${MANIFEST} declares a range (${MIN}..${MAX}); a release must pin min == max to exactly one framework version." >&2
+            exit 1
+          fi
+          if ! git rev-parse "refs/tags/framework-v${MIN}" >/dev/null 2>&1; then
+            echo "Manifest pins framework version ${MIN}, but no framework-v${MIN} tag exists." >&2
+            exit 1
+          fi
+          echo "Manifest pins framework version ${MIN}, which is released."
+
+  release-verify:
+    name: release-verify (${{ matrix.os }}, JDK ${{ matrix.java }})
+    needs: release-guard
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        java: ["17", "21"]
+        exclude:
+          - os: windows-latest
+            java: "17"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up JDK ${{ matrix.java }}
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: ${{ matrix.java }}
+          cache: maven
+
+      # Unsigned, same as release-framework.yml's verify stage: the release profile's GPG step is
+      # skipped so this stage needs no key material. Runs the catalog module's own
+      # catalog-fixture and forbidden-term tests (and exercises flatten:flatten, bound to
+      # process-resources).
+      - name: Full release-profile verify (catalog module and its ancestor chain)
+        run: ./mvnw -B -ntp -Prelease -pl agentforge4j-workflows-catalog -am verify -Dgpg.skip=true
+
+      - name: Upload test reports
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-catalog-test-reports-${{ matrix.os }}-jdk-${{ matrix.java }}
+          path: |
+            **/target/surefire-reports/**
+            **/target/failsafe-reports/**
+          if-no-files-found: ignore
+          retention-days: 7
+
+  release-publish:
+    name: release-publish
+    needs: release-verify
+    runs-on: ubuntu-latest
+    environment: maven-central
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up JDK 17 with Central credentials and GPG key
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: maven
+          server-id: central
+          server-username: CENTRAL_TOKEN_USERNAME
+          server-password: CENTRAL_TOKEN_PASSWORD
+          gpg-private-key: ${{ secrets.GPG_PRIVATE_KEY }}
+          gpg-passphrase: MAVEN_GPG_PASSPHRASE
+
+      # The catalog's ancestor chain (agentforge4j-core, agentforge4j-schema, etc.) publishes only
+      # on its own framework-v* track, never here — install it locally so the catalog module's
+      # build/test can resolve it, without deploying it a second time under this tag.
+      - name: Install the ancestor chain locally (not deployed)
+        run: ./mvnw -B -ntp -pl agentforge4j-workflows-catalog -am install -DskipTests -Dgpg.skip=true
+
+      # No -am: only the catalog module itself is signed and uploaded. Tests already ran in
+      # release-verify against this exact tag; this stage repeats packaging, signs, and deploys.
+      - name: Sign and upload the catalog module to the Central Portal
+        run: ./mvnw -B -ntp -Prelease -pl agentforge4j-workflows-catalog deploy -DskipTests
+        env:
+          CENTRAL_TOKEN_USERNAME: ${{ secrets.CENTRAL_TOKEN_USERNAME }}
+          CENTRAL_TOKEN_PASSWORD: ${{ secrets.CENTRAL_TOKEN_PASSWORD }}
+          MAVEN_GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+
+  release-announce:
+    name: release-announce
+    needs: release-publish
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Create GitHub Release from the committed note source
+        run: |
+          VERSION="${GITHUB_REF_NAME#catalog-v}"
+          NOTES="docs/releases/catalog/${VERSION}.md"
+          PRERELEASE=""
+          if [[ "$GITHUB_REF_NAME" == *-RC* ]]; then
+            PRERELEASE="--prerelease"
+          fi
+          gh release create "$GITHUB_REF_NAME" \
+            --title "$GITHUB_REF_NAME" \
+            --notes-file "$NOTES" \
+            --verify-tag \
+            $PRERELEASE
+        env:
+          GH_TOKEN: ${{ github.token }}

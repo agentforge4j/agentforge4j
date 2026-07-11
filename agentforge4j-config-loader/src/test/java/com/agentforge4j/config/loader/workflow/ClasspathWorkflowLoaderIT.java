@@ -49,6 +49,7 @@ class ClasspathWorkflowLoaderIT {
     Files.writeString(workflowDir.resolve("workflow.json"), """
         {
           "kind": "WORKFLOW",
+          "schemaVersion": 1,
           "id": "sample",
           "name": "Sample",
           "description": "Sample workflow",

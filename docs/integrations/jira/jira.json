@@ -1,0 +1,11 @@
+{
+  "id": "jira",
+  "displayName": "Jira",
+  "type": "MCP_STREAMABLE_HTTP",
+  "active": true,
+  "config": {
+    "url": "<your-jira-host hosted MCP endpoint>",
+    "requestTimeout": "PT30S",
+    "secretHeaders": { "Authorization": "<bare secret-reference key, e.g. JIRA_TOKEN — omit this whole field if the server authorizes via its own OAuth flow>" }
+  }
+}

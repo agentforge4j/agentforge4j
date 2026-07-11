@@ -1,0 +1,150 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <groupId>org.agentforge4j.docs</groupId>
+  <artifactId>agentforge4j-docs-emitter</artifactId>
+  <version>0.0.1-SNAPSHOT</version>
+  <packaging>jar</packaging>
+
+  <name>AgentForge4j Docs Emitter</name>
+  <description>Standalone tool that reflects over the installed AgentForge4j OSS artifacts and emits
+    JSON descriptors (provider matrix, contract sets, bootstrap value-config) for the documentation
+    generators to render. Built independently of the OSS reactor; consumes resolvable OSS artifacts
+    the way a third-party application would. Deliberately non-modular so the OSS artifacts resolve on
+    the classpath (JPMS flattened), keeping ServiceLoader discovery and reflection straightforward.</description>
+
+  <licenses>
+    <license>
+      <name>Apache License, Version 2.0</name>
+      <url>https://www.apache.org/licenses/LICENSE-2.0</url>
+      <distribution>repo</distribution>
+    </license>
+  </licenses>
+
+  <properties>
+    <java.version>17</java.version>
+    <maven.compiler.release>${java.version}</maven.compiler.release>
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    <!-- Pre-0.1.0 the emitter resolves the OSS SNAPSHOT from the local .m2; run
+         `./mvnw install -Dmaven.test.skip=true` on the OSS reactor first. -->
+    <agentforge4j.version>0.0.1-SNAPSHOT</agentforge4j.version>
+    <exec-maven-plugin.version>3.5.0</exec-maven-plugin.version>
+    <junit.version>5.11.4</junit.version>
+    <surefire.version>3.5.2</surefire.version>
+  </properties>
+
+  <dependencies>
+    <!-- Contract sources: sealed types, enums, @JsonSubTypes discriminators. -->
+    <dependency>
+      <groupId>org.agentforge4j</groupId>
+      <artifactId>agentforge4j-core</artifactId>
+      <version>${agentforge4j.version}</version>
+    </dependency>
+    <!-- ModelTier. -->
+    <dependency>
+      <groupId>org.agentforge4j</groupId>
+      <artifactId>agentforge4j-llm-api</artifactId>
+      <version>${agentforge4j.version}</version>
+    </dependency>
+    <!-- LlmClientFactory SPI + ShippedModelTierDefaults. -->
+    <dependency>
+      <groupId>org.agentforge4j</groupId>
+      <artifactId>agentforge4j-llm</artifactId>
+      <version>${agentforge4j.version}</version>
+    </dependency>
+    <!-- AgentForge4jBootstrap.Builder + LlmProviderConfig. -->
+    <dependency>
+      <groupId>org.agentforge4j</groupId>
+      <artifactId>agentforge4j-bootstrap</artifactId>
+      <version>${agentforge4j.version}</version>
+    </dependency>
+    <!-- Validate. -->
+    <dependency>
+      <groupId>org.agentforge4j</groupId>
+      <artifactId>agentforge4j-util</artifactId>
+      <version>${agentforge4j.version}</version>
+    </dependency>
+
+    <!-- All provider modules so ServiceLoader<LlmClientFactory> discovers every factory on the
+         classpath. The fake provider is included so the emitter can exclude it by name explicitly. -->
+    <dependency>
+      <groupId>org.agentforge4j</groupId>
+      <artifactId>agentforge4j-llm-openai</artifactId>
+      <version>${agentforge4j.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>org.agentforge4j</groupId>
+      <artifactId>agentforge4j-llm-claude</artifactId>
+      <version>${agentforge4j.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>org.agentforge4j</groupId>
+      <artifactId>agentforge4j-llm-gemini</artifactId>
+      <version>${agentforge4j.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>org.agentforge4j</groupId>
+      <artifactId>agentforge4j-llm-mistral</artifactId>
+      <version>${agentforge4j.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>org.agentforge4j</groupId>
+      <artifactId>agentforge4j-llm-bedrock</artifactId>
+      <version>${agentforge4j.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>org.agentforge4j</groupId>
+      <artifactId>agentforge4j-llm-azure-openai</artifactId>
+      <version>${agentforge4j.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>org.agentforge4j</groupId>
+      <artifactId>agentforge4j-llm-ollama</artifactId>
+      <version>${agentforge4j.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>org.agentforge4j</groupId>
+      <artifactId>agentforge4j-llm-vllm</artifactId>
+      <version>${agentforge4j.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>org.agentforge4j</groupId>
+      <artifactId>agentforge4j-llm-openai-compatible</artifactId>
+      <version>${agentforge4j.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>org.agentforge4j</groupId>
+      <artifactId>agentforge4j-llm-fake</artifactId>
+      <version>${agentforge4j.version}</version>
+    </dependency>
+
+    <dependency>
+      <groupId>org.junit.jupiter</groupId>
+      <artifactId>junit-jupiter</artifactId>
+      <version>${junit.version}</version>
+      <scope>test</scope>
+    </dependency>
+  </dependencies>
+
+  <build>
+    <plugins>
+      <plugin>
+        <groupId>org.codehaus.mojo</groupId>
+        <artifactId>exec-maven-plugin</artifactId>
+        <version>${exec-maven-plugin.version}</version>
+        <configuration>
+          <mainClass>com.agentforge4j.docs.emitter.DocsEmitter</mainClass>
+        </configuration>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-surefire-plugin</artifactId>
+        <version>${surefire.version}</version>
+      </plugin>
+    </plugins>
+  </build>
+</project>

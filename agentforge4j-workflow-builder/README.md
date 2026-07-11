@@ -106,8 +106,14 @@ npm run test
 
 ## Versioning
 
-This package is versioned independently of the Java modules (currently `0.3.0`) and follows semantic
-versioning for its published API.
+This package is versioned independently of the Java modules and follows semantic versioning for
+its published API, on the `builder-v*` release track — see
+[CONTRIBUTING.md](../CONTRIBUTING.md#releases).
+
+**Supported versions.** Only the latest published minor is supported before 1.0.0 — see
+[SECURITY.md](../SECURITY.md). Published versions below `0.5.0` (`0.2.1`, `0.2.2`, `0.3.0`) are
+unsupported pre-launch test builds; they also predate the workflow schema's required
+`schemaVersion` field. `0.4.0` was merged but never published to npm — `0.5.0` supersedes it.
 
 ## License
 

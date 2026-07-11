@@ -1,5 +1,6 @@
 {
   "kind": "WORKFLOW",
+  "schemaVersion": 1,
   "id": "starter-smoke",
   "name": "Starter Smoke",
   "steps": [

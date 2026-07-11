@@ -43,7 +43,7 @@ class AssignContextBehaviourHandlerTest {
         .build();
     WorkflowDefinition wf = new WorkflowDefinition(
         "wf-1", "W", null, null, null, null, null,
-        WorkflowSource.CUSTOM, WorkflowLifecycle.ACTIVE, Map.of(), Map.of(), List.of(step));
+        WorkflowSource.CUSTOM, WorkflowLifecycle.ACTIVE, Map.of(), Map.of(), List.of(step), List.of());
     AssignContextBehaviourHandler handler =
         new AssignContextBehaviourHandler(new EventRecorder(new InMemoryWorkflowEventLog(), CLOCK));
 

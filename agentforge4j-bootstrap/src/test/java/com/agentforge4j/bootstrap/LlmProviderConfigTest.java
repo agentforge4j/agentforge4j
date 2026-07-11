@@ -2,7 +2,10 @@
 package com.agentforge4j.bootstrap;
 
 import com.agentforge4j.llm.LlmSecretReference;
+import com.agentforge4j.llm.ShippedModelTierDefaults;
+import com.agentforge4j.llm.api.ModelTier;
 import java.time.Duration;
+import java.util.Map;
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -45,7 +48,7 @@ class LlmProviderConfigTest {
     LlmProviderConfig config = LlmProviderConfig.vllm().defaults().build();
     assertThat(config.provider()).isEqualTo("vllm");
     assertThat(config.baseUrl()).isEqualTo("http://localhost:8000");
-    assertThat(config.defaultModel()).isNull();
+    assertThat(config.defaultModel()).isNotNull();
     assertThat(config.connectTimeout()).isNotNull();
     assertThat(config.apiKeyReference()).isNull();
   }
@@ -98,6 +101,23 @@ class LlmProviderConfigTest {
     assertThat(config.defaultModel()).isNull();
     assertThat(config.connectTimeout()).isNotNull();
     assertThat(config.apiKeyReference()).isNull();
+  }
+
+  @Test
+  void presetModelsTrackShippedModelTierDefaults() {
+    Map<String, Map<ModelTier, String>> shipped = ShippedModelTierDefaults.asMap();
+    assertThat(LlmProviderConfig.openai().defaults().build().defaultModel())
+        .isEqualTo(shipped.get("openai").get(ModelTier.STANDARD));
+    assertThat(LlmProviderConfig.claude().defaults().build().defaultModel())
+        .isEqualTo(shipped.get("claude").get(ModelTier.STANDARD));
+    assertThat(LlmProviderConfig.gemini().defaults().build().defaultModel())
+        .isEqualTo(shipped.get("gemini").get(ModelTier.STANDARD));
+    assertThat(LlmProviderConfig.mistral().defaults().build().defaultModel())
+        .isEqualTo(shipped.get("mistral").get(ModelTier.STANDARD));
+    assertThat(LlmProviderConfig.ollama().defaults().build().defaultModel())
+        .isEqualTo(shipped.get("ollama").get(ModelTier.STANDARD));
+    assertThat(LlmProviderConfig.vllm().defaults().build().defaultModel())
+        .isEqualTo(shipped.get("vllm").get(ModelTier.STANDARD));
   }
 
   @Test
