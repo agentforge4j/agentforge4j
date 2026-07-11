@@ -170,11 +170,38 @@ public final class DefaultWorkflowRuntime implements WorkflowRuntime {
       ensureNotCancelled(state, "continue");
       Validate.isTrue(state.getStatus() == WorkflowStatus.PAUSED,
           "Cannot continue run '%s' in status %s".formatted(runId, state.getStatus()));
+      rewindLoopAwaitingMaxIterationsDecision(state);
       state.setStatus(WorkflowStatus.RUNNING);
       state.setLastUpdatedAt(clock.instant());
       WorkflowDefinition workflow = workflowRepository.get(state.getWorkflowId());
       drive(state, workflow);
     }
+  }
+
+  /**
+   * When the run is {@code PAUSED} because a loop reached {@code maxIterations} under
+   * {@code MaxIterationsAction.AWAIT_USER} (see {@link WorkflowState#getBlueprintIdAwaitingMaxIterationsDecision()}),
+   * rewinds that loop's already-completed iteration — evicting its generated-artifact bytes and clearing its state
+   * via {@link WorkflowState#clearEntriesFromUid(int, java.util.Set)} — so the loop restarts at iteration one on
+   * this drive instead of the resume-skip guard mistaking the already-executed iteration for still in progress and
+   * re-pausing with no progress. A no-op when the run is {@code PAUSED} for a different reason (for example an
+   * interceptor veto), or when the target-based rewind in {@link #retry} already discharged it. Called
+   * unconditionally by both {@link #continueRun} and {@link #retry}, before either computes its own target-specific
+   * rewind, because a retry target positioned after the paused loop (or with nothing recorded at or after it) would
+   * otherwise leave the loop's stale bookkeeping untouched. Runs before any {@link ExecutionContext} for this drive
+   * exists, so no loop iteration can be active on the call stack yet — the exclusion set is always empty.
+   */
+  private void rewindLoopAwaitingMaxIterationsDecision(WorkflowState state) {
+    String blueprintId = state.getBlueprintIdAwaitingMaxIterationsDecision();
+    if (blueprintId == null) {
+      return;
+    }
+    int bodyStartUid = state.getLoopIterationBodyStartUid(blueprintId);
+    if (bodyStartUid > 0) {
+      GeneratedArtifactEviction.evictFromUid(generatedArtifactStore, state, bodyStartUid);
+      state.clearEntriesFromUid(bodyStartUid, Set.of());
+    }
+    state.setBlueprintIdAwaitingMaxIterationsDecision(null);
   }
 
   /**
@@ -207,6 +234,13 @@ public final class DefaultWorkflowRuntime implements WorkflowRuntime {
       WorkflowDefinition workflow = workflowRepository.get(state.getWorkflowId());
       StepDefinition target = resolveTopLevelRetryTarget(workflow, stepId);
 
+      // A loop paused at maxIterations under AWAIT_USER can never itself be the retry target (a
+      // BlueprintRef is not a StepDefinition), so a target positioned after such a loop — or one
+      // with nothing recorded at or after it — would leave the loop's stale cursor/body-start-uid
+      // untouched by the target-based rewind below. Discharge that independently of the target's
+      // sequence position first, mirroring continueRun.
+      rewindLoopAwaitingMaxIterationsDecision(state);
+
       // Reposition the run at the target: clear the target's output and everything that ran at or
       // after it, so the re-drive re-executes the target and all downstream steps rather than
       // reusing stale outputs. The rewind threshold is the EARLIEST uid found at or after the
@@ -217,11 +251,13 @@ public final class DefaultWorkflowRuntime implements WorkflowRuntime {
       // range. Reserved (__-prefixed) context keys are preserved by clearEntriesFromUid; when
       // nothing at or after the target ever executed there is nothing to clear. Evict the captured
       // bytes for any artifact emitted at or after the threshold first, so the re-drive re-emits
-      // cleanly (upsert) rather than leaving a stale capture for a path it may not re-emit.
+      // cleanly (upsert) rather than leaving a stale capture for a path it may not re-emit. retry()
+      // runs before any ExecutionContext for this drive exists, so no loop iteration can be active
+      // on the call stack yet — the exclusion set is always empty.
       Integer rewindUid = earliestUidAtOrAfter(workflow, target, state);
       if (rewindUid != null) {
         GeneratedArtifactEviction.evictFromUid(generatedArtifactStore, state, rewindUid);
-        state.clearEntriesFromUid(rewindUid);
+        state.clearEntriesFromUid(rewindUid, Set.of());
       }
       // A PAUSED run carries pending suspension state for the step it paused on; clear it so the
       // re-drive starts the target cleanly instead of re-entering the previous pause. The failure
@@ -246,7 +282,7 @@ public final class DefaultWorkflowRuntime implements WorkflowRuntime {
    * Returns the earliest execution uid recorded for the retry target or anything after it in the workflow's top-level
    * sequence — descending into blueprint bodies (including their gate markers) and nested workflows — or {@code null}
    * when nothing at or after the target has ever executed. This is the rewind threshold for
-   * {@link WorkflowState#clearEntriesFromUid(int)}: uid order can diverge from sequence order across resume drives
+   * {@link WorkflowState#clearEntriesFromUid(int, java.util.Set)}: uid order can diverge from sequence order across resume drives
    * (output-less steps re-execute and take fresh uids), so the earliest downstream uid, not the target's own latest
    * uid, bounds the state that repositioning must discard.
    *

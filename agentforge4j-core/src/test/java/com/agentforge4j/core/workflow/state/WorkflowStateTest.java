@@ -13,6 +13,7 @@ import java.time.Instant;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -225,7 +226,7 @@ class WorkflowStateTest {
     state.putContextValue("regular_key", new StringContextValue("value", ContextProvenance.USER_SUPPLIED));
     state.putContextKeyWrittenAtUid("regular_key", 5);
 
-    state.clearEntriesFromUid(5);
+    state.clearEntriesFromUid(5, Set.of());
 
     assertThat(state.getContext()).doesNotContainKey("regular_key");
     assertThat(state.getContextKeyWrittenAtUid()).doesNotContainKey("regular_key");
@@ -238,7 +239,7 @@ class WorkflowStateTest {
     state.putContextValue("__reserved_key", reservedValue);
     state.putContextKeyWrittenAtUid("__reserved_key", 5);
 
-    state.clearEntriesFromUid(5);
+    state.clearEntriesFromUid(5, Set.of());
 
     assertThat(state.getContext()).containsEntry("__reserved_key", reservedValue);
     assertThat(state.getContextKeyWrittenAtUid()).containsEntry("__reserved_key", 5);
@@ -251,7 +252,7 @@ class WorkflowStateTest {
     state.putContextValue("early_key", earlyValue);
     state.putContextKeyWrittenAtUid("early_key", 3);
 
-    state.clearEntriesFromUid(5);
+    state.clearEntriesFromUid(5, Set.of());
 
     assertThat(state.getContext()).containsEntry("early_key", earlyValue);
     assertThat(state.getContextKeyWrittenAtUid()).containsEntry("early_key", 3);
@@ -264,12 +265,45 @@ class WorkflowStateTest {
     state.putContextValue(ReservedContextKeys.LLM_TOKENS_TOTAL, totalValue);
     state.putContextKeyWrittenAtUid(ReservedContextKeys.LLM_TOKENS_TOTAL, 5);
 
-    state.clearEntriesFromUid(5);
+    state.clearEntriesFromUid(5, Set.of());
 
     assertThat(ReservedContextKeys.LLM_TOKENS_TOTAL).isEqualTo("__llm_tokens_total");
     assertThat(state.getContext()).containsEntry(ReservedContextKeys.LLM_TOKENS_TOTAL, totalValue);
     assertThat(state.getContextKeyWrittenAtUid())
         .containsEntry(ReservedContextKeys.LLM_TOKENS_TOTAL, 5);
+  }
+
+  @Test
+  void clearStepEntriesFromUid_clears_step_entries_and_loop_markers_but_preserves_context_and_artifacts() {
+    WorkflowState state = new WorkflowState("run-1", "wf-1", null, t());
+    state.putStepExecutionUid("early-step", 3);
+    state.putStepOutput("early-step", "early-out");
+    state.putStepExecutionUid("body-step", 5);
+    state.putStepOutput("body-step", "body-out");
+    StringContextValue draft = new StringContextValue("draft-v1", ContextProvenance.LLM_GENERATED);
+    state.putContextValue("draft", draft);
+    state.putContextKeyWrittenAtUid("draft", 5);
+    state.markLoopCompleted("nested-loop", 6);
+    state.markLoopCompleted("earlier-loop", 2);
+    ArtifactDescriptor emitted = new ArtifactDescriptor("report.md", "h1", "body-step", 5);
+    state.addGeneratedArtifactDescriptor(emitted);
+
+    state.clearStepEntriesFromUid(5);
+
+    // Step outputs/uids at or after the threshold are cleared (so the resume-skip guard re-runs
+    // the body), and a nested loop's completion marker in the range is dropped (so it re-executes).
+    assertThat(state.getStepOutput("body-step")).isEmpty();
+    assertThat(state.getStepExecutionUid("body-step")).isEmpty();
+    assertThat(state.isLoopCompleted("nested-loop")).isFalse();
+    assertThat(state.getStepOutput("early-step")).contains("early-out");
+    assertThat(state.getStepExecutionUid("early-step")).contains(3);
+    assertThat(state.isLoopCompleted("earlier-loop")).isTrue();
+    // Context values (with their written-at bookkeeping) and generated-artifact descriptors are
+    // preserved: an iteration boundary is not a rewind — later iterations read what earlier ones
+    // wrote, and a later retry rewind can still clear the preserved keys by their recorded uid.
+    assertThat(state.getContextValue("draft")).contains(draft);
+    assertThat(state.getContextKeyWrittenAtUid()).containsEntry("draft", 5);
+    assertThat(state.getGeneratedArtifactDescriptors()).containsExactly(emitted);
   }
 
   @Test
@@ -282,7 +316,7 @@ class WorkflowStateTest {
     state.putStepExecutionUid("step-1", 1);
     state.putContextKeyWrittenAtUid("k", 1);
     state.removeContextValue("k");
-    state.clearEntriesFromUid(1);
+    state.clearEntriesFromUid(1, Set.of());
 
     assertThat(state.getLastUpdatedAt()).isEqualTo(initial);
   }
@@ -301,6 +335,8 @@ class WorkflowStateTest {
     original.setLoopIterationCursor("bp-a", 2);
     original.setForEachListFingerprint("bp-a", "abc123");
     original.markLoopCompleted("bp-done", 6);
+    original.setLoopIterationBodyStartUid("bp-a", 5);
+    original.setBlueprintIdAwaitingMaxIterationsDecision("bp-a");
 
     WorkflowState copy = original.snapshot();
     assertThat(copy).isNotSameAs(original);
@@ -308,6 +344,8 @@ class WorkflowStateTest {
     assertThat(copy.getLoopIterationCursor("bp-a")).isEqualTo(2);
     assertThat(copy.getForEachListFingerprint("bp-a")).contains("abc123");
     assertThat(copy.isLoopCompleted("bp-done")).isTrue();
+    assertThat(copy.getLoopIterationBodyStartUid("bp-a")).isEqualTo(5);
+    assertThat(copy.getBlueprintIdAwaitingMaxIterationsDecision()).isEqualTo("bp-a");
 
     copy.setStatus(WorkflowStatus.COMPLETED);
     copy.putContextValue("extra", new StringContextValue("x", ContextProvenance.USER_SUPPLIED));
@@ -355,6 +393,78 @@ class WorkflowStateTest {
   }
 
   @Test
+  void loop_iteration_body_start_uid_defaults_to_zero_and_is_validated() {
+    WorkflowState state = new WorkflowState("run-1", "wf-1", null, t());
+    assertThat(state.getLoopIterationBodyStartUid("bp-a")).isZero();
+
+    state.setLoopIterationBodyStartUid("bp-a", 5);
+    assertThat(state.getLoopIterationBodyStartUid("bp-a")).isEqualTo(5);
+
+    assertThatThrownBy(() -> state.setLoopIterationBodyStartUid("bp-a", 0))
+        .isInstanceOf(IllegalArgumentException.class);
+    assertThatThrownBy(() -> state.setLoopIterationBodyStartUid(" ", 1))
+        .isInstanceOf(IllegalArgumentException.class);
+    assertThatThrownBy(() -> state.getLoopIterationBodyStartUidByBlueprintId().put("bp-x", 1))
+        .isInstanceOf(UnsupportedOperationException.class);
+  }
+
+  @Test
+  void clear_loop_iteration_cursor_also_clears_the_body_start_uid_marker() {
+    WorkflowState state = new WorkflowState("run-1", "wf-1", null, t());
+    state.setLoopIterationCursor("bp-a", 2);
+    state.setLoopIterationBodyStartUid("bp-a", 5);
+
+    state.clearLoopIterationCursor("bp-a");
+
+    assertThat(state.getLoopIterationCursor("bp-a")).isZero();
+    assertThat(state.getLoopIterationBodyStartUid("bp-a")).isZero();
+  }
+
+  @Test
+  void clear_loop_iteration_cursor_also_clears_the_awaiting_max_iterations_marker_for_the_same_blueprint() {
+    WorkflowState state = new WorkflowState("run-1", "wf-1", null, t());
+    state.setLoopIterationCursor("bp-a", 2);
+    state.setBlueprintIdAwaitingMaxIterationsDecision("bp-a");
+    state.setLoopIterationCursor("bp-b", 1);
+    state.setBlueprintIdAwaitingMaxIterationsDecision("bp-b");
+
+    state.clearLoopIterationCursor("bp-a");
+    // A blueprint-b cursor clear must not touch a marker naming a different blueprint.
+    assertThat(state.getBlueprintIdAwaitingMaxIterationsDecision()).isEqualTo("bp-b");
+
+    state.clearLoopIterationCursor("bp-b");
+    assertThat(state.getBlueprintIdAwaitingMaxIterationsDecision()).isNull();
+  }
+
+  @Test
+  void clearEntriesFromUid_drops_the_awaiting_max_iterations_marker_when_it_names_the_swept_loop() {
+    WorkflowState state = new WorkflowState("run-1", "wf-1", null, t());
+    state.setLoopIterationCursor("paused-loop", 2);
+    state.setLoopIterationBodyStartUid("paused-loop", 5);
+    state.setBlueprintIdAwaitingMaxIterationsDecision("paused-loop");
+
+    state.clearEntriesFromUid(5, Set.of());
+
+    assertThat(state.getBlueprintIdAwaitingMaxIterationsDecision()).isNull();
+  }
+
+  @Test
+  void replace_loop_iteration_body_start_uids_filters_invalid_and_null_clears() {
+    WorkflowState state = new WorkflowState("run-1", "wf-1", null, t());
+    state.setLoopIterationBodyStartUid("bp-a", 3);
+
+    Map<String, Integer> replacement = new HashMap<>();
+    replacement.put("bp-x", 5);
+    replacement.put("", 2);
+    replacement.put("bp-bad", 0);
+    state.replaceLoopIterationBodyStartUids(replacement);
+    assertThat(state.getLoopIterationBodyStartUidByBlueprintId()).containsExactly(Map.entry("bp-x", 5));
+
+    state.replaceLoopIterationBodyStartUids(null);
+    assertThat(state.getLoopIterationBodyStartUidByBlueprintId()).isEmpty();
+  }
+
+  @Test
   void replace_completed_loop_blueprint_uids_filters_invalid_and_null_clears() {
     WorkflowState state = new WorkflowState("run-1", "wf-1", null, t());
     state.markLoopCompleted("bp-a", 1);
@@ -376,12 +486,52 @@ class WorkflowStateTest {
     state.markLoopCompleted("loop-before", 3); // completed before the rewind point
     state.markLoopCompleted("loop-rewound", 8); // completed within the rewound range
 
-    state.clearEntriesFromUid(5);
+    state.clearEntriesFromUid(5, Set.of());
 
     // A rewind to uid 5 invalidates the loop that completed at/after 5, so it re-runs; the earlier
     // loop's completion survives.
     assertThat(state.isLoopCompleted("loop-rewound")).isFalse();
     assertThat(state.isLoopCompleted("loop-before")).isTrue();
+  }
+
+  @Test
+  void clearEntriesFromUid_drops_stale_loop_cursor_and_body_start_uid_at_or_after_threshold() {
+    WorkflowState state = new WorkflowState("run-1", "wf-1", null, t());
+    // A loop paused mid-iteration (e.g. an AWAIT_USER max-iterations pause) leaves its cursor and
+    // body-start-uid non-zero; neither is cleared by the loop strategies themselves in that case.
+    state.setLoopIterationCursor("paused-loop", 2);
+    state.setLoopIterationBodyStartUid("paused-loop", 5);
+    // A loop whose in-progress iteration began before the rewind point is untouched.
+    state.setLoopIterationCursor("later-loop", 1);
+    state.setLoopIterationBodyStartUid("later-loop", 2);
+
+    state.clearEntriesFromUid(5, Set.of());
+
+    // A retry/rewind crossing this loop's in-progress iteration must forget the cursor too, so the
+    // next drive restarts the loop from iteration 1 instead of resuming mid-way with a stale cursor.
+    assertThat(state.getLoopIterationCursor("paused-loop")).isZero();
+    assertThat(state.getLoopIterationBodyStartUid("paused-loop")).isZero();
+    assertThat(state.getLoopIterationCursor("later-loop")).isEqualTo(1);
+    assertThat(state.getLoopIterationBodyStartUid("later-loop")).isEqualTo(2);
+  }
+
+  @Test
+  void clearEntriesFromUid_drops_stale_for_each_list_fingerprint_alongside_the_cursor() {
+    WorkflowState state = new WorkflowState("run-1", "wf-1", null, t());
+    // A FOR_EACH loop's list fingerprint is a third piece of per-loop resume state, alongside the
+    // cursor and body-start-uid; it must be dropped together or a stale fingerprint alone still
+    // reads as an in-progress resume to ForEachLoopStrategy.
+    state.setLoopIterationCursor("paused-for-each", 2);
+    state.setLoopIterationBodyStartUid("paused-for-each", 5);
+    state.setForEachListFingerprint("paused-for-each", "stale-fingerprint");
+    state.setLoopIterationCursor("later-for-each", 1);
+    state.setLoopIterationBodyStartUid("later-for-each", 2);
+    state.setForEachListFingerprint("later-for-each", "kept-fingerprint");
+
+    state.clearEntriesFromUid(5, Set.of());
+
+    assertThat(state.getForEachListFingerprint("paused-for-each")).isEmpty();
+    assertThat(state.getForEachListFingerprint("later-for-each")).contains("kept-fingerprint");
   }
 
   @Test
@@ -415,7 +565,7 @@ class WorkflowStateTest {
     state.addGeneratedArtifactDescriptor(new ArtifactDescriptor("kept.json", "h1", "early", 1));
     state.addGeneratedArtifactDescriptor(new ArtifactDescriptor("dropped.json", "h2", "late", 5));
 
-    state.clearEntriesFromUid(5);
+    state.clearEntriesFromUid(5, Set.of());
 
     assertThat(state.getGeneratedArtifactDescriptors())
         .containsExactly(new ArtifactDescriptor("kept.json", "h1", "early", 1));

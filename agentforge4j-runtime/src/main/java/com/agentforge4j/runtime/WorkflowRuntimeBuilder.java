@@ -380,7 +380,8 @@ public final class WorkflowRuntimeBuilder {
 
     setupBlueprintLoopStrategies(blueprintExecutor, stepSequenceExecutor, resolvedEventRecorder,
         maxIterationsHandler,
-        resolvedEvaluator);
+        resolvedEvaluator,
+        resolvedGeneratedArtifactStore);
     blueprintExecutor.setStepSequenceExecutor(stepSequenceExecutor);
     blueprintExecutor.setTransitionGate(transitionGate);
     workflowExecutor.setStepSequenceExecutor(stepSequenceExecutor);
@@ -403,10 +404,12 @@ public final class WorkflowRuntimeBuilder {
 
   private static void setupBlueprintLoopStrategies(BlueprintExecutor blueprintExecutor,
       StepSequenceExecutor stepSequenceExecutor, EventRecorder eventRecorder,
-      MaxIterationsHandler maxIterationsHandler, LoopEvaluator resolvedEvaluator) {
+      MaxIterationsHandler maxIterationsHandler, LoopEvaluator resolvedEvaluator,
+      GeneratedArtifactStore resolvedGeneratedArtifactStore) {
     blueprintExecutor.setLoopStrategies(List.of(
         new FixedCountLoopStrategy(stepSequenceExecutor, eventRecorder, maxIterationsHandler),
-        new ForEachLoopStrategy(stepSequenceExecutor, eventRecorder, maxIterationsHandler),
+        new ForEachLoopStrategy(stepSequenceExecutor, eventRecorder, maxIterationsHandler,
+            resolvedGeneratedArtifactStore),
         new AgentSignalLoopStrategy(stepSequenceExecutor, eventRecorder, maxIterationsHandler),
         new EvaluatorLoopStrategy(
             stepSequenceExecutor, eventRecorder, maxIterationsHandler, resolvedEvaluator)));
