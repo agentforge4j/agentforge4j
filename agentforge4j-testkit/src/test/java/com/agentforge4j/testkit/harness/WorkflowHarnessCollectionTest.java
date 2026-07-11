@@ -237,7 +237,7 @@ class WorkflowHarnessCollectionTest {
         List.of(GateResponse.collection(List.of(
             submit("a", "actor-owner"),
             new CollectionOp.Replace(0, "{\"cv\":\"a2\"}", "actor-intruder"))))))
-        .isInstanceOf(IllegalArgumentException.class)
+        .isInstanceOf(CollectionAuthorizationException.class)
         .hasMessageContaining("restricted to the submitting actor");
   }
 
@@ -250,7 +250,7 @@ class WorkflowHarnessCollectionTest {
         List.of(GateResponse.collection(List.of(
             submit("a", "actor-owner"),
             new CollectionOp.Withdraw(0, "actor-intruder"))))))
-        .isInstanceOf(IllegalArgumentException.class)
+        .isInstanceOf(CollectionAuthorizationException.class)
         .hasMessageContaining("restricted to the submitting actor");
   }
 

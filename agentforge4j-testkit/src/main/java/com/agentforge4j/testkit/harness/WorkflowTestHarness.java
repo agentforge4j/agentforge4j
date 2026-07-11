@@ -274,9 +274,9 @@ public final class WorkflowTestHarness {
   }
 
   private static String targetId(List<String> submissionIds, int target) {
-    Validate.isTrue(target < submissionIds.size(), () -> new IllegalStateException(
+    Validate.isTrue(target < submissionIds.size(),
         "Collection op targets submit ordinal %d but only %d submit(s) precede it"
-            .formatted(target, submissionIds.size())));
+            .formatted(target, submissionIds.size()));
     return submissionIds.get(target);
   }
 

@@ -507,6 +507,27 @@ class CollectionGateRuntimeTest {
   }
 
   @Test
+  void replayOfTokenWhoseItemWasSinceWithdrawnReturnsIdempotentWithNullSubmissionId() {
+    // Unlike a replace, a withdraw does not overwrite the item's clientToken -- the withdrawn item
+    // keeps carrying it. A later replay of that token must still resolve to submissionId=null,
+    // version=0, the same as the replaced case above, not to the withdrawn item's own (dead) id.
+    WorkflowRuntime runtime = runtime(behaviourFull(0, null, ReopenPolicy.NONE, AuthorizationMode.OPEN,
+        ReplacementPolicy.OWNER_REPLACE, WithdrawalPolicy.OWNER_WITHDRAW));
+    CollectionGateRuntime gate = (CollectionGateRuntime) runtime;
+    String runId = runtime.start("wf");
+    SubmissionResult submitted = gate.submitItem(runId, STEP, submission("a", "tok-1", null), ACTOR);
+
+    gate.withdrawItem(runId, STEP, submitted.submissionId(), ACTOR);
+    SubmissionResult replay = gate.submitItem(runId, STEP, submission("a", "tok-1", null), ACTOR);
+
+    assertThat(replay.status()).isEqualTo(SubmissionResult.Status.IDEMPOTENT);
+    assertThat(replay.submissionId()).isNull();
+    assertThat(replay.version()).isZero();
+    // The withdrawal is not undone and no second item is created.
+    assertThat(gate.getCollection(runId, STEP, ACTOR).liveCount()).isZero();
+  }
+
+  @Test
   void ownerReplaceBumpsVersion() {
     WorkflowRuntime runtime = runtime(behaviourFull(0, null, ReopenPolicy.NONE, AuthorizationMode.OPEN,
         ReplacementPolicy.OWNER_REPLACE, WithdrawalPolicy.OWNER_WITHDRAW));

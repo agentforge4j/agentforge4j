@@ -652,7 +652,11 @@ final class CollectionGateService {
       return null;
     }
     for (CollectionItem item : gate.items()) {
-      if (clientToken.equals(item.clientToken())) {
+      // A withdrawn item retains its original clientToken (see withdraw()'s CollectionItem
+      // construction), so it must be excluded here the same as a replaced item's stale slot is
+      // excluded by no longer carrying the token at all -- otherwise a replay would resolve to a
+      // withdrawn item's submissionId instead of the documented null.
+      if (!item.withdrawn() && clientToken.equals(item.clientToken())) {
         return new SubmissionResult(SubmissionResult.Status.IDEMPOTENT, item.submissionId(),
             item.version(), null);
       }
