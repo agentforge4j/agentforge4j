@@ -32,6 +32,20 @@ This directory records the architecture decisions that shape AgentForge4j — th
 | [0017](0017-workflow-execution-estimation.md) | Workflow execution estimation | Proposed | 2026-07-10 |
 | [0018](0018-release-management-and-publication-sequencing.md) | Release management and publication sequencing | Proposed | 2026-07-10 |
 | [0019](0019-workflow-requirements-and-transition-enforcement.md) | Workflow requirements and step-transition enforcement | Accepted | 2026-07-09 |
+| [0020](0020-multi-artifact-monorepo-with-prefixed-release-tracks.md) | Multi-artifact monorepo with prefixed release tracks | Accepted | 2026-07-11 |
+| [0021](0021-release-branching-model.md) | Release branching model | Proposed | 2026-07-10 |
+| [0022](0022-independent-versioning-and-schemaversion-as-the-compatibility-contract.md) | Independent track versioning, with schemaVersion as the sole compatibility contract | Accepted | 2026-07-11 |
+| [0023](0023-required-strict-workflow-schemaversion.md) | Required, strict workflow schemaVersion | Accepted | 2026-07-11 |
+| [0024](0024-patch-release-forward-port-flow.md) | Patch release forward-port flow | Proposed | 2026-07-10 |
+| [0025](0025-pre-1-0-and-post-1-0-support-policy.md) | Pre-1.0 and post-1.0 support policy | Proposed | 2026-07-10 |
+| [0026](0026-tag-triggered-release-ci-and-environment-gated-publishing.md) | Tag-triggered release CI and environment-gated publishing | Accepted | 2026-07-11 |
+| [0027](0027-no-release-candidates-pre-1-0-mandatory-rc-soak-for-1-0-0.md) | No release candidates pre-1.0; mandatory RC soak for 1.0.0 | Proposed | 2026-07-10 |
+| [0028](0028-workflow-builder-version-continuity-from-0-5-0.md) | Workflow builder version continuity from 0.5.0 | Accepted | 2026-07-11 |
+| [0029](0029-one-time-pre-public-retag-of-legacy-builder-tags.md) | One-time pre-public retag of legacy builder tags | Proposed | 2026-07-10 |
+| [0030](0030-generated-compatibility-matrix.md) | Generated compatibility matrix | Proposed | 2026-07-10 |
+| [0031](0031-per-track-changelogs-and-committed-release-note-sources.md) | Per-track changelogs and committed release-note sources | Accepted | 2026-07-11 |
+| [0032](0032-catalog-compatibility-as-an-exact-pinned-framework-version.md) | Catalog compatibility as an exact pinned framework version | Accepted | 2026-07-11 |
+| [0033](0033-numericversion-qualifier-awareness-for-release-candidates.md) | NumericVersion becomes qualifier-aware, as a hard prerequisite for 1.0.0-RC1 | Proposed | 2026-07-10 |
 
 ## Reserved
 
