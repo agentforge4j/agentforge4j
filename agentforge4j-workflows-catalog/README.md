@@ -9,8 +9,8 @@ compatibility gate; this module owns only content.
 
 This module carries its **own `<version>`** (`0.1.0-SNAPSHOT`), decoupled from the framework's
 reactor version, so the catalog can be released on its own cadence — a shipped-workflow change does
-not force a framework version bump. The current bundles are legacy and slated for a rewrite; the
-version graduates to `1.0.0` when the redesigned catalog becomes the intended public release.
+not force a framework version bump. The version graduates to `1.0.0` when the redesigned catalog
+becomes the intended public release.
 
 Consumers pin the catalog version explicitly (it is not `${project.version}`):
 
