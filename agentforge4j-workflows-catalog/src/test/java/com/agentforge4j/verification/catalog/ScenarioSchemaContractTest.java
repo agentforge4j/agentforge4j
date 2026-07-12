@@ -15,8 +15,6 @@ import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Set;
-import java.util.TreeSet;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -52,14 +50,13 @@ class ScenarioSchemaContractTest {
   void everyShippedScenarioFixtureValidatesAgainstTheSchema() throws IOException {
     // Each owned scenario's expected-result.json is read from its workflow folder on the classpath,
     // the same plug-and-play catalog a future external repo would consume — not a sibling source dir.
-    Set<String> owners = CatalogScenarios.scenarioOwningWorkflowIds();
-    assertThat(owners).as("there must be scenario fixtures to validate").isNotEmpty();
+    List<ScenarioCase> scenarios = CatalogScenarios.discover();
+    assertThat(scenarios).as("there must be scenario fixtures to validate").isNotEmpty();
     List<String> failures = new ArrayList<>();
-    for (String workflowId : new TreeSet<>(owners)) {
-      List<Error> violations = SCENARIO_SCHEMA.validate(
-          MAPPER.readTree(CatalogScenarios.readExpectedResultJson(workflowId)));
+    for (ScenarioCase scenario : scenarios) {
+      List<Error> violations = SCENARIO_SCHEMA.validate(MAPPER.readTree(scenario.expectedResultJson()));
       if (!violations.isEmpty()) {
-        failures.add(workflowId + " -> " + violations);
+        failures.add(scenario.name() + " -> " + violations);
       }
     }
     assertThat(failures).isEmpty();
