@@ -15,6 +15,7 @@
   --color-fg-muted:    var(--color-fg-muted);
   --color-border:      var(--color-border);
   --color-brand:       var(--color-brand);
+  --color-brand-shade: var(--color-brand-shade);
   --color-brand-ink:   var(--color-brand-ink);
   --color-accent:      var(--color-accent);
   --color-success:     var(--color-success);
@@ -25,6 +26,21 @@
 *, *::before, *::after { box-sizing: border-box; }
 html { scroll-behavior: smooth; }
 body { background-color: var(--color-bg); color: var(--color-fg); }
+
+.skip-link {
+  position: absolute;
+  left: -9999px;
+  top: 0;
+  z-index: 100;
+  padding: 0.75rem 1rem;
+  background: var(--color-brand);
+  color: var(--color-brand-ink);
+  border-radius: 0 0 var(--radius-md) 0;
+}
+
+.skip-link:focus {
+  left: 0;
+}
 
 :focus-visible {
   outline: 2px solid var(--color-brand);

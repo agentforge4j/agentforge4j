@@ -1,0 +1,18 @@
+# syntax=docker/dockerfile:1.7
+#
+# Runtime-only image for the agentforge4j.org preview (local self-host / Raspberry Pi).
+# Interim only — GitHub Pages is the real launch host per the site design.
+#
+# The static bundle is built natively on the host (`npm run build`). This image just
+# serves the pre-built ./dist with nginx — no in-container node build.
+#
+#   1) cd agentforge4j-web-ui && npm ci && npm run build   # -> ./dist
+#   2) build context for this Dockerfile is the agentforge4j-web-ui directory, so it
+#      expects ./dist to already exist.
+
+FROM nginx:1.27-alpine
+
+COPY nginx.conf /etc/nginx/conf.d/default.conf
+COPY dist /usr/share/nginx/html
+
+EXPOSE 80
