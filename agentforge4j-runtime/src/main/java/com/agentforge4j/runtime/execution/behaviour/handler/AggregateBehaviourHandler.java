@@ -25,9 +25,12 @@ import java.util.Map;
  * returned logical field back to context under {@code <outputContextKeyPrefix>.<fieldName>},
  * re-stamping every written value's provenance as {@link ContextProvenance#SYSTEM_GENERATED} (the
  * value originates from trusted, deterministic Java, not a model) — mirroring
- * {@link AssignContextBehaviourHandler}'s re-stamping convention. An unresolvable
- * {@code aggregatorId}, a missing declared input key, or a {@code null} aggregator result fails the
- * run closed; deterministic and always completes otherwise.
+ * {@link AssignContextBehaviourHandler}'s re-stamping convention, and — when the step declares a
+ * non-empty {@code outputKeys} — rejecting any returned field whose prefixed key is not declared
+ * (mirroring {@code CommandHandler.ensureContextOutputKeyAllowed}'s allow-list semantics). An
+ * unresolvable {@code aggregatorId}, a missing declared input key, a {@code null} aggregator
+ * result, a {@code null} field value within that result, or an undeclared output key fails the run
+ * closed; deterministic and always completes otherwise.
  */
 public final class AggregateBehaviourHandler implements BehaviourHandler<AggregateBehaviour> {
 
@@ -91,8 +94,27 @@ public final class AggregateBehaviourHandler implements BehaviourHandler<Aggrega
   private void writeResult(StepDefinition step, WorkflowState state, AggregateBehaviour behaviour,
       Map<String, ContextValue> result) {
     String prefix = behaviour.outputContextKeyPrefix();
+    List<String> declaredOutputKeys = step.contextMapping().outputKeys();
+    // Validate every entry before writing any of them, so a rejected field never leaves a partial
+    // write behind — mirrors ValidateBehaviourHandler's validate-then-act discipline.
+    Map<String, ContextValue> toWrite = new LinkedHashMap<>();
     for (Map.Entry<String, ContextValue> entry : result.entrySet()) {
-      state.putContextValue(prefix + "." + entry.getKey(),
+      String key = prefix + "." + entry.getKey();
+      ContextValue value = entry.getValue();
+      if (value == null) {
+        throw fail(step, state,
+            "aggregator '%s' returned a null value for field '%s'"
+                .formatted(behaviour.aggregatorId(), entry.getKey()));
+      }
+      if (!declaredOutputKeys.isEmpty() && !declaredOutputKeys.contains(key)) {
+        throw fail(step, state,
+            "aggregator '%s' returned undeclared context key '%s' (not in outputKeys %s)"
+                .formatted(behaviour.aggregatorId(), key, declaredOutputKeys));
+      }
+      toWrite.put(key, value);
+    }
+    for (Map.Entry<String, ContextValue> entry : toWrite.entrySet()) {
+      state.putContextValue(entry.getKey(),
           entry.getValue().withProvenance(ContextProvenance.SYSTEM_GENERATED));
     }
     eventRecorder.record(state.getRunId(), step.stepId(), WorkflowEventType.CONTEXT_UPDATED,

@@ -15,12 +15,17 @@ import java.util.Map;
  * {@code ArtifactValidatorFactory}, no implementation of this SPI requires a construction-time
  * dependency such as a shared {@code ObjectMapper}.
  *
- * <p><b>Provenance.</b> The runtime re-stamps every returned value's provenance as
+ * <p><b>Provenance.</b> The runtime re-stamps every returned entry's own provenance as
  * {@code SYSTEM_GENERATED} unconditionally, regardless of what this method returns and regardless
  * of the declared input values' own provenance (which may include model-generated content). An
  * implementation must therefore only return newly derived or computed values (arithmetic results,
  * classifications, thresholds) — never pass an input value's raw text through unchanged, since doing
- * so would silently upgrade untrusted, model-influenced content to a trusted provenance tier.
+ * so would silently upgrade untrusted, model-influenced content to a trusted provenance tier. When a
+ * returned entry is a {@code ContextValueList}, this re-stamp reaches only the list's own container
+ * provenance — {@code ContextValueList.withProvenance} leaves each nested element's own provenance
+ * untouched by design (elements carry their own provenance independently). An implementation
+ * returning a {@code ContextValueList} must therefore ensure every nested element it constructs
+ * already carries a safe provenance itself; the runtime cannot correct that for it.
  */
 public interface ContextAggregator {
 

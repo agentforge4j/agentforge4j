@@ -57,31 +57,31 @@ public final class WorkflowExecutionEstimateAggregator implements ContextAggrega
   public Map<String, ContextValue> aggregate(AggregationContext context) {
     Validate.notNull(context, "context must not be null");
     Map<String, ContextValue> values = context.values();
-    long iterationCeiling = asLong(values, "iterationCeiling");
+    long iterationCeiling = ContextValueNumbers.asLong(values, "iterationCeiling");
 
     WorkflowComplexityAnalysis analysis = new WorkflowComplexityAnalysis(
         AGGREGATOR_ID,
-        asInt(values, "stepCount"),
+        ContextValueNumbers.asInt(values, "stepCount"),
         0,
         0,
         0,
         0,
         0,
         0,
-        asLong(values, "minAgentTurns"),
-        asLong(values, "expectedAgentTurns"),
-        asLong(values, "maxAgentTurns"),
+        ContextValueNumbers.asLong(values, "minAgentTurns"),
+        ContextValueNumbers.asLong(values, "expectedAgentTurns"),
+        ContextValueNumbers.asLong(values, "maxAgentTurns"),
         iterationCeiling,
         true,
         null,
-        asLong(values, "minimumRequiredTokens"),
+        ContextValueNumbers.asLong(values, "minimumRequiredTokens"),
         asComplexityClass(values, "complexity"),
         asRiskFlags(values, "riskFlags"));
 
     SizingInputs sizing = new SizingInputs(
-        asInt(values, "estimatedInputTokensPerAgentTurn"),
-        asInt(values, "estimatedOutputTokensPerAgentTurn"),
-        asInt(values, "estimatedToolInvocationsPerAgentTurn"));
+        ContextValueNumbers.asInt(values, "estimatedInputTokensPerAgentTurn"),
+        ContextValueNumbers.asInt(values, "estimatedOutputTokensPerAgentTurn"),
+        ContextValueNumbers.asInt(values, "estimatedToolInvocationsPerAgentTurn"));
 
     ExecutionEstimate estimate = WorkflowExecutionAggregator.aggregate(analysis, sizing);
 
@@ -112,77 +112,29 @@ public final class WorkflowExecutionEstimateAggregator implements ContextAggrega
     return new ContextValueList(entries, ContextProvenance.SYSTEM_GENERATED);
   }
 
-  private static ContextValue require(Map<String, ContextValue> values, String key) {
-    ContextValue value = values.get(key);
-    Validate.notNull(value, "Missing declared context value for key '%s'".formatted(key));
-    return value;
-  }
-
-  private static long asLong(Map<String, ContextValue> values, String key) {
-    long parsed = parseLong(values, key);
-    if (parsed < 0) {
-      throw new IllegalArgumentException(
-          "Context value for key '%s' must not be negative but was %d".formatted(key, parsed));
-    }
-    return parsed;
-  }
-
-  private static long parseLong(Map<String, ContextValue> values, String key) {
-    ContextValue value = require(values, key);
-    if (value instanceof NumberContextValue number) {
-      double raw = number.value().doubleValue();
-      if (Double.isNaN(raw) || Double.isInfinite(raw) || raw != Math.rint(raw)) {
-        throw new IllegalArgumentException(
-            "Context value for key '%s' must be an exact integer but was %s"
-                .formatted(key, number.value()));
-      }
-      return number.value().longValue();
-    }
+  private static StringContextValue requireString(Map<String, ContextValue> values, String key) {
+    ContextValue value = ContextValueNumbers.require(values, key);
     if (value instanceof StringContextValue string) {
-      try {
-        return Long.parseLong(string.value());
-      } catch (NumberFormatException e) {
-        throw new IllegalArgumentException(
-            "Context value for key '%s' is not a valid integer: '%s'".formatted(key, string.value()), e);
-      }
-    }
-    throw new IllegalArgumentException(
-        "Context value for key '%s' must be numeric or a numeric string but was %s"
-            .formatted(key, value.getClass().getSimpleName()));
-  }
-
-  private static int asInt(Map<String, ContextValue> values, String key) {
-    long raw = asLong(values, key);
-    if (raw < Integer.MIN_VALUE || raw > Integer.MAX_VALUE) {
-      throw new IllegalArgumentException(
-          "Context value for key '%s' must fit in a 32-bit integer but was %d".formatted(key, raw));
-    }
-    return (int) raw;
-  }
-
-  private static ComplexityClass asComplexityClass(Map<String, ContextValue> values, String key) {
-    ContextValue value = require(values, key);
-    if (value instanceof StringContextValue string) {
-      try {
-        return ComplexityClass.valueOf(string.value());
-      } catch (IllegalArgumentException e) {
-        throw new IllegalArgumentException(
-            "Context value for key '%s' is not a valid complexity class: '%s'"
-                .formatted(key, string.value()), e);
-      }
+      return string;
     }
     throw new IllegalArgumentException(
         "Context value for key '%s' must be a string but was %s"
             .formatted(key, value.getClass().getSimpleName()));
   }
 
-  private static List<RiskFlag> asRiskFlags(Map<String, ContextValue> values, String key) {
-    ContextValue value = require(values, key);
-    if (!(value instanceof StringContextValue string)) {
+  private static ComplexityClass asComplexityClass(Map<String, ContextValue> values, String key) {
+    StringContextValue string = requireString(values, key);
+    try {
+      return ComplexityClass.valueOf(string.value());
+    } catch (IllegalArgumentException e) {
       throw new IllegalArgumentException(
-          "Context value for key '%s' must be a string but was %s"
-              .formatted(key, value.getClass().getSimpleName()));
+          "Context value for key '%s' is not a valid complexity class: '%s'"
+              .formatted(key, string.value()), e);
     }
+  }
+
+  private static List<RiskFlag> asRiskFlags(Map<String, ContextValue> values, String key) {
+    StringContextValue string = requireString(values, key);
     if (NO_RISK_FLAGS.equals(string.value())) {
       return List.of();
     }

@@ -1,9 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 package com.agentforge4j.core.workflow.estimate;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
-
 import com.agentforge4j.core.workflow.context.ContextValue;
 import com.agentforge4j.core.workflow.context.ContextValueList;
 import com.agentforge4j.core.workflow.context.NumberContextValue;
@@ -12,6 +9,9 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
  * Proves the built-in {@code workflow-execution-estimate} {@link ContextAggregator}'s type

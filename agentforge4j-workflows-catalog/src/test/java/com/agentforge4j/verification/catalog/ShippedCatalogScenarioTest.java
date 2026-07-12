@@ -15,7 +15,7 @@ import org.junit.jupiter.api.TestFactory;
  *
  * <p>Each shipped workflow that owns a {@code verification/<scenario>/} folder is discovered and
  * executed here with no further wiring — the first such workflow, {@code workflow-execution-
- * estimator}, contributes four scenarios. A catalog with no shipped workflows at all would make
+ * estimator}, contributes seven scenarios. A catalog with no shipped workflows at all would make
  * this factory produce zero dynamic tests (which passes vacuously); that is no longer the state
  * of this module.
  */

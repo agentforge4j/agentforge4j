@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 package com.agentforge4j.bootstrap;
 
-import static org.assertj.core.api.Assertions.assertThat;
-
 import com.agentforge4j.config.loader.repository.InMemoryWorkflowRepository;
 import com.agentforge4j.core.spi.aggregation.AggregationContext;
 import com.agentforge4j.core.spi.aggregation.ContextAggregator;
@@ -24,6 +22,8 @@ import com.agentforge4j.runtime.repository.InMemoryWorkflowStateRepository;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
+
+import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * Bootstrap wiring guard for {@link AgentForge4jBootstrap.Builder#withContextAggregators(List)}: a

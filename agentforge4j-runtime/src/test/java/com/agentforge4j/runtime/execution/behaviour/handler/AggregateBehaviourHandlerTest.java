@@ -1,9 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 package com.agentforge4j.runtime.execution.behaviour.handler;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
-
 import com.agentforge4j.core.exception.StepExecutionException;
 import com.agentforge4j.core.spi.aggregation.AggregationContext;
 import com.agentforge4j.core.spi.aggregation.ContextAggregator;
@@ -30,6 +27,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
 import org.junit.jupiter.api.Test;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class AggregateBehaviourHandlerTest {
 
@@ -72,11 +72,16 @@ class AggregateBehaviourHandlerTest {
   }
 
   private static StepDefinition aggregateStep(AggregateBehaviour behaviour, List<String> inputKeys) {
+    return aggregateStep(behaviour, inputKeys, List.of());
+  }
+
+  private static StepDefinition aggregateStep(AggregateBehaviour behaviour, List<String> inputKeys,
+      List<String> outputKeys) {
     return StepDefinition.builder()
         .withStepId("a1")
         .withName("A")
         .withBehaviour(behaviour)
-        .withContextMapping(new ContextMapping(inputKeys, List.of()))
+        .withContextMapping(new ContextMapping(inputKeys, outputKeys))
         .build();
   }
 
@@ -167,6 +172,53 @@ class AggregateBehaviourHandlerTest {
         .handle(step, behaviour, context(state, step)))
         .isInstanceOf(StepExecutionException.class)
         .hasMessageContaining("returned a null result");
+  }
+
+  @Test
+  void fails_when_aggregator_returns_a_null_field_value() {
+    Map<String, ContextValue> withNull = new java.util.HashMap<>();
+    withNull.put("bad", null);
+    ContextAggregator nullField = aggregator(AGGREGATOR_ID, ctx -> withNull);
+    WorkflowState state = stateWithStep("a1");
+    AggregateBehaviour behaviour = new AggregateBehaviour(AGGREGATOR_ID, "out", StepTransition.AUTO);
+    StepDefinition step = aggregateStep(behaviour, List.of());
+
+    assertThatThrownBy(() -> handler(List.of(nullField)).handle(step, behaviour, context(state, step)))
+        .isInstanceOf(StepExecutionException.class)
+        .hasMessageContaining("returned a null value for field 'bad'");
+    assertThat(state.getContextValue("out.bad")).isEmpty();
+  }
+
+  @Test
+  void fails_when_aggregator_returns_an_undeclared_output_key() {
+    ContextAggregator extra = aggregator(AGGREGATOR_ID, ctx -> Map.of(
+        "declared", new StringContextValue("ok", ContextProvenance.SYSTEM_GENERATED),
+        "undeclared", new StringContextValue("sneaky", ContextProvenance.SYSTEM_GENERATED)));
+    WorkflowState state = stateWithStep("a1");
+    AggregateBehaviour behaviour = new AggregateBehaviour(AGGREGATOR_ID, "out", StepTransition.AUTO);
+    StepDefinition step = aggregateStep(behaviour, List.of(), List.of("out.declared"));
+
+    assertThatThrownBy(() -> handler(List.of(extra)).handle(step, behaviour, context(state, step)))
+        .isInstanceOf(StepExecutionException.class)
+        .hasMessageContaining("undeclared context key 'out.undeclared'");
+    // Fail-closed before any write: even the declared field must not have been written.
+    assertThat(state.getContextValue("out.declared")).isEmpty();
+  }
+
+  @Test
+  void writes_every_field_when_all_are_declared_in_output_keys() {
+    ContextAggregator ok = aggregator(AGGREGATOR_ID, ctx -> Map.of(
+        "a", new StringContextValue("1", ContextProvenance.SYSTEM_GENERATED),
+        "b", new StringContextValue("2", ContextProvenance.SYSTEM_GENERATED)));
+    WorkflowState state = stateWithStep("a1");
+    AggregateBehaviour behaviour = new AggregateBehaviour(AGGREGATOR_ID, "out", StepTransition.AUTO);
+    StepDefinition step = aggregateStep(behaviour, List.of(), List.of("out.a", "out.b"));
+
+    ExecutionOutcome outcome = handler(List.of(ok)).handle(step, behaviour, context(state, step));
+
+    assertThat(outcome).isEqualTo(ExecutionOutcome.COMPLETED);
+    assertThat(state.getContextValue("out.a")).isPresent();
+    assertThat(state.getContextValue("out.b")).isPresent();
   }
 
   @Test

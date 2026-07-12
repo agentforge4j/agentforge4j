@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 package com.agentforge4j.bootstrap;
 
-import static org.assertj.core.api.Assertions.assertThat;
-
 import com.agentforge4j.config.loader.repository.InMemoryWorkflowRepository;
 import com.agentforge4j.core.workflow.WorkflowDefinition;
 import com.agentforge4j.core.workflow.WorkflowLifecycle;
@@ -25,6 +23,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
+
+import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * End-to-end guard that the built-in {@code workflow-execution-estimate} {@link
