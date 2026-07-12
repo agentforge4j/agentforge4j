@@ -111,4 +111,18 @@ class AgentBundleArtifactValidatorTest {
     assertThat(result.valid()).isFalse();
     assertThat(result.message()).contains("missing required 'agent.json'");
   }
+
+  /**
+   * Regression test proving artifact-key resolution fails closed rather than silently picking one
+   * match when more than one captured key could resolve the same bare file name.
+   */
+  @Test
+  void ambiguous_agent_json_match_is_invalid() {
+    ValidationResult result = validator.validate(context(Map.of(
+        "one/agent.json", VALID_AGENT_JSON,
+        "two/agent.json", VALID_AGENT_JSON)));
+
+    assertThat(result.valid()).isFalse();
+    assertThat(result.message()).contains("ambiguous artifact match for 'agent.json'");
+  }
 }

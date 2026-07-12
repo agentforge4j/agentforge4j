@@ -35,5 +35,6 @@ module agentforge4j.config.loader {
 
   provides com.agentforge4j.config.loader.agent.ArtifactValidatorFactory
       with com.agentforge4j.config.loader.agent.AgentBundleArtifactValidatorFactory,
+          com.agentforge4j.config.loader.agent.AgentCreatorBundleValidatorFactory,
           com.agentforge4j.config.loader.agent.RequiredArtifactsPresentValidatorFactory;
 }

@@ -19,21 +19,30 @@ final class BundleArtifactPaths {
   /**
    * Finds the captured-artifact key that resolves the given bundle-relative file name. Assumes
    * {@code artifacts} is scoped to a single bundle (as {@code ValidateBehaviourHandler} always
-   * scopes it to one step's own {@code requiredArtifacts}) — if more than one key could match, the
-   * first found in map iteration order wins, with no further disambiguation.
+   * scopes it to one step's own {@code requiredArtifacts}), so exactly zero or one key is expected
+   * to match — if more than one key matches, resolution is ambiguous and this fails closed rather
+   * than silently picking one.
    *
    * @param artifacts captured artifacts keyed by their full VALIDATE-step path
    * @param fileName  bundle-relative file name to resolve, for example {@code agent.json}
    *
    * @return the matching key, or {@code null} when no artifact resolves the file name
+   *
+   * @throws IllegalStateException if more than one key resolves the file name
    */
   static String findKey(Map<String, String> artifacts, String fileName) {
+    String matched = null;
     for (String key : artifacts.keySet()) {
       if (key.equals(fileName) || key.endsWith("/" + fileName)) {
-        return key;
+        if (matched != null) {
+          throw new IllegalStateException(
+              "ambiguous artifact match for '%s': both '%s' and '%s' resolve it"
+                  .formatted(fileName, matched, key));
+        }
+        matched = key;
       }
     }
-    return null;
+    return matched;
   }
 
   /**

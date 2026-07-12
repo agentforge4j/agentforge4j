@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 package com.agentforge4j.config.loader.agent;
 
-import static org.assertj.core.api.Assertions.assertThat;
-
 import com.agentforge4j.core.spi.validation.ValidationResult;
 import java.util.HashMap;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
+
+import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * Unit coverage for {@link AgentCreatorBundleValidator}: the agent definition must load and the generated verification

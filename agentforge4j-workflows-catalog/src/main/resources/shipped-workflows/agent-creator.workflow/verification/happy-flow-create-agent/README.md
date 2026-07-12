@@ -16,5 +16,7 @@ Driven by `script.json` (scripted fake-LLM responses) and the human gates in `ex
    validation (including `agent.json` `modelTier == recommendedTier`), generates the verification starter, passes the
    final-bundle validation, and the quality review returns `PASS`, completing the run.
 
-The pre-approval "no files written" assertion and the deterministic-fail cases live in the module's JUnit test sources
-(they cannot share this single happy-path scenario — the harness drains all gates and asserts one final state).
+The pre-approval "no files written" assertion and the deterministic-fail cases live in sibling
+`verification/<scenario>/` folders (e.g. `no-files-before-approval`, `fail-blocking-verdict`), discovered and run by
+the same `CatalogScenarios` / `ShippedCatalogScenarioTest` mechanism as this scenario — they cannot share this single
+happy-path scenario, since the harness drains all gates and asserts one final state per scenario.

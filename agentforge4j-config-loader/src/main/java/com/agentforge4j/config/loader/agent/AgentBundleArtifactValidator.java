@@ -48,7 +48,12 @@ public final class AgentBundleArtifactValidator implements ArtifactValidator {
   @Override
   public ValidationResult validate(ArtifactValidationContext context) {
     Map<String, String> artifacts = context.artifacts();
-    String matchedKey = BundleArtifactPaths.findKey(artifacts, AGENT_FILE_NAME);
+    String matchedKey;
+    try {
+      matchedKey = BundleArtifactPaths.findKey(artifacts, AGENT_FILE_NAME);
+    } catch (IllegalStateException e) {
+      return ValidationResult.invalid(e.getMessage());
+    }
     if (matchedKey == null) {
       return ValidationResult.invalid(
           "agent bundle is missing required '%s'".formatted(AGENT_FILE_NAME));
