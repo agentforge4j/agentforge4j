@@ -55,6 +55,25 @@ class WorkflowExecutionAggregatorTest {
   }
 
   @Test
+  void saturatesInsteadOfOverflowingOnAnExtremeSubmittedTurnCount() {
+    WorkflowComplexityAnalysis analysis = analysis(
+        ComplexityClass.HIGH_RISK, 1, 1, Long.MAX_VALUE, 100, List.of());
+    SizingInputs sizing = new SizingInputs(1_000, 1_000, 1);
+
+    ExecutionEstimate estimate = WorkflowExecutionAggregator.aggregate(analysis, sizing);
+
+    // Long overflow would silently wrap maxAgentTurns * perTurnTokens toward a small or negative
+    // number; the saturating cap instead pegs it at a very large, still-positive sentinel, so the
+    // disclosure stays honestly alarming rather than misleadingly narrow.
+    assertThat(estimate.estimatedMaxTokens()).isEqualTo(Long.MAX_VALUE / 4);
+    assertThat(estimate.estimatedMinTokens())
+        .isPositive()
+        .isLessThanOrEqualTo(estimate.estimatedExpectedTokens());
+    assertThat(estimate.estimatedExpectedTokens()).isLessThanOrEqualTo(estimate.estimatedMaxTokens());
+    assertThat(estimate.riskFlags()).contains(RiskFlag.WIDE_TOKEN_ENVELOPE);
+  }
+
+  @Test
   void rejectsNullArguments() {
     WorkflowComplexityAnalysis analysis =
         analysis(ComplexityClass.SIMPLE, 1, 1, 1, 300, List.of());

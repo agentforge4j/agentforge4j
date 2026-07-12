@@ -1,0 +1,63 @@
+{
+  "workflowId": "workflow-execution-estimator",
+  "gates": [
+    {
+      "type": "input",
+      "answers": {
+        "mode": "WORKFLOW_RUN",
+        "complexity": "MODERATE",
+        "ceilingDerivable": "true",
+        "minimumRequiredTokens": "1300",
+        "stepCount": "7",
+        "agentStepCount": "6",
+        "branchCount": "0",
+        "loopCount": "0",
+        "agentDrivenLoopCount": "0",
+        "humanGateCount": "1",
+        "maxNestingDepth": "0",
+        "minAgentTurns": "6",
+        "expectedAgentTurns": "6",
+        "maxAgentTurns": "6",
+        "iterationCeiling": "1",
+        "riskFlags": "NONE"
+      }
+    },
+    {
+      "type": "stepApproval",
+      "approve": true,
+      "note": "reviewed the disclosed estimate before continuing"
+    }
+  ],
+  "expect": {
+    "status": "COMPLETED",
+    "visitedSteps": ["collect-analysis", "route-on-ceiling", "estimate", "aggregate-estimate"],
+    "notVisitedSteps": ["no-ceiling"],
+    "context": {
+      "mode": "WORKFLOW_RUN",
+      "complexity": "MODERATE",
+      "ceilingDerivable": "true",
+      "minimumRequiredTokens": "1300"
+    },
+    "contextPresent": [
+      "executionEstimate.recommendation",
+      "executionEstimate.confidence",
+      "executionEstimate.complexity",
+      "executionEstimate.riskFlags",
+      "executionEstimate.minimumRequiredTokens",
+      "executionEstimate.estimatedMinTokens",
+      "executionEstimate.estimatedExpectedTokens",
+      "executionEstimate.estimatedMaxTokens",
+      "executionEstimate.iterationCeiling"
+    ],
+    "contextMatches": {
+      "executionEstimate.recommendation": "CONTINUE",
+      "executionEstimate.confidence": "HIGH",
+      "executionEstimate.complexity": "MODERATE",
+      "executionEstimate.minimumRequiredTokens": "1300",
+      "executionEstimate.estimatedMinTokens": "8500",
+      "executionEstimate.estimatedExpectedTokens": "8500",
+      "executionEstimate.estimatedMaxTokens": "8500",
+      "executionEstimate.iterationCeiling": "1"
+    }
+  }
+}

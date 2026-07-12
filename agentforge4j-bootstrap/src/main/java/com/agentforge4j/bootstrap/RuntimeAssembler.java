@@ -4,6 +4,7 @@ package com.agentforge4j.bootstrap;
 import com.agentforge4j.config.loader.agent.ArtifactValidatorFactory;
 import com.agentforge4j.core.agent.AgentRepository;
 import com.agentforge4j.core.runtime.WorkflowRuntime;
+import com.agentforge4j.core.spi.aggregation.ContextAggregator;
 import com.agentforge4j.core.spi.tool.PendingToolInvocationStore;
 import com.agentforge4j.core.spi.tool.ToolCatalog;
 import com.agentforge4j.core.spi.tool.ToolExecutionService;
@@ -161,6 +162,8 @@ final class RuntimeAssembler {
    *                                in-process {@code DefaultRequirementResolver}
    * @param runExecutionInterceptor optional run-execution interceptor; when {@code null} the runtime builder defaults
    *                                to its {@code NO_OP} interceptor
+   * @param embedderContextAggregators additional {@code ContextAggregator}s to append to the ServiceLoader-discovered
+   *                                built-in set
    *
    * @return assembled runtime; never {@code null}
    */
@@ -177,7 +180,8 @@ final class RuntimeAssembler {
       RequirementResolver requirementResolver,
       RunExecutionInterceptor runExecutionInterceptor,
       ObjectMapper objectMapper,
-      List<ArtifactValidator> embedderArtifactValidators) {
+      List<ArtifactValidator> embedderArtifactValidators,
+      List<ContextAggregator> embedderContextAggregators) {
     // Built-in ArtifactValidators are discovered via ServiceLoader (the built-in agent-bundle validator stays present
     // so shipped agent-bundle workflows keep working); each factory receives the same configured ObjectMapper the agent
     // loaders use, so validation parses in lockstep with production load. Embedder-supplied validators are appended; a
@@ -186,6 +190,13 @@ final class RuntimeAssembler {
     ServiceLoader.load(ArtifactValidatorFactory.class, Thread.currentThread().getContextClassLoader())
         .forEach(factory -> artifactValidators.add(factory.create(objectMapper)));
     artifactValidators.addAll(embedderArtifactValidators);
+    // Built-in ContextAggregators are discovered directly via ServiceLoader (no factory indirection: unlike
+    // ArtifactValidatorFactory, no aggregator needs a construction-time dependency such as the shared ObjectMapper).
+    // Embedder-supplied aggregators are appended; a duplicate aggregator id fails fast in the runtime.
+    List<ContextAggregator> contextAggregators = new ArrayList<>();
+    ServiceLoader.load(ContextAggregator.class, Thread.currentThread().getContextClassLoader())
+        .forEach(contextAggregators::add);
+    contextAggregators.addAll(embedderContextAggregators);
     WorkflowRuntimeBuilder runtimeBuilder = new WorkflowRuntimeBuilder()
         .workflowRepository(workflowRepository)
         .workflowStateRepository(workflowStateRepository)
@@ -195,7 +206,8 @@ final class RuntimeAssembler {
         .agentInvoker(agentInvoker)
         .eventRecorder(eventRecorder)
         .runExecutionInterceptor(runExecutionInterceptor)
-        .artifactValidators(List.copyOf(artifactValidators));
+        .artifactValidators(List.copyOf(artifactValidators))
+        .contextAggregators(List.copyOf(contextAggregators));
 
     if (maxNestingDepth != null) {
       runtimeBuilder.maxNestingDepth(maxNestingDepth);

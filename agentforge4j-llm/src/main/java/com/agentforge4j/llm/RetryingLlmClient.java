@@ -14,7 +14,6 @@ import java.io.IOException;
 import java.net.ConnectException;
 import java.net.SocketTimeoutException;
 import java.net.http.HttpTimeoutException;
-import java.util.Optional;
 
 /**
  * Wraps an LLM client with retry logic for transient failures (decorrelated jitter backoff).
@@ -37,7 +36,7 @@ public final class RetryingLlmClient implements LlmClient {
   }
 
   @Override
-  public Optional<LlmRetryPolicy> getRetryPolicy() {
+  public LlmRetryPolicy getRetryPolicy() {
     return delegate.getRetryPolicy();
   }
 

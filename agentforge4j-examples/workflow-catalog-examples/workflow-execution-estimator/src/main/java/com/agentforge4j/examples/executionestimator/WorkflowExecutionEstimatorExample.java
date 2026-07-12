@@ -8,9 +8,10 @@ import com.agentforge4j.core.agent.ProviderPreference;
 import com.agentforge4j.core.runtime.StepApprovalDecision;
 import com.agentforge4j.core.workflow.WorkflowDefinition;
 import com.agentforge4j.core.workflow.context.ContextValue;
+import com.agentforge4j.core.workflow.context.ContextValueList;
 import com.agentforge4j.core.workflow.context.NumberContextValue;
-import com.agentforge4j.core.workflow.estimate.ExecutionEstimate;
-import com.agentforge4j.core.workflow.estimate.SizingInputs;
+import com.agentforge4j.core.workflow.context.StringContextValue;
+import com.agentforge4j.core.workflow.estimate.RiskFlag;
 import com.agentforge4j.core.workflow.estimate.WorkflowComplexityAnalysis;
 import com.agentforge4j.core.workflow.estimate.WorkflowExecutionAnalysisService;
 import com.agentforge4j.core.workflow.state.WorkflowState;
@@ -31,13 +32,14 @@ import java.io.UncheckedIOException;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.stream.Collectors;
 
 /**
  * Estimates the execution shape of the "baby AI Agent birth" target workflow using the shipped
- * {@code workflow-execution-estimator} catalog bundle, then demonstrates the compliant-caller
- * pattern the bundle's own contract requires: reading the paused run's sized figures, aggregating
- * them into the full disclosure envelope, and showing that disclosure before deciding whether to
- * approve — never approving first and disclosing after.
+ * {@code workflow-execution-estimator} catalog bundle: the bundle aggregates its own full
+ * disclosure envelope in-workflow, before the run pauses for approval, so this example reads it
+ * directly from context and shows it before deciding whether to approve — never approving first
+ * and disclosing after.
  *
  * <p>The target workflow (what is being estimated) never runs; only the estimator workflow itself
  * runs. The target is loaded as a plain {@link WorkflowDefinition} for
@@ -153,17 +155,24 @@ public final class WorkflowExecutionEstimatorExample {
     }
   }
 
+  /** Context key prefix the {@code aggregate-estimate} step writes its disclosure fields under. */
+  private static final String ESTIMATE_PREFIX = "executionEstimate.";
+
+  /** Submitted value for {@code riskFlags} when the structural analysis raised none. */
+  private static final String NO_RISK_FLAGS = "NONE";
+
   /**
    * Runs the estimator bundle against the target workflow's structural analysis and returns the
-   * final, aggregated estimate — after printing the mandatory disclosure and deciding the approval
-   * gate, never before.
+   * run's final state — the bundle aggregates its own full disclosure envelope in-workflow, before
+   * the run pauses for approval, so this reads and shows that disclosure BEFORE deciding the
+   * approval gate, never approving first and disclosing after.
    *
    * @param agentForge4j the assembled runtime facade
    * @param target       the target workflow to estimate
    *
-   * @return the aggregated execution estimate
+   * @return the run's state after the approval decision, with the disclosure fields still present
    */
-  static ExecutionEstimate estimate(AgentForge4j agentForge4j, WorkflowDefinition target) {
+  static WorkflowState estimate(AgentForge4j agentForge4j, WorkflowDefinition target) {
     WorkflowComplexityAnalysis analysis = WorkflowExecutionAnalysisService.analyze(target);
 
     // Every fact the run needs travels once, as its own typed field, sourced directly from the same
@@ -180,7 +189,12 @@ public final class WorkflowExecutionEstimatorExample {
         Map.entry("loopCount", String.valueOf(analysis.loopCount())),
         Map.entry("agentDrivenLoopCount", String.valueOf(analysis.agentDrivenLoopCount())),
         Map.entry("humanGateCount", String.valueOf(analysis.humanGateCount())),
-        Map.entry("maxNestingDepth", String.valueOf(analysis.maxNestingDepth()))),
+        Map.entry("maxNestingDepth", String.valueOf(analysis.maxNestingDepth())),
+        Map.entry("minAgentTurns", String.valueOf(analysis.minAgentTurns())),
+        Map.entry("expectedAgentTurns", String.valueOf(analysis.expectedAgentTurns())),
+        Map.entry("maxAgentTurns", String.valueOf(analysis.maxAgentTurns())),
+        Map.entry("iterationCeiling", String.valueOf(analysis.iterationCeiling())),
+        Map.entry("riskFlags", formatRiskFlags(analysis.riskFlags()))),
         CALLER_ACTOR_ID);
 
     WorkflowState paused = agentForge4j.runtime().getState(runId);
@@ -190,71 +204,63 @@ public final class WorkflowExecutionEstimatorExample {
               + paused.getStatus());
     }
 
-    // The compliant-caller step: read the bundle's raw sized figures at the pause, aggregate them
-    // deterministically, and disclose the full envelope BEFORE deciding the approval gate.
-    SizingInputs sizing = readSizing(paused);
-    ExecutionEstimate estimate = WorkflowExecutionAnalysisService.aggregate(analysis, sizing);
-    printDisclosure(estimate);
+    // The bundle's aggregate-estimate step has already combined the structural analysis with the
+    // agent's sizing into the full disclosure envelope before this pause — read and show it here,
+    // BEFORE deciding the approval gate.
+    printDisclosure(paused);
 
     agentForge4j.runtime().decideStepApproval(runId, paused.getCurrentStepId(),
         new StepApprovalDecision.Approve(CALLER_ACTOR_ID,
             "reviewed the disclosed estimate before continuing"));
 
-    return estimate;
+    return agentForge4j.runtime().getState(runId);
   }
 
-  private static SizingInputs readSizing(WorkflowState state) {
-    return new SizingInputs(
-        readNumber(state, "estimatedInputTokensPerAgentTurn"),
-        readNumber(state, "estimatedOutputTokensPerAgentTurn"),
-        readNumber(state, "estimatedToolInvocationsPerAgentTurn"));
+  private static String formatRiskFlags(List<RiskFlag> riskFlags) {
+    return riskFlags.isEmpty()
+        ? NO_RISK_FLAGS
+        : riskFlags.stream().map(RiskFlag::name).collect(Collectors.joining(","));
+  }
+
+  private static void printDisclosure(WorkflowState state) {
+    System.out.println("--- Execution estimate (disclosed before approval) ---");
+    System.out.println("complexity: " + estimateContext(state, "complexity"));
+    System.out.println("confidence: " + estimateContext(state, "confidence"));
+    System.out.println("estimatedMinTokens: " + estimateContext(state, "estimatedMinTokens"));
+    System.out.println("estimatedExpectedTokens: " + estimateContext(state, "estimatedExpectedTokens"));
+    System.out.println("estimatedMaxTokens: " + estimateContext(state, "estimatedMaxTokens"));
+    System.out.println("minimumRequiredTokens: " + estimateContext(state, "minimumRequiredTokens"));
+    System.out.println("riskFlags: " + estimateContext(state, "riskFlags"));
+    System.out.println("iterationCeiling: " + estimateContext(state, "iterationCeiling"));
+    System.out.println("recommendation: " + estimateContext(state, "recommendation"));
+  }
+
+  private static String estimateContext(WorkflowState state, String field) {
+    ContextValue value = state.getContextValue(ESTIMATE_PREFIX + field)
+        .orElseThrow(() -> new IllegalStateException(
+            "Expected the estimator run to expose context key '%s%s' at the pause"
+                .formatted(ESTIMATE_PREFIX, field)));
+    return displayValue(value);
   }
 
   /**
-   * Reads a context key as an exact, non-negative {@code int}. The compliant-caller pattern must not
-   * silently coerce a sizing figure: a fractional, negative, or out-of-{@code int}-range value from
-   * the estimator agent is rejected with the offending key and value named, not truncated.
+   * Renders a {@link ContextValue} for console display as its plain typed content, not the
+   * internal record {@code toString()} (which would print {@code StringContextValue[value=...,
+   * provenance=...]} instead of the value itself).
    */
-  static int readNumber(WorkflowState state, String key) {
-    ContextValue value = state.getContextValue(key)
-        .orElseThrow(() -> new IllegalStateException(
-            "Expected the estimator run to expose context key '%s' at the pause".formatted(key)));
-    if (!(value instanceof NumberContextValue number)) {
-      throw new IllegalStateException(
-          "Expected context key '%s' to be numeric but was %s".formatted(key,
-              value.getClass().getSimpleName()));
+  private static String displayValue(ContextValue value) {
+    if (value instanceof StringContextValue string) {
+      return string.value();
     }
-    double raw = number.value().doubleValue();
-    if (Double.isNaN(raw) || Double.isInfinite(raw) || raw != Math.rint(raw)) {
-      throw new IllegalStateException(
-          "Expected context key '%s' to be an exact integer but was %s".formatted(key,
-              number.value()));
+    if (value instanceof NumberContextValue number) {
+      return String.valueOf(number.value());
     }
-    if (raw < 0) {
-      throw new IllegalStateException(
-          "Expected context key '%s' to be non-negative but was %s".formatted(key,
-              number.value()));
+    if (value instanceof ContextValueList list) {
+      return list.values().stream().map(WorkflowExecutionEstimatorExample::displayValue)
+          .collect(Collectors.joining(","));
     }
-    if (raw > Integer.MAX_VALUE) {
-      throw new IllegalStateException(
-          "Expected context key '%s' to fit in an int but was %s".formatted(key, number.value()));
-    }
-    return (int) raw;
-  }
-
-  private static void printDisclosure(ExecutionEstimate estimate) {
-    System.out.println("--- Execution estimate (disclosed before approval) ---");
-    System.out.println("complexity: " + estimate.complexity());
-    System.out.println("confidence: " + estimate.confidence());
-    System.out.println("estimatedMinTokens: " + estimate.estimatedMinTokens());
-    System.out.println("estimatedExpectedTokens: " + estimate.estimatedExpectedTokens());
-    System.out.println("estimatedMaxTokens: " + estimate.estimatedMaxTokens());
-    System.out.println("minimumRequiredTokens: " + estimate.minimumRequiredTokens());
-    System.out.println("estimatedAgentTurns: " + estimate.estimatedAgentTurns());
-    System.out.println("estimatedToolInvocations: " + estimate.estimatedToolInvocations());
-    System.out.println("estimatedSteps: " + estimate.estimatedSteps());
-    System.out.println("riskFlags: " + estimate.riskFlags());
-    System.out.println("recommendation: " + estimate.recommendation());
+    throw new IllegalStateException(
+        "Unsupported disclosed context value type: " + value.getClass().getSimpleName());
   }
 
   /**
