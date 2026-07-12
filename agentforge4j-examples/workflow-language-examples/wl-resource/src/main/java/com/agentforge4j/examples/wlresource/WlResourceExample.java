@@ -78,7 +78,7 @@ public final class WlResourceExample {
     }
     if (value instanceof ContextValueList list) {
       return list.values().stream().map(WlResourceExample::displayValue)
-          .collect(java.util.stream.Collectors.joining(","));
+          .collect(Collectors.joining(","));
     }
     throw new IllegalStateException(
         "Unsupported disclosed context value type: " + value.getClass().getSimpleName());
