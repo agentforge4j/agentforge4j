@@ -318,7 +318,8 @@ class WorkflowValidatorTest {
     StepDefinition retryStep = StepDefinition.builder()
         .withStepId("retry-step")
         .withName("Retry")
-        .withBehaviour(new RetryPreviousBehaviour("inner-step", RetryMode.FROM_STEP, 2, null))
+        .withBehaviour(new RetryPreviousBehaviour("inner-step", RetryMode.FROM_STEP, 2,
+            terminalStep("fallback")))
         .withContextMapping(new ContextMapping(List.of(), List.of()))
         .build();
     WorkflowDefinition root = wf("wf1", List.of(nested, retryStep));
@@ -370,7 +371,8 @@ class WorkflowValidatorTest {
     StepDefinition step = StepDefinition.builder()
         .withStepId("s1")
         .withName("S1")
-        .withBehaviour(new RetryPreviousBehaviour("missing-step", RetryMode.FROM_STEP, 2, null))
+        .withBehaviour(new RetryPreviousBehaviour("missing-step", RetryMode.FROM_STEP, 2,
+            terminalStep("fallback")))
         .withContextMapping(new ContextMapping(List.of(), List.of()))
         .build();
     WorkflowDefinition wf = wf("wf1", List.of(step));
@@ -390,7 +392,8 @@ class WorkflowValidatorTest {
     StepDefinition retryStep = StepDefinition.builder()
         .withStepId("retry-step")
         .withName("Retry")
-        .withBehaviour(new RetryPreviousBehaviour("bp-step", RetryMode.FROM_STEP, 2, null))
+        .withBehaviour(new RetryPreviousBehaviour("bp-step", RetryMode.FROM_STEP, 2,
+            terminalStep("fallback")))
         .withContextMapping(new ContextMapping(List.of(), List.of()))
         .build();
     WorkflowDefinition wf = wfWithBlueprints("wf1", Map.of("bp-a", blueprintWithTargetStep),
