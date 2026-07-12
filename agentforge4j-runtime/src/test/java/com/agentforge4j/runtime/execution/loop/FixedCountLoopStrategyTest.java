@@ -55,7 +55,7 @@ class FixedCountLoopStrategyTest {
     WorkflowDefinition workflow = new WorkflowDefinition(
         "wf-1", "wf-1", null, null, null, null, null,
         WorkflowSource.CUSTOM, WorkflowLifecycle.ACTIVE,
-        Map.of(), Map.of(), List.of(dummyStep()));
+        Map.of(), Map.of(), List.of(dummyStep()), List.of());
     executionContext = new ExecutionContext(state, workflow, 32);
     loopConfig = LoopConfig.withDefaults(LoopTerminationStrategy.FIXED_COUNT, null, null, 3, null);
     blueprint = new BlueprintDefinition(

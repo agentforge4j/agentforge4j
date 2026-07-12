@@ -133,7 +133,7 @@ class RequiredArtifactsPresentValidatorRuntimeTest {
     WorkflowDefinition wf = new WorkflowDefinition(
         "wf1", "W", null, null, null, null, null,
         WorkflowSource.CUSTOM, WorkflowLifecycle.ACTIVE, Map.of(), Map.of(),
-        List.of(generate, validate));
+        List.of(generate, validate), List.of());
 
     WorkflowStateRepository stateRepository = new InMemoryWorkflowStateRepository();
     InMemoryWorkflowEventLog eventLog = new InMemoryWorkflowEventLog();
