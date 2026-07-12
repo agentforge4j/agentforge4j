@@ -1,8 +1,8 @@
 @startuml core-type-hierarchy
 '==============================================================================
 ' Diagram : agentforge4j-core Type Hierarchy (Class Diagram)
-' Version : v1.3
-' Date    : 2026-07-03
+' Version : v1.4
+' Date    : 2026-07-12
 ' Source  : agentforge4j-core/src/main/java (live source). Packages shown are
 '           the real subpackages of com.agentforge4j.core.
 '==============================================================================
@@ -66,6 +66,10 @@ package "core.workflow.step.behaviour" {
   class ValidateBehaviour <<record>>
   class AssignContextBehaviour <<record>>
   class CollectionBehaviour <<record>>
+  class AggregateBehaviour <<record>> {
+    +aggregatorId : String
+    +outputContextKeyPrefix : String
+  }
 }
 
 StepBehaviour <|.. AgentBehaviour
@@ -79,14 +83,16 @@ StepBehaviour <|.. RetryPreviousBehaviour
 StepBehaviour <|.. ValidateBehaviour
 StepBehaviour <|.. AssignContextBehaviour
 StepBehaviour <|.. CollectionBehaviour
+StepBehaviour <|.. AggregateBehaviour
 
-' Only 6 of the 11 permits are TransitionAware; BlueprintBehaviour also is.
+' Only 7 of the 12 permits are TransitionAware; BlueprintBehaviour also is.
 TransitionAware <|.. AgentBehaviour
 TransitionAware <|.. SparBehaviour
 TransitionAware <|.. WorkflowBehaviour
 TransitionAware <|.. InputBehaviour
 TransitionAware <|.. ResourceBehaviour
 TransitionAware <|.. CollectionBehaviour
+TransitionAware <|.. AggregateBehaviour
 TransitionAware <|.. BlueprintBehaviour
 TransitionAware ..> StepTransition
 note right of TransitionAware
@@ -94,6 +100,12 @@ note right of TransitionAware
   ValidateBehaviour and AssignContextBehaviour are NOT
   TransitionAware. BlueprintBehaviour is a separate record
   (not a StepBehaviour permit).
+end note
+note bottom of AggregateBehaviour
+  aggregatorId names a registered ContextAggregator
+  (core.spi.aggregation) resolved by id at runtime, not a
+  direct type reference — mirrors BlueprintRef's
+  resolve-by-id pattern below.
 end note
 
 StepDefinition *-- StepBehaviour
@@ -260,6 +272,26 @@ package "core.spi.integration" {
   IntegrationDefinition *-- IntegrationType
   IntegrationDefinition *-- IntegrationCapability
   IntegrationRepository <|-- MutableIntegrationRepository
+}
+
+'------------------------- aggregation SPI (AGGREGATE) -------------------------
+package "core.spi.aggregation" {
+  interface ContextAggregator {
+    +aggregatorId() : String
+    +aggregate(AggregationContext) : Map<String,ContextValue>
+  }
+  interface AggregationContext <<functional>> {
+    +values() : Map<String,ContextValue>
+  }
+  note bottom of ContextAggregator
+    Discovered via ServiceLoader (no factory
+    indirection, unlike ArtifactValidatorFactory).
+    Built-in: WorkflowExecutionEstimateAggregator
+    (agentforge4j-core, powers the shipped
+    workflow-execution-estimator catalog bundle's
+    aggregate-estimate AGGREGATE step).
+  end note
+  ContextAggregator ..> AggregationContext
 }
 
 '------------------------ llm-api boundary (separate) -------------------------

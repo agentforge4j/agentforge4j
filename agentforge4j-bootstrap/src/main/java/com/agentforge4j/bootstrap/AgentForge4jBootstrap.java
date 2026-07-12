@@ -5,6 +5,7 @@ import com.agentforge4j.config.loader.LoadedConfiguration;
 import com.agentforge4j.config.loader.integration.FileSystemIntegrationConfigLoader;
 import com.agentforge4j.core.agent.AgentRepository;
 import com.agentforge4j.core.runtime.WorkflowRuntime;
+import com.agentforge4j.core.spi.aggregation.ContextAggregator;
 import com.agentforge4j.core.spi.integration.EnvironmentSecretResolver;
 import com.agentforge4j.core.spi.integration.IntegrationConfigLoader;
 import com.agentforge4j.core.spi.integration.IntegrationRepository;
@@ -120,6 +121,7 @@ public final class AgentForge4jBootstrap {
     private ModelTierResolver modelTierResolver;
     private RequirementResolver requirementResolver;
     private List<ArtifactValidator> artifactValidators = List.of();
+    private List<ContextAggregator> contextAggregators = List.of();
     private List<ToolProvider> toolProviders = List.of();
     private ToolProviderResolver toolProviderResolver;
     private ToolPolicy toolPolicy;
@@ -408,6 +410,21 @@ public final class AgentForge4jBootstrap {
     public Builder withArtifactValidators(List<ArtifactValidator> artifactValidators) {
       this.artifactValidators =
           List.copyOf(Validate.notNull(artifactValidators, "artifactValidators must not be null"));
+      return this;
+    }
+
+    /**
+     * Registers additional {@link ContextAggregator}s an {@code AGGREGATE} step may select by id. These are appended to
+     * the built-in aggregators discovered via {@link java.util.ServiceLoader}; a supplied aggregator that reuses an
+     * already-registered id fails fast at runtime assembly.
+     *
+     * @param contextAggregators aggregators to add; must not be {@code null}
+     *
+     * @return this builder
+     */
+    public Builder withContextAggregators(List<ContextAggregator> contextAggregators) {
+      this.contextAggregators =
+          List.copyOf(Validate.notNull(contextAggregators, "contextAggregators must not be null"));
       return this;
     }
 
@@ -778,7 +795,8 @@ public final class AgentForge4jBootstrap {
           resolvedWorkflowRepo, resolvedStateRepo, resolvedEventLog, resolvedClock,
           resolvedFileSink, resolvedInvoker, resolvedRecorder,
           maxNestingDepth, resolvedToolExecutionService, resolvedPendingStore,
-          requirementResolver, resolvedInterceptor, resolvedMapper, artifactValidators);
+          requirementResolver, resolvedInterceptor, resolvedMapper, artifactValidators,
+          contextAggregators);
 
       BootstrapComponents components = new BootstrapComponents(resolvedAgentRepo, resolvedWorkflowRepo,
           resolvedStateRepo, resolvedEventLog, resolvedResolver, resolvedRenderer, resolvedParser, resolvedRecorder,
