@@ -26,8 +26,11 @@ private application (not published to npm) and is independent of the Maven react
   the repository's `BRAND.md`; `favicon.ico`/`apple-touch-icon.png`/`brand/icon-512.png` are
   generated derivatives of it.
 - **Committed-content gate**: `scripts/lint-content-gate.mjs` scans this module's own `.ts`/`.tsx`
-  sources against both term groups defined in `agentforge4j-docs/scripts/` (product-boundary +
-  attribution), imported via a relative path — not a duplicated copy.
+  sources under `src/`, plus its other committed prose surfaces (`README.md`, `index.html`,
+  `nginx.conf`, `Dockerfile.local`, `public/robots.txt`) against both term groups defined in
+  `agentforge4j-docs/scripts/` (product-boundary + attribution), imported via a relative path —
+  not a duplicated copy. Generated/build output (`dist/`, `node_modules/`, `.tsbuildinfo` caches)
+  is never in scope.
 - **404**: `scripts/copy-404.mjs` ships `dist/404.html` as a byte-identical copy of `dist/index.html`
   after every build, so GitHub Pages serves a real HTTP 404 with the site's own branded not-found
   page.

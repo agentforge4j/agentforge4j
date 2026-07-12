@@ -1,14 +1,21 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 // Committed-content gate (design §4) for this module: scans every `.ts`/`.tsx` source file
-// under `src/` for both term groups. Neither term list is authored here — both live in
-// `agentforge4j-docs/scripts/` and are imported via a relative cross-directory path, since no
-// npm workspace ties the OSS repo's top-level modules together (confirmed: no root
-// package.json/workspace file). This keeps exactly one copy of each list instead of a second,
-// independently-drifting one per module.
+// under `src/` plus every other committed, human-authored text file in the module (README,
+// the HTML shell, the deployment config, the local Dockerfile) for both term groups. Neither
+// term list is authored here — both live in `agentforge4j-docs/scripts/` and are imported via
+// a relative cross-directory path, since no npm workspace ties the OSS repo's top-level modules
+// together (confirmed: no root package.json/workspace file). This keeps exactly one copy of
+// each list instead of a second, independently-drifting one per module.
 //
-// Scans `.ts`/`.tsx` only, not `.md`/`.mdx` — this module's page/marketing copy lives in TS
-// modules (design §35's "centralised copy in src/copy/"), not markdown, unlike the docs site.
+// `src/` is scanned as `.ts`/`.tsx` only, not `.md`/`.mdx` — this module's page/marketing copy
+// lives in TS modules (design §35's "centralised copy in src/copy/"), not markdown, unlike the
+// docs site. `EXTRA_FILES` below is an explicit allowlist, not a generic root-directory walk —
+// a walk would need to keep excluding `node_modules/`, `dist/`, `package-lock.json`, and the
+// `.tsbuildinfo` build caches by pattern forever; a fixed list of the actual committed prose
+// surfaces is simpler and fails loudly (an intentionally uncaught `readFileSync` error) if one
+// of them is ever renamed or removed without updating this gate, rather than silently narrowing
+// coverage.
 
 import {readdirSync, readFileSync, statSync} from 'node:fs';
 import {join, relative, sep, dirname} from 'node:path';
@@ -20,6 +27,7 @@ const here = dirname(fileURLToPath(import.meta.url));
 const MODULE_ROOT = join(here, '..');
 const SRC_DIR = join(MODULE_ROOT, 'src');
 const SOURCE_EXTENSIONS = ['.ts', '.tsx'];
+const EXTRA_FILES = ['README.md', 'index.html', 'nginx.conf', 'Dockerfile.local', 'public/robots.txt'];
 
 function collectSources(dir) {
   const out = [];
@@ -34,9 +42,11 @@ function collectSources(dir) {
   return out;
 }
 
+const targets = [...collectSources(SRC_DIR), ...EXTRA_FILES.map((f) => join(MODULE_ROOT, f))];
+
 let violations = 0;
 let files = 0;
-for (const file of collectSources(SRC_DIR)) {
+for (const file of targets) {
   files += 1;
   const rel = relative(MODULE_ROOT, file).split(sep).join('/');
   const text = readFileSync(file, 'utf8');
