@@ -4,6 +4,11 @@
   "private": false,
   "description": "Reusable React workflow builder for AgentForge4j",
   "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/agentforge4j/agentforge4j.git",
+    "directory": "agentforge4j-workflow-builder"
+  },
   "type": "module",
   "agentforge4j": {
     "supportedSchemaVersions": [1]
