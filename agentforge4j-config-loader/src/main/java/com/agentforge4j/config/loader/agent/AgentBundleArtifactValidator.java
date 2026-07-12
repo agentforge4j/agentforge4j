@@ -48,11 +48,18 @@ public final class AgentBundleArtifactValidator implements ArtifactValidator {
   @Override
   public ValidationResult validate(ArtifactValidationContext context) {
     Map<String, String> artifacts = context.artifacts();
-    String agentJson = artifacts.get(AGENT_FILE_NAME);
-    if (agentJson == null) {
+    String matchedKey;
+    try {
+      matchedKey = BundleArtifactPaths.findKey(artifacts, AGENT_FILE_NAME);
+    } catch (IllegalStateException e) {
+      return ValidationResult.invalid(e.getMessage());
+    }
+    if (matchedKey == null) {
       return ValidationResult.invalid(
           "agent bundle is missing required '%s'".formatted(AGENT_FILE_NAME));
     }
+    String prefix = BundleArtifactPaths.prefixOf(matchedKey, AGENT_FILE_NAME);
+    String agentJson = artifacts.get(matchedKey);
     AgentDefinitionFile file;
     try {
       file = objectMapper.readValue(agentJson, AgentDefinitionFile.class);
@@ -61,7 +68,7 @@ public final class AgentBundleArtifactValidator implements ArtifactValidator {
           "%s is not valid JSON: %s".formatted(AGENT_FILE_NAME, e.getOriginalMessage()));
     }
     try {
-      assembler.assemble(file, AGENT_FILE_NAME, artifacts::get);
+      assembler.assemble(file, matchedKey, name -> artifacts.get(prefix + name));
     } catch (RuntimeException e) {
       return ValidationResult.invalid(
           "agent bundle does not load as a valid AgentDefinition: %s".formatted(e.getMessage()));

@@ -1,0 +1,347 @@
+{
+  "kind": "WORKFLOW",
+  "schemaVersion": 1,
+  "id": "agent-creator",
+  "uuid": "a1c9e8f2-4b3d-4e5f-9a0b-1c2d3e4f5a01",
+  "name": "Agent Creator",
+  "description": "Turns a freeform agent idea into an approved, validated, downloadable agent bundle (agent.json, systemprompt.md, README.md, and a verification starter). Single-pass and approval-gated: it structures requirements, optionally clarifies, assesses complexity and risk, deterministically resolves a recommended model tier, previews the design and a token estimate for human approval, then generates and deterministically validates the bundle before a final quality review.",
+  "steps": [
+    {
+      "kind": "STEP",
+      "stepId": "collect-intent",
+      "name": "Collect Agent Idea",
+      "behaviour": {
+        "type": "INPUT",
+        "artifactId": "agent-intent",
+        "transition": "AUTO"
+      }
+    },
+    {
+      "kind": "STEP",
+      "stepId": "structure-requirements",
+      "name": "Structure Requirements",
+      "behaviour": {
+        "type": "AGENT",
+        "agentRef": "requirement-structurer",
+        "transition": "AUTO",
+        "retryPolicy": {
+          "allowRetry": true,
+          "allowRetryFromPrevious": false,
+          "allowAgentSwap": false,
+          "allowPromptOverride": false,
+          "maxAttempts": 2
+        }
+      },
+      "contextMapping": {
+        "inputKeys": ["agent-intent"],
+        "outputKeys": ["requirementSpec", "openQuestions", "clarificationNeeded", "agentId"]
+      },
+      "modelTier": "LITE"
+    },
+    {
+      "kind": "STEP",
+      "stepId": "clarify",
+      "name": "Clarify Requirements (conditional)",
+      "behaviour": {
+        "type": "BRANCH",
+        "contextKey": "clarificationNeeded",
+        "branches": {
+          "true": {
+            "kind": "STEP",
+            "stepId": "collect-clarifications",
+            "name": "Collect Clarifications",
+            "behaviour": {
+              "type": "INPUT",
+              "artifactId": "clarifications",
+              "transition": "AUTO"
+            }
+          },
+          "false": {
+            "kind": "STEP",
+            "stepId": "skip-clarifications",
+            "name": "No Clarifications Needed",
+            "behaviour": {
+              "type": "ASSIGN_CONTEXT",
+              "contextKey": "clarificationAnswers",
+              "value": { "type": "STRING", "value": "(no clarifications needed)" }
+            }
+          }
+        },
+        "failOnUnmatched": true
+      }
+    },
+    {
+      "kind": "STEP",
+      "stepId": "assess",
+      "name": "Assess Complexity and Risk",
+      "behaviour": {
+        "type": "AGENT",
+        "agentRef": "complexity-risk-assessor",
+        "transition": "AUTO",
+        "retryPolicy": {
+          "allowRetry": true,
+          "allowRetryFromPrevious": false,
+          "allowAgentSwap": false,
+          "allowPromptOverride": false,
+          "maxAttempts": 2
+        }
+      },
+      "contextMapping": {
+        "inputKeys": ["requirementSpec", "clarificationAnswers"],
+        "outputKeys": ["complexity", "risk", "sensitivityFlags", "sensitivityFloor", "assessmentJustification"]
+      },
+      "modelTier": "LITE"
+    },
+    {
+      "kind": "STEP",
+      "stepId": "resolve-tier",
+      "name": "Resolve Recommended Tier",
+      "behaviour": {
+        "type": "BRANCH",
+        "contextKey": "sensitivityFloor",
+        "predicates": [
+          {
+            "kind": "MEMBER_OF",
+            "members": ["SENSITIVE"],
+            "target": { "kind": "BLUEPRINT_REF", "blueprintId": "tier-powerful-sensitivity" }
+          }
+        ],
+        "branches": {
+          "NONE": {
+            "kind": "STEP",
+            "stepId": "resolve-by-complexity",
+            "name": "Resolve Tier by Complexity",
+            "behaviour": {
+              "type": "BRANCH",
+              "contextKey": "complexity",
+              "branches": {
+                "simple": {
+                  "kind": "STEP",
+                  "stepId": "resolve-tier-simple",
+                  "name": "Resolve Tier (simple)",
+                  "behaviour": {
+                    "type": "BRANCH",
+                    "contextKey": "risk",
+                    "branches": {
+                      "low": { "kind": "BLUEPRINT_REF", "blueprintId": "tier-lite-matrix" },
+                      "moderate": { "kind": "BLUEPRINT_REF", "blueprintId": "tier-lite-matrix" },
+                      "high": { "kind": "BLUEPRINT_REF", "blueprintId": "tier-standard-matrix" }
+                    },
+                    "failOnUnmatched": true
+                  }
+                },
+                "moderate": {
+                  "kind": "STEP",
+                  "stepId": "resolve-tier-moderate",
+                  "name": "Resolve Tier (moderate)",
+                  "behaviour": {
+                    "type": "BRANCH",
+                    "contextKey": "risk",
+                    "branches": {
+                      "low": { "kind": "BLUEPRINT_REF", "blueprintId": "tier-lite-matrix" },
+                      "moderate": { "kind": "BLUEPRINT_REF", "blueprintId": "tier-standard-matrix" },
+                      "high": { "kind": "BLUEPRINT_REF", "blueprintId": "tier-powerful-matrix" }
+                    },
+                    "failOnUnmatched": true
+                  }
+                },
+                "complex": {
+                  "kind": "STEP",
+                  "stepId": "resolve-tier-complex",
+                  "name": "Resolve Tier (complex)",
+                  "behaviour": {
+                    "type": "BRANCH",
+                    "contextKey": "risk",
+                    "branches": {
+                      "low": { "kind": "BLUEPRINT_REF", "blueprintId": "tier-standard-matrix" },
+                      "moderate": { "kind": "BLUEPRINT_REF", "blueprintId": "tier-powerful-matrix" },
+                      "high": { "kind": "BLUEPRINT_REF", "blueprintId": "tier-powerful-matrix" }
+                    },
+                    "failOnUnmatched": true
+                  }
+                }
+              },
+              "failOnUnmatched": true
+            }
+          }
+        },
+        "failOnUnmatched": true
+      }
+    },
+    {
+      "kind": "STEP",
+      "stepId": "design-preview",
+      "name": "Design Preview",
+      "behaviour": {
+        "type": "AGENT",
+        "agentRef": "design-previewer",
+        "transition": "AUTO",
+        "retryPolicy": {
+          "allowRetry": true,
+          "allowRetryFromPrevious": false,
+          "allowAgentSwap": false,
+          "allowPromptOverride": false,
+          "maxAttempts": 2
+        }
+      },
+      "contextMapping": {
+        "inputKeys": ["requirementSpec", "clarificationAnswers", "complexity", "risk", "sensitivityFlags", "recommendedTier", "ruleFired", "agentId"],
+        "outputKeys": ["designSummary"]
+      },
+      "modelTier": "LITE"
+    },
+    {
+      "kind": "STEP",
+      "stepId": "estimate-tokens",
+      "name": "Estimate Typical-Run Tokens (approval gate)",
+      "behaviour": {
+        "type": "AGENT",
+        "agentRef": "token-estimator",
+        "transition": "HUMAN_APPROVAL",
+        "retryPolicy": {
+          "allowRetry": true,
+          "allowRetryFromPrevious": false,
+          "allowAgentSwap": false,
+          "allowPromptOverride": false,
+          "maxAttempts": 2
+        }
+      },
+      "contextMapping": {
+        "inputKeys": ["requirementSpec", "clarificationAnswers", "recommendedTier"],
+        "outputKeys": ["tokenEstimate"]
+      },
+      "modelTier": "LITE"
+    },
+    {
+      "kind": "STEP",
+      "stepId": "generate-agent",
+      "name": "Generate Agent Bundle",
+      "behaviour": {
+        "type": "AGENT",
+        "agentRef": "agent-author",
+        "transition": "AUTO",
+        "retryPolicy": {
+          "allowRetry": true,
+          "allowRetryFromPrevious": false,
+          "allowAgentSwap": false,
+          "allowPromptOverride": false,
+          "maxAttempts": 2
+        }
+      },
+      "contextMapping": {
+        "inputKeys": ["requirementSpec", "clarificationAnswers", "recommendedTier", "ruleFired", "designSummary", "tokenEstimate", "agentId"]
+      },
+      "modelTier": "STANDARD"
+    },
+    {
+      "kind": "STEP",
+      "stepId": "validate-agent",
+      "name": "Validate Agent Bundle",
+      "behaviour": {
+        "type": "VALIDATE",
+        "validatorId": "agent-bundle",
+        "requiredArtifacts": [
+          "shipped-agents/generated.agent/agent.json",
+          "shipped-agents/generated.agent/systemprompt.md",
+          "shipped-agents/generated.agent/README.md"
+        ],
+        "contextEqualityContracts": [
+          { "artifactPath": "shipped-agents/generated.agent/agent.json", "jsonPointer": "/modelTier", "contextKey": "recommendedTier" },
+          { "artifactPath": "shipped-agents/generated.agent/agent.json", "jsonPointer": "/id", "contextKey": "agentId" }
+        ]
+      },
+      "contextMapping": {
+        "inputKeys": ["recommendedTier", "agentId"]
+      }
+    },
+    {
+      "kind": "STEP",
+      "stepId": "generate-verification",
+      "name": "Generate Verification Starter",
+      "behaviour": {
+        "type": "AGENT",
+        "agentRef": "verification-author",
+        "transition": "AUTO",
+        "retryPolicy": {
+          "allowRetry": true,
+          "allowRetryFromPrevious": false,
+          "allowAgentSwap": false,
+          "allowPromptOverride": false,
+          "maxAttempts": 2
+        }
+      },
+      "contextMapping": {
+        "inputKeys": ["requirementSpec", "designSummary"]
+      },
+      "modelTier": "STANDARD"
+    },
+    {
+      "kind": "STEP",
+      "stepId": "validate-final",
+      "name": "Validate Final Bundle",
+      "behaviour": {
+        "type": "VALIDATE",
+        "validatorId": "agent-creator-bundle",
+        "requiredArtifacts": [
+          "shipped-agents/generated.agent/agent.json",
+          "shipped-agents/generated.agent/systemprompt.md",
+          "shipped-agents/generated.agent/README.md",
+          "shipped-agents/generated.agent/verification/script.json",
+          "shipped-agents/generated.agent/verification/expected-result.json",
+          "shipped-agents/generated.agent/verification/README.md"
+        ],
+        "contextEqualityContracts": [
+          { "artifactPath": "shipped-agents/generated.agent/agent.json", "jsonPointer": "/modelTier", "contextKey": "recommendedTier" },
+          { "artifactPath": "shipped-agents/generated.agent/agent.json", "jsonPointer": "/id", "contextKey": "agentId" }
+        ]
+      },
+      "contextMapping": {
+        "inputKeys": ["recommendedTier", "agentId"]
+      }
+    },
+    {
+      "kind": "STEP",
+      "stepId": "review",
+      "name": "Final Quality Review",
+      "behaviour": {
+        "type": "AGENT",
+        "agentRef": "bundle-reviewer",
+        "transition": "AUTO",
+        "retryPolicy": {
+          "allowRetry": true,
+          "allowRetryFromPrevious": false,
+          "allowAgentSwap": false,
+          "allowPromptOverride": false,
+          "maxAttempts": 2
+        }
+      },
+      "contextMapping": {
+        "inputKeys": ["requirementSpec", "clarificationAnswers", "recommendedTier", "ruleFired", "designSummary", "tokenEstimate"],
+        "outputKeys": ["verdict"]
+      },
+      "modelTier": "STANDARD"
+    },
+    {
+      "kind": "STEP",
+      "stepId": "verdict-branch",
+      "name": "Verdict Branch",
+      "behaviour": {
+        "type": "BRANCH",
+        "contextKey": "verdict",
+        "branches": {
+          "PASS": null
+        },
+        "defaultBranch": {
+          "kind": "STEP",
+          "stepId": "fail-blocking",
+          "name": "Fail on Blocking Issues",
+          "behaviour": {
+            "type": "FAIL",
+            "reason": "Final review returned BLOCKING_ISSUES or a malformed verdict; failing closed."
+          }
+        },
+        "failOnUnmatched": false
+      }
+    }
+  ]
+}

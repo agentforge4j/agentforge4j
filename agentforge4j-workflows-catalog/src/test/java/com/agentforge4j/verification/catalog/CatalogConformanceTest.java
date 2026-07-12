@@ -23,10 +23,6 @@ import org.junit.jupiter.api.Test;
  *
  * <p>Each scenario must carry a {@code README.md}, a parseable {@code script.json}, and an
  * {@code expected-result.json} naming the same workflow as the folder that owns it.
- *
- * <p>The clean-slate window ended with the first shipped workflow (workflow-execution-estimator):
- * the shipped index and scenario ownership are now asserted non-empty, and the coverage/orphan
- * checks below exercise the genuine cross-check, not a vacuous one.
  */
 class CatalogConformanceTest {
 
@@ -39,16 +35,16 @@ class CatalogConformanceTest {
   }
 
   @Test
-  void shippedCatalogOwnsTheExecutionEstimatorWorkflow() {
+  void shippedCatalogOwnsBothWorkflows() {
     assertThat(shippedWorkflows())
         .as("the shipped workflow index must enumerate the shipped catalog's workflows")
-        .contains("workflow-execution-estimator");
+        .contains("agent-creator", "workflow-execution-estimator");
   }
 
   @Test
-  void scenariosExistForTheShippedWorkflow() {
+  void atLeastOneScenarioExists() {
     assertThat(CatalogScenarios.discover())
-        .as("the shipped workflow must own at least one verification scenario")
+        .as("the shipped catalog must own at least one verification scenario")
         .isNotEmpty();
   }
 

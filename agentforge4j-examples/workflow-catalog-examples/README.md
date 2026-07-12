@@ -10,6 +10,7 @@ README format as the framework examples.
 
 | Module | Shipped workflow | What it teaches |
 |---|---|---|
+| [`agent-creator`](agent-creator) | `agent-creator` | Submitting a freeform agent idea to the shipped agent-creator workflow, and how a caller discloses the design preview, recommended tier, and token estimate before deciding whether to approve. |
 | [`workflow-execution-estimator`](workflow-execution-estimator) | `workflow-execution-estimator` | Estimating the execution shape of a target workflow before running it, and how a caller aggregates the sized figures into a full disclosure before deciding whether to approve. |
 
 ## Running
