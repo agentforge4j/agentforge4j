@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import { describe, expect, test } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import App from '@/App';
 
@@ -58,6 +59,34 @@ describe('a11y baseline', () => {
   test('every placeholder route exposes exactly one h1', () => {
     renderAt('/architecture');
     expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1);
+  });
+});
+
+describe('mobile navigation', () => {
+  test('primary nav links are not duplicated in the DOM until the menu is opened', () => {
+    renderAt('/');
+    // The mobile menu panel is unmounted (not just hidden) until toggled — the desktop
+    // nav (CSS-hidden below `md:`, not removed) is the only "Primary" landmark by default.
+    expect(screen.getAllByRole('navigation', { name: 'Primary' })).toHaveLength(1);
+  });
+
+  test('the menu toggle opens a second Primary nav landmark with the same links, and closes it again', async () => {
+    const user = userEvent.setup();
+    renderAt('/');
+    await user.click(screen.getByRole('button', { name: 'Open menu' }));
+    expect(screen.getAllByRole('navigation', { name: 'Primary' })).toHaveLength(2);
+    await user.click(screen.getByRole('button', { name: 'Close menu' }));
+    expect(screen.getAllByRole('navigation', { name: 'Primary' })).toHaveLength(1);
+  });
+
+  test('clicking a link in the open mobile menu closes it', async () => {
+    const user = userEvent.setup();
+    const { container } = renderAt('/');
+    await user.click(screen.getByRole('button', { name: 'Open menu' }));
+    const mobileNav = container.querySelector('#primary-nav-mobile');
+    expect(mobileNav).not.toBeNull();
+    await user.click(within(mobileNav as HTMLElement).getByRole('link', { name: 'Catalogue' }));
+    expect(screen.getAllByRole('navigation', { name: 'Primary' })).toHaveLength(1);
   });
 });
 
