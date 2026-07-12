@@ -7,6 +7,10 @@ import com.agentforge4j.core.agent.AgentDefinition;
 import com.agentforge4j.core.agent.ProviderPreference;
 import com.agentforge4j.core.runtime.StepApprovalDecision;
 import com.agentforge4j.core.workflow.WorkflowDefinition;
+import com.agentforge4j.core.workflow.context.ContextValue;
+import com.agentforge4j.core.workflow.context.ContextValueList;
+import com.agentforge4j.core.workflow.context.NumberContextValue;
+import com.agentforge4j.core.workflow.context.StringContextValue;
 import com.agentforge4j.core.workflow.estimate.RiskFlag;
 import com.agentforge4j.core.workflow.estimate.WorkflowComplexityAnalysis;
 import com.agentforge4j.core.workflow.estimate.WorkflowExecutionAnalysisService;
@@ -231,11 +235,32 @@ public final class WorkflowExecutionEstimatorExample {
     System.out.println("recommendation: " + estimateContext(state, "recommendation"));
   }
 
-  private static Object estimateContext(WorkflowState state, String field) {
-    return state.getContextValue(ESTIMATE_PREFIX + field)
+  private static String estimateContext(WorkflowState state, String field) {
+    ContextValue value = state.getContextValue(ESTIMATE_PREFIX + field)
         .orElseThrow(() -> new IllegalStateException(
             "Expected the estimator run to expose context key '%s%s' at the pause"
                 .formatted(ESTIMATE_PREFIX, field)));
+    return displayValue(value);
+  }
+
+  /**
+   * Renders a {@link ContextValue} for console display as its plain typed content, not the
+   * internal record {@code toString()} (which would print {@code StringContextValue[value=...,
+   * provenance=...]} instead of the value itself).
+   */
+  private static String displayValue(ContextValue value) {
+    if (value instanceof StringContextValue string) {
+      return string.value();
+    }
+    if (value instanceof NumberContextValue number) {
+      return String.valueOf(number.value());
+    }
+    if (value instanceof ContextValueList list) {
+      return list.values().stream().map(WorkflowExecutionEstimatorExample::displayValue)
+          .collect(Collectors.joining(","));
+    }
+    throw new IllegalStateException(
+        "Unsupported disclosed context value type: " + value.getClass().getSimpleName());
   }
 
   /**
