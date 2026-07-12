@@ -1,1 +1,2 @@
 com.agentforge4j.config.loader.agent.AgentBundleArtifactValidatorFactory
+com.agentforge4j.config.loader.agent.RequiredArtifactsPresentValidatorFactory

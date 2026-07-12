@@ -46,11 +46,40 @@ class LoopStrategyTest {
   }
 
   @Test
+  void fixedCountLoopInvokesBodyOncePerIteration() {
+    // Regression: the body step must actually execute on every iteration, not just the first
+    // (shouldSkip previously treated the step's iteration-1 output as "already done" for
+    // iterations 2 and 3, so LOOP_ITERATION_STARTED/COMPLETED fired 3 times with the body silently
+    // skipped on 2 of them).
+    WorkflowRunResult result = harness().run("fixed-count-loop");
+    WorkflowRunAssert.assertThat(result)
+        .isCompleted()
+        .loopIterations(3)
+        .stepVisitCount("body", 3)
+        .providerCallCount(3);
+  }
+
+  @Test
   void forEachLoopRunsOncePerListElement() {
     WorkflowRunResult result = harness().run("foreach-loop");
     WorkflowRunAssert.assertThat(result)
         .isCompleted()
         .forEachIterations(2);
+  }
+
+  @Test
+  void forEachLoopInvokesBodyForEveryElementNotJustTheFirst() {
+    // Regression for the bug's most severe consequence: FOR_EACH silently processed only the first
+    // list element (elements 2..N were skipped, not just under-invoked) while still emitting
+    // LOOP_ITERATION_STARTED/COMPLETED for every element, so the audit trail claimed all elements
+    // were processed. The seed step provisions a 2-element list ("a", "b"); the body must be
+    // visited (and the agent invoked) once per element.
+    WorkflowRunResult result = harness().run("foreach-loop");
+    WorkflowRunAssert.assertThat(result)
+        .isCompleted()
+        .forEachIterations(2)
+        .stepVisitCount("body", 2)
+        .providerCallCount(3); // 1 seed call + 1 body call per element
   }
 
   @Test
@@ -62,6 +91,18 @@ class LoopStrategyTest {
   }
 
   @Test
+  void evaluatorLoopInvokesBodyOnBothIterations() {
+    // Regression: the evaluator agent itself is invoked outside StepSequenceExecutor
+    // (unaffected by the bug), but the loop body's own "body" step was silently skipped on
+    // iteration 2 because its iteration-1 output already sat in stepOutputs.
+    WorkflowRunResult result = harness().run("evaluator-loop");
+    WorkflowRunAssert.assertThat(result)
+        .isCompleted()
+        .loopIterations(2)
+        .stepVisitCount("body", 2);
+  }
+
+  @Test
   void agentSignalLoopTerminatesWhenAgentEmitsComplete() {
     // The body signals completion (COMPLETE) on its first iteration, so the loop terminates by
     // signal and the run completes. Before #97 the COMPLETE was ignored and the loop ran to
@@ -70,5 +111,20 @@ class LoopStrategyTest {
     WorkflowRunAssert.assertThat(result)
         .isCompleted()
         .loopIterations(1);
+  }
+
+  @Test
+  void agentSignalLoopInvokesBodyOnBothIterationsBeforeSignalling() {
+    // Regression: unlike agentSignalLoopTerminatesWhenAgentEmitsComplete (which only exercises a
+    // single, first-iteration signal), this drives the body through iteration 1 (CONTINUE) before
+    // it signals COMPLETE on iteration 2 — the same body-skip-on-resume bug this PR fixes for
+    // FIXED_COUNT/FOR_EACH/EVALUATOR could equally have left AGENT_SIGNAL's own body unexecuted on
+    // iteration 2, undetected by a single-iteration test.
+    WorkflowRunResult result = harness().run("agent-signal-loop-multi-iteration");
+    WorkflowRunAssert.assertThat(result)
+        .isCompleted()
+        .loopIterations(2)
+        .stepVisitCount("body", 2)
+        .providerCallCount(2);
   }
 }

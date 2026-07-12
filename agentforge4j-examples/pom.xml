@@ -57,6 +57,11 @@
       </dependency>
       <dependency>
         <groupId>org.agentforge4j</groupId>
+        <artifactId>agentforge4j-util</artifactId>
+        <version>${agentforge4j.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>org.agentforge4j</groupId>
         <artifactId>agentforge4j-spring-boot-starter</artifactId>
         <version>${agentforge4j.version}</version>
       </dependency>
@@ -73,6 +78,13 @@
       <dependency>
         <groupId>org.agentforge4j</groupId>
         <artifactId>agentforge4j-llm-fake</artifactId>
+        <version>${agentforge4j.version}</version>
+      </dependency>
+      <!-- Test-scope only: proves the real-provider assembly path resolves a working LlmClient without a
+           network call (client construction, not invocation). Not a runtime dependency of any example. -->
+      <dependency>
+        <groupId>org.agentforge4j</groupId>
+        <artifactId>agentforge4j-llm-openai</artifactId>
         <version>${agentforge4j.version}</version>
       </dependency>
       <!-- Independently versioned shipped-workflow catalog — pinned to its own version, NOT

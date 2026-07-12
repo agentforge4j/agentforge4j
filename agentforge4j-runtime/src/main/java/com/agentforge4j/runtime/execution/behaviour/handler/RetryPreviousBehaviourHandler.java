@@ -87,7 +87,11 @@ public final class RetryPreviousBehaviourHandler implements
     // Evict captured bytes for artifacts emitted at or after the rewind point before clearing the
     // descriptors, so a re-emit on the re-drive upserts cleanly and an un-re-emitted path does not linger.
     GeneratedArtifactEviction.evictFromUid(generatedArtifactStore, state, retryUid);
-    state.clearEntriesFromUid(retryUid);
+    // Excludes any loop whose iteration is currently active on the call stack (this retry may be
+    // running from inside one, retrying that same iteration's own first-executed step, whose uid can
+    // coincide exactly with the loop's recorded body-start-uid) — that loop is not being externally
+    // re-entered, so its cursor/body-start-uid bookkeeping must survive this rewind.
+    state.clearEntriesFromUid(retryUid, executionContext.activeLoopBlueprintIds());
     LOG.log(System.Logger.Level.DEBUG, "Retry clearFromUid retryUid={0}", retryUid);
     LOG.log(System.Logger.Level.DEBUG, "Retry dispatched retryMode={0}, retryStepId={1}",
         behaviour.retryMode(), behaviour.retryStepId());

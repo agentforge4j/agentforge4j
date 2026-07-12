@@ -5,15 +5,8 @@ import com.agentforge4j.bootstrap.AgentForge4j;
 import com.agentforge4j.bootstrap.AgentForge4jBootstrap;
 import com.agentforge4j.core.workflow.context.ContextValue;
 import com.agentforge4j.core.workflow.state.WorkflowState;
-import com.agentforge4j.llm.DefaultLlmClientResolver;
-import com.agentforge4j.llm.api.LlmClient;
-import com.agentforge4j.llm.fake.FakeLlmClient;
-import com.agentforge4j.llm.fake.FakeScript;
-import com.agentforge4j.llm.fake.StaticFakeResponseSource;
 import java.net.URISyntaxException;
 import java.nio.file.Path;
-import java.util.List;
-import java.util.Map;
 import java.util.Objects;
 
 /**
@@ -22,11 +15,13 @@ import java.util.Objects;
  * context under a chosen key, then the run completes. It shows that not every step invokes an
  * agent — deterministic, non-AI steps can materialise reusable values for later steps.
  *
- * <p>The run is deterministic and offline. No agent runs, so no model output is scripted; the
- * runtime still requires an LLM resolver, so an empty {@code agentforge4j-llm-fake} script is wired
- * and never consulted.
+ * <p>Because this workflow runs no agent, it makes no model call and so has no real-provider path: the
+ * offline run and the test both use {@link WlResourceFakeLlm}'s empty fake (the runtime still requires a
+ * resolver, but it is never consulted). Unlike the sibling examples, this module has no
+ * {@code example.properties} / {@code .env.example} fake/real toggle, since there is nothing here for it
+ * to control.
  */
-public final class WlResourceExample {
+public final class WlResourceApp {
 
   /**
    * Workflow id; matches {@code workflows/wl-resource.workflow/} and its {@code id} field.
@@ -39,7 +34,7 @@ public final class WlResourceExample {
    */
   static final String CONTEXT_KEY = "welcome";
 
-  private WlResourceExample() {
+  private WlResourceApp() {
   }
 
   /**
@@ -61,23 +56,21 @@ public final class WlResourceExample {
   }
 
   /**
-   * Assembles an AgentForge4j runtime for the resource workflow. No agents are configured because
-   * the workflow runs none; the empty fake script satisfies the runtime's resolver requirement
-   * without ever being consulted. Shared by {@link #main(String[])} and the test.
+   * Assembles an AgentForge4j runtime for the resource workflow. No agents are configured because the
+   * workflow runs none; {@link WlResourceFakeLlm}'s empty fake satisfies the runtime's resolver
+   * requirement without ever being consulted. This is the only assembly path — the workflow makes no
+   * model call, so there is no real-provider variant. Shared by {@link #main(String[])} and the test.
    *
    * @return a ready-to-use framework facade
    *
    * @throws URISyntaxException if a bundled resource directory cannot be resolved to a path
    */
   static AgentForge4j assemble() throws URISyntaxException {
-    LlmClient fakeLlmClient =
-        new FakeLlmClient(new StaticFakeResponseSource(new FakeScript(1, Map.of())));
-
     return AgentForge4jBootstrap.defaults()
         .withWorkflowsDir(resourceDirectory("/workflows"))
         .withLoadShippedWorkflows(false)
         .withLoadShippedAgents(false)
-        .withLlmClientResolver(new DefaultLlmClientResolver(List.of(fakeLlmClient)))
+        .withLlmClientResolver(WlResourceFakeLlm.resolver())
         .build();
   }
 
@@ -105,7 +98,7 @@ public final class WlResourceExample {
    */
   private static Path resourceDirectory(String classpathDirectory) throws URISyntaxException {
     return Path.of(Objects.requireNonNull(
-        WlResourceExample.class.getResource(classpathDirectory),
+        WlResourceApp.class.getResource(classpathDirectory),
         "Missing classpath resource directory: %s".formatted(classpathDirectory)).toURI());
   }
 }

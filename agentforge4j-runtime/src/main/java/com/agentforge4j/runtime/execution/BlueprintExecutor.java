@@ -129,7 +129,7 @@ public final class BlueprintExecutor {
    * descending into nested blueprint refs and nested workflows so a body whose steps live inside a
    * nested blueprint still yields the real completion uid rather than {@code 0} — the uid the loop is
    * considered to have completed at. Keying the completion marker on this body uid makes
-   * {@link WorkflowState#clearEntriesFromUid(int)} drop the marker exactly when a rewind clears the
+   * {@link WorkflowState#clearEntriesFromUid(int, java.util.Set)} drop the marker exactly when a rewind clears the
    * body's execution range (a rewind to at or before the loop). Nested blueprint refs resolve against
    * {@code enclosing}'s blueprints map — the same resolution {@link #execute} uses. Returns
    * {@code 0} when no reachable body step has a uid (a degenerate empty body).

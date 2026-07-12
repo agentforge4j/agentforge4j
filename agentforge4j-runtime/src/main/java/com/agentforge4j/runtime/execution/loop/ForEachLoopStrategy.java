@@ -12,9 +12,11 @@ import com.agentforge4j.core.workflow.state.WorkflowStatus;
 import com.agentforge4j.core.workflow.step.blueprint.BlueprintDefinition;
 import com.agentforge4j.core.workflow.step.loop.LoopConfig;
 import com.agentforge4j.core.workflow.step.loop.LoopTerminationStrategy;
+import com.agentforge4j.runtime.GeneratedArtifactStore;
 import com.agentforge4j.runtime.event.EventRecorder;
 import com.agentforge4j.runtime.execution.ExecutionContext;
 import com.agentforge4j.runtime.execution.ExecutionOutcome;
+import com.agentforge4j.runtime.execution.GeneratedArtifactEviction;
 import com.agentforge4j.runtime.execution.StepSequenceExecutor;
 import com.agentforge4j.util.Validate;
 
@@ -42,10 +44,15 @@ public final class ForEachLoopStrategy extends AbstractLoopStrategy {
    */
   public static final String LOOP_ITEM_KEY = "loop.item";
 
+  private final GeneratedArtifactStore generatedArtifactStore;
+
   public ForEachLoopStrategy(StepSequenceExecutor stepSequenceExecutor,
       EventRecorder eventRecorder,
-      MaxIterationsHandler maxIterationsHandler) {
+      MaxIterationsHandler maxIterationsHandler,
+      GeneratedArtifactStore generatedArtifactStore) {
     super(stepSequenceExecutor, eventRecorder, maxIterationsHandler);
+    this.generatedArtifactStore = Validate.notNull(generatedArtifactStore,
+        "generatedArtifactStore must not be null");
   }
 
   @Override
@@ -72,7 +79,7 @@ public final class ForEachLoopStrategy extends AbstractLoopStrategy {
       state.setForEachListFingerprint(blueprintId, currentFingerprint);
     } else if (!currentFingerprint.equals(storedFingerprint)) {
       if (!config.allowForEachListMutation()) {
-        clearLoopState(state, blueprintId);
+        restartLoop(executionContext, blueprintId);
         throw new IllegalStateException(
             "FOR_EACH list under context key '%s' changed between pause and resume for blueprint '%s' (run '%s'). Set LoopConfig.allowForEachListMutation=true on the blueprint to permit this."
                 .formatted(config.forEachContextKey(), blueprintId, state.getRunId()));
@@ -80,7 +87,7 @@ public final class ForEachLoopStrategy extends AbstractLoopStrategy {
       LOG.log(System.Logger.Level.INFO,
           "FOR_EACH list mutated under key={0} blueprint={1}, restarting iteration",
           config.forEachContextKey(), blueprintId);
-      clearLoopState(state, blueprintId);
+      restartLoop(executionContext, blueprintId);
       state.setForEachListFingerprint(blueprintId, currentFingerprint);
     }
 
@@ -88,7 +95,7 @@ public final class ForEachLoopStrategy extends AbstractLoopStrategy {
     int ceiling = Math.min(total, config.maxIterations());
     int start = firstLoopIterationToRun(state, blueprintId);
     if (start > ceiling) {
-      clearLoopState(state, blueprintId);
+      restartLoop(executionContext, blueprintId);
       start = 1;
     }
 
@@ -96,7 +103,7 @@ public final class ForEachLoopStrategy extends AbstractLoopStrategy {
       LOG.log(System.Logger.Level.DEBUG,
           "Loop iteration start strategy={0}, iteration={1}, maxIterations={2}",
           strategy(), iteration, config.maxIterations());
-      markLoopIterationStart(state, blueprintId, iteration);
+      markLoopIterationStart(executionContext, blueprintId, iteration);
       ContextValue current = items.values().get(iteration - 1);
       Optional<ContextValue> previous = state.getContextValue(LOOP_ITEM_KEY);
       state.putContextValue(LOOP_ITEM_KEY, current);
@@ -105,7 +112,12 @@ public final class ForEachLoopStrategy extends AbstractLoopStrategy {
         outcome = execute(blueprint, executionContext, iteration);
       } catch (RuntimeException e) {
         restorePreviousItem(state, previous);
-        clearLoopState(state, blueprintId);
+        // Mirrors the list-mutation/ceiling-exceeded restarts above: the thrown iteration's own
+        // already-recorded step outputs and artifact bytes must be rewound too, not just the
+        // cursor/fingerprint, or a later retry of a downstream step can silently skip-guard this
+        // aborted iteration's steps instead of re-running them. restartLoop falls back to
+        // clearLoopState when nothing was recorded yet.
+        restartLoop(executionContext, blueprintId);
         throw e;
       }
       if (outcome == ExecutionOutcome.PAUSED) {
@@ -173,6 +185,42 @@ public final class ForEachLoopStrategy extends AbstractLoopStrategy {
   private static void clearLoopState(WorkflowState state, String blueprintId) {
     clearLoopIterationCursor(state, blueprintId);
     state.clearForEachListFingerprint(blueprintId);
+  }
+
+  /**
+   * Rewinds an abandoned in-progress iteration's body execution range (when one is recorded)
+   * before forgetting the cursor and fingerprint — called both when the loop is about to restart
+   * from iteration 1 in this same call (a mutated list or a cursor past the new ceiling) and when
+   * the iteration is abandoned outright by a propagating exception. Without the rewind, the
+   * abandoned iteration's step outputs would still satisfy {@code StepSequenceExecutor}'s
+   * resume-skip guard and either the restarted loop (in-flow) or a later retry of a downstream step
+   * (after the exception) would silently skip every already-recorded body step instead of
+   * re-running it.
+   *
+   * <p>Evicts the abandoned iteration's captured artifact bytes from {@link GeneratedArtifactStore}
+   * before the rewind, mirroring the other rewind chokepoints ({@code DefaultWorkflowRuntime.retry}
+   * and {@code RetryPreviousBehaviourHandler}) — otherwise a per-element unique artifact path emitted
+   * by the abandoned iteration would leak permanently against the run's artifact-count bound, since
+   * {@link WorkflowState#clearEntriesFromUid(int, java.util.Set)} drops the descriptors but not the
+   * bytes. This rewind deliberately does not exclude this loop's own blueprint id from
+   * {@code clearEntriesFromUid}'s sweep — abandoning this loop's own current iteration is the whole
+   * point here, unlike an internal, in-iteration rewind (for example {@code RetryPreviousBehaviourHandler}
+   * retrying a step within this loop's own currently-active iteration), which must leave this loop's
+   * bookkeeping alone. {@code executionContext.activeLoopBlueprintIds()} is still passed so an
+   * <em>outer</em> loop whose iteration is genuinely still in progress on the call stack (this loop
+   * nested inside it) is not itself wiped by this rewind.
+   */
+  private void restartLoop(ExecutionContext executionContext, String blueprintId) {
+    WorkflowState state = executionContext.getState();
+    int staleBodyStartUid = state.getLoopIterationBodyStartUid(blueprintId);
+    if (staleBodyStartUid > 0) {
+      GeneratedArtifactEviction.evictFromUid(generatedArtifactStore, state, staleBodyStartUid);
+      // clearEntriesFromUid's own loop sweep already removes this blueprint's cursor, body-start-uid,
+      // and fingerprint at this uid — clearLoopState below would only repeat that.
+      state.clearEntriesFromUid(staleBodyStartUid, executionContext.activeLoopBlueprintIds());
+      return;
+    }
+    clearLoopState(state, blueprintId);
   }
 
   // Package-private for direct fingerprint regression tests.
