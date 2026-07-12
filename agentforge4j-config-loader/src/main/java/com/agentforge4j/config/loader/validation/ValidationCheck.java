@@ -3,6 +3,7 @@ package com.agentforge4j.config.loader.validation;
 
 import com.agentforge4j.core.agent.AgentDefinition;
 import com.agentforge4j.core.workflow.WorkflowDefinition;
+import com.agentforge4j.util.Validate;
 import java.util.List;
 import java.util.Map;
 import java.util.function.BiConsumer;
@@ -26,6 +27,11 @@ public record ValidationCheck(
     boolean draftExempt,
     BiConsumer<Map<String, WorkflowDefinition>, Map<String, AgentDefinition>> action
 ) {
+
+  public ValidationCheck {
+    Validate.notBlank(code, "ValidationCheck code must not be blank");
+    Validate.notNull(action, "ValidationCheck action must not be null");
+  }
 
   /**
    * Builds the ordered suite of workflow validation checks backed by {@code validator}.

@@ -5,6 +5,7 @@ import com.agentforge4j.core.workflow.Executable;
 import com.agentforge4j.core.workflow.WorkflowDefinition;
 import com.agentforge4j.core.workflow.WorkflowLifecycle;
 import com.agentforge4j.core.workflow.WorkflowSource;
+import com.agentforge4j.core.workflow.WorkflowTreeWalker;
 import com.agentforge4j.core.workflow.requirement.RequirementScope;
 import com.agentforge4j.core.workflow.requirement.ResolutionMode;
 import com.agentforge4j.core.workflow.requirement.WorkflowRequirement;
@@ -20,7 +21,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class WorkflowValidatorRequirementsTest {
 
-  private final WorkflowValidator validator = new WorkflowValidator();
+  private final WorkflowValidator validator = new WorkflowValidator(WorkflowTreeWalker.MAX_TRAVERSAL_DEPTH);
 
   @Test
   void emptyRequirements_pass() {

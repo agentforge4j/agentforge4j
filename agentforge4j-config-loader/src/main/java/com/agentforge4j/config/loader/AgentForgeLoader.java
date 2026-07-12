@@ -11,6 +11,7 @@ import com.agentforge4j.core.agent.AgentDefinition;
 import com.agentforge4j.core.exception.DuplicateAgentIdException;
 import com.agentforge4j.core.exception.DuplicateWorkflowIdException;
 import com.agentforge4j.core.workflow.WorkflowDefinition;
+import com.agentforge4j.core.workflow.WorkflowTreeWalker;
 import com.agentforge4j.util.Validate;
 import java.nio.file.Path;
 import java.util.LinkedHashMap;
@@ -183,7 +184,7 @@ public final class AgentForgeLoader {
    */
   public void validate(Map<String, WorkflowDefinition> workflows,
       Map<String, AgentDefinition> agents) {
-    WorkflowValidator validator = new WorkflowValidator();
+    WorkflowValidator validator = new WorkflowValidator(WorkflowTreeWalker.MAX_TRAVERSAL_DEPTH);
     for (ValidationCheck check : ValidationCheck.suite(validator)) {
       runValidation(check.code(), () -> check.action().accept(workflows, agents));
     }
