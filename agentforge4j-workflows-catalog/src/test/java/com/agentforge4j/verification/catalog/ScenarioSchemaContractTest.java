@@ -13,7 +13,6 @@ import com.networknt.schema.SchemaRegistry;
 import com.networknt.schema.SpecificationVersion;
 import java.io.IOException;
 import java.io.UncheckedIOException;
-import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 
@@ -51,15 +50,15 @@ class ScenarioSchemaContractTest {
     // Each owned scenario's expected-result.json is read from its workflow folder on the classpath,
     // the same plug-and-play catalog a future external repo would consume — not a sibling source dir.
     List<ScenarioCase> scenarios = CatalogScenarios.discover();
-    assertThat(scenarios).as("there must be scenario fixtures to validate").isNotEmpty();
-    List<String> failures = new ArrayList<>();
+    assertThat(scenarios).as("the shipped catalog must own at least one scenario").isNotEmpty();
     for (ScenarioCase scenario : scenarios) {
-      List<Error> violations = SCENARIO_SCHEMA.validate(MAPPER.readTree(scenario.expectedResultJson()));
-      if (!violations.isEmpty()) {
-        failures.add(scenario.name() + " -> " + violations);
-      }
+      List<Error> violations =
+          SCENARIO_SCHEMA.validate(MAPPER.readTree(scenario.expectedResultJson()));
+      assertThat(violations)
+          .as("scenario '%s' expected-result.json must validate against the scenario schema",
+              scenario.name())
+          .isEmpty();
     }
-    assertThat(failures).isEmpty();
   }
 
   @Test
@@ -80,6 +79,22 @@ class ScenarioSchemaContractTest {
   }
 
   @Test
+  void schemaAcceptsContextPresenceAndRegexShapeAssertions() throws IOException {
+    List<Error> violations = SCENARIO_SCHEMA.validate(MAPPER.readTree("""
+        {
+          "workflowId": "demo",
+          "expect": {
+            "status": "AWAITING_STEP_APPROVAL",
+            "contextPresent": ["estimatedMinTokens", "estimatedMaxTokens"],
+            "contextMatches": {"confidence": "HIGH|MEDIUM|LOW|VERY_LOW"}
+          }
+        }
+        """));
+
+    assertThat(violations).isEmpty();
+  }
+
+  @Test
   void schemaAcceptsAllToolGateVerbs() throws IOException {
     List<Error> violations = SCENARIO_SCHEMA.validate(MAPPER.readTree("""
         {
@@ -92,6 +107,22 @@ class ScenarioSchemaContractTest {
             {"type": "toolApprove", "toolInvocationId": "tool-1"}
           ],
           "expect": {"status": "COMPLETED"}
+        }
+        """));
+
+    assertThat(violations).isEmpty();
+  }
+
+  @Test
+  void schemaAcceptsStepVisitCountsAndOrderedSteps() throws IOException {
+    List<Error> violations = SCENARIO_SCHEMA.validate(MAPPER.readTree("""
+        {
+          "workflowId": "demo",
+          "expect": {
+            "status": "COMPLETED",
+            "stepVisitCounts": {"revise": 2},
+            "orderedSteps": ["draft", "revise", "publish"]
+          }
         }
         """));
 

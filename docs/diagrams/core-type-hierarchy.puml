@@ -1,8 +1,8 @@
 @startuml core-type-hierarchy
 '==============================================================================
 ' Diagram : agentforge4j-core Type Hierarchy (Class Diagram)
-' Version : v1.2
-' Date    : 2026-06-16
+' Version : v1.4
+' Date    : 2026-07-12
 ' Source  : agentforge4j-core/src/main/java (live source). Packages shown are
 '           the real subpackages of com.agentforge4j.core.
 '==============================================================================
@@ -63,6 +63,13 @@ package "core.workflow.step.behaviour" {
   class BranchBehaviour        <<record>>
   class FailBehaviour          <<record>>
   class RetryPreviousBehaviour <<record>>
+  class ValidateBehaviour <<record>>
+  class AssignContextBehaviour <<record>>
+  class CollectionBehaviour <<record>>
+  class AggregateBehaviour <<record>> {
+    +aggregatorId : String
+    +outputContextKeyPrefix : String
+  }
 }
 
 StepBehaviour <|.. AgentBehaviour
@@ -73,20 +80,32 @@ StepBehaviour <|.. ResourceBehaviour
 StepBehaviour <|.. BranchBehaviour
 StepBehaviour <|.. FailBehaviour
 StepBehaviour <|.. RetryPreviousBehaviour
+StepBehaviour <|.. ValidateBehaviour
+StepBehaviour <|.. AssignContextBehaviour
+StepBehaviour <|.. CollectionBehaviour
+StepBehaviour <|.. AggregateBehaviour
 
-' Only 5 of the 8 permits are TransitionAware; BlueprintBehaviour also is.
+' Only 7 of the 12 permits are TransitionAware; BlueprintBehaviour also is.
 TransitionAware <|.. AgentBehaviour
 TransitionAware <|.. SparBehaviour
 TransitionAware <|.. WorkflowBehaviour
 TransitionAware <|.. InputBehaviour
 TransitionAware <|.. ResourceBehaviour
+TransitionAware <|.. CollectionBehaviour
+TransitionAware <|.. AggregateBehaviour
 TransitionAware <|.. BlueprintBehaviour
 TransitionAware ..> StepTransition
 note right of TransitionAware
-  BranchBehaviour, FailBehaviour and
-  RetryPreviousBehaviour are NOT TransitionAware.
-  BlueprintBehaviour is a separate record
+  BranchBehaviour, FailBehaviour, RetryPreviousBehaviour,
+  ValidateBehaviour and AssignContextBehaviour are NOT
+  TransitionAware. BlueprintBehaviour is a separate record
   (not a StepBehaviour permit).
+end note
+note bottom of AggregateBehaviour
+  aggregatorId names a registered ContextAggregator
+  (core.spi.aggregation) resolved by id at runtime, not a
+  direct type reference — mirrors BlueprintRef's
+  resolve-by-id pattern below.
 end note
 
 StepDefinition *-- StepBehaviour
@@ -139,8 +158,13 @@ package "core.workflow.event" {
     USER_PROMPT_LIMIT_REACHED
     TOOL_INVOCATION_REQUESTED / TOOL_INVOCATION_COMPLETED
     TOOL_INVOCATION_DENIED / TOOL_INVOCATION_APPROVAL_PENDING
-    TOOL_INVOCATION_FAILED
-    .. 31 values total ..
+    TOOL_INVOCATION_FAILED / RUN_BLOCKED
+    COLLECTION_OPENED / COLLECTION_ITEM_SUBMITTED / COLLECTION_ITEM_REPLACED
+    COLLECTION_ITEM_WITHDRAWN / COLLECTION_ITEM_REJECTED
+    COLLECTION_CLOSE_REQUESTED / COLLECTION_CLOSE_REJECTED / COLLECTION_CLOSED
+    COLLECTION_REOPENED / COLLECTION_AUTHORIZATION_DENIED
+    COLLECTION_DEADLINE_CLOSE_REQUESTED
+    .. 43 values total (check source; this enum grows often) ..
   }
 }
 
@@ -248,6 +272,26 @@ package "core.spi.integration" {
   IntegrationDefinition *-- IntegrationType
   IntegrationDefinition *-- IntegrationCapability
   IntegrationRepository <|-- MutableIntegrationRepository
+}
+
+'------------------------- aggregation SPI (AGGREGATE) -------------------------
+package "core.spi.aggregation" {
+  interface ContextAggregator {
+    +aggregatorId() : String
+    +aggregate(AggregationContext) : Map<String,ContextValue>
+  }
+  interface AggregationContext <<functional>> {
+    +values() : Map<String,ContextValue>
+  }
+  note bottom of ContextAggregator
+    Discovered via ServiceLoader (no factory
+    indirection, unlike ArtifactValidatorFactory).
+    Built-in: WorkflowExecutionEstimateAggregator
+    (agentforge4j-core, powers the shipped
+    workflow-execution-estimator catalog bundle's
+    aggregate-estimate AGGREGATE step).
+  end note
+  ContextAggregator ..> AggregationContext
 }
 
 '------------------------ llm-api boundary (separate) -------------------------

@@ -2,7 +2,6 @@
 package com.agentforge4j.llm.openai;
 
 import com.agentforge4j.llm.AbstractHttpLlmClient;
-import com.agentforge4j.llm.api.LlmClient;
 import com.agentforge4j.llm.api.LlmExecutionRequest;
 import com.agentforge4j.llm.api.LlmExecutionResponse;
 import com.agentforge4j.llm.api.LlmInvocationException;
@@ -15,6 +14,7 @@ import com.agentforge4j.llm.openai.dto.OpenAiResponsesRequestDto;
 import com.agentforge4j.llm.openai.dto.OpenAiResponsesResponseDto;
 import com.agentforge4j.llm.openai.dto.OpenAiResponsesUsageDto;
 import com.agentforge4j.util.Validate;
+import com.agentforge4j.util.text.CodeFence;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
 import java.net.URI;
@@ -76,7 +76,7 @@ public final class OpenAiLlmClient extends AbstractHttpLlmClient {
     Validate.notBlank(json, () -> new LlmInvocationException("LLM client json must not be blank"));
     OpenAiResponsesResponseDto dto = objectMapper.readValue(json, OpenAiResponsesResponseDto.class);
     validateApiError(dto, json);
-    String text = LlmClient.stripCodeFence(extractAssistantText(dto)
+    String text = CodeFence.strip(extractAssistantText(dto)
         .orElseThrow(() -> new LlmInvocationException(
             "OpenAI response missing assistant output_text in message output item: %s".formatted(
                 json))).strip());

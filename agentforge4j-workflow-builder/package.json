@@ -1,10 +1,13 @@
 {
   "name": "@agentforge4j/workflow-builder-react",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "private": false,
   "description": "Reusable React workflow builder for AgentForge4j",
   "license": "Apache-2.0",
   "type": "module",
+  "agentforge4j": {
+    "supportedSchemaVersions": [1]
+  },
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
   "types": "./dist/index.d.ts",

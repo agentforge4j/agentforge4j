@@ -1,0 +1,59 @@
+name: Web UI
+
+# Build + quality gate for the agentforge4j.org site (agentforge4j-web-ui). Installs the module,
+# then runs its existing `npm run check` script end to end (lint, the committed-content gate,
+# type-check, the component/route/a11y Vitest suite, the content-gate integration test, and the
+# production Vite build) — no new checks invented here, just the module's own scripts wired into
+# CI. Distinct from the Maven `CI` workflow (this never touches Java) and from `UI E2E`, `Docs`,
+# CodeQL, and Gitleaks.
+#
+# This workflow ALWAYS runs the full pipeline on every push/PR to `main` — no `on: paths:` filter.
+# A path-filtered "success" can be vacuous if the filter goes stale as files move; for a single
+# small Node module the full run is cheap enough that always running is simply safer.
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+concurrency:
+  group: web-ui-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  web-ui:
+    name: web-ui
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Node
+        uses: actions/setup-node@v6
+        with:
+          node-version-file: '.nvmrc'
+          cache: npm
+          cache-dependency-path: agentforge4j-web-ui/package-lock.json
+
+      - name: Install dependencies
+        working-directory: agentforge4j-web-ui
+        run: npm ci
+
+      - name: Lint, content-gate, type-check, test, and build
+        working-directory: agentforge4j-web-ui
+        run: npm run check
+
+      - name: Upload the built site
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: web-ui-site
+          path: agentforge4j-web-ui/dist/**
+          if-no-files-found: ignore
+          retention-days: 7

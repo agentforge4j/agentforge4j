@@ -54,6 +54,25 @@ class IntegrationSchemaContractTest {
   }
 
   @Test
+  void integrationSchema_acceptsValidMcpStreamableHttpDefinitionWithHeaders() throws Exception {
+    List<Error> violations = validate("""
+        {
+          "id": "jira",
+          "displayName": "Jira",
+          "type": "MCP_STREAMABLE_HTTP",
+          "active": true,
+          "config": {
+            "url": "https://mcp.example.com/jira",
+            "requestTimeout": "PT30S",
+            "staticHeaders": { "X-Api-Version": "2024-01" },
+            "secretHeaders": { "Authorization": "JIRA_TOKEN" }
+          }
+        }
+        """);
+    assertThat(violations).isEmpty();
+  }
+
+  @Test
   void integrationSchema_acceptsValidHttpDefinitionWithoutIdOrRemoteToolName() throws Exception {
     List<Error> violations = validate("""
         {
@@ -77,7 +96,7 @@ class IntegrationSchemaContractTest {
               "bodyMode": "NONE",
               "secretHeaders": { "Authorization": "AIRTABLE_TOKEN" },
               "timeout": null,
-              "maxRetries": -1,
+              "maxRetries": null,
               "maxResponseBytes": null
             }
           ]

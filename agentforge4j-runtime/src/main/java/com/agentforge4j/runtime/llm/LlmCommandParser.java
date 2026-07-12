@@ -5,8 +5,8 @@ import com.agentforge4j.core.command.LlmCommand;
 import com.agentforge4j.core.command.schema.CommandResponseSchema;
 import com.agentforge4j.core.command.schema.CommandTypeContract;
 import com.agentforge4j.core.command.schema.LlmCommandSubtypeRegistry;
-import com.agentforge4j.llm.api.LlmClient;
 import com.agentforge4j.util.Validate;
+import com.agentforge4j.util.text.CodeFence;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
@@ -83,7 +83,7 @@ public final class LlmCommandParser {
   }
 
   private ArrayNode extractArrayNode(String rawResponse) {
-    String cleaned = LlmClient.stripCodeFence(rawResponse.strip());
+    String cleaned = CodeFence.strip(rawResponse.strip());
     JsonNode root;
     try {
       root = objectMapper.readTree(cleaned);

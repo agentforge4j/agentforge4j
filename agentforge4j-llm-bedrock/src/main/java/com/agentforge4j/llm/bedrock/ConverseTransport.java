@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 package com.agentforge4j.llm.bedrock;
 
-import com.agentforge4j.llm.api.LlmClient;
 import com.agentforge4j.llm.api.LlmExecutionRequest;
 import com.agentforge4j.llm.api.LlmExecutionResponse;
 import com.agentforge4j.llm.api.LlmInvocationException;
 import com.agentforge4j.llm.api.TokenUsageReport;
 import com.agentforge4j.util.Validate;
+import com.agentforge4j.util.text.CodeFence;
 import java.util.List;
 import org.apache.commons.lang3.StringUtils;
 import software.amazon.awssdk.awscore.exception.AwsServiceException;
@@ -88,7 +88,7 @@ final class ConverseTransport implements BedrockTransport {
     for (ContentBlock block : content) {
       if (block != null && block.type() == ContentBlock.Type.TEXT
           && StringUtils.isNotBlank(block.text())) {
-        return LlmClient.stripCodeFence(block.text().strip());
+        return CodeFence.strip(block.text().strip());
       }
     }
 

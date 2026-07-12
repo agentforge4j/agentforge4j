@@ -14,10 +14,10 @@ import org.junit.jupiter.api.TestFactory;
  * loadable). A workflow may own several scenarios; each is driven as its own dynamic test.
  *
  * <p>Each shipped workflow that owns a {@code verification/<scenario>/} folder is discovered and
- * executed here with no further wiring — the first such workflow, {@code workflow-execution-
- * estimator}, contributes four scenarios. A catalog with no shipped workflows at all would make
- * this factory produce zero dynamic tests (which passes vacuously); that is no longer the state
- * of this module.
+ * executed here with no further wiring — {@code workflow-execution-estimator} contributes seven
+ * scenarios and {@code agent-creator} contributes fifteen. A catalog with no shipped workflows at
+ * all would make this factory produce zero dynamic tests (which passes vacuously); that is no
+ * longer the state of this module.
  */
 class ShippedCatalogScenarioTest {
 

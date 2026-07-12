@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 package com.agentforge4j.schema;
 
-import static org.assertj.core.api.Assertions.assertThat;
-
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.networknt.schema.Error;
@@ -14,9 +12,10 @@ import java.nio.file.Path;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 
+import static org.assertj.core.api.Assertions.assertThat;
+
 /**
- * Ensures {@code workflow.schema.json} describes only the executable workflow document, not a
- * merged bundle manifest.
+ * Ensures {@code workflow.schema.json} describes only the executable workflow document, not a merged bundle manifest.
  */
 class WorkflowExecutableSchemaContractTest {
 
@@ -29,11 +28,11 @@ class WorkflowExecutableSchemaContractTest {
   @Test
   void workflowSchema_rejectsTopLevelArtifacts() throws Exception {
     JsonNode schemaNode = MAPPER.readTree(Files.readString(SCHEMA_PATH));
-    Schema schema = SCHEMA_REGISTRY.getSchema(
-        SchemaLocation.of(SCHEMA_PATH.toUri().toString()), schemaNode);
+    Schema schema = SCHEMA_REGISTRY.getSchema(SchemaLocation.of(SCHEMA_PATH.toUri().toString()), schemaNode);
     JsonNode instance = MAPPER.readTree("""
         {
           "kind": "WORKFLOW",
+          "schemaVersion": 1,
           "id": "x",
           "name": "X",
           "steps": [{"kind": "STEP", "stepId": "s1", "name": "S", "behaviour": {"type": "FAIL", "reason": "r"}}],
@@ -54,6 +53,7 @@ class WorkflowExecutableSchemaContractTest {
     JsonNode instance = MAPPER.readTree("""
         {
           "kind": "WORKFLOW",
+          "schemaVersion": 1,
           "id": "x",
           "name": "X",
           "steps": [{"kind": "STEP", "stepId": "s1", "name": "S", "behaviour": {"type": "FAIL", "reason": "r"}}],
@@ -74,6 +74,7 @@ class WorkflowExecutableSchemaContractTest {
     JsonNode instance = MAPPER.readTree("""
         {
           "kind": "WORKFLOW",
+          "schemaVersion": 1,
           "id": "x",
           "name": "X",
           "steps": [{"kind": "STEP", "stepId": "s1", "name": "S", "stepPrompt": "do the thing", "behaviour": {"type": "FAIL", "reason": "r"}}]
@@ -81,5 +82,32 @@ class WorkflowExecutableSchemaContractTest {
         """);
     List<Error> violations = schema.validate(instance);
     assertThat(violations).isEmpty();
+  }
+
+  @Test
+  void workflowSchema_rejectsUnsupportedSchemaVersion() throws Exception {
+    JsonNode instance = MAPPER.readTree("""
+        {
+          "kind": "WORKFLOW",
+          "schemaVersion": 2,
+          "id": "x",
+          "name": "X",
+          "steps": [
+            {
+              "kind": "STEP",
+              "stepId": "s1",
+              "name": "S",
+              "behaviour": {
+                "type": "FAIL",
+                "reason": "r"
+              }
+            }
+          ]
+        }
+        """);
+
+    JsonNode schemaNode = MAPPER.readTree(Files.readString(SCHEMA_PATH));
+    Schema schema = SCHEMA_REGISTRY.getSchema(SchemaLocation.of(SCHEMA_PATH.toUri().toString()), schemaNode);
+    assertThat(schema.validate(instance)).isNotEmpty();
   }
 }

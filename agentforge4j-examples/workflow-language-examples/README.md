@@ -2,8 +2,11 @@
 
 Demonstrations of the declarative AgentForge4j workflow language: how to express control flow and
 structure in workflow definitions (and blueprints) rather than in Java. Each example is a standalone
-Maven module that runs deterministically and offline against the shipped fake LLM provider — no
-network, no API keys — following the same five-section README format as the framework examples.
+Maven module that runs deterministically and offline against the shipped fake LLM provider by
+default — no network, no API keys — following the same five-section README format as the framework
+examples. Five of the six (all but `wl-resource`, which never invokes an agent) can also run against a
+real LLM provider with no code change, by configuring a provider and API key; see any of those
+modules' READMEs for the pattern.
 
 ## Examples
 

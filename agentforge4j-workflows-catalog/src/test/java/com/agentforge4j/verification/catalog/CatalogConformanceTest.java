@@ -35,10 +35,10 @@ class CatalogConformanceTest {
   }
 
   @Test
-  void shippedCatalogIsNonEmpty() {
+  void shippedCatalogOwnsBothWorkflows() {
     assertThat(shippedWorkflows())
-        .as("the shipped workflow index must enumerate the real catalog")
-        .isNotEmpty();
+        .as("the shipped workflow index must enumerate the shipped catalog's workflows")
+        .contains("agent-creator", "workflow-execution-estimator");
   }
 
   @Test

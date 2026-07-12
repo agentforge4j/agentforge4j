@@ -29,5 +29,6 @@
 
   <modules>
     <module>agent-creator</module>
+    <module>workflow-execution-estimator</module>
   </modules>
 </project>
