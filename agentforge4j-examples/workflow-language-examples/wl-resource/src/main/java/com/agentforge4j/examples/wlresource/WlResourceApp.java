@@ -72,7 +72,7 @@ public final class WlResourceApp {
       return String.valueOf(number.value());
     }
     if (value instanceof ContextValueList list) {
-      return list.values().stream().map(WlResourceExample::displayValue)
+      return list.values().stream().map(WlResourceApp::displayValue)
           .collect(Collectors.joining(","));
     }
     throw new IllegalStateException(

@@ -32,11 +32,11 @@ class WlResourceAppTest {
 
   @Test
   void displayValueRendersPlainContentNotRecordSyntax() throws Exception {
-    AgentForge4j agentForge4j = WlResourceExample.assemble();
-    String runId = agentForge4j.start(WlResourceExample.WORKFLOW_ID);
+    AgentForge4j agentForge4j = WlResourceApp.assemble();
+    String runId = agentForge4j.start(WlResourceApp.WORKFLOW_ID);
     WorkflowState state = agentForge4j.runtime().getState(runId);
 
-    String rendered = WlResourceExample.displayValue(WlResourceExample.loadedResource(state));
+    String rendered = WlResourceApp.displayValue(WlResourceApp.loadedResource(state));
 
     assertThat(rendered)
         .contains("loaded by a RESOURCE step")
