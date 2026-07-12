@@ -306,6 +306,12 @@ public final class WorkflowValidator {
             .formatted(stepId, workflowId, artifactId));
   }
 
+  /**
+   * Collects step ids reachable within a single workflow's own {@code steps()} list — used only by
+   * {@link #validateRetryStepRefs}. Deliberately independent of
+   * {@link #collectRequirementScopedStepIds}: this method's traversal shape (no branch-child or
+   * blueprint-body descent) is unchanged so retry-ref validation's behavior is not altered here.
+   */
   private static void collectStepIds(List<Executable> steps, Set<String> stepIds) {
     for (Executable executable : steps) {
       if (executable instanceof StepDefinition step) {
@@ -358,7 +364,7 @@ public final class WorkflowValidator {
       return;
     }
     Set<String> stepIds = new HashSet<>();
-    collectStepIds(workflow.steps(), stepIds);
+    collectRequirementScopedStepIds(workflow.steps(), workflow, stepIds);
     Set<String> seenIds = new HashSet<>();
     Set<String> seenTargets = new HashSet<>();
     for (WorkflowRequirement requirement : requirements) {
@@ -375,6 +381,35 @@ public final class WorkflowValidator {
       Validate.isTrue(seenTargets.add(target),
           "Workflow '%s' declares conflicting requirements of type '%s' for the same target"
               .formatted(workflow.id(), requirement.type()));
+    }
+  }
+
+  /**
+   * Collects step ids reachable within {@code workflow} for {@link #validateWorkflowRequirements}'s
+   * {@code requirement.stepId()} targeting — descending into branch children and blueprint bodies, so
+   * a requirement may target a step nested inside either, matching the coverage
+   * {@link #walkForBlueprintRefs} and {@link #walkForValidateContracts} already give those same
+   * structural positions for their own checks. A blueprint ref that does not resolve is silently
+   * skipped here (not this check's concern) rather than reported — {@link #validateBlueprintRefs} owns
+   * reporting that failure, mirroring {@link #walkForValidateContracts}'s existing pattern for the same
+   * situation.
+   */
+  private static void collectRequirementScopedStepIds(List<Executable> steps,
+      WorkflowDefinition workflow, Set<String> stepIds) {
+    for (Executable executable : steps) {
+      if (executable instanceof StepDefinition step) {
+        stepIds.add(step.stepId());
+        if (step.behaviour() instanceof BranchBehaviour bb) {
+          collectRequirementScopedStepIds(bb.childExecutables(), workflow, stepIds);
+        }
+      } else if (executable instanceof BlueprintRef ref) {
+        BlueprintDefinition blueprint = workflow.blueprints().get(ref.blueprintId());
+        if (blueprint != null) {
+          collectRequirementScopedStepIds(blueprint.steps(), workflow, stepIds);
+        }
+      } else if (executable instanceof WorkflowDefinition nested) {
+        collectRequirementScopedStepIds(nested.steps(), nested, stepIds);
+      }
     }
   }
 
