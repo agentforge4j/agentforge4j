@@ -65,36 +65,43 @@ public final class AgentCreatorBundleValidator implements ArtifactValidator {
     }
 
     Map<String, String> artifacts = context.artifacts();
+    // The delegated agent-bundle validation above already proved an "agent.json" artifact resolves
+    // (bare or under a prefix); reuse that same match to resolve the verification-starter files under
+    // the identical bundle root, rather than assuming they sit at the map root.
+    String agentJsonKey = BundleArtifactPaths.findKey(artifacts, "agent.json");
+    String prefix = BundleArtifactPaths.prefixOf(agentJsonKey, "agent.json");
+    String scriptPath = prefix + SCRIPT_FILE;
+    String expectedResultPath = prefix + EXPECTED_RESULT_FILE;
 
-    Parsed script = parse(artifacts.get(SCRIPT_FILE), SCRIPT_FILE);
+    Parsed script = parse(artifacts.get(scriptPath), scriptPath);
     if (script.error() != null) {
       return script.error();
     }
-    ValidationResult scriptFields = requireFields(script.node(), SCRIPT_FILE, "schemaVersion", "responses");
+    ValidationResult scriptFields = requireFields(script.node(), scriptPath, "schemaVersion", "responses");
     if (!scriptFields.valid()) {
       return scriptFields;
     }
     if (!script.node().get("responses").isArray()) {
       return ValidationResult.invalid(
-          "%s field 'responses' must be a JSON array".formatted(SCRIPT_FILE));
+          "%s field 'responses' must be a JSON array".formatted(scriptPath));
     }
 
-    Parsed expected = parse(artifacts.get(EXPECTED_RESULT_FILE), EXPECTED_RESULT_FILE);
+    Parsed expected = parse(artifacts.get(expectedResultPath), expectedResultPath);
     if (expected.error() != null) {
       return expected.error();
     }
-    ValidationResult expectedFields = requireFields(expected.node(), EXPECTED_RESULT_FILE, "workflowId", "expect");
+    ValidationResult expectedFields = requireFields(expected.node(), expectedResultPath, "workflowId", "expect");
     if (!expectedFields.valid()) {
       return expectedFields;
     }
     JsonNode expectNode = expected.node().get("expect");
     if (!expectNode.isObject()) {
       return ValidationResult.invalid(
-          "%s field 'expect' must be a JSON object".formatted(EXPECTED_RESULT_FILE));
+          "%s field 'expect' must be a JSON object".formatted(expectedResultPath));
     }
     if (!expectNode.path("status").isTextual()) {
       return ValidationResult.invalid(
-          "%s field 'expect.status' must be a non-null string".formatted(EXPECTED_RESULT_FILE));
+          "%s field 'expect.status' must be a non-null string".formatted(expectedResultPath));
     }
     return ValidationResult.ok();
   }

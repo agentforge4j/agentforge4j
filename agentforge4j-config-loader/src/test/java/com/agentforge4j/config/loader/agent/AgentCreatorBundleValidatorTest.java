@@ -26,17 +26,21 @@ class AgentCreatorBundleValidatorTest {
   private final AgentCreatorBundleValidator validator = new AgentCreatorBundleValidator();
 
   private static Map<String, String> bundle(String script, String expected) {
+    return bundle("", script, expected);
+  }
+
+  private static Map<String, String> bundle(String prefix, String script, String expected) {
     Map<String, String> artifacts = new HashMap<>();
-    artifacts.put("agent.json", AGENT_JSON);
-    artifacts.put("systemprompt.md", SYSTEM_PROMPT);
-    artifacts.put("README.md", "# readme");
+    artifacts.put(prefix + "agent.json", AGENT_JSON);
+    artifacts.put(prefix + "systemprompt.md", SYSTEM_PROMPT);
+    artifacts.put(prefix + "README.md", "# readme");
     if (script != null) {
-      artifacts.put("verification/script.json", script);
+      artifacts.put(prefix + "verification/script.json", script);
     }
     if (expected != null) {
-      artifacts.put("verification/expected-result.json", expected);
+      artifacts.put(prefix + "verification/expected-result.json", expected);
     }
-    artifacts.put("verification/README.md", "# starter");
+    artifacts.put(prefix + "verification/README.md", "# starter");
     return artifacts;
   }
 
@@ -112,5 +116,28 @@ class AgentCreatorBundleValidatorTest {
     ValidationResult result = validator.validate(() -> artifacts);
     assertThat(result.valid()).isFalse();
     assertThat(result.message()).contains("verification/script.json");
+  }
+
+  /**
+   * Regression test for a defect where this validator looked up the verification-starter files by
+   * bare relative names ({@code "verification/script.json"}), but {@code ValidateBehaviourHandler}
+   * captures them keyed by the step's full declared path (e.g.
+   * {@code "shipped-agents/generated.agent/verification/script.json"}), so a prefixed bundle always
+   * failed regardless of content. Proves the fix resolves the whole bundle (agent.json plus
+   * verification starter) relative to whichever prefix the captured {@code agent.json} key uses.
+   */
+  @Test
+  void validBundleUnderAnArbitraryPrefixPasses() {
+    Map<String, String> artifacts = bundle("shipped-agents/generated.agent/", SCRIPT_OK, EXPECTED_OK);
+    assertThat(validator.validate(() -> artifacts).valid()).isTrue();
+  }
+
+  @Test
+  void malformedScriptJsonUnderAPrefixFails() {
+    Map<String, String> artifacts = bundle("shipped-agents/generated.agent/", "{ not json", EXPECTED_OK);
+    ValidationResult result = validator.validate(() -> artifacts);
+    assertThat(result.valid()).isFalse();
+    assertThat(result.message())
+        .contains("shipped-agents/generated.agent/verification/script.json", "not valid JSON");
   }
 }

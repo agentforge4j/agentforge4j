@@ -83,4 +83,30 @@ class AgentBundleArtifactValidatorTest {
     assertThat(result.valid()).isFalse();
     assertThat(result.message()).contains("systemprompt.md");
   }
+
+  /**
+   * Regression test for a defect where this validator looked up captured artifacts by the bare
+   * name ({@code "agent.json"}), but {@code ValidateBehaviourHandler} captures them keyed by the
+   * step's full declared path (e.g. {@code "shipped-agents/generated.agent/agent.json"}), so
+   * every prefixed bundle failed validation regardless of content. Proves the fix resolves an
+   * artifact at any prefix depth, and resolves its sibling ({@code systemprompt.md}) relative to
+   * the same prefix rather than the map root.
+   */
+  @Test
+  void valid_bundle_under_an_arbitrary_prefix_loads() {
+    ValidationResult result = validator.validate(context(Map.of(
+        "shipped-agents/generated.agent/agent.json", VALID_AGENT_JSON,
+        "shipped-agents/generated.agent/systemprompt.md", "You are a helpful agent.")));
+
+    assertThat(result.valid()).isTrue();
+  }
+
+  @Test
+  void missing_agent_json_under_a_prefix_is_still_invalid() {
+    ValidationResult result = validator.validate(context(Map.of(
+        "shipped-agents/generated.agent/systemprompt.md", "sys")));
+
+    assertThat(result.valid()).isFalse();
+    assertThat(result.message()).contains("missing required 'agent.json'");
+  }
 }
