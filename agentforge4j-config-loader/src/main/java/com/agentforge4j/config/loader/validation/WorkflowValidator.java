@@ -4,7 +4,6 @@ package com.agentforge4j.config.loader.validation;
 import com.agentforge4j.core.agent.AgentDefinition;
 import com.agentforge4j.core.exception.UnresolvedAgentReferenceException;
 import com.agentforge4j.core.workflow.BlueprintStructureException;
-import com.agentforge4j.core.workflow.Executable;
 import com.agentforge4j.core.workflow.WorkflowAgentRefCollector;
 import com.agentforge4j.core.workflow.WorkflowAgentRefCollector.AgentRefSite;
 import com.agentforge4j.core.workflow.WorkflowDefinition;
@@ -13,13 +12,11 @@ import com.agentforge4j.core.workflow.reachability.AmbiguousStepId;
 import com.agentforge4j.core.workflow.reachability.ReachableStepGraph;
 import com.agentforge4j.core.workflow.reachability.WorkflowRefResolver;
 import com.agentforge4j.core.workflow.requirement.WorkflowRequirement;
-import com.agentforge4j.core.workflow.step.StepDefinition;
 import com.agentforge4j.core.workflow.step.behaviour.ContextEqualityContract;
 import com.agentforge4j.core.workflow.step.behaviour.InputBehaviour;
 import com.agentforge4j.core.workflow.step.behaviour.RetryPreviousBehaviour;
 import com.agentforge4j.core.workflow.step.behaviour.ValidateBehaviour;
 import com.agentforge4j.core.workflow.step.behaviour.WorkflowBehaviour;
-import com.agentforge4j.core.workflow.step.blueprint.BlueprintRef;
 import com.agentforge4j.util.Validate;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -288,24 +285,6 @@ public final class WorkflowValidator {
     Validate.isTrue(workflow.artifacts().containsKey(artifactId),
         "Step '%s' in workflow '%s' references unknown artifact '%s'"
             .formatted(stepId, workflowId, artifactId));
-  }
-
-  /**
-   * Collects step ids reachable within a single workflow's own {@code steps()} list — used only by
-   * {@link #validateRetryStepRefs}. Deliberately independent of
-   * {@link #collectRequirementScopedStepIds}: this method's traversal shape (no branch-child or
-   * blueprint-body descent) is unchanged so retry-ref validation's behavior is not altered here.
-   */
-  private static void collectStepIds(List<Executable> steps, Set<String> stepIds) {
-    for (Executable executable : steps) {
-      if (executable instanceof StepDefinition step) {
-        stepIds.add(step.stepId());
-      } else if (executable instanceof BlueprintRef) {
-        // No step ids to collect here.
-      } else if (executable instanceof WorkflowDefinition nested) {
-        collectStepIds(nested.steps(), stepIds);
-      }
-    }
   }
 
   /**

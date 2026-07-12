@@ -13,6 +13,8 @@ import com.agentforge4j.core.workflow.step.StepDefinition;
 import com.agentforge4j.core.workflow.step.StepTransition;
 import com.agentforge4j.core.workflow.step.behaviour.BranchBehaviour;
 import com.agentforge4j.core.workflow.step.behaviour.ResourceBehaviour;
+import com.agentforge4j.core.workflow.step.behaviour.RetryMode;
+import com.agentforge4j.core.workflow.step.behaviour.RetryPreviousBehaviour;
 import com.agentforge4j.core.workflow.step.blueprint.BlueprintBehaviour;
 import com.agentforge4j.core.workflow.step.blueprint.BlueprintDefinition;
 import com.agentforge4j.core.workflow.step.blueprint.BlueprintRef;
@@ -143,6 +145,27 @@ class WorkflowValidatorRequirementsTest {
             RequirementScope.STEP_ACTION, "branch-step", "REVIEW", true, null,
             ResolutionMode.INSTALL)),
         branchStep);
+
+    assertThatCode(() -> validator.validateRequirements(Map.of(workflow.id(), workflow)))
+        .doesNotThrowAnyException();
+  }
+
+  // Regression coverage: a requirement may also target a step reachable only through a
+  // RetryPreviousBehaviour's fallback executable, since the shared WorkflowTreeWalker this check now
+  // uses descends fallback bodies the same way it descends branch children and blueprint bodies.
+  @Test
+  void requirementTargetingStepInsideRetryFallback_isAccepted() {
+    StepDefinition fallbackStep = step("fallback-step");
+    StepDefinition retryStep = StepDefinition.builder()
+        .withStepId("r1")
+        .withName("Retry")
+        .withBehaviour(new RetryPreviousBehaviour("review-cv", RetryMode.FROM_STEP, 2, fallbackStep))
+        .build();
+    WorkflowDefinition workflow = workflow(
+        List.of(new WorkflowRequirement("fallback-req", "rbac_step_action_allowed",
+            RequirementScope.STEP_ACTION, "fallback-step", "REVIEW", true, null,
+            ResolutionMode.INSTALL)),
+        retryStep);
 
     assertThatCode(() -> validator.validateRequirements(Map.of(workflow.id(), workflow)))
         .doesNotThrowAnyException();
