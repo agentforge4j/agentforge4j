@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 package com.agentforge4j.llm.gemini;
 
-import static org.assertj.core.api.Assertions.assertThat;
-
 import com.agentforge4j.llm.LlmClientConfiguration;
 import com.agentforge4j.llm.RawProviderConfiguration;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
+
+import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * Regression coverage for the {@code max-output-tokens} properties-path wiring: {@link GeminiConfigurationAdapter}
