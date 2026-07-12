@@ -50,7 +50,30 @@ public final class WorkflowAgentRefCollector {
   public static List<AgentRefSite> collect(WorkflowDefinition root) {
     Validate.notNull(root, "root must not be null");
     List<AgentRefSite> out = new ArrayList<>();
-    WorkflowTreeWalker.walk(root, (step, scope) -> collectStepRefs(step, scope, out));
+    WorkflowTreeWalker.walk(root, MAX_TRAVERSAL_DEPTH, (step, scope) -> collectStepRefs(step, scope, out));
+    return List.copyOf(out);
+  }
+
+  /**
+   * Collects all agent id references from the workflow tree, tolerating a broken or circular
+   * blueprint reference: unlike {@link #collect(WorkflowDefinition)}, the walk simply stops at that
+   * branch instead of throwing — every agent reference already collected from the rest of the tree
+   * is still returned, since a broken or circular blueprint is a separate, structural concern
+   * (surfaced by workflow validation) rather than an agent-reference one.
+   *
+   * @param root the root workflow to traverse
+   *
+   * @return list of every agent reference reachable without crossing a broken or circular blueprint
+   */
+  public static List<AgentRefSite> collectIgnoringBlueprintStructureDefects(WorkflowDefinition root) {
+    Validate.notNull(root, "root must not be null");
+    List<AgentRefSite> out = new ArrayList<>();
+    try {
+      WorkflowTreeWalker.walk(root, MAX_TRAVERSAL_DEPTH, (step, scope) -> collectStepRefs(step, scope, out));
+    } catch (BlueprintStructureException ignored) {
+      // Whatever was collected before the broken branch is still valid; the structural problem
+      // itself is reported separately.
+    }
     return List.copyOf(out);
   }
 

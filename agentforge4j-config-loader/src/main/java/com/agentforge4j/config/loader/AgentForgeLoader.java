@@ -3,6 +3,7 @@ package com.agentforge4j.config.loader;
 
 import com.agentforge4j.config.loader.agent.ClasspathAgentLoader;
 import com.agentforge4j.config.loader.catalog.CatalogCompatibilityGate;
+import com.agentforge4j.config.loader.validation.ValidationCheck;
 import com.agentforge4j.config.loader.validation.WorkflowValidator;
 import com.agentforge4j.config.loader.workflow.ClasspathWorkflowLoader;
 import com.agentforge4j.config.loader.workflow.WorkflowDirectoryLoader;
@@ -10,6 +11,7 @@ import com.agentforge4j.core.agent.AgentDefinition;
 import com.agentforge4j.core.exception.DuplicateAgentIdException;
 import com.agentforge4j.core.exception.DuplicateWorkflowIdException;
 import com.agentforge4j.core.workflow.WorkflowDefinition;
+import com.agentforge4j.core.workflow.WorkflowTreeWalker;
 import com.agentforge4j.util.Validate;
 import java.nio.file.Path;
 import java.util.LinkedHashMap;
@@ -173,16 +175,10 @@ public final class AgentForgeLoader {
    */
   public void validate(Map<String, WorkflowDefinition> workflows,
       Map<String, AgentDefinition> agents) {
-    WorkflowValidator validator = new WorkflowValidator();
-    runValidation("workflow refs", () -> validator.validateWorkflowRefs(workflows));
-    runValidation("blueprint refs", () -> validator.validateBlueprintRefs(workflows));
-    runValidation("agent refs", () -> validator.validateAgentRefs(workflows, agents));
-    runValidation("artifact refs", () -> validator.validateArtifactRefs(workflows));
-    runValidation("circular refs", () -> validator.validateCircularRefs(workflows));
-    runValidation("reachable step ids", () -> validator.validateReachableStepIdUniqueness(workflows));
-    runValidation("retry refs", () -> validator.validateRetryStepRefs(workflows));
-    runValidation("requirement refs", () -> validator.validateRequirements(workflows));
-    runValidation("validate contracts", () -> validator.validateValidateBehaviourContracts(workflows));
+    WorkflowValidator validator = new WorkflowValidator(WorkflowTreeWalker.MAX_TRAVERSAL_DEPTH);
+    for (ValidationCheck check : ValidationCheck.suite(validator)) {
+      runValidation(check.code(), () -> check.action().accept(workflows, agents));
+    }
   }
 
   /**
