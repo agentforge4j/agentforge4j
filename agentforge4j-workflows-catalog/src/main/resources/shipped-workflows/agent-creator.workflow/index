@@ -1,11 +1,6 @@
 agent-intent.artifact.json
 agents/agent-author.agent
-agents/bundle-reviewer.agent
-agents/complexity-risk-assessor.agent
-agents/design-previewer.agent
-agents/requirement-structurer.agent
 agents/token-estimator.agent
-agents/verification-author.agent
 clarifications.artifact.json
 tier-lite-matrix.blueprint.json
 tier-powerful-matrix.blueprint.json

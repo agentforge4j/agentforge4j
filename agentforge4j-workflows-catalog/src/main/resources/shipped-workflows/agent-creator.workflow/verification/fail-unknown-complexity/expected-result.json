@@ -1,0 +1,16 @@
+{
+  "workflowId": "agent-creator",
+  "gates": [
+    {
+      "type": "input",
+      "answers": {
+        "agent-intent": "Create an agent that summarises PDF documents into a short brief."
+      }
+    }
+  ],
+  "expect": {
+    "status": "FAILED",
+    "emittedEvents": ["RUN_FAILED"],
+    "notVisitedSteps": ["generate-agent"]
+  }
+}

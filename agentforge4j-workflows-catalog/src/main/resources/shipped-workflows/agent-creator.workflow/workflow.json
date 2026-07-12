@@ -33,7 +33,7 @@
       },
       "contextMapping": {
         "inputKeys": ["agent-intent"],
-        "outputKeys": ["requirementSpec", "openQuestions", "clarificationNeeded"]
+        "outputKeys": ["requirementSpec", "openQuestions", "clarificationNeeded", "agentId"]
       },
       "modelTier": "LITE"
     },
@@ -184,7 +184,7 @@
         }
       },
       "contextMapping": {
-        "inputKeys": ["requirementSpec", "clarificationAnswers", "complexity", "risk", "sensitivityFlags", "recommendedTier", "ruleFired"],
+        "inputKeys": ["requirementSpec", "clarificationAnswers", "complexity", "risk", "sensitivityFlags", "recommendedTier", "ruleFired", "agentId"],
         "outputKeys": ["designSummary"]
       },
       "modelTier": "LITE"
@@ -228,7 +228,7 @@
         }
       },
       "contextMapping": {
-        "inputKeys": ["requirementSpec", "clarificationAnswers", "recommendedTier", "ruleFired", "designSummary", "tokenEstimate"]
+        "inputKeys": ["requirementSpec", "clarificationAnswers", "recommendedTier", "ruleFired", "designSummary", "tokenEstimate", "agentId"]
       },
       "modelTier": "STANDARD"
     },
@@ -239,13 +239,18 @@
       "behaviour": {
         "type": "VALIDATE",
         "validatorId": "agent-bundle",
-        "requiredArtifacts": ["agent.json", "systemprompt.md", "README.md"],
+        "requiredArtifacts": [
+          "shipped-agents/generated.agent/agent.json",
+          "shipped-agents/generated.agent/systemprompt.md",
+          "shipped-agents/generated.agent/README.md"
+        ],
         "contextEqualityContracts": [
-          { "artifactPath": "agent.json", "jsonPointer": "/modelTier", "contextKey": "recommendedTier" }
+          { "artifactPath": "shipped-agents/generated.agent/agent.json", "jsonPointer": "/modelTier", "contextKey": "recommendedTier" },
+          { "artifactPath": "shipped-agents/generated.agent/agent.json", "jsonPointer": "/id", "contextKey": "agentId" }
         ]
       },
       "contextMapping": {
-        "inputKeys": ["recommendedTier"]
+        "inputKeys": ["recommendedTier", "agentId"]
       }
     },
     {
@@ -277,19 +282,20 @@
         "type": "VALIDATE",
         "validatorId": "agent-creator-bundle",
         "requiredArtifacts": [
-          "agent.json",
-          "systemprompt.md",
-          "README.md",
-          "verification/script.json",
-          "verification/expected-result.json",
-          "verification/README.md"
+          "shipped-agents/generated.agent/agent.json",
+          "shipped-agents/generated.agent/systemprompt.md",
+          "shipped-agents/generated.agent/README.md",
+          "shipped-agents/generated.agent/verification/script.json",
+          "shipped-agents/generated.agent/verification/expected-result.json",
+          "shipped-agents/generated.agent/verification/README.md"
         ],
         "contextEqualityContracts": [
-          { "artifactPath": "agent.json", "jsonPointer": "/modelTier", "contextKey": "recommendedTier" }
+          { "artifactPath": "shipped-agents/generated.agent/agent.json", "jsonPointer": "/modelTier", "contextKey": "recommendedTier" },
+          { "artifactPath": "shipped-agents/generated.agent/agent.json", "jsonPointer": "/id", "contextKey": "agentId" }
         ]
       },
       "contextMapping": {
-        "inputKeys": ["recommendedTier"]
+        "inputKeys": ["recommendedTier", "agentId"]
       }
     },
     {
