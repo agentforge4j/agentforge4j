@@ -66,8 +66,9 @@ public final class AgentCreatorBundleValidator implements ArtifactValidator {
 
     Map<String, String> artifacts = context.artifacts();
     // The delegated agent-bundle validation above already proved an "agent.json" artifact resolves
-    // (bare or under a prefix); reuse that same match to resolve the verification-starter files under
-    // the identical bundle root, rather than assuming they sit at the map root.
+    // (bare or under a prefix), so re-deriving that same prefix here (deterministic given the same
+    // artifacts map) locates the verification-starter files under the identical bundle root, rather
+    // than assuming they sit at the map root.
     String agentJsonKey = BundleArtifactPaths.findKey(artifacts, "agent.json");
     String prefix = BundleArtifactPaths.prefixOf(agentJsonKey, "agent.json");
     String scriptPath = prefix + SCRIPT_FILE;

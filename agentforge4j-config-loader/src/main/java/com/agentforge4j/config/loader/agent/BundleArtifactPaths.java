@@ -17,7 +17,10 @@ final class BundleArtifactPaths {
   }
 
   /**
-   * Finds the captured-artifact key that resolves the given bundle-relative file name.
+   * Finds the captured-artifact key that resolves the given bundle-relative file name. Assumes
+   * {@code artifacts} is scoped to a single bundle (as {@code ValidateBehaviourHandler} always
+   * scopes it to one step's own {@code requiredArtifacts}) — if more than one key could match, the
+   * first found in map iteration order wins, with no further disambiguation.
    *
    * @param artifacts captured artifacts keyed by their full VALIDATE-step path
    * @param fileName  bundle-relative file name to resolve, for example {@code agent.json}
