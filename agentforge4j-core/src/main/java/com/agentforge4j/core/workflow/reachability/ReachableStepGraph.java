@@ -74,6 +74,26 @@ public final class ReachableStepGraph {
    */
   public static StepDefinition resolveUnique(WorkflowDefinition root, String stepId,
       WorkflowRefResolver resolver) {
+    ReachableStep resolved = resolveUniqueOccurrence(root, stepId, resolver);
+    return resolved == null ? null : resolved.step();
+  }
+
+  /**
+   * Resolves {@code stepId} to its single reachable occurrence — the step plus the workflow that
+   * declares it — mirroring the runtime's fail-closed resolution. Use this over {@link #resolveUnique}
+   * when the declaring workflow is also needed (for example, to resolve a {@code STEP_ACTION}
+   * requirement against the workflow that actually declares the step, not necessarily the root).
+   *
+   * @param root     the root workflow to resolve from
+   * @param stepId   the step id to resolve
+   * @param resolver resolves {@code WORKFLOW}-step refs to their definitions ({@code null} when absent)
+   *
+   * @return the matching occurrence, or {@code null} when none is reachable
+   *
+   * @throws IllegalStateException when {@code stepId} is reachable from more than one structural location
+   */
+  public static ReachableStep resolveUniqueOccurrence(WorkflowDefinition root, String stepId,
+      WorkflowRefResolver resolver) {
     Validate.notBlank(stepId, "stepId must not be blank");
     List<ReachableStep> matches = new ArrayList<>();
     for (ReachableStep reachable : walk(root, resolver)) {
@@ -89,7 +109,7 @@ public final class ReachableStepGraph {
         ("Ambiguous step id '%s' resolves to %d structural locations across the reachable workflow "
             + "graph from workflow '%s'; reachable step ids must be unique")
             .formatted(stepId, matchCount, root.id())));
-    return matches.get(0).step();
+    return matches.get(0);
   }
 
   /**
@@ -141,7 +161,7 @@ public final class ReachableStepGraph {
         String containerKey, Set<String> blueprintPath) {
       for (Executable executable : executables) {
         if (executable instanceof StepDefinition step) {
-          recordStep(step, containerKey);
+          recordStep(step, enclosing, containerKey);
           if (step.behaviour() instanceof WorkflowBehaviour workflowBehaviour) {
             WorkflowDefinition sub = resolver.resolve(workflowBehaviour.workflowRef());
             if (sub != null) {
@@ -163,9 +183,9 @@ public final class ReachableStepGraph {
       }
     }
 
-    private void recordStep(StepDefinition step, String containerKey) {
+    private void recordStep(StepDefinition step, WorkflowDefinition declaringWorkflow, String containerKey) {
       String location = containerKey + "/step:" + step.stepId();
-      byLocation.putIfAbsent(location, new ReachableStep(step.stepId(), location, step));
+      byLocation.putIfAbsent(location, new ReachableStep(step.stepId(), location, step, declaringWorkflow));
     }
   }
 }

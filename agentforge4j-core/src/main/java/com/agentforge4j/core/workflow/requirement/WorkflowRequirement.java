@@ -7,6 +7,7 @@ import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.annotation.JsonRawValue;
 import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
+import java.util.List;
 import org.apache.commons.lang3.StringUtils;
 
 /**
@@ -73,5 +74,28 @@ public record WorkflowRequirement(
 
   private static void requireAbsent(String value, String id, String scope, String field) {
     Validate.isTrue(value == null, "WorkflowRequirement '%s' with %s scope must not declare %s".formatted(id, scope, field));
+  }
+
+  /**
+   * Finds the {@link RequirementScope#STEP_ACTION} requirement in {@code requirements} targeting
+   * {@code stepId} and {@code action}, if any. Shared by both load-time validation and runtime
+   * authorization so the matching rule is defined in exactly one place.
+   *
+   * @param requirements the requirements to search
+   * @param stepId       the target step id
+   * @param action       the opaque target action (e.g. a {@code CollectionAction.wire()} value)
+   *
+   * @return the matching requirement, or {@code null} when none matches
+   */
+  public static WorkflowRequirement findStepAction(List<WorkflowRequirement> requirements,
+      String stepId, String action) {
+    for (WorkflowRequirement requirement : requirements) {
+      if (requirement.scope() == RequirementScope.STEP_ACTION
+          && stepId.equals(requirement.stepId())
+          && action.equals(requirement.action())) {
+        return requirement;
+      }
+    }
+    return null;
   }
 }

@@ -488,11 +488,12 @@ public final class DefaultWorkflowRuntime implements WorkflowRuntime, Collection
    */
   @Override
   public WorkflowState getState(String runId) {
-    WorkflowState state = loadState(runId);
-    try (RunContextManager.Scope ignored = runContextManager.open(runId, state.getWorkflowId(),
-        state.getCurrentStepId(), null)) {
-      return state.snapshot();
-    }
+    return withCollectionRunLock(runId, state -> {
+      try (RunContextManager.Scope ignored = runContextManager.open(runId, state.getWorkflowId(),
+          state.getCurrentStepId(), null)) {
+        return state.snapshot();
+      }
+    });
   }
 
   // ---- CollectionGateRuntime ----------------------------------------------------------------
@@ -625,11 +626,12 @@ public final class DefaultWorkflowRuntime implements WorkflowRuntime, Collection
   /**
    * Runs {@code operation} against a freshly loaded copy of the run's state while holding the
    * run's collection lock. The pre-lock load fails invalid run ids with
-   * {@link ExecutionNotFoundException} before any lock-map entry is created; the state is loaded
-   * again once the lock is held so the operation always mutates the current persisted state. A
-   * state loaded before lock acquisition may be a stale snapshot on repositories that return
-   * defensive copies, and saving it would silently discard a concurrent, already-persisted
-   * mutation.
+   * {@link ExecutionNotFoundException} before any lock-map entry is created, and its read happens
+   * before the lock is acquired so a slow read never extends how long the lock is held for an
+   * invalid run id; the state is loaded again once the lock is held so the operation always
+   * mutates the current persisted state. A state loaded before lock acquisition may be a stale
+   * snapshot on repositories that return defensive copies, and saving it would silently discard a
+   * concurrent, already-persisted mutation.
    *
    * <p>{@link #collectionRunLocks} entries are reference-counted rather than never evicted: acquiring
    * increments the count and (on first acquisition) creates the entry within a single atomic
@@ -681,12 +683,8 @@ public final class DefaultWorkflowRuntime implements WorkflowRuntime, Collection
 
   private void requireAwaitingCollection(WorkflowState state, String stepId, String operation) {
     ensureNotCancelled(state, operation);
-    Validate.isTrue(state.getStatus() == WorkflowStatus.AWAITING_COLLECTION,
-        "Cannot %s on run '%s' in status %s"
-            .formatted(operation, state.getRunId(), state.getStatus()));
-    Validate.isTrue(stepId.equals(state.getCurrentStepId()),
-        "Cannot %s on step '%s': run '%s' is awaiting collection on step '%s'"
-            .formatted(operation, stepId, state.getRunId(), state.getCurrentStepId()));
+    requireSuspensionStatus(state, state.getRunId(), WorkflowStatus.AWAITING_COLLECTION, operation);
+    requireSuspendedStep(state, state.getRunId(), stepId);
   }
 
   private CollectionBehaviour requireCollectionBehaviour(WorkflowDefinition workflow, String stepId) {
@@ -843,6 +841,8 @@ public final class DefaultWorkflowRuntime implements WorkflowRuntime, Collection
       case AWAITING_TOOL_DECISION -> "resolveToolDecision";
       case AWAITING_REVIEW -> "submitReview";
       case AWAITING_STEP_APPROVAL -> "decideStepApproval";
+      case AWAITING_COLLECTION ->
+          "a collections() operation (submitItem/replaceItem/withdrawItem/closeCollection/reopenCollection)";
       default -> "the appropriate resume verb";
     };
   }
@@ -1020,7 +1020,8 @@ public final class DefaultWorkflowRuntime implements WorkflowRuntime, Collection
         || status == WorkflowStatus.AWAITING_TOOL_APPROVAL
         || status == WorkflowStatus.AWAITING_TOOL_DECISION
         || status == WorkflowStatus.AWAITING_REVIEW
-        || status == WorkflowStatus.AWAITING_STEP_APPROVAL;
+        || status == WorkflowStatus.AWAITING_STEP_APPROVAL
+        || status == WorkflowStatus.AWAITING_COLLECTION;
   }
 
   private static void writePromptAnswerToContext(WorkflowState state,

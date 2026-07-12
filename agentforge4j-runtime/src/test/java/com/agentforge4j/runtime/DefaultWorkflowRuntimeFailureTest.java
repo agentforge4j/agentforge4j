@@ -95,8 +95,10 @@ class DefaultWorkflowRuntimeFailureTest {
             .withContextMapping(ContextMapping.none())
             .build()));
 
+    InMemoryWorkflowRepository workflowRepository =
+        new InMemoryWorkflowRepository(Map.of(workflow.id(), workflow));
     return new DefaultWorkflowRuntime(
-        new InMemoryWorkflowRepository(Map.of(workflow.id(), workflow)),
+        workflowRepository,
         new InMemoryWorkflowStateRepository(),
         stepSequenceExecutor,
         eventRecorder,
@@ -115,7 +117,8 @@ class DefaultWorkflowRuntimeFailureTest {
             new com.agentforge4j.core.workflow.collection.DefaultCollectionAuthorizer(),
             com.agentforge4j.core.spi.validation.CollectionItemSchemaValidator.unconfigured(),
             new com.agentforge4j.core.workflow.collection.DefaultCollectionSubmissionValidator(),
-            new com.fasterxml.jackson.databind.ObjectMapper()));
+            new com.fasterxml.jackson.databind.ObjectMapper(),
+            workflowRepository));
   }
 
 }

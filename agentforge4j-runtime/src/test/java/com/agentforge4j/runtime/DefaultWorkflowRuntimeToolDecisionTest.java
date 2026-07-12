@@ -177,8 +177,10 @@ class DefaultWorkflowRuntimeToolDecisionTest {
   private DefaultWorkflowRuntime runtime() {
     when(stepSequenceExecutor.executeAll(anyList(), any())).thenReturn(ExecutionOutcome.COMPLETED);
     EventRecorder eventRecorder = new EventRecorder(new InMemoryWorkflowEventLog(), CLOCK);
+    InMemoryWorkflowRepository workflowRepository =
+        new InMemoryWorkflowRepository(Map.of("wf-1", workflow()));
     return new DefaultWorkflowRuntime(
-        new InMemoryWorkflowRepository(Map.of("wf-1", workflow())),
+        workflowRepository,
         stateRepo,
         stepSequenceExecutor,
         eventRecorder,
@@ -195,7 +197,8 @@ class DefaultWorkflowRuntimeToolDecisionTest {
             new com.agentforge4j.core.workflow.collection.DefaultCollectionAuthorizer(),
             com.agentforge4j.core.spi.validation.CollectionItemSchemaValidator.unconfigured(),
             new com.agentforge4j.core.workflow.collection.DefaultCollectionSubmissionValidator(),
-            new com.fasterxml.jackson.databind.ObjectMapper()));
+            new com.fasterxml.jackson.databind.ObjectMapper(),
+            workflowRepository));
   }
 
   private void seedState(WorkflowStatus status) {
@@ -239,8 +242,10 @@ class DefaultWorkflowRuntimeToolDecisionTest {
   private DefaultWorkflowRuntime runtimeWith(StepTransition transition) {
     when(stepSequenceExecutor.executeAll(anyList(), any())).thenReturn(ExecutionOutcome.COMPLETED);
     EventRecorder eventRecorder = new EventRecorder(new InMemoryWorkflowEventLog(), CLOCK);
+    InMemoryWorkflowRepository workflowRepository =
+        new InMemoryWorkflowRepository(Map.of("wf-1", workflowWith(transition)));
     return new DefaultWorkflowRuntime(
-        new InMemoryWorkflowRepository(Map.of("wf-1", workflowWith(transition))),
+        workflowRepository,
         stateRepo,
         stepSequenceExecutor,
         eventRecorder,
@@ -257,7 +262,8 @@ class DefaultWorkflowRuntimeToolDecisionTest {
             new com.agentforge4j.core.workflow.collection.DefaultCollectionAuthorizer(),
             com.agentforge4j.core.spi.validation.CollectionItemSchemaValidator.unconfigured(),
             new com.agentforge4j.core.workflow.collection.DefaultCollectionSubmissionValidator(),
-            new com.fasterxml.jackson.databind.ObjectMapper()));
+            new com.fasterxml.jackson.databind.ObjectMapper(),
+            workflowRepository));
   }
 
   private static final class StubToolService implements ToolExecutionService {

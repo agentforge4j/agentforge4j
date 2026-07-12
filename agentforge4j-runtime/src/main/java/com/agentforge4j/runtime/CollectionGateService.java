@@ -29,8 +29,8 @@ import com.agentforge4j.core.workflow.collection.WithdrawalPolicy;
 import com.agentforge4j.core.workflow.context.ContextProvenance;
 import com.agentforge4j.core.workflow.context.JsonContextValue;
 import com.agentforge4j.core.workflow.event.WorkflowEventType;
+import com.agentforge4j.core.workflow.repository.WorkflowRepository;
 import com.agentforge4j.core.workflow.requirement.RequirementResolver;
-import com.agentforge4j.core.workflow.requirement.RequirementScope;
 import com.agentforge4j.core.workflow.requirement.ResolutionContext;
 import com.agentforge4j.core.workflow.requirement.WorkflowRequirement;
 import com.agentforge4j.core.workflow.state.WorkflowState;
@@ -72,12 +72,13 @@ final class CollectionGateService {
   private final CollectionItemSchemaValidator itemSchemaValidator;
   private final CollectionSubmissionValidator submissionValidator;
   private final ObjectMapper objectMapper;
+  private final WorkflowRepository workflowRepository;
 
   CollectionGateService(EventRecorder eventRecorder, Clock clock,
       RequirementResolver requirementResolver, CollectionAuthorizer collectionAuthorizer,
       CollectionItemSchemaValidator itemSchemaValidator,
       CollectionSubmissionValidator submissionValidator,
-      ObjectMapper objectMapper) {
+      ObjectMapper objectMapper, WorkflowRepository workflowRepository) {
     this.eventRecorder = Validate.notNull(eventRecorder, "eventRecorder must not be null");
     this.clock = Validate.notNull(clock, "clock must not be null");
     this.requirementResolver =
@@ -89,6 +90,7 @@ final class CollectionGateService {
     this.submissionValidator =
         Validate.notNull(submissionValidator, "submissionValidator must not be null");
     this.objectMapper = Validate.notNull(objectMapper, "objectMapper must not be null");
+    this.workflowRepository = Validate.notNull(workflowRepository, "workflowRepository must not be null");
   }
 
   // ---- submit -------------------------------------------------------------------------------
@@ -96,7 +98,8 @@ final class CollectionGateService {
   SubmissionResult submit(WorkflowState state, WorkflowDefinition workflow, CollectionBehaviour cfg,
       String stepId, CollectionSubmission submission, String actorId) {
     CollectionState gate = requireOpenGate(state, stepId);
-    authorize(state, workflow, cfg, stepId, CollectionAction.SUBMIT, actorId);
+    WorkflowDefinition declaringWorkflow = declaringWorkflow(workflow, stepId);
+    authorize(state, declaringWorkflow, cfg, stepId, CollectionAction.SUBMIT, actorId);
 
     SubmissionResult hardDuplicate = rejectHardDuplicate(state, gate, cfg, stepId,
         submission.clientToken(), actorId, CollectionAction.SUBMIT);
@@ -137,7 +140,12 @@ final class CollectionGateService {
       String stepId, String submissionId, CollectionSubmission replacement, String actorId) {
     Validate.notBlank(submissionId, "submissionId must not be blank");
     CollectionState gate = requireOpenGate(state, stepId);
-    CollectionItem existing = requireLiveItem(gate, submissionId);
+    WorkflowDefinition declaringWorkflow = declaringWorkflow(workflow, stepId);
+    // Looked up regardless of live/withdrawn status (unlike requireLiveItem) so a clientToken replay
+    // against a since-withdrawn target still resolves ownership correctly (submittedByActorId
+    // persists across withdrawal) and reaches idempotentReturn below instead of failing closed on a
+    // liveness check before the replay has a chance to be recognized as one.
+    CollectionItem existing = requireItem(gate, submissionId);
     boolean owns = existing.submittedByActorId().equals(actorId);
     CollectionAction action = resolveReplaceAction(cfg.replacementPolicy(), owns, stepId);
     // OWNER_REPLACE is an absolute, non-owner-overridable restriction; a non-owning actor's attempt is
@@ -145,7 +153,7 @@ final class CollectionGateService {
     // denial in this class, instead of failing closed silently before authorize() ever runs.
     String ownerOnlyDenialReason = cfg.replacementPolicy() == ReplacementPolicy.OWNER_REPLACE && !owns
         ? "Replacement is restricted to the submitting actor" : null;
-    authorize(state, workflow, cfg, stepId, action, actorId, ownerOnlyDenialReason);
+    authorize(state, declaringWorkflow, cfg, stepId, action, actorId, ownerOnlyDenialReason);
 
     SubmissionResult hardDuplicate = rejectHardDuplicate(state, gate, cfg, stepId,
         replacement.clientToken(), actorId, action);
@@ -156,6 +164,9 @@ final class CollectionGateService {
     if (idempotent != null) {
       return idempotent;
     }
+    // Only now -- after the idempotent-replay shortcut has had its chance -- is a withdrawn/no-longer
+    // -live target a genuine error: a fresh (non-replayed) attempt against an item that is gone.
+    Validate.isTrue(!existing.withdrawn(), "No live item '%s' in collection".formatted(submissionId));
     String rejection = checkReplaceConstraints(gate, cfg, submissionId, replacement);
     if (rejection == null) {
       rejection = checkItemSchema(cfg, replacement.payload());
@@ -191,6 +202,7 @@ final class CollectionGateService {
       String stepId, String submissionId, String actorId) {
     Validate.notBlank(submissionId, "submissionId must not be blank");
     CollectionState gate = requireOpenGate(state, stepId);
+    WorkflowDefinition declaringWorkflow = declaringWorkflow(workflow, stepId);
     CollectionItem existing = requireLiveItem(gate, submissionId);
     boolean owns = existing.submittedByActorId().equals(actorId);
     CollectionAction action = resolveWithdrawAction(cfg.withdrawalPolicy(), owns, stepId);
@@ -199,7 +211,7 @@ final class CollectionGateService {
     // denial in this class, instead of failing closed silently before authorize() ever runs.
     String ownerOnlyDenialReason = cfg.withdrawalPolicy() == WithdrawalPolicy.OWNER_WITHDRAW && !owns
         ? "Withdrawal is restricted to the submitting actor" : null;
-    authorize(state, workflow, cfg, stepId, action, actorId, ownerOnlyDenialReason);
+    authorize(state, declaringWorkflow, cfg, stepId, action, actorId, ownerOnlyDenialReason);
 
     CollectionItem withdrawn = new CollectionItem(submissionId, existing.submittedByActorId(),
         existing.submittedAt(), existing.version(), true, existing.payload(), existing.dedupeKey(),
@@ -218,18 +230,19 @@ final class CollectionGateService {
   CloseResult close(WorkflowState state, WorkflowDefinition workflow, CollectionBehaviour cfg,
       String stepId, CloseRequest request, List<String> outputKeys) {
     CollectionState gate = requireGate(state, stepId);
-    authorize(state, workflow, cfg, stepId, CollectionAction.CLOSE, request.actorId());
+    WorkflowDefinition declaringWorkflow = declaringWorkflow(workflow, stepId);
+    authorize(state, declaringWorkflow, cfg, stepId, CollectionAction.CLOSE, request.actorId());
     if (request.reason() == CloseReason.DEADLINE) {
       // A DEADLINE reason carries real security semantics -- it can satisfy externalDeadlineClosable
       // even when manualClose is false -- so it needs its own authorization independent of the
       // generic CLOSE check above, which any actor otherwise passes under OPEN mode.
-      authorize(state, workflow, cfg, stepId, CollectionAction.DEADLINE_CLOSE, request.actorId());
+      authorize(state, declaringWorkflow, cfg, stepId, CollectionAction.DEADLINE_CLOSE, request.actorId());
     }
 
     // Idempotent no-op: already closed, or this close token was already accepted.
     if (gate.phase() == CollectionPhase.CLOSED
         || (request.closeToken() != null && gate.seenCloseTokens().contains(request.closeToken()))) {
-      return new CloseResult(true, false, liveItems(gate).size(), null);
+      return new CloseResult(true, false, liveItemCount(gate), null);
     }
 
     ObjectNode closeRequested = objectMapper.createObjectNode();
@@ -246,12 +259,12 @@ final class CollectionGateService {
 
     String notClosable = checkClosable(cfg, request.reason());
     if (notClosable != null) {
-      emitCloseRejected(state, stepId, request.actorId(), notClosable, liveItems(gate).size(),
+      emitCloseRejected(state, stepId, request.actorId(), notClosable, liveItemCount(gate),
           cfg.minItems());
       return new CloseResult(false, false, 0, notClosable);
     }
 
-    int liveCount = liveItems(gate).size();
+    int liveCount = liveItemCount(gate);
     boolean minUnmet = liveCount < cfg.minItems();
     if (minUnmet && !request.override()) {
       String reason = "minimum %d items required, have %d".formatted(cfg.minItems(), liveCount);
@@ -262,7 +275,7 @@ final class CollectionGateService {
       // OVERRIDE authorization is only demanded when it is actually substituting for an unmet
       // minimum -- an actor authorized only for CLOSE is not blocked by a defensively-set
       // override=true flag on a close that would have succeeded anyway.
-      authorize(state, workflow, cfg, stepId, CollectionAction.OVERRIDE, request.actorId());
+      authorize(state, declaringWorkflow, cfg, stepId, CollectionAction.OVERRIDE, request.actorId());
     }
 
     CloseReason effectiveReason = minUnmet ? CloseReason.OVERRIDE : request.reason();
@@ -286,7 +299,7 @@ final class CollectionGateService {
   void reopen(WorkflowState state, WorkflowDefinition workflow, CollectionBehaviour cfg,
       String stepId, String actorId) {
     CollectionState gate = requireGate(state, stepId);
-    authorize(state, workflow, cfg, stepId, CollectionAction.REOPEN, actorId);
+    authorize(state, declaringWorkflow(workflow, stepId), cfg, stepId, CollectionAction.REOPEN, actorId);
     Validate.isTrue(cfg.reopenPolicy() == ReopenPolicy.ALLOWED,
         "Reopen is not permitted for collection step '%s'".formatted(stepId));
     Validate.isTrue(gate.phase() == CollectionPhase.CLOSED,
@@ -303,7 +316,7 @@ final class CollectionGateService {
   CollectionView view(WorkflowState state, WorkflowDefinition workflow, CollectionBehaviour cfg,
       String stepId, String actorId) {
     CollectionState gate = requireGate(state, stepId);
-    authorize(state, workflow, cfg, stepId, CollectionAction.VIEW, actorId);
+    authorize(state, declaringWorkflow(workflow, stepId), cfg, stepId, CollectionAction.VIEW, actorId);
     List<CollectionItem> live = liveItems(gate);
     return new CollectionView(stepId, gate.phase(), live, live.size(), gate.closeReason());
   }
@@ -384,9 +397,19 @@ final class CollectionGateService {
     }
   }
 
-  private void authorize(WorkflowState state, WorkflowDefinition workflow, CollectionBehaviour cfg,
+  /**
+   * Resolves the {@link WorkflowDefinition} that declares {@code stepId} — see
+   * {@link StepTreeSearcher#findDeclaringWorkflow} — once per public entry point, so a
+   * {@code close()} call that authorizes up to three actions (CLOSE, DEADLINE_CLOSE, OVERRIDE)
+   * pays for the tree walk once instead of once per {@code authorize()} call.
+   */
+  private WorkflowDefinition declaringWorkflow(WorkflowDefinition workflow, String stepId) {
+    return stepTreeSearcher.findDeclaringWorkflow(workflow, stepId, workflowRepository);
+  }
+
+  private void authorize(WorkflowState state, WorkflowDefinition declaringWorkflow, CollectionBehaviour cfg,
       String stepId, CollectionAction action, String actorId) {
-    authorize(state, workflow, cfg, stepId, action, actorId, null);
+    authorize(state, declaringWorkflow, cfg, stepId, action, actorId, null);
   }
 
   /**
@@ -396,8 +419,15 @@ final class CollectionGateService {
    * own {@code denyAndThrow} so it is audited identically to every other denial in this class. The
    * check runs before the {@code STEP_ACTION} requirement/authorizer path so that ownership, which is
    * an absolute restriction for those policies, can never be overridden by an authorizer decision.
+   *
+   * @param declaringWorkflow the workflow that declares {@code stepId} (see {@link #declaringWorkflow}),
+   *                          not necessarily the run's root workflow — both the requirement lookup and
+   *                          the {@link ResolutionContext} handed to the resolver/authorizer are scoped
+   *                          to it, so a resolver/authorizer that keys its lookups by
+   *                          {@code context.workflowId()} resolves against the correct workflow for a
+   *                          nested collection gate
    */
-  private void authorize(WorkflowState state, WorkflowDefinition workflow, CollectionBehaviour cfg,
+  private void authorize(WorkflowState state, WorkflowDefinition declaringWorkflow, CollectionBehaviour cfg,
       String stepId, CollectionAction action, String actorId, String ownerOnlyDenialReason) {
     if (StringUtils.isBlank(actorId)) {
       // Defense-in-depth: every public entry point already rejects a blank actor earlier via
@@ -427,17 +457,24 @@ final class CollectionGateService {
       }
       return;
     }
-    WorkflowDefinition declaringWorkflow = stepTreeSearcher.findDeclaringWorkflow(workflow, stepId);
     WorkflowRequirement requirement = findStepActionRequirement(declaringWorkflow, stepId, action);
     if (requirement == null) {
       denyAndThrow(state, stepId, action, actorId,
           "no STEP_ACTION requirement declared for action '%s'".formatted(action.wire()));
     }
-    ResolutionContext context = new ResolutionContext(state.getWorkflowId(), state.getRunId(), Map.of());
+    ResolutionContext context =
+        new ResolutionContext(declaringWorkflow.id(), state.getRunId(), Map.of());
+    String resolvedValue;
+    try {
+      resolvedValue = requirementResolver.resolve(requirement, context);
+    } catch (RuntimeException ex) {
+      LOG.log(System.Logger.Level.WARNING, "RequirementResolver threw; failing closed", ex);
+      denyAndThrow(state, stepId, action, actorId, "requirement resolver error");
+      return;
+    }
     Decision decision;
     try {
-      decision = collectionAuthorizer.authorize(actorId, stepId, action,
-          requirementResolver.resolve(requirement, context), context);
+      decision = collectionAuthorizer.authorize(actorId, stepId, action, resolvedValue, context);
     } catch (RuntimeException ex) {
       LOG.log(System.Logger.Level.WARNING, "CollectionAuthorizer threw; failing closed", ex);
       denyAndThrow(state, stepId, action, actorId, "authorizer error");
@@ -494,25 +531,19 @@ final class CollectionGateService {
 
   private static WorkflowRequirement findStepActionRequirement(WorkflowDefinition workflow,
       String stepId, CollectionAction action) {
-    for (WorkflowRequirement requirement : workflow.requirements()) {
-      if (requirement.scope() == RequirementScope.STEP_ACTION
-          && stepId.equals(requirement.stepId())
-          && action.wire().equals(requirement.action())) {
-        return requirement;
-      }
-    }
-    return null;
+    return WorkflowRequirement.findStepAction(workflow.requirements(), stepId, action.wire());
   }
 
   private String checkSubmitConstraints(CollectionState gate, CollectionBehaviour cfg,
       CollectionSubmission submission, String actorId) {
-    List<CollectionItem> live = liveItems(gate);
-    if (cfg.maxItems() != null && live.size() >= cfg.maxItems()) {
-      return "MAX_ITEMS: have %d, cap %d".formatted(live.size(), cfg.maxItems());
+    if (cfg.maxItems() != null) {
+      int liveCount = liveItemCount(gate);
+      if (liveCount >= cfg.maxItems()) {
+        return "MAX_ITEMS: have %d, cap %d".formatted(liveCount, cfg.maxItems());
+      }
     }
     if (cfg.maxItemsPerActor() != null) {
-      long actorCount =
-          live.stream().filter(item -> item.submittedByActorId().equals(actorId)).count();
+      int actorCount = countLiveItemsForActor(gate, actorId, cfg.maxItemsPerActor());
       if (actorCount >= cfg.maxItemsPerActor()) {
         return "PER_ACTOR_CAP: actor has %d, cap %d".formatted(actorCount, cfg.maxItemsPerActor());
       }
@@ -521,7 +552,10 @@ final class CollectionGateService {
     if (oversize != null) {
       return oversize;
     }
-    if (dedupeCollides(live, cfg.duplicatePolicy(), submission.dedupeKey(), null)) {
+    // liveItems() is only materialized for REJECT_BY_DEDUPE_KEY -- the only policy dedupeCollides
+    // actually reads its list argument for; every other policy would discard it unread.
+    if (cfg.duplicatePolicy() == DuplicatePolicy.REJECT_BY_DEDUPE_KEY
+        && dedupeCollides(liveItems(gate), cfg.duplicatePolicy(), submission.dedupeKey(), null)) {
       return "DUPLICATE: dedupeKey '%s' collides with a live item".formatted(submission.dedupeKey());
     }
     return null;
@@ -533,7 +567,8 @@ final class CollectionGateService {
     if (oversize != null) {
       return oversize;
     }
-    if (dedupeCollides(liveItems(gate), cfg.duplicatePolicy(), replacement.dedupeKey(), submissionId)) {
+    if (cfg.duplicatePolicy() == DuplicatePolicy.REJECT_BY_DEDUPE_KEY
+        && dedupeCollides(liveItems(gate), cfg.duplicatePolicy(), replacement.dedupeKey(), submissionId)) {
       return "DUPLICATE: dedupeKey '%s' collides with a live item".formatted(replacement.dedupeKey());
     }
     return null;
@@ -717,6 +752,21 @@ final class CollectionGateService {
     return gate;
   }
 
+  /**
+   * Looks up an item by submission id regardless of whether it is live or withdrawn, throwing only
+   * when {@code submissionId} was never in this collection at all. Used where a caller needs the
+   * item's persistent fields (e.g. {@code submittedByActorId}, which survives withdrawal) before
+   * deciding whether liveness itself is actually required for this call.
+   */
+  private static CollectionItem requireItem(CollectionState gate, String submissionId) {
+    for (CollectionItem item : gate.items()) {
+      if (item.submissionId().equals(submissionId)) {
+        return item;
+      }
+    }
+    throw new IllegalArgumentException("No item '%s' in collection".formatted(submissionId));
+  }
+
   private static CollectionItem requireLiveItem(CollectionState gate, String submissionId) {
     for (CollectionItem item : gate.items()) {
       if (item.submissionId().equals(submissionId) && !item.withdrawn()) {
@@ -734,6 +784,36 @@ final class CollectionGateService {
       }
     }
     return List.copyOf(live);
+  }
+
+  /** Counts live items without materializing a list, for call sites that only need the count. */
+  private static int liveItemCount(CollectionState gate) {
+    int count = 0;
+    for (CollectionItem item : gate.items()) {
+      if (!item.withdrawn()) {
+        count++;
+      }
+    }
+    return count;
+  }
+
+  /**
+   * Counts {@code actorId}'s live items, stopping as soon as the count reaches {@code stopAt} --
+   * an actor already at or over a cap is not scanned any further. The returned count may
+   * therefore under-report the actor's true total once it reaches {@code stopAt}; callers use it
+   * only to compare against the same cap.
+   */
+  private static int countLiveItemsForActor(CollectionState gate, String actorId, int stopAt) {
+    int count = 0;
+    for (CollectionItem item : gate.items()) {
+      if (!item.withdrawn() && item.submittedByActorId().equals(actorId)) {
+        count++;
+        if (count >= stopAt) {
+          return count;
+        }
+      }
+    }
+    return count;
   }
 
   private static List<CollectionItem> replaceSlot(List<CollectionItem> items, String submissionId,

@@ -130,6 +130,24 @@ class WorkflowHarnessCollectionTest {
             "action": "close",
             "required": false,
             "resolution": "DEFERRED"
+          },
+          {
+            "id": "req-replace-own",
+            "type": "rbac_step_action_allowed",
+            "scope": "STEP_ACTION",
+            "stepId": "cv-intake",
+            "action": "replace_own",
+            "required": false,
+            "resolution": "DEFERRED"
+          },
+          {
+            "id": "req-withdraw-own",
+            "type": "rbac_step_action_allowed",
+            "scope": "STEP_ACTION",
+            "stepId": "cv-intake",
+            "action": "withdraw_own",
+            "required": false,
+            "resolution": "DEFERRED"
           }
         ]
       }

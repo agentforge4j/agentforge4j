@@ -342,18 +342,35 @@ class CollectionGateRuntimeTest {
 
     // The run has moved on to SECOND_STEP; STEP is a closed, non-current gate and must reject every
     // mutating verb, not only the one this finding names as the clearest corruption path (reopen).
+    // The run's status is genuinely AWAITING_COLLECTION (just on a different step), so this is a
+    // step-target mismatch, not a status mismatch -- requireSuspendedStep's IllegalStateException,
+    // matching the same "state conflict, not a bad argument" convention every other suspension verb
+    // uses for a stale-step target.
     assertThatThrownBy(() -> gate.submitItem(runId, STEP, submission("a", null, null), ACTOR))
-        .isInstanceOf(IllegalArgumentException.class);
+        .isInstanceOf(IllegalStateException.class);
     assertThatThrownBy(() -> gate.reopenCollection(runId, STEP, ACTOR))
-        .isInstanceOf(IllegalArgumentException.class);
+        .isInstanceOf(IllegalStateException.class);
     assertThatThrownBy(() -> gate.closeCollection(runId, STEP,
         new CloseRequest(ACTOR, CloseReason.MANUAL, false, null)))
-        .isInstanceOf(IllegalArgumentException.class);
+        .isInstanceOf(IllegalStateException.class);
 
     // The actual current gate is unaffected and still governs normally.
     CloseResult secondClose = gate.closeCollection(runId, SECOND_STEP,
         new CloseRequest(ACTOR, CloseReason.MANUAL, false, null));
     assertThat(secondClose.closed()).isTrue();
+  }
+
+  @Test
+  void misusingAnUnrelatedSuspensionVerbOnARunAwaitingCollectionNamesTheCorrectVerb() {
+    // AWAITING_COLLECTION is registered in isSuspensionStatus/verbFor, so a mismatched verb from a
+    // different suspension-status family (submitReview, here) gets the same helpful "use X instead"
+    // cross-guidance every other suspension status already provides, instead of a generic error.
+    WorkflowRuntime runtime = runtime(behaviour(0, null, ReopenPolicy.NONE, AuthorizationMode.OPEN));
+    String runId = runtime.start("wf");
+
+    assertThatThrownBy(() -> runtime.submitReview(runId, STEP, "note", ACTOR))
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessageContaining("collections()");
   }
 
   @Test
@@ -641,6 +658,49 @@ class CollectionGateRuntimeTest {
     assertThat(replay.version()).isZero();
     // The withdrawal is not undone and no second item is created.
     assertThat(gate.getCollection(runId, STEP, ACTOR).liveCount()).isZero();
+  }
+
+  @Test
+  void replayOfAReplaceCallWhoseTargetWasSinceWithdrawnReturnsIdempotentWithNullSubmissionId() {
+    // A retried replaceItem call itself (not a submitItem replay) against a target withdrawn since
+    // the original replace succeeded: replace()'s own liveness check must not run before
+    // idempotentReturn has a chance to recognize the replay via the token's earlier
+    // seenClientTokens entry, or the retry throws instead of returning the documented no-op.
+    WorkflowRuntime runtime = runtime(behaviourFull(0, null, ReopenPolicy.NONE, AuthorizationMode.OPEN,
+        ReplacementPolicy.OWNER_REPLACE, WithdrawalPolicy.OWNER_WITHDRAW));
+    CollectionGateRuntime gate = (CollectionGateRuntime) runtime;
+    String runId = runtime.start("wf");
+    SubmissionResult submitted = gate.submitItem(runId, STEP, submission("a", null, null), ACTOR);
+    SubmissionResult replaced = gate.replaceItem(runId, STEP, submitted.submissionId(),
+        submission("b", "tok-1", null), ACTOR);
+    assertThat(replaced.status()).isEqualTo(SubmissionResult.Status.ACCEPTED);
+
+    gate.withdrawItem(runId, STEP, submitted.submissionId(), ACTOR);
+
+    SubmissionResult replay = gate.replaceItem(runId, STEP, submitted.submissionId(),
+        submission("b", "tok-1", null), ACTOR);
+
+    assertThat(replay.status()).isEqualTo(SubmissionResult.Status.IDEMPOTENT);
+    assertThat(replay.submissionId()).isNull();
+    assertThat(replay.version()).isZero();
+    assertThat(gate.getCollection(runId, STEP, ACTOR).liveCount()).isZero();
+  }
+
+  @Test
+  void freshReplaceAttemptAgainstAWithdrawnTargetStillThrows() {
+    // Not a replay -- a brand-new clientToken against an already-withdrawn target is a genuine
+    // error, not an idempotent no-op; the liveness check must still fire for this case.
+    WorkflowRuntime runtime = runtime(behaviourFull(0, null, ReopenPolicy.NONE, AuthorizationMode.OPEN,
+        ReplacementPolicy.OWNER_REPLACE, WithdrawalPolicy.OWNER_WITHDRAW));
+    CollectionGateRuntime gate = (CollectionGateRuntime) runtime;
+    String runId = runtime.start("wf");
+    SubmissionResult submitted = gate.submitItem(runId, STEP, submission("a", null, null), ACTOR);
+    gate.withdrawItem(runId, STEP, submitted.submissionId(), ACTOR);
+
+    assertThatThrownBy(() -> gate.replaceItem(runId, STEP, submitted.submissionId(),
+        submission("b", null, null), ACTOR))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("No live item");
   }
 
   @Test
@@ -1286,6 +1346,48 @@ class CollectionGateRuntimeTest {
     assertThat(finalState.getStatus()).isEqualTo(WorkflowStatus.CANCELLED);
     int liveCount = finalState.getCollectionState(STEP).orElseThrow().items().size();
     assertThat(liveCount).isEqualTo(1);
+  }
+
+  @Test
+  void getStateWaitsForAnInFlightCollectionMutationInsteadOfRacingIt() throws Exception {
+    // getState() now shares the same per-run collection lock as the mutating verbs: while a
+    // submit is mid-flight holding the lock (blocked here inside the authorizer, which authorize()
+    // calls from within the locked section), a concurrent getState() call must wait for it instead
+    // of racing it on the same shared, non-thread-safe WorkflowState instance.
+    CountDownLatch authorizerEntered = new CountDownLatch(1);
+    CountDownLatch releaseAuthorizer = new CountDownLatch(1);
+    CollectionAuthorizer blockingAuthorizer = (actorId, stepId, action, descriptor, context) -> {
+      authorizerEntered.countDown();
+      try {
+        releaseAuthorizer.await(10, TimeUnit.SECONDS);
+      } catch (InterruptedException e) {
+        Thread.currentThread().interrupt();
+      }
+      return Decision.allow();
+    };
+    WorkflowRuntime runtime = runtimeEnforced(blockingAuthorizer);
+    CollectionGateRuntime gate = (CollectionGateRuntime) runtime;
+    String runId = runtime.start("wf");
+
+    ExecutorService pool = Executors.newFixedThreadPool(2);
+    try {
+      Future<SubmissionResult> submitFuture =
+          pool.submit(() -> gate.submitItem(runId, STEP, submission("a", null, null), ACTOR));
+      assertThat(authorizerEntered.await(10, TimeUnit.SECONDS)).isTrue();
+
+      Future<WorkflowState> stateFuture = pool.submit(() -> runtime.getState(runId));
+      Thread.sleep(200);
+      assertThat(stateFuture.isDone()).isFalse();
+
+      releaseAuthorizer.countDown();
+      SubmissionResult submitResult = submitFuture.get(10, TimeUnit.SECONDS);
+      WorkflowState state = stateFuture.get(10, TimeUnit.SECONDS);
+
+      assertThat(submitResult.status()).isEqualTo(SubmissionResult.Status.ACCEPTED);
+      assertThat(state.getCollectionState(STEP).orElseThrow().items()).hasSize(1);
+    } finally {
+      pool.shutdown();
+    }
   }
 
   // ---- authorized cross-actor replacement ownership ------------------------------------------

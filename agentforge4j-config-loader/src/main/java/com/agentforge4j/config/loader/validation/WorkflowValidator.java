@@ -10,10 +10,11 @@ import com.agentforge4j.core.workflow.WorkflowDefinition;
 import com.agentforge4j.core.workflow.collection.AuthorizationMode;
 import com.agentforge4j.core.workflow.collection.CollectionAction;
 import com.agentforge4j.core.workflow.collection.ReopenPolicy;
+import com.agentforge4j.core.workflow.collection.ReplacementPolicy;
+import com.agentforge4j.core.workflow.collection.WithdrawalPolicy;
 import com.agentforge4j.core.workflow.reachability.AmbiguousStepId;
 import com.agentforge4j.core.workflow.reachability.ReachableStepGraph;
 import com.agentforge4j.core.workflow.reachability.WorkflowRefResolver;
-import com.agentforge4j.core.workflow.requirement.RequirementScope;
 import com.agentforge4j.core.workflow.requirement.WorkflowRequirement;
 import com.agentforge4j.core.workflow.step.StepDefinition;
 import com.agentforge4j.core.workflow.step.behaviour.BranchBehaviour;
@@ -29,6 +30,7 @@ import com.agentforge4j.util.Validate;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -91,7 +93,7 @@ public final class WorkflowValidator {
   public void validateRetryStepRefs(Map<String, WorkflowDefinition> workflows) {
     workflows.values().forEach(workflow -> {
       Set<String> workflowStepIds = new HashSet<>();
-      collectStepIds(workflow.steps(), workflowStepIds);
+      collectStepIds(workflow.steps(), workflow, workflowStepIds);
       walkForRetryStepRefs(workflow.steps(), workflow, workflowStepIds);
     });
   }
@@ -313,37 +315,72 @@ public final class WorkflowValidator {
     Validate.isTrue(behaviour.manualClose() || behaviour.externalDeadlineClosable(),
         ("Collection step '%s' in workflow '%s' must be closable: enable manualClose or "
             + "externalDeadlineClosable").formatted(stepId, workflowId));
-    Validate.isTrue(behaviour.reopenPolicy() != ReopenPolicy.ALLOWED || behaviour.manualClose(),
-        "Collection step '%s' in workflow '%s' with reopenPolicy=ALLOWED requires manualClose"
-            .formatted(stepId, workflowId));
-    if (behaviour.externalDeadlineClosable()) {
-      // authorize() unconditionally denies DEADLINE_CLOSE under OPEN mode regardless of
-      // manualClose, so a declared deadline-close capability is silently dead unless ENFORCED is
-      // also declared -- this holds whether or not manualClose is also enabled.
-      Validate.isTrue(behaviour.authorizationMode() == AuthorizationMode.ENFORCED,
-          ("Collection step '%s' in workflow '%s' declares externalDeadlineClosable and must "
-              + "declare authorizationMode=ENFORCED: OPEN mode never permits a deadline-triggered "
-              + "close, so the gate's deadline path could never close").formatted(stepId,
-              workflowId));
-      // close() authorizes the generic CLOSE action before the reason-specific DEADLINE_CLOSE
-      // check, so both STEP_ACTION requirements must be declared or every deadline close is
-      // denied at the authorization step regardless of who is authorized for what.
-      Validate.isTrue(
-          hasStepActionRequirement(workflow, stepId, CollectionAction.CLOSE)
-              && hasStepActionRequirement(workflow, stepId, CollectionAction.DEADLINE_CLOSE),
-          ("Collection step '%s' in workflow '%s' declares externalDeadlineClosable and must "
-              + "declare STEP_ACTION requirements for both 'close' and 'deadline_close': without "
-              + "them authorize() always denies, so the gate's deadline path could never close")
-              .formatted(stepId, workflowId));
+    // No prior rule requiring manualClose for reopenPolicy=ALLOWED: reopen()'s own logic has no
+    // dependency on manualClose (it checks only reopenPolicy and phase), and a deadline-only
+    // gate that closes via a deadline trigger, reopens, and closes again via a later deadline
+    // trigger is a functionally valid, fully deadline-driven cycle with no human step required.
+    // authorize() unconditionally denies DEADLINE_CLOSE under OPEN mode regardless of manualClose,
+    // so a declared deadline-close capability is silently dead unless ENFORCED is also declared --
+    // this holds whether or not manualClose is also enabled.
+    Validate.isTrue(
+        !behaviour.externalDeadlineClosable() || behaviour.authorizationMode() == AuthorizationMode.ENFORCED,
+        ("Collection step '%s' in workflow '%s' declares externalDeadlineClosable and must "
+            + "declare authorizationMode=ENFORCED: OPEN mode never permits a deadline-triggered "
+            + "close, so the gate's deadline path could never close").formatted(stepId, workflowId));
+    if (behaviour.authorizationMode() == AuthorizationMode.ENFORCED) {
+      // General rule: under ENFORCED, authorize() denies any action with no matching STEP_ACTION
+      // requirement declared. Every action this behaviour's own configuration makes structurally
+      // reachable must therefore have one declared, or that part of the gate's declared behaviour
+      // could never succeed -- close()/deadline_close authorizes unconditionally/when
+      // externalDeadlineClosable; override whenever minItems could be unmet; reopen whenever
+      // reopenPolicy=ALLOWED; replace/withdraw whenever the respective policy is not NONE, with the
+      // *_ANY variant additionally reachable only under the AUTHORIZED_* policies.
+      for (CollectionAction action : reachableActions(behaviour)) {
+        Validate.isTrue(hasStepActionRequirement(workflow, stepId, action),
+            ("Collection step '%s' in workflow '%s' declares authorizationMode=ENFORCED and a "
+                + "configuration that makes action '%s' reachable, but declares no matching "
+                + "STEP_ACTION requirement for it: without one, authorize() always denies '%s', "
+                + "so that part of the gate's declared behaviour could never succeed")
+                .formatted(stepId, workflowId, action.wire(), action.wire()));
+      }
     }
+  }
+
+  /**
+   * The {@link CollectionAction}s a {@link CollectionBehaviour}'s own configuration makes
+   * structurally reachable at runtime, independent of {@code authorizationMode} — the set an
+   * {@code ENFORCED} gate must declare a matching {@code STEP_ACTION} requirement for.
+   */
+  private static Set<CollectionAction> reachableActions(CollectionBehaviour behaviour) {
+    Set<CollectionAction> actions = new LinkedHashSet<>();
+    actions.add(CollectionAction.CLOSE);
+    if (behaviour.externalDeadlineClosable()) {
+      actions.add(CollectionAction.DEADLINE_CLOSE);
+    }
+    if (behaviour.minItems() > 0) {
+      actions.add(CollectionAction.OVERRIDE);
+    }
+    if (behaviour.reopenPolicy() == ReopenPolicy.ALLOWED) {
+      actions.add(CollectionAction.REOPEN);
+    }
+    if (behaviour.replacementPolicy() != ReplacementPolicy.NONE) {
+      actions.add(CollectionAction.REPLACE_OWN);
+      if (behaviour.replacementPolicy() == ReplacementPolicy.AUTHORIZED_REPLACE) {
+        actions.add(CollectionAction.REPLACE_ANY);
+      }
+    }
+    if (behaviour.withdrawalPolicy() != WithdrawalPolicy.NONE) {
+      actions.add(CollectionAction.WITHDRAW_OWN);
+      if (behaviour.withdrawalPolicy() == WithdrawalPolicy.AUTHORIZED_WITHDRAW) {
+        actions.add(CollectionAction.WITHDRAW_ANY);
+      }
+    }
+    return actions;
   }
 
   private static boolean hasStepActionRequirement(WorkflowDefinition workflow, String stepId,
       CollectionAction action) {
-    return workflow.requirements().stream()
-        .anyMatch(requirement -> requirement.scope() == RequirementScope.STEP_ACTION
-            && stepId.equals(requirement.stepId())
-            && action.wire().equals(requirement.action()));
+    return WorkflowRequirement.findStepAction(workflow.requirements(), stepId, action.wire()) != null;
   }
 
   private void walkForArtifactRefs(List<Executable> steps, WorkflowDefinition workflow) {
@@ -382,14 +419,18 @@ public final class WorkflowValidator {
             .formatted(stepId, workflowId, artifactId));
   }
 
-  private static void collectStepIds(List<Executable> steps, Set<String> stepIds) {
+  private static void collectStepIds(List<Executable> steps, WorkflowDefinition enclosing,
+      Set<String> stepIds) {
     for (Executable executable : steps) {
       if (executable instanceof StepDefinition step) {
         stepIds.add(step.stepId());
-      } else if (executable instanceof BlueprintRef) {
-        // No step ids to collect here.
+      } else if (executable instanceof BlueprintRef ref) {
+        BlueprintDefinition blueprint = enclosing.blueprints().get(ref.blueprintId());
+        if (blueprint != null) {
+          collectStepIds(blueprint.steps(), enclosing, stepIds);
+        }
       } else if (executable instanceof WorkflowDefinition nested) {
-        collectStepIds(nested.steps(), stepIds);
+        collectStepIds(nested.steps(), nested, stepIds);
       }
     }
   }
@@ -408,7 +449,7 @@ public final class WorkflowValidator {
         // No retry refs to validate here.
       } else if (executable instanceof WorkflowDefinition nested) {
         Set<String> nestedStepIds = new HashSet<>();
-        collectStepIds(nested.steps(), nestedStepIds);
+        collectStepIds(nested.steps(), nested, nestedStepIds);
         walkForRetryStepRefs(nested.steps(), nested, nestedStepIds);
       }
     }
@@ -434,7 +475,7 @@ public final class WorkflowValidator {
       return;
     }
     Set<String> stepIds = new HashSet<>();
-    collectStepIds(workflow.steps(), stepIds);
+    collectStepIds(workflow.steps(), workflow, stepIds);
     Set<String> seenIds = new HashSet<>();
     Set<String> seenTargets = new HashSet<>();
     for (WorkflowRequirement requirement : requirements) {

@@ -3,6 +3,7 @@ package com.agentforge4j.runtime;
 
 import com.agentforge4j.core.workflow.Executable;
 import com.agentforge4j.core.workflow.WorkflowDefinition;
+import com.agentforge4j.core.workflow.reachability.ReachableStep;
 import com.agentforge4j.core.workflow.reachability.ReachableStepGraph;
 import com.agentforge4j.core.workflow.repository.WorkflowRepository;
 import com.agentforge4j.core.workflow.step.StepDefinition;
@@ -103,37 +104,22 @@ final class StepTreeSearcher {
   }
 
   /**
-   * Returns the {@link WorkflowDefinition} that declares {@code stepId} — the nearest enclosing
-   * workflow, walking into blueprint bodies (which stay attached to their enclosing workflow) and
-   * nested {@code WorkflowDefinition} entries exactly as {@link #findInSteps} does. Falls back to
-   * {@code root} itself when {@code stepId} is not found nested under any entry, including when it
-   * is not found at all — callers that must distinguish "not found" resolve the step first via
-   * {@link #findStep} or {@link #findStepAcrossWorkflows}.
+   * Returns the {@link WorkflowDefinition} that declares {@code stepId} — the workflow whose
+   * {@code requirements()} a {@code STEP_ACTION} requirement targeting this step must be declared
+   * on. Resolves across both nesting mechanisms (inline/blueprint-nested steps, and steps reached
+   * via a {@code WORKFLOW}-behaviour reference to a separately-registered sub-workflow resolved
+   * from {@code repository}) by delegating to {@link ReachableStepGraph}, the single source of
+   * truth for step reachability — exactly the same resolution {@link #findStepAcrossWorkflows}
+   * uses to locate the step itself. Falls back to {@code root} when {@code stepId} is not
+   * reachable at all — callers that must distinguish "not found" resolve the step first via
+   * {@link #findStepAcrossWorkflows}.
+   *
+   * @throws IllegalStateException if {@code stepId} resolves at more than one structural location
    */
-  WorkflowDefinition findDeclaringWorkflow(WorkflowDefinition root, String stepId) {
-    WorkflowDefinition declaring = findDeclaringWorkflowIn(root.steps(), root, stepId);
-    return declaring == null ? root : declaring;
-  }
-
-  private WorkflowDefinition findDeclaringWorkflowIn(List<Executable> steps,
-      WorkflowDefinition enclosing, String stepId) {
-    for (Executable executable : steps) {
-      if (executable instanceof StepDefinition step && step.stepId().equals(stepId)) {
-        return enclosing;
-      } else if (executable instanceof BlueprintRef ref) {
-        BlueprintDefinition bp = enclosing.blueprints().get(ref.blueprintId());
-        WorkflowDefinition found =
-            bp == null ? null : findDeclaringWorkflowIn(bp.steps(), enclosing, stepId);
-        if (found != null) {
-          return found;
-        }
-      } else if (executable instanceof WorkflowDefinition nested) {
-        WorkflowDefinition found = findDeclaringWorkflowIn(nested.steps(), nested, stepId);
-        if (found != null) {
-          return found;
-        }
-      }
-    }
-    return null;
+  WorkflowDefinition findDeclaringWorkflow(WorkflowDefinition root, String stepId,
+      WorkflowRepository repository) {
+    ReachableStep resolved = ReachableStepGraph.resolveUniqueOccurrence(root, stepId,
+        workflowRef -> repository.findAll().get(workflowRef));
+    return resolved == null ? root : resolved.declaringWorkflow();
   }
 }

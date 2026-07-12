@@ -466,7 +466,8 @@ public final class WorkflowRuntimeBuilder {
         ObjectUtils.getIfNull(collectionAuthorizer, DefaultCollectionAuthorizer::new),
         ObjectUtils.getIfNull(collectionItemSchemaValidator, CollectionItemSchemaValidator::unconfigured),
         ObjectUtils.getIfNull(collectionSubmissionValidator, DefaultCollectionSubmissionValidator::new),
-        resolvedObjectMapper);
+        resolvedObjectMapper,
+        workflowRepository);
 
     return new DefaultWorkflowRuntime(
         workflowRepository,

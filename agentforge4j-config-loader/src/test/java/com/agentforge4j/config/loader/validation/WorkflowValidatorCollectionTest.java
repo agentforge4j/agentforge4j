@@ -74,22 +74,21 @@ class WorkflowValidatorCollectionTest {
 
   @Test
   void rejectsDeadlineClosableGateMissingStepActionRequirements() {
+    // Zero requirements declared: the general per-action loop checks CLOSE first (it is always
+    // reachable), so that is the action named in the rejection.
     assertThatThrownBy(() -> validator.validateCollectionGates(
         workflows(gate(false, true, ReopenPolicy.NONE, AuthorizationMode.ENFORCED))))
         .isInstanceOf(IllegalArgumentException.class)
-        .hasMessageContaining("'close' and 'deadline_close'");
+        .hasMessageContaining("action 'close'");
   }
 
   @Test
   void rejectsDeadlineClosableGateMissingOnlyTheDeadlineCloseRequirement() {
-    List<WorkflowRequirement> closeOnly = List.of(
-        new WorkflowRequirement("req-close", "rbac_step_action_allowed",
-            RequirementScope.STEP_ACTION, "cv-intake", "close", false, null,
-            ResolutionMode.DEFERRED));
+    List<WorkflowRequirement> closeOnly = List.of(closeRequirement());
     assertThatThrownBy(() -> validator.validateCollectionGates(
         workflows(gate(false, true, ReopenPolicy.NONE, AuthorizationMode.ENFORCED), closeOnly)))
         .isInstanceOf(IllegalArgumentException.class)
-        .hasMessageContaining("'close' and 'deadline_close'");
+        .hasMessageContaining("action 'deadline_close'");
   }
 
   @Test
@@ -101,17 +100,106 @@ class WorkflowValidatorCollectionTest {
   }
 
   @Test
-  void rejectsReopenAllowedWithoutManualClose() {
-    assertThatThrownBy(() -> validator.validateCollectionGates(
-        workflows(gate(false, true, ReopenPolicy.ALLOWED))))
-        .isInstanceOf(IllegalArgumentException.class)
-        .hasMessageContaining("reopenPolicy=ALLOWED requires manualClose");
-  }
-
-  @Test
   void acceptsReopenAllowedWithManualClose() {
     assertThatCode(() -> validator.validateCollectionGates(
         workflows(gate(true, false, ReopenPolicy.ALLOWED)))).doesNotThrowAnyException();
+  }
+
+  @Test
+  void acceptsReopenAllowedOnADeadlineOnlyClosableGateWithoutManualClose() {
+    // No runtime dependency ties reopen() to manualClose -- a fully deadline-driven close/reopen
+    // cycle (deadline-close, reopen, deadline-close again) is functionally valid with no human
+    // step required, so reopenPolicy=ALLOWED no longer requires manualClose.
+    List<WorkflowRequirement> requirements = List.of(
+        new WorkflowRequirement("req-close", "rbac_step_action_allowed",
+            RequirementScope.STEP_ACTION, "cv-intake", "close", false, null,
+            ResolutionMode.DEFERRED),
+        new WorkflowRequirement("req-deadline-close", "rbac_step_action_allowed",
+            RequirementScope.STEP_ACTION, "cv-intake", "deadline_close", false, null,
+            ResolutionMode.DEFERRED),
+        new WorkflowRequirement("req-reopen", "rbac_step_action_allowed",
+            RequirementScope.STEP_ACTION, "cv-intake", "reopen", false, null,
+            ResolutionMode.DEFERRED));
+    assertThatCode(() -> validator.validateCollectionGates(
+        workflows(gate(false, true, ReopenPolicy.ALLOWED, AuthorizationMode.ENFORCED), requirements)))
+        .doesNotThrowAnyException();
+  }
+
+  // ---- D2 general rule: every action the config makes reachable needs a declared requirement ---
+
+  @Test
+  void rejectsOverrideReachableGateMissingOverrideRequirement() {
+    CollectionBehaviour cfg = new CollectionBehaviour(null, 1, null, null, 0, DuplicatePolicy.ALLOW,
+        ReplacementPolicy.NONE, WithdrawalPolicy.NONE, true, false, ReopenPolicy.NONE,
+        AuthorizationMode.ENFORCED, StepTransition.AUTO);
+    assertThatThrownBy(() -> validator.validateCollectionGates(
+        workflows(cfg, List.of(closeRequirement()))))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("'override'");
+  }
+
+  @Test
+  void acceptsOverrideReachableGateWithOverrideRequirement() {
+    CollectionBehaviour cfg = new CollectionBehaviour(null, 1, null, null, 0, DuplicatePolicy.ALLOW,
+        ReplacementPolicy.NONE, WithdrawalPolicy.NONE, true, false, ReopenPolicy.NONE,
+        AuthorizationMode.ENFORCED, StepTransition.AUTO);
+    List<WorkflowRequirement> requirements = List.of(closeRequirement(), stepActionRequirement("override"));
+    assertThatCode(() -> validator.validateCollectionGates(workflows(cfg, requirements)))
+        .doesNotThrowAnyException();
+  }
+
+  @Test
+  void rejectsAuthorizedReplacePolicyGateMissingReplaceAnyRequirement() {
+    CollectionBehaviour cfg = new CollectionBehaviour(null, 0, null, null, 0, DuplicatePolicy.ALLOW,
+        ReplacementPolicy.AUTHORIZED_REPLACE, WithdrawalPolicy.NONE, true, false, ReopenPolicy.NONE,
+        AuthorizationMode.ENFORCED, StepTransition.AUTO);
+    // Declares replace_own but not replace_any: AUTHORIZED_REPLACE resolves to REPLACE_ANY for a
+    // non-owning actor, so that sub-path is still silently dead without both declared.
+    List<WorkflowRequirement> requirements = List.of(closeRequirement(), stepActionRequirement("replace_own"));
+    assertThatThrownBy(() -> validator.validateCollectionGates(workflows(cfg, requirements)))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("'replace_any'");
+  }
+
+  @Test
+  void acceptsAuthorizedReplacePolicyGateWithBothReplaceRequirements() {
+    CollectionBehaviour cfg = new CollectionBehaviour(null, 0, null, null, 0, DuplicatePolicy.ALLOW,
+        ReplacementPolicy.AUTHORIZED_REPLACE, WithdrawalPolicy.NONE, true, false, ReopenPolicy.NONE,
+        AuthorizationMode.ENFORCED, StepTransition.AUTO);
+    List<WorkflowRequirement> requirements = List.of(closeRequirement(),
+        stepActionRequirement("replace_own"), stepActionRequirement("replace_any"));
+    assertThatCode(() -> validator.validateCollectionGates(workflows(cfg, requirements)))
+        .doesNotThrowAnyException();
+  }
+
+  @Test
+  void rejectsOwnerWithdrawPolicyGateMissingWithdrawOwnRequirement() {
+    CollectionBehaviour cfg = new CollectionBehaviour(null, 0, null, null, 0, DuplicatePolicy.ALLOW,
+        ReplacementPolicy.NONE, WithdrawalPolicy.OWNER_WITHDRAW, true, false, ReopenPolicy.NONE,
+        AuthorizationMode.ENFORCED, StepTransition.AUTO);
+    assertThatThrownBy(() -> validator.validateCollectionGates(
+        workflows(cfg, List.of(closeRequirement()))))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("'withdraw_own'");
+  }
+
+  @Test
+  void acceptsOwnerWithdrawPolicyGateWithWithdrawOwnRequirement() {
+    CollectionBehaviour cfg = new CollectionBehaviour(null, 0, null, null, 0, DuplicatePolicy.ALLOW,
+        ReplacementPolicy.NONE, WithdrawalPolicy.OWNER_WITHDRAW, true, false, ReopenPolicy.NONE,
+        AuthorizationMode.ENFORCED, StepTransition.AUTO);
+    List<WorkflowRequirement> requirements = List.of(closeRequirement(), stepActionRequirement("withdraw_own"));
+    assertThatCode(() -> validator.validateCollectionGates(workflows(cfg, requirements)))
+        .doesNotThrowAnyException();
+  }
+
+  private static WorkflowRequirement closeRequirement() {
+    return stepActionRequirement("close");
+  }
+
+  private static WorkflowRequirement stepActionRequirement(String action) {
+    return new WorkflowRequirement("req-" + action, "rbac_step_action_allowed",
+        RequirementScope.STEP_ACTION, "cv-intake", action, false, null, ResolutionMode.DEFERRED);
   }
 
   // ---- nested placements: blueprint bodies and BRANCH children carry the same invariants ------

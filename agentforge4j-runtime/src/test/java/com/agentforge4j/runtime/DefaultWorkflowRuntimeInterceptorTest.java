@@ -194,8 +194,10 @@ class DefaultWorkflowRuntimeInterceptorTest {
             .build()));
     eventLog = new InMemoryWorkflowEventLog();
     EventRecorder eventRecorder = new EventRecorder(eventLog, CLOCK);
+    InMemoryWorkflowRepository workflowRepository =
+        new InMemoryWorkflowRepository(Map.of(workflow.id(), workflow));
     return new DefaultWorkflowRuntime(
-        new InMemoryWorkflowRepository(Map.of(workflow.id(), workflow)),
+        workflowRepository,
         stateRepo,
         stepSequenceExecutor,
         eventRecorder,
@@ -212,6 +214,7 @@ class DefaultWorkflowRuntimeInterceptorTest {
             new com.agentforge4j.core.workflow.collection.DefaultCollectionAuthorizer(),
             com.agentforge4j.core.spi.validation.CollectionItemSchemaValidator.unconfigured(),
             new com.agentforge4j.core.workflow.collection.DefaultCollectionSubmissionValidator(),
-            new com.fasterxml.jackson.databind.ObjectMapper()));
+            new com.fasterxml.jackson.databind.ObjectMapper(),
+            workflowRepository));
   }
 }
