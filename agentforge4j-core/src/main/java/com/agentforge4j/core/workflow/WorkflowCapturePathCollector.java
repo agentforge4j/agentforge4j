@@ -41,7 +41,7 @@ public final class WorkflowCapturePathCollector {
   public static Set<String> collect(WorkflowDefinition definition) {
     Validate.notNull(definition, "definition must not be null");
     Set<String> paths = new LinkedHashSet<>();
-    WorkflowTreeWalker.walk(definition, (step, scope) -> {
+    WorkflowTreeWalker.walk(definition, MAX_TRAVERSAL_DEPTH, (step, scope) -> {
       if (step.behaviour() instanceof ValidateBehaviour validate) {
         paths.addAll(validate.requiredArtifacts());
       }
