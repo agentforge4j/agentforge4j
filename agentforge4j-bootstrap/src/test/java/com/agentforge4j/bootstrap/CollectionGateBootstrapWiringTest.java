@@ -105,7 +105,7 @@ class CollectionGateBootstrapWiringTest {
   }
 
   private static WorkflowDefinition workflow(String itemSchemaRef) {
-    CollectionBehaviour behaviour = new CollectionBehaviour(itemSchemaRef, 0, null, null, 0,
+    CollectionBehaviour behaviour = new CollectionBehaviour(itemSchemaRef, 0, null, null, 0, null,
         DuplicatePolicy.ALLOW, ReplacementPolicy.OWNER_REPLACE, WithdrawalPolicy.OWNER_WITHDRAW,
         true, false, ReopenPolicy.NONE, AuthorizationMode.OPEN, StepTransition.AUTO);
     StepDefinition step = StepDefinition.builder()

@@ -23,6 +23,7 @@ import com.agentforge4j.core.workflow.step.behaviour.StepBehaviour;
 import com.agentforge4j.core.workflow.step.blueprint.BlueprintBehaviour;
 import com.agentforge4j.core.workflow.step.blueprint.BlueprintDefinition;
 import com.agentforge4j.core.workflow.step.blueprint.BlueprintRef;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
@@ -41,7 +42,7 @@ class WorkflowValidatorCollectionTest {
   void acceptsDeadlineOnlyClosableGate() {
     assertThatCode(() -> validator.validateCollectionGates(
         workflows(gate(false, true, ReopenPolicy.NONE, AuthorizationMode.ENFORCED),
-            deadlineCloseRequirements())))
+            withSubmitAndView(deadlineCloseRequirements()))))
         .doesNotThrowAnyException();
   }
 
@@ -49,7 +50,7 @@ class WorkflowValidatorCollectionTest {
   void acceptsManuallyAndDeadlineClosableGateUnderEnforcedModeWithBothRequirements() {
     assertThatCode(() -> validator.validateCollectionGates(
         workflows(gate(true, true, ReopenPolicy.NONE, AuthorizationMode.ENFORCED),
-            deadlineCloseRequirements())))
+            withSubmitAndView(deadlineCloseRequirements()))))
         .doesNotThrowAnyException();
   }
 
@@ -75,7 +76,9 @@ class WorkflowValidatorCollectionTest {
   @Test
   void rejectsDeadlineClosableGateMissingStepActionRequirements() {
     // Zero requirements declared: the general per-action loop checks CLOSE first (it is always
-    // reachable), so that is the action named in the rejection.
+    // reachable and, along with DEADLINE_CLOSE/OVERRIDE/REOPEN/REPLACE*/WITHDRAW*, is checked
+    // before the unconditionally-reachable SUBMIT/VIEW), so that is the action named in the
+    // rejection.
     assertThatThrownBy(() -> validator.validateCollectionGates(
         workflows(gate(false, true, ReopenPolicy.NONE, AuthorizationMode.ENFORCED))))
         .isInstanceOf(IllegalArgumentException.class)
@@ -89,6 +92,35 @@ class WorkflowValidatorCollectionTest {
         workflows(gate(false, true, ReopenPolicy.NONE, AuthorizationMode.ENFORCED), closeOnly)))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("action 'deadline_close'");
+  }
+
+  @Test
+  void rejectsEnforcedGateMissingSubmitRequirement() {
+    // Every other reachable action (close, and implicitly view, since it is checked last) is
+    // declared -- only submit is missing, so it is named in the rejection.
+    List<WorkflowRequirement> requirements = List.of(closeRequirement(), viewRequirement());
+    assertThatThrownBy(() -> validator.validateCollectionGates(
+        workflows(gate(true, false, ReopenPolicy.NONE, AuthorizationMode.ENFORCED), requirements)))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("action 'submit'");
+  }
+
+  @Test
+  void rejectsEnforcedGateMissingViewRequirement() {
+    List<WorkflowRequirement> requirements = List.of(closeRequirement(), submitRequirement());
+    assertThatThrownBy(() -> validator.validateCollectionGates(
+        workflows(gate(true, false, ReopenPolicy.NONE, AuthorizationMode.ENFORCED), requirements)))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("action 'view'");
+  }
+
+  @Test
+  void acceptsEnforcedGateWithSubmitAndViewRequirementsDeclared() {
+    List<WorkflowRequirement> requirements = List.of(closeRequirement(), submitRequirement(),
+        viewRequirement());
+    assertThatCode(() -> validator.validateCollectionGates(
+        workflows(gate(true, false, ReopenPolicy.NONE, AuthorizationMode.ENFORCED), requirements)))
+        .doesNotThrowAnyException();
   }
 
   @Test
@@ -110,7 +142,7 @@ class WorkflowValidatorCollectionTest {
     // No runtime dependency ties reopen() to manualClose -- a fully deadline-driven close/reopen
     // cycle (deadline-close, reopen, deadline-close again) is functionally valid with no human
     // step required, so reopenPolicy=ALLOWED no longer requires manualClose.
-    List<WorkflowRequirement> requirements = List.of(
+    List<WorkflowRequirement> requirements = withSubmitAndView(List.of(
         new WorkflowRequirement("req-close", "rbac_step_action_allowed",
             RequirementScope.STEP_ACTION, "cv-intake", "close", false, null,
             ResolutionMode.DEFERRED),
@@ -119,7 +151,7 @@ class WorkflowValidatorCollectionTest {
             ResolutionMode.DEFERRED),
         new WorkflowRequirement("req-reopen", "rbac_step_action_allowed",
             RequirementScope.STEP_ACTION, "cv-intake", "reopen", false, null,
-            ResolutionMode.DEFERRED));
+            ResolutionMode.DEFERRED)));
     assertThatCode(() -> validator.validateCollectionGates(
         workflows(gate(false, true, ReopenPolicy.ALLOWED, AuthorizationMode.ENFORCED), requirements)))
         .doesNotThrowAnyException();
@@ -129,7 +161,7 @@ class WorkflowValidatorCollectionTest {
 
   @Test
   void rejectsOverrideReachableGateMissingOverrideRequirement() {
-    CollectionBehaviour cfg = new CollectionBehaviour(null, 1, null, null, 0, DuplicatePolicy.ALLOW,
+    CollectionBehaviour cfg = new CollectionBehaviour(null, 1, null, null, 0, null, DuplicatePolicy.ALLOW,
         ReplacementPolicy.NONE, WithdrawalPolicy.NONE, true, false, ReopenPolicy.NONE,
         AuthorizationMode.ENFORCED, StepTransition.AUTO);
     assertThatThrownBy(() -> validator.validateCollectionGates(
@@ -140,17 +172,18 @@ class WorkflowValidatorCollectionTest {
 
   @Test
   void acceptsOverrideReachableGateWithOverrideRequirement() {
-    CollectionBehaviour cfg = new CollectionBehaviour(null, 1, null, null, 0, DuplicatePolicy.ALLOW,
+    CollectionBehaviour cfg = new CollectionBehaviour(null, 1, null, null, 0, null, DuplicatePolicy.ALLOW,
         ReplacementPolicy.NONE, WithdrawalPolicy.NONE, true, false, ReopenPolicy.NONE,
         AuthorizationMode.ENFORCED, StepTransition.AUTO);
-    List<WorkflowRequirement> requirements = List.of(closeRequirement(), stepActionRequirement("override"));
+    List<WorkflowRequirement> requirements = withSubmitAndView(
+        List.of(closeRequirement(), stepActionRequirement("override")));
     assertThatCode(() -> validator.validateCollectionGates(workflows(cfg, requirements)))
         .doesNotThrowAnyException();
   }
 
   @Test
   void rejectsAuthorizedReplacePolicyGateMissingReplaceAnyRequirement() {
-    CollectionBehaviour cfg = new CollectionBehaviour(null, 0, null, null, 0, DuplicatePolicy.ALLOW,
+    CollectionBehaviour cfg = new CollectionBehaviour(null, 0, null, null, 0, null, DuplicatePolicy.ALLOW,
         ReplacementPolicy.AUTHORIZED_REPLACE, WithdrawalPolicy.NONE, true, false, ReopenPolicy.NONE,
         AuthorizationMode.ENFORCED, StepTransition.AUTO);
     // Declares replace_own but not replace_any: AUTHORIZED_REPLACE resolves to REPLACE_ANY for a
@@ -163,18 +196,18 @@ class WorkflowValidatorCollectionTest {
 
   @Test
   void acceptsAuthorizedReplacePolicyGateWithBothReplaceRequirements() {
-    CollectionBehaviour cfg = new CollectionBehaviour(null, 0, null, null, 0, DuplicatePolicy.ALLOW,
+    CollectionBehaviour cfg = new CollectionBehaviour(null, 0, null, null, 0, null, DuplicatePolicy.ALLOW,
         ReplacementPolicy.AUTHORIZED_REPLACE, WithdrawalPolicy.NONE, true, false, ReopenPolicy.NONE,
         AuthorizationMode.ENFORCED, StepTransition.AUTO);
-    List<WorkflowRequirement> requirements = List.of(closeRequirement(),
-        stepActionRequirement("replace_own"), stepActionRequirement("replace_any"));
+    List<WorkflowRequirement> requirements = withSubmitAndView(List.of(closeRequirement(),
+        stepActionRequirement("replace_own"), stepActionRequirement("replace_any")));
     assertThatCode(() -> validator.validateCollectionGates(workflows(cfg, requirements)))
         .doesNotThrowAnyException();
   }
 
   @Test
   void rejectsOwnerWithdrawPolicyGateMissingWithdrawOwnRequirement() {
-    CollectionBehaviour cfg = new CollectionBehaviour(null, 0, null, null, 0, DuplicatePolicy.ALLOW,
+    CollectionBehaviour cfg = new CollectionBehaviour(null, 0, null, null, 0, null, DuplicatePolicy.ALLOW,
         ReplacementPolicy.NONE, WithdrawalPolicy.OWNER_WITHDRAW, true, false, ReopenPolicy.NONE,
         AuthorizationMode.ENFORCED, StepTransition.AUTO);
     assertThatThrownBy(() -> validator.validateCollectionGates(
@@ -185,10 +218,11 @@ class WorkflowValidatorCollectionTest {
 
   @Test
   void acceptsOwnerWithdrawPolicyGateWithWithdrawOwnRequirement() {
-    CollectionBehaviour cfg = new CollectionBehaviour(null, 0, null, null, 0, DuplicatePolicy.ALLOW,
+    CollectionBehaviour cfg = new CollectionBehaviour(null, 0, null, null, 0, null, DuplicatePolicy.ALLOW,
         ReplacementPolicy.NONE, WithdrawalPolicy.OWNER_WITHDRAW, true, false, ReopenPolicy.NONE,
         AuthorizationMode.ENFORCED, StepTransition.AUTO);
-    List<WorkflowRequirement> requirements = List.of(closeRequirement(), stepActionRequirement("withdraw_own"));
+    List<WorkflowRequirement> requirements = withSubmitAndView(
+        List.of(closeRequirement(), stepActionRequirement("withdraw_own")));
     assertThatCode(() -> validator.validateCollectionGates(workflows(cfg, requirements)))
         .doesNotThrowAnyException();
   }
@@ -197,9 +231,25 @@ class WorkflowValidatorCollectionTest {
     return stepActionRequirement("close");
   }
 
+  private static WorkflowRequirement submitRequirement() {
+    return stepActionRequirement("submit");
+  }
+
+  private static WorkflowRequirement viewRequirement() {
+    return stepActionRequirement("view");
+  }
+
   private static WorkflowRequirement stepActionRequirement(String action) {
     return new WorkflowRequirement("req-" + action, "rbac_step_action_allowed",
         RequirementScope.STEP_ACTION, "cv-intake", action, false, null, ResolutionMode.DEFERRED);
+  }
+
+  /** Appends submit/view requirements, unconditionally reachable on every ENFORCED gate. */
+  private static List<WorkflowRequirement> withSubmitAndView(List<WorkflowRequirement> requirements) {
+    List<WorkflowRequirement> combined = new ArrayList<>(requirements);
+    combined.add(submitRequirement());
+    combined.add(viewRequirement());
+    return combined;
   }
 
   // ---- nested placements: blueprint bodies and BRANCH children carry the same invariants ------
@@ -273,7 +323,7 @@ class WorkflowValidatorCollectionTest {
 
   private static CollectionBehaviour gate(boolean manualClose, boolean deadlineClosable,
       ReopenPolicy reopen, AuthorizationMode authorizationMode) {
-    return new CollectionBehaviour(null, 0, null, null, 0, DuplicatePolicy.ALLOW,
+    return new CollectionBehaviour(null, 0, null, null, 0, null, DuplicatePolicy.ALLOW,
         ReplacementPolicy.NONE, WithdrawalPolicy.NONE, manualClose, deadlineClosable, reopen,
         authorizationMode, StepTransition.AUTO);
   }

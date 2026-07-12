@@ -34,6 +34,7 @@ import com.agentforge4j.core.workflow.context.ContextMapping;
 import com.agentforge4j.core.workflow.context.JsonContextValue;
 import com.agentforge4j.core.workflow.event.WorkflowEvent;
 import com.agentforge4j.core.workflow.event.WorkflowEventType;
+import com.agentforge4j.core.workflow.repository.WorkflowRepository;
 import com.agentforge4j.core.workflow.repository.WorkflowStateRepository;
 import com.agentforge4j.core.workflow.requirement.RequirementScope;
 import com.agentforge4j.core.workflow.requirement.ResolutionMode;
@@ -66,6 +67,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -137,7 +139,7 @@ class CollectionGateRuntimeTest {
 
   @Test
   void maxItemsPerActorRejectsTheCappedActorButNotAnother() {
-    CollectionBehaviour cfg = new CollectionBehaviour(null, 0, null, 1, 0, DuplicatePolicy.ALLOW,
+    CollectionBehaviour cfg = new CollectionBehaviour(null, 0, null, 1, 0, null, DuplicatePolicy.ALLOW,
         ReplacementPolicy.NONE, WithdrawalPolicy.NONE, true, false, ReopenPolicy.NONE,
         AuthorizationMode.OPEN, StepTransition.AUTO);
     WorkflowRuntime runtime = runtime(cfg);
@@ -156,7 +158,7 @@ class CollectionGateRuntimeTest {
 
   @Test
   void oversizePayloadIsRejectedButExactCapIsAccepted() {
-    CollectionBehaviour cfg = new CollectionBehaviour(null, 0, null, null, 9, DuplicatePolicy.ALLOW,
+    CollectionBehaviour cfg = new CollectionBehaviour(null, 0, null, null, 9, null, DuplicatePolicy.ALLOW,
         ReplacementPolicy.NONE, WithdrawalPolicy.NONE, true, false, ReopenPolicy.NONE,
         AuthorizationMode.OPEN, StepTransition.AUTO);
     WorkflowRuntime runtime = runtime(cfg);
@@ -171,6 +173,27 @@ class CollectionGateRuntimeTest {
     SubmissionResult rejected = gate.submitItem(runId, STEP, submission("bb", null, null), ACTOR);
     assertThat(rejected.status()).isEqualTo(SubmissionResult.Status.REJECTED);
     assertThat(rejected.reason()).isEqualTo("OVERSIZE: payload is 10 bytes, cap 9");
+  }
+
+  @Test
+  void tooManyFilesIsRejectedButExactCapIsAccepted() {
+    CollectionBehaviour cfg = new CollectionBehaviour(null, 0, null, null, 0, 2, DuplicatePolicy.ALLOW,
+        ReplacementPolicy.NONE, WithdrawalPolicy.NONE, true, false, ReopenPolicy.NONE,
+        AuthorizationMode.OPEN, StepTransition.AUTO);
+    WorkflowRuntime runtime = runtime(cfg);
+    CollectionGateRuntime gate = (CollectionGateRuntime) runtime;
+    String runId = runtime.start("wf");
+    FileRef file = new FileRef("run/a.txt", "a.txt", "text/plain", 10);
+
+    SubmissionResult accepted = gate.submitItem(runId, STEP,
+        new CollectionSubmission(new CollectionPayload(null, List.of(file, file)), null, null), ACTOR);
+    assertThat(accepted.status()).isEqualTo(SubmissionResult.Status.ACCEPTED);
+
+    SubmissionResult rejected = gate.submitItem(runId, STEP,
+        new CollectionSubmission(new CollectionPayload(null, List.of(file, file, file)), null, null),
+        ACTOR);
+    assertThat(rejected.status()).isEqualTo(SubmissionResult.Status.REJECTED);
+    assertThat(rejected.reason()).isEqualTo("MAX_FILES_PER_ITEM: item has 3 files, cap 2");
   }
 
   // ---- nested collection gate (declaring-workflow scope) -------------------------------------
@@ -211,6 +234,48 @@ class CollectionGateRuntimeTest {
     SubmissionResult result = gate.submitItem(runId, STEP, submission("a", null, null), ACTOR);
 
     assertThat(result.status()).isEqualTo(SubmissionResult.Status.ACCEPTED);
+  }
+
+  @Test
+  void nestedCollectionGateSubmissionValidatorSeesTheDeclaringWorkflowIdNotTheRoot() {
+    // CollectionSubmissionContext.workflowId must be scoped identically to authorize()'s
+    // ResolutionContext -- both resolve against the workflow that actually declares the step, not
+    // always the run's root workflow.
+    CollectionBehaviour cfg = behaviour(0, null, ReopenPolicy.NONE, AuthorizationMode.OPEN);
+    StepDefinition step = StepDefinition.builder()
+        .withStepId(STEP)
+        .withName("CV intake")
+        .withBehaviour(cfg)
+        .withContextMapping(new ContextMapping(List.of(), List.of(OUTPUT_KEY)))
+        .build();
+    WorkflowDefinition nested = new WorkflowDefinition("nested-wf", "nested-wf", null, null, null,
+        "1.0.0", null, WorkflowSource.CUSTOM, WorkflowLifecycle.ACTIVE, Map.of(), Map.of(),
+        List.of(step), List.of());
+    WorkflowDefinition root = new WorkflowDefinition("wf", "wf", null, null, null, "1.0.0", null,
+        WorkflowSource.CUSTOM, WorkflowLifecycle.ACTIVE, Map.of(), Map.of(), List.of(nested));
+
+    AtomicReference<String> seenWorkflowId = new AtomicReference<>();
+    CollectionSubmissionValidator submissionValidator = context -> {
+      seenWorkflowId.set(context.workflowId());
+      return Decision.allow();
+    };
+
+    eventLog = new InMemoryWorkflowEventLog();
+    stateRepo = new InMemoryWorkflowStateRepository();
+    WorkflowRuntime runtime = new WorkflowRuntimeBuilder()
+        .workflowRepository(new InMemoryWorkflowRepository(Map.of("wf", root)))
+        .workflowStateRepository(stateRepo)
+        .workflowEventLog(eventLog)
+        .clock(CLOCK)
+        .agentInvoker(mock(AgentInvoker.class))
+        .collectionSubmissionValidator(submissionValidator)
+        .build();
+    CollectionGateRuntime gate = (CollectionGateRuntime) runtime;
+    String runId = runtime.start("wf");
+
+    gate.submitItem(runId, STEP, submission("a", null, null), ACTOR);
+
+    assertThat(seenWorkflowId.get()).isEqualTo("nested-wf");
   }
 
   @Test
@@ -517,7 +582,7 @@ class CollectionGateRuntimeTest {
 
   @Test
   void deadlineCloseEmitsDeadlineSpecificRequestedEventInsteadOfTheGenericOne() {
-    CollectionBehaviour cfg = new CollectionBehaviour(null, 0, null, null, 0, DuplicatePolicy.ALLOW,
+    CollectionBehaviour cfg = new CollectionBehaviour(null, 0, null, null, 0, null, DuplicatePolicy.ALLOW,
         ReplacementPolicy.NONE, WithdrawalPolicy.NONE, true, true, ReopenPolicy.NONE,
         AuthorizationMode.ENFORCED, StepTransition.AUTO);
     WorkflowRuntime runtime = runtime(cfg, deadlineCloseRequirements(),
@@ -539,7 +604,7 @@ class CollectionGateRuntimeTest {
     // CloseReason.DEADLINE carries real security semantics (it can satisfy
     // externalDeadlineClosable even when manualClose is false), so bare OPEN mode -- which
     // otherwise authorizes any non-blank actor for CLOSE -- must not grant it to an arbitrary caller.
-    CollectionBehaviour cfg = new CollectionBehaviour(null, 0, null, null, 0, DuplicatePolicy.ALLOW,
+    CollectionBehaviour cfg = new CollectionBehaviour(null, 0, null, null, 0, null, DuplicatePolicy.ALLOW,
         ReplacementPolicy.NONE, WithdrawalPolicy.NONE, true, true, ReopenPolicy.NONE,
         AuthorizationMode.OPEN, StepTransition.AUTO);
     WorkflowRuntime runtime = runtime(cfg);
@@ -554,7 +619,7 @@ class CollectionGateRuntimeTest {
 
   @Test
   void enforcedModeDeniesDeadlineCloseFromAnActorAuthorizedForCloseButNotDeadlineClose() {
-    CollectionBehaviour cfg = new CollectionBehaviour(null, 0, null, null, 0, DuplicatePolicy.ALLOW,
+    CollectionBehaviour cfg = new CollectionBehaviour(null, 0, null, null, 0, null, DuplicatePolicy.ALLOW,
         ReplacementPolicy.NONE, WithdrawalPolicy.NONE, true, true, ReopenPolicy.NONE,
         AuthorizationMode.ENFORCED, StepTransition.AUTO);
     WorkflowRuntime runtime = runtime(cfg, deadlineCloseRequirements(), ALLOW_CLOSE_ONLY);
@@ -572,7 +637,7 @@ class CollectionGateRuntimeTest {
     // action but not for DEADLINE_CLOSE must not be able to use CloseReason.DEADLINE to route
     // around the manual-close restriction; the same actor with DEADLINE_CLOSE authorization
     // succeeds under the deadline path.
-    CollectionBehaviour cfg = new CollectionBehaviour(null, 0, null, null, 0, DuplicatePolicy.ALLOW,
+    CollectionBehaviour cfg = new CollectionBehaviour(null, 0, null, null, 0, null, DuplicatePolicy.ALLOW,
         ReplacementPolicy.NONE, WithdrawalPolicy.NONE, false, true, ReopenPolicy.NONE,
         AuthorizationMode.ENFORCED, StepTransition.AUTO);
     WorkflowRuntime closeOnlyRuntime = runtime(cfg, deadlineCloseRequirements(), ALLOW_CLOSE_ONLY);
@@ -843,6 +908,22 @@ class CollectionGateRuntimeTest {
         .isInstanceOf(CollectionAuthorizationException.class);
     assertThat(eventTypes(runId)).filteredOn(type -> type == WorkflowEventType.COLLECTION_AUTHORIZATION_DENIED)
         .hasSize(2);
+  }
+
+  @Test
+  void openModeAllowsCloseFromAnyNonBlankActorNotJustASubmitter() {
+    // Like REOPEN, CLOSE is not in OPEN mode's DEADLINE_CLOSE/OVERRIDE/REPLACE_ANY/WITHDRAW_ANY
+    // carve-out list -- OPEN mode's default "any non-blank actor" grant applies to it too, even for
+    // an actor who never submitted anything to the gate.
+    WorkflowRuntime runtime = runtime(behaviour(0, null, ReopenPolicy.NONE, AuthorizationMode.OPEN));
+    CollectionGateRuntime gate = (CollectionGateRuntime) runtime;
+    String runId = runtime.start("wf");
+    gate.submitItem(runId, STEP, submission("a", null, null), ACTOR);
+
+    CloseResult result = gate.closeCollection(runId, STEP,
+        new CloseRequest("an-uninvolved-actor", CloseReason.MANUAL, false, null));
+
+    assertThat(result.closed()).isTrue();
   }
 
   @Test
@@ -1390,6 +1471,67 @@ class CollectionGateRuntimeTest {
     }
   }
 
+  @Test
+  void retryNowWaitsForAnInFlightCollectionMutationInsteadOfRacingIt() throws Exception {
+    // retry() previously mutated WorkflowState (including, via drive(), the same
+    // collectionStateByStepId map the CollectionGateRuntime verbs touch) without holding the run's
+    // collection lock. A retry() targeting a FAILED run's non-collection step and a concurrent
+    // getCollection() call on that same run -- both legitimately callable on a FAILED run,
+    // regardless of the collection gate's own status -- could therefore race on that shared,
+    // non-thread-safe map. retry() must now block a concurrent getCollection() the same way any
+    // other locked verb does.
+    StepDefinition collectionStep = StepDefinition.builder()
+        .withStepId(STEP)
+        .withName("CV intake")
+        .withBehaviour(behaviour(0, null, ReopenPolicy.NONE, AuthorizationMode.OPEN))
+        .withContextMapping(new ContextMapping(List.of(), List.of(OUTPUT_KEY)))
+        .build();
+    StepDefinition terminalFail = StepDefinition.builder()
+        .withStepId("fail")
+        .withName("fail")
+        .withBehaviour(new FailBehaviour("expected"))
+        .build();
+    WorkflowDefinition workflow = new WorkflowDefinition("wf", "wf", null, null, null, "1.0.0", null,
+        WorkflowSource.CUSTOM, WorkflowLifecycle.ACTIVE, Map.of(), Map.of(),
+        List.of(collectionStep, terminalFail), List.of());
+    GetWorkflowBarrierRepository workflowRepo =
+        new GetWorkflowBarrierRepository(new InMemoryWorkflowRepository(Map.of("wf", workflow)));
+    stateRepo = new InMemoryWorkflowStateRepository();
+    eventLog = new InMemoryWorkflowEventLog();
+    WorkflowRuntime runtime = new WorkflowRuntimeBuilder()
+        .workflowRepository(workflowRepo)
+        .workflowStateRepository(stateRepo)
+        .workflowEventLog(eventLog)
+        .clock(CLOCK)
+        .agentInvoker(mock(AgentInvoker.class))
+        .build();
+    CollectionGateRuntime gate = (CollectionGateRuntime) runtime;
+    String runId = runtime.start("wf");
+    gate.closeCollection(runId, STEP, new CloseRequest(ACTOR, CloseReason.MANUAL, false, null));
+    assertThat(runtime.getState(runId).getStatus()).isEqualTo(WorkflowStatus.FAILED);
+
+    workflowRepo.armFor("retry-race-thread");
+    Thread retryThread = new Thread(() -> runtime.retry(runId, "fail", "user"), "retry-race-thread");
+    retryThread.start();
+    assertThat(workflowRepo.awaitEntered(10, TimeUnit.SECONDS)).isTrue();
+
+    ExecutorService pool = Executors.newSingleThreadExecutor();
+    try {
+      Future<CollectionView> viewFuture = pool.submit(() -> gate.getCollection(runId, STEP, ACTOR));
+      Thread.sleep(200);
+      assertThat(viewFuture.isDone()).isFalse();
+
+      workflowRepo.release();
+      CollectionView view = viewFuture.get(10, TimeUnit.SECONDS);
+      retryThread.join(TimeUnit.SECONDS.toMillis(10));
+
+      assertThat(retryThread.isAlive()).isFalse();
+      assertThat(view.phase()).isEqualTo(CollectionPhase.CLOSED);
+    } finally {
+      pool.shutdown();
+    }
+  }
+
   // ---- authorized cross-actor replacement ownership ------------------------------------------
 
   @Test
@@ -1425,6 +1567,34 @@ class CollectionGateRuntimeTest {
     // ...but the replacing actor, now the recorded owner, can.
     gate.withdrawItem(runId, STEP, submitted.submissionId(), "admin-actor");
     assertThat(gate.getCollection(runId, STEP, ACTOR).liveCount()).isZero();
+  }
+
+  @Test
+  void authorizedCrossActorReplacementCannotBypassTheReplacingActorsPerActorCap() {
+    // admin-actor is already at maxItemsPerActor via its own submission; replacing ACTOR's item
+    // would transfer that item's ownership to admin-actor too, pushing it over the cap the same
+    // way a third fresh submission would -- the cap must be enforced on the transfer, not just on
+    // direct submission.
+    WorkflowRequirement submitReq = new WorkflowRequirement("req-submit", "rbac_step_action_allowed",
+        RequirementScope.STEP_ACTION, STEP, "submit", false, "\"any\"", ResolutionMode.DEFERRED);
+    WorkflowRequirement replaceAnyReq = new WorkflowRequirement("req-replace-any",
+        "rbac_step_action_allowed", RequirementScope.STEP_ACTION, STEP, "replace_any", false,
+        "\"admin\"", ResolutionMode.DEFERRED);
+    CollectionAuthorizer allowAll = (actorId, stepId, action, descriptor, context) -> Decision.allow();
+    CollectionBehaviour cfg = new CollectionBehaviour(null, 0, null, 1, 0, null, DuplicatePolicy.ALLOW,
+        ReplacementPolicy.AUTHORIZED_REPLACE, WithdrawalPolicy.NONE, true, false, ReopenPolicy.NONE,
+        AuthorizationMode.ENFORCED, StepTransition.AUTO);
+    WorkflowRuntime runtime = runtime(cfg, List.of(submitReq, replaceAnyReq), allowAll);
+    CollectionGateRuntime gate = (CollectionGateRuntime) runtime;
+    String runId = runtime.start("wf");
+    gate.submitItem(runId, STEP, submission("x", null, null), "admin-actor");
+    SubmissionResult submitted = gate.submitItem(runId, STEP, submission("a", null, null), ACTOR);
+
+    SubmissionResult replaced = gate.replaceItem(runId, STEP, submitted.submissionId(),
+        submission("b", null, null), "admin-actor");
+
+    assertThat(replaced.status()).isEqualTo(SubmissionResult.Status.REJECTED);
+    assertThat(replaced.reason()).isEqualTo("PER_ACTOR_CAP: actor has 1, cap 1");
   }
 
   @Test
@@ -1474,18 +1644,18 @@ class CollectionGateRuntimeTest {
 
   private static CollectionBehaviour behaviourFull(int minItems, Integer maxItems, ReopenPolicy reopen,
       AuthorizationMode mode, ReplacementPolicy replacement, WithdrawalPolicy withdrawal) {
-    return new CollectionBehaviour(null, minItems, maxItems, null, 0, DuplicatePolicy.ALLOW,
+    return new CollectionBehaviour(null, minItems, maxItems, null, 0, null, DuplicatePolicy.ALLOW,
         replacement, withdrawal, true, false, reopen, mode, StepTransition.AUTO);
   }
 
   private static CollectionBehaviour behaviourDuplicate(DuplicatePolicy policy) {
-    return new CollectionBehaviour(null, 0, null, null, 0, policy, ReplacementPolicy.NONE,
+    return new CollectionBehaviour(null, 0, null, null, 0, null, policy, ReplacementPolicy.NONE,
         WithdrawalPolicy.NONE, true, false, ReopenPolicy.NONE, AuthorizationMode.OPEN,
         StepTransition.AUTO);
   }
 
   private static CollectionBehaviour behaviourWithItemSchema(String itemSchemaRef) {
-    return new CollectionBehaviour(itemSchemaRef, 0, null, null, 0, DuplicatePolicy.ALLOW,
+    return new CollectionBehaviour(itemSchemaRef, 0, null, null, 0, null, DuplicatePolicy.ALLOW,
         ReplacementPolicy.OWNER_REPLACE, WithdrawalPolicy.OWNER_WITHDRAW, true, false,
         ReopenPolicy.NONE, AuthorizationMode.OPEN, StepTransition.AUTO);
   }
@@ -1493,7 +1663,7 @@ class CollectionGateRuntimeTest {
   private static CollectionBehaviour behaviourFullDuplicate(int minItems, Integer maxItems,
       ReopenPolicy reopen, AuthorizationMode mode, ReplacementPolicy replacement,
       WithdrawalPolicy withdrawal, DuplicatePolicy duplicatePolicy) {
-    return new CollectionBehaviour(null, minItems, maxItems, null, 0, duplicatePolicy, replacement,
+    return new CollectionBehaviour(null, minItems, maxItems, null, 0, null, duplicatePolicy, replacement,
         withdrawal, true, false, reopen, mode, StepTransition.AUTO);
   }
 
@@ -1627,6 +1797,56 @@ class CollectionGateRuntimeTest {
 
     @Override
     public List<WorkflowState> findAll() {
+      return delegate.findAll();
+    }
+  }
+
+  /**
+   * Blocks a named thread's first {@link #get} call, mirroring {@link FindByIdBarrierRepository}
+   * but for {@link WorkflowRepository} -- used to hold a locked verb (e.g. {@code retry}) inside
+   * its collection-lock-protected section (past acquisition, mid-{@code workflowRepository.get}
+   * call) so a concurrent lock-protected call can be proven to wait for it.
+   */
+  private static final class GetWorkflowBarrierRepository implements WorkflowRepository {
+
+    private final WorkflowRepository delegate;
+    private final AtomicBoolean triggered = new AtomicBoolean(false);
+    private final CountDownLatch entered = new CountDownLatch(1);
+    private final CountDownLatch release = new CountDownLatch(1);
+    private volatile String armedThreadName;
+
+    GetWorkflowBarrierRepository(WorkflowRepository delegate) {
+      this.delegate = delegate;
+    }
+
+    void armFor(String threadName) {
+      this.armedThreadName = threadName;
+    }
+
+    boolean awaitEntered(long timeout, TimeUnit unit) throws InterruptedException {
+      return entered.await(timeout, unit);
+    }
+
+    void release() {
+      release.countDown();
+    }
+
+    @Override
+    public WorkflowDefinition get(String id) {
+      WorkflowDefinition workflow = delegate.get(id);
+      if (Thread.currentThread().getName().equals(armedThreadName) && triggered.compareAndSet(false, true)) {
+        entered.countDown();
+        try {
+          release.await(10, TimeUnit.SECONDS);
+        } catch (InterruptedException e) {
+          Thread.currentThread().interrupt();
+        }
+      }
+      return workflow;
+    }
+
+    @Override
+    public Map<String, WorkflowDefinition> findAll() {
       return delegate.findAll();
     }
   }

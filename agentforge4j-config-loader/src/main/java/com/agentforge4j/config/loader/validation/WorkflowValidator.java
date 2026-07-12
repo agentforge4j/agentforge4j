@@ -331,10 +331,11 @@ public final class WorkflowValidator {
       // General rule: under ENFORCED, authorize() denies any action with no matching STEP_ACTION
       // requirement declared. Every action this behaviour's own configuration makes structurally
       // reachable must therefore have one declared, or that part of the gate's declared behaviour
-      // could never succeed -- close()/deadline_close authorizes unconditionally/when
-      // externalDeadlineClosable; override whenever minItems could be unmet; reopen whenever
-      // reopenPolicy=ALLOWED; replace/withdraw whenever the respective policy is not NONE, with the
-      // *_ANY variant additionally reachable only under the AUTHORIZED_* policies.
+      // could never succeed -- submit and view are unconditionally reachable on every gate;
+      // close()/deadline_close authorizes unconditionally/when externalDeadlineClosable; override
+      // whenever minItems could be unmet; reopen whenever reopenPolicy=ALLOWED; replace/withdraw
+      // whenever the respective policy is not NONE, with the *_ANY variant additionally reachable
+      // only under the AUTHORIZED_* policies.
       for (CollectionAction action : reachableActions(behaviour)) {
         Validate.isTrue(hasStepActionRequirement(workflow, stepId, action),
             ("Collection step '%s' in workflow '%s' declares authorizationMode=ENFORCED and a "
@@ -375,6 +376,10 @@ public final class WorkflowValidator {
         actions.add(CollectionAction.WITHDRAW_ANY);
       }
     }
+    // SUBMIT/VIEW are unconditionally reachable on every gate regardless of policy, added last so
+    // every other rejection test's "which action is named first" ordering is unaffected by them.
+    actions.add(CollectionAction.SUBMIT);
+    actions.add(CollectionAction.VIEW);
     return actions;
   }
 

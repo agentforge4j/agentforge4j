@@ -11,7 +11,9 @@ import com.agentforge4j.util.Validate;
  * gate's current state so an embedding application can apply its own submission policy.
  *
  * @param runId                 id of the suspended run; never blank
- * @param workflowId            id of the workflow definition the run executes; never blank
+ * @param workflowId            id of the workflow definition that <em>declares</em> the collection
+ *                              step — not necessarily the run's root workflow, for a step nested
+ *                              inside a sub-workflow; never blank
  * @param stepId                id of the collection step; never blank
  * @param actorId               opaque id of the submitting actor; never blank
  * @param payload               the submitted item payload; never {@code null}

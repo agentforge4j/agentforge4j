@@ -25,6 +25,8 @@ import com.agentforge4j.util.Validate;
  * @param maxItems                maximum items accepted; {@code null} means unbounded
  * @param maxItemsPerActor        per-actor submission cap; {@code null} means uncapped
  * @param maxInlinePayloadBytes   cap on a single inline JSON payload; defaulted when not positive
+ * @param maxFilesPerItem         cap on the number of file references a single item's payload may
+ *                                 carry; {@code null} means unbounded
  * @param duplicatePolicy         duplicate handling; defaults to {@link DuplicatePolicy#ALLOW}
  * @param replacementPolicy       replacement handling; defaults to {@link ReplacementPolicy#NONE}
  * @param withdrawalPolicy        withdrawal handling; defaults to {@link WithdrawalPolicy#NONE}
@@ -42,6 +44,7 @@ public record CollectionBehaviour(
     Integer maxItems,
     Integer maxItemsPerActor,
     int maxInlinePayloadBytes,
+    Integer maxFilesPerItem,
     DuplicatePolicy duplicatePolicy,
     ReplacementPolicy replacementPolicy,
     WithdrawalPolicy withdrawalPolicy,
@@ -69,6 +72,10 @@ public record CollectionBehaviour(
     if (maxItemsPerActor != null) {
       Validate.isGreaterThanZero(maxItemsPerActor,
           "CollectionBehaviour maxItemsPerActor must be at least 1");
+    }
+    if (maxFilesPerItem != null) {
+      Validate.isGreaterThanZero(maxFilesPerItem,
+          "CollectionBehaviour maxFilesPerItem must be at least 1");
     }
     maxInlinePayloadBytes =
         maxInlinePayloadBytes > 0 ? maxInlinePayloadBytes : DEFAULT_MAX_INLINE_PAYLOAD_BYTES;

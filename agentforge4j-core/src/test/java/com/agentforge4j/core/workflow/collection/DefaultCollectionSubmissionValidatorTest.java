@@ -68,7 +68,7 @@ class DefaultCollectionSubmissionValidatorTest {
   }
 
   private static CollectionSubmissionContext context(CollectionPayload payload) {
-    CollectionBehaviour behaviour = new CollectionBehaviour(null, 0, null, null, 0,
+    CollectionBehaviour behaviour = new CollectionBehaviour(null, 0, null, null, 0, null,
         DuplicatePolicy.ALLOW, ReplacementPolicy.NONE, WithdrawalPolicy.NONE, true, false,
         ReopenPolicy.NONE, AuthorizationMode.OPEN, StepTransition.AUTO);
     CollectionState collection = new CollectionState("step-1", CollectionPhase.OPEN, Instant.EPOCH,

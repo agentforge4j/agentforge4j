@@ -6,8 +6,11 @@ package com.agentforge4j.core.workflow.collection;
  */
 public enum AuthorizationMode {
   /**
-   * Any non-blank actor may submit and view, and may mutate items they own; declared per-action
-   * requirements are not evaluated. Mutating operations still fail closed on a missing actor.
+   * Any non-blank actor may submit and view, may mutate items they own, and may close or reopen
+   * the gate itself; declared per-action requirements are not evaluated. {@code REPLACE_ANY},
+   * {@code WITHDRAW_ANY}, {@code DEADLINE_CLOSE}, and {@code OVERRIDE} are always denied under
+   * this mode regardless of ownership — switch to {@link #ENFORCED} to authorize those, or to
+   * restrict who may close/reopen. Mutating operations still fail closed on a missing actor.
    */
   OPEN,
   /**

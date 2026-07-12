@@ -185,6 +185,12 @@ public final class DefaultWorkflowRuntime implements WorkflowRuntime, Collection
   /**
    * {@inheritDoc}
    *
+   * <p>Goes through the same per-run collection lock as {@link #cancel} and the
+   * {@code CollectionGateRuntime} verbs (see {@link #cancel}'s doc for why): reading {@code state}
+   * outside the lock and driving on it afterward could race a concurrent collection-gate
+   * mutation opening a later step on the same run and silently corrupt the shared, non-thread-safe
+   * collection-state map.
+   *
    * @throws ExecutionNotFoundException if no state exists for {@code runId}
    * @throws IllegalArgumentException   if the run is cancelled, not {@link WorkflowStatus#PAUSED}, or {@code runId} is
    *                                    blank
@@ -192,48 +198,47 @@ public final class DefaultWorkflowRuntime implements WorkflowRuntime, Collection
   @Override
   public void continueRun(String runId, String actorId) {
     Validate.notBlank(actorId, "actorId must not be blank");
-    WorkflowState state = loadState(runId);
-    try (RunContextManager.Scope ignored = runContextManager.open(runId, state.getWorkflowId(),
-        null, null)) {
-      LOG.log(System.Logger.Level.INFO, "Continuing run runId={0}, currentStatus={1}", runId,
-          state.getStatus());
-      ensureNotCancelled(state, "continue");
-      if (state.getStatus() == WorkflowStatus.AWAITING_COLLECTION) {
-        // A closed collection gate with an ALLOWED reopen policy holds the run here until an explicit
-        // continuation advances it (the reopen window). Advancing publishes the materialized
-        // collection, marks the gate step complete, and re-drives past it.
-        continueClosedCollection(runId);
-        return;
+    withCollectionRunLock(runId, state -> {
+      try (RunContextManager.Scope ignored = runContextManager.open(runId, state.getWorkflowId(),
+          null, null)) {
+        LOG.log(System.Logger.Level.INFO, "Continuing run runId={0}, currentStatus={1}", runId,
+            state.getStatus());
+        ensureNotCancelled(state, "continue");
+        if (state.getStatus() == WorkflowStatus.AWAITING_COLLECTION) {
+          // A closed collection gate with an ALLOWED reopen policy holds the run here until an
+          // explicit continuation advances it (the reopen window). Advancing publishes the
+          // materialized collection, marks the gate step complete, and re-drives past it.
+          continueClosedCollection(state);
+          return null;
+        }
+        Validate.isTrue(state.getStatus() == WorkflowStatus.PAUSED,
+            "Cannot continue run '%s' in status %s".formatted(runId, state.getStatus()));
+        state.setStatus(WorkflowStatus.RUNNING);
+        state.setLastUpdatedAt(clock.instant());
+        WorkflowDefinition workflow = workflowRepository.get(state.getWorkflowId());
+        drive(state, workflow);
+        return null;
       }
-      Validate.isTrue(state.getStatus() == WorkflowStatus.PAUSED,
-          "Cannot continue run '%s' in status %s".formatted(runId, state.getStatus()));
-      state.setStatus(WorkflowStatus.RUNNING);
-      state.setLastUpdatedAt(clock.instant());
-      WorkflowDefinition workflow = workflowRepository.get(state.getWorkflowId());
+    });
+  }
+
+  /** Called with {@code state} already loaded under the caller's held collection lock. */
+  private void continueClosedCollection(WorkflowState state) {
+    String stepId = Validate.notBlank(state.getCurrentStepId(),
+        "Run '%s' is AWAITING_COLLECTION but has no current step".formatted(state.getRunId()));
+    WorkflowDefinition workflow = workflowRepository.get(state.getWorkflowId());
+    collectionGateService.advanceClosed(state, stepId, currentStepOutputKeys(workflow, stepId));
+    workflowStateRepository.save(state);
+    if (!gateCompletedStep(state, workflow)) {
       drive(state, workflow);
     }
   }
 
-  private void continueClosedCollection(String runId) {
-    withCollectionRunLock(runId, state -> {
-      // Re-verified under the lock: a concurrent reopen (or cancellation) between the caller's
-      // status probe and this lock acquisition invalidates the continuation.
-      Validate.isTrue(state.getStatus() == WorkflowStatus.AWAITING_COLLECTION,
-          "Cannot continue run '%s' in status %s".formatted(runId, state.getStatus()));
-      String stepId = Validate.notBlank(state.getCurrentStepId(),
-          "Run '%s' is AWAITING_COLLECTION but has no current step".formatted(state.getRunId()));
-      WorkflowDefinition workflow = workflowRepository.get(state.getWorkflowId());
-      collectionGateService.advanceClosed(state, stepId, currentStepOutputKeys(workflow, stepId));
-      workflowStateRepository.save(state);
-      if (!gateCompletedStep(state, workflow)) {
-        drive(state, workflow);
-      }
-      return null;
-    });
-  }
-
   /**
    * {@inheritDoc}
+   *
+   * <p>Goes through the same per-run collection lock as {@link #cancel} and the
+   * {@code CollectionGateRuntime} verbs — see {@link #cancel}'s doc for why.
    *
    * @throws ExecutionNotFoundException if no state exists for {@code runId}
    * @throws IllegalArgumentException   if {@code stepId} is blank, the run is cancelled, status is not
@@ -249,62 +254,64 @@ public final class DefaultWorkflowRuntime implements WorkflowRuntime, Collection
   public void retry(String runId, String stepId, String actorId) {
     Validate.notBlank(stepId, "stepId must not be blank");
     Validate.notBlank(actorId, "actorId must not be blank");
-    WorkflowState state = loadState(runId);
-    ensureNotCancelled(state, "retry");
-    Validate.isTrue(state.getStatus() == WorkflowStatus.FAILED
-            || state.getStatus() == WorkflowStatus.PAUSED,
-        "Cannot retry step '%s' on run '%s' in status %s"
-            .formatted(stepId, runId, state.getStatus()));
+    withCollectionRunLock(runId, state -> {
+      ensureNotCancelled(state, "retry");
+      Validate.isTrue(state.getStatus() == WorkflowStatus.FAILED
+              || state.getStatus() == WorkflowStatus.PAUSED,
+          "Cannot retry step '%s' on run '%s' in status %s"
+              .formatted(stepId, runId, state.getStatus()));
 
-    try (RunContextManager.Scope ignored = runContextManager.open(runId, state.getWorkflowId(),
-        stepId, null)) {
-      LOG.log(System.Logger.Level.INFO, "Retry requested runId={0}, stepId={1}", runId, stepId);
-      WorkflowDefinition workflow = workflowRepository.get(state.getWorkflowId());
-      StepDefinition target = resolveTopLevelRetryTarget(workflow, stepId);
-      // A closed collection gate is never reopened by a retry (CollectionBehaviourHandler enforces
-      // this on re-entry too, since a RETRY_PREVIOUS step behaviour can reach the same target without
-      // going through this method). Rejecting here, before any mutation, keeps the failed attempt's
-      // original failure and state intact instead of discarding them for a retry that cannot succeed.
-      if (target.behaviour() instanceof CollectionBehaviour) {
-        Optional<CollectionState> gate = state.getCollectionState(target.stepId());
-        Validate.isTrue(gate.isEmpty() || gate.get().phase() != CollectionPhase.CLOSED,
-            ("Cannot retry step '%s': its collection gate is already closed and a closed collection "
-                + "is never reopened by retry").formatted(target.stepId()));
+      try (RunContextManager.Scope ignored = runContextManager.open(runId, state.getWorkflowId(),
+          stepId, null)) {
+        LOG.log(System.Logger.Level.INFO, "Retry requested runId={0}, stepId={1}", runId, stepId);
+        WorkflowDefinition workflow = workflowRepository.get(state.getWorkflowId());
+        StepDefinition target = resolveTopLevelRetryTarget(workflow, stepId);
+        // A closed collection gate is never reopened by a retry (CollectionBehaviourHandler enforces
+        // this on re-entry too, since a RETRY_PREVIOUS step behaviour can reach the same target without
+        // going through this method). Rejecting here, before any mutation, keeps the failed attempt's
+        // original failure and state intact instead of discarding them for a retry that cannot succeed.
+        if (target.behaviour() instanceof CollectionBehaviour) {
+          Optional<CollectionState> gate = state.getCollectionState(target.stepId());
+          Validate.isTrue(gate.isEmpty() || gate.get().phase() != CollectionPhase.CLOSED,
+              ("Cannot retry step '%s': its collection gate is already closed and a closed collection "
+                  + "is never reopened by retry").formatted(target.stepId()));
+        }
+
+        // Reposition the run at the target: clear the target's output and everything that ran at or
+        // after it, so the re-drive re-executes the target and all downstream steps rather than
+        // reusing stale outputs. The rewind threshold is the EARLIEST uid found at or after the
+        // target's sequence position (not the target's own latest uid): steps without recorded
+        // outputs re-execute on every resume drive and take fresh, higher uids, so the target's
+        // latest uid can lie past downstream state recorded on an earlier drive — rewinding from it
+        // would strand that state (a gated blueprint's marker, for example) outside the cleared
+        // range. Reserved (__-prefixed) context keys are preserved by clearEntriesFromUid; when
+        // nothing at or after the target ever executed there is nothing to clear. Evict the captured
+        // bytes for any artifact emitted at or after the threshold first, so the re-drive re-emits
+        // cleanly (upsert) rather than leaving a stale capture for a path it may not re-emit.
+        Integer rewindUid = earliestUidAtOrAfter(workflow, target, state);
+        if (rewindUid != null) {
+          GeneratedArtifactEviction.evictFromUid(generatedArtifactStore, state, rewindUid);
+          state.clearEntriesFromUid(rewindUid);
+        }
+        // A PAUSED run carries pending suspension state for the step it paused on; clear it so the
+        // re-drive starts the target cleanly instead of re-entering the previous pause. The failure
+        // details belong to the attempt being discarded — clear them too, or a re-drive that completes
+        // would report COMPLETED while still carrying the dead attempt's failure reason.
+        state.setPendingArtifact(null);
+        state.setPendingUserPrompt(null);
+        state.setRunFailure(null);
+        state.setStatus(WorkflowStatus.RUNNING);
+        state.setCurrentStepId(target.stepId());
+        state.setLastUpdatedAt(clock.instant());
+        eventRecorder.record(runId, target.stepId(), WorkflowEventType.STEP_RETRIED, null, actorId);
+
+        // Re-drive the enclosing top-level sequence: StepSequenceExecutor replays from the start,
+        // skips steps that still have outputs, re-runs the target and its downstream continuation,
+        // and finalises through the normal terminal path (COMPLETED, a pause, or FAILED).
+        drive(state, workflow);
       }
-
-      // Reposition the run at the target: clear the target's output and everything that ran at or
-      // after it, so the re-drive re-executes the target and all downstream steps rather than
-      // reusing stale outputs. The rewind threshold is the EARLIEST uid found at or after the
-      // target's sequence position (not the target's own latest uid): steps without recorded
-      // outputs re-execute on every resume drive and take fresh, higher uids, so the target's
-      // latest uid can lie past downstream state recorded on an earlier drive — rewinding from it
-      // would strand that state (a gated blueprint's marker, for example) outside the cleared
-      // range. Reserved (__-prefixed) context keys are preserved by clearEntriesFromUid; when
-      // nothing at or after the target ever executed there is nothing to clear. Evict the captured
-      // bytes for any artifact emitted at or after the threshold first, so the re-drive re-emits
-      // cleanly (upsert) rather than leaving a stale capture for a path it may not re-emit.
-      Integer rewindUid = earliestUidAtOrAfter(workflow, target, state);
-      if (rewindUid != null) {
-        GeneratedArtifactEviction.evictFromUid(generatedArtifactStore, state, rewindUid);
-        state.clearEntriesFromUid(rewindUid);
-      }
-      // A PAUSED run carries pending suspension state for the step it paused on; clear it so the
-      // re-drive starts the target cleanly instead of re-entering the previous pause. The failure
-      // details belong to the attempt being discarded — clear them too, or a re-drive that completes
-      // would report COMPLETED while still carrying the dead attempt's failure reason.
-      state.setPendingArtifact(null);
-      state.setPendingUserPrompt(null);
-      state.setRunFailure(null);
-      state.setStatus(WorkflowStatus.RUNNING);
-      state.setCurrentStepId(target.stepId());
-      state.setLastUpdatedAt(clock.instant());
-      eventRecorder.record(runId, target.stepId(), WorkflowEventType.STEP_RETRIED, null, actorId);
-
-      // Re-drive the enclosing top-level sequence: StepSequenceExecutor replays from the start,
-      // skips steps that still have outputs, re-runs the target and its downstream continuation,
-      // and finalises through the normal terminal path (COMPLETED, a pause, or FAILED).
-      drive(state, workflow);
-    }
+      return null;
+    });
   }
 
   /**
@@ -409,6 +416,9 @@ public final class DefaultWorkflowRuntime implements WorkflowRuntime, Collection
   /**
    * {@inheritDoc}
    *
+   * <p>Goes through the same per-run collection lock as {@link #cancel} and the
+   * {@code CollectionGateRuntime} verbs — see {@link #cancel}'s doc for why.
+   *
    * @throws ExecutionNotFoundException if no state exists for {@code runId}
    * @throws IllegalArgumentException   if {@code stepId} is blank, the run is cancelled, status is not
    *                                    {@link WorkflowStatus#AWAITING_APPROVAL}, or {@code runId} is blank
@@ -418,39 +428,44 @@ public final class DefaultWorkflowRuntime implements WorkflowRuntime, Collection
   public void approve(String runId, String stepId, String approverNote, String actorId) {
     Validate.notBlank(stepId, "stepId must not be blank");
     Validate.notBlank(actorId, "actorId must not be blank");
-    WorkflowState state = loadState(runId);
-    ensureNotCancelled(state, "approve");
-    if (state.getStatus() == WorkflowStatus.AWAITING_TOOL_APPROVAL) {
-      throw new IllegalStateException(
-          "Run is awaiting a tool approval; use continueAfterToolApproval instead of approve");
-    }
-    if (state.getStatus() == WorkflowStatus.AWAITING_TOOL_DECISION) {
-      throw new IllegalStateException(
-          "Run is awaiting a tool decision; use resolveToolDecision instead of approve");
-    }
-    Validate.isTrue(state.getStatus() == WorkflowStatus.AWAITING_APPROVAL,
-        "Cannot approve run '%s' in status %s".formatted(runId, state.getStatus()));
-    // Same suspended-step identity protection as submitReview/decideStepApproval: the APPROVED
-    // audit event must attribute to the step the run is actually suspended on, never to an
-    // arbitrary caller-supplied id.
-    requireSuspendedStep(state, runId, stepId);
+    withCollectionRunLock(runId, state -> {
+      ensureNotCancelled(state, "approve");
+      if (state.getStatus() == WorkflowStatus.AWAITING_TOOL_APPROVAL) {
+        throw new IllegalStateException(
+            "Run is awaiting a tool approval; use continueAfterToolApproval instead of approve");
+      }
+      if (state.getStatus() == WorkflowStatus.AWAITING_TOOL_DECISION) {
+        throw new IllegalStateException(
+            "Run is awaiting a tool decision; use resolveToolDecision instead of approve");
+      }
+      Validate.isTrue(state.getStatus() == WorkflowStatus.AWAITING_APPROVAL,
+          "Cannot approve run '%s' in status %s".formatted(runId, state.getStatus()));
+      // Same suspended-step identity protection as submitReview/decideStepApproval: the APPROVED
+      // audit event must attribute to the step the run is actually suspended on, never to an
+      // arbitrary caller-supplied id.
+      requireSuspendedStep(state, runId, stepId);
 
-    try (RunContextManager.Scope ignored = runContextManager.open(runId, state.getWorkflowId(),
-        stepId, null)) {
-      String truncated = StringUtils.defaultString(approverNote)
-          .substring(0, Math.min(200, StringUtils.defaultString(approverNote).length()));
-      LOG.log(System.Logger.Level.INFO, "Approve requested runId={0}, stepId={1}, note={2}", runId,
-          stepId, truncated);
-      eventRecorder.record(runId, stepId, WorkflowEventType.APPROVED, approverNote, actorId);
-      state.setStatus(WorkflowStatus.RUNNING);
-      state.setLastUpdatedAt(clock.instant());
-      WorkflowDefinition workflow = workflowRepository.get(state.getWorkflowId());
-      drive(state, workflow);
-    }
+      try (RunContextManager.Scope ignored = runContextManager.open(runId, state.getWorkflowId(),
+          stepId, null)) {
+        String truncated = StringUtils.defaultString(approverNote)
+            .substring(0, Math.min(200, StringUtils.defaultString(approverNote).length()));
+        LOG.log(System.Logger.Level.INFO, "Approve requested runId={0}, stepId={1}, note={2}", runId,
+            stepId, truncated);
+        eventRecorder.record(runId, stepId, WorkflowEventType.APPROVED, approverNote, actorId);
+        state.setStatus(WorkflowStatus.RUNNING);
+        state.setLastUpdatedAt(clock.instant());
+        WorkflowDefinition workflow = workflowRepository.get(state.getWorkflowId());
+        drive(state, workflow);
+      }
+      return null;
+    });
   }
 
   /**
    * {@inheritDoc}
+   *
+   * <p>Goes through the same per-run collection lock as {@link #cancel} and the
+   * {@code CollectionGateRuntime} verbs — see {@link #cancel}'s doc for why.
    *
    * @throws ExecutionNotFoundException if no state exists for {@code runId}
    * @throws IllegalArgumentException   if {@code answers} is {@code null}, the run is cancelled, status is not
@@ -461,23 +476,25 @@ public final class DefaultWorkflowRuntime implements WorkflowRuntime, Collection
   public void submitInput(String runId, Map<String, String> answers, String actorId) {
     Validate.notNull(answers, "answers must not be null");
     Validate.notBlank(actorId, "actorId must not be blank");
-    WorkflowState state = loadState(runId);
-    ensureNotCancelled(state, "submit input");
-    Validate.isTrue(state.getStatus() == WorkflowStatus.AWAITING_INPUT,
-        "Cannot submit input on run '%s' in status %s".formatted(runId, state.getStatus()));
+    withCollectionRunLock(runId, state -> {
+      ensureNotCancelled(state, "submit input");
+      Validate.isTrue(state.getStatus() == WorkflowStatus.AWAITING_INPUT,
+          "Cannot submit input on run '%s' in status %s".formatted(runId, state.getStatus()));
 
-    if (state.getPendingUserPrompt() != null) {
-      handlePendingUserPrompt(runId, answers, state);
-      return;
-    }
+      if (state.getPendingUserPrompt() != null) {
+        handlePendingUserPrompt(runId, answers, state);
+        return null;
+      }
 
-    ArtifactDefinition pending = Validate.notNull(state.getPendingArtifact(),
-        "Run '%s' is AWAITING_INPUT but has no pending artifact".formatted(runId));
+      ArtifactDefinition pending = Validate.notNull(state.getPendingArtifact(),
+          "Run '%s' is AWAITING_INPUT but has no pending artifact".formatted(runId));
 
-    try (RunContextManager.Scope ignored = runContextManager.open(runId, state.getWorkflowId(),
-        state.getCurrentStepId(), null)) {
-      handleUserAnswers(runId, answers, state, pending, actorId);
-    }
+      try (RunContextManager.Scope ignored = runContextManager.open(runId, state.getWorkflowId(),
+          state.getCurrentStepId(), null)) {
+        handleUserAnswers(runId, answers, state, pending, actorId);
+      }
+      return null;
+    });
   }
 
   /**
@@ -699,6 +716,9 @@ public final class DefaultWorkflowRuntime implements WorkflowRuntime, Collection
   /**
    * {@inheritDoc}
    *
+   * <p>Goes through the same per-run collection lock as {@link #cancel} and the
+   * {@code CollectionGateRuntime} verbs — see {@link #cancel}'s doc for why.
+   *
    * @throws ExecutionNotFoundException if no state exists for {@code runId}
    * @throws IllegalStateException      if no tool-execution service is configured, or the run is in
    *                                    {@link WorkflowStatus#AWAITING_APPROVAL} (use {@code approve}) or
@@ -711,32 +731,36 @@ public final class DefaultWorkflowRuntime implements WorkflowRuntime, Collection
     validateToolResumeConfigured(runId, toolInvocationId);
     Validate.notNull(decision, "decision must not be null");
 
-    WorkflowState state = loadState(runId);
-    try (RunContextManager.Scope ignored = runContextManager.open(runId, state.getWorkflowId(),
-        state.getCurrentStepId(), null)) {
-      validateToolResumeStatus(runId, state, WorkflowStatus.AWAITING_TOOL_APPROVAL, "continueAfterToolApproval");
-      String capability = determineCapability(runId, toolInvocationId);
+    return withCollectionRunLock(runId, state -> {
+      try (RunContextManager.Scope ignored = runContextManager.open(runId, state.getWorkflowId(),
+          state.getCurrentStepId(), null)) {
+        validateToolResumeStatus(runId, state, WorkflowStatus.AWAITING_TOOL_APPROVAL, "continueAfterToolApproval");
+        String capability = determineCapability(runId, toolInvocationId);
 
-      LOG.log(System.Logger.Level.INFO,
-          "Continuing after tool approval runId={0}, toolInvocationId={1}, decision={2}",
-          runId, toolInvocationId, decision.getClass().getSimpleName());
+        LOG.log(System.Logger.Level.INFO,
+            "Continuing after tool approval runId={0}, toolInvocationId={1}, decision={2}",
+            runId, toolInvocationId, decision.getClass().getSimpleName());
 
-      ToolExecutionOutcome outcome = toolExecutionService.resume(runId, toolInvocationId, decision);
-      String actor = approverActor(decision);
-      if (outcome.status() == ToolExecutionOutcome.Status.EXECUTED) {
-        toolResultApplier.apply(capability, outcome.result(), state, actor);
-      } else {
-        // Rejected (or a failed resume): record the tool error so downstream steps can branch on it.
-        toolResultApplier.applyError(capability, outcome.detail(), state, actor);
+        ToolExecutionOutcome outcome = toolExecutionService.resume(runId, toolInvocationId, decision);
+        String actor = approverActor(decision);
+        if (outcome.status() == ToolExecutionOutcome.Status.EXECUTED) {
+          toolResultApplier.apply(capability, outcome.result(), state, actor);
+        } else {
+          // Rejected (or a failed resume): record the tool error so downstream steps can branch on it.
+          toolResultApplier.applyError(capability, outcome.detail(), state, actor);
+        }
+
+        advancePastToolStep(state, "tool-invocation:" + outcome.status());
+        return state.snapshot();
       }
-
-      advancePastToolStep(state, "tool-invocation:" + outcome.status());
-      return state.snapshot();
-    }
+    });
   }
 
   /**
    * {@inheritDoc}
+   *
+   * <p>Goes through the same per-run collection lock as {@link #cancel} and the
+   * {@code CollectionGateRuntime} verbs — see {@link #cancel}'s doc for why.
    *
    * @throws ExecutionNotFoundException if no state exists for {@code runId}
    * @throws IllegalStateException      if no tool-execution service is configured, or the run is in
@@ -750,40 +774,41 @@ public final class DefaultWorkflowRuntime implements WorkflowRuntime, Collection
     validateToolResumeConfigured(runId, toolInvocationId);
     Validate.notNull(decision, "decision must not be null");
 
-    WorkflowState state = loadState(runId);
-    try (RunContextManager.Scope ignored = runContextManager.open(runId, state.getWorkflowId(),
-        state.getCurrentStepId(), null)) {
-      validateToolResumeStatus(runId, state, WorkflowStatus.AWAITING_TOOL_DECISION,
-          "resolveToolDecision");
+    return withCollectionRunLock(runId, state -> {
+      try (RunContextManager.Scope ignored = runContextManager.open(runId, state.getWorkflowId(),
+          state.getCurrentStepId(), null)) {
+        validateToolResumeStatus(runId, state, WorkflowStatus.AWAITING_TOOL_DECISION,
+            "resolveToolDecision");
 
-      PendingToolInvocation pending = Validate.notNull(
-          pendingToolInvocationStore.find(runId, toolInvocationId),
-          () -> new IllegalArgumentException(
-              "No pending tool invocation '%s' for run '%s'".formatted(toolInvocationId, runId)));
-      String capability = pending.capability();
+        PendingToolInvocation pending = Validate.notNull(
+            pendingToolInvocationStore.find(runId, toolInvocationId),
+            () -> new IllegalArgumentException(
+                "No pending tool invocation '%s' for run '%s'".formatted(toolInvocationId, runId)));
+        String capability = pending.capability();
 
-      LOG.log(System.Logger.Level.INFO,
-          "Resolving tool decision runId={0}, toolInvocationId={1}, decision={2}",
-          runId, toolInvocationId, decision.getClass().getSimpleName());
+        LOG.log(System.Logger.Level.INFO,
+            "Resolving tool decision runId={0}, toolInvocationId={1}, decision={2}",
+            runId, toolInvocationId, decision.getClass().getSimpleName());
 
-      String actorId = decision.actorId();
-      if (decision instanceof ToolDecision.Retry) {
-        ToolExecutionOutcome outcome = toolExecutionService.resume(
-            runId, toolInvocationId, new ApprovalDecision.Approve(actorId));
-        if (outcome.status() == ToolExecutionOutcome.Status.EXECUTED) {
-          toolResultApplier.apply(capability, outcome.result(), state, actorId);
+        String actorId = decision.actorId();
+        if (decision instanceof ToolDecision.Retry) {
+          ToolExecutionOutcome outcome = toolExecutionService.resume(
+              runId, toolInvocationId, new ApprovalDecision.Approve(actorId));
+          if (outcome.status() == ToolExecutionOutcome.Status.EXECUTED) {
+            toolResultApplier.apply(capability, outcome.result(), state, actorId);
+          } else {
+            toolResultApplier.applyError(capability, outcome.detail(), state, actorId);
+          }
         } else {
-          toolResultApplier.applyError(capability, outcome.detail(), state, actorId);
+          // Continue without the tool: surface the recorded reason and drop the pending row.
+          toolResultApplier.applyError(capability, pending.reason(), state, actorId);
+          pendingToolInvocationStore.remove(runId, toolInvocationId);
         }
-      } else {
-        // Continue without the tool: surface the recorded reason and drop the pending row.
-        toolResultApplier.applyError(capability, pending.reason(), state, actorId);
-        pendingToolInvocationStore.remove(runId, toolInvocationId);
-      }
 
-      advancePastToolStep(state, "tool-decision:" + decision.getClass().getSimpleName());
-      return state.snapshot();
-    }
+        advancePastToolStep(state, "tool-decision:" + decision.getClass().getSimpleName());
+        return state.snapshot();
+      }
+    });
   }
 
   private void advancePastToolStep(WorkflowState state, String stepOutputMarker) {
@@ -893,6 +918,9 @@ public final class DefaultWorkflowRuntime implements WorkflowRuntime, Collection
   /**
    * {@inheritDoc}
    *
+   * <p>Goes through the same per-run collection lock as {@link #cancel} and the
+   * {@code CollectionGateRuntime} verbs — see {@link #cancel}'s doc for why.
+   *
    * @throws ExecutionNotFoundException if no state exists for {@code runId}
    * @throws IllegalArgumentException   if {@code stepId}/{@code actorId} is blank, the run is cancelled, or the run is
    *                                    not in {@code AWAITING_REVIEW}
@@ -902,22 +930,27 @@ public final class DefaultWorkflowRuntime implements WorkflowRuntime, Collection
   public void submitReview(String runId, String stepId, String reviewNote, String actorId) {
     Validate.notBlank(stepId, "stepId must not be blank");
     Validate.notBlank(actorId, "actorId must not be blank");
-    WorkflowState state = loadState(runId);
-    ensureNotCancelled(state, "submit review");
-    requireSuspensionStatus(state, runId, WorkflowStatus.AWAITING_REVIEW, "submitReview");
-    requireSuspendedStep(state, runId, stepId);
-    try (RunContextManager.Scope ignored = runContextManager.open(runId, state.getWorkflowId(), stepId, null)) {
-      LOG.log(System.Logger.Level.INFO, "Review submitted runId={0}, stepId={1}", runId, stepId);
-      eventRecorder.record(runId, stepId, WorkflowEventType.STEP_REVIEWED, reviewNote, actorId);
-      state.setStatus(WorkflowStatus.RUNNING);
-      state.setLastUpdatedAt(clock.instant());
-      WorkflowDefinition workflow = workflowRepository.get(state.getWorkflowId());
-      drive(state, workflow);
-    }
+    withCollectionRunLock(runId, state -> {
+      ensureNotCancelled(state, "submit review");
+      requireSuspensionStatus(state, runId, WorkflowStatus.AWAITING_REVIEW, "submitReview");
+      requireSuspendedStep(state, runId, stepId);
+      try (RunContextManager.Scope ignored = runContextManager.open(runId, state.getWorkflowId(), stepId, null)) {
+        LOG.log(System.Logger.Level.INFO, "Review submitted runId={0}, stepId={1}", runId, stepId);
+        eventRecorder.record(runId, stepId, WorkflowEventType.STEP_REVIEWED, reviewNote, actorId);
+        state.setStatus(WorkflowStatus.RUNNING);
+        state.setLastUpdatedAt(clock.instant());
+        WorkflowDefinition workflow = workflowRepository.get(state.getWorkflowId());
+        drive(state, workflow);
+      }
+      return null;
+    });
   }
 
   /**
    * {@inheritDoc}
+   *
+   * <p>Goes through the same per-run collection lock as {@link #cancel} and the
+   * {@code CollectionGateRuntime} verbs — see {@link #cancel}'s doc for why.
    *
    * @throws ExecutionNotFoundException if no state exists for {@code runId}
    * @throws IllegalArgumentException   if {@code stepId} is blank, {@code decision} is null, the run is cancelled, or
@@ -928,17 +961,19 @@ public final class DefaultWorkflowRuntime implements WorkflowRuntime, Collection
   public void decideStepApproval(String runId, String stepId, StepApprovalDecision decision) {
     Validate.notBlank(stepId, "stepId must not be blank");
     Validate.notNull(decision, "decision must not be null");
-    WorkflowState state = loadState(runId);
-    ensureNotCancelled(state, "decide step approval");
-    requireSuspensionStatus(state, runId, WorkflowStatus.AWAITING_STEP_APPROVAL, "decideStepApproval");
-    requireSuspendedStep(state, runId, stepId);
-    try (RunContextManager.Scope ignored = runContextManager.open(runId, state.getWorkflowId(), stepId, null)) {
-      if (decision instanceof StepApprovalDecision.Approve approve) {
-        handleApproved(runId, stepId, approve, state);
-      } else if (decision instanceof StepApprovalDecision.Reject reject) {
-        handleRejected(runId, stepId, reject, state);
+    withCollectionRunLock(runId, state -> {
+      ensureNotCancelled(state, "decide step approval");
+      requireSuspensionStatus(state, runId, WorkflowStatus.AWAITING_STEP_APPROVAL, "decideStepApproval");
+      requireSuspendedStep(state, runId, stepId);
+      try (RunContextManager.Scope ignored = runContextManager.open(runId, state.getWorkflowId(), stepId, null)) {
+        if (decision instanceof StepApprovalDecision.Approve approve) {
+          handleApproved(runId, stepId, approve, state);
+        } else if (decision instanceof StepApprovalDecision.Reject reject) {
+          handleRejected(runId, stepId, reject, state);
+        }
       }
-    }
+      return null;
+    });
   }
 
   private void handleRejected(String runId, String stepId, Reject reject, WorkflowState state) {

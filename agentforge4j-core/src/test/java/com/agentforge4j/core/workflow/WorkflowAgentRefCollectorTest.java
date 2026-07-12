@@ -112,7 +112,7 @@ class WorkflowAgentRefCollectorTest {
         .withStepId("cv-intake")
         .withName("Collect CVs")
         .withBehaviour(new CollectionBehaviour(
-            null, 0, null, null, 0, null, null, null, null, null, null, null, StepTransition.AUTO))
+            null, 0, null, null, 0, null, null, null, null, null, null, null, null, StepTransition.AUTO))
         .build();
     var wf = workflow("root", List.of(step), Map.of());
 

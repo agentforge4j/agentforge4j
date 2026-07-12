@@ -115,8 +115,8 @@ final class CollectionGateService {
       rejection = checkItemSchema(cfg, submission.payload());
     }
     if (rejection == null) {
-      rejection = checkSubmissionValidator(state, workflow, cfg, stepId, gate, submission, actorId,
-          null);
+      rejection = checkSubmissionValidator(state, declaringWorkflow, cfg, stepId, gate, submission,
+          actorId, null);
     }
     if (rejection != null) {
       emitRejected(state, stepId, actorId, CollectionAction.SUBMIT, rejection);
@@ -167,13 +167,13 @@ final class CollectionGateService {
     // Only now -- after the idempotent-replay shortcut has had its chance -- is a withdrawn/no-longer
     // -live target a genuine error: a fresh (non-replayed) attempt against an item that is gone.
     Validate.isTrue(!existing.withdrawn(), "No live item '%s' in collection".formatted(submissionId));
-    String rejection = checkReplaceConstraints(gate, cfg, submissionId, replacement);
+    String rejection = checkReplaceConstraints(gate, cfg, submissionId, replacement, actorId, owns);
     if (rejection == null) {
       rejection = checkItemSchema(cfg, replacement.payload());
     }
     if (rejection == null) {
-      rejection = checkSubmissionValidator(state, workflow, cfg, stepId, gate, replacement, actorId,
-          submissionId);
+      rejection = checkSubmissionValidator(state, declaringWorkflow, cfg, stepId, gate, replacement,
+          actorId, submissionId);
     }
     if (rejection != null) {
       emitRejected(state, stepId, actorId, action, rejection);
@@ -561,8 +561,22 @@ final class CollectionGateService {
     return null;
   }
 
+  /**
+   * @param actorId the actor performing the replace
+   * @param owns    whether {@code actorId} already owns the item being replaced -- {@code false}
+   *                means this replace transfers ownership to a new actor (see
+   *                {@code CollectionGateService} class-level ownership-transfer note), which is
+   *                subject to {@code maxItemsPerActor} exactly like a fresh submission; a same-owner
+   *                replace does not acquire a new slot and is exempt
+   */
   private String checkReplaceConstraints(CollectionState gate, CollectionBehaviour cfg,
-      String submissionId, CollectionSubmission replacement) {
+      String submissionId, CollectionSubmission replacement, String actorId, boolean owns) {
+    if (!owns && cfg.maxItemsPerActor() != null) {
+      int actorCount = countLiveItemsForActor(gate, actorId, cfg.maxItemsPerActor());
+      if (actorCount >= cfg.maxItemsPerActor()) {
+        return "PER_ACTOR_CAP: actor has %d, cap %d".formatted(actorCount, cfg.maxItemsPerActor());
+      }
+    }
     String oversize = checkOversize(cfg, replacement.payload());
     if (oversize != null) {
       return oversize;
@@ -634,15 +648,20 @@ final class CollectionGateService {
    * Consults the embedding application's {@link CollectionSubmissionValidator} after all declared
    * gate constraints passed. A {@code null} decision is treated as a denial (fail closed).
    *
+   * @param declaringWorkflow the workflow that declares {@code stepId} (see {@link #declaringWorkflow}),
+   *                          not necessarily the run's root workflow — scoped identically to the
+   *                          {@link ResolutionContext} handed to {@link #authorize}, so a validator
+   *                          that keys its lookups by {@code context.workflowId()} resolves against
+   *                          the correct workflow for a nested collection gate
    * @return a rejection reason, or {@code null} when the submission is admitted
    */
-  private String checkSubmissionValidator(WorkflowState state, WorkflowDefinition workflow,
+  private String checkSubmissionValidator(WorkflowState state, WorkflowDefinition declaringWorkflow,
       CollectionBehaviour cfg, String stepId, CollectionState gate, CollectionSubmission submission,
       String actorId, String replacesSubmissionId) {
     Decision decision;
     try {
       decision = submissionValidator.validate(new CollectionSubmissionContext(
-          state.getRunId(), workflow.id(), stepId, actorId, submission.payload(),
+          state.getRunId(), declaringWorkflow.id(), stepId, actorId, submission.payload(),
           submission.clientToken(), submission.dedupeKey(), replacesSubmissionId, cfg, gate));
     } catch (RuntimeException ex) {
       LOG.log(System.Logger.Level.WARNING, "CollectionSubmissionValidator threw; failing closed", ex);
@@ -679,6 +698,10 @@ final class CollectionGateService {
         return "OVERSIZE: payload is %d bytes, cap %d".formatted(payloadBytes,
             cfg.maxInlinePayloadBytes());
       }
+    }
+    if (cfg.maxFilesPerItem() != null && payload.files().size() > cfg.maxFilesPerItem()) {
+      return "MAX_FILES_PER_ITEM: item has %d files, cap %d".formatted(payload.files().size(),
+          cfg.maxFilesPerItem());
     }
     return null;
   }

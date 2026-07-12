@@ -20,11 +20,13 @@ class CollectionBehaviourTest {
   @Test
   void appliesDefaultsForNullAndNonPositiveFields() {
     CollectionBehaviour behaviour =
-        new CollectionBehaviour(null, 0, null, null, 0, null, null, null, null, null, null, null, null);
+        new CollectionBehaviour(null, 0, null, null, 0, null, null, null, null, null, null, null,
+            null, null);
 
     assertThat(behaviour.minItems()).isZero();
     assertThat(behaviour.maxItems()).isNull();
     assertThat(behaviour.maxItemsPerActor()).isNull();
+    assertThat(behaviour.maxFilesPerItem()).isNull();
     assertThat(behaviour.maxInlinePayloadBytes())
         .isEqualTo(CollectionBehaviour.DEFAULT_MAX_INLINE_PAYLOAD_BYTES);
     assertThat(behaviour.duplicatePolicy()).isEqualTo(DuplicatePolicy.ALLOW);
@@ -40,28 +42,40 @@ class CollectionBehaviourTest {
   @Test
   void rejectsNegativeMinItems() {
     assertThatThrownBy(() ->
-        new CollectionBehaviour(null, -1, null, null, 0, null, null, null, null, null, null, null, null))
+        new CollectionBehaviour(null, -1, null, null, 0, null, null, null, null, null, null, null,
+            null, null))
         .isInstanceOf(IllegalArgumentException.class);
   }
 
   @Test
   void rejectsMaxItemsBelowMinItems() {
     assertThatThrownBy(() ->
-        new CollectionBehaviour(null, 5, 3, null, 0, null, null, null, null, null, null, null, null))
+        new CollectionBehaviour(null, 5, 3, null, 0, null, null, null, null, null, null, null, null,
+            null))
         .isInstanceOf(IllegalArgumentException.class);
   }
 
   @Test
   void rejectsNonPositiveMaxItems() {
     assertThatThrownBy(() ->
-        new CollectionBehaviour(null, 0, 0, null, 0, null, null, null, null, null, null, null, null))
+        new CollectionBehaviour(null, 0, 0, null, 0, null, null, null, null, null, null, null, null,
+            null))
         .isInstanceOf(IllegalArgumentException.class);
   }
 
   @Test
   void rejectsNonPositiveMaxItemsPerActor() {
     assertThatThrownBy(() ->
-        new CollectionBehaviour(null, 0, null, 0, 0, null, null, null, null, null, null, null, null))
+        new CollectionBehaviour(null, 0, null, 0, 0, null, null, null, null, null, null, null, null,
+            null))
+        .isInstanceOf(IllegalArgumentException.class);
+  }
+
+  @Test
+  void rejectsNonPositiveMaxFilesPerItem() {
+    assertThatThrownBy(() ->
+        new CollectionBehaviour(null, 0, null, null, 0, 0, null, null, null, null, null, null, null,
+            null))
         .isInstanceOf(IllegalArgumentException.class);
   }
 
@@ -70,16 +84,18 @@ class CollectionBehaviourTest {
     // Blank is neither "no schema" (null) nor a resolvable reference; rejecting it at
     // construction keeps the runtime's declared-schema check unambiguous.
     assertThatThrownBy(() ->
-        new CollectionBehaviour("  ", 0, null, null, 0, null, null, null, null, null, null, null, null))
+        new CollectionBehaviour("  ", 0, null, null, 0, null, null, null, null, null, null, null,
+            null, null))
         .isInstanceOf(IllegalArgumentException.class);
     assertThatThrownBy(() ->
-        new CollectionBehaviour("", 0, null, null, 0, null, null, null, null, null, null, null, null))
+        new CollectionBehaviour("", 0, null, null, 0, null, null, null, null, null, null, null, null,
+            null))
         .isInstanceOf(IllegalArgumentException.class);
   }
 
   @Test
   void serialisesAndDeserialisesViaSealedDiscriminator() throws Exception {
-    StepBehaviour original = new CollectionBehaviour("cv-schema", 1, 10, 3, 2048,
+    StepBehaviour original = new CollectionBehaviour("cv-schema", 1, 10, 3, 2048, 5,
         DuplicatePolicy.REJECT_BY_CLIENT_TOKEN, ReplacementPolicy.OWNER_REPLACE,
         WithdrawalPolicy.OWNER_WITHDRAW, true, true, ReopenPolicy.ALLOWED,
         AuthorizationMode.ENFORCED, StepTransition.AUTO);
