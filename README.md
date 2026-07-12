@@ -120,7 +120,7 @@ cd agentforge4j
 
 The `agentforge4j-bootstrap` module assembles a fully wired runtime in plain Java — no container
 required. Agent and workflow definitions are external JSON + markdown; point bootstrap at the
-directories that hold yours (the shipped catalog is intentionally empty pre-0.1.0 — see
+directories that hold yours, or run one of the shipped workflows described below (see
 [Included workflows](#included-workflows)).
 
 ```java
@@ -168,15 +168,19 @@ bootstrap and exposes a single `AgentForge4j` bean you can inject. The Maven coo
 ## Included workflows
 
 The shipped workflow catalog (`agentforge4j-workflows-catalog`, loaded automatically by bootstrap)
-is **intentionally empty right now**. The original starter workflows are being redesigned from the
-ground up against the current workflow language and quality bar, and will land as reviewed catalog
-releases on the way to 0.1.0 — starting with an Agent Creator and a Workflow Cost Estimator, with
-the fuller set (workflow generator, application delivery, and more) to follow.
+carries the 0.1.0 launch line-up, rebuilt from scratch against the current workflow language and
+quality bar:
 
-Until then, you author your own workflow definitions (plain JSON + markdown — see the
-[Quickstart](#quickstart)) or start from the runnable definitions in
-[`agentforge4j-examples`](agentforge4j-examples). The planned catalog line-up is in the
-[Roadmap](#roadmap).
+- **Workflow Execution Estimator** — analyzes a workflow definition and computes a full estimate
+  (shape, turn counts, and a token-range envelope with a recommendation and confidence) before it
+  runs, disclosing the complete estimate in-workflow ahead of a human approval pause.
+- **Agent Creator** — turns a freeform agent idea into a downloadable, deterministically-validated
+  agent bundle (definition, system prompt, and behavioural boundaries) behind a human approval gate.
+
+The fuller catalog (workflow generator, application delivery, and more) is still being designed —
+see the [Roadmap](#roadmap). You can also author your own workflow definitions (plain JSON +
+markdown — see the [Quickstart](#quickstart)) or start from the runnable definitions in
+[`agentforge4j-examples`](agentforge4j-examples).
 
 ---
 
@@ -199,7 +203,7 @@ top of bootstrap. Nothing below the starter knows Spring exists.
 | **Bootstrap** | [`agentforge4j-bootstrap`](agentforge4j-bootstrap/README.md) | Programmatic assembly of the full runtime without requiring Spring. |
 | **Spring integration** | `agentforge4j-spring-boot-starter` | Auto-configuration for Spring Boot applications. |
 | **Testing** | `agentforge4j-llm-fake`, `agentforge4j-testkit` | A fake LLM client plus a dedicated test kit (harness, run assertions, scripted gate responses) for deterministic, repeatable workflow tests. |
-| **Workflow catalog** | `agentforge4j-workflows-catalog` | The shipped workflow catalog — intentionally empty pre-0.1.0 (see [Included workflows](#included-workflows)). |
+| **Workflow catalog** | `agentforge4j-workflows-catalog` | The shipped workflow catalog (see [Included workflows](#included-workflows)). |
 
 > A visual workflow builder (`agentforge4j-workflow-builder`, `agentforge4j-web-ui`) is in
 > progress.
@@ -225,7 +229,7 @@ Most framework-neutral modules carry a JPMS `module-info.java`. The Spring Boot 
 ### Toward OSS 1.0
 
 - Harden runtime APIs and workflow contracts
-- Ship the redesigned workflow catalog, then expand it
+- Expand the shipped workflow catalog
 - Add complete example applications
 - Improve workflow testing and verification
 - Improve documentation, diagrams, and module READMEs
@@ -234,7 +238,7 @@ Most framework-neutral modules carry a JPMS `module-info.java`. The Spring Boot 
 
 ### Planned workflow / catalog expansion
 
-- Agent Creator · Workflow Creator · Token / Workflow Cost Estimator
+- Workflow Creator
 - Documentation generator
 - Architecture review workflow
 - Code review workflow
@@ -282,8 +286,9 @@ workflows and an AI Agent Adoption demo application.
 - **Not yet on Maven Central.** Build from source for now.
 - **APIs and workflow contracts may change** before 1.0.
 - The core, runtime, bootstrap, provider modules, test kit, and runnable examples are in place;
-  the shipped workflow catalog is intentionally empty while its workflows are redesigned, and the
-  visual builder and published artifacts are in progress.
+  the shipped workflow catalog now carries its 0.1.0 launch line-up (see
+  [Included workflows](#included-workflows)), and the visual builder and published artifacts are
+  in progress.
 
 Treat it as a capable, actively developed framework — not yet a frozen, production-certified release.
 
