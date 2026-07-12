@@ -34,4 +34,19 @@ class GeminiProviderActivationTest {
           assertThat(cfg.getApiKeyReference()).isPresent();
         });
   }
+
+  @Test
+  void mapsMaxOutputTokensPropertyToTheNeutralOption() {
+    // Regression coverage: max-output-tokens must reach the neutral options map through the properties path, not
+    // only through programmatic construction of a neutral configuration.
+    runner.withPropertyValues(
+        "agentforge4j.llm.gemini.api-key=k",
+        "agentforge4j.llm.gemini.default-model=gemini-1.5-pro",
+        "agentforge4j.llm.gemini.base-url=https://generativelanguage.googleapis.com",
+        "agentforge4j.llm.gemini.max-output-tokens=512")
+        .run(ctx -> {
+          LlmClientConfiguration cfg = ctx.getBean(LlmClientConfiguration.class);
+          assertThat(cfg.getOptions().integer("max.output.tokens")).contains(512);
+        });
+  }
 }

@@ -35,6 +35,10 @@ record ClaudeNeutralConfiguration(
   /**
    * Maps a neutral configuration and resolved credential into this provider's validated form.
    *
+   * <p>An absent {@code request.timeout} option defaults to {@link ClaudeDefaults#REQUEST_TIMEOUT} — the same value
+   * {@link ClaudeConfigurationAdapter} applies for the properties-configured path — so the two construction paths
+   * cannot silently diverge on what "the" default is.
+   *
    * @param neutral the neutral provider configuration
    * @param apiKey  the resolved credential
    *
@@ -51,7 +55,7 @@ record ClaudeNeutralConfiguration(
         neutral.requireBaseUrl(),
         apiKey,
         options.requireString("api.version"),
-        options.duration("request.timeout").orElse(Duration.ofSeconds(30)),
+        options.duration("request.timeout").orElse(ClaudeDefaults.REQUEST_TIMEOUT),
         options.requireInteger("max.token.size"));
   }
 
