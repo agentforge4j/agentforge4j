@@ -40,9 +40,11 @@ Every track's release runs from a **tag push, in CI, with an environment-gated p
 - Maven Central publication starts with **`autoPublish=false`** (validated staging only; the
   final release-to-Central action is a manual portal step), to be flipped to automatic only after
   a small number of proven manual releases build confidence in the pipeline.
-- Publishing secrets (`GPG_PRIVATE_KEY`, `CENTRAL_TOKEN_USERNAME`/`PASSWORD`, `NPM_TOKEN`) are
+- Maven Central publishing secrets (`GPG_PRIVATE_KEY`, `CENTRAL_TOKEN_USERNAME`/`PASSWORD`) are
   scoped to their environment and never reachable from a workflow triggered by anything other
-  than an owner-created tag push.
+  than an owner-created tag push. The npm publish track uses OIDC trusted publishing instead of a
+  long-lived token: the `release-publish` job authenticates to npm with its `id-token: write`
+  permission against a Trusted Publisher configured on npmjs.com, so no npm secret exists at all.
 
 ## Alternatives considered
 

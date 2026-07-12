@@ -8,10 +8,10 @@ workflow catalog.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this package adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.5.0] - 2026-07-12
 
-Ships as 0.5.0. (0.4.0's changes are folded in below — that version was merged to `main` but
-never published to npm; 0.5.0 supersedes it in source too.)
+(0.4.0's changes are folded in below — that version was merged to `main` but never published to
+npm; 0.5.0 supersedes it in source too.)
 
 ### Added
 - schemaVersion is now written on every exported workflow document (previously undeclared).
@@ -52,6 +52,20 @@ never published to npm; 0.5.0 supersedes it in source too.)
   error instead of crashing the editor.
 - Edge insert is now scope-safe: only offered on top-level, non-branch-owned linear edges, so a
   spliced node can no longer be misplaced into a loop body or branch chain.
+- The toolbar no longer clips its buttons on a narrow viewport: `.workflow-builder__toolbar` set
+  both `flex-wrap: wrap` and a fixed `height`, which are contradictory — wrapped content had no
+  room to occupy a second row and was hidden by the embed's own `overflow: hidden`. The toolbar
+  now uses `min-height` only, so it grows to fit wrapped rows instead of clipping them.
+- The guided-mode step panel no longer visually overlaps the canvas on a short viewport:
+  `.workflow-builder__guided` was unbounded in height (positioned with `top`/`left`/`right` but
+  no `bottom`), so its content could grow past the available space and sit on top of the canvas
+  underneath it. It is now bounded on all four sides, and its inner panel scrolls internally if
+  its content is still taller than the available space.
+- The canvas's "Select start step" starter-hint card no longer competes with the guided-mode
+  step panel for the same space on a short viewport — the two overlays serve the same purpose
+  and, together, don't fit regardless of alignment. `WorkflowCanvas` gained a `hideStarterHint`
+  prop, which `WorkflowBuilder` now sets whenever guided mode's own stepper is already showing
+  the same call to action; the starter card's own behavior outside guided mode is unchanged.
 
 ## [0.3.0] - 2026-06-02
 
