@@ -172,7 +172,9 @@ const config: Config = {
       title: 'AgentForge4j',
       logo: {
         alt: 'AgentForge4j',
-        src: 'img/logo.svg',
+        // Byte-identical copy of the canonical mark at agentforge4j-web-ui/public/brand/logo-horizontal.svg
+        // (single source of truth, per the .org site design's brand requirement) — not independently maintained.
+        src: 'img/logo-horizontal.svg',
         // The brand links to the current effective docs entry (see docsEntry above): `next`
         // pre-release, the newest supported stable version once one exists, or the archived
         // version itself (the artifact root) in archive mode.
