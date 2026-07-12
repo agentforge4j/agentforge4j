@@ -20,9 +20,11 @@
   flex-wrap: wrap;
   align-items: center;
   gap: var(--builder-space-sm);
+  /* min-height (not a fixed height) so wrapped content on narrow viewports actually gets a
+     second row instead of being clipped by the parent's `overflow: hidden` — a fixed `height`
+     here combined with `flex-wrap: wrap` was self-defeating: wrapping needs room to grow into. */
   min-height: 3.5rem;
-  height: 3.5rem;
-  padding: 0 var(--builder-space-md);
+  padding: var(--builder-space-xs) var(--builder-space-md);
   border-bottom: 1px solid var(--afb-chrome-border);
   background: var(--afb-chrome-bg);
   color: var(--afb-chrome-text);
@@ -148,6 +150,11 @@
   top: var(--builder-space-sm);
   left: 4.5rem;
   right: var(--builder-space-md);
+  /* Bounded on all four sides (not just top/left/right) so the panel can never grow taller than
+     the available embed height and visually overlap the canvas content beneath it on a short
+     viewport — the actual scrolling happens on .wf-guided-stepper below, which (unlike this
+     positioning wrapper) has pointer-events enabled. */
+  bottom: var(--builder-space-sm);
   z-index: 2;
   pointer-events: none;
 }
@@ -1192,6 +1199,10 @@
   box-shadow: 0 8px 24px color-mix(in srgb, var(--afb-navy-900) 45%, transparent);
   color: var(--afb-chrome-text);
   font-family: var(--afb-font-sans);
+  /* Scrolls internally rather than overflowing its now-bounded parent (.workflow-builder__guided)
+     when the stage list is taller than the available space, e.g. a short mobile viewport. */
+  max-height: 100%;
+  overflow-y: auto;
 }
 
 .wf-guided-stepper .wf-button--secondary {
