@@ -32,6 +32,10 @@ record GeminiNeutralConfiguration(
   /**
    * Maps a neutral configuration and resolved credential into this provider's validated form.
    *
+   * <p>An absent {@code request.timeout} option defaults to {@link GeminiDefaults#REQUEST_TIMEOUT} — the same value
+   * {@link GeminiConfigurationAdapter} applies for the properties-configured path — so the two construction paths
+   * cannot silently diverge on what "the" default is.
+   *
    * @param neutral the neutral provider configuration
    * @param apiKey  the resolved credential
    *
@@ -46,7 +50,7 @@ record GeminiNeutralConfiguration(
         neutral.getConnectTimeout(),
         neutral.requireBaseUrl(),
         apiKey,
-        neutral.getOptions().duration("request.timeout").orElse(Duration.ofSeconds(30)),
+        neutral.getOptions().duration("request.timeout").orElse(GeminiDefaults.REQUEST_TIMEOUT),
         neutral.getOptions().integer("max.output.tokens").orElse(null));
   }
 

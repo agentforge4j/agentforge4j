@@ -23,6 +23,10 @@ record OllamaNeutralConfiguration(
   /**
    * Maps a neutral configuration into this provider's validated form.
    *
+   * <p>An absent {@code request.timeout} option defaults to {@link OllamaDefaults#REQUEST_TIMEOUT} — the same value
+   * {@link OllamaConfigurationAdapter} applies for the properties-configured path — so the two construction paths
+   * cannot silently diverge on what "the" default is.
+   *
    * @param neutral the neutral provider configuration
    *
    * @return the validated configuration
@@ -35,7 +39,7 @@ record OllamaNeutralConfiguration(
         neutral.getDefaultModel(),
         neutral.getConnectTimeout(),
         neutral.requireBaseUrl(),
-        neutral.getOptions().duration("request.timeout").orElse(Duration.ofSeconds(30)));
+        neutral.getOptions().duration("request.timeout").orElse(OllamaDefaults.REQUEST_TIMEOUT));
   }
 
   @Override

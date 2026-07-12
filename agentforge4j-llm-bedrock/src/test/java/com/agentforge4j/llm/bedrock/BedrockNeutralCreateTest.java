@@ -50,6 +50,13 @@ class BedrockNeutralCreateTest {
         .hasMessageContaining("region");
   }
 
+  @Test
+  void defaultsRequestTimeoutToTwoMinutesWhenAbsent() {
+    BedrockNeutralConfiguration config = BedrockNeutralConfiguration.fromNeutral(neutralWithoutRequestTimeout());
+
+    assertThat(config.getRequestTimeout()).isEqualTo(BedrockDefaults.REQUEST_TIMEOUT);
+  }
+
   private static LlmClientConfiguration neutral(boolean withRegion) {
     Map<String, String> options = new HashMap<>();
     options.put("anthropic.version", "bedrock-2023-05-31");
@@ -57,6 +64,17 @@ class BedrockNeutralCreateTest {
     if (withRegion) {
       options.put("region", "eu-west-1");
     }
+    return config(options);
+  }
+
+  private static LlmClientConfiguration neutralWithoutRequestTimeout() {
+    Map<String, String> options = new HashMap<>();
+    options.put("anthropic.version", "bedrock-2023-05-31");
+    options.put("region", "eu-west-1");
+    return config(options);
+  }
+
+  private static LlmClientConfiguration config(Map<String, String> options) {
     return new LlmClientConfiguration() {
       @Override
       public String getProviderName() {

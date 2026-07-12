@@ -36,9 +36,24 @@ class VllmNeutralCreateTest {
         .hasMessageContaining("base URL");
   }
 
+  @Test
+  void defaultsRequestTimeoutToFiveMinutesWhenAbsent() {
+    VllmNeutralConfiguration config = VllmNeutralConfiguration.fromNeutral(neutralWithoutRequestTimeout());
+
+    assertThat(config.getRequestTimeout()).isEqualTo(VllmDefaults.REQUEST_TIMEOUT);
+  }
+
   private static LlmClientConfiguration neutral(boolean withBaseUrl) {
     Map<String, String> options = new HashMap<>();
     options.put("request.timeout", "PT30S");
+    return config(withBaseUrl, options);
+  }
+
+  private static LlmClientConfiguration neutralWithoutRequestTimeout() {
+    return config(true, new HashMap<>());
+  }
+
+  private static LlmClientConfiguration config(boolean withBaseUrl, Map<String, String> options) {
     return new LlmClientConfiguration() {
       @Override
       public String getProviderName() {
