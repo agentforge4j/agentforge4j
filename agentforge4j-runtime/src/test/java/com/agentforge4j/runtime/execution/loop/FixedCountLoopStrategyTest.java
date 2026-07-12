@@ -20,7 +20,6 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.List;
-import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -52,10 +51,13 @@ class FixedCountLoopStrategyTest {
     stepSequenceExecutor = mock(StepSequenceExecutor.class);
     strategy = new FixedCountLoopStrategy(stepSequenceExecutor, eventRecorder, maxIterationsHandler);
     state = new WorkflowState("run-1", "wf-1", null, Instant.parse("2026-05-01T00:00:00Z"));
-    WorkflowDefinition workflow = new WorkflowDefinition(
-        "wf-1", "wf-1", null, null, null, null, null,
-        WorkflowSource.CUSTOM, WorkflowLifecycle.ACTIVE,
-        Map.of(), Map.of(), List.of(dummyStep()));
+    WorkflowDefinition workflow = WorkflowDefinition.builder()
+        .withId("wf-1")
+        .withName("wf-1")
+        .withSource(WorkflowSource.CUSTOM)
+        .withLifecycle(WorkflowLifecycle.ACTIVE)
+        .withSteps(List.of(dummyStep()))
+        .build();
     executionContext = new ExecutionContext(state, workflow, 32);
     loopConfig = LoopConfig.withDefaults(LoopTerminationStrategy.FIXED_COUNT, null, null, 3, null);
     blueprint = new BlueprintDefinition(

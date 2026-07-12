@@ -127,7 +127,7 @@ class WorkflowDraftValidatorTest {
         new WorkflowDraftValidator(new WorkflowValidator(WorkflowTreeWalker.MAX_TRAVERSAL_DEPTH));
     WorkflowDefinition wf = new WorkflowDefinition(
         "wf1", "W", "d", null, null, null, null, WorkflowSource.CUSTOM, WorkflowLifecycle.ACTIVE,
-        Map.of(), Map.of(), List.of(new BlueprintRef("ghost-bp")));
+        Map.of(), Map.of(), List.of(new BlueprintRef("ghost-bp")), List.of());
 
     ValidationReport report = draftValidator.validate(Map.of("wf1", wf), Map.of());
 
@@ -159,10 +159,10 @@ class WorkflowDraftValidatorTest {
         .build();
     WorkflowDefinition subA = new WorkflowDefinition(
         "sub-a", "SubA", "d", null, null, null, null, WorkflowSource.CUSTOM,
-        WorkflowLifecycle.ACTIVE, Map.of(), Map.of(), List.of(dupInSubA));
+        WorkflowLifecycle.ACTIVE, Map.of(), Map.of(), List.of(dupInSubA), List.of());
     WorkflowDefinition subB = new WorkflowDefinition(
         "sub-b", "SubB", "d", null, null, null, null, WorkflowSource.CUSTOM,
-        WorkflowLifecycle.ACTIVE, Map.of(), Map.of(), List.of(dupInSubB));
+        WorkflowLifecycle.ACTIVE, Map.of(), Map.of(), List.of(dupInSubB), List.of());
     StepDefinition callA = StepDefinition.builder()
         .withStepId("call-a")
         .withName("CallA")
@@ -177,7 +177,7 @@ class WorkflowDraftValidatorTest {
         .build();
     WorkflowDefinition root = new WorkflowDefinition(
         "root", "Root", "d", null, null, null, null, WorkflowSource.CUSTOM,
-        WorkflowLifecycle.ACTIVE, Map.of(), Map.of(), List.of(callA, callB));
+        WorkflowLifecycle.ACTIVE, Map.of(), Map.of(), List.of(callA, callB), List.of());
     AgentDefinition agent = AgentDefinition.builder()
         .withId("ok")
         .withName("Ok")
