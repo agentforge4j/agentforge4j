@@ -6,6 +6,7 @@ import HomePage from '@/pages/HomePage';
 import DocsPage from '@/pages/DocsPage';
 import UsePage from '@/pages/UsePage';
 import CataloguePage from '@/pages/CataloguePage';
+import CatalogueDetailPage from '@/pages/CatalogueDetailPage';
 import BuilderPage from '@/pages/BuilderPage';
 import ArchitecturePage from '@/pages/ArchitecturePage';
 import ReleasesPage from '@/pages/ReleasesPage';
@@ -26,7 +27,7 @@ export default function App() {
           <Route path="/docs" element={<DocsPage />} />
           <Route path="/use" element={<UsePage />} />
           <Route path="/catalogue" element={<CataloguePage />} />
-          <Route path="/catalogue/:id" element={<CataloguePage />} />
+          <Route path="/catalogue/:id" element={<CatalogueDetailPage />} />
           <Route path="/builder" element={<BuilderPage />} />
           <Route path="/architecture" element={<ArchitecturePage />} />
           <Route path="/releases" element={<ReleasesPage />} />
