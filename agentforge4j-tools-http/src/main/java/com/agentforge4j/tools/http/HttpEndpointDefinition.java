@@ -21,8 +21,14 @@ import java.util.Set;
  * @param description        human-readable description, or {@code null}
  * @param mutating           whether invoking this endpoint may mutate remote state; surfaced as the
  *                           realised {@link com.agentforge4j.core.spi.tool.ToolRiskMetadata} signal.
- *                           {@code null} (absent) normalizes to {@code true} — the highest safe
- *                           risk — so a definition that omits the signal is treated as conservative
+ *                           Never {@code null} on a constructed instance: {@code null} is accepted
+ *                           only as the wire/positional-constructor spelling of "absent" (an
+ *                           HTTP_TOOL integration JSON config that omits the field, or a direct
+ *                           positional-constructor caller passing {@code null}) and is normalized to
+ *                           {@code true} — the highest safe risk — before the object exists, so a
+ *                           definition that omits the signal is treated as conservative. Java callers
+ *                           should prefer {@link Builder#withMutating(boolean)}, which takes a
+ *                           non-null primitive and cannot express "absent" at all
  * @param method             HTTP method
  * @param urlTemplate        absolute {@code http}/{@code https} URL with {@code {name}}
  *                           placeholders
@@ -106,7 +112,7 @@ public record HttpEndpointDefinition(
     private String capability;
     private String displayName;
     private String description;
-    private Boolean mutating;
+    private boolean mutating = true;
     private HttpMethod method;
     private String urlTemplate;
     private JsonNode inputSchema;
@@ -161,14 +167,15 @@ public record HttpEndpointDefinition(
     }
 
     /**
-     * Sets whether invoking this endpoint may mutate remote state.
+     * Sets whether invoking this endpoint may mutate remote state. Never calling this method leaves
+     * {@code mutating} at its default, {@code true} — the highest safe risk — matching the wire
+     * default an HTTP_TOOL integration config applies when it omits the field.
      *
-     * @param mutating mutating signal; {@code null} (or never calling this method) normalizes to
-     *                 {@code true} — the highest safe risk
+     * @param mutating mutating signal; required, no "unset" value exists at this API surface
      *
      * @return this builder
      */
-    public Builder withMutating(Boolean mutating) {
+    public Builder withMutating(boolean mutating) {
       this.mutating = mutating;
       return this;
     }

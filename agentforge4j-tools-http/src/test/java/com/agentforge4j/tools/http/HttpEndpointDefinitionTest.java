@@ -162,6 +162,41 @@ class HttpEndpointDefinitionTest {
         .hasMessageContaining("HttpEndpointDefinition maxRetries must be null (unset) or >= 0");
   }
 
+  @Test
+  void jsonOmittingMutatingDeserializesToTrue() throws Exception {
+    String json = """
+        {
+          "capability": "items.get",
+          "method": "GET",
+          "urlTemplate": "https://example.com/items",
+          "inputSchema": {"type": "object", "additionalProperties": false},
+          "bodyMode": "NONE"
+        }
+        """;
+
+    HttpEndpointDefinition definition = MAPPER.readValue(json, HttpEndpointDefinition.class);
+
+    assertThat(definition.mutating()).isTrue();
+  }
+
+  @Test
+  void jsonWithExplicitMutatingFalseDeserializesToFalse() throws Exception {
+    String json = """
+        {
+          "capability": "items.get",
+          "method": "GET",
+          "urlTemplate": "https://example.com/items",
+          "inputSchema": {"type": "object", "additionalProperties": false},
+          "bodyMode": "NONE",
+          "mutating": false
+        }
+        """;
+
+    HttpEndpointDefinition definition = MAPPER.readValue(json, HttpEndpointDefinition.class);
+
+    assertThat(definition.mutating()).isFalse();
+  }
+
   private static JsonNode objectSchema(String... properties) {
     ObjectNode schema = MAPPER.createObjectNode();
     schema.put("type", "object");
