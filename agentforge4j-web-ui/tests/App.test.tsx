@@ -97,3 +97,59 @@ describe('branding', () => {
     expect(logo).toHaveAttribute('src', '/brand/logo-horizontal.svg');
   });
 });
+
+describe('content-track pages', () => {
+  test('contact page renders all three aliases with no conditional wording', () => {
+    renderAt('/contact');
+    expect(screen.getByRole('link', { name: 'security@agentforge4j.org' })).toHaveAttribute(
+      'href',
+      'mailto:security@agentforge4j.org',
+    );
+    expect(screen.getByRole('link', { name: 'admin@agentforge4j.org' })).toHaveAttribute(
+      'href',
+      'mailto:admin@agentforge4j.org',
+    );
+    expect(screen.getByRole('link', { name: 'info@agentforge4j.org' })).toHaveAttribute(
+      'href',
+      'mailto:info@agentforge4j.org',
+    );
+  });
+
+  test('security page links a mailto to security@ and the repository security tab', () => {
+    renderAt('/security');
+    expect(screen.getByRole('link', { name: /security@agentforge4j\.org/ })).toHaveAttribute(
+      'href',
+      'mailto:security@agentforge4j.org',
+    );
+    expect(screen.getByRole('link', { name: /GitHub private vulnerability reporting/ })).toHaveAttribute(
+      'href',
+      'https://github.com/agentforge4j/agentforge4j/security',
+    );
+  });
+
+  test('releases page is honest that nothing is published to Maven Central yet', () => {
+    renderAt('/releases');
+    expect(screen.getByText(/has not published a 0\.1\.0 release to Maven Central yet/)).toBeInTheDocument();
+  });
+
+  test('use page does not print copy-pasteable Maven coordinates before anything is published', () => {
+    renderAt('/use');
+    expect(screen.getByText(/not yet published to Maven Central/)).toBeInTheDocument();
+    expect(screen.queryByText(/<dependency>/)).not.toBeInTheDocument();
+  });
+
+  test('legal page links the Apache-2.0 licence', () => {
+    renderAt('/legal');
+    expect(screen.getByRole('link', { name: 'Apache License 2.0' })).toHaveAttribute(
+      'href',
+      'https://github.com/agentforge4j/agentforge4j/blob/main/LICENSE',
+    );
+  });
+
+  test('architecture page embeds both overview diagrams with descriptive alt text', () => {
+    renderAt('/architecture');
+    const diagrams = screen.getAllByRole('img').filter((img) => img.getAttribute('src')?.startsWith('/diagrams/'));
+    expect(diagrams).toHaveLength(2);
+    diagrams.forEach((img) => expect(img.getAttribute('alt')?.length).toBeGreaterThan(20));
+  });
+});
