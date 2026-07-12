@@ -69,4 +69,34 @@ describe('WorkflowCanvas', () => {
     );
     expect(screen.getAllByText(/Start here/i).length).toBeGreaterThan(0);
   });
+
+  it('still shows the start-here hint on a fresh starter canvas when hideStarterHint is not set (outside guided mode, unchanged)', () => {
+    const model = createInitialCanvasModel();
+    render(
+      <WorkflowCanvas
+        model={model}
+        onModelChange={() => {}}
+        onSelectNode={() => {}}
+        selectedId={null}
+        onAppend={() => {}}
+        hideStarterHint={false}
+      />,
+    );
+    expect(screen.getAllByText(/Start here/i).length).toBeGreaterThan(0);
+  });
+
+  it('suppresses the start-here hint on a fresh starter canvas when hideStarterHint is true (guided mode)', () => {
+    const model = createInitialCanvasModel();
+    render(
+      <WorkflowCanvas
+        model={model}
+        onModelChange={() => {}}
+        onSelectNode={() => {}}
+        selectedId={null}
+        onAppend={() => {}}
+        hideStarterHint
+      />,
+    );
+    expect(screen.queryByText(/Start here/i)).not.toBeInTheDocument();
+  });
 });

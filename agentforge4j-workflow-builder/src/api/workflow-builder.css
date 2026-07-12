@@ -1248,6 +1248,19 @@
     width: 100%;
     margin-top: var(--builder-space-xs);
   }
+
+  /* .wf-canvas__starter-overlay (the "Select start step" empty-state card) is centered across
+     the whole canvas by default, which visually collides with .workflow-builder__guided above
+     on a short viewport, since both now occupy the canvas's vertical space independently.
+     Anchoring the starter card to the bottom on mobile keeps it clear of the guided panel
+     without depending on either panel's exact content height. Guided mode itself additionally
+     suppresses this overlay entirely via WorkflowCanvas's `hideStarterHint` prop, since the two
+     serve the same purpose ("pick a start step") and their combined content doesn't fit a short
+     canvas regardless of alignment — this remaining CSS rule only matters for advanced mode. */
+  .wf-canvas__starter-overlay {
+    align-items: flex-end;
+    padding-bottom: var(--builder-space-lg);
+  }
 }
 
 .wf-guided-stepper__item {

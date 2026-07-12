@@ -61,6 +61,11 @@ npm; 0.5.0 supersedes it in source too.)
   no `bottom`), so its content could grow past the available space and sit on top of the canvas
   underneath it. It is now bounded on all four sides, and its inner panel scrolls internally if
   its content is still taller than the available space.
+- The canvas's "Select start step" starter-hint card no longer competes with the guided-mode
+  step panel for the same space on a short viewport — the two overlays serve the same purpose
+  and, together, don't fit regardless of alignment. `WorkflowCanvas` gained a `hideStarterHint`
+  prop, which `WorkflowBuilder` now sets whenever guided mode's own stepper is already showing
+  the same call to action; the starter card's own behavior outside guided mode is unchanged.
 
 ## [0.3.0] - 2026-06-02
 
