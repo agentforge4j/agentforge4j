@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 package com.agentforge4j.llm.bedrock;
 
-import com.agentforge4j.llm.api.LlmClient;
 import com.agentforge4j.llm.api.LlmExecutionResponse;
 import com.agentforge4j.llm.api.LlmInvocationException;
 import com.agentforge4j.llm.api.TokenUsageReport;
 import com.agentforge4j.util.Validate;
+import com.agentforge4j.util.text.CodeFence;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
@@ -64,7 +64,7 @@ final class BedrockAnthropicResponseParser {
       }
       String blockText = block.path("text").asText(null);
       if (StringUtils.isNotBlank(blockText)) {
-        return LlmClient.stripCodeFence(blockText.strip());
+        return CodeFence.strip(blockText.strip());
       }
     }
 
