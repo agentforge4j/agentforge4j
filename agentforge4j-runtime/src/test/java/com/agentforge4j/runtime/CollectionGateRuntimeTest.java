@@ -648,8 +648,9 @@ class CollectionGateRuntimeTest {
     CloseResult manualResult = closeOnlyGate.closeCollection(closeOnlyRunId, STEP,
         new CloseRequest("intruder", CloseReason.MANUAL, false, null));
     assertThat(manualResult.closed()).isFalse();
-    // The same actor cannot route around it via DEADLINE without DEADLINE_CLOSE authorization --
-    // that is rejected at the authorization step instead, before checkClosable even runs.
+    // The same actor cannot route around it via DEADLINE without DEADLINE_CLOSE authorization:
+    // checkClosable() passes (externalDeadlineClosable=true here), so the denial comes from
+    // authorize(DEADLINE_CLOSE) itself, not from the structural closability check.
     assertThatThrownBy(() -> closeOnlyGate.closeCollection(closeOnlyRunId, STEP,
         new CloseRequest("intruder", CloseReason.DEADLINE, false, null)))
         .isInstanceOf(CollectionAuthorizationException.class);
@@ -662,6 +663,32 @@ class CollectionGateRuntimeTest {
     CloseResult result = allowGate.closeCollection(allowRunId, STEP,
         new CloseRequest("scheduler", CloseReason.DEADLINE, false, null));
     assertThat(result.closed()).isTrue();
+  }
+
+  @Test
+  void deadlineCloseOnANonDeadlineClosableGateIsRejectedStructurallyNotAsAnAuthorizationDenial() {
+    // externalDeadlineClosable=false means WorkflowValidator.reachableActions() legitimately never
+    // requires a DEADLINE_CLOSE requirement to be declared -- only "close" is declared here,
+    // matching that. checkClosable() must reject the DEADLINE reason before authorize(DEADLINE_CLOSE)
+    // ever runs, or the missing requirement would misleadingly throw CollectionAuthorizationException
+    // ("no STEP_ACTION requirement declared") instead of a plain structural CloseResult rejection.
+    CollectionBehaviour cfg = new CollectionBehaviour(null, 0, null, null, 0, null, DuplicatePolicy.ALLOW,
+        ReplacementPolicy.NONE, WithdrawalPolicy.NONE, true, false, ReopenPolicy.NONE,
+        AuthorizationMode.ENFORCED, StepTransition.AUTO);
+    List<WorkflowRequirement> closeOnly = List.of(
+        new WorkflowRequirement("req-close", "rbac_step_action_allowed",
+            RequirementScope.STEP_ACTION, STEP, "close", false, null, ResolutionMode.DEFERRED));
+    WorkflowRuntime runtime = runtime(cfg, closeOnly, ALLOW_CLOSE_ONLY);
+    CollectionGateRuntime gate = (CollectionGateRuntime) runtime;
+    String runId = runtime.start("wf");
+
+    CloseResult result = gate.closeCollection(runId, STEP,
+        new CloseRequest("scheduler", CloseReason.DEADLINE, false, null));
+
+    assertThat(result.closed()).isFalse();
+    assertThat(result.rejectionReason()).isEqualTo("deadline close is not permitted");
+    assertThat(eventTypes(runId)).contains(WorkflowEventType.COLLECTION_CLOSE_REJECTED)
+        .doesNotContain(WorkflowEventType.COLLECTION_AUTHORIZATION_DENIED);
   }
 
   private static List<WorkflowRequirement> deadlineCloseRequirements() {
@@ -889,6 +916,30 @@ class CollectionGateRuntimeTest {
   }
 
   @Test
+  void submitOnAClosedGateByAnUnauthorizedActorIsDeniedAtAuthorizationNotGatePhase() {
+    // authorize(SUBMIT) now runs before the gate-phase check, so an actor with no SUBMIT
+    // authorization cannot learn whether the gate is open or closed via an un-audited
+    // IllegalArgumentException -- they hit the audited CollectionAuthorizationException path first.
+    // No "submit" requirement is declared, so ENFORCED mode denies via "no STEP_ACTION requirement
+    // declared" -- exactly the audited path this test proves runs before the gate-phase check.
+    CollectionBehaviour cfg = behaviourFull(0, null, ReopenPolicy.ALLOWED, AuthorizationMode.ENFORCED,
+        ReplacementPolicy.NONE, WithdrawalPolicy.NONE);
+    List<WorkflowRequirement> closeOnly = List.of(
+        new WorkflowRequirement("req-close", "rbac_step_action_allowed",
+            RequirementScope.STEP_ACTION, STEP, "close", false, null, ResolutionMode.DEFERRED));
+    WorkflowRuntime runtime = runtime(cfg, closeOnly, ALLOW_CLOSE_ONLY);
+    CollectionGateRuntime gate = (CollectionGateRuntime) runtime;
+    String runId = runtime.start("wf");
+    CloseResult closeResult = gate.closeCollection(runId, STEP,
+        new CloseRequest(ACTOR, CloseReason.MANUAL, false, null));
+    assertThat(closeResult.closed()).isTrue();
+
+    assertThatThrownBy(() -> gate.submitItem(runId, STEP, submission("a", null, null), ACTOR))
+        .isInstanceOf(CollectionAuthorizationException.class);
+    assertThat(eventTypes(runId)).contains(WorkflowEventType.COLLECTION_AUTHORIZATION_DENIED);
+  }
+
+  @Test
   void ownerPolicyDeniesCrossActorReplaceAndWithdrawWithAnAuditedDenial() {
     // OWNER_REPLACE/OWNER_WITHDRAW is the one denial path that used to throw before authorize() ever
     // ran, leaving no COLLECTION_AUTHORIZATION_DENIED audit trail for a cross-actor tampering attempt
@@ -941,6 +992,29 @@ class CollectionGateRuntimeTest {
 
     assertThat(gate.getCollection(runId, STEP, ACTOR).phase()).isEqualTo(CollectionPhase.OPEN);
     assertThat(eventTypes(runId)).contains(WorkflowEventType.COLLECTION_REOPENED);
+  }
+
+  @Test
+  void reopenWithReopenPolicyNoneIsRejectedStructurallyNotAsAnAuthorizationDenial() {
+    // reopenPolicy=NONE (the default) means WorkflowValidator.reachableActions() legitimately never
+    // requires a REOPEN requirement to be declared -- no requirements at all are declared here,
+    // matching that, and the authorizer would deny REOPEN if it were ever consulted. The
+    // reopenPolicy check must reject the call before authorize(REOPEN) ever runs, or the missing
+    // requirement would misleadingly throw via the "no STEP_ACTION requirement declared" path
+    // instead of the accurate structural rejection.
+    CollectionAuthorizer neverConsulted = (actorId, stepId, action, descriptor, context) ->
+        Decision.deny("must not be consulted for this test");
+    WorkflowRuntime runtime = runtime(behaviourFull(0, null, ReopenPolicy.NONE,
+        AuthorizationMode.ENFORCED, ReplacementPolicy.NONE, WithdrawalPolicy.NONE),
+        List.of(), neverConsulted);
+    CollectionGateRuntime gate = (CollectionGateRuntime) runtime;
+    String runId = runtime.start("wf");
+
+    assertThatThrownBy(() -> gate.reopenCollection(runId, STEP, ACTOR))
+        .isInstanceOf(IllegalArgumentException.class)
+        .isNotInstanceOf(CollectionAuthorizationException.class)
+        .hasMessageContaining("Reopen is not permitted");
+    assertThat(eventTypes(runId)).doesNotContain(WorkflowEventType.COLLECTION_AUTHORIZATION_DENIED);
   }
 
   @Test

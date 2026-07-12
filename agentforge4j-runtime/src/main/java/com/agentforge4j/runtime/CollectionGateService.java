@@ -97,9 +97,12 @@ final class CollectionGateService {
 
   SubmissionResult submit(WorkflowState state, WorkflowDefinition workflow, CollectionBehaviour cfg,
       String stepId, CollectionSubmission submission, String actorId) {
-    CollectionState gate = requireOpenGate(state, stepId);
     WorkflowDefinition declaringWorkflow = declaringWorkflow(workflow, stepId);
+    // authorize() runs before the gate-phase check below so an actor who is not authorized for
+    // SUBMIT at all cannot learn whether the gate is currently open or closed via an un-audited
+    // exception -- the same audited-denial-first ordering close()/reopen() also follow.
     authorize(state, declaringWorkflow, cfg, stepId, CollectionAction.SUBMIT, actorId);
+    CollectionState gate = requireOpenGate(state, stepId);
 
     SubmissionResult hardDuplicate = rejectHardDuplicate(state, gate, cfg, stepId,
         submission.clientToken(), actorId, CollectionAction.SUBMIT);
@@ -232,12 +235,6 @@ final class CollectionGateService {
     CollectionState gate = requireGate(state, stepId);
     WorkflowDefinition declaringWorkflow = declaringWorkflow(workflow, stepId);
     authorize(state, declaringWorkflow, cfg, stepId, CollectionAction.CLOSE, request.actorId());
-    if (request.reason() == CloseReason.DEADLINE) {
-      // A DEADLINE reason carries real security semantics -- it can satisfy externalDeadlineClosable
-      // even when manualClose is false -- so it needs its own authorization independent of the
-      // generic CLOSE check above, which any actor otherwise passes under OPEN mode.
-      authorize(state, declaringWorkflow, cfg, stepId, CollectionAction.DEADLINE_CLOSE, request.actorId());
-    }
 
     // Idempotent no-op: already closed, or this close token was already accepted.
     if (gate.phase() == CollectionPhase.CLOSED
@@ -262,6 +259,17 @@ final class CollectionGateService {
       emitCloseRejected(state, stepId, request.actorId(), notClosable, liveItemCount(gate),
           cfg.minItems());
       return new CloseResult(false, false, 0, notClosable);
+    }
+
+    if (request.reason() == CloseReason.DEADLINE) {
+      // A DEADLINE reason carries real security semantics -- it can satisfy externalDeadlineClosable
+      // even when manualClose is false -- so it needs its own authorization independent of the
+      // generic CLOSE check above, which any actor otherwise passes under OPEN mode. Runs after
+      // checkClosable() above, not before: a gate with externalDeadlineClosable=false legitimately
+      // has no declared DEADLINE_CLOSE requirement (see WorkflowValidator.reachableActions()), so
+      // authorizing first would misleadingly deny it as an authorization failure instead of
+      // reporting the accurate structural rejection already recorded above.
+      authorize(state, declaringWorkflow, cfg, stepId, CollectionAction.DEADLINE_CLOSE, request.actorId());
     }
 
     int liveCount = liveItemCount(gate);
@@ -299,9 +307,13 @@ final class CollectionGateService {
   void reopen(WorkflowState state, WorkflowDefinition workflow, CollectionBehaviour cfg,
       String stepId, String actorId) {
     CollectionState gate = requireGate(state, stepId);
-    authorize(state, declaringWorkflow(workflow, stepId), cfg, stepId, CollectionAction.REOPEN, actorId);
+    // The structural policy check runs before authorize(): a gate with reopenPolicy != ALLOWED
+    // legitimately has no declared REOPEN requirement (see WorkflowValidator.reachableActions()),
+    // so authorizing first would misleadingly deny it as an authorization failure instead of
+    // reporting the accurate structural rejection.
     Validate.isTrue(cfg.reopenPolicy() == ReopenPolicy.ALLOWED,
         "Reopen is not permitted for collection step '%s'".formatted(stepId));
+    authorize(state, declaringWorkflow(workflow, stepId), cfg, stepId, CollectionAction.REOPEN, actorId);
     Validate.isTrue(gate.phase() == CollectionPhase.CLOSED,
         "Collection step '%s' is not closed".formatted(stepId));
     storeGate(state, reopenedGate(gate));
