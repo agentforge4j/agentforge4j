@@ -8,6 +8,22 @@ workflow catalog.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this package adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- Draft-recovery persistence: the canvas model is now saved automatically (debounced) as it is
+  edited and silently restored — with a small dismissible "Restored your previous session"
+  notice offering a "Start fresh" action — after a page reload, so in-progress work is no longer
+  discarded on refresh. Falls back to a built-in `localStorage`-backed implementation when no
+  `persistence` prop is supplied; the package never makes a network call for this either way, so
+  the standalone builder never requires a server. Host applications can supply their own
+  `persistence: { load, save, clear? }` adapter on `WorkflowBuilderProps` to replace or intercept
+  local persistence and save drafts to their own backend instead. Restoring on mount is skipped
+  when the host already seeded the builder with `initialWorkflow` content or in read-only mode;
+  a best-effort `beforeunload` warning covers the gap between an edit and the debounce flushing.
+  This mechanism is independent of `capabilities.save`, which continues to gate a separate host
+  backend-persistence action.
+
 ## [0.5.0] - 2026-07-12
 
 (0.4.0's changes are folded in below — that version was merged to `main` but never published to

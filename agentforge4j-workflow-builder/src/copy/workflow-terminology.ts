@@ -157,6 +157,10 @@ export const ACTION_LABELS = {
   readOnlyBadgeTitle: 'This workflow is read-only. Steps can be viewed but not changed.',
   incompleteRoutingError:
     'This workflow has an incomplete step connection (a decision branch or retry target is unset). Complete the highlighted routing to continue.',
+  draftRestoredTitle: 'Restored your previous session',
+  draftRestoredBody: 'We found unsaved changes from your last visit and restored them automatically.',
+  startFresh: 'Start fresh',
+  dismissDraftRestored: 'Dismiss',
 };
 
 export const PALETTE_GROUP_LABELS = {

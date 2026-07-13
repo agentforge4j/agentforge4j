@@ -6,6 +6,7 @@ import { ACTION_LABELS, GUIDED_STAGE_LABELS } from '../copy/workflow-terminology
 import { GuidedStepper } from '../guided/GuidedStepper';
 import { createInitialCanvasModel, useCanvasState } from '../hooks/useCanvasState';
 import { useBuilderMode } from '../hooks/useBuilderMode';
+import { useModelPersistence } from '../hooks/useModelPersistence';
 import type { DraftValidationIssue } from '../hooks/useWorkflowDraft';
 import { useWorkflowDraft } from '../hooks/useWorkflowDraft';
 import { StepConfigPanel } from '../inspector/StepConfigPanel';
@@ -138,6 +139,7 @@ export function WorkflowBuilder({
   initialWorkflow,
   agentCatalog = [],
   mode = 'editable',
+  persistence,
 }: WorkflowBuilderProps) {
   const readOnly = mode === 'readOnly';
   const seed = initialWorkflow ?? emptyWorkflow();
@@ -167,6 +169,19 @@ export function WorkflowBuilder({
 
   const { mode: builderMode, setMode: setBuilderMode } = useBuilderMode(model, !initialWorkflow?.id);
   const { buildFromCanvas } = useWorkflowDraft();
+
+  // Draft-recovery persistence (issue #94): independent of `capabilities.save`, which gates a
+  // separate host backend-persistence action. Restoring on mount is skipped when the host
+  // already seeded real content via `initialWorkflow` (nothing to silently recover over) or in
+  // read-only mode (a read-only view is not the user's own draft); saving is skipped in
+  // read-only mode only.
+  const { restored: draftRestored, dismissRestoredNotice, startFresh } = useModelPersistence({
+    persistence,
+    model,
+    setModelFromLoad,
+    allowRestore: !readOnly && seed.steps.length === 0,
+    allowSave: !readOnly,
+  });
 
   const resolvedAdapters = useMemo(
     () => ({
@@ -647,6 +662,31 @@ export function WorkflowBuilder({
         </div>
         <p className="workflow-builder__subtitle">{subtitle}</p>
       </header>
+
+      {draftRestored ? (
+        <div className="workflow-builder__banner" role="status" data-testid="draft-restored-banner">
+          <p className="workflow-builder__banner-title">{ACTION_LABELS.draftRestoredTitle}</p>
+          <p>{ACTION_LABELS.draftRestoredBody}</p>
+          <div className="workflow-builder__banner-actions">
+            <button
+              type="button"
+              className="wf-button wf-button--ghost"
+              data-testid="draft-restored-start-fresh"
+              onClick={startFresh}
+            >
+              {ACTION_LABELS.startFresh}
+            </button>
+            <button
+              type="button"
+              className="wf-button wf-button--ghost"
+              data-testid="draft-restored-dismiss"
+              onClick={dismissRestoredNotice}
+            >
+              {ACTION_LABELS.dismissDraftRestored}
+            </button>
+          </div>
+        </div>
+      ) : null}
 
       {model.unsupported ? (
         <div className="workflow-builder__banner workflow-builder__banner--warning" role="status">

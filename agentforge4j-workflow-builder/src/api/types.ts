@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
+import type { CanvasModel } from '../model/canvasModel';
+
 export type BehaviourType =
   | 'INPUT'
   | 'AGENT'
@@ -146,6 +148,27 @@ export interface BuilderActions {
 }
 
 /**
+ * Draft-recovery persistence for the canvas model — independent of {@link BuilderActions.save},
+ * which gates a host backend-persistence action behind `capabilities.save`. This mechanism is
+ * always active while the builder is editable, regardless of that capability's value.
+ *
+ * When a host does not supply a `persistence` prop, the builder falls back to a built-in
+ * `localStorage`-backed implementation. The package itself never makes a network call for
+ * this either way; the standalone builder must never require a server.
+ */
+export interface BuilderPersistenceAdapter {
+  /**
+   * Load a previously saved draft, if any. Called once on mount. Return (or resolve to)
+   * `null` when there is nothing to restore.
+   */
+  load: () => Promise<CanvasModel | null> | CanvasModel | null;
+  /** Persist the current canvas model. Called on a debounce after each meaningful edit. */
+  save: (model: CanvasModel) => Promise<void> | void;
+  /** Clear any saved draft. Invoked by the built-in "Start fresh" action. */
+  clear?: () => Promise<void> | void;
+}
+
+/**
  * Editing posture for the builder. `readOnly` blocks every workflow-graph and
  * definition mutation regardless of `capabilities` (a hard override for mutating
  * actions); non-mutating interaction — pan/zoom/select/inspect/validate/export —
@@ -164,6 +187,13 @@ export interface WorkflowBuilderProps {
   agentCatalog?: AgentRef[];
   /** Editing posture; defaults to `editable`. See {@link WorkflowBuilderMode}. */
   mode?: WorkflowBuilderMode;
+  /**
+   * Draft-recovery persistence override. Defaults to a built-in `localStorage`-backed
+   * implementation when omitted. See {@link BuilderPersistenceAdapter}. Pass a referentially
+   * stable object (e.g. via `useMemo`/module scope) — a new object identity on every render
+   * resets the internal save debounce.
+   */
+  persistence?: BuilderPersistenceAdapter;
 }
 
 export function emptyWorkflow(): WorkflowDefinition {

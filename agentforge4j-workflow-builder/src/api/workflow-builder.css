@@ -283,6 +283,12 @@
   color: var(--builder-color-muted);
 }
 
+.workflow-builder__banner-actions {
+  display: flex;
+  gap: var(--builder-space-xs);
+  margin-top: var(--builder-space-xs);
+}
+
 /* Shared controls */
 .wf-button {
   display: inline-flex;
