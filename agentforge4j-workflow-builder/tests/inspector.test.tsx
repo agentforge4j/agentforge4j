@@ -3,10 +3,12 @@ import { StepConfigPanel } from '../src/inspector/StepConfigPanel';
 import { WorkflowBuilder } from '../src/api/WorkflowBuilder';
 import { ACTION_LABELS, GUIDED_STAGE_LABELS, NODE_LABELS } from '../src/copy/workflow-terminology';
 import { createInitialCanvasModel } from '../src/hooks/useCanvasState';
+import { defaultNodeData } from '../src/model/mapper';
+import type { CanvasModel, CanvasNode } from '../src/model/canvasModel';
 import type { BuilderCapabilities } from '../src/api/types';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const allDisabled: BuilderCapabilities = {
   import: false,
@@ -97,5 +99,102 @@ describe('WorkflowBuilder inspector delete', () => {
     });
     expect(canvas.querySelectorAll('.react-flow__node')).toHaveLength(1);
     expect(container.querySelector('.wf-inspector--open')).toBeNull();
+  });
+});
+
+describe('StepConfigPanel focusField (guided checklist item 3 discoverability)', () => {
+  function modelWithAiStep(): { model: CanvasModel; aiNode: CanvasNode } {
+    const model = createInitialCanvasModel();
+    const aiNode = {
+      id: 'c-ai-1',
+      backendStepId: 'ai-1',
+      kind: 'AI_STEP',
+      position: { x: 0, y: 0 },
+      data: defaultNodeData('AI_STEP'),
+    } as CanvasNode;
+    return { model: { ...model, nodes: [...model.nodes, aiNode] }, aiNode };
+  }
+
+  it('forces the collapsed Behavior section open and focuses the Approval field when focusField is "transition"', () => {
+    const { model, aiNode } = modelWithAiStep();
+    const onFocusFieldHandled = vi.fn();
+
+    render(
+      <StepConfigPanel
+        model={model}
+        selectedId={aiNode.id}
+        mode="guided"
+        onClose={() => {}}
+        onDelete={() => {}}
+        onUpdateNodeData={() => {}}
+        focusField="transition"
+        onFocusFieldHandled={onFocusFieldHandled}
+      />,
+    );
+
+    expect(screen.getByTestId('workflow-builder-inspector-behaviour-section')).toHaveAttribute('open');
+    const approvalSelect = screen.getByRole('combobox', { name: ACTION_LABELS.approvalField });
+    expect(approvalSelect).toHaveFocus();
+    // Revealed for the user to choose — not silently set on their behalf.
+    expect(approvalSelect).toHaveValue('AUTO');
+    expect(onFocusFieldHandled).toHaveBeenCalledTimes(1);
+  });
+
+  it('leaves the Behavior section collapsed in guided mode when no field focus is requested (baseline)', () => {
+    const { model, aiNode } = modelWithAiStep();
+
+    render(
+      <StepConfigPanel
+        model={model}
+        selectedId={aiNode.id}
+        mode="guided"
+        onClose={() => {}}
+        onDelete={() => {}}
+        onUpdateNodeData={() => {}}
+      />,
+    );
+
+    expect(screen.getByTestId('workflow-builder-inspector-behaviour-section')).not.toHaveAttribute('open');
+  });
+});
+
+describe('Guided checklist item 3 ("Add approval") discoverability, end to end', () => {
+  // useBuilderMode persists to localStorage as the initial mode; avoid leaking state across tests.
+  beforeEach(() => {
+    window.localStorage.clear();
+  });
+
+  it('reveals and focuses the transition field via the guided action, without silently choosing a value', async () => {
+    const user = userEvent.setup();
+    render(<WorkflowBuilder capabilities={allDisabled} />);
+
+    // Stage 0: configure the starter Ask User step so hasConfiguredInput is satisfied. Scoped to
+    // the open dialog — the toolbar's own workflow-name input is also a `textbox` earlier in the
+    // full-tree DOM order, so an unscoped index [0] would grab the wrong field here.
+    await user.click(screen.getByRole('button', { name: GUIDED_STAGE_LABELS.configureInput }));
+    const askUserDialog = await screen.findByRole('dialog', { name: NODE_LABELS.ASK_USER });
+    fireEvent.change(within(askUserDialog).getAllByRole('textbox')[0]!, { target: { value: 'Collect topic' } });
+    await user.click(within(askUserDialog).getByRole('button', { name: ACTION_LABELS.configureStepClose }));
+
+    // Stage 1: add an AI step.
+    await user.click(screen.getByRole('button', { name: GUIDED_STAGE_LABELS.addAiStep }));
+    await waitFor(() => {
+      expect(screen.getByRole('dialog', { name: NODE_LABELS.AI_STEP })).toBeInTheDocument();
+    });
+    await user.click(screen.getAllByRole('button', { name: ACTION_LABELS.configureStepClose })[0]!);
+
+    // Stage 2 ("Add approval") is now the active stage; trigger its guided action.
+    await user.click(screen.getByRole('button', { name: GUIDED_STAGE_LABELS.requireApproval }));
+
+    await waitFor(() => {
+      expect(screen.getByRole('dialog', { name: NODE_LABELS.AI_STEP })).toBeInTheDocument();
+    });
+    expect(screen.getByTestId('workflow-builder-inspector-behaviour-section')).toHaveAttribute('open');
+
+    const approvalSelect = screen.getByRole('combobox', { name: ACTION_LABELS.approvalField });
+    expect(approvalSelect).toHaveFocus();
+    // Genuinely revealed for the user to choose themselves — not auto-completed for them, which
+    // is the corrected root cause: the field and check are real, only discoverability was broken.
+    expect(approvalSelect).toHaveValue('AUTO');
   });
 });

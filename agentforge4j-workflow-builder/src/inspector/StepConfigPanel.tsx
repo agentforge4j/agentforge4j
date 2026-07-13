@@ -14,8 +14,8 @@ import type {
 import { getRunsAfterState, START_SENTINEL } from '../model/graphOps';
 import type { NodeKind } from '../model/nodeKinds';
 import { NODE_KIND_META } from '../model/nodeKinds';
-import type { ReactNode } from 'react';
-import { useEffect, useMemo } from 'react';
+import type { ReactNode, Ref } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 
 const KINDS_WITH_BEHAVIOR = new Set<NodeKind>([
   'AI_STEP',
@@ -39,21 +39,39 @@ export type StepConfigPanelProps = {
   readOnly?: boolean;
   /** Reposition the selected node to run after `afterId` (or START_SENTINEL). */
   onReposition?: (nodeId: string, afterId: string) => void;
+  /**
+   * One-shot request to reveal and focus a specific field on the currently selected node, even if
+   * its containing section is collapsed by default for the current mode. Currently only
+   * `'transition'` is supported — wired from the guided-mode checklist's "Require approval" action
+   * (`WorkflowBuilder`'s `onGuidedStageAction`), mirroring how checklist item 1 already jumps to
+   * and reveals the input step rather than silently mutating data for the user.
+   */
+  focusField?: 'transition' | null;
+  /** Called once the requested `focusField` has been applied (or determined inapplicable), so the
+   * caller can clear the one-shot request. */
+  onFocusFieldHandled?: () => void;
 };
 
 function TransitionField({
   value,
   onChange,
+  selectRef,
 }: {
   value: StepTransition;
   onChange: (value: StepTransition) => void;
+  selectRef?: Ref<HTMLSelectElement>;
 }) {
   return (
     <label className="wf-field">
       <span className="wf-field__label" title={ACTION_LABELS.approvalHelp}>
         {ACTION_LABELS.approvalField}
       </span>
-      <select className="wf-input wf-select" value={value} onChange={(e) => onChange(e.target.value as StepTransition)}>
+      <select
+        ref={selectRef}
+        className="wf-input wf-select"
+        value={value}
+        onChange={(e) => onChange(e.target.value as StepTransition)}
+      >
         <option value="AUTO">{ACTION_LABELS.approvalAutomatic}</option>
         <option value="HUMAN_REVIEW">{ACTION_LABELS.approvalReview}</option>
         <option value="HUMAN_APPROVAL">{ACTION_LABELS.approvalRequired}</option>
@@ -81,9 +99,16 @@ export function StepConfigPanel({
   agentCatalog,
   readOnly = false,
   onReposition,
+  focusField = null,
+  onFocusFieldHandled,
 }: StepConfigPanelProps) {
   const node = useMemo(() => model.nodes.find((n) => n.id === selectedId) ?? null, [model.nodes, selectedId]);
   const hasAgentCatalog = Boolean(agentCatalog && agentCatalog.length > 0);
+  const transitionSelectRef = useRef<HTMLSelectElement>(null);
+  // Sticky memory that the Behavior section was force-opened by a `focusField` reveal request, so
+  // it stays open once `focusField` itself is cleared (a one-shot signal — see below) rather than
+  // snapping back closed on the very next render.
+  const [behaviorRevealed, setBehaviorRevealed] = useState(false);
 
   const otherNodes = useMemo(
     () =>
@@ -112,6 +137,32 @@ export function StepConfigPanel({
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [node, selectedId, onClose]);
 
+  // Reset the sticky reveal once selection moves to a different node, so it never leaks into a
+  // node that never had a reveal requested for it.
+  useEffect(() => {
+    setBehaviorRevealed(false);
+  }, [selectedId]);
+
+  useEffect(() => {
+    if (focusField !== 'transition' || !node || !selectedId) {
+      return;
+    }
+    if (node.kind !== 'AI_STEP' && node.kind !== 'REUSE_WORKFLOW') {
+      // The selected node has no TransitionField to reveal (e.g. it is an AI_DEBATE/other kind) —
+      // nothing to do; clear the one-shot request so it does not linger against a future selection.
+      onFocusFieldHandled?.();
+      return;
+    }
+    // `behaviorOpen` below already forces the Behavior <details> open in the same render/commit
+    // that mounts this effect (via the `focusField` check directly), so the field is already in
+    // the DOM by the time this runs. `behaviorRevealed` is set here so the section stays open on
+    // the next render too, once the one-shot `focusField` request itself has been cleared below.
+    setBehaviorRevealed(true);
+    transitionSelectRef.current?.scrollIntoView({ block: 'center' });
+    transitionSelectRef.current?.focus();
+    onFocusFieldHandled?.();
+  }, [focusField, node, selectedId, onFocusFieldHandled]);
+
   if (!node || !selectedId) {
     return null;
   }
@@ -119,7 +170,13 @@ export function StepConfigPanel({
   const title = NODE_KIND_META[node.kind].label;
   const insideLoopBody =
     Boolean(node.parentNode) && model.nodes.some((p) => p.id === node.parentNode && p.kind === 'REPEAT');
-  const behaviorOpen = mode === 'advanced';
+  // Forced open (regardless of mode) when a focus request targets the field this section holds, or
+  // once one already has (behaviorRevealed) — mirrors the audit's corrected finding that the
+  // checklist's "Add approval" item is genuinely satisfiable, just hidden by this section
+  // defaulting to collapsed in guided mode. `behaviorRevealed` keeps it open on the render right
+  // after `focusField` itself is cleared (a one-shot signal, consumed immediately by the effect
+  // above), instead of the section snapping shut again the instant it was revealed.
+  const behaviorOpen = mode === 'advanced' || focusField === 'transition' || behaviorRevealed;
   const wireBehaviourType = wireBehaviourTypeForCanvasNode(node);
   const wireBehaviourNote =
     node.kind === 'SAVE_RESULT'
@@ -384,6 +441,7 @@ export function StepConfigPanel({
                   <TransitionField
                     value={node.data.transition}
                     onChange={(value) => onUpdateNodeData(node.id, { transition: value } as Partial<NodeData>)}
+                    selectRef={transitionSelectRef}
                   />
                 </>
               ) : null}
@@ -408,6 +466,7 @@ export function StepConfigPanel({
                   <TransitionField
                     value={node.data.transition}
                     onChange={(value) => onUpdateNodeData(node.id, { transition: value } as Partial<NodeData>)}
+                    selectRef={transitionSelectRef}
                   />
                 </>
               ) : null}

@@ -145,6 +145,10 @@ export function WorkflowBuilder({
   const [pending, setPending] = useState<PendingState>({});
   const [errors, setErrors] = useState<ErrorState>({});
   const [insertOnEdgeId, setInsertOnEdgeId] = useState<string | null>(null);
+  // One-shot "reveal this field" request handed to StepConfigPanel — see the guided checklist's
+  // "Require approval" action below (case 2 of onGuidedStageAction).
+  const [focusField, setFocusField] = useState<'transition' | null>(null);
+  const onFocusFieldHandled = useCallback(() => setFocusField(null), []);
   const skipDraftSync = useRef(false);
   const serializeGuardWarnedRef = useRef(false);
 
@@ -483,13 +487,20 @@ export function WorkflowBuilder({
           onAddStepFromLibrary('AI_STEP');
           break;
         case 2: {
+          // Reveal and focus the transition field rather than silently choosing "Requires human
+          // approval" on the user's behalf — mirrors item 0's "select and let the user act"
+          // pattern instead of items 1/3's "add a step whose mere presence satisfies the check"
+          // pattern, since this checklist item is about a choice the user makes, not a step to add.
           const aiNode = model.nodes.find((n) => n.kind === 'AI_STEP');
           if (aiNode) {
-            updateNodeData(aiNode.id, { transition: 'HUMAN_APPROVAL' } as Partial<CanvasNode['data']>);
             setSelectedId(aiNode.id);
           } else {
-            onAddStepFromLibrary('AI_STEP', { patch: { transition: 'HUMAN_APPROVAL' } });
+            // No AI_STEP exists yet (e.g. item 1 was satisfied with an AI_DEBATE step instead,
+            // which has no transition control in the inspector) — add one so there is a field to
+            // reveal, matching the existing "no eligible node yet" fallback this action already had.
+            onAddStepFromLibrary('AI_STEP');
           }
+          setFocusField('transition');
           break;
         }
         case 3:
@@ -499,7 +510,7 @@ export function WorkflowBuilder({
           break;
       }
     },
-    [askUserNode, model.nodes, onAddStepFromLibrary, setSelectedId, updateNodeData],
+    [askUserNode, model.nodes, onAddStepFromLibrary, setSelectedId],
   );
 
   const rootStyle = theme?.variables
@@ -718,6 +729,8 @@ export function WorkflowBuilder({
           agentCatalog={agentCatalog}
           readOnly={readOnly}
           onReposition={onReposition}
+          focusField={focusField}
+          onFocusFieldHandled={onFocusFieldHandled}
         />
       </div>
 

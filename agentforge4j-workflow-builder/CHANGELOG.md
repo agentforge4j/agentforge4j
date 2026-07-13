@@ -8,7 +8,22 @@ workflow catalog.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this package adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.5.0] - 2026-07-12
+## [Unreleased]
+
+### Fixed
+- The validation "N things to fix" popover no longer renders behind an already-open step
+  inspector panel. The pill's own stacking context (established by the toolbar's non-`auto`
+  `z-index`) could never be escaped by raising the popover's `z-index` alone, since a raised value
+  stays scoped inside that ancestor context; the popover is now rendered via a `document.body`
+  portal, positioned from the pill's own screen coordinates, so it always paints above open panels
+  regardless of which ancestor stacking context the pill itself lives in.
+- Guided mode's "Add approval" checklist item now genuinely reveals the field it checks for.
+  `StepConfigPanel`'s Approval control (`TransitionField`) already existed and worked, but was
+  hidden inside the "Behavior" section, which defaults to collapsed in guided mode; the checklist
+  item's action now selects the relevant AI step, force-opens that section, and focuses the field
+  instead of silently choosing "Requires human approval" on the user's behalf.
+
+
 
 (0.4.0's changes are folded in below — that version was merged to `main` but never published to
 npm; 0.5.0 supersedes it in source too.)
