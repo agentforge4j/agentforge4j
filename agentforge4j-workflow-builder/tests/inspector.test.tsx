@@ -4,7 +4,7 @@ import { WorkflowBuilder } from '../src/api/WorkflowBuilder';
 import { ACTION_LABELS, GUIDED_STAGE_LABELS, NODE_LABELS } from '../src/copy/workflow-terminology';
 import { createInitialCanvasModel } from '../src/hooks/useCanvasState';
 import type { BuilderCapabilities } from '../src/api/types';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -75,7 +75,7 @@ describe('StepConfigPanel', () => {
 });
 
 describe('WorkflowBuilder inspector delete', () => {
-  it('removes the selected step and clears selection', async () => {
+  it('asks for confirmation before removing the selected step, then clears selection', async () => {
     const user = userEvent.setup();
     const { container } = render(<WorkflowBuilder capabilities={allDisabled} />);
     const canvas = screen.getByTestId('workflow-builder-canvas');
@@ -92,10 +92,34 @@ describe('WorkflowBuilder inspector delete', () => {
 
     await user.click(screen.getByRole('button', { name: ACTION_LABELS.deleteStep }));
 
+    // Deletion is not immediate: a confirmation dialog gates it.
+    const confirmDialog = await screen.findByRole('alertdialog');
+    expect(canvas.querySelectorAll('.react-flow__node')).toHaveLength(2);
+
+    await user.click(within(confirmDialog).getByRole('button', { name: ACTION_LABELS.confirmDeleteConfirm }));
+
     await waitFor(() => {
       expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     });
     expect(canvas.querySelectorAll('.react-flow__node')).toHaveLength(1);
     expect(container.querySelector('.wf-inspector--open')).toBeNull();
+  });
+
+  it('cancelling the confirmation dialog keeps the step', async () => {
+    const user = userEvent.setup();
+    render(<WorkflowBuilder capabilities={allDisabled} />);
+    const canvas = screen.getByTestId('workflow-builder-canvas');
+
+    await user.click(screen.getByRole('button', { name: GUIDED_STAGE_LABELS.configureInput }));
+    expect(canvas.querySelectorAll('.react-flow__node')).toHaveLength(1);
+
+    await user.click(screen.getByRole('button', { name: ACTION_LABELS.deleteStep }));
+    const confirmDialog = await screen.findByRole('alertdialog');
+    await user.click(within(confirmDialog).getByRole('button', { name: ACTION_LABELS.confirmDeleteCancel }));
+
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
+    expect(canvas.querySelectorAll('.react-flow__node')).toHaveLength(1);
+    // Selection/inspector stayed open — deletion never happened.
+    expect(screen.getByRole('dialog', { name: NODE_LABELS.ASK_USER })).toBeInTheDocument();
   });
 });

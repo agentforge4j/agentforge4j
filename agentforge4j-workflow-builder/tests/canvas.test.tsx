@@ -2,7 +2,7 @@
 import { render, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import type { Node } from '@xyflow/react';
-import { mergeModelIntoFlowNodes, WorkflowCanvas } from '../src/canvas/WorkflowCanvas';
+import { mergeModelIntoFlowNodes, resolveNodeDeletionGate, WorkflowCanvas } from '../src/canvas/WorkflowCanvas';
 import { createInitialCanvasModel } from '../src/hooks/useCanvasState';
 
 describe('mergeModelIntoFlowNodes', () => {
@@ -38,6 +38,52 @@ describe('mergeModelIntoFlowNodes', () => {
   it('adds new nodes without measured dimensions', () => {
     const merged = mergeModelIntoFlowNodes([], [{ id: 'n-new', type: 'step', position: { x: 0, y: 0 }, data: {} }]);
     expect(merged[0]?.measured).toBeUndefined();
+  });
+});
+
+describe('resolveNodeDeletionGate', () => {
+  it('refuses in read-only mode regardless of what is being deleted', async () => {
+    await expect(resolveNodeDeletionGate([], { readOnly: true })).resolves.toBe(false);
+    await expect(resolveNodeDeletionGate(['n-1'], { readOnly: true, confirmNodeDeletion: async () => true })).resolves.toBe(
+      false,
+    );
+  });
+
+  it('approves an edge-only deletion (no node ids) without asking for confirmation', async () => {
+    let called = false;
+    await expect(
+      resolveNodeDeletionGate([], {
+        readOnly: false,
+        confirmNodeDeletion: async () => {
+          called = true;
+          return false;
+        },
+      }),
+    ).resolves.toBe(true);
+    expect(called).toBe(false);
+  });
+
+  it('approves a node deletion immediately when no confirmNodeDeletion handler is wired', async () => {
+    await expect(resolveNodeDeletionGate(['n-1'], { readOnly: false })).resolves.toBe(true);
+  });
+
+  it('defers to confirmNodeDeletion for a node deletion, passing every id in the batch', async () => {
+    let received: string[] | null = null;
+    const outcome = await resolveNodeDeletionGate(['n-1', 'n-2'], {
+      readOnly: false,
+      confirmNodeDeletion: async (ids) => {
+        received = ids;
+        return true;
+      },
+    });
+    expect(outcome).toBe(true);
+    expect(received).toEqual(['n-1', 'n-2']);
+  });
+
+  it('propagates a cancelled confirmation (resolved false) as a refusal', async () => {
+    await expect(
+      resolveNodeDeletionGate(['n-1'], { readOnly: false, confirmNodeDeletion: async () => false }),
+    ).resolves.toBe(false);
   });
 });
 

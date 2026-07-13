@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { WorkflowCanvas } from '../canvas/WorkflowCanvas';
 import { ACTION_LABELS, GUIDED_STAGE_LABELS } from '../copy/workflow-terminology';
+import { ConfirmDeleteDialog } from '../dialogs/ConfirmDeleteDialog';
 import { GuidedStepper } from '../guided/GuidedStepper';
 import { createInitialCanvasModel, useCanvasState } from '../hooks/useCanvasState';
 import { useBuilderMode } from '../hooks/useBuilderMode';
@@ -163,7 +164,40 @@ export function WorkflowBuilder({
     markClean,
     updateNodeData,
     appendNode,
+    undo,
+    redo,
+    canUndo,
+    canRedo,
   } = useCanvasState(initialCanvas, readOnly);
+
+  // Pending step-deletion confirmation (shared by the inspector's "Delete step"
+  // button and the canvas Delete/Backspace key — both resolve the same promise
+  // gate so there is exactly one delete-confirmation experience). `null` when
+  // nothing is pending.
+  const [pendingDeletion, setPendingDeletion] = useState<{ ids: string[]; label?: string } | null>(null);
+  const pendingDeletionResolve = useRef<((confirmed: boolean) => void) | null>(null);
+
+  const confirmNodeDeletion = useCallback(
+    (ids: string[]): Promise<boolean> =>
+      new Promise((resolve) => {
+        const label =
+          ids.length === 1
+            ? (() => {
+                const found = model.nodes.find((n) => n.id === ids[0]);
+                return found ? found.data.name?.trim() || NODE_KIND_META[found.kind].label : undefined;
+              })()
+            : undefined;
+        pendingDeletionResolve.current = resolve;
+        setPendingDeletion({ ids, label });
+      }),
+    [model.nodes],
+  );
+
+  const resolvePendingDeletion = useCallback((confirmed: boolean) => {
+    pendingDeletionResolve.current?.(confirmed);
+    pendingDeletionResolve.current = null;
+    setPendingDeletion(null);
+  }, []);
 
   const { mode: builderMode, setMode: setBuilderMode } = useBuilderMode(model, !initialWorkflow?.id);
   const { buildFromCanvas } = useWorkflowDraft();
@@ -185,6 +219,39 @@ export function WorkflowBuilder({
     const draft = canvasToWorkflow(model);
     dispatch({ type: 'SET_DRAFT', draft });
   }, [model, dispatch]);
+
+  // Ctrl/Cmd+Z undo, Ctrl/Cmd+Shift+Z or Ctrl/Cmd+Y redo. Skipped while focus is
+  // inside a text-editing control so a user actively typing keeps the browser's
+  // native per-field undo for that field (Escape-key handlers elsewhere in the
+  // builder — StepConfigPanel, ValidationPill — follow the same window-level
+  // listener pattern and do not need this guard since Escape has no native
+  // text-editing meaning).
+  useEffect(() => {
+    if (readOnly) {
+      return;
+    }
+    const isEditableTarget = (target: EventTarget | null): boolean => {
+      if (!(target instanceof HTMLElement)) {
+        return false;
+      }
+      return target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable;
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (!(event.ctrlKey || event.metaKey) || isEditableTarget(event.target)) {
+        return;
+      }
+      const key = event.key.toLowerCase();
+      if (key === 'z' && !event.shiftKey) {
+        event.preventDefault();
+        undo();
+      } else if ((key === 'z' && event.shiftKey) || key === 'y') {
+        event.preventDefault();
+        redo();
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [readOnly, undo, redo]);
 
   useEffect(() => {
     let cancelled = false;
@@ -429,6 +496,21 @@ export function WorkflowBuilder({
     [readOnly, setModel, setSelectedId],
   );
 
+  // Inspector "Delete step" button goes through the same confirm-before-delete
+  // gate as the canvas Delete/Backspace key (see confirmNodeDeletion / WorkflowCanvas
+  // confirmNodeDeletion prop) — a lightweight safety net alongside undo/redo for a
+  // first-time user who has not yet discovered Ctrl+Z.
+  const requestDeleteNode = useCallback(
+    (id: string) => {
+      void confirmNodeDeletion([id]).then((confirmed) => {
+        if (confirmed) {
+          handleDeleteNode(id);
+        }
+      });
+    },
+    [confirmNodeDeletion, handleDeleteNode],
+  );
+
   const focusIssue = useCallback(
     (stepId?: string) => {
       if (!stepId) {
@@ -537,7 +619,9 @@ export function WorkflowBuilder({
             placeholder={ACTION_LABELS.workflowNamePlaceholder}
             aria-label={ACTION_LABELS.workflowNameLabel}
             readOnly={readOnly}
-            onChange={(e) => setModel((m) => ({ ...m, workflowName: e.target.value }))}
+            onChange={(e) =>
+              setModel((m) => ({ ...m, workflowName: e.target.value }), { coalesceKey: 'meta:workflowName' })
+            }
           />
           <input
             className="workflow-builder__id-input"
@@ -545,7 +629,7 @@ export function WorkflowBuilder({
             placeholder={ACTION_LABELS.workflowIdPlaceholder}
             aria-label={ACTION_LABELS.workflowIdLabel}
             readOnly={readOnly}
-            onChange={(e) => setModel((m) => ({ ...m, workflowId: e.target.value }))}
+            onChange={(e) => setModel((m) => ({ ...m, workflowId: e.target.value }), { coalesceKey: 'meta:workflowId' })}
           />
           {readOnly ? (
             <span
@@ -577,6 +661,32 @@ export function WorkflowBuilder({
             {ACTION_LABELS.advancedMode}
           </button>
         </div>
+        ) : null}
+        {!readOnly ? (
+          <div className="workflow-builder__history-group" role="group" aria-label="History">
+            <button
+              type="button"
+              className="wf-button wf-button--ghost wf-button--icon"
+              data-testid="workflow-builder-undo"
+              aria-label={ACTION_LABELS.undo}
+              title={ACTION_LABELS.undo}
+              disabled={!canUndo}
+              onClick={() => undo()}
+            >
+              ↶
+            </button>
+            <button
+              type="button"
+              className="wf-button wf-button--ghost wf-button--icon"
+              data-testid="workflow-builder-redo"
+              aria-label={ACTION_LABELS.redo}
+              title={ACTION_LABELS.redo}
+              disabled={!canRedo}
+              onClick={() => redo()}
+            >
+              ↷
+            </button>
+          </div>
         ) : null}
         {!readOnly && capabilities.import ? (
           <button
@@ -705,6 +815,7 @@ export function WorkflowBuilder({
             readOnly={readOnly}
             onInsertOnEdge={onInsertOnEdge}
             hideStarterHint={builderMode === 'guided'}
+            confirmNodeDeletion={confirmNodeDeletion}
           />
         </div>
 
@@ -713,13 +824,22 @@ export function WorkflowBuilder({
           selectedId={selectedId}
           mode={builderMode}
           onClose={() => setSelectedId(null)}
-          onDelete={handleDeleteNode}
+          onDelete={requestDeleteNode}
           onUpdateNodeData={updateNodeData}
           agentCatalog={agentCatalog}
           readOnly={readOnly}
           onReposition={onReposition}
         />
       </div>
+
+      {pendingDeletion ? (
+        <ConfirmDeleteDialog
+          count={pendingDeletion.ids.length}
+          singleStepLabel={pendingDeletion.label}
+          onConfirm={() => resolvePendingDeletion(true)}
+          onCancel={() => resolvePendingDeletion(false)}
+        />
+      ) : null}
 
       {activeError ? (
         <p className="workflow-builder__status workflow-builder__status--error" role="alert">

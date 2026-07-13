@@ -8,6 +8,30 @@ workflow catalog.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this package adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- Full undo/redo for every meaningful builder change: adding/deleting steps, step config edits,
+  connections (create/delete/reroute), reordering a step in the chain, workflow name/id, and
+  start-step changes. Toolbar Undo/Redo controls (each disabled when its stack is empty) plus
+  Ctrl+Z / Ctrl+Shift+Z (or Ctrl+Y) keyboard shortcuts; shortcuts are skipped while a text field
+  has focus so the browser's native per-field undo is unaffected while typing.
+  Rapid-fire changes to the same field or the same node's config (typing, quick edits) coalesce
+  into one undo step instead of one per keystroke; dragging a step coalesces into a single step
+  for the whole drag gesture, sealed on release.
+- A confirmation dialog before a step is actually deleted — a lightweight, complementary safety
+  net alongside undo/redo for a first-time user who has not yet discovered Ctrl+Z. Shared by
+  every deletion trigger: the inspector's "Delete step" button and the canvas Delete/Backspace
+  key both resolve the same confirmation gate.
+- Dragging an existing edge's endpoint to a different step/handle ("rerouting") now actually
+  updates the workflow — previously `edgesReconnectable` was enabled but no `onReconnect` handler
+  was wired, so the drag had no effect and the edge snapped back to its original endpoints.
+
+### Changed
+- Importing/loading a new workflow document now resets undo/redo history instead of leaving it
+  in place — undoing after an import returns to the freshly-imported document, not back into a
+  different, previously open workflow's shape.
+
 ## [0.5.0] - 2026-07-12
 
 (0.4.0's changes are folded in below — that version was merged to `main` but never published to

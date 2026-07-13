@@ -14,6 +14,7 @@ import type { NodeKind } from '../model/nodeKinds';
 import { NODE_KIND_META } from '../model/nodeKinds';
 import type { StepTransition } from '../api/types';
 import { ACTION_LABELS, BUILDER_COPY } from '../copy/workflow-terminology';
+import type { HistorySetOptions } from '../state/useHistoryState';
 import {
   Background,
   BackgroundVariant,
@@ -30,11 +31,16 @@ import {
   ReactFlowProvider,
   applyEdgeChanges,
   applyNodeChanges,
+  reconnectEdge,
   useNodesInitialized,
   useNodesState,
   useReactFlow,
 } from '@xyflow/react';
 import { useCallback, useEffect, useMemo, useRef } from 'react';
+
+/** Coalesce key for a node-drag gesture: every intermediate tick of one drag
+ * folds into a single undo step, sealed on release. */
+const NODE_DRAG_COALESCE_KEY = 'node-drag';
 
 const SNAP = 16;
 const DOT_GAP = 22;
@@ -54,6 +60,33 @@ function isStarterCanvas(model: CanvasModel): boolean {
   }
   const only = model.nodes[0];
   return only?.kind === 'ASK_USER';
+}
+
+/**
+ * Pure decision logic behind the canvas Delete/Backspace confirmation gate
+ * (`<ReactFlow onBeforeDelete>`), extracted so it is directly unit-testable
+ * without driving React Flow's own internal node-selection state — a real
+ * browser is required to exercise that end-to-end (React Flow's click-to-select
+ * wiring depends on measured node dimensions, unavailable under jsdom; see the
+ * other canvas tests in this suite for the same constraint).
+ *
+ * Read-only always refuses. Edge-only deletions (no nodes in the batch) are
+ * approved immediately — undo already covers reverting those, and an edge
+ * disappearing is not the "step vanished with no warning" complaint the
+ * confirmation exists for. A node deletion with no `confirmNodeDeletion`
+ * handler wired is approved immediately (no gate configured).
+ */
+export function resolveNodeDeletionGate(
+  nodeIds: string[],
+  options: { readOnly: boolean; confirmNodeDeletion?: (ids: string[]) => Promise<boolean> },
+): Promise<boolean> {
+  if (options.readOnly) {
+    return Promise.resolve(false);
+  }
+  if (nodeIds.length === 0 || !options.confirmNodeDeletion) {
+    return Promise.resolve(true);
+  }
+  return options.confirmNodeDeletion(nodeIds);
 }
 
 /** Merge domain-derived nodes onto existing RF nodes, keeping measured dimensions. */
@@ -149,7 +182,7 @@ const edgeTypes = { flow: FlowEdge };
 
 type InnerProps = {
   model: CanvasModel;
-  onModelChange: (next: CanvasModel) => void;
+  onModelChange: (next: CanvasModel, options?: HistorySetOptions) => void;
   onSelectNode: (id: string | null) => void;
   selectedId: string | null;
   onAppend: (kind: NodeKind, position: { x: number; y: number }) => void;
@@ -162,6 +195,14 @@ type InnerProps = {
    * most visible on a short/narrow viewport, where together they don't fit. Defaults to false;
    * outside guided mode the starter hint's behavior is unchanged. */
   hideStarterHint?: boolean;
+  /**
+   * Gate invoked before a Delete/Backspace-triggered removal of one or more
+   * selected nodes is applied; resolving `false` cancels the whole deletion
+   * (nodes and any co-selected edges). Edge-only deletions never go through
+   * this gate — only node deletion is destructive enough to warrant
+   * confirmation. Omit to apply node deletions immediately (no confirmation).
+   */
+  confirmNodeDeletion?: (nodeIds: string[]) => Promise<boolean>;
 };
 
 function WorkflowCanvasInner({
@@ -174,6 +215,7 @@ function WorkflowCanvasInner({
   readOnly,
   onInsertOnEdge,
   hideStarterHint = false,
+  confirmNodeDeletion,
 }: InnerProps) {
   const { screenToFlowPosition, setCenter } = useReactFlow();
   const nodesInitialized = useNodesInitialized();
@@ -225,13 +267,27 @@ function WorkflowCanvasInner({
         return;
       }
 
+      // Only a 'position' change actually needs remapping onto the model here;
+      // 'remove' changes are applied by onNodesDelete instead (a plain lookup
+      // miss below would otherwise leave the deleted node's stale entry
+      // untouched and still emit a no-op model update — polluting undo with a
+      // spurious extra step for every delete).
+      const positionChanges = changes.filter((change) => change.type === 'position');
+      if (positionChanges.length === 0) {
+        return;
+      }
+
       const nextFlow = applyNodeChanges(changes, flowNodesRef.current);
       const byId = new Map(nextFlow.map((fn: Node) => [fn.id, fn] as const));
       const nextNodes = model.nodes.map((n) => {
         const fn = byId.get(n.id);
         return fn ? { ...n, position: fn.position, parentNode: fn.parentId } : n;
       });
-      onModelChange({ ...model, nodes: nextNodes });
+      // A drag gesture fires many intermediate 'position' changes (dragging: true)
+      // followed by one final change (dragging: false) on release; coalesce the
+      // whole gesture into a single undo step, sealed at release.
+      const dragEnded = positionChanges.some((change) => change.dragging === false);
+      onModelChange({ ...model, nodes: nextNodes }, { coalesceKey: NODE_DRAG_COALESCE_KEY, commit: dragEnded });
     },
     [model, onFlowNodesChange, onModelChange, readOnly],
   );
@@ -328,6 +384,45 @@ function WorkflowCanvasInner({
     [model, onModelChange, readOnly],
   );
 
+  // Dragging an existing edge's endpoint to a different node/handle
+  // ("rerouting"). `edgesReconnectable` alone only enables the drag handle —
+  // without this handler the reconnect is never written back to the model and
+  // the edge snaps back to its original endpoints on the next render.
+  const onReconnect = useCallback(
+    (oldEdge: Edge, newConnection: Connection) => {
+      if (readOnly) {
+        return;
+      }
+      const nextFlowEdges = reconnectEdge(oldEdge, newConnection, flowEdges);
+      onModelChange({
+        ...model,
+        edges: nextFlowEdges.map((e) => ({
+          id: e.id,
+          source: e.source,
+          target: e.target,
+          sourceHandle: e.sourceHandle ?? null,
+          label: null,
+        })),
+      });
+    },
+    [flowEdges, model, onModelChange, readOnly],
+  );
+
+  // Gate the Delete/Backspace-triggered removal behind confirmation for node
+  // deletions (the destructive case the usability audit flagged); edge-only
+  // deletions (no nodes in the batch) proceed immediately — undo already
+  // covers reverting those, and they are not the "step vanished with no
+  // warning" complaint. Resolving `false` cancels the whole batch before any
+  // change ever reaches onNodesChange/onNodesDelete/onEdgesDelete.
+  const onBeforeDelete = useCallback(
+    ({ nodes: toDeleteNodes }: { nodes: FlowNode[]; edges: Edge[] }): Promise<boolean> =>
+      resolveNodeDeletionGate(
+        toDeleteNodes.map((node) => node.id),
+        { readOnly, confirmNodeDeletion },
+      ),
+    [confirmNodeDeletion, readOnly],
+  );
+
   const onDragOver = useCallback(
     (e: React.DragEvent) => {
       e.preventDefault();
@@ -367,7 +462,9 @@ function WorkflowCanvasInner({
         onEdgesChange={onEdgesChange}
         onNodesDelete={onNodesDelete}
         onEdgesDelete={onEdgesDelete}
+        onBeforeDelete={onBeforeDelete}
         onConnect={onConnect}
+        onReconnect={onReconnect}
         onNodeClick={(_event, flowNode: Node) => onSelectNode(flowNode.id)}
         onPaneClick={() => onSelectNode(null)}
         nodesDraggable={!readOnly}
@@ -413,7 +510,7 @@ function WorkflowCanvasInner({
 
 export type WorkflowCanvasProps = {
   model: CanvasModel;
-  onModelChange: (next: CanvasModel) => void;
+  onModelChange: (next: CanvasModel, options?: HistorySetOptions) => void;
   onSelectNode: (id: string | null) => void;
   selectedId: string | null;
   onAppend: (kind: NodeKind, position: { x: number; y: number }) => void;
@@ -421,6 +518,7 @@ export type WorkflowCanvasProps = {
   readOnly?: boolean;
   onInsertOnEdge?: (edgeId: string) => void;
   hideStarterHint?: boolean;
+  confirmNodeDeletion?: (nodeIds: string[]) => Promise<boolean>;
 };
 
 export function WorkflowCanvas({

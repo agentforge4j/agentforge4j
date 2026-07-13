@@ -126,6 +126,11 @@
   background: color-mix(in srgb, var(--afb-accent) 12%, transparent);
 }
 
+.workflow-builder__history-group {
+  display: flex;
+  gap: 2px;
+}
+
 .workflow-builder__subtitle {
   position: absolute;
   width: 1px;
@@ -852,6 +857,32 @@
 
 .wf-palette--mobile .wf-palette__body {
   padding-bottom: var(--builder-space-md);
+}
+
+/* Delete-confirmation dialog — a small, centered modal shared by every step-
+   deletion trigger (inspector delete button, canvas Delete/Backspace key). */
+.wf-confirm-dialog__backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  background: color-mix(in srgb, var(--afb-navy-900) 55%, transparent);
+}
+
+.wf-confirm-dialog {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 6;
+  width: min(90vw, 22rem);
+}
+
+.wf-confirm-dialog__footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--builder-space-sm);
+  padding: var(--builder-space-md);
+  border-top: 1px solid var(--builder-color-border);
 }
 
 /* Inspector slide-over */
