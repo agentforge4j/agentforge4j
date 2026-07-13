@@ -704,6 +704,7 @@ export function WorkflowBuilder({
             issueCountByBackendStepId={issueCountByBackendStepId}
             readOnly={readOnly}
             onInsertOnEdge={onInsertOnEdge}
+            hideStarterHint={builderMode === 'guided'}
           />
         </div>
 

@@ -47,6 +47,8 @@ class ScenarioSchemaContractTest {
 
   @Test
   void everyShippedScenarioFixtureValidatesAgainstTheSchema() throws IOException {
+    // Each owned scenario's expected-result.json is read from its workflow folder on the classpath,
+    // the same plug-and-play catalog a future external repo would consume — not a sibling source dir.
     List<ScenarioCase> scenarios = CatalogScenarios.discover();
     assertThat(scenarios).as("the shipped catalog must own at least one scenario").isNotEmpty();
     for (ScenarioCase scenario : scenarios) {

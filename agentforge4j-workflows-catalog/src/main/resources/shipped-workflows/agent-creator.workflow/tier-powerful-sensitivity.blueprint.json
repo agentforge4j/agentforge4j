@@ -1,0 +1,29 @@
+{
+  "blueprintId": "tier-powerful-sensitivity",
+  "name": "Assign POWERFUL tier (sensitivity floor)",
+  "behaviour": {
+    "transition": "AUTO"
+  },
+  "steps": [
+    {
+      "kind": "STEP",
+      "stepId": "assign-tier-powerful-sensitivity",
+      "name": "Assign recommendedTier = POWERFUL",
+      "behaviour": {
+        "type": "ASSIGN_CONTEXT",
+        "contextKey": "recommendedTier",
+        "value": { "type": "STRING", "value": "POWERFUL" }
+      }
+    },
+    {
+      "kind": "STEP",
+      "stepId": "assign-rule-sensitivity",
+      "name": "Assign ruleFired = SENSITIVITY_FLOOR",
+      "behaviour": {
+        "type": "ASSIGN_CONTEXT",
+        "contextKey": "ruleFired",
+        "value": { "type": "STRING", "value": "SENSITIVITY_FLOOR" }
+      }
+    }
+  ]
+}

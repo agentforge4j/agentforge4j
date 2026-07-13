@@ -3,18 +3,19 @@ package com.agentforge4j.llm.gemini;
 
 import com.agentforge4j.llm.LlmClientConfiguration;
 import com.agentforge4j.llm.LlmClientConfigurationAdapter;
-import com.agentforge4j.llm.LlmProviderOptions;
 import com.agentforge4j.llm.LlmSecretReference;
 import com.agentforge4j.llm.NeutralOptions;
 import com.agentforge4j.llm.RawProviderConfiguration;
-import java.time.Duration;
-import java.util.Optional;
+import com.agentforge4j.llm.StandardNeutralConfiguration;
 
 /**
  * Maps the provider configuration subtree ({@code agentforge4j.llm.gemini.*}) into the neutral
  * {@link LlmClientConfiguration} the {@link GeminiLlmClientFactory} consumes. The API key is wrapped as a literal
- * credential reference; {@code base-url} becomes the base URL. Activates when an API key is present; connect/request
- * timeout defaults are 10s / 2m.
+ * credential reference; {@code base-url} becomes the base URL; {@code max-output-tokens} becomes the
+ * {@code max.output.tokens} option consumed by {@link GeminiNeutralConfiguration#fromNeutral}. Activates when an API
+ * key is present; connect/request timeout defaults are {@link GeminiDefaults#CONNECT_TIMEOUT} /
+ * {@link GeminiDefaults#REQUEST_TIMEOUT} — the same constants {@link GeminiNeutralConfiguration#fromNeutral} falls
+ * back to for a programmatically constructed neutral configuration that omits {@code request.timeout}.
  */
 public final class GeminiConfigurationAdapter implements LlmClientConfigurationAdapter {
 
@@ -30,48 +31,15 @@ public final class GeminiConfigurationAdapter implements LlmClientConfigurationA
 
   @Override
   public LlmClientConfiguration adapt(RawProviderConfiguration raw) {
-    return new NeutralConfiguration(
+    return new StandardNeutralConfiguration(
+        "gemini",
         raw.get("default-model").orElse(null),
-        raw.getDuration("connect-timeout").orElse(Duration.ofSeconds(10)),
+        raw.getDuration("connect-timeout").orElse(GeminiDefaults.CONNECT_TIMEOUT),
         raw.get("base-url").orElse(null),
         LlmSecretReference.literal(raw.get("api-key").orElse(null)),
-        raw.getDuration("request-timeout").orElse(Duration.ofMinutes(2)));
-  }
-
-  private record NeutralConfiguration(String defaultModel, Duration connectTimeout, String baseUrl,
-                                      LlmSecretReference apiKeyReference, Duration requestTimeout)
-      implements LlmClientConfiguration {
-
-    @Override
-    public String getProviderName() {
-      return "gemini";
-    }
-
-    @Override
-    public String getDefaultModel() {
-      return defaultModel;
-    }
-
-    @Override
-    public Duration getConnectTimeout() {
-      return connectTimeout;
-    }
-
-    @Override
-    public String getBaseUrl() {
-      return baseUrl;
-    }
-
-    @Override
-    public Optional<LlmSecretReference> getApiKeyReference() {
-      return Optional.of(apiKeyReference);
-    }
-
-    @Override
-    public LlmProviderOptions getOptions() {
-      return LlmProviderOptions.of("gemini", NeutralOptions.create()
-          .duration("request.timeout", requestTimeout)
-          .toMap());
-    }
+        NeutralOptions.create()
+            .duration("request.timeout", raw.getDuration("request-timeout").orElse(GeminiDefaults.REQUEST_TIMEOUT))
+            .number("max.output.tokens", raw.getInt("max-output-tokens").orElse(null))
+            .toMap());
   }
 }

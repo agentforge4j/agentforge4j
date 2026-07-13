@@ -15,7 +15,12 @@
         "loopCount": "1",
         "agentDrivenLoopCount": "1",
         "humanGateCount": "0",
-        "maxNestingDepth": "1"
+        "maxNestingDepth": "1",
+        "minAgentTurns": "2",
+        "expectedAgentTurns": "1000000",
+        "maxAgentTurns": "1000000",
+        "iterationCeiling": "1000000",
+        "riskFlags": "AGENT_DRIVEN_LOOP,HIGH_ITERATION_CEILING"
       }
     }
   ],

@@ -4,7 +4,6 @@ package com.agentforge4j.config.loader.validation;
 import com.agentforge4j.core.agent.AgentDefinition;
 import com.agentforge4j.core.exception.UnresolvedAgentReferenceException;
 import com.agentforge4j.core.workflow.BlueprintStructureException;
-import com.agentforge4j.core.workflow.Executable;
 import com.agentforge4j.core.workflow.WorkflowAgentRefCollector;
 import com.agentforge4j.core.workflow.WorkflowAgentRefCollector.AgentRefSite;
 import com.agentforge4j.core.workflow.WorkflowDefinition;
@@ -13,13 +12,11 @@ import com.agentforge4j.core.workflow.reachability.AmbiguousStepId;
 import com.agentforge4j.core.workflow.reachability.ReachableStepGraph;
 import com.agentforge4j.core.workflow.reachability.WorkflowRefResolver;
 import com.agentforge4j.core.workflow.requirement.WorkflowRequirement;
-import com.agentforge4j.core.workflow.step.StepDefinition;
 import com.agentforge4j.core.workflow.step.behaviour.ContextEqualityContract;
 import com.agentforge4j.core.workflow.step.behaviour.InputBehaviour;
 import com.agentforge4j.core.workflow.step.behaviour.RetryPreviousBehaviour;
 import com.agentforge4j.core.workflow.step.behaviour.ValidateBehaviour;
 import com.agentforge4j.core.workflow.step.behaviour.WorkflowBehaviour;
-import com.agentforge4j.core.workflow.step.blueprint.BlueprintRef;
 import com.agentforge4j.util.Validate;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -291,25 +288,6 @@ public final class WorkflowValidator {
   }
 
   /**
-   * Collects step ids reachable within a single workflow's own {@code steps()} list — used only by
-   * {@link #validateWorkflowRequirements}, whose {@code requirement.stepId()} targets are scoped to a
-   * workflow's own directly-nested inline sub-workflows. Deliberately independent of the retry-ref
-   * check's own (blueprint-body-aware) step-id collection: this method's exact traversal shape is
-   * unchanged from before this fix and is out of scope for CL-1.
-   */
-  private static void collectStepIds(List<Executable> steps, Set<String> stepIds) {
-    for (Executable executable : steps) {
-      if (executable instanceof StepDefinition step) {
-        stepIds.add(step.stepId());
-      } else if (executable instanceof BlueprintRef) {
-        // No step ids to collect here.
-      } else if (executable instanceof WorkflowDefinition nested) {
-        collectStepIds(nested.steps(), stepIds);
-      }
-    }
-  }
-
-  /**
    * Verifies the structural integrity of each workflow's {@code requirements} declarations: requirement-id uniqueness,
    * that a targeted {@code stepId} resolves to a real step, and that no two requirements of the same type target the
    * same site. Requirement {@code type}, {@code action} values, and {@code default} payloads are opaque and are not
@@ -320,16 +298,17 @@ public final class WorkflowValidator {
    * @throws IllegalArgumentException when a requirement declaration is structurally invalid
    */
   public void validateRequirements(Map<String, WorkflowDefinition> workflows) {
-    workflows.values().forEach(WorkflowValidator::validateWorkflowRequirements);
+    workflows.values().forEach(this::validateWorkflowRequirements);
   }
 
-  private static void validateWorkflowRequirements(WorkflowDefinition workflow) {
+  private void validateWorkflowRequirements(WorkflowDefinition workflow) {
     List<WorkflowRequirement> requirements = workflow.requirements();
     if (requirements.isEmpty()) {
       return;
     }
     Set<String> stepIds = new HashSet<>();
-    collectStepIds(workflow.steps(), stepIds);
+    runIgnoringBlueprintStructure(() -> WorkflowTreeWalker.walk(workflow, maxTraversalDepth,
+        (step, scope) -> stepIds.add(step.stepId())));
     Set<String> seenIds = new HashSet<>();
     Set<String> seenTargets = new HashSet<>();
     for (WorkflowRequirement requirement : requirements) {

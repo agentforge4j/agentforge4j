@@ -117,7 +117,7 @@
       "properties": {
         "type": {
           "type": "string",
-          "enum": ["AGENT", "SPAR", "WORKFLOW", "INPUT", "RESOURCE", "BRANCH", "FAIL", "RETRY_PREVIOUS", "VALIDATE", "ASSIGN_CONTEXT"]
+          "enum": ["AGENT", "SPAR", "WORKFLOW", "INPUT", "RESOURCE", "BRANCH", "FAIL", "RETRY_PREVIOUS", "VALIDATE", "ASSIGN_CONTEXT", "AGGREGATE"]
         }
       },
       "required": ["type"],
@@ -134,7 +134,8 @@
         { "$ref": "#/$defs/FailBehaviour" },
         { "$ref": "#/$defs/RetryPreviousBehaviour" },
         { "$ref": "#/$defs/ValidateBehaviour" },
-        { "$ref": "#/$defs/AssignContextBehaviour" }
+        { "$ref": "#/$defs/AssignContextBehaviour" },
+        { "$ref": "#/$defs/AggregateBehaviour" }
       ]
     },
     "AgentBehaviour": {
@@ -293,6 +294,25 @@
         "contextKey": { "type": "string", "minLength": 1 }
       },
       "required": ["artifactPath", "jsonPointer", "contextKey"]
+    },
+    "AggregateBehaviour": {
+      "type": "object",
+      "required": ["type", "aggregatorId", "outputContextKeyPrefix", "transition"],
+      "additionalProperties": false,
+      "properties": {
+        "type": { "type": "string", "const": "AGGREGATE" },
+        "aggregatorId": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Id of the registered ContextAggregator applied over this step's declared contextMapping input keys."
+        },
+        "outputContextKeyPrefix": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Prefix every field returned by the aggregator is written under, joined with '.'."
+        },
+        "transition": { "$ref": "#/$defs/StepTransition" }
+      }
     },
     "AssignContextBehaviour": {
       "type": "object",

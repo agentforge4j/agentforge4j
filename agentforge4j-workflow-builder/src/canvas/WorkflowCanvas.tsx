@@ -156,6 +156,12 @@ type InnerProps = {
   issueCountByBackendStepId: Record<string, number>;
   readOnly: boolean;
   onInsertOnEdge?: (edgeId: string) => void;
+  /** Suppresses the "Select start step" starter-hint overlay even on a fresh starter canvas.
+   * Used when the guided-mode stepper panel is already showing the same call to action, so the
+   * two overlays (each sized to their own content) don't compete for the same canvas space —
+   * most visible on a short/narrow viewport, where together they don't fit. Defaults to false;
+   * outside guided mode the starter hint's behavior is unchanged. */
+  hideStarterHint?: boolean;
 };
 
 function WorkflowCanvasInner({
@@ -167,10 +173,11 @@ function WorkflowCanvasInner({
   issueCountByBackendStepId,
   readOnly,
   onInsertOnEdge,
+  hideStarterHint = false,
 }: InnerProps) {
   const { screenToFlowPosition, setCenter } = useReactFlow();
   const nodesInitialized = useNodesInitialized();
-  const showStarterHint = isStarterCanvas(model);
+  const showStarterHint = isStarterCanvas(model) && !hideStarterHint;
 
   const derivedFlowNodes = useMemo(
     () => toFlowNodes(model, selectedId, issueCountByBackendStepId, readOnly),
@@ -413,6 +420,7 @@ export type WorkflowCanvasProps = {
   issueCountByBackendStepId?: Record<string, number>;
   readOnly?: boolean;
   onInsertOnEdge?: (edgeId: string) => void;
+  hideStarterHint?: boolean;
 };
 
 export function WorkflowCanvas({

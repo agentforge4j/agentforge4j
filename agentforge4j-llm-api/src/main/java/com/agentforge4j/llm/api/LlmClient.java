@@ -1,13 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 package com.agentforge4j.llm.api;
 
-import java.util.Optional;
-
 /**
  * Executes LLM requests for a single registered provider (for example OpenAI, Ollama, or Claude).
  * <p>
- * Implementations are instantiated by {@code LlmClientFactory} and managed by
- * {@code LlmClientResolver}. Each client instance is bound to one provider id returned by
+ * Implementations are typically instantiated and managed by a discovery mechanism provided by a
+ * consuming module. Each client instance is bound to one provider id returned by
  * {@link #getProviderName()}.
  */
 public interface LlmClient {
@@ -29,32 +27,14 @@ public interface LlmClient {
    */
   LlmExecutionResponse execute(LlmExecutionRequest request);
 
-  default Optional<LlmRetryPolicy> getRetryPolicy() {
-    return Optional.empty();
-  }
-
   /**
-   * Removes markdown code fence markers from the input if present.
-   * <p>
-   * Strips leading {@code ```} followed by an optional language identifier, and trailing
-   * {@code ```}. Returns the input unchanged if it does not start with backticks.
+   * The retry policy this client requests, or {@code null} if it has none. Callers that need a
+   * policy either way should fall back to {@link LlmRetryPolicy#defaults()} on a {@code null}
+   * return.
    *
-   * @param input the potentially fence-marked string
-   * @return the input with fences removed, or the input unchanged
+   * @return the requested retry policy, or {@code null} when this client has none
    */
-  static String stripCodeFence(String input) {
-    if (input == null || input.isBlank() || !input.startsWith("```")) {
-      return input;
-    }
-
-    int start = input.indexOf('\n');
-    if (start < 0) {
-      return input;
-    }
-
-    int end = input.lastIndexOf("```");
-    return ((end > start)
-        ? input.substring(start + 1, end)
-        : input.substring(start + 1)).strip();
+  default LlmRetryPolicy getRetryPolicy() {
+    return null;
   }
 }
