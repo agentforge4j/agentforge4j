@@ -11,5 +11,8 @@ export const CATALOGUE_COPY = {
   versionLabel: 'Version',
   graphHeading: 'Step graph',
   graphAltText: (name: string) => `Step graph for the ${name} workflow`,
-  openInBuilder: 'Open in Builder',
+  openInBuilder: 'Open the Builder',
+  openInBuilderNote:
+    "Opens a new, empty workflow in the Builder — this catalogue workflow isn't loaded " +
+    'automatically yet.',
 } as const;

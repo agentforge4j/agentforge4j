@@ -43,9 +43,10 @@ describe('CatalogueDetailPage (real generated data)', () => {
     expect(graph.querySelector('svg')).not.toBeNull();
   });
 
-  test('renders an "Open in Builder" link pointing at /builder', () => {
+  test('renders an "Open the Builder" link pointing at /builder, with a note that it opens an empty canvas', () => {
     renderDetailAt(estimator.id);
-    expect(screen.getByRole('link', { name: 'Open in Builder' })).toHaveAttribute('href', '/builder');
+    expect(screen.getByRole('link', { name: 'Open the Builder' })).toHaveAttribute('href', '/builder');
+    expect(screen.getByText(/isn't loaded automatically yet/)).toBeInTheDocument();
   });
 
   test('renders no docs/usage link anywhere on the page', () => {

@@ -25,7 +25,7 @@ export default function CataloguePage() {
               {workflow.description && (
                 <p className="mt-2 text-sm text-fg-muted">{workflow.description}</p>
               )}
-              <span className="mt-4 inline-block rounded-full bg-success/10 px-3 py-1 text-sm font-medium text-success">
+              <span className="mt-4 inline-block rounded-full bg-success/10 px-3 py-1 text-sm font-medium text-success-ink">
                 {CATALOGUE_COPY.shippedBadge}
               </span>
             </li>
