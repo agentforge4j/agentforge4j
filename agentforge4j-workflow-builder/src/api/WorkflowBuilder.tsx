@@ -6,6 +6,7 @@ import { ACTION_LABELS, GUIDED_STAGE_LABELS } from '../copy/workflow-terminology
 import { GuidedStepper } from '../guided/GuidedStepper';
 import { createInitialCanvasModel, useCanvasState } from '../hooks/useCanvasState';
 import { useBuilderMode } from '../hooks/useBuilderMode';
+import { useNarrowContainerGate } from '../hooks/useNarrowContainerGate';
 import type { DraftValidationIssue } from '../hooks/useWorkflowDraft';
 import { useWorkflowDraft } from '../hooks/useWorkflowDraft';
 import { StepConfigPanel } from '../inspector/StepConfigPanel';
@@ -26,6 +27,7 @@ import type { EditorValidation } from '../validation/validateWorkflow';
 import { validateWorkflow as defaultValidateWorkflow } from '../validation/validateWorkflow';
 import { exportWorkflowBundle } from '../io/browser/download';
 import { importWorkflowFromFilePicker } from '../io/browser/upload';
+import { NarrowViewportNotice } from './NarrowViewportNotice';
 import type { WorkflowBuilderProps } from './types';
 import { emptyWorkflow } from './types';
 import '../styles/tokens.css';
@@ -140,6 +142,7 @@ export function WorkflowBuilder({
   mode = 'editable',
 }: WorkflowBuilderProps) {
   const readOnly = mode === 'readOnly';
+  const { containerRef, isNarrow } = useNarrowContainerGate<HTMLDivElement>();
   const seed = initialWorkflow ?? emptyWorkflow();
   const { state, dispatch, dirty } = useBuilderState(seed);
   const [pending, setPending] = useState<PendingState>({});
@@ -519,213 +522,220 @@ export function WorkflowBuilder({
 
   return (
     <div
+      ref={containerRef}
       className={rootClass}
       data-testid="workflow-builder"
       aria-readonly={readOnly || undefined}
       {...rootStyle}
     >
-      <header className="workflow-builder__header workflow-builder__toolbar">
-        <div className="workflow-builder__title-group">
-          <span
-            className={['workflow-builder__dirty-dot', dirty ? 'workflow-builder__dirty-dot--active' : ''].join(' ')}
-            aria-hidden
-            title={dirty ? ACTION_LABELS.unsavedChanges : ACTION_LABELS.upToDate}
-          />
-          <input
-            className="workflow-builder__name-input"
-            value={model.workflowName}
-            placeholder={ACTION_LABELS.workflowNamePlaceholder}
-            aria-label={ACTION_LABELS.workflowNameLabel}
-            readOnly={readOnly}
-            onChange={(e) => setModel((m) => ({ ...m, workflowName: e.target.value }))}
-          />
-          <input
-            className="workflow-builder__id-input"
-            value={model.workflowId}
-            placeholder={ACTION_LABELS.workflowIdPlaceholder}
-            aria-label={ACTION_LABELS.workflowIdLabel}
-            readOnly={readOnly}
-            onChange={(e) => setModel((m) => ({ ...m, workflowId: e.target.value }))}
-          />
-          {readOnly ? (
-            <span
-              className="workflow-builder__readonly-badge"
-              data-testid="workflow-builder-readonly-badge"
-              title={ACTION_LABELS.readOnlyBadgeTitle}
-            >
-              {ACTION_LABELS.readOnlyBadge}
-            </span>
+      {isNarrow ? (
+        <NarrowViewportNotice />
+      ) : (
+        <>
+          <header className="workflow-builder__header workflow-builder__toolbar">
+            <div className="workflow-builder__title-group">
+              <span
+                className={['workflow-builder__dirty-dot', dirty ? 'workflow-builder__dirty-dot--active' : ''].join(' ')}
+                aria-hidden
+                title={dirty ? ACTION_LABELS.unsavedChanges : ACTION_LABELS.upToDate}
+              />
+              <input
+                className="workflow-builder__name-input"
+                value={model.workflowName}
+                placeholder={ACTION_LABELS.workflowNamePlaceholder}
+                aria-label={ACTION_LABELS.workflowNameLabel}
+                readOnly={readOnly}
+                onChange={(e) => setModel((m) => ({ ...m, workflowName: e.target.value }))}
+              />
+              <input
+                className="workflow-builder__id-input"
+                value={model.workflowId}
+                placeholder={ACTION_LABELS.workflowIdPlaceholder}
+                aria-label={ACTION_LABELS.workflowIdLabel}
+                readOnly={readOnly}
+                onChange={(e) => setModel((m) => ({ ...m, workflowId: e.target.value }))}
+              />
+              {readOnly ? (
+                <span
+                  className="workflow-builder__readonly-badge"
+                  data-testid="workflow-builder-readonly-badge"
+                  title={ACTION_LABELS.readOnlyBadgeTitle}
+                >
+                  {ACTION_LABELS.readOnlyBadge}
+                </span>
+              ) : null}
+            </div>
+            <div className="workflow-builder__toolbar-actions">
+            {!readOnly ? (
+            <div className="workflow-builder__mode-toggle" role="group" aria-label="Builder mode">
+              <button
+                type="button"
+                className={['wf-button', builderMode === 'guided' ? 'wf-button--primary' : 'wf-button--ghost'].join(' ')}
+                data-testid="workflow-builder-mode-guided"
+                onClick={() => setBuilderMode('guided')}
+              >
+                {ACTION_LABELS.guidedMode}
+              </button>
+              <button
+                type="button"
+                className={['wf-button', builderMode === 'advanced' ? 'wf-button--primary' : 'wf-button--ghost'].join(' ')}
+                data-testid="workflow-builder-mode-advanced"
+                onClick={() => setBuilderMode('advanced')}
+              >
+                {ACTION_LABELS.advancedMode}
+              </button>
+            </div>
+            ) : null}
+            {!readOnly && capabilities.import ? (
+              <button
+                type="button"
+                className="wf-button wf-button--ghost"
+                data-testid="workflow-builder-import"
+                disabled={pending.import}
+                onClick={() => void handleImport()}
+              >
+                {pending.import ? ACTION_LABELS.importing : ACTION_LABELS.import}
+              </button>
+            ) : null}
+            <ValidationPill model={model} clientIssues={validationIssues} onFix={focusIssue} />
+            {capabilities.export ? (
+              <button
+                type="button"
+                className="wf-button wf-button--ghost"
+                disabled={pending.export}
+                data-testid="workflow-builder-export"
+                onClick={() => void handleExport()}
+              >
+                {pending.export ? ACTION_LABELS.exporting : ACTION_LABELS.export}
+              </button>
+            ) : null}
+            {!readOnly && capabilities.save ? (
+              <button
+                type="button"
+                className="wf-button wf-button--primary"
+                disabled={pending.save}
+                data-testid="workflow-builder-save"
+                onClick={() => void handleSave()}
+              >
+                {pending.save ? ACTION_LABELS.saving : ACTION_LABELS.save}
+              </button>
+            ) : null}
+            {!readOnly && capabilities.run ? (
+              <button
+                type="button"
+                className="wf-button wf-button--secondary"
+                disabled={pending.run}
+                data-testid="workflow-builder-run"
+                onClick={() => void handleRun()}
+              >
+                {pending.run ? ACTION_LABELS.running : ACTION_LABELS.run}
+              </button>
+            ) : null}
+            {!readOnly && capabilities.publish ? (
+              <button
+                type="button"
+                className="wf-button wf-button--primary"
+                disabled={pending.publish}
+                data-testid="workflow-builder-publish"
+                onClick={() => void handlePublish()}
+              >
+                {pending.publish ? ACTION_LABELS.publishing : ACTION_LABELS.publish}
+              </button>
+            ) : null}
+            {!readOnly && capabilities.aiAssist ? (
+              <button
+                type="button"
+                className="wf-button wf-button--secondary"
+                data-testid="workflow-builder-ai"
+                aria-label={ACTION_LABELS.aiAssist}
+              >
+                {ACTION_LABELS.aiAssist}
+              </button>
+            ) : null}
+            </div>
+            <p className="workflow-builder__subtitle">{subtitle}</p>
+          </header>
+
+          {model.unsupported ? (
+            <div className="workflow-builder__banner workflow-builder__banner--warning" role="status">
+              <p className="workflow-builder__banner-title">{ACTION_LABELS.unsupportedBannerTitle}</p>
+              {model.unsupportedReasons?.length ? (
+                <ul className="workflow-builder__banner-list">
+                  {model.unsupportedReasons.map((reason, index) => (
+                    <li key={index}>{reason}</li>
+                  ))}
+                </ul>
+              ) : null}
+            </div>
           ) : null}
-        </div>
-        <div className="workflow-builder__toolbar-actions">
-        {!readOnly ? (
-        <div className="workflow-builder__mode-toggle" role="group" aria-label="Builder mode">
-          <button
-            type="button"
-            className={['wf-button', builderMode === 'guided' ? 'wf-button--primary' : 'wf-button--ghost'].join(' ')}
-            data-testid="workflow-builder-mode-guided"
-            onClick={() => setBuilderMode('guided')}
-          >
-            {ACTION_LABELS.guidedMode}
-          </button>
-          <button
-            type="button"
-            className={['wf-button', builderMode === 'advanced' ? 'wf-button--primary' : 'wf-button--ghost'].join(' ')}
-            data-testid="workflow-builder-mode-advanced"
-            onClick={() => setBuilderMode('advanced')}
-          >
-            {ACTION_LABELS.advancedMode}
-          </button>
-        </div>
-        ) : null}
-        {!readOnly && capabilities.import ? (
-          <button
-            type="button"
-            className="wf-button wf-button--ghost"
-            data-testid="workflow-builder-import"
-            disabled={pending.import}
-            onClick={() => void handleImport()}
-          >
-            {pending.import ? ACTION_LABELS.importing : ACTION_LABELS.import}
-          </button>
-        ) : null}
-        <ValidationPill model={model} clientIssues={validationIssues} onFix={focusIssue} />
-        {capabilities.export ? (
-          <button
-            type="button"
-            className="wf-button wf-button--ghost"
-            disabled={pending.export}
-            data-testid="workflow-builder-export"
-            onClick={() => void handleExport()}
-          >
-            {pending.export ? ACTION_LABELS.exporting : ACTION_LABELS.export}
-          </button>
-        ) : null}
-        {!readOnly && capabilities.save ? (
-          <button
-            type="button"
-            className="wf-button wf-button--primary"
-            disabled={pending.save}
-            data-testid="workflow-builder-save"
-            onClick={() => void handleSave()}
-          >
-            {pending.save ? ACTION_LABELS.saving : ACTION_LABELS.save}
-          </button>
-        ) : null}
-        {!readOnly && capabilities.run ? (
-          <button
-            type="button"
-            className="wf-button wf-button--secondary"
-            disabled={pending.run}
-            data-testid="workflow-builder-run"
-            onClick={() => void handleRun()}
-          >
-            {pending.run ? ACTION_LABELS.running : ACTION_LABELS.run}
-          </button>
-        ) : null}
-        {!readOnly && capabilities.publish ? (
-          <button
-            type="button"
-            className="wf-button wf-button--primary"
-            disabled={pending.publish}
-            data-testid="workflow-builder-publish"
-            onClick={() => void handlePublish()}
-          >
-            {pending.publish ? ACTION_LABELS.publishing : ACTION_LABELS.publish}
-          </button>
-        ) : null}
-        {!readOnly && capabilities.aiAssist ? (
-          <button
-            type="button"
-            className="wf-button wf-button--secondary"
-            data-testid="workflow-builder-ai"
-            aria-label={ACTION_LABELS.aiAssist}
-          >
-            {ACTION_LABELS.aiAssist}
-          </button>
-        ) : null}
-        </div>
-        <p className="workflow-builder__subtitle">{subtitle}</p>
-      </header>
 
-      {model.unsupported ? (
-        <div className="workflow-builder__banner workflow-builder__banner--warning" role="status">
-          <p className="workflow-builder__banner-title">{ACTION_LABELS.unsupportedBannerTitle}</p>
-          {model.unsupportedReasons?.length ? (
-            <ul className="workflow-builder__banner-list">
-              {model.unsupportedReasons.map((reason, index) => (
-                <li key={index}>{reason}</li>
-              ))}
-            </ul>
+          {!readOnly && insertOnEdgeId ? (
+            <div className="workflow-builder__banner" role="status" data-testid="insert-mode-banner">
+              <p className="workflow-builder__banner-title">{ACTION_LABELS.insertStepHere}</p>
+              <p>{ACTION_LABELS.chooseStepDescription}</p>
+              <button
+                type="button"
+                className="wf-button wf-button--ghost"
+                onClick={() => setInsertOnEdgeId(null)}
+              >
+                {ACTION_LABELS.okShort}
+              </button>
+            </div>
           ) : null}
-        </div>
-      ) : null}
 
-      {!readOnly && insertOnEdgeId ? (
-        <div className="workflow-builder__banner" role="status" data-testid="insert-mode-banner">
-          <p className="workflow-builder__banner-title">{ACTION_LABELS.insertStepHere}</p>
-          <p>{ACTION_LABELS.chooseStepDescription}</p>
-          <button
-            type="button"
-            className="wf-button wf-button--ghost"
-            onClick={() => setInsertOnEdgeId(null)}
-          >
-            {ACTION_LABELS.okShort}
-          </button>
-        </div>
-      ) : null}
+          <div className="workflow-builder__workspace">
+            {!readOnly && builderMode === 'guided' ? (
+              <div className="workflow-builder__guided">
+                <GuidedStepper
+                  stages={guidedStages}
+                  activeIndex={activeGuidedIndex === -1 ? guidedStages.length - 1 : activeGuidedIndex}
+                  onStageAction={onGuidedStageAction}
+                />
+              </div>
+            ) : null}
 
-      <div className="workflow-builder__workspace">
-        {!readOnly && builderMode === 'guided' ? (
-          <div className="workflow-builder__guided">
-            <GuidedStepper
-              stages={guidedStages}
-              activeIndex={activeGuidedIndex === -1 ? guidedStages.length - 1 : activeGuidedIndex}
-              onStageAction={onGuidedStageAction}
+            {!readOnly ? (
+              <StepPalette
+                mode={builderMode}
+                onAddStep={(kind) => onAddStepFromLibrary(kind)}
+                defaultCollapsed={builderMode !== 'advanced'}
+              />
+            ) : null}
+
+            <div className="workflow-builder__canvas" data-testid="workflow-builder-canvas">
+              <WorkflowCanvas
+                model={model}
+                onModelChange={setModel}
+                onSelectNode={setSelectedId}
+                selectedId={selectedId}
+                onAppend={appendNode}
+                issueCountByBackendStepId={issueCountByBackendStepId}
+                readOnly={readOnly}
+                onInsertOnEdge={onInsertOnEdge}
+                hideStarterHint={builderMode === 'guided'}
+              />
+            </div>
+
+            <StepConfigPanel
+              model={model}
+              selectedId={selectedId}
+              mode={builderMode}
+              onClose={() => setSelectedId(null)}
+              onDelete={handleDeleteNode}
+              onUpdateNodeData={updateNodeData}
+              agentCatalog={agentCatalog}
+              readOnly={readOnly}
+              onReposition={onReposition}
             />
           </div>
-        ) : null}
 
-        {!readOnly ? (
-          <StepPalette
-            mode={builderMode}
-            onAddStep={(kind) => onAddStepFromLibrary(kind)}
-            defaultCollapsed={builderMode !== 'advanced'}
-          />
-        ) : null}
-
-        <div className="workflow-builder__canvas" data-testid="workflow-builder-canvas">
-          <WorkflowCanvas
-            model={model}
-            onModelChange={setModel}
-            onSelectNode={setSelectedId}
-            selectedId={selectedId}
-            onAppend={appendNode}
-            issueCountByBackendStepId={issueCountByBackendStepId}
-            readOnly={readOnly}
-            onInsertOnEdge={onInsertOnEdge}
-            hideStarterHint={builderMode === 'guided'}
-          />
-        </div>
-
-        <StepConfigPanel
-          model={model}
-          selectedId={selectedId}
-          mode={builderMode}
-          onClose={() => setSelectedId(null)}
-          onDelete={handleDeleteNode}
-          onUpdateNodeData={updateNodeData}
-          agentCatalog={agentCatalog}
-          readOnly={readOnly}
-          onReposition={onReposition}
-        />
-      </div>
-
-      {activeError ? (
-        <p className="workflow-builder__status workflow-builder__status--error" role="alert">
-          {activeError}
-        </p>
-      ) : null}
+          {activeError ? (
+            <p className="workflow-builder__status workflow-builder__status--error" role="alert">
+              {activeError}
+            </p>
+          ) : null}
+        </>
+      )}
     </div>
   );
 }

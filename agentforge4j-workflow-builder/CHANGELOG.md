@@ -8,6 +8,20 @@ workflow catalog.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this package adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- Narrow-container gate: below a supported container width (`47.9375rem` / 767px, matching
+  the narrow-viewport breakpoint already used elsewhere in `workflow-builder.css`), the builder
+  no longer renders the editor at all. It measures its own rendered root element via
+  `ResizeObserver` (never `window.innerWidth`, since the builder may be embedded in a host panel
+  of arbitrary size) and shows a message directing the user to a larger screen instead. This is
+  a full replacement, not an overlay — the canvas, palette, inspector, and toolbar are not
+  mounted underneath it, and there is no reduced or read-only mobile editing surface (deferred,
+  out of scope for 0.1.0). This is the resolution for the mobile "+ Add step" control, the
+  obstructed name field, and the checklist overlay blocking the canvas: those interactions are
+  now unreachable below the breakpoint rather than individually patched.
+
 ## [0.5.0] - 2026-07-12
 
 (0.4.0's changes are folded in below — that version was merged to `main` but never published to
