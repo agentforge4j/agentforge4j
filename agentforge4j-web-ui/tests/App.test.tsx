@@ -20,7 +20,6 @@ describe('App routing', () => {
     ['/use', 'Get started'],
     ['/catalogue', 'Workflow catalogue'],
     ['/catalogue/some-workflow', 'Workflow catalogue'],
-    ['/builder', 'Builder'],
     ['/architecture', 'Architecture'],
     ['/releases', 'Releases'],
     ['/community', 'Community & contributing'],
@@ -31,6 +30,11 @@ describe('App routing', () => {
   ])('renders the %s route heading', (path, heading) => {
     renderAt(path);
     expect(screen.getByRole('heading', { level: 1, name: heading })).toBeInTheDocument();
+  });
+
+  test('renders the /builder route with the workflow builder mounted', () => {
+    renderAt('/builder');
+    expect(screen.getByTestId('workflow-builder')).toBeInTheDocument();
   });
 
   test('renders NotFoundPage for an unmatched path', () => {
