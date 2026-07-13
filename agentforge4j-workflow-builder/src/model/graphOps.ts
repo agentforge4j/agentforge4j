@@ -228,6 +228,23 @@ export function getRunsAfterState(model: CanvasModel, nodeId: string | null): Ru
 }
 
 /**
+ * Nodes eligible to become the workflow's start step via {@link repositionAfter}
+ * with {@link START_SENTINEL} — the same operation the inspector's "Runs after"
+ * selector performs when its Start option is chosen. Reuses
+ * {@link getRunsAfterState}'s own eligibility rules (top-level, not
+ * DECISION/RETRY, not branch-owned, at most one linear predecessor/successor)
+ * rather than duplicating them, so a node that cannot be repositioned from the
+ * inspector is never offered as a start-step candidate either. Excludes the
+ * current start node itself.
+ */
+export function startStepCandidateIds(model: CanvasModel): string[] {
+  return model.nodes
+    .filter((n) => n.id !== model.startNodeId)
+    .filter((n) => getRunsAfterState(model, n.id).kind === 'editable')
+    .map((n) => n.id);
+}
+
+/**
  * Repair every node-data reference to a just-deleted node id so the model never
  * carries a dangling reference into serialization (where the strict
  * `serializeStepExecutable` throws `Branch target missing`). Pure model→model;

@@ -5,6 +5,7 @@ import {
   pruneReferences,
   repositionAfter,
   spliceEdgeWithNode,
+  startStepCandidateIds,
   START_SENTINEL,
   unreachableNodeIds,
 } from '../src/model/graphOps';
@@ -187,6 +188,43 @@ describe('getRunsAfterState', () => {
       // ...but C must be rejected as a target by the cycle guard.
       expect(state.targets.map((t) => t.value)).not.toContain('C');
     }
+  });
+});
+
+describe('startStepCandidateIds', () => {
+  it('offers every other top-level node as a start-step candidate in a simple chain', () => {
+    const m = model([node('A'), node('B'), node('C')], [linEdge('A', 'B'), linEdge('B', 'C')], 'A');
+    expect(startStepCandidateIds(m)).toEqual(['B', 'C']);
+  });
+
+  it('excludes the current start node itself', () => {
+    const m = model([node('A'), node('B')], [linEdge('A', 'B')], 'A');
+    expect(startStepCandidateIds(m)).not.toContain('A');
+  });
+
+  it('excludes DECISION and RETRY nodes (mirrors getRunsAfterState hiding their own selector)', () => {
+    const m = model(
+      [node('A'), node('D', 'DECISION'), node('R', 'RETRY')],
+      [linEdge('A', 'D'), linEdge('D', 'R')],
+      'A',
+    );
+    const candidates = startStepCandidateIds(m);
+    expect(candidates).not.toContain('D');
+    expect(candidates).not.toContain('R');
+  });
+
+  it('excludes a node with multiple linear predecessors (join)', () => {
+    const m = model(
+      [node('A'), node('B'), node('C')],
+      [linEdge('A', 'C'), linEdge('B', 'C')],
+      'A',
+    );
+    expect(startStepCandidateIds(m)).not.toContain('C');
+  });
+
+  it('returns no candidates for a lone node', () => {
+    const m = model([node('A')], [], 'A');
+    expect(startStepCandidateIds(m)).toEqual([]);
   });
 });
 

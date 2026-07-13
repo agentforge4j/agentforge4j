@@ -8,6 +8,23 @@ workflow catalog.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this package adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- A persistent "Start" marker on whichever node is the workflow's current start step,
+  visible on the canvas in both Guided and Advanced mode — previously the entry point could
+  only be inferred from graph position, or was labeled explicitly in Advanced mode's
+  starter hint alone.
+- A direct "Start step" chooser in Guided mode, shown once a workflow has more than one
+  node: a dropdown listing every eligible node, reassigning the start step on selection.
+  It reuses the same reposition-to-Start mechanism as the inspector's existing "Runs after:
+  Start" option rather than a parallel one; the eligibility rules (top-level, not
+  DECISION/RETRY, not branch-owned, at most one linear predecessor/successor) are shared
+  with that selector too.
+- A visible, persisted on-page confirmation after a successful Export, showing the produced
+  filename (e.g. "Exported my-workflow.workflow.zip") and a dismiss control — replacing the
+  previous silent revert to the button's resting state with no other feedback.
+
 ## [0.5.0] - 2026-07-12
 
 (0.4.0's changes are folded in below — that version was merged to `main` but never published to
