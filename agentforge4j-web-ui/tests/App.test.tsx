@@ -19,7 +19,6 @@ describe('App routing', () => {
     ['/docs', 'Documentation'],
     ['/use', 'Get started'],
     ['/catalogue', 'Workflow catalogue'],
-    ['/catalogue/some-workflow', 'Workflow catalogue'],
     ['/architecture', 'Architecture'],
     ['/releases', 'Releases'],
     ['/community', 'Community & contributing'],
@@ -39,6 +38,20 @@ describe('App routing', () => {
 
   test('renders NotFoundPage for an unmatched path', () => {
     renderAt('/this-route-does-not-exist');
+    expect(screen.getByRole('heading', { level: 1, name: 'Page not found' })).toBeInTheDocument();
+  });
+});
+
+describe('catalogue detail routing', () => {
+  test('a real workflow id renders the catalogue detail page, not the list page', () => {
+    renderAt('/catalogue/workflow-execution-estimator');
+    expect(
+      screen.getByRole('heading', { level: 1, name: 'Workflow Execution Estimator' }),
+    ).toBeInTheDocument();
+  });
+
+  test('an unmatched workflow id renders NotFoundPage, not a fabricated placeholder', () => {
+    renderAt('/catalogue/some-workflow-that-does-not-exist');
     expect(screen.getByRole('heading', { level: 1, name: 'Page not found' })).toBeInTheDocument();
   });
 });

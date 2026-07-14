@@ -53,3 +53,60 @@ body { background-color: var(--color-bg); color: var(--color-fg); }
     transition-duration: 0.01ms !important;
   }
 }
+
+/*
+ * Catalogue detail page's static workflow-graph SVG (src/lib/renderWorkflowSvg.ts). Three
+ * visual variants mirror the interactive builder canvas's own Step/Decision/Loop distinction
+ * (agentforge4j-workflow-builder/src/canvas/nodes/NodeChrome.tsx's `variant` prop) via this
+ * site's own semantic color tokens, not a cross-module CSS dependency.
+ */
+.wf-svg {
+  display: block;
+  max-width: 100%;
+  height: auto;
+}
+
+.wf-svg-node--step {
+  fill: var(--color-bg-elevated);
+  stroke: var(--color-brand);
+  stroke-width: 1.5;
+}
+
+.wf-svg-node--decision {
+  fill: var(--color-bg-elevated);
+  stroke: var(--color-warning);
+  stroke-width: 1.5;
+}
+
+.wf-svg-node--loop {
+  fill: var(--color-bg-elevated);
+  stroke: var(--color-success);
+  stroke-width: 1.5;
+  stroke-dasharray: 6 4;
+}
+
+.wf-svg-node-title {
+  fill: var(--color-fg);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.wf-svg-node-subtitle {
+  fill: var(--color-fg-muted);
+  font-size: 11px;
+}
+
+.wf-svg-edge {
+  fill: none;
+  stroke: var(--color-border);
+  stroke-width: 1.5;
+}
+
+.wf-svg-edge-label {
+  fill: var(--color-fg-muted);
+  font-size: 10px;
+}
+
+.wf-svg-arrowhead {
+  fill: var(--color-border);
+}
