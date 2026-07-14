@@ -12,11 +12,13 @@
     "build": "tsc -b && vite build && node scripts/copy-404.mjs",
     "preview": "vite preview",
     "lint": "eslint src scripts --max-warnings 0",
+    "prelint:content-gate": "npm run catalogue:build",
     "lint:content-gate": "node scripts/lint-content-gate.mjs",
     "pretypecheck": "npm run catalogue:build",
     "typecheck": "tsc --noEmit",
     "pretest": "npm run catalogue:build",
     "test": "vitest run",
+    "pretest:content-gate": "npm run catalogue:build",
     "test:content-gate": "node --test scripts/lint-content-gate.test.mjs",
     "test:catalogue-data": "node --test scripts/build-catalogue-data.test.mjs",
     "check": "npm run lint && npm run lint:content-gate && npm run typecheck && npm run test && npm run test:content-gate && npm run test:catalogue-data && npm run build"

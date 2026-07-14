@@ -1,13 +1,22 @@
 // SPDX-License-Identifier: Apache-2.0
 //
-// Verifies the site's actual intended production hosting mechanism: GitHub Pages serves
-// `dist/404.html` (byte-identical to `dist/index.html`, per `scripts/copy-404.mjs`) with a real
-// HTTP 404 status for any unmatched path, and that page boots the SPA, which then renders the
-// correct route client-side. Deliberately does NOT use the shared `webServer` (`vite preview`) —
-// Vite's own dev/preview servers have SPA-fallback middleware baked in that would return 200 and
-// mask whether the 404.html mechanism itself actually works. This spec runs a minimal static file
-// server against the already-built `dist/` (built once for the whole run by the shared
-// `webServer` command) that returns a real, GitHub-Pages-equivalent 404.
+// Verifies the site's CURRENT, TEMPORARY Day 1 hosting mechanism only: an un-assembled SPA build
+// deployed to plain GitHub Pages, where `dist/404.html` (byte-identical to `dist/index.html`, per
+// `scripts/copy-404.mjs`) is served with a real HTTP 404 status for any path with no matching
+// on-disk file, and that page then boots the SPA client-side to render the correct route.
+//
+// HTTP 404 for a known public/catalogue route is NOT the required final production contract —
+// it is what an un-assembled SPA build unavoidably does on plain static hosting, and it is only
+// acceptable here because Day 1.5 replaces it. See `agentforge4j-ui-e2e/README.md` ("Day 1.5
+// hosting contract") for the release-blocking requirement the Assembler must satisfy before
+// launch: known public routes and known catalogue detail routes must return HTTP 200; only
+// genuinely unknown routes may return HTTP 404. Implementing that Assembler is out of scope here.
+//
+// Deliberately does NOT use the shared `webServer` (`vite preview`) — Vite's own dev/preview
+// servers have SPA-fallback middleware baked in that would return 200 and mask whether the
+// 404.html mechanism itself actually works. This spec runs a minimal static file server against
+// the already-built `dist/` (built once for the whole run by the shared `webServer` command) that
+// returns a real, GitHub-Pages-equivalent 404.
 
 import { createServer, type Server } from 'node:http';
 import { readFile } from 'node:fs/promises';
@@ -54,7 +63,7 @@ test.afterAll(async () => {
   await new Promise<void>((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())));
 });
 
-test.describe('GitHub-Pages-style static hosting', () => {
+test.describe('GitHub-Pages-style SPA-fallback hosting (Day 1 — temporary, superseded by the Day 1.5 Assembler)', () => {
   test('a real on-disk asset returns 200 (sanity check the dumb server serves real files)', async ({
     request,
   }) => {
@@ -62,7 +71,11 @@ test.describe('GitHub-Pages-style static hosting', () => {
     expect(response.status()).toBe(200);
   });
 
-  test('a nested route requested directly returns a real HTTP 404, and still boots the correct page', async ({
+  // Day 1 (current, temporary): a known public route with no matching on-disk file gets the
+  // 404.html SPA-fallback and still renders correctly client-side. This 404 status is NOT the
+  // required final answer — the Day 1.5 hosting contract (see this file's header comment and the
+  // README) requires known public routes to return HTTP 200.
+  test('a nested route requested directly currently gets the SPA-fallback 404, and still boots the correct page', async ({
     page,
   }) => {
     const response = await page.goto(`${baseUrl}/architecture`);
@@ -70,7 +83,11 @@ test.describe('GitHub-Pages-style static hosting', () => {
     await expect(page.getByRole('heading', { level: 1, name: 'Architecture' })).toBeVisible();
   });
 
-  test('refreshing a nested route (a second direct load) still renders correctly', async ({ page }) => {
+  // Day 1 (current, temporary): same SPA-fallback 404 on a second direct load (e.g. a browser
+  // refresh) of a known catalogue route. Also not the required final answer — see above.
+  test('refreshing a nested route (a second direct load) also currently gets the SPA-fallback 404, then still renders correctly', async ({
+    page,
+  }) => {
     await page.goto(`${baseUrl}/catalogue`);
     await expect(page.getByRole('heading', { level: 1, name: 'Workflow catalogue' })).toBeVisible();
     const response = await page.reload();

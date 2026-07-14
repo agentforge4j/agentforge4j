@@ -20,8 +20,9 @@ only here; the shipped packages gain no runtime dependency.
 - `specs/web-ui/` — the `web-ui` project's specs: every public route, desktop/mobile/footer
   navigation, responsive overflow across a representative viewport set, keyboard navigation, the
   Builder/Catalogue public entry surfaces (stops at "loads without crashing" — deep editor UX is
-  the separate Workflow Builder usability workstream), and the GitHub-Pages-style static-hosting
-  404 mechanism.
+  the separate Workflow Builder usability workstream), and `hosting.spec.ts`, which documents the
+  **current, temporary** Day 1 GitHub-Pages SPA-fallback mechanism — see "Day 1.5 hosting
+  contract" below for the release-blocking requirement it does not yet meet.
 - `support/` — shared page objects and selector constants, one subfolder per project
   (`support/web-ui/routes.ts` is the single source of truth for the site's route list, expected
   headings, and representative viewport sizes).
@@ -37,7 +38,12 @@ npm ci
 npm run playwright:install      # one-off: download Chromium
 npm run test:e2e:builder        # runs the builder project (starts its dev server automatically)
 npm run test:e2e:web-ui         # runs the web-ui project (builds + previews the site automatically)
+npm run test:e2e                # runs both suites, one after the other
 ```
+
+`test:e2e:builder` and `test:e2e:web-ui` use separate Playwright config files (see Layout above)
+because each has its own `webServer`; `test:e2e` is a plain sequential aggregate of the two, not a
+third config.
 
 The `builder` project's `webServer` starts the workflow-builder dev server (`npm run dev`,
 port 5173) and reuses an already-running one outside CI. The sibling
@@ -49,3 +55,23 @@ module must have its own dependencies installed (`npm ci` there) first.
 
 Chromium only, headless by default. Use `--headed` / `--debug` for local debugging (works with
 either `npm run test:e2e:builder -- --headed` or `npm run test:e2e:web-ui -- --headed`).
+
+## Day 1.5 hosting contract
+
+`specs/web-ui/hosting.spec.ts` currently documents, not endorses, the site's Day 1 hosting
+mechanism: an un-assembled SPA build on plain GitHub Pages, where any known route with no matching
+on-disk file (every route except `/`) is served via the `404.html` SPA-fallback trick and returns
+a real HTTP 404 before the SPA boots and renders the correct page client-side. That 404 is an
+artifact of shipping a plain client-side-routed SPA to static hosting, not a deliberate design
+choice, and it is **not** the contract the site must meet to launch.
+
+The Day 1.5 Assembler (not implemented in Day 1) must produce a build where, once deployed:
+
+- every known public route (e.g. `/architecture`, `/catalogue`, `/community`) returns HTTP 200;
+- every known catalogue detail route (e.g. `/catalogue/<workflow-id>` for a real workflow id)
+  returns HTTP 200;
+- only genuinely unknown routes (no matching public or catalogue-detail route) return HTTP 404.
+
+This is a release-blocking requirement for the Day 1.5 milestone. `hosting.spec.ts` will need
+rewriting once the Assembler exists, to assert HTTP 200 for known routes instead of documenting
+the current 404 fallback.
