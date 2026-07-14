@@ -96,11 +96,25 @@ function nextId(prefix: string): string {
   return `${prefix.replace(/[^a-zA-Z0-9_-]/g, '_')}-${idCounter}`;
 }
 
+interface WalkResult {
+  /** The dagre node id assigned to this Executable. */
+  id: string;
+  /**
+   * The node id(s) execution can actually be at once this Executable (and everything nested
+   * under it) completes. For a plain step this is just its own id. For a BRANCH, it is the exits
+   * of whichever branch/predicate/default target actually runs — never the branch node itself:
+   * execution cannot "skip" a branch's decision and fall through to whatever textually follows it
+   * in the workflow's top-level `steps` array.
+   */
+  exits: string[];
+}
+
 /**
  * Walks one Executable, registering it (and everything it points to) as dagre nodes/edges.
- * Returns the dagre node id assigned to `node`, so the caller can chain a sequential edge into it.
+ * Returns the id assigned to `node` plus its exit id(s), so the caller can chain a sequential
+ * edge from the right place — the executable's actual exits, not its own id, once it is a BRANCH.
  */
-function walk(g: dagre.graphlib.Graph, node: RawExecutable, parentId: string | null, edgeLabel: string | null): string {
+function walk(g: dagre.graphlib.Graph, node: RawExecutable, parentId: string | null, edgeLabel: string | null): WalkResult {
   const meta = classify(node);
   const idPrefix = asString(node.stepId) ?? asString(node.blueprintId) ?? 'step';
   const id = nextId(idPrefix);
@@ -112,27 +126,32 @@ function walk(g: dagre.graphlib.Graph, node: RawExecutable, parentId: string | n
   const behaviour = isExecutable(node.behaviour) ? node.behaviour : undefined;
   const behaviourType = asString(behaviour?.type);
   if (behaviourType === 'BRANCH' && behaviour) {
+    const branchExits: string[] = [];
     const branches = isExecutable(behaviour.branches) ? behaviour.branches : {};
     for (const [key, target] of Object.entries(branches)) {
       if (isExecutable(target)) {
-        walk(g, target, id, key);
+        branchExits.push(...walk(g, target, id, key).exits);
       }
     }
     const predicates = Array.isArray(behaviour.predicates) ? behaviour.predicates : [];
     predicates.forEach((predicate, index) => {
       if (isExecutable(predicate) && isExecutable(predicate.target)) {
-        walk(g, predicate.target, id, asString(predicate.kind) ?? `predicate-${index}`);
+        branchExits.push(...walk(g, predicate.target, id, asString(predicate.kind) ?? `predicate-${index}`).exits);
       }
     });
     if (isExecutable(behaviour.defaultBranch)) {
-      walk(g, behaviour.defaultBranch, id, 'default');
+      branchExits.push(...walk(g, behaviour.defaultBranch, id, 'default').exits);
     }
+    // A BRANCH with no renderable target at all (every branch null, no predicates, no
+    // defaultBranch) has nothing to hang a continuation off of; fall back to the branch node
+    // itself rather than silently dropping whatever follows it in the top-level schedule.
+    return { id, exits: branchExits.length > 0 ? branchExits : [id] };
   }
   if (behaviourType === 'RETRY_PREVIOUS' && behaviour && isExecutable(behaviour.fallback)) {
     walk(g, behaviour.fallback, id, 'fallback');
   }
 
-  return id;
+  return { id, exits: [id] };
 }
 
 function nodeMarkup(x: number, y: number, meta: GraphNodeMeta): string {
@@ -172,31 +191,48 @@ function edgeMarkup(points: Array<{ x: number; y: number }>, label: string): str
 }
 
 /**
+ * Builds the dagre graph (nodes + edges, unlaid-out) for a shipped workflow's `steps` array —
+ * the shared construction step behind both {@link renderWorkflowSvg} and this module's own graph
+ * regression tests, which inspect edges directly rather than parsing rendered SVG markup for
+ * source/target information the markup does not carry.
+ *
+ * The top-level sequential edge into each step is connected from the previous step's actual
+ * exit id(s), not its own node id: for a plain step these are the same, but for a BRANCH they
+ * differ, since execution reaches whatever follows a branch only via one of the branch's own
+ * targets, never directly from the branch decision node itself.
+ */
+export function buildWorkflowGraph(steps: readonly RawExecutable[]): dagre.graphlib.Graph {
+  idCounter = 0;
+  const g = new dagre.graphlib.Graph();
+  g.setGraph({ rankdir: 'TB', ranksep: RANK_SEP, nodesep: NODE_SEP, marginx: MARGIN, marginy: MARGIN });
+  g.setDefaultEdgeLabel(() => ({}));
+
+  let previousExits: string[] = [];
+  for (const step of steps) {
+    if (!isExecutable(step)) {
+      continue;
+    }
+    const { id, exits } = walk(g, step, null, null);
+    for (const exitId of previousExits) {
+      g.setEdge(exitId, id, { label: '' });
+    }
+    previousExits = exits;
+  }
+
+  return g;
+}
+
+/**
  * Renders a shipped workflow's `steps` array (the raw, schema-validated JSON as carried through
  * unmodified by build-catalogue-data.mjs) to a self-contained, deterministic SVG markup string.
  * Pure function of its input: the same steps in always produce the same markup out — no
  * randomness, no DOM access, no interactivity.
  */
 export function renderWorkflowSvg(steps: readonly RawExecutable[]): string {
-  idCounter = 0;
-  const g = new dagre.graphlib.Graph();
-  g.setGraph({ rankdir: 'TB', ranksep: RANK_SEP, nodesep: NODE_SEP, marginx: MARGIN, marginy: MARGIN });
-  g.setDefaultEdgeLabel(() => ({}));
-
-  let previousTopLevelId: string | null = null;
-  for (const step of steps) {
-    if (!isExecutable(step)) {
-      continue;
-    }
-    const id = walk(g, step, null, null);
-    if (previousTopLevelId) {
-      g.setEdge(previousTopLevelId, id, { label: '' });
-    }
-    previousTopLevelId = id;
-  }
+  const g = buildWorkflowGraph(steps);
 
   if (g.nodeCount() === 0) {
-    return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1 1" width="1" height="1" role="presentation" />';
+    return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1 1" width="1" height="1" role="presentation" class="wf-svg" />';
   }
 
   dagre.layout(g);
@@ -222,7 +258,7 @@ export function renderWorkflowSvg(steps: readonly RawExecutable[]): string {
     .join('');
 
   return [
-    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" width="${width}" height="${height}">`,
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" width="${width}" height="${height}" class="wf-svg">`,
     '<defs>',
     '<marker id="wf-svg-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">',
     '<path d="M 0 0 L 10 5 L 0 10 z" class="wf-svg-arrowhead" />',

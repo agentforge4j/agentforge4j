@@ -18,7 +18,9 @@ import {
   readManifest,
   readIndexIds,
   crossCheckBundles,
+  checkNoDuplicateIds,
   readSupportedWorkflowSchemaVersion,
+  createWorkflowValidator,
 } from './build-catalogue-data.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -173,6 +175,52 @@ test('fail-closed: invalid schema — workflow.json fails ajv validation', () =>
   );
 
   assert.throws(() => buildCatalogueData(defaultInputs(dir)), /invalid schema.*broken-workflow/s);
+});
+
+test('fail-closed: duplicate index entry — the same id listed twice', () => {
+  const dir = tempShippedWorkflowsDir();
+  writeManifest(dir);
+  writeIndex(dir, ['dup-workflow', 'dup-workflow']);
+  writeWorkflow(dir, 'dup-workflow');
+
+  assert.throws(() => buildCatalogueData(defaultInputs(dir)), /duplicate index entry.*dup-workflow/s);
+});
+
+test('checkNoDuplicateIds passes through unique ids without throwing', () => {
+  assert.doesNotThrow(() => checkNoDuplicateIds(['a', 'b', 'c']));
+});
+
+test('fail-closed: identity mismatch — workflow.json id does not match its index/bundle id', () => {
+  const dir = tempShippedWorkflowsDir();
+  writeManifest(dir);
+  writeIndex(dir, ['bundle-name']);
+  writeWorkflow(dir, 'bundle-name', { id: 'different-declared-id' });
+
+  assert.throws(
+    () => buildCatalogueData(defaultInputs(dir)),
+    /identity mismatch.*bundle-name.*different-declared-id/s,
+  );
+});
+
+test('createWorkflowValidator uses the 2020-12 dialect: a prefixItems tuple constraint is enforced, not silently ignored', () => {
+  const dir = tempShippedWorkflowsDir();
+  const schemaPath = join(dir, 'tuple.schema.json');
+  writeFileSync(
+    schemaPath,
+    JSON.stringify({
+      $schema: 'https://json-schema.org/draft/2020-12/schema',
+      type: 'array',
+      prefixItems: [{ type: 'string' }, { type: 'number' }],
+      items: false,
+    }),
+  );
+  const validate = createWorkflowValidator(schemaPath);
+
+  assert.equal(validate(['a', 1]), true);
+  // A third element is disallowed by `items: false` once the prefixItems tuple is exhausted — a
+  // 2020-12-only interaction. Draft-07 (ajv's default dialect) has no `prefixItems` keyword at
+  // all, so under the old setup this would have been silently ignored instead of rejected.
+  assert.equal(validate(['a', 1, 'unexpected']), false);
 });
 
 test('fail-closed: unsupported data — manifest workflowSchemaVersion does not match the framework constant', () => {

@@ -6,7 +6,7 @@
 // external consumers to pin a versioned artifact instead) and writes one consolidated
 // src/generated/catalogue-data.json for the site build to import statically.
 //
-// Fails closed (non-zero exit, explicit stderr message) on any of four violations, each mirroring
+// Fails closed (non-zero exit, explicit stderr message) on any of six violations, each mirroring
 // a real Java-side failure mode (see agentforge4j-config-loader's ClasspathWorkflowLoader and
 // CatalogManifest, and agentforge4j-schema's WorkflowSchemaVersion):
 //   1. missing bundle    - an id listed in `index` with no matching <id>.workflow/workflow.json
@@ -14,12 +14,15 @@
 //   3. invalid schema    - a workflow.json failing ajv validation against workflow.schema.json
 //   4. unsupported data  - the manifest's workflowSchemaVersion not matching the framework's
 //                          WorkflowSchemaVersion.SUPPORTED_WORKFLOW_SCHEMA_VERSION constant
+//   5. duplicate id      - the same id listed more than once in `index`
+//   6. identity mismatch - workflow.json's own `id` does not match the index/bundle id it is
+//                          filed under
 //
 // Never emits a partial/empty catalogue silently — a zero-workflow `index` is the one legitimate
 // "valid, deliberate empty default" (the catalogue module's own documented contract); every other
 // zero-workflow outcome here is a thrown error, not a quiet fallback.
 
-import Ajv from 'ajv';
+import Ajv2020 from 'ajv/dist/2020.js';
 import addFormats from 'ajv-formats';
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
@@ -117,6 +120,17 @@ export function listOnDiskWorkflowIds(shippedWorkflowsDir) {
     .map((entry) => entry.name.slice(0, -WORKFLOW_DIR_SUFFIX.length));
 }
 
+/** Fail-closed rule 5: duplicate id — the same id listed more than once in `index`. */
+export function checkNoDuplicateIds(indexIds) {
+  const seen = new Set();
+  for (const id of indexIds) {
+    if (seen.has(id)) {
+      throw new Error(`duplicate index entry: '${id}' is listed more than once in the index`);
+    }
+    seen.add(id);
+  }
+}
+
 /** Fail-closed rules 1 and 2: missing bundle, orphaned entry. */
 export function crossCheckBundles(shippedWorkflowsDir, indexIds) {
   for (const id of indexIds) {
@@ -166,18 +180,17 @@ export function validateManifestSchemaVersion(manifest, supportedVersion) {
   }
 }
 
-/** Compiles the real workflow.json schema with ajv, matching the strict/allErrors shape the
- * builder package's own schemaValidator.ts already uses against the same schema family. */
+/** Compiles the real workflow.json schema with ajv. `workflow.schema.json` declares itself
+ * against the 2020-12 meta-schema (`"$schema": "https://json-schema.org/draft/2020-12/schema"`),
+ * so this must use ajv's dedicated 2020-12 build (`Ajv2020`, which ships that meta-schema and its
+ * vocabulary) rather than the default `Ajv` export, which only understands draft-07 and would
+ * silently mis-evaluate any 2020-12-only keyword instead of failing loudly. */
 export function createWorkflowValidator(schemaPath) {
   if (!existsSync(schemaPath)) {
     throw new Error(`missing schema: expected ${schemaPath}`);
   }
   const schema = JSON.parse(readFileSync(schemaPath, 'utf8'));
-  // validateSchema: false — the schema declares itself against the 2020-12 meta-schema, which
-  // ajv doesn't ship by default; skipping meta-validation (not document validation) matches
-  // agentforge4j-workflow-builder/src/validation/schemaValidator.ts's own ajv setup against this
-  // same schema family.
-  const ajv = new Ajv({ strict: false, allErrors: true, validateSchema: false });
+  const ajv = new Ajv2020({ strict: false, allErrors: true });
   addFormats(ajv);
   return ajv.compile(schema);
 }
@@ -197,6 +210,15 @@ export function loadWorkflowEntry(shippedWorkflowsDir, id, validate) {
       .join('; ');
     throw new Error(`invalid schema: ${workflowJsonPath} failed workflow.schema.json validation: ${details}`);
   }
+  // Fail-closed rule 6: identity mismatch. The index/bundle-directory id is what the site routes
+  // and cross-checks by; if workflow.json's own declared id disagrees, the mismatch must fail the
+  // build rather than silently propagate a wrong `id` into the generated catalogue.
+  if (raw.id !== id) {
+    throw new Error(
+      `identity mismatch: '${id}${WORKFLOW_DIR_SUFFIX}' is filed under id '${id}' but ` +
+        `${workflowJsonPath} declares id '${raw.id}'`,
+    );
+  }
   return {
     id: raw.id,
     name: raw.name,
@@ -215,6 +237,7 @@ export function loadWorkflowEntry(shippedWorkflowsDir, id, validate) {
 export function buildCatalogueData({ shippedWorkflowsDir, schemaPath, javaSchemaVersionSourcePath }) {
   const manifest = readManifest(shippedWorkflowsDir);
   const indexIds = readIndexIds(shippedWorkflowsDir);
+  checkNoDuplicateIds(indexIds);
   crossCheckBundles(shippedWorkflowsDir, indexIds);
 
   const supportedVersion = readSupportedWorkflowSchemaVersion(javaSchemaVersionSourcePath);
