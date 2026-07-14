@@ -17,6 +17,7 @@ describe('App routing', () => {
   test.each([
     ['/', 'AgentForge4j'],
     ['/docs', 'Documentation'],
+    ['/api', 'API reference'],
     ['/use', 'Get started'],
     ['/catalogue', 'Workflow catalogue'],
     ['/architecture', 'Architecture'],
@@ -112,6 +113,14 @@ describe('branding', () => {
     renderAt('/');
     const logo = screen.getByAltText('AgentForge4j');
     expect(logo).toHaveAttribute('src', '/brand/logo-horizontal.svg');
+  });
+});
+
+describe('api nav placement', () => {
+  test('/api appears in the primary navigation landmark, not footer-only', () => {
+    renderAt('/');
+    const primaryNav = screen.getByRole('navigation', { name: 'Primary' });
+    expect(within(primaryNav).getByRole('link', { name: 'API' })).toHaveAttribute('href', '/api');
   });
 });
 

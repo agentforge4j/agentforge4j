@@ -182,6 +182,15 @@ const config: Config = {
       },
       items: [
         {
+          // Back-link to the agentforge4j.org SPA root, composed alongside /docs/ by the
+          // Assembler track (design §10/§13). Plain `href` (not `to`), since this exits the
+          // /docs/ baseUrl entirely — Docusaurus's `to` prop resolves relative to baseUrl, `href`
+          // does not.
+          href: '/',
+          label: '← agentforge4j.org',
+          position: 'left',
+        },
+        {
           type: 'docSidebar',
           sidebarId: 'docs',
           position: 'left',
