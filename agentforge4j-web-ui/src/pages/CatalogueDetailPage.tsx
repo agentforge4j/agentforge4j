@@ -25,7 +25,7 @@ export default function CatalogueDetailPage() {
       </Link>
 
       <h1 className="mt-4 text-3xl font-semibold text-fg">{workflow.name}</h1>
-      <span className="mt-3 inline-block rounded-full bg-success/10 px-3 py-1 text-sm font-medium text-success">
+      <span className="mt-3 inline-block rounded-full bg-success/10 px-3 py-1 text-sm font-medium text-success-ink">
         {CATALOGUE_COPY.shippedBadge}
       </span>
 
@@ -72,6 +72,7 @@ export default function CatalogueDetailPage() {
       >
         {CATALOGUE_COPY.openInBuilder}
       </Link>
+      <p className="mt-2 max-w-2xl text-sm text-fg-muted">{CATALOGUE_COPY.openInBuilderNote}</p>
     </div>
   );
 }
