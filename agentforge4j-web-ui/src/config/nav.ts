@@ -40,6 +40,7 @@ export const FOOTER_COLUMNS: readonly FooterColumn[] = [
       { label: 'Catalogue', to: '/catalogue' },
       { label: 'Builder', to: '/builder' },
       { label: 'Architecture', to: '/architecture' },
+      { label: 'Releases', to: '/releases' },
     ],
   },
   {

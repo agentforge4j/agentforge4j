@@ -19,6 +19,7 @@
   --color-brand-ink:   var(--color-brand-ink);
   --color-accent:      var(--color-accent);
   --color-success:     var(--color-success);
+  --color-success-ink: var(--color-success-ink);
   --color-warning:     var(--color-warning);
   --color-danger:      var(--color-danger);
 }
@@ -52,6 +53,17 @@ body { background-color: var(--color-bg); color: var(--color-fg); }
     animation-duration: 0.01ms !important;
     transition-duration: 0.01ms !important;
   }
+}
+
+/*
+ * The generated step-graph SVG carries its natural pixel width/height as attributes (needed for
+ * the viewBox to compute correctly) — scale it to fit its container instead of rendering at
+ * intrinsic size, same technique as a responsive <img>.
+ */
+.wf-svg {
+  display: block;
+  max-width: 100%;
+  height: auto;
 }
 
 /*

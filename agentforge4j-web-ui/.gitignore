@@ -1,2 +1,5 @@
 # Build-time derivative read from agentforge4j-workflows-catalog by scripts/build-catalogue-data.mjs
 src/generated/
+
+# TypeScript incremental-build cache — mutates on every tsc run, pure local build state
+*.tsbuildinfo

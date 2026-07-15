@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 export const HOME_COPY = {
-  tagline: 'Structured multi-agent AI workflow orchestration for the Java ecosystem.',
+  tagline: 'The embeddable Java framework for governed AI workflows.',
   intro:
     'AgentForge4j is an embeddable, open-source Java framework for designing and running ' +
     'predictable, auditable, human-in-the-loop AI workflows. Workflows are fully defined in ' +
