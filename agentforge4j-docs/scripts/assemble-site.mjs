@@ -28,7 +28,7 @@
 //
 // Run via `node scripts/assemble-site.mjs` (usually from the deploy workflow).
 
-import {cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync} from 'node:fs';
+import {cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync} from 'node:fs';
 import {dirname, join, resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {JAVADOC_VERSIONS_OUT, javadocBuildVersions} from './build-javadoc-versions.mjs';
@@ -77,7 +77,8 @@ function requireDir(path, what, hint) {
 
 // Defense-in-depth on the *output*, not just the inputs above: catches the case where every input
 // existed and every copy step "succeeded" but the composed result is still wrong for some reason
-// requireDir cannot see (e.g. a future refactor that copies from the wrong source path).
+// requireDir cannot see (e.g. a future refactor that copies from the wrong source path, or a build
+// step that wrote a truncated/zero-byte file without itself erroring).
 function verifyComposedArtifact(siteDir, exit) {
   for (const entry of [
     join(siteDir, 'index.html'),
@@ -86,6 +87,11 @@ function verifyComposedArtifact(siteDir, exit) {
   ]) {
     if (!existsSync(entry)) {
       console.error(`[assemble-site] composed artifact is missing expected entry: ${entry}`);
+      exit(1);
+    }
+    const stats = statSync(entry);
+    if (!stats.isFile() || stats.size === 0) {
+      console.error(`[assemble-site] composed artifact has an empty or non-file expected entry: ${entry}`);
       exit(1);
     }
   }

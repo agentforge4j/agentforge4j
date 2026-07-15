@@ -338,3 +338,32 @@ test('verifyComposedArtifact fails closed when the composed output is missing an
   );
   assert.deepEqual(exitCodes, [1]);
 });
+
+test('verifyComposedArtifact fails closed when an expected entry file exists but is empty', () => {
+  const {spaDir, buildDir, javadocDir, archiveDir, siteDir} = fixture();
+  // Unlike the missing-entry case above, the file genuinely exists (requireDir/existsSync both
+  // see it) — a copy step that silently wrote a truncated/zero-byte file would pass every check
+  // except this one. Overwrite the fixture's javadoc index.html with empty content before
+  // assembly: cpSync carries the zero-byte file straight through to the composed output.
+  writeFileSync(join(javadocDir, 'index.html'), '');
+
+  const exitCodes = [];
+  const fakeExit = (code) => {
+    exitCodes.push(code);
+    throw new Error(`exit(${code})`);
+  };
+  assert.throws(
+    () =>
+      assembleSite({
+        spaDir,
+        buildDir,
+        javadocDir,
+        archiveDir,
+        siteDir,
+        customDomain: null,
+        exit: fakeExit,
+      }),
+    /exit\(1\)/,
+  );
+  assert.deepEqual(exitCodes, [1]);
+});
