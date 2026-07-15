@@ -17,9 +17,11 @@ name: UI E2E
 #     gated-but-not-blocked on the parts they didn't touch;
 #   - if the relevant path did change, the full unit + Playwright suite runs and gates the PR.
 # `agentforge4j-ui-e2e/` and `.nvmrc` are common triggers for both jobs, since a change there can
-# affect either target's test harness or runtime. `agentforge4j-workflows-catalog/` is also
-# a web-ui-relevant trigger: the site build reads shipped-workflow content straight from that
-# module's source resources, so a catalogue-only change can change what the site renders.
+# affect either target's test harness or runtime. `agentforge4j-workflows-catalog/` and
+# `agentforge4j-schema/` are also web-ui-relevant triggers: the site build reads shipped-workflow
+# content straight from the catalog module's source resources and reads schema version constants
+# straight from agentforge4j-schema's Java source, so a change in either can change what the site
+# actually renders without touching agentforge4j-web-ui/ itself.
 # Both jobs also typecheck agentforge4j-ui-e2e's own Playwright specs/support code before running
 # them, same as each side's own app/package typecheck. `web-ui-e2e` additionally runs the site's
 # full `npm run check` (lint, content-boundary gate, typecheck, unit tests, build) before
@@ -81,11 +83,12 @@ jobs:
           else
             echo "builder=false" >> "$GITHUB_OUTPUT"
           fi
-          # agentforge4j-workflows-catalog/ included: the site build reads shipped-workflow
-          # content directly from that module's source resources (build-catalogue-data.mjs), so a
-          # catalogue-only change can change what the site actually renders without touching
-          # agentforge4j-web-ui/ itself.
-          if echo "$changed" | grep -qE '^(agentforge4j-web-ui/|agentforge4j-workflows-catalog/|agentforge4j-ui-e2e/|\.nvmrc|\.github/workflows/ui-e2e\.yml)'; then
+          # agentforge4j-workflows-catalog/ and agentforge4j-schema/ included: the site build
+          # (build-catalogue-data.mjs) reads shipped-workflow content directly from the catalog
+          # module's source resources and reads schema version constants directly from
+          # agentforge4j-schema's Java source, so a change in either can change what the site
+          # actually renders without touching agentforge4j-web-ui/ itself.
+          if echo "$changed" | grep -qE '^(agentforge4j-web-ui/|agentforge4j-workflows-catalog/|agentforge4j-schema/|agentforge4j-ui-e2e/|\.nvmrc|\.github/workflows/ui-e2e\.yml)'; then
             echo "webUi=true" >> "$GITHUB_OUTPUT"
           else
             echo "webUi=false" >> "$GITHUB_OUTPUT"
