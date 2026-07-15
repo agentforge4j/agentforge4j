@@ -5,6 +5,7 @@ import SiteHeader from '@/components/SiteHeader';
 import SiteFooter from '@/components/SiteFooter';
 import HomePage from '@/pages/HomePage';
 import DocsPage from '@/pages/DocsPage';
+import ApiPage from '@/pages/ApiPage';
 import UsePage from '@/pages/UsePage';
 import CataloguePage from '@/pages/CataloguePage';
 import CatalogueDetailPage from '@/pages/CatalogueDetailPage';
@@ -34,6 +35,7 @@ export default function App() {
         <Routes>
           <Route path="/" element={<HomePage />} />
           <Route path="/docs" element={<DocsPage />} />
+          <Route path="/api" element={<ApiPage />} />
           <Route path="/use" element={<UsePage />} />
           <Route path="/catalogue" element={<CataloguePage />} />
           <Route path="/catalogue/:id" element={<CatalogueDetailPage />} />
