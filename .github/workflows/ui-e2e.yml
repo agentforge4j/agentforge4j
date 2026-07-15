@@ -16,12 +16,14 @@ name: UI E2E
 #     steps and succeeds, so unrelated PRs (Java-only, or builder-only, or web-ui-only) are
 #     gated-but-not-blocked on the parts they didn't touch;
 #   - if the relevant path did change, the full unit + Playwright suite runs and gates the PR.
-# `agentforge4j-ui-e2e/` itself and this workflow file are common triggers for both jobs, since a
-# change there can affect either target's test harness. `agentforge4j-workflows-catalog/` is also
+# `agentforge4j-ui-e2e/` and `.nvmrc` are common triggers for both jobs, since a change there can
+# affect either target's test harness or runtime. `agentforge4j-workflows-catalog/` is also
 # a web-ui-relevant trigger: the site build reads shipped-workflow content straight from that
 # module's source resources, so a catalogue-only change can change what the site renders.
 # Both jobs also typecheck agentforge4j-ui-e2e's own Playwright specs/support code before running
-# them, same as each side's own app/package typecheck.
+# them, same as each side's own app/package typecheck. `web-ui-e2e` additionally runs the site's
+# full `npm run check` (lint, content-boundary gate, typecheck, unit tests, build) before
+# Playwright — Playwright alone does not catch those regressions.
 
 on:
   push:
@@ -72,7 +74,9 @@ jobs:
           changed="$(git diff --name-only "$base...$head" 2>/dev/null || git diff --name-only "$base" "$head")"
           echo "Changed files:"
           echo "$changed"
-          if echo "$changed" | grep -qE '^(agentforge4j-workflow-builder/|agentforge4j-ui-e2e/|\.github/workflows/ui-e2e\.yml)'; then
+          # .nvmrc included: a Node-version bump changes what both jobs actually run with, so it
+          # must trigger both suites even when nothing under either target's own directory moved.
+          if echo "$changed" | grep -qE '^(agentforge4j-workflow-builder/|agentforge4j-ui-e2e/|\.nvmrc|\.github/workflows/ui-e2e\.yml)'; then
             echo "builder=true" >> "$GITHUB_OUTPUT"
           else
             echo "builder=false" >> "$GITHUB_OUTPUT"
@@ -81,7 +85,7 @@ jobs:
           # content directly from that module's source resources (build-catalogue-data.mjs), so a
           # catalogue-only change can change what the site actually renders without touching
           # agentforge4j-web-ui/ itself.
-          if echo "$changed" | grep -qE '^(agentforge4j-web-ui/|agentforge4j-workflows-catalog/|agentforge4j-ui-e2e/|\.github/workflows/ui-e2e\.yml)'; then
+          if echo "$changed" | grep -qE '^(agentforge4j-web-ui/|agentforge4j-workflows-catalog/|agentforge4j-ui-e2e/|\.nvmrc|\.github/workflows/ui-e2e\.yml)'; then
             echo "webUi=true" >> "$GITHUB_OUTPUT"
           else
             echo "webUi=false" >> "$GITHUB_OUTPUT"
@@ -217,6 +221,15 @@ jobs:
         working-directory: agentforge4j-ui-e2e
         run: npm run typecheck
 
+      # Full web-ui verification (lint, content-boundary gate, typecheck, unit tests, production
+      # build) — the same gate a developer runs locally before pushing. Playwright alone does not
+      # catch a lint/content-gate/typecheck regression, so this must run before the Playwright
+      # suite, not be replaced by it.
+      - name: Web UI check
+        if: ${{ needs.changes.outputs.webUi == 'true' }}
+        working-directory: agentforge4j-web-ui
+        run: npm run check
+
       - name: Cache Playwright browsers
         if: ${{ needs.changes.outputs.webUi == 'true' }}
         uses: actions/cache@v6
@@ -232,7 +245,9 @@ jobs:
         run: npx playwright install --with-deps chromium
 
       # The `web-ui` project's own webServer builds the site (npm run build) then serves it
-      # (npm run preview) — a real production-style build, not the dev server.
+      # (npm run preview) — a real production-style build, not the dev server. `npm run check`
+      # above already proved the build succeeds and the site passes lint/content-gate/typecheck/
+      # unit tests; this build is Playwright's own, kept independent of the check above.
       - name: Run web-ui e2e
         if: ${{ needs.changes.outputs.webUi == 'true' }}
         working-directory: agentforge4j-ui-e2e

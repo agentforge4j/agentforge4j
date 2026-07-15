@@ -6,7 +6,7 @@
   "type": "module",
   "description": "Playwright UI end-to-end tests for the AgentForge4j workflow builder and the agentforge4j.org site.",
   "scripts": {
-    "test:e2e": "playwright test",
+    "test:e2e": "npm run test:e2e:builder && npm run test:e2e:web-ui",
     "test:e2e:builder": "playwright test --project=builder",
     "test:e2e:web-ui": "playwright test --config=playwright.web-ui.config.ts",
     "playwright:install": "playwright install --with-deps chromium",
