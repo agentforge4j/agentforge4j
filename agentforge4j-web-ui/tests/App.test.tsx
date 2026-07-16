@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-import { describe, expect, test } from 'vitest';
+import { describe, expect, test, vi } from 'vitest';
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
@@ -33,14 +33,22 @@ describe('App routing', () => {
   });
 
   test('renders the /builder route with an accessible loading state, then the workflow builder mounted', async () => {
-    renderAt('/builder');
     // Lazy-loaded (see App.tsx) — the builder's own dependency weight is kept out of every
     // other route's bundle, so the first render suspends before mounting resolves
-    // asynchronously. This must be the first test in the file to touch /builder: once
-    // React.lazy resolves BuilderPage it never suspends again for the rest of this module.
+    // asynchronously. React.lazy caches its resolution on the App module, so this test
+    // imports a fresh App instance (fresh lazy, guaranteed first-render suspension) instead
+    // of depending on being the first test in the file to touch /builder — any other test
+    // rendering /builder earlier (e.g. under shuffled test order) must not break this one.
+    vi.resetModules();
+    const { default: FreshApp } = await import('@/App');
+    render(
+      <MemoryRouter initialEntries={['/builder']}>
+        <FreshApp />
+      </MemoryRouter>,
+    );
     expect(screen.getByRole('status')).toHaveTextContent(/loading the workflow builder/i);
-    // The default 1000ms findBy timeout is too tight for this route specifically: it's the
-    // first thing in the whole suite to transform the heavy builder/graph dependency chain, and
+    // The default 1000ms findBy timeout is too tight for this route specifically: it can be
+    // the first thing in the suite to transform the heavy builder/graph dependency chain, and
     // on a cold Vite/esbuild cache that transform alone can exceed 1s. 5000ms gives real headroom
     // without masking a genuinely broken/never-resolving lazy import.
     expect(await screen.findByTestId('workflow-builder', {}, { timeout: 5000 })).toBeInTheDocument();
@@ -195,21 +203,41 @@ describe('builder full-viewport layout', () => {
     const { container } = renderAt('/builder');
     await screen.findByTestId('workflow-builder', {}, { timeout: 5000 });
     const shell = container.firstElementChild as HTMLElement;
-    expect(shell.classList.contains('h-dvh')).toBe(true);
-    expect(shell.classList.contains('min-h-dvh')).toBe(false);
+    expect(shell).toHaveClass('h-dvh');
+    expect(shell).not.toHaveClass('min-h-dvh');
     const main = document.getElementById('main-content') as HTMLElement;
-    expect(main.classList.contains('min-h-0')).toBe(true);
-    expect(container.querySelector('footer')).toBeNull();
+    expect(main).toHaveClass('min-h-0');
+    // The SITE footer specifically (role contentinfo — a top-level <footer>): the embedded
+    // builder legitimately renders its own <footer> elements inside <main> (scoped out of
+    // the contentinfo role), so a bare querySelector('footer') would be the wrong anchor.
+    expect(screen.queryByRole('contentinfo')).not.toBeInTheDocument();
   });
+
+  test.each(['/builder/', '/Builder'])(
+    'the %s URL variant the router matches to the builder route gets the builder shell too',
+    async (path) => {
+      // The route matcher is trailing-slash tolerant and case-insensitive; the shell must
+      // key off the same matcher (useMatch), not an exact pathname compare, or these URLs
+      // would render the builder inside the grow-to-content marketing shell — the exact
+      // collapsed-builder layout this shell switch exists to prevent.
+      const { container } = renderAt(path);
+      await screen.findByTestId('workflow-builder', {}, { timeout: 5000 });
+      const shell = container.firstElementChild as HTMLElement;
+      expect(shell).toHaveClass('h-dvh');
+      expect(shell).not.toHaveClass('min-h-dvh');
+      expect(document.getElementById('main-content')).toHaveClass('min-h-0');
+      expect(screen.queryByRole('contentinfo')).not.toBeInTheDocument();
+    },
+  );
 
   test('every other route keeps the normal grow-to-content shell with the footer', () => {
     const { container } = renderAt('/architecture');
     const shell = container.firstElementChild as HTMLElement;
-    expect(shell.classList.contains('min-h-dvh')).toBe(true);
-    expect(shell.classList.contains('h-dvh')).toBe(false);
+    expect(shell).toHaveClass('min-h-dvh');
+    expect(shell).not.toHaveClass('h-dvh');
     const main = document.getElementById('main-content') as HTMLElement;
-    expect(main.classList.contains('min-h-0')).toBe(false);
-    expect(container.querySelector('footer')).not.toBeNull();
+    expect(main).not.toHaveClass('min-h-0');
+    expect(screen.getByRole('contentinfo')).toBeInTheDocument();
   });
 });
 

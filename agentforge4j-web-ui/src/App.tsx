@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import { lazy, Suspense } from 'react';
-import { Routes, Route, useLocation } from 'react-router-dom';
+import { Routes, Route, useMatch } from 'react-router-dom';
 import SiteHeader from '@/components/SiteHeader';
 import SiteFooter from '@/components/SiteFooter';
 import HomePage from '@/pages/HomePage';
@@ -29,8 +29,9 @@ export default function App() {
   // <main>'s height indefinite, collapsing the builder to its own min-height. On /builder the
   // shell therefore pins the page to exactly one viewport (h-dvh + min-h-0) and drops the
   // marketing footer, so the editor gets the full height below the header while editing.
-  const { pathname } = useLocation();
-  const isBuilderRoute = pathname === '/builder';
+  // useMatch (not a pathname string compare) shares the <Route path="/builder"> matcher's
+  // semantics, so trailing-slash and case variants that render the builder get its shell too.
+  const isBuilderRoute = useMatch('/builder') !== null;
   return (
     <div className={['flex flex-col bg-bg text-fg', isBuilderRoute ? 'h-dvh' : 'min-h-dvh'].join(' ')}>
       <a href="#main-content" className="skip-link">Skip to content</a>

@@ -20,7 +20,11 @@ export default function BuilderPage() {
   return (
     <div className="flex h-full min-h-0 w-full flex-col">
       <p className="shrink-0 px-4 py-2 text-sm text-fg-muted">{BUILDER_COPY.accessibilityNote}</p>
-      <div className="min-h-0 flex-1">
+      {/* overflow-y-auto: on viewports shorter than the builder's own CSS min-height (24rem)
+          the builder cannot fit the remaining space — this pane then scrolls internally
+          instead of the builder spilling past the viewport-pinned shell and clipping its
+          bottom controls below the fold. No effect when the builder fits. */}
+      <div className="min-h-0 flex-1 overflow-y-auto">
         <WorkflowBuilder capabilities={CAPABILITIES} />
       </div>
     </div>
