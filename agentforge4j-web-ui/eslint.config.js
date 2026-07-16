@@ -21,4 +21,12 @@ export default tseslint.config(
       'react-refresh/only-export-components': 'off',
     },
   },
+  {
+    extends: [js.configs.recommended],
+    files: ['scripts/**/*.mjs'],
+    languageOptions: {
+      ecmaVersion: 2020,
+      globals: { console: 'readonly', process: 'readonly', Buffer: 'readonly' },
+    },
+  },
 );

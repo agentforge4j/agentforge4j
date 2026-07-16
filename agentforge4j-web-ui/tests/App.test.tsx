@@ -17,10 +17,9 @@ describe('App routing', () => {
   test.each([
     ['/', 'AgentForge4j'],
     ['/docs', 'Documentation'],
+    ['/api', 'API reference'],
     ['/use', 'Get started'],
     ['/catalogue', 'Workflow catalogue'],
-    ['/catalogue/some-workflow', 'Workflow catalogue'],
-    ['/builder', 'Builder'],
     ['/architecture', 'Architecture'],
     ['/releases', 'Releases'],
     ['/community', 'Community & contributing'],
@@ -33,8 +32,37 @@ describe('App routing', () => {
     expect(screen.getByRole('heading', { level: 1, name: heading })).toBeInTheDocument();
   });
 
+  test('renders the /builder route with an accessible loading state, then the workflow builder mounted', async () => {
+    renderAt('/builder');
+    // Lazy-loaded (see App.tsx) — the builder's own dependency weight is kept out of every
+    // other route's bundle, so the first render suspends before mounting resolves
+    // asynchronously. This must be the first test in the file to touch /builder: once
+    // React.lazy resolves BuilderPage it never suspends again for the rest of this module.
+    expect(screen.getByRole('status')).toHaveTextContent(/loading the workflow builder/i);
+    // The default 1000ms findBy timeout is too tight for this route specifically: it's the
+    // first thing in the whole suite to transform the heavy builder/graph dependency chain, and
+    // on a cold Vite/esbuild cache that transform alone can exceed 1s. 5000ms gives real headroom
+    // without masking a genuinely broken/never-resolving lazy import.
+    expect(await screen.findByTestId('workflow-builder', {}, { timeout: 5000 })).toBeInTheDocument();
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
+  });
+
   test('renders NotFoundPage for an unmatched path', () => {
     renderAt('/this-route-does-not-exist');
+    expect(screen.getByRole('heading', { level: 1, name: 'Page not found' })).toBeInTheDocument();
+  });
+});
+
+describe('catalogue detail routing', () => {
+  test('a real workflow id renders the catalogue detail page, not the list page', () => {
+    renderAt('/catalogue/workflow-execution-estimator');
+    expect(
+      screen.getByRole('heading', { level: 1, name: 'Workflow Execution Estimator' }),
+    ).toBeInTheDocument();
+  });
+
+  test('an unmatched workflow id renders NotFoundPage, not a fabricated placeholder', () => {
+    renderAt('/catalogue/some-workflow-that-does-not-exist');
     expect(screen.getByRole('heading', { level: 1, name: 'Page not found' })).toBeInTheDocument();
   });
 });
@@ -88,6 +116,24 @@ describe('mobile navigation', () => {
     await user.click(within(mobileNav as HTMLElement).getByRole('link', { name: 'Catalogue' }));
     expect(screen.getAllByRole('navigation', { name: 'Primary' })).toHaveLength(1);
   });
+
+  test('clicking the GitHub link in the open mobile menu closes it too', async () => {
+    const user = userEvent.setup();
+    const { container } = renderAt('/');
+    await user.click(screen.getByRole('button', { name: 'Open menu' }));
+    const mobileNav = container.querySelector('#primary-nav-mobile');
+    await user.click(within(mobileNav as HTMLElement).getByRole('link', { name: /GitHub/ }));
+    expect(screen.getAllByRole('navigation', { name: 'Primary' })).toHaveLength(1);
+  });
+
+  test('pressing Escape closes the open mobile menu', async () => {
+    const user = userEvent.setup();
+    renderAt('/');
+    await user.click(screen.getByRole('button', { name: 'Open menu' }));
+    expect(screen.getAllByRole('navigation', { name: 'Primary' })).toHaveLength(2);
+    await user.keyboard('{Escape}');
+    expect(screen.getAllByRole('navigation', { name: 'Primary' })).toHaveLength(1);
+  });
 });
 
 describe('branding', () => {
@@ -95,6 +141,47 @@ describe('branding', () => {
     renderAt('/');
     const logo = screen.getByAltText('AgentForge4j');
     expect(logo).toHaveAttribute('src', '/brand/logo-horizontal.svg');
+  });
+});
+
+describe('api nav placement', () => {
+  test('/api appears in the primary navigation landmark, not footer-only', () => {
+    renderAt('/');
+    const primaryNav = screen.getByRole('navigation', { name: 'Primary' });
+    expect(within(primaryNav).getByRole('link', { name: 'API' })).toHaveAttribute('href', '/api');
+  });
+});
+
+describe('header and footer GitHub links', () => {
+  test('the desktop header GitHub link points at the real org repo', () => {
+    renderAt('/');
+    expect(screen.getByRole('link', { name: /^GitHub/ })).toHaveAttribute(
+      'href',
+      'https://github.com/agentforge4j/agentforge4j',
+    );
+  });
+
+  test('the footer GitHub link points at the real org repo', () => {
+    const { container } = renderAt('/');
+    const footer = container.querySelector('footer');
+    expect(footer).not.toBeNull();
+    expect(
+      within(footer as HTMLElement).getByRole('link', { name: 'agentforge4j/agentforge4j' }),
+    ).toHaveAttribute('href', 'https://github.com/agentforge4j/agentforge4j');
+  });
+});
+
+describe('footer navigation', () => {
+  test('every route is reachable from either the primary nav or the footer, except deliberate aliases', () => {
+    // /contributing is a deliberate alias of /community (same content, same nav entry) —
+    // not a defect, so it's excluded here rather than asserted unreachable.
+    renderAt('/');
+    const reachableHrefs = new Set(
+      screen.getAllByRole('link').map((link) => link.getAttribute('href')),
+    );
+    for (const path of ['/docs', '/api', '/use', '/catalogue', '/builder', '/architecture', '/releases', '/community', '/security', '/legal', '/contact']) {
+      expect(reachableHrefs.has(path)).toBe(true);
+    }
   });
 });
 
