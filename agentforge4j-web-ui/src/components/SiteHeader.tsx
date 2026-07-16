@@ -1,11 +1,28 @@
 // SPDX-License-Identifier: Apache-2.0
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ExternalLink, Menu, X } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { GITHUB_URL, NAV_CTA, PRIMARY_NAV } from '@/config/nav';
 
 export default function SiteHeader() {
   const [menuOpen, setMenuOpen] = useState(false);
+  const toggleButtonRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    if (!menuOpen) {
+      return;
+    }
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setMenuOpen(false);
+        // Focus may be anywhere inside the now-closing panel (e.g. a nav link) — return it to
+        // the toggle button rather than letting it fall back to document.body.
+        toggleButtonRef.current?.focus();
+      }
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, [menuOpen]);
 
   return (
     <header className="border-b border-border bg-bg-elevated">
@@ -13,11 +30,16 @@ export default function SiteHeader() {
         className="mx-auto flex h-20 items-center gap-6 px-6"
         style={{ maxWidth: 'var(--max-content-width)' }}
       >
-        <Link to="/" aria-label="AgentForge4j" className="flex items-center" onClick={() => setMenuOpen(false)}>
+        <Link
+          to="/"
+          aria-label="AgentForge4j"
+          className="flex shrink-0 items-center"
+          onClick={() => setMenuOpen(false)}
+        >
           <img src="/brand/logo-horizontal.svg" alt="AgentForge4j" className="h-16 w-auto block" />
         </Link>
 
-        <nav aria-label="Primary" className="hidden flex-1 items-center gap-6 md:flex">
+        <nav aria-label="Primary" className="hidden flex-1 items-center gap-6 lg:flex">
           {PRIMARY_NAV.map((item) => (
             <Link key={item.to} to={item.to} className="text-sm font-medium text-fg hover:text-brand">
               {item.label}
@@ -28,25 +50,26 @@ export default function SiteHeader() {
           href={GITHUB_URL}
           target="_blank"
           rel="noreferrer"
-          className="hidden items-center gap-1 text-sm font-medium text-fg-muted hover:text-fg md:flex"
+          className="hidden items-center gap-1 text-sm font-medium text-fg-muted hover:text-fg lg:flex"
         >
           GitHub
           <ExternalLink size={14} aria-hidden="true" />
         </a>
         <Link
           to={NAV_CTA.to}
-          className="hidden rounded-md bg-brand px-4 py-2 text-sm font-semibold text-brand-ink hover:bg-brand-shade md:inline-block"
+          className="hidden rounded-md bg-brand px-4 py-2 text-sm font-semibold text-brand-ink hover:bg-brand-shade lg:inline-block"
         >
           {NAV_CTA.label}
         </Link>
 
         <button
+          ref={toggleButtonRef}
           type="button"
           aria-expanded={menuOpen}
           aria-controls="primary-nav-mobile"
           aria-label={menuOpen ? 'Close menu' : 'Open menu'}
           onClick={() => setMenuOpen((open) => !open)}
-          className="ml-auto flex items-center justify-center rounded-md p-2 text-fg md:hidden"
+          className="ml-auto flex items-center justify-center rounded-md p-2 text-fg lg:hidden"
         >
           {menuOpen ? <X size={22} aria-hidden="true" /> : <Menu size={22} aria-hidden="true" />}
         </button>
@@ -56,7 +79,7 @@ export default function SiteHeader() {
         <nav
           id="primary-nav-mobile"
           aria-label="Primary"
-          className="flex flex-col gap-1 border-t border-border px-6 py-4 md:hidden"
+          className="flex flex-col gap-1 border-t border-border px-6 py-4 lg:hidden"
         >
           {PRIMARY_NAV.map((item) => (
             <Link
@@ -72,6 +95,7 @@ export default function SiteHeader() {
             href={GITHUB_URL}
             target="_blank"
             rel="noreferrer"
+            onClick={() => setMenuOpen(false)}
             className="flex items-center gap-1 rounded-md px-2 py-2 text-sm font-medium text-fg-muted hover:bg-bg hover:text-fg"
           >
             GitHub
