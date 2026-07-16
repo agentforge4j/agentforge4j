@@ -99,6 +99,21 @@ async function addStep(page: Page, kindSlug: string): Promise<void> {
   await expect(page.locator(RF_NODE)).toHaveCount(before + 1, { timeout: 5_000 }).catch(() => undefined);
 }
 
+/** Interaction names whose implementation calls `addStep()` and can therefore silently return
+ *  having added nothing, for the one specific, confirmed mobile-delivery-failure class `addStep`'s
+ *  own doc comment above describes — safe ONLY because `checks.ts`'s `minNodeCount` assertion
+ *  independently re-verifies the canvas afterward. `visual/manifest.ts`'s `validateManifest()`
+ *  cross-checks every entry referencing one of these interactions against `minNodeCount` actually
+ *  being set, so a future entry can't silently drop the one guarantee that makes tolerating the
+ *  delivery failure here safe in the first place. Update this list whenever an interaction below
+ *  starts (or stops) calling `addStep()`. */
+export const DELIVERY_TOLERANT_INTERACTIONS: ReadonlySet<string> = new Set([
+  'addSampleSteps',
+  'addStepAndSelectNode',
+  'addUnconfiguredDecisionStep',
+  'addSampleStepsAndExport',
+]);
+
 export const INTERACTIONS: Record<string, Interaction> = {
   openMobileNav: async (page) => {
     await page.getByRole('button', { name: /menu/i }).click();

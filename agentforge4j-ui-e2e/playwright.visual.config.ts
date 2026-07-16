@@ -28,6 +28,11 @@ const isCI = Boolean(process.env.CI);
 export default defineConfig({
   testDir: './specs/visual',
   outputDir: './test-results/visual',
+  // Runs once, in the main process, before any worker starts — the clear-before-every-run
+  // guarantee this depends on must hold regardless of invocation method (`npm run visual:capture`
+  // or a direct `npx playwright test --config=...`), not just when the previsual:capture npm
+  // pre-hook happens to have run. See scripts/visual/global-setup.mjs.
+  globalSetup: './scripts/visual/global-setup.mjs',
   fullyParallel: true,
   forbidOnly: isCI,
   // Deliberately 0, not the other configs' CI retry allowance: a retry that happens to pass would

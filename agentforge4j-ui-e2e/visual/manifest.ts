@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { SITE_ROUTES, REAL_CATALOGUE_WORKFLOW_ID, VIEWPORTS } from '../support/web-ui/routes';
+import { DELIVERY_TOLERANT_INTERACTIONS } from './interactions';
 
 /** Which product this entry belongs to — kept distinct so a Day 2 report can separate ".org"
  *  release-blocker findings from Workflow Builder findings that belong to the dedicated
@@ -134,12 +135,18 @@ const ROUTE_ENTRIES: VisualManifestEntry[] = SITE_ROUTES.map((route) => {
   // pages in this workstream's own real build). Assert only that SOME h1 exists there, not its
   // exact wording.
   const isDocsHandoff = route.path === '/docs';
+  // Computed once and reused by both `viewports` and `releaseImportance` below: every
+  // release-blocking route gets full viewport coverage, not just the routes hand-picked here — a
+  // future blocker route silently getting only CORE_VIEWPORTS (this file's own documented rule for
+  // FULL_VIEWPORTS is "release-blocker / overflow-prone surfaces", just above) was a real gap
+  // `/use` had prior to this fix.
+  const releaseImportance: ReleaseImportance = route.path === '/' || route.path === '/use' ? 'blocker' : 'important';
   return {
     id,
     surface: 'org',
     target: orgRoute(route.path),
     stateName: route.heading,
-    viewports: overflowProne || route.path === '/' ? FULL_VIEWPORTS : CORE_VIEWPORTS,
+    viewports: overflowProne || releaseImportance === 'blocker' ? FULL_VIEWPORTS : CORE_VIEWPORTS,
     // `role=navigation` deliberately NOT required here: on a narrow viewport the site's real,
     // Day-1-tested mobile pattern collapses navigation entirely behind a hamburger button until
     // clicked (SiteHeader.tsx conditionally renders the mobile `<nav>` only while open) — the
@@ -147,7 +154,7 @@ const ROUTE_ENTRIES: VisualManifestEntry[] = SITE_ROUTES.map((route) => {
     // interactive contract instead of asserting it unconditionally on every route/viewport.
     mustBeVisible: [isDocsHandoff ? 'role=heading[level=1]' : `role=heading[level=1][name="${route.heading}"]`],
     aiReviewEnabled: true,
-    releaseImportance: route.path === '/' || route.path === '/use' ? 'blocker' : 'important',
+    releaseImportance,
     fullPage: true,
     // Docusaurus's own fixed top navbar and its collapsible sidebar viewport geometrically
     // intersect at rest — plausibly correct, by-design fixed-header stacking (Docusaurus's real
@@ -421,6 +428,21 @@ export function validateManifest(entries: readonly VisualManifestEntry[] = VISUA
     }
     if (entry.viewports.length === 0) {
       throw new Error(`visual manifest: entry "${entry.id}" has no viewports`);
+    }
+    // An entry whose interaction can silently add nothing (a known, tolerated mobile delivery
+    // failure — see interactions.ts's DELIVERY_TOLERANT_INTERACTIONS doc comment) MUST set
+    // minNodeCount, or that outcome passes every check silently instead of being caught by
+    // canvas-node-count — this was previously true only by convention, never enforced.
+    if (
+      entry.interaction &&
+      DELIVERY_TOLERANT_INTERACTIONS.has(entry.interaction) &&
+      entry.minNodeCount === undefined
+    ) {
+      throw new Error(
+        `visual manifest: entry "${entry.id}" uses interaction "${entry.interaction}", which can ` +
+          'silently add nothing on a known, tolerated delivery failure — minNodeCount must be set ' +
+          'so that outcome is caught by canvas-node-count instead of passing silently.',
+      );
     }
   }
 }

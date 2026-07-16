@@ -14,27 +14,16 @@
 //
 // Usage: node scripts/visual/release-check.mjs
 
-import { execFileSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { run as runShared } from './run-command.mjs';
 
 const here = fileURLToPath(new URL('.', import.meta.url));
 const E2E_ROOT = resolve(here, '..', '..');
 const SITE_DIR = resolve(E2E_ROOT, '..', 'agentforge4j-docs', '_site');
 
-function run(command, args) {
-  console.log(`[release-check] $ ${command} ${args.join(' ')}`);
-  try {
-    execFileSync(command, args, { cwd: E2E_ROOT, stdio: 'inherit', shell: process.platform === 'win32' });
-  } catch (error) {
-    // `stdio: 'inherit'` already streamed the failing step's own output (including, for
-    // `check-freshness.mjs --strict`, exactly which evidence issue caused this) — a raw Node stack
-    // trace on top of that is noise, not signal. Fail closed with a one-line pointer instead.
-    console.error(`[release-check] step failed: ${command} ${args.join(' ')} (exit ${error.status ?? 'unknown'})`);
-    process.exit(typeof error.status === 'number' ? error.status : 1);
-  }
-}
+const run = (command, args) => runShared('[release-check]', command, args, E2E_ROOT, process.platform === 'win32');
 
 function main() {
   if (!existsSync(resolve(SITE_DIR, 'index.html'))) {

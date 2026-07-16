@@ -31,7 +31,7 @@ function main() {
   const report = JSON.parse(readFileSync(REPORT_JSON, 'utf8'));
   console.log(`Overall status: ${report.summary.overallStatus.toUpperCase()}`);
   console.log(`Generated: ${report.generatedAt} (commit ${report.commitSha.slice(0, 12)})`);
-  console.log(`Captures: ${report.summary.totalCaptures} (${report.summary.deterministicPass} pass / ${report.summary.deterministicFail} fail, ${report.summary.newDeterministicFailures} new)`);
+  console.log(`Captures: ${report.summary.totalCaptures} (${report.summary.deterministicPass} pass / ${report.summary.deterministicFail} fail, ${report.summary.blockingFailures} blocking)`);
   console.log(`AI review: ${report.summary.aiReviewEnabled ? `${report.summary.aiModel}, ${report.summary.aiReviewedCount} reviewed` : 'disabled'}`);
   console.log('');
   console.log(`Full report: ${REPORT_MD}`);

@@ -50,4 +50,29 @@ test.describe('validateManifest', () => {
       }
     }
   });
+
+  test('rejects an entry using a delivery-tolerant interaction with no minNodeCount', () => {
+    // addSampleSteps calls interactions.ts's addStep(), which can silently add nothing on a known,
+    // tolerated mobile delivery failure — safe ONLY because minNodeCount independently catches it.
+    // Omitting minNodeCount here must fail loudly, not silently reintroduce the "empty canvas
+    // indistinguishable from correctly populated" bug this whole mechanism exists to close.
+    const broken = [entry({ interaction: 'addSampleSteps' })];
+    expect(() => validateManifest(broken)).toThrow(/minNodeCount must be set/);
+  });
+
+  test('accepts an entry using a delivery-tolerant interaction when minNodeCount is set', () => {
+    const ok = [entry({ interaction: 'addSampleSteps', minNodeCount: 2 })];
+    expect(() => validateManifest(ok)).not.toThrow();
+  });
+
+  test('every real manifest entry using a delivery-tolerant interaction sets minNodeCount', () => {
+    // Direct, explicit coverage of the same invariant validateManifest() enforces above, against
+    // the real manifest rather than a synthetic fixture.
+    for (const e of VISUAL_MANIFEST) {
+      if (e.interaction === 'addSampleSteps' || e.interaction === 'addStepAndSelectNode'
+        || e.interaction === 'addUnconfiguredDecisionStep' || e.interaction === 'addSampleStepsAndExport') {
+        expect(e.minNodeCount, `entry "${e.id}" uses "${e.interaction}" without minNodeCount`).toBeDefined();
+      }
+    }
+  });
 });

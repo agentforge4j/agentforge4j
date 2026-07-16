@@ -23,10 +23,16 @@ const ATTESTATION_PATH = join(E2E_ROOT, 'visual-evidence', 'attestation.json');
 const MANIFEST_PATH = join(E2E_ROOT, 'visual', 'manifest.ts');
 
 // Mirrors .github/workflows/ui-e2e.yml's own "what can change what the site/builder renders"
-// change-detection glob, plus the manifest's own directory (an entry/interaction/check change is
-// just as relevant as a source change — it's what decides *what gets looked at*).
+// change-detection glob exactly, including its `.nvmrc` and workflow-file-self triggers — NOT just
+// `agentforge4j-ui-e2e/visual/`: the capture orchestrator (specs/visual/capture.spec.ts), the local
+// static server (scripts/visual/serve-assembled-site.mjs), and every other file under
+// agentforge4j-ui-e2e/ (including support/web-ui/routes.ts, the manifest's own route/viewport data
+// source) are just as capable of changing what gets captured/checked as an edit inside visual/
+// itself. Broader than strictly necessary in places (e.g. an unrelated specs/web-ui/ change also
+// counts as "relevant") is the correct, safe direction for a warn-only freshness check — see this
+// file's own "fail open (warn) rather than silently assume it's still fresh" precedent below.
 const RELEVANT_PATH_PATTERN =
-  /^(agentforge4j-web-ui\/|agentforge4j-workflow-builder\/|agentforge4j-docs\/|agentforge4j-ui-e2e\/visual\/|agentforge4j-workflows-catalog\/|agentforge4j-schema\/)/;
+  /^(agentforge4j-web-ui\/|agentforge4j-workflow-builder\/|agentforge4j-docs\/|agentforge4j-ui-e2e\/|agentforge4j-workflows-catalog\/|agentforge4j-schema\/|\.nvmrc$|\.github\/workflows\/ui-e2e\.yml$)/;
 
 function parseArgs(argv) {
   const args = { strict: false };

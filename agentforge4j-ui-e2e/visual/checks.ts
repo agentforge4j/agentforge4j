@@ -148,7 +148,12 @@ function collectDomFacts(args: readonly [readonly string[], readonly string[]]):
   // confirmed against its own source CSS, not guessed).
   const clippedPanels: string[] = [];
   for (const el of Array.from(document.querySelectorAll<HTMLElement>('[class]'))) {
-    if (el.className.toString().includes('react-flow')) {
+    // `el.className` is a plain string on HTML elements but an `SVGAnimatedString` object on SVG
+    // elements (React Flow's own `<svg class="react-flow__edges">` canvas layer among them) —
+    // `.toString()` on that object yields the useless "[object SVGAnimatedString]", never the real
+    // class list. `getAttribute('class')` returns the real attribute value for both element kinds.
+    const classAttr = el.getAttribute('class') ?? '';
+    if (classAttr.includes('react-flow')) {
       continue;
     }
     if (el.clientWidth <= 1 && el.clientHeight <= 1) {
@@ -164,7 +169,7 @@ function collectDomFacts(args: readonly [readonly string[], readonly string[]]):
       continue;
     }
     if (el.scrollHeight - el.clientHeight > 4 || el.scrollWidth - el.clientWidth > 4) {
-      clippedPanels.push(el.className.toString().split(' ')[0] || el.tagName.toLowerCase());
+      clippedPanels.push(classAttr.split(' ')[0] || el.tagName.toLowerCase());
     }
   }
 

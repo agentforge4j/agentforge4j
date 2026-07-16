@@ -102,4 +102,17 @@ test.describe('resolveFile — path traversal', () => {
       rmSync(secretDir, { recursive: true, force: true });
     }
   });
+
+  test('a malformed percent-encoded path resolves to null instead of throwing', () => {
+    // An unpaired '%' makes decodeURIComponent throw a URIError; this must be treated exactly like
+    // "no matching file", never crash the whole server for the rest of the capture run.
+    const { dir, secretDir } = fixture();
+    try {
+      expect(() => resolveFile(dir, '/100%off')).not.toThrow();
+      expect(resolveFile(dir, '/100%off')).toBeNull();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+      rmSync(secretDir, { recursive: true, force: true });
+    }
+  });
 });

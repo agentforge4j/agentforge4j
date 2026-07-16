@@ -30,7 +30,7 @@ const PATHS_TO_CLEAR = [
   join(OUTPUT_DIR, 'expected-inventory.json'),
 ];
 
-function main() {
+export function clearVisualOutput() {
   for (const path of PATHS_TO_CLEAR) {
     if (existsSync(path)) {
       rmSync(path, { recursive: true, force: true });
@@ -41,4 +41,13 @@ function main() {
   console.log('[clean-output] cleared visual-output/results, screenshots, ai-review-results.json, expected-inventory.json');
 }
 
-main();
+// CLI entry, guarded so `clearVisualOutput` can also be imported directly — see
+// scripts/visual/global-setup.mjs, which calls it from Playwright's own `globalSetup` hook so the
+// clear-before-every-run guarantee holds regardless of whether `playwright.visual.config.ts` is
+// invoked via `npm run visual:capture` (whose `previsual:capture` pre-hook also runs this script)
+// or directly via `npx playwright test --config=playwright.visual.config.ts`, which bypasses npm
+// pre-hooks entirely — without this guard, importing this module for its function would also
+// re-run the CLI's own console/process side effects.
+if (process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1])) {
+  clearVisualOutput();
+}

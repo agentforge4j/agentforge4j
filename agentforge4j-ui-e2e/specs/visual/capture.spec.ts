@@ -13,7 +13,7 @@
 // instead of expecting one already-consolidated result.
 
 import { test } from '@playwright/test';
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync, renameSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { VISUAL_MANIFEST, validateManifest, type VisualManifestEntry } from '../../visual/manifest';
 import { INTERACTIONS } from '../../visual/interactions';
@@ -85,10 +85,18 @@ const DISABLE_ANIMATIONS_CSS =
  * surfaces as a missing, release-blocking capture instead of silently reporting fewer states than
  * the manifest actually defines. Written unconditionally at module load (every worker process
  * evaluates this file once before running any test in it), so multiple workers write the same,
- * idempotent content — harmless, not a race.
+ * idempotent content — the *content* is harmless to race on, but a plain `writeFileSync` from
+ * several OS processes truncating and writing the identical path concurrently is still a real
+ * hazard on Windows (unlike POSIX, Windows enforces mandatory per-handle locking in cases where two
+ * processes can otherwise interleave writes), so each worker writes to its own temp file first and
+ * renames into place — a same-directory rename is atomic on both platforms, so the final file is
+ * always either the previous complete write or this worker's complete write, never a torn mix.
  */
 const expectedInventory = VISUAL_MANIFEST.flatMap((entry) => entry.viewports.map((viewportName) => `${entry.id}--${viewportName}`));
-writeFileSync(join(OUTPUT_DIR, 'expected-inventory.json'), JSON.stringify(expectedInventory, null, 2));
+const expectedInventoryPath = join(OUTPUT_DIR, 'expected-inventory.json');
+const expectedInventoryTmpPath = `${expectedInventoryPath}.${process.pid}.tmp`;
+writeFileSync(expectedInventoryTmpPath, JSON.stringify(expectedInventory, null, 2));
+renameSync(expectedInventoryTmpPath, expectedInventoryPath);
 
 for (const entry of VISUAL_MANIFEST) {
   for (const viewportName of entry.viewports) {

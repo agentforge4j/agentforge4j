@@ -139,8 +139,12 @@ async function main() {
 
   const baseUrl = process.env.AI_VISUAL_REVIEW_BASE_URL ?? 'https://api.openai.com/v1';
   const model = process.env.AI_VISUAL_REVIEW_MODEL ?? 'gpt-4o-mini';
-  const maxScreenshots = Number(process.env.AI_VISUAL_REVIEW_MAX_SCREENSHOTS ?? 20);
-  const maxTokens = Number(process.env.AI_VISUAL_REVIEW_MAX_TOKENS ?? 700);
+  // `||`, not `??`: an unset var is `undefined` either way, but a var that is SET to an empty
+  // string (e.g. a CI variable left blank) must also fall back to the default — `??` only
+  // substitutes for `null`/`undefined`, and `Number('')` is `0`, not `NaN`, so `??` alone would
+  // silently turn a blank env var into a zero budget instead of the documented default.
+  const maxScreenshots = Number(process.env.AI_VISUAL_REVIEW_MAX_SCREENSHOTS || 20);
+  const maxTokens = Number(process.env.AI_VISUAL_REVIEW_MAX_TOKENS || 700);
 
   const records = loadCaptureRecords()
     .filter((record) => record.aiReviewEnabled)
@@ -158,11 +162,13 @@ async function main() {
     console.log(`[ai-review] budget cap: reviewing ${selected.length}/${records.length} screenshots (lowest release-importance ${skipped} skipped).`);
   }
 
-  const reviewed = [];
-  for (const record of selected) {
+  // Each screenshot's vision-model call is an independent network round trip with no shared
+  // state — awaiting them one at a time serializes the whole budget's wall-clock time for no
+  // reason. `REVIEW_CONCURRENCY` independent workers pull from a shared cursor instead.
+  async function reviewOne(record) {
     const screenshotPath = join(OUTPUT_DIR, ...record.screenshotPath.split('/'));
     if (!existsSync(screenshotPath)) {
-      reviewed.push({
+      return {
         entryId: record.entryId,
         viewport: record.viewport,
         status: 'warning',
@@ -171,24 +177,17 @@ async function main() {
         evidence: `expected screenshot not found at ${record.screenshotPath}`,
         location: 'unknown',
         humanConfirmationRequired: true,
-      });
-      continue;
+      };
     }
     const imageBase64 = readFileSync(screenshotPath).toString('base64');
     try {
-      const raw = await callVisionModel({
-        baseUrl,
-        apiKey,
-        model,
-        maxTokens,
-        imageBase64,
-        context: record,
-      });
+      const raw = await callVisionModel({ baseUrl, apiKey, model, maxTokens, imageBase64, context: record });
       const parsed = parseModelResponse(raw);
-      reviewed.push({ entryId: record.entryId, viewport: record.viewport, ...parsed });
       console.log(`[ai-review] ${record.entryId} @ ${record.viewport}: ${parsed.status} (${parsed.issueCategory})`);
+      return { entryId: record.entryId, viewport: record.viewport, ...parsed };
     } catch (error) {
-      reviewed.push({
+      console.error(`[ai-review] ${record.entryId} @ ${record.viewport}: call failed — ${error.message}`);
+      return {
         entryId: record.entryId,
         viewport: record.viewport,
         status: 'warning',
@@ -197,10 +196,22 @@ async function main() {
         evidence: error.message,
         location: 'unknown',
         humanConfirmationRequired: true,
-      });
-      console.error(`[ai-review] ${record.entryId} @ ${record.viewport}: call failed — ${error.message}`);
+      };
     }
   }
+
+  const REVIEW_CONCURRENCY = 4;
+  const results = new Array(selected.length);
+  let nextIndex = 0;
+  async function worker() {
+    while (nextIndex < selected.length) {
+      const index = nextIndex;
+      nextIndex += 1;
+      results[index] = await reviewOne(selected[index]);
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(REVIEW_CONCURRENCY, selected.length) }, worker));
+  const reviewed = results;
 
   writeFileSync(
     AI_RESULTS_PATH,

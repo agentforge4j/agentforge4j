@@ -20,6 +20,7 @@ import { createServer } from 'node:http';
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import { extname, join, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { CONTENT_TYPES } from '../../support/content-types.mjs';
 
 const here = fileURLToPath(new URL('.', import.meta.url));
 
@@ -36,20 +37,6 @@ function parseArgs(argv) {
   }
   return args;
 }
-
-const CONTENT_TYPES = {
-  '.html': 'text/html; charset=utf-8',
-  '.js': 'text/javascript',
-  '.mjs': 'text/javascript',
-  '.css': 'text/css',
-  '.svg': 'image/svg+xml',
-  '.json': 'application/json',
-  '.png': 'image/png',
-  '.ico': 'image/x-icon',
-  '.woff2': 'font/woff2',
-  '.txt': 'text/plain',
-  '.xml': 'application/xml',
-};
 
 /** True only if `candidate` (already `resolve()`d to an absolute path) is `root` itself or
  *  genuinely inside it — a plain `startsWith(root)` string check would wrongly accept a sibling
@@ -68,7 +55,14 @@ export function isWithin(root, candidate) {
  *  this is local dev tooling, but it still serves whatever a browser or another local process
  *  asks it for, so it must not become an arbitrary local file reader. */
 export function resolveFile(dir, requestPath) {
-  const clean = decodeURIComponent(requestPath.split('?')[0]);
+  let clean;
+  try {
+    clean = decodeURIComponent(requestPath.split('?')[0]);
+  } catch {
+    // Malformed percent-encoding (e.g. an unpaired '%') — treat exactly like "no matching file"
+    // rather than letting a single bad request crash the whole server for the rest of the run.
+    return null;
+  }
   const direct = resolve(dir, `.${clean}`);
   if (!isWithin(dir, direct)) {
     return null;

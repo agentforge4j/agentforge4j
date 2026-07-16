@@ -13,10 +13,11 @@
 //
 // Usage: node scripts/visual/build-assembled-site.mjs
 
-import { execFileSync, spawnSync } from 'node:child_process';
+import { spawnSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { run as runShared } from './run-command.mjs';
 
 const here = fileURLToPath(new URL('.', import.meta.url));
 const REPO_ROOT = resolve(here, '..', '..', '..');
@@ -26,17 +27,7 @@ const IS_WINDOWS = process.platform === 'win32';
 // and fails with "not recognized" even though the wrapper script sits right in REPO_ROOT.
 const MVNW = IS_WINDOWS ? '.\\mvnw.cmd' : './mvnw';
 
-function run(command, args, cwd) {
-  console.log(`[build-assembled-site] $ ${command} ${args.join(' ')}  (cwd: ${cwd})`);
-  try {
-    execFileSync(command, args, { cwd, stdio: 'inherit', shell: IS_WINDOWS });
-  } catch (error) {
-    // `stdio: 'inherit'` already streamed the failing step's own real output — a raw Node stack
-    // trace on top of that is noise, not signal.
-    console.error(`[build-assembled-site] step failed: ${command} ${args.join(' ')} (exit ${error.status ?? 'unknown'})`);
-    process.exit(typeof error.status === 'number' ? error.status : 1);
-  }
-}
+const run = (command, args, cwd) => runShared('[build-assembled-site]', command, args, cwd, IS_WINDOWS);
 
 function checkJdk17() {
   // `java -version` writes to stderr, not stdout — `execFileSync`'s return value only ever
