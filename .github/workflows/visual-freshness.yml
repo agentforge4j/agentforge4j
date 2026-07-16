@@ -33,20 +33,6 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Resolve base SHA
-        id: base
-        shell: bash
-        run: |
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            base='${{ github.event.pull_request.base.sha }}'
-          else
-            base='${{ github.event.before }}'
-          fi
-          if [ -z "$base" ] || [ "$base" = "0000000000000000000000000000000000000000" ]; then
-            base="$(git rev-parse "${{ github.sha }}^" 2>/dev/null || echo "${{ github.sha }}")"
-          fi
-          echo "sha=$base" >> "$GITHUB_OUTPUT"
-
       - name: Check visual-review evidence freshness (warn-only)
         working-directory: agentforge4j-ui-e2e
-        run: node scripts/visual/check-freshness.mjs --base-sha ${{ steps.base.outputs.sha }}
+        run: node scripts/visual/check-freshness.mjs

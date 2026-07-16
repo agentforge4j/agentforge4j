@@ -18,7 +18,7 @@
 
 import { createServer } from 'node:http';
 import { existsSync, readFileSync, statSync } from 'node:fs';
-import { extname, join, resolve } from 'node:path';
+import { extname, join, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const here = fileURLToPath(new URL('.', import.meta.url));
@@ -51,24 +51,40 @@ const CONTENT_TYPES = {
   '.xml': 'application/xml',
 };
 
+/** True only if `candidate` (already `resolve()`d to an absolute path) is `root` itself or
+ *  genuinely inside it — a plain `startsWith(root)` string check would wrongly accept a sibling
+ *  directory that happens to share `root` as a text prefix (e.g. root `/site` accepting
+ *  `/site-evil/secret`), so this checks for the path separator boundary explicitly. */
+export function isWithin(root, candidate) {
+  return candidate === root || candidate.startsWith(root + sep);
+}
+
 /** Resolves a request path to an on-disk file, the way GitHub Pages does: an exact file match, or
  *  (for a path with no extension, i.e. a client-side route) that directory's own `index.html` if
  *  one exists — never a blanket SPA-fallback to the site root, which is exactly the behaviour the
- *  Day 1.5 hosting contract exists to prove. */
-function resolveFile(dir, requestPath) {
+ *  Day 1.5 hosting contract exists to prove. `dir` is the already-`resolve()`d site root; every
+ *  candidate is resolved and re-checked against it before ever touching the filesystem, so a
+ *  request path containing `..` (or, on Windows, an absolute drive path) can never escape it —
+ *  this is local dev tooling, but it still serves whatever a browser or another local process
+ *  asks it for, so it must not become an arbitrary local file reader. */
+export function resolveFile(dir, requestPath) {
   const clean = decodeURIComponent(requestPath.split('?')[0]);
-  const direct = join(dir, clean);
+  const direct = resolve(dir, `.${clean}`);
+  if (!isWithin(dir, direct)) {
+    return null;
+  }
   if (existsSync(direct) && statSync(direct).isFile()) {
     return direct;
   }
-  const asIndex = join(dir, clean, 'index.html');
-  if (existsSync(asIndex)) {
+  const asIndex = join(direct, 'index.html');
+  if (isWithin(dir, asIndex) && existsSync(asIndex)) {
     return asIndex;
   }
   return null;
 }
 
-export function startServer({ dir, port }) {
+export function startServer({ dir: rawDir, port }) {
+  const dir = resolve(rawDir);
   if (!existsSync(dir)) {
     throw new Error(
       `[serve-assembled-site] missing composed site directory: ${dir}\n` +

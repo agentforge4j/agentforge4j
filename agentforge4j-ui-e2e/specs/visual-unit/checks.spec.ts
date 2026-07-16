@@ -17,6 +17,7 @@ function baseFacts(overrides: Partial<DomFacts> = {}): DomFacts {
     navCoversHeading: false,
     primaryActionsInvisible: [],
     mainContentBlank: false,
+    canvasNodeCount: 0,
     ...overrides,
   };
 }
@@ -108,6 +109,31 @@ test.describe('evaluateDeterministicChecks — this suite requires no browser, n
   test('a blank main content region fails main-content-not-blank', () => {
     const results = evaluateDeterministicChecks(baseFacts({ mainContentBlank: true }));
     expect(results.find((r) => r.id === 'main-content-not-blank')?.status).toBe('fail');
+  });
+
+  test('canvas-node-count is omitted entirely when minNodeCount is not set (non-Builder entries)', () => {
+    const results = evaluateDeterministicChecks(baseFacts({ canvasNodeCount: 0 }));
+    expect(results.find((r) => r.id === 'canvas-node-count')).toBeUndefined();
+  });
+
+  test('canvas-node-count fails when fewer nodes exist than the setup interaction claims — the real bug this check closes', () => {
+    // The exact shape of the confirmed defect: a setup interaction silently failed to add
+    // anything, leaving an empty canvas that every OTHER check still happily passes.
+    const results = evaluateDeterministicChecks(baseFacts({ canvasNodeCount: 0 }), 2);
+    const check = results.find((r) => r.id === 'canvas-node-count');
+    expect(check?.status).toBe('fail');
+    expect(check?.detail).toContain('expected at least 2');
+    expect(check?.detail).toContain('found 0');
+  });
+
+  test('canvas-node-count passes when at least minNodeCount nodes exist', () => {
+    const results = evaluateDeterministicChecks(baseFacts({ canvasNodeCount: 2 }), 2);
+    expect(results.find((r) => r.id === 'canvas-node-count')?.status).toBe('pass');
+  });
+
+  test('canvas-node-count passes when MORE than minNodeCount nodes exist', () => {
+    const results = evaluateDeterministicChecks(baseFacts({ canvasNodeCount: 5 }), 2);
+    expect(results.find((r) => r.id === 'canvas-node-count')?.status).toBe('pass');
   });
 });
 

@@ -42,12 +42,20 @@ export interface CaptureRecord {
   readonly surface: string;
   readonly stateName: string;
   readonly releaseImportance: string;
+  /** Informational only — see `visual/manifest.ts`'s doc comment on this field. Does NOT exempt
+   *  anything; `acceptedFindings` below is the only real exemption path. */
   readonly knownIssues: readonly number[];
   /** Per-check non-blocking classifications from the manifest (see `visual/manifest.ts`'s
    *  `AcceptedFinding` doc comment) — `overallStatus` below stays the raw, unfiltered mechanical
    *  result regardless of these; `generate-report.mjs` is what actually decides blocking vs
-   *  non-blocking for the release-check verdict, the same way it already does for `knownIssues`. */
-  readonly acceptedFindings: readonly { checkId: string; reason: string; requiresHumanConfirmation?: boolean }[];
+   *  non-blocking for the release-check verdict. */
+  readonly acceptedFindings: readonly {
+    checkId: string;
+    reason: string;
+    requiresHumanConfirmation?: boolean;
+    issue?: number;
+    viewports?: readonly string[];
+  }[];
   readonly viewport: string;
   /** Relative to `visual-output/`, forward-slashed regardless of OS. */
   readonly screenshotPath: string;
@@ -67,6 +75,20 @@ function targetUrl(entry: VisualManifestEntry): string {
 const DISABLE_ANIMATIONS_CSS =
   '*, *::before, *::after { animation-duration: 0s !important; animation-delay: 0s !important; ' +
   'transition-duration: 0s !important; transition-delay: 0s !important; scroll-behavior: auto !important; }';
+
+/**
+ * Every `entryId--viewport` this run is ABOUT to attempt, written before any test executes.
+ * `generate-report.mjs` cross-checks the real result files in `visual-output/results/` against
+ * this list — a manifest entry whose test crashed/errored (so it never reached the
+ * `writeFileSync` at the end of the test body — see `addStep`'s fail-loud design in
+ * `visual/interactions.ts`) produces an entry here with no matching result file, which the report
+ * surfaces as a missing, release-blocking capture instead of silently reporting fewer states than
+ * the manifest actually defines. Written unconditionally at module load (every worker process
+ * evaluates this file once before running any test in it), so multiple workers write the same,
+ * idempotent content — harmless, not a race.
+ */
+const expectedInventory = VISUAL_MANIFEST.flatMap((entry) => entry.viewports.map((viewportName) => `${entry.id}--${viewportName}`));
+writeFileSync(join(OUTPUT_DIR, 'expected-inventory.json'), JSON.stringify(expectedInventory, null, 2));
 
 for (const entry of VISUAL_MANIFEST) {
   for (const viewportName of entry.viewports) {
@@ -123,7 +145,7 @@ for (const entry of VISUAL_MANIFEST) {
       });
 
       const facts = await collectDomFactsFromPage(page, entry);
-      const domChecks = evaluateDeterministicChecks(facts);
+      const domChecks = evaluateDeterministicChecks(facts, entry.minNodeCount);
 
       const status = response?.status();
       // A 4xx here is NOT necessarily broken: this site's own verified, accepted hosting contract

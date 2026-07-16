@@ -68,34 +68,71 @@ function aiFindingFor(aiReview, entryId, viewport) {
 
 /**
  * Splits a capture's failing checks into what actually blocks a release vs what's been
- * deliberately, visibly classified as non-blocking — either because the whole capture is already
- * tracked by a real GitHub issue (`knownIssues`), or because a SPECIFIC check on it carries an
- * `acceptedFindings` entry (see `visual/manifest.ts`'s doc comment on that type). A check id not
- * covered by either still blocks, even on a capture that has OTHER accepted findings — this is
- * per-check, not "the whole capture is fine now". Never silent: every non-blocking check here
- * carries a `reason` that the report renders, and the caller decides for itself whether to also
- * distinguish `requiresHumanConfirmation` (a warning) from a fully accepted, explained non-issue.
+ * deliberately, visibly classified as non-blocking. The ONLY exemption path is a SPECIFIC check on
+ * this capture carrying an `acceptedFindings` entry naming that exact `checkId` — AND, when that
+ * entry restricts itself to specific `viewports`, this capture's own viewport must be one of them
+ * (see `visual/manifest.ts`'s doc comment on `AcceptedFinding.viewports`: a defect confirmed on
+ * mobile only must not exempt the same check id failing on desktop for a different reason).
+ * `knownIssues` is informational-only and never exempts anything by itself. Deliberately NOT "if
+ * `knownIssues` is non-empty, every failure on this capture is non-blocking": that was a real
+ * correctness bug — a capture tagged for one known, specific defect (e.g. a palette-clipping issue)
+ * could develop a completely unrelated failure (blank page, broken image, console crash, missing
+ * canvas) and still pass the release gate, because the exemption applied to the whole capture
+ * instead of the one check that issue actually affects. A check id not covered by a (viewport-
+ * matching) `acceptedFindings` entry always blocks, even on a capture that has OTHER accepted
+ * findings — this is per-check, not "the whole capture is fine now". Never silent: every
+ * non-blocking check here carries a `reason` that the report renders, and the caller decides for
+ * itself whether to also distinguish `requiresHumanConfirmation` (a warning) from a fully accepted,
+ * explained non-issue.
  */
 function classifyFailingChecks(capture) {
   const failing = capture.checks.filter((c) => c.status === 'fail');
-  if ((capture.knownIssues ?? []).length > 0) {
-    // A real, filed GitHub issue already owns every failure on this capture — same behaviour as
-    // before per-check classification existed.
-    return { blocking: [], nonBlocking: failing.map((check) => ({ check, classification: null })) };
-  }
-  const acceptedById = new Map((capture.acceptedFindings ?? []).map((a) => [a.checkId, a]));
+  const accepted = capture.acceptedFindings ?? [];
   const blocking = [];
   const nonBlocking = [];
   for (const check of failing) {
-    const classification = acceptedById.get(check.id) ?? null;
+    const classification =
+      accepted.find(
+        (a) => a.checkId === check.id && (!a.viewports || a.viewports.includes(capture.viewport)),
+      ) ?? null;
     (classification ? nonBlocking : blocking).push({ check, classification });
   }
   return { blocking, nonBlocking };
 }
 
+/**
+ * Cross-checks the real result files against `expected-inventory.json` (written by
+ * `capture.spec.ts` before any test runs — see its own comment). Two distinct integrity problems,
+ * both release-blocking on their own, independent of any `acceptedFindings` classification (there
+ * is no check to classify when the whole capture never happened):
+ *  - `missing`: an entry×viewport the current manifest defines has no result file — most likely a
+ *    test that crashed/threw before reaching its own `writeFileSync` (e.g. `addStep`'s fail-loud
+ *    design in `visual/interactions.ts`), silently reporting fewer states than the manifest
+ *    actually requires would otherwise go unnoticed.
+ *  - `unexpected`: a result file exists with no matching entry in the current manifest — stale
+ *    output from a prior run (a removed entry, a reduced viewport list) that `previsual:capture`'s
+ *    clean step should have already prevented; still checked here as defence in depth.
+ */
+function inventoryDiff(captures) {
+  const expectedPath = join(OUTPUT_DIR, 'expected-inventory.json');
+  if (!existsSync(expectedPath)) {
+    // No expected-inventory.json means `visual:capture` was never run this pass (e.g. only
+    // `visual:report` was re-run standalone against already-generated results) — nothing to
+    // cross-check against.
+    return { missing: [], unexpected: [] };
+  }
+  const expected = new Set(JSON.parse(readFileSync(expectedPath, 'utf8')));
+  const actual = new Set(captures.map((c) => `${c.entryId}--${c.viewport}`));
+  return {
+    missing: [...expected].filter((key) => !actual.has(key)).sort(),
+    unexpected: [...actual].filter((key) => !expected.has(key)).sort(),
+  };
+}
+
 function buildReport() {
   const captures = loadCaptureRecords().map((c) => ({ ...c, classified: classifyFailingChecks(c) }));
   const aiReview = readJsonIfExists(join(OUTPUT_DIR, 'ai-review-results.json'), null);
+  const { missing: missingCaptures, unexpected: unexpectedCaptures } = inventoryDiff(captures);
 
   const deterministicPass = captures.filter((c) => c.overallStatus === 'pass').length;
   const deterministicFail = captures.length - deterministicPass;
@@ -103,10 +140,13 @@ function buildReport() {
   const aiWarning = (aiReview?.reviewed ?? []).filter((r) => r.status === 'warning').length;
 
   // A capture is a release-blocking failure only if it has at least one failing check that isn't
-  // covered by a known GitHub issue OR a documented `acceptedFindings` classification — see
-  // `classifyFailingChecks` above. This is the ONLY thing `visual:release-check --strict` fails on.
+  // covered by a documented `acceptedFindings` classification — see `classifyFailingChecks` above.
+  // A missing or unexpected capture (evidence integrity, not a check result) always blocks
+  // regardless — see `inventoryDiff` above. Together, this is everything
+  // `visual:release-check --strict` fails on.
   const blockingCaptures = captures.filter((c) => c.classified.blocking.length > 0);
-  const overallStatus = blockingCaptures.length > 0 ? 'fail' : 'pass';
+  const overallStatus =
+    blockingCaptures.length > 0 || missingCaptures.length > 0 || unexpectedCaptures.length > 0 ? 'fail' : 'pass';
 
   const viewportsCaptured = [...new Set(captures.map((c) => c.viewport))].sort();
 
@@ -125,6 +165,8 @@ function buildReport() {
       deterministicFail,
       blockingFailures: blockingCaptures.length,
       nonBlockingFindings: captures.filter((c) => c.classified.nonBlocking.length > 0).length,
+      missingCaptures,
+      unexpectedCaptures,
       aiReviewEnabled: Boolean(aiReview?.enabled),
       aiModel: aiReview?.model ?? null,
       aiReviewedCount: aiReview?.reviewedCount ?? 0,
@@ -161,13 +203,38 @@ function renderMarkdown(report) {
   lines.push('');
   lines.push(`- Total captures: ${report.summary.totalCaptures}`);
   lines.push(`- Deterministic checks: ${report.summary.deterministicPass} pass / ${report.summary.deterministicFail} fail`);
-  lines.push(`- Release-blocking failures (uncovered by a known issue or an accepted-finding classification): ${report.summary.blockingFailures}`);
-  lines.push(`- Non-blocking findings (known-issue-tagged or explicitly accepted/warning): ${report.summary.nonBlockingFindings}`);
+  lines.push(`- Release-blocking failures (no matching acceptedFindings classification): ${report.summary.blockingFailures}`);
+  lines.push(`- Non-blocking findings (explicitly accepted or flagged as a warning): ${report.summary.nonBlockingFindings}`);
+  lines.push(`- Missing captures (expected by the manifest, no result found — release-blocking): ${report.summary.missingCaptures.length}`);
+  lines.push(`- Unexpected captures (result found, not in the current manifest — release-blocking): ${report.summary.unexpectedCaptures.length}`);
   if (report.summary.aiReviewEnabled) {
     lines.push(`- AI review: ${report.summary.aiFail} fail / ${report.summary.aiWarning} warning`);
   }
   lines.push(`- **Overall status: ${statusBadge(report.summary.overallStatus)}**`);
   lines.push('');
+
+  if (report.summary.missingCaptures.length > 0 || report.summary.unexpectedCaptures.length > 0) {
+    lines.push('## Evidence integrity — detail');
+    lines.push('');
+    if (report.summary.missingCaptures.length > 0) {
+      lines.push('**Missing** (the manifest expects these, but no result file exists — likely a crashed or');
+      lines.push('errored capture; see the Playwright run\'s own output for which test failed):');
+      lines.push('');
+      for (const key of report.summary.missingCaptures) {
+        lines.push(`- \`${key}\``);
+      }
+      lines.push('');
+    }
+    if (report.summary.unexpectedCaptures.length > 0) {
+      lines.push('**Unexpected** (a result file exists with no matching entry in the current manifest —');
+      lines.push('stale output from a prior run; `previsual:capture` should have cleared this):');
+      lines.push('');
+      for (const key of report.summary.unexpectedCaptures) {
+        lines.push(`- \`${key}\``);
+      }
+      lines.push('');
+    }
+  }
 
   for (const surface of ['org', 'builder']) {
     const entries = report.entries.filter((e) => e.surface === surface);
@@ -194,8 +261,10 @@ function renderMarkdown(report) {
   if (blockingEntries.length > 0) {
     lines.push('## Release-blocking deterministic failures — detail');
     lines.push('');
-    lines.push('Not covered by a known GitHub issue or a documented `acceptedFindings` classification —');
-    lines.push('these are what `visual:release-check --strict` actually fails on.');
+    lines.push('Not covered by a documented `acceptedFindings` classification for this specific check —');
+    lines.push('these are what `visual:release-check --strict` actually fails on. A `knownIssues` tag on');
+    lines.push('an entry (see the ".org site"/"Workflow Builder" tables above) is informational only and');
+    lines.push('does NOT exempt a check by itself; only a matching `acceptedFindings` entry does.');
     lines.push('');
     for (const entry of blockingEntries) {
       lines.push(`### ${entry.stateName} @ ${entry.viewport} (BLOCKING)`);
@@ -213,25 +282,21 @@ function renderMarkdown(report) {
   if (nonBlockingEntries.length > 0) {
     lines.push('## Non-blocking findings — detail');
     lines.push('');
-    lines.push('Real deterministic-check failures that do NOT fail the release check, either because a');
-    lines.push('real GitHub issue already tracks them, or because they carry a documented, deliberate');
-    lines.push('non-blocking classification (see the manifest). `requires-human-confirmation` findings are');
-    lines.push('warnings, not settled non-issues.');
+    lines.push('Real deterministic-check failures that do NOT fail the release check because they carry a');
+    lines.push('documented, per-check `acceptedFindings` classification (see the manifest).');
+    lines.push('`requires-human-confirmation` findings are warnings, not settled non-issues.');
     lines.push('');
     for (const entry of nonBlockingEntries) {
       lines.push(`### ${entry.stateName} @ ${entry.viewport}`);
       if (entry.knownIssues.length > 0) {
-        lines.push(`- Tracked by: ${entry.knownIssues.map((n) => `#${n}`).join(', ')}`);
-        for (const { check } of entry.classified.nonBlocking) {
-          lines.push(`  - **${check.id}**: ${check.detail ?? '(no detail)'}`);
-        }
-      } else {
-        for (const { check, classification } of entry.classified.nonBlocking) {
-          const confirmTag = classification?.requiresHumanConfirmation ? ' — requires-human-confirmation' : '';
-          lines.push(`- **${check.id}**${confirmTag}: ${check.detail ?? '(no detail)'}`);
-          if (classification?.reason) {
-            lines.push(`  - _Reason: ${classification.reason}_`);
-          }
+        lines.push(`- Also tagged (informational only): ${entry.knownIssues.map((n) => `#${n}`).join(', ')}`);
+      }
+      for (const { check, classification } of entry.classified.nonBlocking) {
+        const confirmTag = classification?.requiresHumanConfirmation ? ' — requires-human-confirmation' : '';
+        const issueTag = classification?.issue ? ` (#${classification.issue})` : '';
+        lines.push(`- **${check.id}**${issueTag}${confirmTag}: ${check.detail ?? '(no detail)'}`);
+        if (classification?.reason) {
+          lines.push(`  - _Reason: ${classification.reason}_`);
         }
       }
       if (entry.notes) {
@@ -270,4 +335,12 @@ function main() {
   }
 }
 
-main();
+// CLI entry, guarded so `classifyFailingChecks`/`inventoryDiff` can be imported and unit-tested
+// (see specs/visual-unit/generate-report.spec.ts) without this script's real side effects
+// (reading the live repo, writing report.json/md) running on import — same pattern
+// agentforge4j-docs/scripts/assemble-site.mjs already uses for the same reason.
+if (process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1])) {
+  main();
+}
+
+export { classifyFailingChecks, inventoryDiff };

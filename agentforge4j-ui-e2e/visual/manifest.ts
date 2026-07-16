@@ -40,6 +40,18 @@ export interface AcceptedFinding {
   readonly checkId: string;
   readonly reason: string;
   readonly requiresHumanConfirmation?: boolean;
+  /** GitHub issue number, if this finding has been filed — purely informational (the report links
+   *  it), not a separate exemption path. Exemption always requires a `checkId` match here; a
+   *  filed issue number alone, with no matching `acceptedFindings` entry, exempts nothing (see the
+   *  `VisualManifestEntry.knownIssues` doc comment for why that distinction matters). */
+  readonly issue?: number;
+  /** Restricts the exemption to specific viewport names on this entry (default: all of the
+   *  entry's viewports). Use this when a defect is confirmed on one viewport only — e.g. a mobile-
+   *  only rendering bug — so the SAME check failing on a DIFFERENT viewport of the same entry,
+   *  for a genuinely different reason, still blocks. Never widen a viewport-specific defect to
+   *  "all viewports" just for convenience; that's exactly the entry-level-blanket-exemption
+   *  mistake this whole mechanism replaced. */
+  readonly viewports?: readonly string[];
 }
 
 /** Every viewport this entry must be captured at, by name (see `support/web-ui/routes.ts`
@@ -73,16 +85,30 @@ export interface VisualManifestEntry {
   readonly maskSelectors?: readonly string[];
   readonly aiReviewEnabled: boolean;
   readonly releaseImportance: ReleaseImportance;
-  /** GitHub issue numbers this state is already known to intersect (e.g. the #94-#103 Builder
-   *  usability findings) — lets the report separate "known, already-tracked" from "new". Any
-   *  failure on an entry with at least one knownIssues number is treated as fully non-blocking
-   *  (the existing tracked issue already owns it), same as before this field existed. */
+  /** GitHub issue numbers this state is already known to INTERSECT — purely informational context
+   *  the report displays (e.g. "this Builder state is part of the #99/#104 palette-clipping
+   *  family"), NOT an exemption by itself. Deliberately does not exempt anything on its own:
+   *  entry-level "any issue number present ⇒ every failing check here is non-blocking" was a real
+   *  correctness bug (a state tagged for a known clipping issue could develop an unrelated blank
+   *  page or console crash and still pass) — exemption ALWAYS requires a specific `acceptedFindings`
+   *  entry naming the exact `checkId`, same as any other non-blocking classification. Use
+   *  `AcceptedFinding.issue` to link a specific exemption back to one of these numbers once you
+   *  have real evidence of which check actually fires for it; don't pre-emptively guess a mapping
+   *  for a failure that isn't currently reproducing. */
   readonly knownIssues?: readonly number[];
-  /** Per-check non-blocking classifications for findings that are NOT yet a filed GitHub issue —
-   *  see `AcceptedFinding`'s own doc comment for the full rationale. Checked independently of
-   *  `knownIssues`; a check id not listed here still blocks even if the entry has OTHER accepted
-   *  findings. */
+  /** Per-check non-blocking classifications — see `AcceptedFinding`'s own doc comment for the full
+   *  rationale. The ONLY thing that exempts a failing check from blocking the strict release
+   *  check; a check id not listed here still blocks, `knownIssues` above notwithstanding. */
   readonly acceptedFindings?: readonly AcceptedFinding[];
+  /** Minimum number of `.react-flow__node` elements this state's own setup interaction is
+   *  supposed to leave on the canvas — the deterministic proof that e.g. "representative populated
+   *  workflow" or "validation state" actually got there, rather than a setup failure silently
+   *  leaving an empty canvas that still passes every other check (this is the real bug a prior
+   *  version of `visual/interactions.ts`'s `addStep` had: every setup-interaction failure was
+   *  silently swallowed, and NOTHING checked node count, so an empty canvas was indistinguishable
+   *  from a correctly populated one). Omit for entries with no setup interaction (or none that adds
+   *  nodes) — `checks.ts` skips this check entirely rather than asserting a meaningless "0". */
+  readonly minNodeCount?: number;
   /** Capture the full scrollable page, not just the viewport. Off by default for Builder states
    *  (the canvas is its own scroll region; a full-page capture would just be mostly blank). */
   readonly fullPage: boolean;
@@ -232,12 +258,37 @@ export const VISUAL_MANIFEST: readonly VisualManifestEntry[] = [
     viewports: CORE_VIEWPORTS,
     interaction: 'addSampleSteps',
     mustBeVisible: ['[data-testid="workflow-builder-canvas"]'],
+    minNodeCount: 2,
     aiReviewEnabled: true,
     releaseImportance: 'blocker',
     fullPage: false,
     knownIssues: [99, 104],
-    notes: 'Adds an AGENT and a DECISION step via the palette. Known clipping risk in the '
+    notes: 'Adds an AI_STEP and a DECISION step via the palette. Known clipping risk in the '
       + 'step-library panel tracked as #99/#104 (fixed in unmerged PR #108, not yet live).',
+    // Confirmed real, new (2026-07-16 dogfooding, via direct DOM inspection — not guessed), NOT
+    // yet filed as an issue — a separate Builder-remediation triage item, deliberately out of THIS
+    // release gate's scope. Scoped to mobile only, and to (at least) two distinct confirmed
+    // causes: (1) `.wf-palette__mobile-sheet` opens upward from its trigger with
+    // `max-height: min(70vh, 28rem)` and `overflow: hidden` on itself — when the trigger sits low
+    // enough on a short viewport, the sheet, and every button in its first ("Common") group
+    // including AI_STEP, renders above y=0 with no scroll path back into view (its own
+    // `getBoundingClientRect()` measured `top: -88` against an 844px-tall viewport); (2) even a
+    // button that IS within the viewport's y-bounds (DECISION, lower in the sheet) can still be
+    // unclickable because other page chrome — the accessibility-note paragraph above the canvas,
+    // the fixed site header — visually overlaps and intercepts the click. `addStep` cannot deliver
+    // the clicks it needs to reach 2 nodes for either reason, so `canvas-node-count` correctly
+    // fails here — not silently.
+    acceptedFindings: [
+      {
+        checkId: 'canvas-node-count',
+        viewports: ['mobile'],
+        reason: 'The mobile palette sheet (.wf-palette__mobile-sheet) can render above the top of '
+          + 'the viewport with no reachable scroll path, and separately other page chrome (the '
+          + "accessibility note, the site header) can overlap and intercept a button that IS "
+          + 'within the viewport — both confirmed via direct inspection, not assumed. A real '
+          + "Builder defect, pending triage, out of this .org release gate's scope.",
+      },
+    ],
   },
   {
     id: 'builder-inspector-selected',
@@ -247,16 +298,31 @@ export const VISUAL_MANIFEST: readonly VisualManifestEntry[] = [
     viewports: CORE_VIEWPORTS,
     interaction: 'addStepAndSelectNode',
     mustBeVisible: ['[data-testid="workflow-builder-inspector-panel"]'],
+    minNodeCount: 1,
     aiReviewEnabled: true,
     releaseImportance: 'blocker',
     fullPage: false,
-    // Confirmed real, new (2026-07-15/16 dogfooding), NOT yet filed as an issue per owner
-    // instruction — a separate Builder-remediation triage item, deliberately out of THIS release
-    // gate's scope (same treatment as the existing #94-#103 family: Builder-surface findings don't
-    // block the .org site release).
+    // Two DISTINCT real, mobile-only Builder defect FAMILIES can each independently prevent this
+    // state, and each is scoped to exactly the check it actually causes — never widened to "the
+    // whole entry is fine on mobile":
+    //  1. `canvas-node-count` — the same mobile-palette-unclickable defects as `builder-populated`
+    //     above (off-screen sheet AND page-chrome overlap; this state's own setup also adds an
+    //     AI_STEP first).
+    //  2. `must-be-visible-present` — confirmed via Playwright trace: on a narrow viewport, the
+    //     guided-mode stepper panel (.workflow-builder__guided) intercepts pointer events over the
+    //     canvas, making a node genuinely unclickable even once one exists — the inspector never
+    //     opens. None of these are yet filed as GitHub issues; all are pending Builder-remediation
+    //     triage items, deliberately out of THIS release gate's scope.
     acceptedFindings: [
       {
+        checkId: 'canvas-node-count',
+        viewports: ['mobile'],
+        reason: 'Same mobile palette-unclickable defects as builder-populated — see that entry '
+          + 'for the confirmed technical detail.',
+      },
+      {
         checkId: 'must-be-visible-present',
+        viewports: ['mobile'],
         reason: 'Confirmed via Playwright trace: on a narrow viewport, the guided-mode stepper '
           + 'panel (.workflow-builder__guided) intercepts pointer events over the canvas, making a '
           + 'node genuinely unclickable — the inspector never opens. Real Builder defect, tracked '
@@ -272,6 +338,7 @@ export const VISUAL_MANIFEST: readonly VisualManifestEntry[] = [
     stateName: 'Builder — validation state (incomplete DECISION step)',
     viewports: CORE_VIEWPORTS,
     interaction: 'addUnconfiguredDecisionStep',
+    minNodeCount: 1,
     aiReviewEnabled: true,
     releaseImportance: 'important',
     fullPage: false,
@@ -279,6 +346,15 @@ export const VISUAL_MANIFEST: readonly VisualManifestEntry[] = [
     notes: 'A DECISION step with no configured branches is expected to surface the validation '
       + 'pill/panel. Known reachability bug tracked as #95/#101 (popover renders behind an open '
       + 'inspector; fixed in unmerged PR #106, not yet live) may reproduce here.',
+    acceptedFindings: [
+      {
+        checkId: 'canvas-node-count',
+        viewports: ['mobile'],
+        reason: 'Same mobile palette-unclickable defects as builder-populated — see that entry '
+          + 'for the confirmed technical detail. The DECISION button sits in the Flow group, a '
+          + "different position than AI_STEP, but is confirmed equally unreachable here.",
+      },
+    ],
   },
   {
     id: 'builder-export-clicked',
@@ -287,12 +363,14 @@ export const VISUAL_MANIFEST: readonly VisualManifestEntry[] = [
     stateName: 'Builder — after Export click',
     viewports: ['laptop'],
     interaction: 'addSampleStepsAndExport',
+    minNodeCount: 1,
     aiReviewEnabled: false,
     releaseImportance: 'nice-to-have',
     fullPage: false,
     notes: 'Export confirmation banner (naming the produced filename) ships in unmerged PR #109 — '
       + 'expect no visible change on the currently-live embed; this state exists to catch a '
-      + 'misleading UI, not to certify the feature.',
+      + 'misleading UI, not to certify the feature. Laptop-only viewport, so the mobile '
+      + 'palette-sheet-off-screen defect (see builder-populated) does not apply here.',
   },
   {
     id: 'builder-readonly-mode',

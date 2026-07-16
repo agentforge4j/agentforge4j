@@ -29,6 +29,7 @@ export interface DomFacts {
   readonly navCoversHeading: boolean;
   readonly primaryActionsInvisible: readonly string[];
   readonly mainContentBlank: boolean;
+  readonly canvasNodeCount: number;
 }
 
 /** Runs entirely inside the page (no Node-side DOM access) — kept as a single function literal so
@@ -269,6 +270,12 @@ function collectDomFacts(args: readonly [readonly string[], readonly string[]]):
   });
   const mainContentBlank = !hasVisibleText && !hasVisibleImage;
 
+  // Real count of canvas nodes actually present — the deterministic proof that a Builder setup
+  // interaction (add a step, etc.) genuinely reached the state a manifest entry claims, instead of
+  // silently leaving an empty canvas that still passes every other check (see
+  // `visual/manifest.ts`'s `minNodeCount` field and `visual/interactions.ts`'s `addStep`).
+  const canvasNodeCount = document.querySelectorAll('.react-flow__node').length;
+
   return {
     horizontalOverflowPx: Math.max(0, document.documentElement.scrollWidth - viewportWidth),
     headings,
@@ -282,6 +289,7 @@ function collectDomFacts(args: readonly [readonly string[], readonly string[]]):
     navCoversHeading,
     primaryActionsInvisible,
     mainContentBlank,
+    canvasNodeCount,
   };
 }
 
@@ -294,9 +302,25 @@ export async function collectDomFactsFromPage(
 
 /** Pure: turns `DomFacts` into pass/fail `CheckResult`s. No page/browser access — directly
  *  unit-testable, and this is the function that actually encodes "what counts as a defect" so
- *  that logic can be verified without launching Chromium. */
-export function evaluateDeterministicChecks(facts: DomFacts): CheckResult[] {
+ *  that logic can be verified without launching Chromium. `minNodeCount`, when the manifest entry
+ *  sets it, is the deterministic proof a Builder setup interaction actually reached its claimed
+ *  state (see `DomFacts.canvasNodeCount`'s doc comment) — omitted entirely (not even a `skip`
+ *  result) for entries that don't set it, since "how many nodes should be on the canvas" is
+ *  meaningless for a non-Builder capture. */
+export function evaluateDeterministicChecks(facts: DomFacts, minNodeCount?: number): CheckResult[] {
   const results: CheckResult[] = [];
+
+  if (minNodeCount !== undefined) {
+    results.push(
+      facts.canvasNodeCount >= minNodeCount
+        ? { id: 'canvas-node-count', status: 'pass' }
+        : {
+            id: 'canvas-node-count',
+            status: 'fail',
+            detail: `expected at least ${minNodeCount} canvas node(s), found ${facts.canvasNodeCount} — the setup interaction did not reach the claimed state`,
+          },
+    );
+  }
 
   results.push(
     facts.horizontalOverflowPx > 2

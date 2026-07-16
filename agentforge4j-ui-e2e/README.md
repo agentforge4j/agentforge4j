@@ -95,7 +95,11 @@ directly instead of re-listing routes).
 surface; it does not implement, redesign, or fix anything tracked by the dedicated builder-
 usability remediation workstream (issues #94-#103, PRs #105-#110). Findings that intersect those
 issues are tagged `knownIssues` in the manifest and called out separately in the generated report,
-never silently duplicated or fixed here.
+never silently duplicated or fixed here. `knownIssues` is informational only — a real GitHub issue
+number tagged on an entry does not, by itself, exempt anything from the strict release check. The
+only thing that does is a `checkId`-specific `acceptedFindings` entry (which may itself reference
+an issue number). This distinction matters: tagging an entry with a known issue must never silently
+suppress a completely unrelated failure that later appears on that same entry.
 
 ### Layout
 
@@ -144,8 +148,13 @@ npm run visual:build-site             # slow — full local build of the compose
 npm run visual:serve-site             # serve an already-built _site standalone, for manual browsing
 
 npm run visual:capture                # screenshots + deterministic checks (needs the site built+served,
-                                       # or set VISUAL_TARGET_URL to an already-running instance)
-npm run test:visual-unit              # pure-logic tests for checks.ts/manifest.ts, no browser
+                                       # or set VISUAL_TARGET_URL to an already-running instance).
+                                       # Its own `previsual:capture` pre-hook clears every prior
+                                       # run's results/screenshots/AI output first, so a stale or
+                                       # removed manifest entry's evidence never lingers into a new
+                                       # report.
+npm run test:visual-unit              # pure-logic tests for checks.ts/manifest.ts/generate-report.mjs
+                                       # /serve-assembled-site.mjs, no browser
 
 npm run visual:ai-review              # optional — see "AI review" below; no-ops cleanly if unconfigured
 npm run visual:report                 # merge results (+ AI review, if run) into report.md/report.json

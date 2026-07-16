@@ -8,7 +8,7 @@
 //   --strict   Blocking — used by the local `visual:release-check` command ahead of a 0.1.0
 //              publish. Exits 1 if anything is stale or the evidence reports an unresolved failure.
 //
-// Usage: node scripts/visual/check-freshness.mjs [--strict] [--base-sha <sha>]
+// Usage: node scripts/visual/check-freshness.mjs [--strict]
 
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
@@ -29,13 +29,10 @@ const RELEVANT_PATH_PATTERN =
   /^(agentforge4j-web-ui\/|agentforge4j-workflow-builder\/|agentforge4j-docs\/|agentforge4j-ui-e2e\/visual\/|agentforge4j-workflows-catalog\/|agentforge4j-schema\/)/;
 
 function parseArgs(argv) {
-  const args = { strict: false, baseSha: null };
+  const args = { strict: false };
   for (let i = 0; i < argv.length; i += 1) {
     if (argv[i] === '--strict') {
       args.strict = true;
-    } else if (argv[i] === '--base-sha') {
-      args.baseSha = argv[i + 1];
-      i += 1;
     }
   }
   return args;
@@ -50,7 +47,7 @@ function manifestHash() {
 }
 
 function main() {
-  const { strict, baseSha } = parseArgs(process.argv.slice(2));
+  const { strict } = parseArgs(process.argv.slice(2));
   const warnings = [];
 
   if (!existsSync(ATTESTATION_PATH)) {
@@ -64,24 +61,32 @@ function main() {
   const attestation = JSON.parse(readFileSync(ATTESTATION_PATH, 'utf8'));
   const currentSha = git(['rev-parse', 'HEAD']);
 
+  // Deliberately NOT "warn whenever commitSha !== currentSha": committing the attestation file
+  // itself necessarily produces a new HEAD the attestation can't know about — a bare SHA-equality
+  // check would make every committed attestation register as stale one commit after it's
+  // committed, permanently (a real defect an earlier version of this script had; verified via a
+  // concrete repro: an attestation recording commit A, committed as part of commit B, immediately
+  // read back as stale against B). The only thing that actually matters is whether a UI-RELEVANT
+  // path changed between the attested commit and now — an attestation-only commit, or any other
+  // commit that never touches the reviewed surface, must not invalidate otherwise-current evidence.
   if (attestation.commitSha !== currentSha) {
-    warnings.push(`Evidence was generated for commit ${attestation.commitSha.slice(0, 12)}, not the current ${currentSha.slice(0, 12)}.`);
-
-    // Only worth flagging as a *relevant* staleness if a UI-relevant path actually changed between
-    // the attested commit and now — an evidence file that's merely "a few unrelated commits old"
-    // is not what this check exists to catch.
-    let changedFiles = [];
+    let changedFiles = null;
     try {
       changedFiles = git(['diff', '--name-only', attestation.commitSha, currentSha]).split('\n').filter(Boolean);
     } catch {
       // attestation.commitSha may not be reachable (shallow clone, rewritten history) — can't
-      // compute a diff, so fall through without the extra relevance detail; the staleness warning
-      // above already fired.
+      // compute a diff, so we genuinely don't know whether anything relevant changed. Fail open
+      // (warn) rather than silently assume it's still fresh.
     }
-    const relevantChanges = changedFiles.filter((f) => RELEVANT_PATH_PATTERN.test(f));
-    if (relevantChanges.length > 0) {
-      warnings.push(`Evidence predates ${relevantChanges.length} relevant UI change(s) since it was generated ` +
-        `(e.g. ${relevantChanges.slice(0, 5).join(', ')}).`);
+    if (changedFiles === null) {
+      warnings.push(`Evidence was generated for commit ${attestation.commitSha.slice(0, 12)}, which is not reachable ` +
+        `from the current ${currentSha.slice(0, 12)} (shallow clone or rewritten history) — cannot confirm freshness.`);
+    } else {
+      const relevantChanges = changedFiles.filter((f) => RELEVANT_PATH_PATTERN.test(f));
+      if (relevantChanges.length > 0) {
+        warnings.push(`Evidence (commit ${attestation.commitSha.slice(0, 12)}) predates ${relevantChanges.length} ` +
+          `relevant UI change(s) since it was generated (e.g. ${relevantChanges.slice(0, 5).join(', ')}).`);
+      }
     }
   }
 
@@ -92,20 +97,6 @@ function main() {
 
   if (attestation.overallStatus === 'fail') {
     warnings.push('The most recent visual-review evidence reports unresolved visual failures (overallStatus: fail).');
-  }
-
-  if (baseSha) {
-    try {
-      const prChanges = git(['diff', '--name-only', baseSha, currentSha]).split('\n').filter(Boolean);
-      const relevant = prChanges.filter((f) => RELEVANT_PATH_PATTERN.test(f));
-      if (relevant.length > 0 && attestation.commitSha === currentSha) {
-        // Defensive: covers the case where the attestation was committed IN this same PR but a
-        // later commit in the same PR touched UI paths without refreshing it again.
-        warnings.push(`This PR's own diff touches ${relevant.length} UI-relevant path(s); confirm the attestation reflects them.`);
-      }
-    } catch {
-      // --base-sha not resolvable in this checkout (e.g. shallow fetch) — skip this extra check.
-    }
   }
 
   report(warnings, strict);

@@ -14,6 +14,7 @@
     "test:visual-unit": "playwright test --config=playwright.visual-unit.config.ts",
     "visual:build-site": "node scripts/visual/build-assembled-site.mjs",
     "visual:serve-site": "node scripts/visual/serve-assembled-site.mjs",
+    "previsual:capture": "node scripts/visual/clean-output.mjs",
     "visual:capture": "playwright test --config=playwright.visual.config.ts",
     "visual:ai-review": "node scripts/visual/ai-review.mjs",
     "visual:report": "node scripts/visual/generate-report.mjs",
