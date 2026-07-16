@@ -32,7 +32,7 @@ Unless you configure a file sink, bootstrap logs a **WARNING** and uses `FileSin
 
 ## Configuration via environment variables and system properties
 
-Bootstrap reads `AGENTFORGE4J_*` environment variables and `agentforge4j.*` system properties (normalised to dot-form; system properties win on collision). LLM keys also map to `agentforge4j.llm.<provider>.*` (for example `agentforge4j.llm.openai.api-key`).
+Bootstrap reads `AGENTFORGE4J_*` environment variables and `agentforge4j.*` system properties (normalised to dot-form; system properties win on collision). LLM keys also map to `agentforge4j.llm.<provider>.*` (for example `agentforge4j.llm.openai.api.key`).
 
 | Key | Type | Description |
 |---|---|---|
