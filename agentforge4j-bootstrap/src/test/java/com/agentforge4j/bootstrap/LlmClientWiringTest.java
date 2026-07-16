@@ -162,6 +162,28 @@ class LlmClientWiringTest {
   }
 
   @Test
+  void connectTimeoutAcceptsIso8601() {
+    setProperty("agentforge4j.llm.openai.api.key", "sk");
+    setProperty("agentforge4j.llm.openai.connect.timeout", "PT45S");
+
+    assertThat(assemble(Map.of())).hasSize(1);
+    assertThat(captured("openai").configuration().getConnectTimeout())
+        .isEqualTo(java.time.Duration.ofSeconds(45));
+  }
+
+  @Test
+  void connectTimeoutAcceptsCompactShorthand() {
+    // Same grammar as RawProviderConfiguration/MapLlmProviderOptions duration values (#81) —
+    // the auto-discovered connect.timeout is the same logical property and accepts the same forms.
+    setProperty("agentforge4j.llm.openai.api.key", "sk");
+    setProperty("agentforge4j.llm.openai.connect.timeout", "45s");
+
+    assertThat(assemble(Map.of())).hasSize(1);
+    assertThat(captured("openai").configuration().getConnectTimeout())
+        .isEqualTo(java.time.Duration.ofSeconds(45));
+  }
+
+  @Test
   void invalidConnectTimeoutFailsFast() {
     setProperty("agentforge4j.llm.openai.api.key", "sk");
     setProperty("agentforge4j.llm.openai.connect.timeout", "not-a-duration");
