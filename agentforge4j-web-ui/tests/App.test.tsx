@@ -17,6 +17,7 @@ describe('App routing', () => {
   test.each([
     ['/', 'AgentForge4j'],
     ['/docs', 'Documentation'],
+    ['/api', 'API reference'],
     ['/use', 'Get started'],
     ['/catalogue', 'Workflow catalogue'],
     ['/architecture', 'Architecture'],
@@ -143,6 +144,14 @@ describe('branding', () => {
   });
 });
 
+describe('api nav placement', () => {
+  test('/api appears in the primary navigation landmark, not footer-only', () => {
+    renderAt('/');
+    const primaryNav = screen.getByRole('navigation', { name: 'Primary' });
+    expect(within(primaryNav).getByRole('link', { name: 'API' })).toHaveAttribute('href', '/api');
+  });
+});
+
 describe('header and footer GitHub links', () => {
   test('the desktop header GitHub link points at the real org repo', () => {
     renderAt('/');
@@ -170,7 +179,7 @@ describe('footer navigation', () => {
     const reachableHrefs = new Set(
       screen.getAllByRole('link').map((link) => link.getAttribute('href')),
     );
-    for (const path of ['/docs', '/use', '/catalogue', '/builder', '/architecture', '/releases', '/community', '/security', '/legal', '/contact']) {
+    for (const path of ['/docs', '/api', '/use', '/catalogue', '/builder', '/architecture', '/releases', '/community', '/security', '/legal', '/contact']) {
       expect(reachableHrefs.has(path)).toBe(true);
     }
   });
