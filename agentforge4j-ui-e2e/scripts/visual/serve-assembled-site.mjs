@@ -111,8 +111,11 @@ export function startServer({ dir: rawDir, port }) {
     res.writeHead(404, { 'Content-Type': 'text/plain' });
     res.end('404 Not Found (no 404.html present in the composed site)');
   });
+  // Explicit '127.0.0.1', not the default all-interfaces bind: `hosting.spec.ts`'s own static
+  // server (the pattern this script generalizes) already binds loopback-only, and there's no
+  // reason for a local dev tool to be reachable from other devices on the same network.
   return new Promise((resolveReady) => {
-    server.listen(port, () => resolveReady(server));
+    server.listen(port, '127.0.0.1', () => resolveReady(server));
   });
 }
 
