@@ -20,6 +20,7 @@ import { INTERACTIONS } from '../../visual/interactions';
 import {
   collectDomFactsFromPage,
   evaluateDeterministicChecks,
+  evaluatePageLoadCheck,
   evaluateRuntimeSignals,
   type CheckResult,
   type RuntimeSignal,
@@ -156,19 +157,11 @@ for (const entry of VISUAL_MANIFEST) {
       const domChecks = evaluateDeterministicChecks(facts, entry.minNodeCount);
 
       const status = response?.status();
-      // A 4xx here is NOT necessarily broken: this site's own verified, accepted hosting contract
-      // (agentforge4j-ui-e2e/README.md "Day 1.5 hosting contract") serves every known client-side
-      // route with a real HTTP 404 whose BODY is the SPA shell, which then boots and renders the
-      // correct page — GitHub Pages' own static-hosting mechanism for a client-routed SPA, proven
-      // correct during the Assembler's own real-artifact verification, not a defect. Only a
-      // missing response or a genuine server error (5xx) fails this check; whether the page
+      // See `evaluatePageLoadCheck`'s own doc comment in visual/checks.ts for the full known-route
+      // status contract: HTTP 404 is the one specific, currently-documented SPA-fallback status for
+      // a known route; a DIFFERENT 4xx is a real failure, not silently accepted. Whether the page
       // actually rendered despite a 404 is exactly what the DOM checks above already verify.
-      const pageLoadCheck: CheckResult =
-        status !== undefined && status < 500
-          ? status >= 400
-            ? { id: 'page-loaded-ok', status: 'pass', detail: `HTTP ${status} (accepted SPA-fallback — see Day 1.5 hosting contract)` }
-            : { id: 'page-loaded-ok', status: 'pass' }
-          : { id: 'page-loaded-ok', status: 'fail', detail: `HTTP ${status ?? 'no response'}` };
+      const pageLoadCheck: CheckResult = evaluatePageLoadCheck(status);
 
       // The browser logs "Failed to load resource ... 404" for the top-level document navigation
       // itself whenever the accepted SPA-fallback 404 above fires — an echo of the already-handled

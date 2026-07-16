@@ -416,6 +416,40 @@ export function evaluateDeterministicChecks(facts: DomFacts, minNodeCount?: numb
   return results;
 }
 
+/**
+ * Validates the top-level navigation response status for a manifest entry. Every entry this suite
+ * captures is, by definition, a KNOWN route — drawn from `visual/manifest.ts`, itself sourced from
+ * `support/web-ui/routes.ts`'s single source of truth (plus the explicit Builder entries) — there
+ * is no "unknown route" capture anywhere in this suite, so this function's whole job is validating
+ * KNOWN-route behavior specifically, not general-purpose "was this a 4xx" leniency.
+ *
+ * The ONE status this suite's own local server (`scripts/visual/serve-assembled-site.mjs`) and a
+ * real GitHub Pages deployment can currently, legitimately emit for a known route with no matching
+ * on-disk file is a real HTTP 404 whose body is the SPA shell, which then boots and client-side
+ * routes to the correct page — this is the exact, currently-tested Day 1 contract
+ * `specs/web-ui/hosting.spec.ts` still asserts today. It is NOT the final Day 1.5 hosting contract
+ * (this module's own README: known public/catalogue routes must return HTTP 200; only genuinely
+ * unknown routes may 404) — rewriting `hosting.spec.ts` and this suite's own acceptance to require
+ * HTTP 200 once the Assembler actually generates per-route static output is explicitly tracked as
+ * separate work, not part of this visual-review suite. What IS this suite's job: a DIFFERENT 4xx
+ * (401, 403, 429, ...) is never the documented SPA-fallback mechanism and must not be silently
+ * accepted as if it were — that was a real gap in an earlier version of this check, which accepted
+ * any status >= 400 uniformly.
+ */
+export function evaluatePageLoadCheck(status: number | undefined): CheckResult {
+  if (status === 404) {
+    return {
+      id: 'page-loaded-ok',
+      status: 'pass',
+      detail: `HTTP ${status} (accepted SPA-fallback for a known route — see Day 1.5 hosting contract)`,
+    };
+  }
+  if (status !== undefined && status < 400) {
+    return { id: 'page-loaded-ok', status: 'pass' };
+  }
+  return { id: 'page-loaded-ok', status: 'fail', detail: `HTTP ${status ?? 'no response'}` };
+}
+
 /** A console message or failed network request captured by the caller during the page's
  *  lifetime (ownership of the Playwright listeners belongs to the capture spec, not this pure
  *  module — see the file header comment on `DomFacts`). */

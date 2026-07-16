@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { expect, test } from '@playwright/test';
-import { evaluateDeterministicChecks, evaluateRuntimeSignals, type DomFacts } from '../../visual/checks';
+import { evaluateDeterministicChecks, evaluatePageLoadCheck, evaluateRuntimeSignals, type DomFacts } from '../../visual/checks';
 
 function baseFacts(overrides: Partial<DomFacts> = {}): DomFacts {
   return {
@@ -134,6 +134,44 @@ test.describe('evaluateDeterministicChecks — this suite requires no browser, n
   test('canvas-node-count passes when MORE than minNodeCount nodes exist', () => {
     const results = evaluateDeterministicChecks(baseFacts({ canvasNodeCount: 5 }), 2);
     expect(results.find((r) => r.id === 'canvas-node-count')?.status).toBe('pass');
+  });
+});
+
+test.describe('evaluatePageLoadCheck — known-route status contract', () => {
+  test('HTTP 200 passes with no detail', () => {
+    expect(evaluatePageLoadCheck(200)).toEqual({ id: 'page-loaded-ok', status: 'pass' });
+  });
+
+  test('a redirect status (3xx) passes with no detail', () => {
+    expect(evaluatePageLoadCheck(301).status).toBe('pass');
+  });
+
+  test('HTTP 404 passes as the one documented SPA-fallback status for a known route', () => {
+    const result = evaluatePageLoadCheck(404);
+    expect(result.status).toBe('pass');
+    expect(result.detail).toContain('accepted SPA-fallback');
+  });
+
+  test('a known route returning a DIFFERENT 4xx status fails — not the documented fallback, the real bug this check closes', () => {
+    const result = evaluatePageLoadCheck(403);
+    expect(result.status).toBe('fail');
+    expect(result.detail).toContain('403');
+  });
+
+  test('HTTP 429 also fails rather than being silently accepted as SPA-fallback', () => {
+    expect(evaluatePageLoadCheck(429).status).toBe('fail');
+  });
+
+  test('a 5xx server error fails', () => {
+    const result = evaluatePageLoadCheck(500);
+    expect(result.status).toBe('fail');
+    expect(result.detail).toContain('500');
+  });
+
+  test('no response at all fails', () => {
+    const result = evaluatePageLoadCheck(undefined);
+    expect(result.status).toBe('fail');
+    expect(result.detail).toContain('no response');
   });
 });
 
