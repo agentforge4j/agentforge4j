@@ -185,6 +185,34 @@ describe('footer navigation', () => {
   });
 });
 
+describe('builder full-viewport layout', () => {
+  // Regression guard for the /builder page collapsing to the embedded builder's own
+  // min-height with the marketing footer visible directly beneath it: the app shell must
+  // pin this route to a single definite viewport height (the builder sizes itself with
+  // height: 100%, which only resolves against a definite ancestor chain) and omit the
+  // footer while editing.
+  test('the app shell pins /builder to a definite viewport height and omits the footer', async () => {
+    const { container } = renderAt('/builder');
+    await screen.findByTestId('workflow-builder', {}, { timeout: 5000 });
+    const shell = container.firstElementChild as HTMLElement;
+    expect(shell.classList.contains('h-dvh')).toBe(true);
+    expect(shell.classList.contains('min-h-dvh')).toBe(false);
+    const main = document.getElementById('main-content') as HTMLElement;
+    expect(main.classList.contains('min-h-0')).toBe(true);
+    expect(container.querySelector('footer')).toBeNull();
+  });
+
+  test('every other route keeps the normal grow-to-content shell with the footer', () => {
+    const { container } = renderAt('/architecture');
+    const shell = container.firstElementChild as HTMLElement;
+    expect(shell.classList.contains('min-h-dvh')).toBe(true);
+    expect(shell.classList.contains('h-dvh')).toBe(false);
+    const main = document.getElementById('main-content') as HTMLElement;
+    expect(main.classList.contains('min-h-0')).toBe(false);
+    expect(container.querySelector('footer')).not.toBeNull();
+  });
+});
+
 describe('content-track pages', () => {
   test('contact page renders all three aliases with no conditional wording', () => {
     renderAt('/contact');
