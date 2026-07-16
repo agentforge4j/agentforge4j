@@ -5,9 +5,9 @@
  * Internal to this module for the foundation track — not consumed by the Docusaurus
  * theme (that cross-build sharing is deferred alongside full visual parity).
  *
- * Entries reference only routes wired in the foundation track. Non-`[B]` routes
- * (`/visualizer`, `/examples`, `/roadmap`, `/search`, `/api`) are intentionally
- * absent, not dead-linked placeholders.
+ * Entries reference only routes wired in a shipped track. Non-`[B]` routes
+ * (`/visualizer`, `/examples`, `/roadmap`, `/search`) are intentionally absent, not
+ * dead-linked placeholders.
  */
 
 export const GITHUB_URL = 'https://github.com/agentforge4j/agentforge4j';
@@ -19,6 +19,7 @@ export interface NavLink {
 
 export const PRIMARY_NAV: readonly NavLink[] = [
   { label: 'Docs', to: '/docs' },
+  { label: 'API', to: '/api' },
   { label: 'Catalogue', to: '/catalogue' },
   { label: 'Builder', to: '/builder' },
   { label: 'Architecture', to: '/architecture' },
@@ -37,6 +38,7 @@ export const FOOTER_COLUMNS: readonly FooterColumn[] = [
     heading: 'Product',
     links: [
       { label: 'Docs', to: '/docs' },
+      { label: 'API', to: '/api' },
       { label: 'Catalogue', to: '/catalogue' },
       { label: 'Builder', to: '/builder' },
       { label: 'Architecture', to: '/architecture' },
