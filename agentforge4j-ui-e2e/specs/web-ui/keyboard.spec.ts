@@ -29,7 +29,10 @@ test.describe('keyboard navigation', () => {
     page,
   }) => {
     await page.goto('/');
-    const expectedOrder = ['Skip to content', 'AgentForge4j', 'Docs', 'Catalogue', 'Builder', 'Architecture', 'Community', 'GitHub', 'Use'];
+    // Matches agentforge4j-web-ui/src/config/nav.ts PRIMARY_NAV order — 'API' was added between
+    // 'Docs' and 'Catalogue' by the Assembler track (PR #126, the /api reference page), and this
+    // list was never updated to match; a stale expectation, not a real regression.
+    const expectedOrder = ['Skip to content', 'AgentForge4j', 'Docs', 'API', 'Catalogue', 'Builder', 'Architecture', 'Community', 'GitHub', 'Use'];
 
     for (const name of expectedOrder) {
       await page.keyboard.press('Tab');

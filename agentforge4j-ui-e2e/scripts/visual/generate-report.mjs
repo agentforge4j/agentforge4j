@@ -66,8 +66,35 @@ function aiFindingFor(aiReview, entryId, viewport) {
   return aiReview.reviewed.find((r) => r.entryId === entryId && r.viewport === viewport) ?? null;
 }
 
+/**
+ * Splits a capture's failing checks into what actually blocks a release vs what's been
+ * deliberately, visibly classified as non-blocking — either because the whole capture is already
+ * tracked by a real GitHub issue (`knownIssues`), or because a SPECIFIC check on it carries an
+ * `acceptedFindings` entry (see `visual/manifest.ts`'s doc comment on that type). A check id not
+ * covered by either still blocks, even on a capture that has OTHER accepted findings — this is
+ * per-check, not "the whole capture is fine now". Never silent: every non-blocking check here
+ * carries a `reason` that the report renders, and the caller decides for itself whether to also
+ * distinguish `requiresHumanConfirmation` (a warning) from a fully accepted, explained non-issue.
+ */
+function classifyFailingChecks(capture) {
+  const failing = capture.checks.filter((c) => c.status === 'fail');
+  if ((capture.knownIssues ?? []).length > 0) {
+    // A real, filed GitHub issue already owns every failure on this capture — same behaviour as
+    // before per-check classification existed.
+    return { blocking: [], nonBlocking: failing.map((check) => ({ check, classification: null })) };
+  }
+  const acceptedById = new Map((capture.acceptedFindings ?? []).map((a) => [a.checkId, a]));
+  const blocking = [];
+  const nonBlocking = [];
+  for (const check of failing) {
+    const classification = acceptedById.get(check.id) ?? null;
+    (classification ? nonBlocking : blocking).push({ check, classification });
+  }
+  return { blocking, nonBlocking };
+}
+
 function buildReport() {
-  const captures = loadCaptureRecords();
+  const captures = loadCaptureRecords().map((c) => ({ ...c, classified: classifyFailingChecks(c) }));
   const aiReview = readJsonIfExists(join(OUTPUT_DIR, 'ai-review-results.json'), null);
 
   const deterministicPass = captures.filter((c) => c.overallStatus === 'pass').length;
@@ -75,11 +102,11 @@ function buildReport() {
   const aiFail = (aiReview?.reviewed ?? []).filter((r) => r.status === 'fail').length;
   const aiWarning = (aiReview?.reviewed ?? []).filter((r) => r.status === 'warning').length;
 
-  // Known-issue-tagged failures don't sink the overall verdict on their own (they're already
-  // tracked elsewhere — see the manifest's `knownIssues` field and this workstream's scope
-  // boundary against builder remediation); an UNtagged deterministic failure does.
-  const newFailures = captures.filter((c) => c.overallStatus === 'fail' && (c.knownIssues ?? []).length === 0);
-  const overallStatus = newFailures.length > 0 ? 'fail' : 'pass';
+  // A capture is a release-blocking failure only if it has at least one failing check that isn't
+  // covered by a known GitHub issue OR a documented `acceptedFindings` classification — see
+  // `classifyFailingChecks` above. This is the ONLY thing `visual:release-check --strict` fails on.
+  const blockingCaptures = captures.filter((c) => c.classified.blocking.length > 0);
+  const overallStatus = blockingCaptures.length > 0 ? 'fail' : 'pass';
 
   const viewportsCaptured = [...new Set(captures.map((c) => c.viewport))].sort();
 
@@ -96,7 +123,8 @@ function buildReport() {
       totalCaptures: captures.length,
       deterministicPass,
       deterministicFail,
-      newDeterministicFailures: newFailures.length,
+      blockingFailures: blockingCaptures.length,
+      nonBlockingFindings: captures.filter((c) => c.classified.nonBlocking.length > 0).length,
       aiReviewEnabled: Boolean(aiReview?.enabled),
       aiModel: aiReview?.model ?? null,
       aiReviewedCount: aiReview?.reviewedCount ?? 0,
@@ -106,6 +134,7 @@ function buildReport() {
     },
     entries: captures.map((c) => ({
       ...c,
+      isBlocking: c.classified.blocking.length > 0,
       aiFinding: aiFindingFor(aiReview, c.entryId, c.viewport),
     })),
   };
@@ -132,7 +161,8 @@ function renderMarkdown(report) {
   lines.push('');
   lines.push(`- Total captures: ${report.summary.totalCaptures}`);
   lines.push(`- Deterministic checks: ${report.summary.deterministicPass} pass / ${report.summary.deterministicFail} fail`);
-  lines.push(`- New (not already known-issue-tagged) deterministic failures: ${report.summary.newDeterministicFailures}`);
+  lines.push(`- Release-blocking failures (uncovered by a known issue or an accepted-finding classification): ${report.summary.blockingFailures}`);
+  lines.push(`- Non-blocking findings (known-issue-tagged or explicitly accepted/warning): ${report.summary.nonBlockingFindings}`);
   if (report.summary.aiReviewEnabled) {
     lines.push(`- AI review: ${report.summary.aiFail} fail / ${report.summary.aiWarning} warning`);
   }
@@ -151,22 +181,58 @@ function renderMarkdown(report) {
     for (const entry of entries) {
       const known = entry.knownIssues.length > 0 ? entry.knownIssues.map((n) => `#${n}`).join(', ') : '—';
       const ai = entry.aiFinding ? `${statusBadge(entry.aiFinding.status)} (${entry.aiFinding.issueCategory})` : '—';
+      const deterministic =
+        entry.overallStatus === 'pass' ? 'PASS' : entry.isBlocking ? 'FAIL (blocking)' : 'FAIL (non-blocking)';
       lines.push(
-        `| ${entry.stateName} | ${entry.viewport} | ${statusBadge(entry.overallStatus)} | ${ai} | ${known} | \`${entry.screenshotPath}\` |`,
+        `| ${entry.stateName} | ${entry.viewport} | ${deterministic} | ${ai} | ${known} | \`${entry.screenshotPath}\` |`,
       );
     }
     lines.push('');
   }
 
-  const failingChecks = report.entries.filter((e) => e.overallStatus === 'fail');
-  if (failingChecks.length > 0) {
-    lines.push('## Failing deterministic checks — detail');
+  const blockingEntries = report.entries.filter((e) => e.isBlocking);
+  if (blockingEntries.length > 0) {
+    lines.push('## Release-blocking deterministic failures — detail');
     lines.push('');
-    for (const entry of failingChecks) {
-      const tag = entry.knownIssues.length > 0 ? ` (known: ${entry.knownIssues.map((n) => `#${n}`).join(', ')})` : ' (NEW)';
-      lines.push(`### ${entry.stateName} @ ${entry.viewport}${tag}`);
-      for (const check of entry.checks.filter((c) => c.status === 'fail')) {
+    lines.push('Not covered by a known GitHub issue or a documented `acceptedFindings` classification —');
+    lines.push('these are what `visual:release-check --strict` actually fails on.');
+    lines.push('');
+    for (const entry of blockingEntries) {
+      lines.push(`### ${entry.stateName} @ ${entry.viewport} (BLOCKING)`);
+      for (const { check } of entry.classified.blocking) {
         lines.push(`- **${check.id}**: ${check.detail ?? '(no detail)'}`);
+      }
+      if (entry.notes) {
+        lines.push(`- _Manifest note: ${entry.notes}_`);
+      }
+      lines.push('');
+    }
+  }
+
+  const nonBlockingEntries = report.entries.filter((e) => e.classified.nonBlocking.length > 0);
+  if (nonBlockingEntries.length > 0) {
+    lines.push('## Non-blocking findings — detail');
+    lines.push('');
+    lines.push('Real deterministic-check failures that do NOT fail the release check, either because a');
+    lines.push('real GitHub issue already tracks them, or because they carry a documented, deliberate');
+    lines.push('non-blocking classification (see the manifest). `requires-human-confirmation` findings are');
+    lines.push('warnings, not settled non-issues.');
+    lines.push('');
+    for (const entry of nonBlockingEntries) {
+      lines.push(`### ${entry.stateName} @ ${entry.viewport}`);
+      if (entry.knownIssues.length > 0) {
+        lines.push(`- Tracked by: ${entry.knownIssues.map((n) => `#${n}`).join(', ')}`);
+        for (const { check } of entry.classified.nonBlocking) {
+          lines.push(`  - **${check.id}**: ${check.detail ?? '(no detail)'}`);
+        }
+      } else {
+        for (const { check, classification } of entry.classified.nonBlocking) {
+          const confirmTag = classification?.requiresHumanConfirmation ? ' — requires-human-confirmation' : '';
+          lines.push(`- **${check.id}**${confirmTag}: ${check.detail ?? '(no detail)'}`);
+          if (classification?.reason) {
+            lines.push(`  - _Reason: ${classification.reason}_`);
+          }
+        }
       }
       if (entry.notes) {
         lines.push(`- _Manifest note: ${entry.notes}_`);

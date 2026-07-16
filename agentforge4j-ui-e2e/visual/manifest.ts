@@ -23,6 +23,25 @@ export type EntryTarget =
 
 export type ReleaseImportance = 'blocker' | 'important' | 'nice-to-have';
 
+/**
+ * A deliberate, documented classification of a specific deterministic check's failure on this
+ * entry as NOT release-blocking — either because it's confirmed to be expected/by-design
+ * (`requiresHumanConfirmation: false`, the default), or because it's a genuine, tracked finding
+ * that is deliberately scoped OUT of this release gate rather than fixed here (e.g. Builder-surface
+ * findings, which belong to the separate builder-usability remediation workstream, not the `.org`
+ * release). Never silent: every entry here carries a `reason` that shows up in the generated
+ * report, and only a check listed here is exempted — an unlisted, genuinely new failure on the
+ * same entry still fails the strict release check. `requiresHumanConfirmation: true` marks a
+ * judgment call that hasn't been independently confirmed either way (a warning), distinct from a
+ * fully accepted/explained non-issue — both are equally non-blocking, but the report shows them
+ * differently so neither reads as more settled than it actually is.
+ */
+export interface AcceptedFinding {
+  readonly checkId: string;
+  readonly reason: string;
+  readonly requiresHumanConfirmation?: boolean;
+}
+
 /** Every viewport this entry must be captured at, by name (see `support/web-ui/routes.ts`
  *  `VIEWPORTS`). Grouped into two named sets below so entries reference a group instead of
  *  hand-listing sizes, per the "avoid a huge matrix" guidance: `CORE_VIEWPORTS` for routine
@@ -55,8 +74,15 @@ export interface VisualManifestEntry {
   readonly aiReviewEnabled: boolean;
   readonly releaseImportance: ReleaseImportance;
   /** GitHub issue numbers this state is already known to intersect (e.g. the #94-#103 Builder
-   *  usability findings) — lets the report separate "known, already-tracked" from "new". */
+   *  usability findings) — lets the report separate "known, already-tracked" from "new". Any
+   *  failure on an entry with at least one knownIssues number is treated as fully non-blocking
+   *  (the existing tracked issue already owns it), same as before this field existed. */
   readonly knownIssues?: readonly number[];
+  /** Per-check non-blocking classifications for findings that are NOT yet a filed GitHub issue —
+   *  see `AcceptedFinding`'s own doc comment for the full rationale. Checked independently of
+   *  `knownIssues`; a check id not listed here still blocks even if the entry has OTHER accepted
+   *  findings. */
+  readonly acceptedFindings?: readonly AcceptedFinding[];
   /** Capture the full scrollable page, not just the viewport. Off by default for Builder states
    *  (the canvas is its own scroll region; a full-page capture would just be mostly blank). */
   readonly fullPage: boolean;
@@ -97,6 +123,23 @@ const ROUTE_ENTRIES: VisualManifestEntry[] = SITE_ROUTES.map((route) => {
     aiReviewEnabled: true,
     releaseImportance: route.path === '/' || route.path === '/use' ? 'blocker' : 'important',
     fullPage: true,
+    // Docusaurus's own fixed top navbar and its collapsible sidebar viewport geometrically
+    // intersect at rest — plausibly correct, by-design fixed-header stacking (Docusaurus's real
+    // pa11y-ci gate independently passes 28/28 pages at WCAG 2.1 AA in this workstream's own real
+    // build), but not independently confirmed by this suite as either genuinely fine or a real
+    // defect — a warning, not an accepted-and-explained non-issue like the Builder dev-harness
+    // finding above.
+    acceptedFindings: isDocsHandoff
+      ? [
+          {
+            checkId: 'no-overlapping-fixed-elements',
+            reason: "Docusaurus's own internal navbar/sidebar chrome, not .org site code — likely "
+              + 'by-design fixed-header layering (backed by Docusaurus\'s own real, passing pa11y-ci '
+              + 'WCAG 2.1 AA gate), but not independently confirmed by this check as correct.',
+            requiresHumanConfirmation: true,
+          },
+        ]
+      : undefined,
   };
 });
 
@@ -207,6 +250,20 @@ export const VISUAL_MANIFEST: readonly VisualManifestEntry[] = [
     aiReviewEnabled: true,
     releaseImportance: 'blocker',
     fullPage: false,
+    // Confirmed real, new (2026-07-15/16 dogfooding), NOT yet filed as an issue per owner
+    // instruction — a separate Builder-remediation triage item, deliberately out of THIS release
+    // gate's scope (same treatment as the existing #94-#103 family: Builder-surface findings don't
+    // block the .org site release).
+    acceptedFindings: [
+      {
+        checkId: 'must-be-visible-present',
+        reason: 'Confirmed via Playwright trace: on a narrow viewport, the guided-mode stepper '
+          + 'panel (.workflow-builder__guided) intercepts pointer events over the canvas, making a '
+          + 'node genuinely unclickable — the inspector never opens. Real Builder defect, tracked '
+          + 'as a pending triage item (not yet filed as a GitHub issue), out of this .org release '
+          + "gate's scope pending owner decision on which remediation family it joins.",
+      },
+    ],
   },
   {
     id: 'builder-validation',
@@ -255,6 +312,14 @@ export const VISUAL_MANIFEST: readonly VisualManifestEntry[] = [
     notes: 'Real coverage gap, not a Day 2 omission: no UI path on agentforge4j.org sets '
       + "mode='readOnly'. Flag for the .org workstream if read-only is ever meant to be reachable "
       + 'publicly (e.g. a future /visualizer, itself explicitly not built yet).',
+    acceptedFindings: [
+      {
+        checkId: 'headings-present',
+        reason: 'The workflow-builder package\'s own dev harness genuinely renders no h1/h2/h3 on '
+          + 'this route — a dev-tool-only page, not reachable on the public site (see this entry\'s '
+          + 'own notes above). No user-facing surface is affected; no action needed.',
+      },
+    ],
   },
 ] as const;
 

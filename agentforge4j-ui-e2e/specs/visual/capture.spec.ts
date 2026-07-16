@@ -43,6 +43,11 @@ export interface CaptureRecord {
   readonly stateName: string;
   readonly releaseImportance: string;
   readonly knownIssues: readonly number[];
+  /** Per-check non-blocking classifications from the manifest (see `visual/manifest.ts`'s
+   *  `AcceptedFinding` doc comment) — `overallStatus` below stays the raw, unfiltered mechanical
+   *  result regardless of these; `generate-report.mjs` is what actually decides blocking vs
+   *  non-blocking for the release-check verdict, the same way it already does for `knownIssues`. */
+  readonly acceptedFindings: readonly { checkId: string; reason: string; requiresHumanConfirmation?: boolean }[];
   readonly viewport: string;
   /** Relative to `visual-output/`, forward-slashed regardless of OS. */
   readonly screenshotPath: string;
@@ -159,6 +164,7 @@ for (const entry of VISUAL_MANIFEST) {
         stateName: entry.stateName,
         releaseImportance: entry.releaseImportance,
         knownIssues: entry.knownIssues ?? [],
+        acceptedFindings: entry.acceptedFindings ?? [],
         viewport: viewportName,
         screenshotPath: screenshotRelPath,
         checks: allChecks,
