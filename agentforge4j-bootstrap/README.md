@@ -4,7 +4,7 @@ The `agentforge4j-bootstrap` module is the framework-agnostic entry point for as
 
 ## How it fits
 
-Bootstrap sits at the top of the plain-Java dependency chain: it depends on the core, llm, config-loader, runtime, and schema modules and composes them into the `AgentForge4j` facade. Providers are discovered separately via `ServiceLoader<LlmClientFactory>`. The [Spring Boot starter](../agentforge4j-spring-boot-starter/README.md) is a thin adapter that delegates assembly to this module.
+Bootstrap sits at the top of the plain-Java dependency chain: it depends on the core, llm, config-loader, runtime, schema, and tools-http modules and composes them into the `AgentForge4j` facade. Providers are discovered separately via `ServiceLoader<LlmClientFactory>`. The [Spring Boot starter](../agentforge4j-spring-boot-starter/README.md) is a thin adapter that delegates assembly to this module.
 
 ---
 

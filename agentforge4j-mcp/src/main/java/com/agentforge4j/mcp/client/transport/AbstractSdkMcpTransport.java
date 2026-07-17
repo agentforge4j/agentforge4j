@@ -57,7 +57,11 @@ abstract class AbstractSdkMcpTransport implements McpTransport {
       // initialize() is where the SDK actually connects (spawns the subprocess / opens the HTTP
       // transport), so a failed handshake still leaves a live resource behind on `created`; it was
       // never assigned to the `client` field, so close() would otherwise never see it.
-      created.closeGracefully();
+      try {
+        created.closeGracefully();
+      } catch (RuntimeException closeFailure) {
+        e.addSuppressed(closeFailure);
+      }
       throw e;
     }
     client = created;

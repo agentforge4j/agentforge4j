@@ -29,9 +29,9 @@ OllamaLlmClientFactory` (provider id `"ollama"`, `requiresApiKey()` is `false`).
 ## Configuration
 
 No API key. Set the server URL. The plain-Java bootstrap facade defaults it to `http://localhost:11434`
-(as it does for vLLM); under the Spring starter, set `url` explicitly to point at your Ollama server.
-The provider itself requires a base URL — the bootstrap default simply supplies one. Under the Spring
-starter, Ollama is gated by an `enabled` toggle.
+(vLLM similarly gets a bootstrap default, `http://localhost:8000`); under the Spring starter, set `url`
+explicitly to point at your Ollama server. The provider itself requires a base URL — the bootstrap
+default simply supplies one. Under the Spring starter, Ollama is gated by an `enabled` toggle.
 
 **Spring Boot starter** — bind under `agentforge4j.llm.ollama`:
 

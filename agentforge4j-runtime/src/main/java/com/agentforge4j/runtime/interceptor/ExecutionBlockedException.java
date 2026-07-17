@@ -13,9 +13,13 @@ import java.io.Serial;
  *
  * <p>Lifecycle on a block: the runtime records a neutral
  * {@link com.agentforge4j.core.workflow.event.WorkflowEventType#RUN_BLOCKED} audit event and transitions the run to
- * {@link com.agentforge4j.core.workflow.state.WorkflowStatus#PAUSED} — it performs no terminal transition. The
- * embedding application resolves the block (for example resume after a top-up, or cancel); any mapping to an
- * application status (such as a billing pause) is the embedder's concern.
+ * {@link com.agentforge4j.core.workflow.state.WorkflowStatus#PAUSED} — it performs no terminal transition. When thrown
+ * from {@link RunExecutionInterceptor#beforeLlmCall} (mid-step, as opposed to
+ * {@link RunExecutionInterceptor#beforeMainExecution}), the exception also propagates through the step's own failure
+ * handling first, so a {@code STEP_FAILED} audit event for the in-flight step precedes {@code RUN_BLOCKED} — the step
+ * itself did not fail, but its execution was interrupted by the veto. The embedding application resolves the block
+ * (for example resume after a top-up, or cancel); any mapping to an application status (such as a billing pause) is
+ * the embedder's concern.
  */
 public final class ExecutionBlockedException extends RuntimeException {
 
