@@ -3,19 +3,27 @@ package com.agentforge4j.runtime.execution.behaviour.handler;
 
 import com.agentforge4j.core.exception.StepExecutionException;
 import com.agentforge4j.core.workflow.Executable;
+import com.agentforge4j.core.workflow.WorkflowDefinition;
 import com.agentforge4j.core.workflow.context.ContextProvenance;
 import com.agentforge4j.core.workflow.context.ContextValue;
 import com.agentforge4j.core.workflow.context.StringContextValue;
 import com.agentforge4j.core.workflow.event.WorkflowEventType;
 import com.agentforge4j.core.workflow.state.WorkflowState;
 import com.agentforge4j.core.workflow.step.StepDefinition;
+import com.agentforge4j.core.workflow.step.behaviour.AgentBehaviour;
+import com.agentforge4j.core.workflow.step.behaviour.RetryMode;
 import com.agentforge4j.core.workflow.step.behaviour.RetryPreviousBehaviour;
+import com.agentforge4j.core.workflow.step.behaviour.SparBehaviour;
+import com.agentforge4j.core.workflow.step.behaviour.StepBehaviour;
+import com.agentforge4j.core.workflow.step.blueprint.BlueprintRef;
+import com.agentforge4j.core.workflow.step.retry.RetryPolicy;
 import com.agentforge4j.runtime.GeneratedArtifactStore;
 import com.agentforge4j.runtime.event.EventRecorder;
 import com.agentforge4j.runtime.execution.ExecutableExecutor;
 import com.agentforge4j.runtime.execution.GeneratedArtifactEviction;
 import com.agentforge4j.runtime.execution.ExecutionContext;
 import com.agentforge4j.runtime.execution.ExecutionOutcome;
+import com.agentforge4j.runtime.execution.RetryPolicyAttemptCounter;
 import com.agentforge4j.runtime.execution.behaviour.BehaviourHandler;
 import com.agentforge4j.util.Validate;
 import java.util.List;
@@ -29,6 +37,17 @@ public final class RetryPreviousBehaviourHandler implements
 
   private static final String RETRY_COUNTER_PREFIX = "__retry_";
   private static final String RETRY_COUNTER_SUFFIX = "_attempts";
+
+  /**
+   * Synthetic, non-agent step-output marker recorded for the owning {@code RETRY_PREVIOUS} step
+   * itself once its dispatch genuinely completes (mirrors the pattern
+   * {@code DefaultWorkflowRuntime.advancePastToolStep} uses for its own synthetic marker). Lets
+   * {@code StepSequenceExecutor.shouldSkip} treat the step as done on a later resume re-drive, so a
+   * downstream pause/resume no longer re-fires this step, burns another attempt, and wipes state the
+   * resume just satisfied. The value carries no meaning beyond "recorded" — never surfaced to a
+   * user.
+   */
+  private static final String RETRY_COMPLETION_MARKER = "retry-previous:dispatched";
 
   private final EventRecorder eventRecorder;
   private final GeneratedArtifactStore generatedArtifactStore;
@@ -59,12 +78,30 @@ public final class RetryPreviousBehaviourHandler implements
         "executableExecutor must be configured on RetryPreviousBehaviourHandler");
     WorkflowState state = executionContext.getState();
     String attemptKey = RETRY_COUNTER_PREFIX + behaviour.retryStepId() + RETRY_COUNTER_SUFFIX;
-
     int attempts = readAttemptCount(state, attemptKey);
+
+    // Single pre-mutation validation phase: runs unconditionally, before the local maxAttempts
+    // check, before either counter is incremented, and before clearEntriesFromUid — a misconfigured
+    // RETRY_PREVIOUS (a composite executable whose cleared state this handler never replays, a
+    // target whose RetryPolicy forbids rewind-retry, or a target whose RetryPolicy's shared
+    // maxAttempts budget is already exhausted) must fail loudly on every invocation, leaving state
+    // untouched, rather than silently corrupting state or bypassing governance on whichever attempt
+    // happens to run.
+    RetryPolicy targetPolicy = resolveTargetRetryPolicy(behaviour, executionContext);
+    validateAllowRetryFromPrevious(step, behaviour, targetPolicy);
+    validateReplayRangeContainsOnlyPlainSteps(step, behaviour,
+        executionContext.getCurrentSequenceExecutableList());
+    if (targetPolicy != null) {
+      validateSharedRetryPolicyCeiling(step, behaviour, state, targetPolicy);
+    }
+
     LOG.log(System.Logger.Level.INFO,
         "Retry behaviour start stepId={0}, retryStepId={1}, attempt={2}, maxAttempts={3}",
         step.stepId(), behaviour.retryStepId(), attempts + 1, behaviour.maxAttempts());
     if (attempts >= behaviour.maxAttempts()) {
+      // The local RETRY_PREVIOUS cap is exhausted: run the workflow-authored fallback instead. This
+      // never re-executes retryStepId, so it must never consume the target's shared RetryPolicy
+      // budget — only a genuine replay dispatch below does that.
       LOG.log(System.Logger.Level.WARNING, "Retry max attempts reached stepId={0}, retryStepId={1}",
           step.stepId(), behaviour.retryStepId());
       eventRecorder.record(state.getRunId(), step.stepId(),
@@ -72,7 +109,8 @@ public final class RetryPreviousBehaviourHandler implements
           "maxAttempts %d reached for retryStepId '%s', executing fallback"
               .formatted(behaviour.maxAttempts(), behaviour.retryStepId()),
           "runtime");
-      return executeStep(behaviour.fallback(), executionContext);
+      ExecutionOutcome fallbackOutcome = executeStep(behaviour.fallback(), executionContext);
+      return markCompletionIfDispatched(step, fallbackOutcome, executionContext);
     }
 
     Integer retryUid = state.getStepExecutionUid().get(behaviour.retryStepId());
@@ -83,6 +121,9 @@ public final class RetryPreviousBehaviourHandler implements
     attempts++;
     state.putContextValue(attemptKey,
         new StringContextValue(String.valueOf(attempts), ContextProvenance.SYSTEM_GENERATED));
+    if (targetPolicy != null) {
+      RetryPolicyAttemptCounter.increment(state, behaviour.retryStepId());
+    }
 
     // Evict captured bytes for artifacts emitted at or after the rewind point before clearing the
     // descriptors, so a re-emit on the re-drive upserts cleanly and an un-re-emitted path does not linger.
@@ -107,7 +148,167 @@ public final class RetryPreviousBehaviourHandler implements
                 behaviour.retryMode(), behaviour.retryStepId()),
         "runtime");
 
+    return markCompletionIfDispatched(step, outcome, executionContext);
+  }
+
+  /**
+   * Records the completion marker for the owning {@code RETRY_PREVIOUS} step once its dispatch
+   * (replay or fallback) genuinely completes ({@code outcome == COMPLETED}), allocating a fresh
+   * uid for it strictly after the dispatch above — never the stale uid this step held before its
+   * retry target was rewound and replayed. A replayed target always allocates its own fresh uid
+   * before this point, so the marker's uid is always higher than everything genuinely replayed
+   * during this dispatch: a later rewind whose threshold reaches the replayed target (uid at or
+   * below the target's fresh uid) is therefore guaranteed to reach this marker too, keeping the two
+   * in the same uid-ordered sweep {@link WorkflowState#clearEntriesFromUid}/{@link
+   * WorkflowState#clearStepEntriesFromUid} performs for every other step's output — no parallel
+   * bookkeeping, and no marker left stranded at a uid earlier than state it was recorded after. A
+   * non-{@code COMPLETED} outcome (a downstream pause within this step's own replay) leaves no
+   * marker, so the next drive re-enters this step and completes the interrupted dispatch.
+   */
+  private static ExecutionOutcome markCompletionIfDispatched(StepDefinition step,
+      ExecutionOutcome outcome, ExecutionContext executionContext) {
+    if (outcome == ExecutionOutcome.COMPLETED) {
+      WorkflowState state = executionContext.getState();
+      int freshUid = executionContext.allocateStepSequenceUid();
+      state.putStepExecutionUid(step.stepId(), freshUid);
+      state.putStepOutput(step.stepId(), RETRY_COMPLETION_MARKER);
+    }
     return outcome;
+  }
+
+  /**
+   * Validates that the number of attempts already made against {@code targetPolicy}'s shared
+   * {@link RetryPolicyAttemptCounter} budget — across both {@code WorkflowRuntime.retry()} and every
+   * {@code RETRY_PREVIOUS} step targeting the same step — has not yet reached {@code maxAttempts}.
+   * {@code RetryPolicy.maxAttempts} is the hard aggregate ceiling for retries of that step across
+   * every supported mechanism; {@code RetryPreviousBehaviour.maxAttempts} (checked separately, and
+   * enforced by falling back rather than rejecting) is an additional local cap, never a way to
+   * exceed this one.
+   */
+  private static void validateSharedRetryPolicyCeiling(StepDefinition step,
+      RetryPreviousBehaviour behaviour, WorkflowState state, RetryPolicy targetPolicy) {
+    int sharedAttempts = RetryPolicyAttemptCounter.read(state, behaviour.retryStepId());
+    Validate.isTrue(sharedAttempts < targetPolicy.maxAttempts(), () -> new StepExecutionException(
+        ("RetryPreviousBehaviour step '%s': target step '%s' RetryPolicy maxAttempts (%d) already "
+            + "reached (%d attempts already used across retry() and RETRY_PREVIOUS); rejected")
+            .formatted(step.stepId(), behaviour.retryStepId(), targetPolicy.maxAttempts(),
+                sharedAttempts)));
+  }
+
+  /**
+   * Resolves {@code behaviour.retryStepId()}'s {@link RetryPolicy}, when it names a plain
+   * {@link StepDefinition} carrying one (an {@link AgentBehaviour} or {@link SparBehaviour}).
+   * Returns {@code null} for a target with no {@code RetryPolicy} concept (any other step type), or
+   * one this handler cannot yet resolve (surfaced instead by the mode-specific structural validation
+   * later) — callers must treat a {@code null} result as "unrestricted by target policy", never
+   * invent a new restriction for step types that never had this concept.
+   */
+  private static RetryPolicy resolveTargetRetryPolicy(RetryPreviousBehaviour behaviour,
+      ExecutionContext executionContext) {
+    Executable target = executionContext.getCurrentSequenceExecutables().get(behaviour.retryStepId());
+    if (!(target instanceof StepDefinition targetStep)) {
+      return null;
+    }
+    return retryPolicyOf(targetStep.behaviour());
+  }
+
+  /**
+   * Rejects the retry unless {@code targetPolicy}'s {@code allowRetryFromPrevious} is {@code true}.
+   * A {@code null} {@code targetPolicy} (no {@code RetryPolicy} concept, or an unresolvable target)
+   * is treated as allowed.
+   */
+  private void validateAllowRetryFromPrevious(StepDefinition step, RetryPreviousBehaviour behaviour,
+      RetryPolicy targetPolicy) {
+    if (targetPolicy == null) {
+      return;
+    }
+    Validate.isTrue(targetPolicy.allowRetryFromPrevious(), () -> new StepExecutionException(
+        ("RetryPreviousBehaviour step '%s': target step '%s' has allowRetryFromPrevious=false in its "
+            + "RetryPolicy; RETRY_PREVIOUS into it is rejected")
+            .formatted(step.stepId(), behaviour.retryStepId())));
+  }
+
+  private static RetryPolicy retryPolicyOf(StepBehaviour behaviour) {
+    if (behaviour instanceof AgentBehaviour agentBehaviour) {
+      return agentBehaviour.retryPolicy();
+    }
+    if (behaviour instanceof SparBehaviour sparBehaviour) {
+      return sparBehaviour.retryPolicy();
+    }
+    return null;
+  }
+
+  /**
+   * Rejects a replay range that would let something read state that a composite
+   * ({@link BlueprintRef} or nested {@link WorkflowDefinition}) inside the range wrote, after
+   * {@code clearEntriesFromUid} wiped that composite's state without this handler ever replaying it
+   * — silent partial-state corruption. Uses the full ordered executable list (unlike
+   * {@code getCurrentSequenceStepIds()}/{@code getCurrentSequenceExecutables()}, which only ever hold
+   * plain steps) so a composite sitting between the boundaries is visible. Structural problems
+   * (retryStepId or the owning step missing from the sequence, or out of order) are left to the
+   * mode-specific validation later in {@code executeSingleStep}/{@code executeFromStep} — this method
+   * silently returns rather than duplicating those checks with a different message.
+   *
+   * <p>Every composite in the checked span is rejected unconditionally, for both retry modes, with
+   * no "trailing composite is safe" exception: a composite with nothing plain after it within the
+   * handler's own inline replay can still be read stale by whatever the enclosing top-level sequence
+   * runs immediately after the owning {@code RETRY_PREVIOUS} step, in this very drive, if that
+   * continuation does not itself pause — for example {@code [A, blueprint(writes K), R(FROM_STEP A),
+   * V(reads K)]}, where {@code R}'s inline replay only ever re-executes the plain step {@code A} (the
+   * blueprint is invisible to it), {@code R} then completes, and {@code V} runs immediately after in
+   * the same drive with {@code K} already cleared and never regenerated. Whether the top-level
+   * sequence happens to pause before reaching such a continuation is not something this validation
+   * can rely on, so it rejects the shape unconditionally rather than trying to prove it safe.
+   *
+   * <p>For {@code FROM_STEP} the checked span is {@code [retryStepId, owningStep)} — {@code
+   * retryStepId} itself is always a plain step (a composite cannot be a retry target), so starting
+   * the span there has no effect beyond making the boundary explicit. For {@code SINGLE_STEP} only
+   * {@code retryStepId} itself is ever inline-replayed, so the checked span is the strictly-between
+   * {@code (retryStepId, owningStep)}.
+   */
+  private void validateReplayRangeContainsOnlyPlainSteps(StepDefinition step,
+      RetryPreviousBehaviour behaviour, List<Executable> fullSequence) {
+    int retryIndex = indexOfStepId(fullSequence, behaviour.retryStepId());
+    int owningIndex = indexOfStepId(fullSequence, step.stepId());
+    if (retryIndex < 0 || owningIndex < 0 || retryIndex >= owningIndex) {
+      return;
+    }
+    int rangeStart = behaviour.retryMode() == RetryMode.FROM_STEP ? retryIndex : retryIndex + 1;
+    for (int i = rangeStart; i < owningIndex; i++) {
+      Executable candidate = fullSequence.get(i);
+      if (!(candidate instanceof StepDefinition)) {
+        throw compositeRejection(step, behaviour, candidate);
+      }
+    }
+  }
+
+  private static StepExecutionException compositeRejection(StepDefinition step,
+      RetryPreviousBehaviour behaviour, Executable composite) {
+    return new StepExecutionException(
+        ("RetryPreviousBehaviour step '%s': replay range for retryStepId '%s' contains a "
+            + "non-step executable '%s' whose cleared state would be read stale; composite "
+            + "(BlueprintRef / nested WorkflowDefinition) replay in this position is not supported")
+            .formatted(step.stepId(), behaviour.retryStepId(), describeExecutable(composite)));
+  }
+
+  private static int indexOfStepId(List<Executable> executables, String stepId) {
+    for (int i = 0; i < executables.size(); i++) {
+      if (executables.get(i) instanceof StepDefinition stepDefinition
+          && stepDefinition.stepId().equals(stepId)) {
+        return i;
+      }
+    }
+    return -1;
+  }
+
+  private static String describeExecutable(Executable executable) {
+    if (executable instanceof BlueprintRef ref) {
+      return "BlueprintRef:" + ref.blueprintId();
+    }
+    if (executable instanceof WorkflowDefinition workflowDefinition) {
+      return "WorkflowDefinition:" + workflowDefinition.id();
+    }
+    return executable.getClass().getSimpleName();
   }
 
   private ExecutionOutcome executeSingleStep(StepDefinition step,

@@ -36,13 +36,30 @@ public final class SetContextCommandHandler implements CommandHandler<SetContext
   }
 
   /**
+   * Prefix of the reserved runtime context namespace. Keys under this namespace back internal
+   * bookkeeping (retry-attempt counters, token totals, and similar runtime-owned state) and are
+   * written only through direct {@code WorkflowState.putContextValue} calls from runtime code —
+   * never through an LLM-emitted command. Rejected unconditionally here regardless of
+   * {@link com.agentforge4j.core.workflow.context.ContextMapping#outputKeys()}, since the
+   * reserved-namespace guard is absolute, not policy-configurable.
+   */
+  private static final String RESERVED_NAMESPACE_PREFIX = "__";
+
+  /**
    * {@inheritDoc}
    *
-   * @throws IllegalArgumentException if {@link CommandHandler#ensureContextOutputKeyAllowed(String, com.agentforge4j.core.workflow.context.ContextMapping, String)} rejects the key
+   * @throws IllegalArgumentException if {@link CommandHandler#ensureContextOutputKeyAllowed(String, com.agentforge4j.core.workflow.context.ContextMapping, String)} rejects the key,
+   *                                   or {@code cmd.key()} names a reserved key
    */
   @Override
   public CommandApplicationResult apply(SetContextCommand cmd, CommandApplicationRequest request) {
     LOG.log(System.Logger.Level.DEBUG, "SetContext command key={0}", cmd.key());
+    // Reject the reserved runtime namespace before the allow-list check: an LLM-emitted SET_CONTEXT
+    // must never be able to write __-prefixed keys (retry-attempt counters, token totals, ...) no
+    // matter what outputKeys declares, since those keys back runtime-owned governance state.
+    Validate.isTrue(!cmd.key().startsWith(RESERVED_NAMESPACE_PREFIX),
+        "Context key '%s' is reserved for internal runtime state and cannot be written by a command"
+            .formatted(cmd.key()));
     CommandHandler.ensureContextOutputKeyAllowed(cmd.key(), request.contextMapping(), request.agentId());
     // Reject the reserved render-envelope key at the write path so an injection-influenced SET_CONTEXT
     // fails fast and attributably here, rather than poisoning every later render (the renderer keeps its

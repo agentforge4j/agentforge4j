@@ -9,6 +9,7 @@ import com.agentforge4j.core.spi.tool.PolicyDecision;
 import com.agentforge4j.core.spi.tool.ToolDescriptor;
 import com.agentforge4j.core.spi.tool.ToolExecutionOptions;
 import com.agentforge4j.core.spi.tool.ToolExecutionOutcome;
+import com.agentforge4j.core.spi.tool.ToolInvocationClaimLostException;
 import com.agentforge4j.core.spi.tool.ToolInvocationContext;
 import com.agentforge4j.core.spi.tool.ToolPolicy;
 import com.agentforge4j.core.spi.tool.ToolProvider;
@@ -35,6 +36,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class DefaultToolExecutionServiceTest {
 
@@ -164,11 +166,10 @@ class DefaultToolExecutionServiceTest {
   }
 
   @Test
-  void resumeWithUnknownIdFails() {
-    ToolExecutionOutcome outcome =
-        service(allow()).resume("run-1", "missing", new ApprovalDecision.Approve("alice"));
-
-    assertThat(outcome.status()).isEqualTo(ToolExecutionOutcome.Status.FAILED);
+  void resumeWithUnknownIdThrowsTheTypedClaimLostSignalRatherThanAToolFailure() {
+    assertThatThrownBy(() ->
+        service(allow()).resume("run-1", "missing", new ApprovalDecision.Approve("alice")))
+        .isInstanceOf(ToolInvocationClaimLostException.class);
   }
 
   @Test

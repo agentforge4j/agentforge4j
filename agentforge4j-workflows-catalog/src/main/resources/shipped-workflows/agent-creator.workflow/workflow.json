@@ -27,8 +27,6 @@
         "retryPolicy": {
           "allowRetry": true,
           "allowRetryFromPrevious": false,
-          "allowAgentSwap": false,
-          "allowPromptOverride": false,
           "maxAttempts": 2
         }
       },
@@ -81,8 +79,6 @@
         "retryPolicy": {
           "allowRetry": true,
           "allowRetryFromPrevious": false,
-          "allowAgentSwap": false,
-          "allowPromptOverride": false,
           "maxAttempts": 2
         }
       },
@@ -179,8 +175,6 @@
         "retryPolicy": {
           "allowRetry": true,
           "allowRetryFromPrevious": false,
-          "allowAgentSwap": false,
-          "allowPromptOverride": false,
           "maxAttempts": 2
         }
       },
@@ -201,8 +195,6 @@
         "retryPolicy": {
           "allowRetry": true,
           "allowRetryFromPrevious": false,
-          "allowAgentSwap": false,
-          "allowPromptOverride": false,
           "maxAttempts": 2
         }
       },
@@ -223,8 +215,6 @@
         "retryPolicy": {
           "allowRetry": true,
           "allowRetryFromPrevious": false,
-          "allowAgentSwap": false,
-          "allowPromptOverride": false,
           "maxAttempts": 2
         }
       },
@@ -265,8 +255,6 @@
         "retryPolicy": {
           "allowRetry": true,
           "allowRetryFromPrevious": false,
-          "allowAgentSwap": false,
-          "allowPromptOverride": false,
           "maxAttempts": 2
         }
       },
@@ -310,8 +298,6 @@
         "retryPolicy": {
           "allowRetry": true,
           "allowRetryFromPrevious": false,
-          "allowAgentSwap": false,
-          "allowPromptOverride": false,
           "maxAttempts": 2
         }
       },

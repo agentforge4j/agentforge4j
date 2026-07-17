@@ -9,21 +9,17 @@ import com.agentforge4j.util.Validate;
  *
  * @param allowRetry             whether any retry is permitted
  * @param allowRetryFromPrevious whether retry may rewind to a prior step
- * @param allowAgentSwap         whether a different agent may be chosen on retry
- * @param allowPromptOverride    whether the step prompt may be changed on retry
  * @param maxAttempts            cap on attempts when any retry option is allowed; must be greater
  *                               than zero in that case
  */
 public record RetryPolicy(
     boolean allowRetry,
     boolean allowRetryFromPrevious,
-    boolean allowAgentSwap,
-    boolean allowPromptOverride,
     int maxAttempts
 ) {
 
   public RetryPolicy {
-    if (allowRetry || allowRetryFromPrevious || allowAgentSwap || allowPromptOverride) {
+    if (allowRetry || allowRetryFromPrevious) {
       Validate.isGreaterThanZero(maxAttempts,
           "RetryPolicy maxAttempts must be greater than zero if any retry option is allowed");
     }
@@ -33,15 +29,15 @@ public record RetryPolicy(
    * Returns a policy that disallows every retry option and sets {@code maxAttempts} to zero.
    */
   public static RetryPolicy none() {
-    return new RetryPolicy(false, false, false, false, 0);
+    return new RetryPolicy(false, false, 0);
   }
 
   /**
-   * Returns a policy that allows retry without rewind, agent swap, or prompt override.
+   * Returns a policy that allows retry without rewind.
    *
    * @param maxAttempts passed through to the record compact constructor (must be greater than zero)
    */
   public static RetryPolicy simple(int maxAttempts) {
-    return new RetryPolicy(true, false, false, false, maxAttempts);
+    return new RetryPolicy(true, false, maxAttempts);
   }
 }

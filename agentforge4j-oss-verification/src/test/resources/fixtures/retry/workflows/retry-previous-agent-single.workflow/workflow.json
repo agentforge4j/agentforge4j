@@ -11,7 +11,12 @@
       "behaviour": {
         "type": "AGENT",
         "agentRef": "retry-agent",
-        "transition": "AUTO"
+        "transition": "AUTO",
+        "retryPolicy": {
+          "allowRetry": false,
+          "allowRetryFromPrevious": true,
+          "maxAttempts": 1
+        }
       }
     },
     {

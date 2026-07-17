@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package com.agentforge4j.runtime;
 
+import com.agentforge4j.config.loader.validation.WorkflowValidator;
 import com.agentforge4j.core.exception.ExecutionNotFoundException;
 import com.agentforge4j.core.runtime.StepApprovalDecision;
 import com.agentforge4j.core.runtime.StepApprovalDecision.Approve;
@@ -12,9 +13,11 @@ import com.agentforge4j.core.spi.tool.PendingToolInvocationStore;
 import com.agentforge4j.core.spi.tool.ToolDecision;
 import com.agentforge4j.core.spi.tool.ToolExecutionOutcome;
 import com.agentforge4j.core.spi.tool.ToolExecutionService;
+import com.agentforge4j.core.spi.tool.ToolInvocationClaimLostException;
 import com.agentforge4j.core.workflow.Executable;
 import com.agentforge4j.core.workflow.WorkflowCapturePathCollector;
 import com.agentforge4j.core.workflow.WorkflowDefinition;
+import com.agentforge4j.core.workflow.WorkflowTreeWalker;
 import com.agentforge4j.core.workflow.artifact.ArtifactDefinition;
 import com.agentforge4j.core.workflow.context.ContextProvenance;
 import com.agentforge4j.core.workflow.context.StringContextValue;
@@ -26,15 +29,20 @@ import com.agentforge4j.core.workflow.state.RunFailure;
 import com.agentforge4j.core.workflow.state.WorkflowState;
 import com.agentforge4j.core.workflow.state.WorkflowStatus;
 import com.agentforge4j.core.workflow.step.StepDefinition;
+import com.agentforge4j.core.workflow.step.behaviour.AgentBehaviour;
+import com.agentforge4j.core.workflow.step.behaviour.SparBehaviour;
+import com.agentforge4j.core.workflow.step.behaviour.StepBehaviour;
 import com.agentforge4j.core.workflow.step.behaviour.WorkflowBehaviour;
 import com.agentforge4j.core.workflow.step.blueprint.BlueprintDefinition;
 import com.agentforge4j.core.workflow.step.blueprint.BlueprintRef;
+import com.agentforge4j.core.workflow.step.retry.RetryPolicy;
 import com.agentforge4j.runtime.event.EventRecorder;
 import com.agentforge4j.runtime.execution.ExecutableExecutor;
 import com.agentforge4j.runtime.execution.ExecutionContext;
 import com.agentforge4j.runtime.execution.ExecutionOutcome;
 import com.agentforge4j.runtime.execution.GeneratedArtifactEviction;
 import com.agentforge4j.runtime.execution.RequirementCheckpoint;
+import com.agentforge4j.runtime.execution.RetryPolicyAttemptCounter;
 import com.agentforge4j.runtime.execution.StepSequenceExecutor;
 import com.agentforge4j.runtime.execution.TransitionGate;
 import com.agentforge4j.runtime.interceptor.ExecutionBlockedException;
@@ -48,6 +56,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 import org.apache.commons.lang3.StringUtils;
 
 /**
@@ -90,6 +100,38 @@ public final class DefaultWorkflowRuntime implements WorkflowRuntime {
   private final TransitionGate transitionGate;
   private final RunExecutionInterceptor runExecutionInterceptor;
   private final GeneratedArtifactStore generatedArtifactStore;
+
+  /**
+   * Per-run monitor objects guarding the terminal-status transition ({@code cancel()} racing a
+   * concurrent drive's own completion/failure decision) against another thread mutating the same
+   * in-process {@link WorkflowState} instance — {@link WorkflowStateRepository} implementations
+   * "may return live mutable {@code WorkflowState} instances", and this runtime's own in-memory
+   * repository always does, so two callers acting on the same run id can genuinely hold the same
+   * object. Synchronizing the check-then-set sequence in {@link #cancel}, {@link #finaliseDrive},
+   * and {@link #failRun} on the same per-run monitor makes exactly one of a racing cancel/complete/
+   * fail pair win the terminal status, with the loser's guard (already checking the terminal status
+   * before acting) correctly observing the winner's fully-applied change.
+   *
+   * <p>This closes only the in-process race. A durable or distributed {@link WorkflowStateRepository}
+   * serving multiple runtime processes must provide its own cross-process concurrency control (for
+   * example optimistic locking on save, or a transactional read-modify-write) — no in-process monitor
+   * can substitute for that, and this map is never a source of truth across processes.
+   */
+  private final ConcurrentMap<String, Object> runLocks = new ConcurrentHashMap<>();
+
+  private Object runLock(String runId) {
+    return runLocks.computeIfAbsent(runId, id -> new Object());
+  }
+
+  /**
+   * Re-validates the live workflow registry at {@code start()}, immediately before any run state or
+   * {@code RUN_STARTED} event is created — {@code WorkflowRuntimeBuilder.build()}'s own check only
+   * ever saw a snapshot taken at construction time, and a dynamic or hot-reloadable
+   * {@link WorkflowRepository} can return a different (or newly broken) definition by the time a run
+   * actually starts.
+   */
+  private static final WorkflowValidator START_TIME_VALIDATOR =
+      new WorkflowValidator(WorkflowTreeWalker.MAX_TRAVERSAL_DEPTH);
 
   DefaultWorkflowRuntime(WorkflowRepository workflowRepository,
       WorkflowStateRepository workflowStateRepository,
@@ -143,6 +185,11 @@ public final class DefaultWorkflowRuntime implements WorkflowRuntime {
     try (RunContextManager.Scope ignored = runContextManager.open(runId, workflowId, null, null)) {
       LOG.log(System.Logger.Level.INFO, "Starting workflow run workflowId={0}, runId={1}",
           workflowId, runId);
+      // The definition actually retrieved for this start — not WorkflowRuntimeBuilder.build()'s
+      // stale construction-time snapshot — is what is about to run; validated against the live
+      // registry so a COLLECTION step reachable through any workflow reference is caught here,
+      // before any run state or RUN_STARTED event exists.
+      START_TIME_VALIDATOR.validateNoCollectionSteps(workflowRepository.findAll());
       RequirementCheckpoint.assertNonDeferredResolved(workflow, runId, requirementResolver);
       WorkflowState state = new WorkflowState(runId, workflowId, null, clock.instant());
       workflowStateRepository.save(state);
@@ -234,6 +281,14 @@ public final class DefaultWorkflowRuntime implements WorkflowRuntime {
       WorkflowDefinition workflow = workflowRepository.get(state.getWorkflowId());
       StepDefinition target = resolveTopLevelRetryTarget(workflow, stepId);
 
+      // Validates the target step's RetryPolicy (allowRetry + the shared maxAttempts ceiling — see
+      // RetryPolicyAttemptCounter) before any mutation below. A step type carrying no RetryPolicy
+      // (anything but AGENT/SPAR) is unrestricted — this operator verb never had a governance
+      // concept for those step types. Pure validation: the shared counter is only incremented once
+      // this retry is fully accepted for actual execution, immediately before drive() below.
+      RetryPolicy targetRetryPolicy = retryPolicyOf(target.behaviour());
+      enforceRetryPolicy(state, target, targetRetryPolicy);
+
       // A loop paused at maxIterations under AWAIT_USER can never itself be the retry target (a
       // BlueprintRef is not a StepDefinition), so a target positioned after such a loop — or one
       // with nothing recorded at or after it — would leave the loop's stale cursor/body-start-uid
@@ -271,11 +326,56 @@ public final class DefaultWorkflowRuntime implements WorkflowRuntime {
       state.setLastUpdatedAt(clock.instant());
       eventRecorder.record(runId, target.stepId(), WorkflowEventType.STEP_RETRIED, null, actorId);
 
+      // The retry is now fully accepted for actual execution — every rejecting precondition above
+      // has passed and every mutation above is committed. Record the attempt against the target's
+      // shared RetryPolicy budget only now, so a run that never reached this point (rejected by
+      // enforceRetryPolicy) never consumes it.
+      if (targetRetryPolicy != null) {
+        RetryPolicyAttemptCounter.increment(state, target.stepId());
+      }
+
       // Re-drive the enclosing top-level sequence: StepSequenceExecutor replays from the start,
       // skips steps that still have outputs, re-runs the target and its downstream continuation,
       // and finalises through the normal terminal path (COMPLETED, a pause, or FAILED).
       drive(state, workflow);
     }
+  }
+
+  /**
+   * Validates {@code target}'s {@code RetryPolicy} (when it carries one) for the {@code retry(...)}
+   * operator verb, before any state mutation. Rejects when {@code allowRetry == false}, or when the
+   * number of attempts already made against {@code target}'s shared {@link RetryPolicyAttemptCounter}
+   * budget — shared with any {@code RETRY_PREVIOUS} step targeting the same step — has reached
+   * {@code maxAttempts}. A step type with no {@code RetryPolicy} concept (anything but
+   * {@link AgentBehaviour}/{@link SparBehaviour}) is left unrestricted. Pure validation: callers
+   * increment the counter separately, only once the retry this validates is fully accepted for
+   * actual execution.
+   *
+   * @throws IllegalStateException if the policy forbids retry, or the shared attempt cap is already
+   *                                reached
+   */
+  private void enforceRetryPolicy(WorkflowState state, StepDefinition target, RetryPolicy policy) {
+    if (policy == null) {
+      return;
+    }
+    Validate.isTrue(policy.allowRetry(), () -> new IllegalStateException(
+        "Step '%s' RetryPolicy does not allow retry (allowRetry=false)"
+            .formatted(target.stepId())));
+    int attempts = RetryPolicyAttemptCounter.read(state, target.stepId());
+    Validate.isTrue(attempts < policy.maxAttempts(), () -> new IllegalStateException(
+        ("Step '%s' RetryPolicy maxAttempts (%d) already reached (%d attempts already used across "
+            + "retry() and RETRY_PREVIOUS); retry rejected")
+            .formatted(target.stepId(), policy.maxAttempts(), attempts)));
+  }
+
+  private static RetryPolicy retryPolicyOf(StepBehaviour behaviour) {
+    if (behaviour instanceof AgentBehaviour agentBehaviour) {
+      return agentBehaviour.retryPolicy();
+    }
+    if (behaviour instanceof SparBehaviour sparBehaviour) {
+      return sparBehaviour.retryPolicy();
+    }
+    return null;
   }
 
   /**
@@ -475,6 +575,9 @@ public final class DefaultWorkflowRuntime implements WorkflowRuntime {
    *                                    {@link WorkflowStatus#AWAITING_TOOL_DECISION} (use {@code resolveToolDecision})
    * @throws IllegalArgumentException   if the run is cancelled, not {@link WorkflowStatus#AWAITING_TOOL_APPROVAL}, no
    *                                    pending invocation matches, or an id/argument is blank or null
+   * @throws ToolInvocationClaimLostException if a concurrent resume already claimed or replaced the
+   *                                    pending invocation between this call's peek and its own claim
+   *                                    attempt; no run state is mutated when this is thrown
    */
   @Override
   public WorkflowState continueAfterToolApproval(String runId, String toolInvocationId,
@@ -511,11 +614,27 @@ public final class DefaultWorkflowRuntime implements WorkflowRuntime {
   /**
    * {@inheritDoc}
    *
+   * <p>{@link ToolDecision.Retry} against a pending invocation that a {@link
+   * com.agentforge4j.core.spi.tool.ToolPolicy} denied is an invalid, non-executing transition: a
+   * policy denial is terminal for that invocation, so the underlying resume propagates a {@link
+   * com.agentforge4j.core.spi.tool.PolicyDenialTerminalException} without invoking the provider or
+   * mutating run state, leaving the run suspended in {@link WorkflowStatus#AWAITING_TOOL_DECISION}
+   * with its pending row intact for a later {@link ToolDecision.Continue}. A retried call that fails
+   * again re-suspends the run in {@link WorkflowStatus#AWAITING_TOOL_DECISION} for a further
+   * decision, rather than silently advancing without a tool result.
+   *
    * @throws ExecutionNotFoundException if no state exists for {@code runId}
    * @throws IllegalStateException      if no tool-execution service is configured, or the run is in
    *                                    {@link WorkflowStatus#AWAITING_APPROVAL} (use {@code approve} instead)
    * @throws IllegalArgumentException   if the run is cancelled, not {@link WorkflowStatus#AWAITING_TOOL_DECISION}, no
    *                                    pending invocation matches, or an id is blank or the decision null
+   * @throws com.agentforge4j.core.spi.tool.PolicyDenialTerminalException if {@code decision} is a
+   *                                    {@link ToolDecision.Retry} against a policy-denied pending
+   *                                    invocation
+   * @throws ToolInvocationClaimLostException if {@code decision} is a {@link ToolDecision.Retry} and
+   *                                    a concurrent resume already claimed or replaced the pending
+   *                                    invocation between this call's peek and its own claim attempt;
+   *                                    no run state is mutated when this is thrown
    */
   @Override
   public WorkflowState resolveToolDecision(String runId, String toolInvocationId,
@@ -541,12 +660,24 @@ public final class DefaultWorkflowRuntime implements WorkflowRuntime {
 
       String actorId = decision.actorId();
       if (decision instanceof ToolDecision.Retry) {
+        // A policy-denied row is terminal: toolExecutionService.resume propagates
+        // PolicyDenialTerminalException without invoking the provider or touching state, leaving
+        // the run suspended in AWAITING_TOOL_DECISION with its pending row intact for a later,
+        // legitimate Continue.
         ToolExecutionOutcome outcome = toolExecutionService.resume(
             runId, toolInvocationId, new ApprovalDecision.Approve(actorId));
         if (outcome.status() == ToolExecutionOutcome.Status.EXECUTED) {
           toolResultApplier.apply(capability, outcome.result(), state, actorId);
         } else {
-          toolResultApplier.applyError(capability, outcome.detail(), state, actorId);
+          // The retried call failed again: the service has already persisted a fresh pending row
+          // (origin EXECUTION_FAILED), so re-suspend for a further operator decision rather than
+          // silently advancing without a tool result. This does not flow into drive(), whose
+          // finally block is the usual persistence point, so save explicitly here (mirrors
+          // cancel()/handleRejected(), the other non-driving state transitions).
+          state.setStatus(WorkflowStatus.AWAITING_TOOL_DECISION);
+          state.setLastUpdatedAt(clock.instant());
+          workflowStateRepository.save(state);
+          return state.snapshot();
         }
       } else {
         // Continue without the tool: surface the recorded reason and drop the pending row.
@@ -640,16 +771,22 @@ public final class DefaultWorkflowRuntime implements WorkflowRuntime {
     WorkflowState state = loadState(runId);
     try (RunContextManager.Scope ignored = runContextManager.open(runId, state.getWorkflowId(),
         state.getCurrentStepId(), null)) {
-      WorkflowStatus status = state.getStatus();
-      if (status == WorkflowStatus.CANCELLED) {
-        return;
+      // Synchronized against finaliseDrive/failRun's own terminal-status check-then-set on the same
+      // per-run monitor: whichever side observes a still-non-terminal status here or there wins the
+      // transition atomically, and the loser's guard correctly sees the winner's applied change.
+      synchronized (runLock(runId)) {
+        WorkflowStatus status = state.getStatus();
+        if (status == WorkflowStatus.CANCELLED) {
+          return;
+        }
+        Validate.isTrue(status != WorkflowStatus.COMPLETED && status != WorkflowStatus.FAILED,
+            "Cannot cancel run '%s' in status %s".formatted(runId, status));
+        state.setStatus(WorkflowStatus.CANCELLED);
+        state.setLastUpdatedAt(clock.instant());
+        workflowStateRepository.save(state);
+        eventRecorder.record(runId, state.getCurrentStepId(), WorkflowEventType.RUN_CANCELLED, null,
+            actorId);
       }
-      Validate.isTrue(status != WorkflowStatus.COMPLETED && status != WorkflowStatus.FAILED,
-          "Cannot cancel run '%s' in status %s".formatted(runId, status));
-      state.setStatus(WorkflowStatus.CANCELLED);
-      state.setLastUpdatedAt(clock.instant());
-      workflowStateRepository.save(state);
-      eventRecorder.record(runId, state.getCurrentStepId(), WorkflowEventType.RUN_CANCELLED, null, actorId);
     }
   }
 
@@ -920,9 +1057,18 @@ public final class DefaultWorkflowRuntime implements WorkflowRuntime {
     state.setLastUpdatedAt(clock.instant());
     switch (outcome) {
       case COMPLETED -> {
-        state.setStatus(WorkflowStatus.COMPLETED);
-        eventRecorder.record(state.getRunId(), null,
-            WorkflowEventType.RUN_COMPLETED, null, "runtime");
+        // Synchronized against cancel()'s own check-then-set on the same per-run monitor: a
+        // concurrent cancel() may transition the run to CANCELLED (and record RUN_CANCELLED) while
+        // the last step was still executing on this drive, and without this lock the two
+        // check-then-set sequences could interleave so this arm overwrites CANCELLED back to
+        // COMPLETED. Exactly one of the two wins the terminal status atomically.
+        synchronized (runLock(state.getRunId())) {
+          if (state.getStatus() != WorkflowStatus.CANCELLED) {
+            state.setStatus(WorkflowStatus.COMPLETED);
+            eventRecorder.record(state.getRunId(), null,
+                WorkflowEventType.RUN_COMPLETED, null, "runtime");
+          }
+        }
       }
       case PAUSED -> {
         // Handlers have already set a fine-grained status (AWAITING_INPUT /
@@ -936,49 +1082,56 @@ public final class DefaultWorkflowRuntime implements WorkflowRuntime {
         // unreachable in practice (the only present ExecutionOutcome.FAILED producer,
         // MaxIterationsHandler.handleFailed, always sets FAILED and records RUN_FAILED itself
         // first); it is kept as defense-in-depth against a future FAILED-outcome producer that
-        // does not self-record RUN_FAILED.
-        if (state.getStatus() != WorkflowStatus.CANCELLED
-            && state.getStatus() != WorkflowStatus.FAILED) {
-          state.setStatus(WorkflowStatus.FAILED);
-          eventRecorder.record(state.getRunId(), state.getCurrentStepId(),
-              WorkflowEventType.RUN_FAILED, null, "runtime");
+        // does not self-record RUN_FAILED. Synchronized against cancel() for the same reason as the
+        // COMPLETED arm above.
+        synchronized (runLock(state.getRunId())) {
+          if (state.getStatus() != WorkflowStatus.CANCELLED
+              && state.getStatus() != WorkflowStatus.FAILED) {
+            state.setStatus(WorkflowStatus.FAILED);
+            eventRecorder.record(state.getRunId(), state.getCurrentStepId(),
+                WorkflowEventType.RUN_FAILED, null, "runtime");
+          }
         }
       }
     }
   }
 
   private void failRun(WorkflowState state, String failedStepId, RuntimeException throwable) {
-    if (state.getStatus() == WorkflowStatus.CANCELLED) {
+    // Synchronized against cancel() for the same reason as finaliseDrive's terminal arms: a
+    // concurrent cancel() must atomically win or lose against this failure transition.
+    synchronized (runLock(state.getRunId())) {
+      if (state.getStatus() == WorkflowStatus.CANCELLED) {
+        String supportId = UUID.randomUUID().toString();
+        LOG.log(System.Logger.Level.INFO,
+            "Throwable during cancelled run suppressed runId={0} supportId={1}",
+            state.getRunId(), supportId);
+        LOG.log(System.Logger.Level.DEBUG,
+            "Cancelled run throwable detail supportId=" + supportId, throwable);
+        return;
+      }
       String supportId = UUID.randomUUID().toString();
-      LOG.log(System.Logger.Level.INFO,
-          "Throwable during cancelled run suppressed runId={0} supportId={1}",
-          state.getRunId(), supportId);
-      LOG.log(System.Logger.Level.DEBUG,
-          "Cancelled run throwable detail supportId=" + supportId, throwable);
-      return;
+      state.setStatus(WorkflowStatus.FAILED);
+      state.setRunFailure(new RunFailure.ExceptionFailure(
+          failureSanitiser.sanitiseFailureReason(failedStepId, throwable),
+          failedStepId,
+          supportId));
+      state.setLastUpdatedAt(clock.instant());
+
+      LOG.log(System.Logger.Level.ERROR,
+          "Run {0} failed at step {1} (supportId={2})",
+          state.getRunId(),
+          failedStepId,
+          supportId);
+      LOG.log(System.Logger.Level.ERROR, "Run failure stacktrace supportId=" + supportId, throwable);
+
+      eventRecorder.record(
+          state.getRunId(),
+          failedStepId,
+          WorkflowEventType.RUN_FAILED,
+          "Run failed. supportId=%s, reason=%s".formatted(supportId,
+              failureSanitiser.safeFailureReason(throwable)),
+          "runtime");
     }
-    String supportId = UUID.randomUUID().toString();
-    state.setStatus(WorkflowStatus.FAILED);
-    state.setRunFailure(new RunFailure.ExceptionFailure(
-        failureSanitiser.sanitiseFailureReason(failedStepId, throwable),
-        failedStepId,
-        supportId));
-    state.setLastUpdatedAt(clock.instant());
-
-    LOG.log(System.Logger.Level.ERROR,
-        "Run {0} failed at step {1} (supportId={2})",
-        state.getRunId(),
-        failedStepId,
-        supportId);
-    LOG.log(System.Logger.Level.ERROR, "Run failure stacktrace supportId=" + supportId, throwable);
-
-    eventRecorder.record(
-        state.getRunId(),
-        failedStepId,
-        WorkflowEventType.RUN_FAILED,
-        "Run failed. supportId=%s, reason=%s".formatted(supportId,
-            failureSanitiser.safeFailureReason(throwable)),
-        "runtime");
   }
 
   private static void ensureNotCancelled(WorkflowState state, String operation) {

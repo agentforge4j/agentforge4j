@@ -15,6 +15,7 @@ import com.agentforge4j.runtime.repository.InMemoryWorkflowEventLog;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -68,6 +69,62 @@ class SetContextCommandHandlerTest {
         .hasMessageContaining(UntrustedInputEnvelope.KEY)
         .hasMessageContaining("reserved");
     assertThat(state.getContextValue(UntrustedInputEnvelope.KEY)).isEmpty();
+  }
+
+  @Test
+  void rejects_reserved_retry_attempt_counter_key() {
+    WorkflowState state = stateAtStep("s1");
+    SetContextCommand cmd = new SetContextCommand("__retry_a_attempts",
+        new StringContextValue("0", ContextProvenance.USER_SUPPLIED));
+
+    assertThatThrownBy(() ->
+        handler.apply(cmd, new CommandApplicationRequest(state, ContextMapping.none(), "agent-1", 1)))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("__retry_a_attempts")
+        .hasMessageContaining("reserved");
+    assertThat(state.getContextValue("__retry_a_attempts")).isEmpty();
+  }
+
+  @Test
+  void rejects_reserved_llm_token_total_key() {
+    WorkflowState state = stateAtStep("s1");
+    SetContextCommand cmd = new SetContextCommand("__llm_tokens_total",
+        new StringContextValue("0", ContextProvenance.USER_SUPPLIED));
+
+    assertThatThrownBy(() ->
+        handler.apply(cmd, new CommandApplicationRequest(state, ContextMapping.none(), "agent-1", 1)))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("__llm_tokens_total")
+        .hasMessageContaining("reserved");
+    assertThat(state.getContextValue("__llm_tokens_total")).isEmpty();
+  }
+
+  @Test
+  void reserved_namespace_rejection_applies_regardless_of_output_keys_allow_list() {
+    WorkflowState state = stateAtStep("s1");
+    SetContextCommand cmd = new SetContextCommand("__retry_a_attempts",
+        new StringContextValue("0", ContextProvenance.USER_SUPPLIED));
+    // An outputKeys allow-list that explicitly names the reserved key must not rescue it: the
+    // reserved-namespace guard is absolute, checked independently of the allow-list.
+    ContextMapping mapping = new ContextMapping(List.of(), List.of("__retry_a_attempts"));
+
+    assertThatThrownBy(() ->
+        handler.apply(cmd, new CommandApplicationRequest(state, mapping, "agent-1", 1)))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("reserved");
+  }
+
+  @Test
+  void normal_non_reserved_key_writes_continue_to_work() {
+    WorkflowState state = stateAtStep("s1");
+    SetContextCommand cmd = new SetContextCommand("myKey",
+        new StringContextValue("value", ContextProvenance.USER_SUPPLIED));
+
+    CommandApplicationResult result =
+        handler.apply(cmd, new CommandApplicationRequest(state, ContextMapping.none(), "agent-1", 1));
+
+    assertThat(result).isEqualTo(CommandApplicationResult.CONTINUE);
+    assertThat(state.getContextValue("myKey")).isPresent();
   }
 
   private static WorkflowState stateAtStep(String stepId) {

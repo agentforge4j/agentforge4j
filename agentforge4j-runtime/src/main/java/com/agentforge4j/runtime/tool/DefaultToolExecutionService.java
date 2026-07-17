@@ -7,10 +7,12 @@ import com.agentforge4j.core.spi.tool.CapabilityResolutionException;
 import com.agentforge4j.core.spi.tool.PendingToolInvocation;
 import com.agentforge4j.core.spi.tool.PendingToolInvocationStore;
 import com.agentforge4j.core.spi.tool.PolicyDecision;
+import com.agentforge4j.core.spi.tool.PolicyDenialTerminalException;
 import com.agentforge4j.core.spi.tool.ResolvedTool;
 import com.agentforge4j.core.spi.tool.ToolExecutionOptions;
 import com.agentforge4j.core.spi.tool.ToolExecutionOutcome;
 import com.agentforge4j.core.spi.tool.ToolExecutionService;
+import com.agentforge4j.core.spi.tool.ToolInvocationClaimLostException;
 import com.agentforge4j.core.spi.tool.ToolInvocationContext;
 import com.agentforge4j.core.spi.tool.ToolPolicy;
 import com.agentforge4j.core.spi.tool.ToolProviderResolver;
@@ -126,13 +128,18 @@ public final class DefaultToolExecutionService implements ToolExecutionService {
   /**
    * Persists a pending row (unless one already exists for this run + invocation id) so the operator
    * can {@code Continue} or {@code Retry} the denied/failed call, and returns the outcome
-   * unchanged. The denial/failure detail is recorded as the pending {@code reason}.
+   * unchanged. The denial/failure detail is recorded as the pending {@code reason}; the row's
+   * {@link PendingToolInvocation.Origin} is derived from the outcome status so {@link #resume} can
+   * later tell a policy denial from an execution failure.
    */
   private ToolExecutionOutcome suspendForDecision(ToolInvocationCommand cmd,
       ToolInvocationContext ctx, String argumentsJson, ToolExecutionOutcome outcome) {
     if (pendingStore.find(ctx.runId(), cmd.toolInvocationId()) == null) {
+      PendingToolInvocation.Origin origin = outcome.status() == ToolExecutionOutcome.Status.DENIED
+          ? PendingToolInvocation.Origin.POLICY_DENIED
+          : PendingToolInvocation.Origin.EXECUTION_FAILED;
       pendingStore.save(PendingToolInvocation.forDecision(
-          cmd, ctx, argumentsJson, outcome.detail(), clock.instant()));
+          cmd, ctx, argumentsJson, outcome.detail(), origin, clock.instant()));
     }
     return outcome;
   }
@@ -191,6 +198,33 @@ public final class DefaultToolExecutionService implements ToolExecutionService {
     }
   }
 
+  /**
+   * {@inheritDoc}
+   *
+   * <p>There is no claimable pending row for {@code runId}/{@code toolInvocationId} — never pending,
+   * already resolved, or already claimed/replaced by a concurrent resume — this call throws
+   * {@link ToolInvocationClaimLostException} without mutating any state; this is a benign
+   * concurrency-loss signal, never reported as a provider/tool failure. When a row is found, a
+   * {@link PendingToolInvocation.Origin#POLICY_DENIED} row is terminal: an
+   * {@link ApprovalDecision.Approve} — whether issued by the runtime's {@code ToolDecision.Retry} or
+   * a direct SPI call — never reaches the provider for such a row; it is rejected with a
+   * {@link PolicyDenialTerminalException} and an audited override-rejected event, and the pending
+   * row is left in place so a later {@link ApprovalDecision.Reject} (or the runtime's non-executing
+   * {@code ToolDecision.Continue}, which never calls this method) can still resolve it. Every other
+   * pending row is claimed atomically, tied to the exact row this call observed via {@link
+   * PendingToolInvocationStore#find} (see {@link PendingToolInvocationStore#claim}), before its
+   * provider is invoked, so at most one of two concurrent resumes on the same invocation executes;
+   * the other — or a resume whose observed row was replaced by a different one before its own claim
+   * attempt — never reaches the provider and throws the same {@link ToolInvocationClaimLostException}.
+   * If the claimed call itself ends in {@link ToolExecutionOutcome.Status#FAILED}, a fresh pending
+   * row is persisted (origin {@link PendingToolInvocation.Origin#EXECUTION_FAILED}) so the operator
+   * gets a further decision point rather than the run silently losing the pending invocation.
+   *
+   * @throws ToolInvocationClaimLostException if there is no claimable pending row for this
+   *                                           invocation, whether because it was never pending,
+   *                                           already resolved, or claimed/replaced by a concurrent
+   *                                           resume before this call's own claim attempt
+   */
   @Override
   public ToolExecutionOutcome resume(String runId, String toolInvocationId,
       ApprovalDecision decision) {
@@ -198,31 +232,86 @@ public final class DefaultToolExecutionService implements ToolExecutionService {
     Validate.notBlank(toolInvocationId, "toolInvocationId must not be blank");
     Validate.notNull(decision, "decision must not be null");
 
-    PendingToolInvocation pending = pendingStore.find(runId, toolInvocationId);
-    if (pending == null) {
-      return ToolExecutionOutcome.failed(null,
-          "No pending tool invocation '%s' for run '%s'".formatted(toolInvocationId, runId));
+    PendingToolInvocation peeked = pendingStore.find(runId, toolInvocationId);
+    if (peeked == null) {
+      // No row to peek at all: either this id was never pending, or a concurrent resume already
+      // claimed/removed it before this call's own find() ran — the two are indistinguishable from
+      // here, and callers that reach resume() only after confirming a row exists (both runtime
+      // entry points do) can only land here via the latter. Either way, there is nothing to claim,
+      // so this must never be reported as a provider/tool failure.
+      throw claimLost(runId, toolInvocationId);
     }
 
-    ToolInvocationContext ctx = new ToolInvocationContext(pending.runId(), pending.stepUid(),
-        pending.agentId(), new ToolScope(pending.workflowId(), pending.runId()));
-
     if (decision instanceof ApprovalDecision.Reject reject) {
-      emitDenied(pending.capability(), ctx, rejectionReason(reject));
-      pendingStore.remove(runId, toolInvocationId);
+      PendingToolInvocation claimed = pendingStore.claim(runId, toolInvocationId, peeked);
+      if (claimed == null) {
+        throw claimLost(runId, toolInvocationId);
+      }
+      ToolInvocationContext ctx = contextOf(claimed);
+      emitDenied(claimed.capability(), ctx, rejectionReason(reject));
       return ToolExecutionOutcome.denied(rejectionReason(reject));
     }
 
-    try {
-      Prepared prepared = resolveAndValidate(pending.capability(), pending.arguments(), ctx);
-      if (prepared.failure() != null) {
-        return prepared.failure();
-      }
-      return invokeWithRetry(
-          prepared.resolved(), pending.capability(), pending.arguments(), ctx);
-    } finally {
-      pendingStore.remove(runId, toolInvocationId);
+    // Sealed ApprovalDecision has exactly two variants; Reject is handled above, so this is Approve.
+    if (peeked.origin() == PendingToolInvocation.Origin.POLICY_DENIED) {
+      // Terminal: a policy denial can never be executed via Retry/Approve. The row is deliberately
+      // NOT claimed/removed here, so a later Reject or the runtime's non-executing Continue still
+      // resolves it.
+      ToolInvocationContext ctx = contextOf(peeked);
+      String reason = "Tool invocation '%s' for run '%s' was denied by policy (%s); only Reject or "
+          .formatted(toolInvocationId, runId, peeked.reason())
+          + "the runtime's non-executing Continue may resolve it, never Retry/Approve";
+      emitOverrideRejected(peeked.capability(), ctx, reason);
+      throw new PolicyDenialTerminalException(reason);
     }
+
+    PendingToolInvocation claimed = pendingStore.claim(runId, toolInvocationId, peeked);
+    if (claimed == null) {
+      throw claimLost(runId, toolInvocationId);
+    }
+    ToolInvocationContext ctx = contextOf(claimed);
+
+    Prepared prepared = resolveAndValidate(claimed.capability(), claimed.arguments(), ctx);
+    if (prepared.failure() != null) {
+      reSuspendForDecision(claimed, prepared.failure());
+      return prepared.failure();
+    }
+    ToolExecutionOutcome outcome =
+        invokeWithRetry(prepared.resolved(), claimed.capability(), claimed.arguments(), ctx);
+    if (outcome.status() == ToolExecutionOutcome.Status.FAILED) {
+      reSuspendForDecision(claimed, outcome);
+    }
+    return outcome;
+  }
+
+  /**
+   * There is no claimable pending row for {@code runId}/{@code toolInvocationId} right now: either
+   * it was never pending, it was already resolved, or a concurrent resume already claimed or
+   * replaced it before this call could claim the exact row it observed. Never a provider/tool
+   * failure — the caller must not translate this into run-state mutation.
+   */
+  private static ToolInvocationClaimLostException claimLost(String runId, String toolInvocationId) {
+    return new ToolInvocationClaimLostException(
+        "No claimable pending tool invocation '%s' for run '%s' (never pending, already resolved, "
+            .formatted(toolInvocationId, runId)
+            + "or claimed/replaced by a concurrent resume)");
+  }
+
+  private static ToolInvocationContext contextOf(PendingToolInvocation pending) {
+    return new ToolInvocationContext(pending.runId(), pending.stepUid(), pending.agentId(),
+        new ToolScope(pending.workflowId(), pending.runId()));
+  }
+
+  /**
+   * Persists a fresh pending row when a claimed {@code resume()} attempt itself ends in FAILED, so
+   * the operator gets a further decision point instead of the run silently losing the pending
+   * invocation once this method's atomic claim has already removed the original row.
+   */
+  private void reSuspendForDecision(PendingToolInvocation claimed, ToolExecutionOutcome outcome) {
+    pendingStore.save(new PendingToolInvocation(
+        claimed.toolInvocationId(), claimed.runId(), claimed.stepUid(), claimed.agentId(),
+        claimed.workflowId(), claimed.capability(), claimed.arguments(), claimed.llmRationale(),
+        outcome.detail(), null, PendingToolInvocation.Origin.EXECUTION_FAILED, clock.instant()));
   }
 
   /**
@@ -323,6 +412,16 @@ public final class DefaultToolExecutionService implements ToolExecutionService {
     payload.put("reason", reason);
     payload.put("approverScope", approverScope);
     record(ctx, WorkflowEventType.TOOL_INVOCATION_APPROVAL_PENDING, payload);
+  }
+
+  private void emitOverrideRejected(String capability, ToolInvocationContext ctx, String reason) {
+    LOG.log(System.Logger.Level.WARNING,
+        "Rejected an attempt to Retry/Approve a policy-denied tool invocation capability={0}",
+        capability);
+    ObjectNode payload = objectMapper.createObjectNode();
+    payload.put("capability", capability);
+    payload.put("reason", reason);
+    record(ctx, WorkflowEventType.TOOL_INVOCATION_OVERRIDE_REJECTED, payload);
   }
 
   private void emitFailed(String capability, ToolInvocationContext ctx, ToolFailurePhase phase,

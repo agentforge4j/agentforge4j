@@ -481,6 +481,68 @@ class WorkflowStateTest {
   }
 
   @Test
+  void agent_signal_completion_marker_is_checked_overwritten_and_exposes_unmodifiable_view() {
+    WorkflowState state = new WorkflowState("run-1", "wf-1", null, t());
+    assertThat(state.isAgentSignalCompleted("bp-a")).isFalse();
+
+    state.setAgentSignalCompleted("bp-a", 4);
+    assertThat(state.isAgentSignalCompleted("bp-a")).isTrue();
+    assertThat(state.getAgentSignalCompletionUidByBlueprintId()).containsExactly(Map.entry("bp-a", 4));
+
+    // A later agent step in the same iteration that does not signal completion must un-signal it.
+    state.clearAgentSignalCompleted("bp-a");
+    assertThat(state.isAgentSignalCompleted("bp-a")).isFalse();
+
+    assertThatThrownBy(() -> state.setAgentSignalCompleted(" ", 1))
+        .isInstanceOf(IllegalArgumentException.class);
+    assertThatThrownBy(() -> state.setAgentSignalCompleted("bp-b", 0))
+        .isInstanceOf(IllegalArgumentException.class);
+    assertThatThrownBy(() -> state.isAgentSignalCompleted(null))
+        .isInstanceOf(IllegalArgumentException.class);
+    assertThatThrownBy(() -> state.getAgentSignalCompletionUidByBlueprintId().put("bp-x", 1))
+        .isInstanceOf(UnsupportedOperationException.class);
+  }
+
+  @Test
+  void clear_loop_iteration_cursor_also_clears_the_agent_signal_completion_marker() {
+    WorkflowState state = new WorkflowState("run-1", "wf-1", null, t());
+    state.setLoopIterationCursor("bp-a", 2);
+    state.setAgentSignalCompleted("bp-a", 3);
+
+    state.clearLoopIterationCursor("bp-a");
+
+    assertThat(state.isAgentSignalCompleted("bp-a")).isFalse();
+  }
+
+  @Test
+  void replace_agent_signal_completion_uids_filters_invalid_and_null_clears() {
+    WorkflowState state = new WorkflowState("run-1", "wf-1", null, t());
+    state.setAgentSignalCompleted("bp-a", 1);
+
+    Map<String, Integer> replacement = new HashMap<>();
+    replacement.put("bp-x", 5);
+    replacement.put("", 2);
+    replacement.put("bp-bad", 0);
+    state.replaceAgentSignalCompletionUids(replacement);
+    assertThat(state.getAgentSignalCompletionUidByBlueprintId()).containsExactly(Map.entry("bp-x", 5));
+
+    state.replaceAgentSignalCompletionUids(null);
+    assertThat(state.getAgentSignalCompletionUidByBlueprintId()).isEmpty();
+  }
+
+  @Test
+  void clearStepEntriesFromUid_drops_agent_signal_marker_at_or_after_uid_and_retains_earlier_ones() {
+    WorkflowState state = new WorkflowState("run-1", "wf-1", null, t());
+    state.setAgentSignalCompleted("bp-before", 3);
+    state.setAgentSignalCompleted("bp-rewound", 8);
+
+    state.clearStepEntriesFromUid(5);
+
+    assertThat(state.isAgentSignalCompleted("bp-rewound")).isFalse();
+    assertThat(state.isAgentSignalCompleted("bp-before")).isTrue();
+  }
+
+  @Test
   void clearEntriesFromUid_drops_loop_markers_at_or_after_uid_and_retains_earlier_ones() {
     WorkflowState state = new WorkflowState("run-1", "wf-1", null, t());
     state.markLoopCompleted("loop-before", 3); // completed before the rewind point

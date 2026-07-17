@@ -118,9 +118,11 @@ class WorkflowDraftValidatorTest {
   }
 
   // Regression coverage for the shared-walker duplication defect: before this fix, a single dangling
-  // BlueprintRef was independently caught by 7 of the 9 checks (each treating the walker's own
+  // BlueprintRef was independently caught by 7 of the (then) 9 checks (each treating the walker's own
   // structural-integrity guard as its own failure), so one broken blueprint ref produced 7 duplicate
-  // ValidationError entries in one report instead of 1.
+  // ValidationError entries in one report instead of 1. The suite has since grown
+  // (validateNoCollectionSteps added); this workflow has no COLLECTION step, so that check still
+  // reports nothing and the assertion below holds.
   @Test
   void validate_reportsBlueprintStructureDefectExactlyOnce() {
     WorkflowDraftValidator draftValidator =
