@@ -6,13 +6,13 @@
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 [![Java 17](https://img.shields.io/badge/Java-17-orange.svg)](https://adoptium.net/)
 
-> **Pre-1.0.** AgentForge4j is under active development and being hardened for public open-source release. APIs and workflow contracts may still change. It is not yet published to Maven Central, and it should not be treated as production-ready yet. See [Project status](#project-status).
+> **Pre-1.0.** AgentForge4j is preparing for its first public open-source release. APIs and workflow contracts may still change before 1.0. It is not yet published to Maven Central and should not yet be treated as production-certified. See [Project status](#project-status).
 
 ---
 
 ## In 30 seconds
 
-**AgentForge4j is a Java runtime for predictable, auditable, resumable, human-in-the-loop AI workflows.**
+**AgentForge4j is the embeddable Java framework for governed AI workflows.**
 
 LLMs are non-deterministic. Enterprise execution cannot be. AgentForge4j puts controlled workflow structure around AI-assisted work: explicit steps, inspectable run state, retries, human approval gates, tool execution, provider-independent models, testable workflows, and a decision-level audit trail.
 
@@ -43,7 +43,7 @@ AI-agent space.
 Over time the experiments kept running into the same enterprise gap described above — and closing
 that gap became the project's purpose.
 
-During the early experimental phase, I also hit a hard but useful learning moment: secrets were committed while the project was still moving fast. I treated that as a reset point instead of patching around it. The repository was recreated, the architecture was cleaned up, and AgentForge4j was rebuilt more intentionally — a clean Apache-2.0 OSS core, with platform and cloud concerns split out instead of mixed into the runtime.
+During the early experimental phase, I also hit a hard but useful learning moment: secrets were committed while the project was still moving fast. I treated that as a reset point instead of patching around it. The repository was recreated, the architecture was cleaned up, and AgentForge4j was rebuilt more intentionally as a clean Apache-2.0 open-source framework.
 
 ---
 
@@ -157,9 +157,9 @@ bootstrap and exposes a single `AgentForge4j` bean you can inject. The Maven coo
 
 ```xml
 <dependency>
-    <groupId>org.agentforge4j</groupId>
-    <artifactId>agentforge4j-spring-boot-starter</artifactId>
-    <version>${agentforge4j.version}</version>
+  <groupId>org.agentforge4j</groupId>
+  <artifactId>agentforge4j-spring-boot-starter</artifactId>
+  <version>${agentforge4j.version}</version>
 </dependency>
 ```
 
@@ -186,9 +186,8 @@ markdown — see the [Quickstart](#quickstart)) or start from the runnable defin
 
 ## Architecture
 
-AgentForge4j is intentionally split so the runtime stays clean and embeddable. The OSS core is
-**Apache-2.0**; platform and cloud concerns (tenancy, dashboards, metering, governance) are kept
-in separate projects so they never leak into the runtime.
+AgentForge4j is intentionally split into focused modules so the runtime stays clean, embeddable,
+and framework-neutral. The project is licensed under **Apache-2.0**.
 
 Dependencies flow strictly one way, with no cycles: the core domain model depends only on the
 shared validation utility; the runtime composes the domain model, config loading, and the LLM
@@ -205,8 +204,7 @@ top of bootstrap. Nothing below the starter knows Spring exists.
 | **Testing** | `agentforge4j-llm-fake`, `agentforge4j-testkit` | A fake LLM client plus a dedicated test kit (harness, run assertions, scripted gate responses) for deterministic, repeatable workflow tests. |
 | **Workflow catalog** | `agentforge4j-workflows-catalog` | The shipped workflow catalog (see [Included workflows](#included-workflows)). |
 
-> A visual workflow builder (`agentforge4j-workflow-builder`, `agentforge4j-web-ui`) is in
-> progress.
+> The visual Workflow Builder is published separately as version **v0.6.0**. Its public documentation describes the currently released capabilities.
 
 Most framework-neutral modules carry a JPMS `module-info.java`. The Spring Boot starter is consumed on the classpath by design, and MCP currently depends on SDK module-name constraints.
 
@@ -255,9 +253,11 @@ Most framework-neutral modules carry a JPMS `module-info.java`. The Spring Boot 
 
 ### After OSS 1.0: AgentForge4j Platform
 
-A self-hostable and managed layer for teams that need workflow libraries, run dashboards, access
-control, tenant-aware administration, metering, operational governance, and a fuller UI around
-AgentForge4j workflows. The OSS runtime stays clean and independent; the platform builds on top
+A future self-hosted layer for teams that need workflow libraries, run dashboards, access 
+control, tenant-aware administration, metering, operational governance, and a fuller UI around 
+AgentForge4j workflows. Planned capabilities also include AI FinOps and cost attribution, helping 
+enterprises understand provider spend across tenants, teams, workflows, runs, steps, and business 
+outcomes. The OSS framework will remain clean and independent; the Platform will build on top 
 of it rather than replacing it.
 
 ---
@@ -282,15 +282,13 @@ workflows and an AI Agent Adoption demo application.
 
 ## Project status
 
-- **Version:** `0.0.1-SNAPSHOT` — pre-1.0, being hardened for public OSS release.
-- **Not yet on Maven Central.** Build from source for now.
+- **Version:** `0.1.0-SNAPSHOT` — release candidate for the first public OSS release.
+- **Not yet on Maven Central.** Build from source until the 0.1.0 artifacts are published.
 - **APIs and workflow contracts may change** before 1.0.
-- The core, runtime, bootstrap, provider modules, test kit, and runnable examples are in place;
-  the shipped workflow catalog now carries its 0.1.0 launch line-up (see
-  [Included workflows](#included-workflows)), and the visual builder and published artifacts are
-  in progress.
+- The core, runtime, bootstrap, provider modules, test kit, workflow catalog, runnable examples,
+  MCP integration, and published Workflow Builder v0.6.0 are in place.
 
-Treat it as a capable, actively developed framework — not yet a frozen, production-certified release.
+Treat it as a capable pre-1.0 framework that is approaching public release, not yet as a frozen or production-certified platform.
 
 ---
 
@@ -300,8 +298,6 @@ Treat it as a capable, actively developed framework — not yet a frozen, produc
 - **GitHub Discussions** — questions and ideas: <https://github.com/agentforge4j/agentforge4j/discussions>
 - **Contributing** — see [CONTRIBUTING.md](CONTRIBUTING.md) and [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md)
 - **Security** — see [SECURITY.md](SECURITY.md)
-- **YouTube** — walkthroughs and videos coming soon <!-- TODO: add channel URL once live -->
-- **LinkedIn** — AgentForge4j project page <!-- TODO: add AgentForge4j LinkedIn page URL once live -->
 
 ---
 
