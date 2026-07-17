@@ -23,7 +23,7 @@ test.describe('C8 — editable default path + read-only precedence', () => {
     const nodeCountBefore = await builder.canvasNodes.count();
 
     await builder.selectNodeById('n-1'); // the AI step = ai-step-dev
-    await builder.inspector.getByRole('button', { name: /delete step/i }).click();
+    await builder.deleteSelectedStepFromInspector();
 
     await expect(builder.canvasNodes).toHaveCount(nodeCountBefore - 1);
     expect(await builder.exportStepIds()).not.toContain('ai-step-dev');
