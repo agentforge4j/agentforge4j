@@ -51,7 +51,7 @@
     "dagre": "^0.8.5",
     "jszip": "^3.10.1",
     "lucide-react": "^1.17.0",
-    "nanoid": "^5.1.11"
+    "nanoid": "^6.0.0"
   },
   "overrides": {
     "esbuild": "^0.28.1"
