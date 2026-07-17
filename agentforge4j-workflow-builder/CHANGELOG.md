@@ -19,10 +19,14 @@ and this package adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the standalone builder never requires a server. Host applications can supply their own
   `persistence: { load, save, clear? }` adapter on `WorkflowBuilderProps` to replace or intercept
   local persistence and save drafts to their own backend instead. Restoring on mount is skipped
-  when the host already seeded the builder with `initialWorkflow` content or in read-only mode;
-  a best-effort `beforeunload` warning covers the gap between an edit and the debounce flushing.
-  This mechanism is independent of `capabilities.save`, which continues to gate a separate host
-  backend-persistence action.
+  whenever the host passes `initialWorkflow` (even a metadata-only seed) and in read-only mode.
+  A pending debounced save is flushed when the builder unmounts (covering SPA navigation), and a
+  best-effort `beforeunload` warning covers the remaining page-unload gap. The built-in adapter
+  stores a version-stamped envelope and keeps a single global draft slot per origin; on load, a
+  version mismatch or structurally unrecognizable draft is discarded fail-closed (never restored
+  into code that cannot render it), and drafts resolved by host adapters pass the same
+  structural gate. This mechanism is independent of `capabilities.save`, which continues to gate
+  a separate host backend-persistence action.
 
 ## [0.5.0] - 2026-07-12
 

@@ -155,14 +155,28 @@ export interface BuilderActions {
  * When a host does not supply a `persistence` prop, the builder falls back to a built-in
  * `localStorage`-backed implementation. The package itself never makes a network call for
  * this either way; the standalone builder must never require a server.
+ *
+ * The built-in adapter keeps a **single global draft slot** (one localStorage key per
+ * origin): two tabs, or two builder instances on one page, overwrite each other's draft
+ * last-write-wins. Hosts needing per-workflow or per-user drafts should supply their own
+ * adapter keyed however they see fit.
+ *
+ * Error handling: a rejected or throwing `load` skips the restore; a rejected or throwing
+ * `save`/`clear` is caught and logged (draft recovery is best-effort by contract). A draft
+ * resolved by `load` is structurally validated before it may replace the live canvas —
+ * an unrecognizable shape is ignored rather than restored.
  */
 export interface BuilderPersistenceAdapter {
   /**
    * Load a previously saved draft, if any. Called once on mount. Return (or resolve to)
-   * `null` when there is nothing to restore.
+   * `null` when there is nothing to restore. If it resolves after the user has already
+   * begun editing, the restore is skipped rather than overwriting their work.
    */
   load: () => Promise<CanvasModel | null> | CanvasModel | null;
-  /** Persist the current canvas model. Called on a debounce after each meaningful edit. */
+  /**
+   * Persist the current canvas model. Called on a debounce after each meaningful edit,
+   * and once more with the latest model if the builder unmounts while a save is pending.
+   */
   save: (model: CanvasModel) => Promise<void> | void;
   /** Clear any saved draft. Invoked by the built-in "Start fresh" action. */
   clear?: () => Promise<void> | void;

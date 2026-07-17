@@ -171,15 +171,17 @@ export function WorkflowBuilder({
   const { buildFromCanvas } = useWorkflowDraft();
 
   // Draft-recovery persistence (issue #94): independent of `capabilities.save`, which gates a
-  // separate host backend-persistence action. Restoring on mount is skipped when the host
-  // already seeded real content via `initialWorkflow` (nothing to silently recover over) or in
+  // separate host backend-persistence action. Restoring on mount is skipped whenever the host
+  // supplied `initialWorkflow` at all — even a metadata-only seed (id/name, no steps yet) is
+  // host-provided identity that a stored draft (possibly of a completely different workflow,
+  // given the built-in adapter's single global slot) must never silently replace — and in
   // read-only mode (a read-only view is not the user's own draft); saving is skipped in
   // read-only mode only.
   const { restored: draftRestored, dismissRestoredNotice, startFresh } = useModelPersistence({
     persistence,
     model,
     setModelFromLoad,
-    allowRestore: !readOnly && seed.steps.length === 0,
+    allowRestore: !readOnly && !initialWorkflow,
     allowSave: !readOnly,
   });
 
