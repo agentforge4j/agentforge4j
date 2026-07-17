@@ -165,12 +165,19 @@ export interface BuilderActions {
  * `save`/`clear` is caught and logged (draft recovery is best-effort by contract). A draft
  * resolved by `load` is structurally validated before it may replace the live canvas —
  * an unrecognizable shape is ignored rather than restored.
+ *
+ * `clear` is required, not optional: the built-in "Start fresh" action always offers itself
+ * once a draft has been restored, and its contract is to permanently discard the saved draft,
+ * not merely reset the on-screen canvas. An adapter that could not implement `clear` would
+ * make "Start fresh" silently misleading — the same old draft would return on the next mount.
  */
 export interface BuilderPersistenceAdapter {
   /**
-   * Load a previously saved draft, if any. Called once on mount. Return (or resolve to)
-   * `null` when there is nothing to restore. If it resolves after the user has already
-   * begun editing, the restore is skipped rather than overwriting their work.
+   * Load a previously saved draft, if any. Called once per mount in a production build; React
+   * StrictMode's development-only double-invocation of mount effects may call this twice
+   * during development — implementations should not rely on a hard exactly-once guarantee.
+   * Return (or resolve to) `null` when there is nothing to restore. If it resolves after the
+   * user has already begun editing, the restore is skipped rather than overwriting their work.
    */
   load: () => Promise<CanvasModel | null> | CanvasModel | null;
   /**
@@ -178,8 +185,11 @@ export interface BuilderPersistenceAdapter {
    * and once more with the latest model if the builder unmounts while a save is pending.
    */
   save: (model: CanvasModel) => Promise<void> | void;
-  /** Clear any saved draft. Invoked by the built-in "Start fresh" action. */
-  clear?: () => Promise<void> | void;
+  /**
+   * Permanently discard the saved draft. Invoked by the built-in "Start fresh" action —
+   * required so that action's meaning ("no saved draft remains") always holds.
+   */
+  clear: () => Promise<void> | void;
 }
 
 /**

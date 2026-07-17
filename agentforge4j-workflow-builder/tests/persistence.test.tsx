@@ -253,6 +253,33 @@ describe('workflow-builder draft persistence', () => {
       await waitFor(() => expect(warnSpy).toHaveBeenCalled());
       warnSpy.mockRestore();
     });
+
+    it('resets the canvas and logs a warning — rather than throwing — when a JS (non-TypeScript) adapter omits the required clear()', async () => {
+      // BuilderPersistenceAdapter.clear is required, so TypeScript would reject this object
+      // literal; a plain-JS consumer bypassing the type system could still hand the builder
+      // an adapter shaped like this, so the runtime path must stay defensive rather than
+      // crashing "Start fresh" outright.
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      const adapter = {
+        load: vi.fn().mockResolvedValue(sampleCanvasModel('Restored Workflow')),
+        save: vi.fn().mockResolvedValue(undefined),
+      } as unknown as BuilderPersistenceAdapter;
+
+      render(<WorkflowBuilder capabilities={allDisabled} persistence={adapter} />);
+
+      expect(await screen.findByTestId('draft-restored-banner')).toBeInTheDocument();
+
+      const user = userEvent.setup();
+      await user.click(screen.getByTestId('draft-restored-start-fresh'));
+
+      // The local canvas still resets — the missing clear() must not crash the action.
+      expect(screen.queryByTestId('draft-restored-banner')).not.toBeInTheDocument();
+      expect(screen.getByLabelText(ACTION_LABELS.workflowNameLabel)).toHaveValue('');
+      await waitFor(() => {
+        expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('Failed to clear the saved draft'), expect.any(Error));
+      });
+      warnSpy.mockRestore();
+    });
   });
 
   describe('read-only mode', () => {

@@ -17,16 +17,19 @@ and this package adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   discarded on refresh. Falls back to a built-in `localStorage`-backed implementation when no
   `persistence` prop is supplied; the package never makes a network call for this either way, so
   the standalone builder never requires a server. Host applications can supply their own
-  `persistence: { load, save, clear? }` adapter on `WorkflowBuilderProps` to replace or intercept
-  local persistence and save drafts to their own backend instead. Restoring on mount is skipped
-  whenever the host passes `initialWorkflow` (even a metadata-only seed) and in read-only mode.
-  A pending debounced save is flushed when the builder unmounts (covering SPA navigation), and a
-  best-effort `beforeunload` warning covers the remaining page-unload gap. The built-in adapter
-  stores a version-stamped envelope and keeps a single global draft slot per origin; on load, a
-  version mismatch or structurally unrecognizable draft is discarded fail-closed (never restored
-  into code that cannot render it), and drafts resolved by host adapters pass the same
-  structural gate. This mechanism is independent of `capabilities.save`, which continues to gate
-  a separate host backend-persistence action.
+  `persistence: { load, save, clear }` adapter on `WorkflowBuilderProps` to replace or intercept
+  local persistence and save drafts to their own backend instead — `clear` is required (not
+  optional): the built-in "Start fresh" action always offers itself once a draft has been
+  restored, and its contract is to permanently discard the saved draft, so every adapter must
+  be able to honor that. Restoring on mount is skipped whenever the host passes
+  `initialWorkflow` (even a metadata-only seed) and in read-only mode. A pending debounced save
+  is flushed when the builder unmounts (covering SPA navigation), and a best-effort
+  `beforeunload` warning covers the remaining page-unload gap. The built-in adapter stores a
+  version-stamped envelope and keeps a single global draft slot per origin; on load, a version
+  mismatch or structurally unrecognizable draft is discarded fail-closed (never restored into
+  code that cannot render it), and drafts resolved by host adapters pass the same structural
+  gate. This mechanism is independent of `capabilities.save`, which continues to gate a separate
+  host backend-persistence action.
 
 ### Fixed
 - The step-library panel no longer silently clips step types with no scroll affordance:

@@ -207,8 +207,15 @@ export function useModelPersistence({
       clearTimeout(debounceTimerRef.current);
     }
     pendingFlushRef.current = false;
+    // `clear` is required by BuilderPersistenceAdapter (TypeScript enforces this on every
+    // conforming adapter), so this is a direct call, not `adapter.clear?.()` — the button's
+    // whole meaning is "no saved draft remains", so silently skipping the clear for an
+    // adapter that lacks one would make "Start fresh" misleading rather than merely
+    // incomplete. The try/catch below is defense-in-depth for a JS (non-TypeScript) caller
+    // that bypasses the type system and supplies an adapter object without `clear`: the
+    // canvas still resets and the failure is logged, rather than the action crashing.
     try {
-      void Promise.resolve(adapter.clear?.()).catch((err) => {
+      void Promise.resolve(adapter.clear()).catch((err) => {
         warnPersistence('Failed to clear the saved draft.', err);
       });
     } catch (err) {
