@@ -14,5 +14,13 @@
     "forceConsistentCasingInFileNames": true,
     "verbatimModuleSyntax": true
   },
-  "include": ["playwright.config.ts", "specs/**/*.ts", "support/**/*.ts", "fixtures/**/*.ts"]
+  "include": [
+    "playwright.config.ts",
+    "playwright.visual.config.ts",
+    "playwright.visual-unit.config.ts",
+    "specs/**/*.ts",
+    "support/**/*.ts",
+    "fixtures/**/*.ts",
+    "visual/**/*.ts"
+  ]
 }

@@ -14,6 +14,7 @@ export interface SiteRoute {
 export const SITE_ROUTES: readonly SiteRoute[] = [
   { path: '/', heading: 'AgentForge4j' },
   { path: '/docs', heading: 'Documentation' },
+  { path: '/api', heading: 'API reference' },
   { path: '/use', heading: 'Get started' },
   { path: '/catalogue', heading: 'Workflow catalogue' },
   { path: '/architecture', heading: 'Architecture' },

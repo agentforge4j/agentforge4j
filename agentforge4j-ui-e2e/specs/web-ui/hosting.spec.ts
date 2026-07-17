@@ -22,16 +22,10 @@ import { createServer, type Server } from 'node:http';
 import { readFile } from 'node:fs/promises';
 import { extname, join } from 'node:path';
 import { expect, test } from '@playwright/test';
+// @ts-expect-error — plain .mjs, no type declarations; see this repo's other scripts/*.mjs.
+import { CONTENT_TYPES } from '../../support/content-types.mjs';
 
 const DIST_DIR = join(import.meta.dirname, '..', '..', '..', 'agentforge4j-web-ui', 'dist');
-
-const CONTENT_TYPES: Record<string, string> = {
-  '.html': 'text/html',
-  '.js': 'text/javascript',
-  '.css': 'text/css',
-  '.svg': 'image/svg+xml',
-  '.json': 'application/json',
-};
 
 let server: Server;
 let baseUrl: string;
