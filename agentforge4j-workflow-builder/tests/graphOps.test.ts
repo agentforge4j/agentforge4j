@@ -6,6 +6,7 @@ import {
   pruneReferences,
   repositionAfter,
   spliceEdgeWithNode,
+  startStepCandidateIds,
   START_SENTINEL,
   unreachableNodeIds,
 } from '../src/model/graphOps';
@@ -119,6 +120,23 @@ describe('repositionAfter', () => {
     expect(chain.B).toEqual(['A']);
     expect(chain.A ?? []).toEqual([]);
   });
+
+  it('moving a detached second-root node (with its own successor) to Start severs it from that successor', () => {
+    // A is the main scope's start; X -> Y is a second, detached root chain reachable via
+    // startStepCandidateIds' noTargets widening (X has no predecessor, is not the current
+    // start, and its only successor Y leaves it with no other reposition target). X has no
+    // predecessor to reconnect to Y, so moving X to Start detaches Y with no gap closure —
+    // the same single-node-move semantics repositionAfter already applies to every other
+    // target (see graphOps.ts startStepCandidateIds doc).
+    const m = model([node('A'), node('X'), node('Y')], [linEdge('X', 'Y')], 'A');
+    const next = repositionAfter(m, 'X', START_SENTINEL);
+    const chain = linearChain(next);
+    expect(next.startNodeId).toBe('X');
+    expect(chain.X).toEqual(['A']);
+    expect(chain.Y ?? []).toEqual([]);
+    // Y has no incoming linear edge left anywhere in the model — it is now unreachable.
+    expect(next.edges.some((e) => e.target === 'Y')).toBe(false);
+  });
 });
 
 describe('getRunsAfterState', () => {
@@ -188,6 +206,52 @@ describe('getRunsAfterState', () => {
       // ...but C must be rejected as a target by the cycle guard.
       expect(state.targets.map((t) => t.value)).not.toContain('C');
     }
+  });
+});
+
+describe('startStepCandidateIds', () => {
+  it('offers every other top-level node as a start-step candidate in a simple chain', () => {
+    const m = model([node('A'), node('B'), node('C')], [linEdge('A', 'B'), linEdge('B', 'C')], 'A');
+    expect(startStepCandidateIds(m)).toEqual(['B', 'C']);
+  });
+
+  it('excludes the current start node itself', () => {
+    const m = model([node('A'), node('B')], [linEdge('A', 'B')], 'A');
+    expect(startStepCandidateIds(m)).not.toContain('A');
+  });
+
+  it('excludes DECISION and RETRY nodes (mirrors getRunsAfterState hiding their own selector)', () => {
+    const m = model(
+      [node('A'), node('D', 'DECISION'), node('R', 'RETRY')],
+      [linEdge('A', 'D'), linEdge('D', 'R')],
+      'A',
+    );
+    const candidates = startStepCandidateIds(m);
+    expect(candidates).not.toContain('D');
+    expect(candidates).not.toContain('R');
+  });
+
+  it('excludes a node with multiple linear predecessors (join)', () => {
+    const m = model(
+      [node('A'), node('B'), node('C')],
+      [linEdge('A', 'C'), linEdge('B', 'C')],
+      'A',
+    );
+    expect(startStepCandidateIds(m)).not.toContain('C');
+  });
+
+  it('returns no candidates for a lone node', () => {
+    const m = model([node('A')], [], 'A');
+    expect(startStepCandidateIds(m)).toEqual([]);
+  });
+
+  it('offers a second-root node whose only possible move is Start (inspector shows disabled/noTargets)', () => {
+    // X has no linear predecessor and is not the start; the only other node is a
+    // DECISION, so the inspector's "Runs after" selector has nothing to offer and is
+    // disabled — but making X the start step is still a real, valid reassignment.
+    const m = model([node('D', 'DECISION'), node('X')], [], 'D');
+    expect(getRunsAfterState(m, 'X')).toEqual({ kind: 'disabled', reason: 'noTargets' });
+    expect(startStepCandidateIds(m)).toEqual(['X']);
   });
 });
 

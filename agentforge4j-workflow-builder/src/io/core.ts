@@ -1,4 +1,4 @@
-import type { ExportFormat, WorkflowDefinition } from '../api/types';
+import type { ExportFormat, ExportOutcome, WorkflowDefinition } from '../api/types';
 
 const STRIP_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
 
@@ -67,19 +67,19 @@ export function parseWorkflowJson(text: string): WorkflowDefinition {
   return sanitizeObject(parsed as WorkflowDefinition);
 }
 
+/**
+ * Export the workflow as a browser download. Delegates to {@link exportWorkflowBundle} (the
+ * builder's built-in default adapter) so both public export entry points share one
+ * implementation and both resolve the same {@link ExportOutcome} naming the produced file —
+ * a host wiring this helper as its `exportBundle` adapter gets the exact-filename
+ * confirmation, not the generic one.
+ */
 export async function exportBundle(
   workflow: WorkflowDefinition,
   format: ExportFormat,
-): Promise<void> {
-  if (format === 'zip') {
-    const { exportWorkflowZip } = await import('./browser/zip');
-    await exportWorkflowZip(workflow);
-    return;
-  }
-  const { downloadWorkflowJson } = await import('./browser/download');
-  const name =
-    typeof workflow.name === 'string' && workflow.name.length > 0 ? `${workflow.name}.json` : 'workflow.json';
-  downloadWorkflowJson(workflow, name);
+): Promise<ExportOutcome> {
+  const { exportWorkflowBundle } = await import('./browser/download');
+  return exportWorkflowBundle(workflow, format);
 }
 
 export async function importBundle(file: File): Promise<WorkflowDefinition> {
