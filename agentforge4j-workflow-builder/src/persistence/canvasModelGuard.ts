@@ -3,6 +3,7 @@
 import type { ArtifactItemDraft, CanvasModel, DecisionCaseDraft, NodeDataByKind } from '../model/canvasModel';
 import type { NodeKind } from '../model/nodeKinds';
 import { NODE_KIND_META } from '../model/nodeKinds';
+import { canvasToWorkflow } from '../model/mapper';
 
 const KNOWN_NODE_KINDS = new Set(Object.keys(NODE_KIND_META));
 
@@ -33,14 +34,19 @@ type FieldSpec =
 /**
  * Field requirements for artifact items, shared by `ASK_USER.artifactItems` drafts and the
  * items of `CanvasModel.artifacts` values: `id`/`label` are `.trim()`ed and `type` is
- * compared by the editor validator (`validateWorkflow.ts`), `key` is optional-chain-trimmed
- * by `artifactFromAskUser`, `options` elements are `.trim()`ed by `hasOptions`.
+ * compared by the editor validator (`validateWorkflow.ts`), `options` elements are
+ * `.trim()`ed by `hasOptions`. `key` is required — `ArtifactItemDraft.key` is a required
+ * TypeScript field and `StepConfigPanel`'s inspector input renders it as a controlled value
+ * (`value={item.key}`) with no fallback; `artifactFromAskUser`'s `it.key?.trim()` optional
+ * chain only guards a missing draft *field*, not the controlled-input consumer, so treating
+ * `key` as optional here would let a restored draft desync React's controlled/uncontrolled
+ * input state.
  */
 const ARTIFACT_ITEM_SPECS = {
   id: 'string',
   type: 'string',
   label: 'string',
-  key: 'optionalString',
+  key: 'string',
   required: 'optionalBoolean',
   options: 'optionalStringArray',
 } as const satisfies { [F in keyof Required<ArtifactItemDraft>]: FieldSpec };
@@ -204,6 +210,17 @@ function isRestorableEdge(value: unknown): boolean {
  * requires is rejected — fail-closed, per the persistence contract: the built-in adapter
  * self-clears such drafts, host-adapter drafts are skipped (never rendered, never cleared —
  * the host's storage belongs to the host).
+ *
+ * Field shape alone is not sufficient: a fully well-typed draft can still be semantically
+ * unserializable — e.g. a `REPEAT` node whose loop body (via `bodyNodeIds` or a child's
+ * `parentNode`) contains a `DECISION` node, which crashes `canvasToWorkflow`'s
+ * `buildBlueprintJsonForRepeat` → `serializeBehaviour('BRANCH')` (its branch-target lookup
+ * can never resolve an inner-scope canvas id, and an unset default target throws outright).
+ * `canvasToWorkflow` runs synchronously at render time on every restore
+ * (`WorkflowBuilder.tsx`'s `buildFromCanvas` `useMemo` and the unguarded draft-sync effect),
+ * so the gate runs the real mapping pipeline against the candidate as a final check —
+ * closing this whole class of failure (present and future) rather than enumerating each
+ * unserializable shape as its own field rule.
  */
 export function isRestorableCanvasModel(value: unknown): value is CanvasModel {
   if (!isPlainObject(value)) {
@@ -230,5 +247,13 @@ export function isRestorableCanvasModel(value: unknown): value is CanvasModel {
   if (value.unsupported !== undefined && typeof value.unsupported !== 'boolean') {
     return false;
   }
-  return value.unsupportedReasons === undefined || isStringArray(value.unsupportedReasons);
+  if (value.unsupportedReasons !== undefined && !isStringArray(value.unsupportedReasons)) {
+    return false;
+  }
+  try {
+    canvasToWorkflow(value as CanvasModel);
+  } catch {
+    return false;
+  }
+  return true;
 }

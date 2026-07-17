@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 // SPDX-License-Identifier: Apache-2.0
 
+import { StrictMode } from 'react';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -21,6 +22,8 @@ const allDisabled: BuilderCapabilities = {
 
 const DRAFT_KEY = 'agentforge_builder_draft';
 const DEBOUNCE_WAIT = { timeout: 2000 };
+/** SAVE_DEBOUNCE_MS (useModelPersistence.ts) + a margin, for tests that wait *past* the debounce. */
+const DEBOUNCE_SETTLE_MS = 700;
 
 /** The exact envelope the built-in adapter persists — see localStoragePersistence.ts. */
 function storedDraft(model: CanvasModel): string {
@@ -79,9 +82,43 @@ describe('workflow-builder draft persistence', () => {
       expect(screen.getByLabelText(ACTION_LABELS.workflowNameLabel)).toHaveValue('My Draft Workflow');
     });
 
-    it('does not show a restore notice when there is nothing meaningful to restore', () => {
+    it('does not show a restore notice when there is nothing meaningful to restore', async () => {
       render(<WorkflowBuilder capabilities={allDisabled} />);
+
+      // The load-on-mount path is always deferred through a promise chain (never synchronous —
+      // see useModelPersistence.ts), so let it settle before asserting the absence; asserting
+      // right after render would still pass even if the banner appeared a microtask later.
+      await new Promise((resolve) => setTimeout(resolve, 50));
       expect(screen.queryByTestId('draft-restored-banner')).not.toBeInTheDocument();
+    });
+
+    it('never shows a restore notice for a stored draft that is itself an untouched starter canvas', async () => {
+      window.localStorage.setItem(
+        DRAFT_KEY,
+        storedDraft({
+          workflowId: '',
+          workflowName: '',
+          description: '',
+          startNodeId: 'c-ask-1',
+          nodes: [
+            {
+              id: 'c-ask-1',
+              kind: 'ASK_USER',
+              position: { x: 80, y: 120 },
+              data: { name: '', question: '', artifactItems: [] },
+            },
+          ],
+          edges: [],
+          artifacts: {},
+          blueprints: {},
+        } as CanvasModel),
+      );
+
+      render(<WorkflowBuilder capabilities={allDisabled} />);
+
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      expect(screen.queryByTestId('draft-restored-banner')).not.toBeInTheDocument();
+      expect(screen.getByLabelText(ACTION_LABELS.workflowNameLabel)).toHaveValue('');
     });
 
     it('"Start fresh" clears the notice, the saved draft, and resets the canvas', async () => {
@@ -149,6 +186,30 @@ describe('workflow-builder draft persistence', () => {
       }, DEBOUNCE_WAIT);
 
       expect(window.localStorage.getItem(DRAFT_KEY)).toBeNull();
+    });
+
+    it('routes a debounced save to the most recently supplied adapter, even if it was swapped after the edit', async () => {
+      const adapterA = fakeAdapter(null);
+      const adapterB = fakeAdapter(null);
+
+      const { rerender } = render(<WorkflowBuilder capabilities={allDisabled} persistence={adapterA} />);
+      await waitFor(() => expect(adapterA.load).toHaveBeenCalledTimes(1));
+
+      fireEvent.change(screen.getByLabelText(ACTION_LABELS.workflowNameLabel), {
+        target: { value: 'Routed To B' },
+      });
+
+      // Swap the adapter identity before the debounce fires.
+      rerender(<WorkflowBuilder capabilities={allDisabled} persistence={adapterB} />);
+
+      await waitFor(() => expect(adapterB.save).toHaveBeenCalled(), DEBOUNCE_WAIT);
+      expect(adapterA.save).not.toHaveBeenCalled();
+      const lastCall = adapterB.save.mock.calls[adapterB.save.mock.calls.length - 1]?.[0] as CanvasModel;
+      expect(lastCall.workflowName).toBe('Routed To B');
+
+      // The mount-time load() uses only the adapter supplied at mount — the swap must never
+      // trigger a second load on the new adapter.
+      expect(adapterB.load).not.toHaveBeenCalled();
     });
 
     it('uses the host clear() instead of localStorage.removeItem when starting fresh', async () => {
@@ -276,6 +337,49 @@ describe('workflow-builder draft persistence', () => {
           model: { ...sampleCanvasModel('Bad Artifacts'), artifacts: { a1: {} } },
         }),
       ],
+      [
+        'a REPEAT node whose loop body contains a DECISION node (every field well-typed, but ' +
+          'would crash canvasToWorkflow’s BRANCH serialization on restore — caught only by ' +
+          'the guard’s serializability check, not by field shape alone)',
+        JSON.stringify({
+          version: DRAFT_STORAGE_VERSION,
+          model: {
+            workflowId: 'wf',
+            workflowName: 'Loop With Decision Body',
+            description: '',
+            startNodeId: 'rep-1',
+            nodes: [
+              {
+                id: 'rep-1',
+                kind: 'REPEAT',
+                position: { x: 0, y: 0 },
+                data: {
+                  name: 'Loop',
+                  strategy: 'FIXED_COUNT',
+                  maxIterations: 3,
+                  maxIterationsAction: 'AWAIT_USER',
+                  bodyNodeIds: ['dec-1'],
+                },
+              },
+              {
+                id: 'dec-1',
+                kind: 'DECISION',
+                parentNode: 'rep-1',
+                position: { x: 10, y: 10 },
+                data: {
+                  name: 'D',
+                  contextKey: 'k',
+                  cases: [{ label: 'Yes', value: 'yes', targetNodeId: '' }],
+                  defaultTargetNodeId: '',
+                },
+              },
+            ],
+            edges: [],
+            artifacts: {},
+            blueprints: {},
+          },
+        }),
+      ],
     ])('discards %s instead of restoring (and clears it so it cannot crash the next mount)', async (_label, raw) => {
       window.localStorage.setItem(DRAFT_KEY, raw);
 
@@ -306,6 +410,65 @@ describe('workflow-builder draft persistence', () => {
       expect(screen.queryByTestId('draft-restored-banner')).not.toBeInTheDocument();
       expect(screen.getByLabelText(ACTION_LABELS.workflowNameLabel)).toHaveValue('');
       // The host's storage is theirs — the builder must not destroy it, only ignore it.
+      expect(adapter.clear).not.toHaveBeenCalled();
+      await waitFor(() => expect(warnSpy).toHaveBeenCalled());
+      warnSpy.mockRestore();
+    });
+
+    it('skips (without crashing or clearing) a host adapter draft that is field-well-typed but unserializable', async () => {
+      // Field-shape-only validation would accept this draft (every field is correctly typed);
+      // only the guard's semantic serializability check catches it. Repro: a REPEAT node's
+      // loop body containing a DECISION node crashes canvasToWorkflow's BRANCH serialization
+      // (the inner branch-target lookup can never resolve, and an unset default target also
+      // throws) — reachable only via host adapters / hand-edited storage today, since the
+      // canvas UI has no way to place a node inside a loop body.
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      const unserializable = {
+        workflowId: 'wf',
+        workflowName: 'Loop With Decision Body',
+        description: '',
+        startNodeId: 'rep-1',
+        nodes: [
+          {
+            id: 'rep-1',
+            kind: 'REPEAT',
+            position: { x: 0, y: 0 },
+            data: {
+              name: 'Loop',
+              strategy: 'FIXED_COUNT',
+              maxIterations: 3,
+              maxIterationsAction: 'AWAIT_USER',
+              bodyNodeIds: ['dec-1'],
+            },
+          },
+          {
+            id: 'dec-1',
+            kind: 'DECISION',
+            parentNode: 'rep-1',
+            position: { x: 10, y: 10 },
+            data: {
+              name: 'D',
+              contextKey: 'k',
+              cases: [{ label: 'Yes', value: 'yes', targetNodeId: '' }],
+              defaultTargetNodeId: '',
+            },
+          },
+        ],
+        edges: [],
+        artifacts: {},
+        blueprints: {},
+      } as unknown as CanvasModel;
+      const adapter = {
+        load: vi.fn().mockResolvedValue(unserializable),
+        save: vi.fn().mockResolvedValue(undefined),
+        clear: vi.fn().mockResolvedValue(undefined),
+      };
+
+      render(<WorkflowBuilder capabilities={allDisabled} persistence={adapter} />);
+
+      await waitFor(() => expect(adapter.load).toHaveBeenCalledTimes(1));
+      expect(screen.queryByTestId('draft-restored-banner')).not.toBeInTheDocument();
+      expect(screen.getByLabelText(ACTION_LABELS.workflowNameLabel)).toHaveValue('');
       expect(adapter.clear).not.toHaveBeenCalled();
       await waitFor(() => expect(warnSpy).toHaveBeenCalled());
       warnSpy.mockRestore();
@@ -447,6 +610,47 @@ describe('workflow-builder draft persistence', () => {
     });
   });
 
+  describe('React 18 StrictMode double-invocation', () => {
+    it('never saves the untouched initial model before the first user edit, even with a slow host load()', async () => {
+      // StrictMode re-runs the debounced-save effect a second time with the exact same
+      // `model` reference right after mount (no render happens in between). Without the
+      // last-seen-model guard, run 1 would consume the one-shot skip flag and run 2 would
+      // then treat the untouched starter model as an edit — scheduling a spurious save that,
+      // for a host `load()` slower than the debounce window, overwrites the stored draft
+      // before it even resolves.
+      let resolveLoad: (value: CanvasModel | null) => void = () => {};
+      const adapter = {
+        load: vi.fn().mockImplementation(
+          () =>
+            new Promise<CanvasModel | null>((resolve) => {
+              resolveLoad = resolve;
+            }),
+        ),
+        save: vi.fn().mockResolvedValue(undefined),
+        clear: vi.fn().mockResolvedValue(undefined),
+      };
+
+      render(
+        <StrictMode>
+          <WorkflowBuilder capabilities={allDisabled} persistence={adapter} />
+        </StrictMode>,
+      );
+      await waitFor(() => expect(adapter.load).toHaveBeenCalled());
+
+      // Wait past the debounce window while load() is still pending — the earlier bug fired
+      // a spurious save of the starter model in exactly this gap.
+      await new Promise((resolve) => setTimeout(resolve, DEBOUNCE_SETTLE_MS));
+      expect(adapter.save).not.toHaveBeenCalled();
+
+      resolveLoad(sampleCanvasModel('Slow Backend Draft'));
+      await waitFor(() => expect(screen.getByLabelText(ACTION_LABELS.workflowNameLabel)).toHaveValue('Slow Backend Draft'));
+
+      // The restore itself must not have been mistaken for an edit either.
+      await new Promise((resolve) => setTimeout(resolve, DEBOUNCE_SETTLE_MS));
+      expect(adapter.save).not.toHaveBeenCalled();
+    });
+  });
+
   describe('beforeunload safety net', () => {
     it('blocks unload only while an edit is still unflushed', async () => {
       const adapter = {
@@ -542,6 +746,35 @@ describe('workflow-builder draft persistence', () => {
       await waitFor(() => {
         expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('Failed to save the draft'), expect.any(Error));
       });
+      warnSpy.mockRestore();
+    });
+
+    it('keeps the beforeunload warning armed when the debounced save rejects', async () => {
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      const adapter = {
+        load: vi.fn().mockResolvedValue(null),
+        save: vi.fn().mockRejectedValue(new Error('backend down')),
+        clear: vi.fn().mockResolvedValue(undefined),
+      };
+
+      render(<WorkflowBuilder capabilities={allDisabled} persistence={adapter} />);
+      await waitFor(() => expect(adapter.load).toHaveBeenCalledTimes(1));
+
+      fireEvent.change(screen.getByLabelText(ACTION_LABELS.workflowNameLabel), {
+        target: { value: 'Will Fail To Save' },
+      });
+
+      await waitFor(() => expect(adapter.save).toHaveBeenCalled(), DEBOUNCE_WAIT);
+      await waitFor(() => {
+        expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('Failed to save the draft'), expect.any(Error));
+      });
+
+      // The failed save must not have disarmed the unload warning: the edit is still
+      // effectively unpersisted, so `pendingFlushRef` must remain set.
+      const afterFailure = new Event('beforeunload', { cancelable: true });
+      window.dispatchEvent(afterFailure);
+      expect(afterFailure.defaultPrevented).toBe(true);
+
       warnSpy.mockRestore();
     });
   });

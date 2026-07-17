@@ -83,6 +83,16 @@ export function useModelPersistence({
   // re-persisted; set back to true whenever a programmatic (non-user) load replaces the
   // model, so that replacement is not mistaken for an edit to save.
   const skipNextSaveRef = useRef(true);
+  // The `model` reference the debounced-save effect last actually acted on (skipped or
+  // scheduled). React 18 StrictMode's development-only double-invocation re-runs that effect
+  // a second time with the exact same `model` reference (no render happened in between); left
+  // unguarded, run 1 would consume `skipNextSaveRef` and run 2 would then treat the untouched
+  // initial (or just-restored, or just-reset) model as a fresh edit and schedule a spurious
+  // save — for a host adapter slower than the debounce window, this can overwrite its stored
+  // draft with the starter model before the in-flight `load()` even resolves. The same guard
+  // also closes an `allowSave` false→true toggle (e.g. leaving read-only mode) with no
+  // intervening model change, which would otherwise re-schedule a save of the unchanged model.
+  const lastEffectModelRef = useRef<CanvasModel | null>(null);
   const pendingFlushRef = useRef(false);
   const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Incremented each time a debounced save actually starts; lets an in-flight save's `.then`
@@ -168,6 +178,13 @@ export function useModelPersistence({
     if (!allowSave) {
       return undefined;
     }
+    if (lastEffectModelRef.current === model) {
+      // Same model this effect already acted on last time it ran — a StrictMode
+      // double-invocation or an `allowSave` toggle with no model change. Nothing new to
+      // persist; in particular, do not consume `skipNextSaveRef` a second time for it.
+      return undefined;
+    }
+    lastEffectModelRef.current = model;
     if (skipNextSaveRef.current) {
       skipNextSaveRef.current = false;
       return undefined;
