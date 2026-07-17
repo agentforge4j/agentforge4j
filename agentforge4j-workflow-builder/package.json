@@ -36,6 +36,8 @@
     "sync-schema": "node scripts/sync-schema.mjs",
     "build": "npm run sync-schema && tsup",
     "dev": "npm run sync-schema && vite dev",
+    "build:dev-harness": "npm run sync-schema && vite build",
+    "preview": "vite preview",
     "prepublishOnly": "npm run typecheck && npm run build && npm run test",
     "typecheck": "npm run sync-schema && tsc --noEmit",
     "test": "npm run sync-schema && vitest run"

@@ -9,6 +9,8 @@
     "test:e2e": "npm run test:e2e:builder && npm run test:e2e:web-ui",
     "test:e2e:builder": "playwright test --project=builder",
     "test:e2e:web-ui": "playwright test --config=playwright.web-ui.config.ts",
+    "test:e2e:builder-functional": "playwright test --config=playwright.builder-functional.config.ts --project=desktop --project=tablet --project=mobile",
+    "test:e2e:builder-functional:known-issues": "playwright test --config=playwright.builder-functional.config.ts --project=known-issues",
     "playwright:install": "playwright install --with-deps chromium",
     "typecheck": "tsc --noEmit",
     "test:visual-unit": "playwright test --config=playwright.visual-unit.config.ts",

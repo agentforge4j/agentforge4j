@@ -11,7 +11,7 @@ import type {
   WorkflowDefinition,
 } from '../src/api/types';
 import { createGalleryModel } from './sample-gallery-model';
-import { sampleWorkflow } from './sample-workflow';
+import { readFixture } from './fixtures';
 
 type DevMode = 'demo' | 'gallery';
 
@@ -79,6 +79,9 @@ function DevHarness() {
 
   const builderCapabilities = useMemo(() => readCapabilities(params), [params]);
   const builderMode = useMemo(() => readBuilderMode(params), [params]);
+  // `?fixture=<name>` selects a named WorkflowDefinition (dev/fixtures.ts); absent/unrecognized
+  // falls back to sampleWorkflow(), preserving the pre-existing default the c1-c11 suite depends on.
+  const initialWorkflow = useMemo(() => readFixture(params), [params]);
 
   // Dev-harness-only: capture the serialized draft for e2e observation.
   const builderAdapters = useMemo<BuilderAdapters>(
@@ -129,7 +132,7 @@ function DevHarness() {
           <WorkflowBuilder
             capabilities={builderCapabilities}
             adapters={builderAdapters}
-            initialWorkflow={sampleWorkflow()}
+            initialWorkflow={initialWorkflow}
             agentCatalog={[{ id: 'agent-demo', name: 'Demo Agent' }]}
             mode={builderMode}
           />
