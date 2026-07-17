@@ -159,6 +159,18 @@ export const ACTION_LABELS = {
     'This workflow has an incomplete step connection (a decision branch or retry target is unset). Complete the highlighted routing to continue.',
   narrowContainerTitle: 'Workflow building is currently available on desktop or tablet.',
   narrowContainerBody: 'Please revisit this page on a larger screen to use the workflow builder.',
+  undo: 'Undo',
+  redo: 'Redo',
+  confirmDeleteTitle: (count: number) => (count === 1 ? 'Delete this step?' : `Delete ${count} steps?`),
+  confirmDeleteTitleNamed: (label: string) => `Delete "${label}"?`,
+  // Platform-neutral: names the toolbar Undo button rather than a keyboard shortcut, so
+  // the claim holds on every keyboard layout and OS (Ctrl+Z does nothing on macOS).
+  confirmDeleteBody: (count: number) =>
+    count === 1
+      ? 'This removes the step from the workflow. You can undo this afterwards with the toolbar Undo button.'
+      : `This removes ${count} steps from the workflow. You can undo this afterwards with the toolbar Undo button.`,
+  confirmDeleteConfirm: 'Delete',
+  confirmDeleteCancel: 'Cancel',
   startStepField: 'Start step',
   startStepHint: 'This is the step the workflow runs first. Pick a different step to change it.',
   startStepPlaceholder: 'Choose a start step',
