@@ -50,7 +50,8 @@ public interface BedrockConfiguration extends LlmClientConfiguration {
   String getAnthropicVersion();
 
   /**
-   * Upper bound on a single {@code invokeModel} call, including retries inside the SDK.
+   * Upper bound on a single Bedrock Runtime API call ({@code invokeModel} or {@code converse}),
+   * including retries inside the SDK.
    */
   Duration getRequestTimeout();
 

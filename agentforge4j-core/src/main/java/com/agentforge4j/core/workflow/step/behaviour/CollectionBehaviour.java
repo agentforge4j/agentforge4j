@@ -16,7 +16,7 @@ import com.agentforge4j.util.Validate;
  *
  * <p>The closability invariant ({@code manualClose || externalDeadlineClosable}) and the
  * {@code reopenPolicy == ALLOWED} requires {@code manualClose} rule are cross-field configuration
- * checks enforced at config-load time; this record validates only intrinsic field bounds.
+ * constraints; this record validates only intrinsic field bounds and does not itself enforce them.
  *
  * @param itemSchemaRef            optional id of a JSON schema validating each item's inline JSON;
  *                                 {@code null} when none

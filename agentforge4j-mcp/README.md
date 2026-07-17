@@ -35,7 +35,10 @@ Servers are declared as integration definitions whose `config` JSON is parsed pe
 
 - **`MCP_STDIO`** — required `command`, optional `args` (array), `env` (object), and `requestTimeout`
   (ISO-8601 duration; defaults to 30 seconds).
-- **`MCP_STREAMABLE_HTTP`** — required `url`, optional `requestTimeout`.
+- **`MCP_STREAMABLE_HTTP`** — required `url`, optional `requestTimeout`, `staticHeaders` (object of
+  literal header name to value, attached to every request) and `secretHeaders` (object of header name
+  to secret-reference key, resolved through the embedder-supplied secret resolver at connect time). A
+  header name must not appear in both maps, and header names are compared case-insensitively.
 
 When using the Spring Boot starter, the same servers can be declared under `agentforge4j.mcp.servers`
 (see the [starter README](../agentforge4j-spring-boot-starter/README.md)).

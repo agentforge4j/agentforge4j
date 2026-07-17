@@ -51,10 +51,8 @@ estimatedMinTokens: 7600
 estimatedExpectedTokens: 7600
 estimatedMaxTokens: 7600
 minimumRequiredTokens: 1300
-estimatedAgentTurns: 6
-estimatedToolInvocations: 0
-estimatedSteps: 7
-riskFlags: []
+riskFlags: 
+iterationCeiling: 1
 recommendation: CONTINUE
 ```
 

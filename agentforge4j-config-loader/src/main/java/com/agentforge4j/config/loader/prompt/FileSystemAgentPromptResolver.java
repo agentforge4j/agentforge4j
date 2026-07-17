@@ -6,7 +6,8 @@ import java.nio.file.Path;
 import lombok.RequiredArgsConstructor;
 
 /**
- * Resolves agent prompt text from inline fields and bundle-local prompt files.
+ * Resolves agent prompt text from bundle-local prompt files ({@code systemprompt.md},
+ * {@code boundaries.md}).
  */
 @RequiredArgsConstructor
 public final class FileSystemAgentPromptResolver implements AgentPromptResolver {

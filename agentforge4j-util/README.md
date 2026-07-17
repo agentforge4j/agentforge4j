@@ -47,7 +47,8 @@ minimum is 1.
 requires agentforge4j.util;
 ```
 
-Exports the single package `com.agentforge4j.util`.
+Exports `com.agentforge4j.util`, `com.agentforge4j.util.net`, `com.agentforge4j.util.retry`, and
+`com.agentforge4j.util.text`.
 
 ## Licence
 
