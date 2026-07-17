@@ -182,6 +182,22 @@ const config: Config = {
       },
       items: [
         {
+          // Back-link to the agentforge4j.org SPA root, composed alongside /docs/ by the
+          // Assembler track (design §10/§13). A fully-qualified absolute URL, not a bare
+          // path: Docusaurus's Link component baseUrl-prepends any href starting with `/`
+          // regardless of the href/to distinction, and its broken-link checker then treats
+          // the result as an internal route to validate — a bare `href: '/'` resolves to
+          // `/docs/`, which only exists as a static file plugin-client-redirects writes in
+          // postBuild (after the checker runs), so the build fails closed. An absolute URL
+          // has a protocol, so Docusaurus treats it as external: no baseUrl-prepending, no
+          // broken-link check. `target: '_self'` overrides the external-link default of
+          // opening a new tab — this is the same site, just outside the /docs/ baseUrl.
+          href: 'https://agentforge4j.org/',
+          label: '← agentforge4j.org',
+          position: 'left',
+          target: '_self',
+        },
+        {
           type: 'docSidebar',
           sidebarId: 'docs',
           position: 'left',
