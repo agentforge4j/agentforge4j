@@ -32,18 +32,37 @@ async function closeInspectorIfOpen(page: Page): Promise<void> {
 }
 
 /**
- * Opens whichever palette surface the current viewport actually uses, so the per-kind add button
+ * Opens whichever palette surface the builder actually renders, so the per-kind add button
  * becomes clickable. Two genuinely different, mutually exclusive DOM paths (StepPalette.tsx):
- *  - below its own 767px breakpoint, the palette renders as a `wf-palette--mobile` trigger button
+ *  - when the builder's own container measurement reports narrow (`containerNarrow` prop, fed
+ *    from `useNarrowContainerGate`), the palette renders as a `wf-palette--mobile` trigger button
  *    (`workflow-builder-palette-mobile-trigger`) that must be clicked to reveal a `role="dialog"`
- *    sheet containing the same per-kind buttons;
- *  - at/above that breakpoint, the palette is `.wf-palette`, which starts collapsed to an icon
- *    rail (a collapsed kind renders twice — hidden panel + rail — making the per-kind test id
- *    ambiguous) and expands on hover.
- * Throws if neither path is present — a missing palette entirely is a genuine setup failure, not
- * a state worth silently certifying as "populated" with nothing actually added (see `addStep`).
+ *    sheet containing the same per-kind buttons. NOTE: since PR #110's narrow-container gate,
+ *    this path is unreachable on the live `/builder` embed — below the 767px breakpoint the
+ *    WHOLE editor (palette included) is replaced by a desktop-required notice, and above it the
+ *    prop is false. It is kept because StepPalette still ships the variant (the seed of the
+ *    deferred mobile editing surface) and unit tests mount it via prop injection;
+ *  - otherwise, the palette is `.wf-palette`, which starts collapsed to an icon rail (a collapsed
+ *    kind renders twice — hidden panel + rail — making the per-kind test id ambiguous) and
+ *    expands on hover.
+ * Fails fast, with a manifest-pointing message, if the narrow-container notice is showing:
+ * palette interactions must not run at gated viewports — editor-state entries use the
+ * EDITOR_*_VIEWPORTS sets and the gated contract is certified by `builder-narrow-gate`, which has
+ * no interaction. Also throws if neither palette path is present — a missing palette entirely is
+ * a genuine setup failure, not a state worth silently certifying as "populated" with nothing
+ * actually added (see `addStep`).
  */
 async function openPalette(page: Page): Promise<void> {
+  const narrowNotice = page.getByTestId('workflow-builder-narrow-notice');
+  if ((await narrowNotice.count()) > 0) {
+    throw new Error(
+      'openPalette: the builder is showing its narrow-container notice — the editor (palette '
+        + 'included) is intentionally not mounted below the 767px container breakpoint (PR #110). '
+        + 'This entry is misconfigured: editor-state entries must use the EDITOR_*_VIEWPORTS sets '
+        + 'in visual/manifest.ts; the gated-mobile contract belongs to the interaction-less '
+        + 'builder-narrow-gate entry.',
+    );
+  }
   await closeInspectorIfOpen(page);
   const mobileTrigger = page.getByTestId('workflow-builder-palette-mobile-trigger');
   if ((await mobileTrigger.count()) > 0) {
@@ -76,13 +95,14 @@ async function openPalette(page: Page): Promise<void> {
  * defect finding #4 of the 2026-07-16 review flagged): it's safe now because
  * `checks.ts`'s `minNodeCount` assertion independently, deterministically re-verifies the canvas's
  * real node count after every setup interaction and fails loudly, visibly, and specifically when
- * it's short — so a delivery failure can never silently read as success, regardless of which of
- * several CONFIRMED real causes produced it (all found via direct inspection during this
- * workstream's own dogfooding, not assumed): the mobile `.wf-palette__mobile-sheet` rendering
- * above the top of the viewport with no scroll path back into view, and separately other page
- * chrome (the accessibility-note paragraph, the site header) overlapping the button. Chasing each
- * specific overlap shape with its own detection heuristic doesn't scale and isn't the point —
- * `minNodeCount` is the general, always-correct proof of whether the interaction actually worked.
+ * it's short — so a delivery failure can never silently read as success. (The originally
+ * confirmed causes — the mobile `.wf-palette__mobile-sheet` rendering above the top of the
+ * viewport with no scroll path back into view, and page chrome overlapping a visible button —
+ * were mobile-only and are unreachable since PR #110's narrow-container gate removed the editor
+ * from gated viewports, which editor-state entries no longer run at. The tolerance stays because
+ * `minNodeCount` is the general, always-correct proof of whether the interaction actually worked,
+ * for ANY overlap cause at ANY viewport — chasing each specific overlap shape with its own
+ * detection heuristic doesn't scale and isn't the point.)
  */
 async function addStep(page: Page, kindSlug: string): Promise<void> {
   const before = await page.locator(RF_NODE).count();
@@ -140,14 +160,15 @@ export const INTERACTIONS: Record<string, Interaction> = {
       return;
     }
     try {
-      // The ONE deliberately tolerated failure past this point, and only this specific,
-      // already-confirmed product defect: on a narrow viewport the guided-mode stepper panel
-      // (`.workflow-builder__guided`) sits on top of the canvas and intercepts every pointer
-      // event there, making the node genuinely unclickable (confirmed via Playwright trace, not
-      // assumed). A bounded attempt keeps the run fast rather than eating Playwright's full
-      // default 30s timeout; the subsequent `must-be-visible-present` check for the inspector
-      // panel still correctly fails and is what actually records this as a finding (classified
-      // non-blocking in the manifest, not silently dropped here).
+      // Bounded attempt: originally added for one specific, confirmed product defect — on a
+      // narrow viewport the guided-mode stepper panel (`.workflow-builder__guided`) intercepted
+      // every pointer event over the canvas, making the node genuinely unclickable (confirmed via
+      // Playwright trace, not assumed). That defect is unreachable since PR #110's narrow-container
+      // gate (editor entries no longer run at gated viewports), but the bound is kept: it keeps
+      // the run fast rather than eating Playwright's full default 30s timeout on any future
+      // interception, and the subsequent `must-be-visible-present` check for the inspector panel
+      // is what records such a failure — now UNEXEMPTED, so it blocks rather than being
+      // classified away.
       await nodes.last().click({ timeout: 5_000 });
     } catch {
       // Non-fatal — see comment above.

@@ -9,6 +9,7 @@ import { StartStepChooser } from '../guided/StartStepChooser';
 import { createInitialCanvasModel, useCanvasState } from '../hooks/useCanvasState';
 import { useBuilderMode } from '../hooks/useBuilderMode';
 import { useModelPersistence } from '../hooks/useModelPersistence';
+import { useNarrowContainerGate } from '../hooks/useNarrowContainerGate';
 import type { DraftValidationIssue } from '../hooks/useWorkflowDraft';
 import { useWorkflowDraft } from '../hooks/useWorkflowDraft';
 import { StepConfigPanel } from '../inspector/StepConfigPanel';
@@ -37,6 +38,7 @@ import type { EditorValidation } from '../validation/validateWorkflow';
 import { validateWorkflow as defaultValidateWorkflow } from '../validation/validateWorkflow';
 import { exportWorkflowBundle } from '../io/browser/download';
 import { importWorkflowFromFilePicker } from '../io/browser/upload';
+import { NarrowContainerNotice } from './NarrowContainerNotice';
 import type { WorkflowBuilderProps } from './types';
 import { emptyWorkflow } from './types';
 import '../styles/tokens.css';
@@ -157,6 +159,7 @@ export function WorkflowBuilder({
   persistence,
 }: WorkflowBuilderProps) {
   const readOnly = mode === 'readOnly';
+  const { containerRef, isNarrow } = useNarrowContainerGate<HTMLDivElement>();
   const seed = initialWorkflow ?? emptyWorkflow();
   const { state, dispatch, dirty } = useBuilderState(seed);
   const [pending, setPending] = useState<PendingState>({});
@@ -736,7 +739,14 @@ export function WorkflowBuilder({
 
   return (
     <div
-      ref={rootRef}
+      // Two independent consumers need this same root element: the narrow-container gate's
+      // ResizeObserver (containerRef) and the undo/redo keyboard-shortcut scoping + delete-
+      // confirmation focus target (rootRef) — neither owns the DOM node, so both refs are
+      // assigned to it rather than picking one.
+      ref={(node) => {
+        containerRef.current = node;
+        rootRef.current = node;
+      }}
       className={rootClass}
       data-testid="workflow-builder"
       aria-readonly={readOnly || undefined}
@@ -747,6 +757,10 @@ export function WorkflowBuilder({
       tabIndex={-1}
       {...rootStyle}
     >
+      {isNarrow ? (
+        <NarrowContainerNotice />
+      ) : (
+        <>
       <header className="workflow-builder__header workflow-builder__toolbar">
         <div className="workflow-builder__title-group">
           <span
@@ -968,6 +982,7 @@ export function WorkflowBuilder({
             mode={builderMode}
             onAddStep={(kind) => onAddStepFromLibrary(kind)}
             defaultCollapsed={builderMode !== 'advanced'}
+            containerNarrow={isNarrow}
           />
         ) : null}
 
@@ -1034,6 +1049,8 @@ export function WorkflowBuilder({
           </button>
         </p>
       ) : null}
+        </>
+      )}
     </div>
   );
 }

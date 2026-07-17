@@ -15,30 +15,31 @@ type StepPaletteProps = {
   mode: BuilderMode;
   onAddStep: (kind: NodeKind) => void;
   defaultCollapsed?: boolean;
+  /**
+   * True when the builder's own rendered container is narrower than the supported
+   * breakpoint. Drives the compact bottom-sheet palette variant. This deliberately comes
+   * from the SAME container measurement as the builder's narrow-container gate (see
+   * `useNarrowContainerGate`) rather than a viewport media query — the two axes can
+   * disagree (a narrow viewport hosting a wide, scrollable builder panel), and a viewport
+   * query would resurrect the mobile affordances the gate exists to make unreachable.
+   * Under the gate this is effectively always false (the editor is replaced outright below
+   * the breakpoint); the mobile variant is retained as the seed of the deferred mobile
+   * editing surface.
+   */
+  containerNarrow?: boolean;
 };
 
 const COLLAPSED_RAIL_KINDS: NodeKind[] = [...LIBRARY_COMMON_KINDS, ...LIBRARY_FLOW_KINDS];
 
-export function StepPalette({ mode, onAddStep, defaultCollapsed = true }: StepPaletteProps) {
+export function StepPalette({ mode, onAddStep, defaultCollapsed = true, containerNarrow = false }: StepPaletteProps) {
   const [expanded, setExpanded] = useState(!defaultCollapsed);
   const [advancedOpen, setAdvancedOpen] = useState(mode === 'advanced');
-  const [isMobile, setIsMobile] = useState(false);
+  const isMobile = containerNarrow;
   const [mobileOpen, setMobileOpen] = useState(false);
 
   useEffect(() => {
     setAdvancedOpen(mode === 'advanced');
   }, [mode]);
-
-  useEffect(() => {
-    if (typeof window === 'undefined') {
-      return;
-    }
-    const media = window.matchMedia('(max-width: 767px)');
-    const update = () => setIsMobile(media.matches);
-    update();
-    media.addEventListener('change', update);
-    return () => media.removeEventListener('change', update);
-  }, []);
 
   const renderKind = (kind: NodeKind, compact?: boolean) => {
     const meta = NODE_KIND_META[kind];

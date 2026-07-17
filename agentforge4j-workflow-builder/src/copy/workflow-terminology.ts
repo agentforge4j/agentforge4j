@@ -161,6 +161,8 @@ export const ACTION_LABELS = {
   draftRestoredBody: 'We found unsaved changes from your last visit and restored them automatically.',
   startFresh: 'Start fresh',
   dismissDraftRestored: 'Dismiss',
+  narrowContainerTitle: 'Workflow building is currently available on desktop or tablet.',
+  narrowContainerBody: 'Please revisit this page on a larger screen to use the workflow builder.',
   undo: 'Undo',
   redo: 'Redo',
   confirmDeleteTitle: (count: number) => (count === 1 ? 'Delete this step?' : `Delete ${count} steps?`),
