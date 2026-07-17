@@ -67,6 +67,35 @@ describe('ConfirmDeleteDialog', () => {
     expect(screen.getByRole('alertdialog')).toBeInTheDocument();
   });
 
+  it('associates the body message as the alertdialog\'s accessible description', () => {
+    render(<ConfirmDeleteDialog count={1} onConfirm={() => {}} onCancel={() => {}} />);
+    const dialog = screen.getByRole('alertdialog');
+    const describedById = dialog.getAttribute('aria-describedby');
+    expect(describedById).toBeTruthy();
+    expect(document.getElementById(describedById!)).toHaveTextContent(ACTION_LABELS.confirmDeleteBody(1));
+  });
+
+  it('does not restore focus to the (still-connected) opener on a CONFIRM close — the caller owns focus once the deletion commits', () => {
+    const opener = document.createElement('button');
+    document.body.appendChild(opener);
+    opener.focus();
+
+    const { rerender } = render(
+      <ConfirmDeleteDialog count={1} onConfirm={() => {}} onCancel={() => {}} />,
+    );
+    // Real confirm click: outcome must be recorded as 'confirm' before the dialog closes.
+    fireEvent.click(screen.getByRole('button', { name: ACTION_LABELS.confirmDeleteConfirm }));
+
+    // Opener is still connected at this point (mirrors the real inspector "Delete step"
+    // button, which only unmounts once the deferred deletion itself later commits).
+    expect(opener.isConnected).toBe(true);
+
+    rerender(<ConfirmDeleteDialog count={0} onConfirm={() => {}} onCancel={() => {}} />);
+
+    // Must NOT have been refocused to the (still-connected) opener.
+    expect(document.activeElement).not.toBe(opener);
+  });
+
   it('falls back to fallbackFocusRef on close when the opener is no longer connected', () => {
     const opener = document.createElement('button');
     document.body.appendChild(opener);

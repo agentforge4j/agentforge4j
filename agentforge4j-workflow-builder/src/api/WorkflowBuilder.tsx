@@ -206,6 +206,15 @@ export function WorkflowBuilder({
     setPendingDeletion(null);
   }, []);
 
+  // Stable focus target for once a confirmed deletion actually commits (the dialog
+  // itself deliberately does not restore focus on a CONFIRM close — see the CONFIRM-
+  // close note on ConfirmDeleteDialog — because at dialog-close time the deletion is
+  // still in-flight and the usual restoration target, the opener, is about to be
+  // removed from the document along with it).
+  const focusBuilderRoot = useCallback(() => {
+    rootRef.current?.focus();
+  }, []);
+
   const { mode: builderMode, setMode: setBuilderMode } = useBuilderMode(model, !initialWorkflow?.id);
   const { buildFromCanvas } = useWorkflowDraft();
 
@@ -527,10 +536,13 @@ export function WorkflowBuilder({
       void confirmNodeDeletion([id]).then((confirmed) => {
         if (confirmed) {
           handleDeleteNode(id);
+          // Deletion (and the inspector unmount it causes) has now committed — only
+          // now is it safe to move focus to a stable target; see focusBuilderRoot.
+          focusBuilderRoot();
         }
       });
     },
-    [confirmNodeDeletion, handleDeleteNode],
+    [confirmNodeDeletion, focusBuilderRoot, handleDeleteNode],
   );
 
   const focusIssue = useCallback(
@@ -627,9 +639,10 @@ export function WorkflowBuilder({
       className={rootClass}
       data-testid="workflow-builder"
       aria-readonly={readOnly || undefined}
-      // Not in the natural Tab order (-1) — exists solely so ConfirmDeleteDialog has a
-      // stable, always-connected element to focus when its usual restoration target
-      // (the element that opened it) has unmounted; see fallbackFocusRef below.
+      // Not in the natural Tab order (-1) — exists solely as a stable, always-connected
+      // focus target: ConfirmDeleteDialog's own CANCEL-close fallback (fallbackFocusRef
+      // below), and this component's own focusBuilderRoot, called once a CONFIRMED
+      // deletion actually commits (see requestDeleteNode / onNodeDeletionCommitted).
       tabIndex={-1}
       {...rootStyle}
     >
@@ -843,6 +856,7 @@ export function WorkflowBuilder({
             onInsertOnEdge={onInsertOnEdge}
             hideStarterHint={builderMode === 'guided'}
             confirmNodeDeletion={confirmNodeDeletion}
+            onNodeDeletionCommitted={focusBuilderRoot}
           />
         </div>
 

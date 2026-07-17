@@ -163,4 +163,34 @@ describe('WorkflowBuilder inspector delete', () => {
     expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
     expect(deleteButton).toHaveFocus();
   });
+
+  it('confirming a real deletion moves focus to a stable builder target, never to document.body, once the deletion commits', async () => {
+    const user = userEvent.setup();
+    render(<WorkflowBuilder capabilities={allDisabled} />);
+    const canvas = screen.getByTestId('workflow-builder-canvas');
+    const builderRoot = screen.getByTestId('workflow-builder');
+
+    await user.click(screen.getByRole('button', { name: GUIDED_STAGE_LABELS.configureInput }));
+    expect(canvas.querySelectorAll('.react-flow__node')).toHaveLength(1);
+
+    // The opener (this button) is still connected when the dialog itself closes — the
+    // regression this guards against is restoring focus to it at close time, only for
+    // it to unmount a moment later when the deletion it gated actually commits.
+    await user.click(screen.getByRole('button', { name: ACTION_LABELS.deleteStep }));
+    const confirmDialog = await screen.findByRole('alertdialog');
+    await user.click(within(confirmDialog).getByRole('button', { name: ACTION_LABELS.confirmDeleteConfirm }));
+
+    await waitFor(() => {
+      expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
+    });
+    await waitFor(() => {
+      // The inspector (and its now-gone "Delete step" button) has unmounted along with
+      // the deleted step: the deletion has actually committed by this point.
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    });
+    expect(canvas.querySelectorAll('.react-flow__node')).toHaveLength(0);
+
+    expect(document.activeElement).toBe(builderRoot);
+    expect(document.activeElement).not.toBe(document.body);
+  });
 });

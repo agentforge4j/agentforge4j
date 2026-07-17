@@ -328,6 +328,16 @@ type InnerProps = {
    * confirmation. Omit to apply node deletions immediately (no confirmation).
    */
   confirmNodeDeletion?: (nodeIds: string[]) => Promise<boolean>;
+  /**
+   * Called once a Delete/Backspace-triggered removal that included at least one node has
+   * actually committed to the model (after {@link applyDeletion} has run and
+   * `onModelChange` has been called) — the moment the confirmation dialog's own opener
+   * (a selected canvas node) may already be gone. The caller uses this to move focus to
+   * a stable target now that the destructive action is done; see the CONFIRM-close note
+   * on `ConfirmDeleteDialog`. Omit if no confirmation gate is wired (nothing to restore
+   * focus from).
+   */
+  onNodeDeletionCommitted?: () => void;
 };
 
 function WorkflowCanvasInner({
@@ -341,6 +351,7 @@ function WorkflowCanvasInner({
   onInsertOnEdge,
   hideStarterHint = false,
   confirmNodeDeletion,
+  onNodeDeletionCommitted,
 }: InnerProps) {
   const { screenToFlowPosition, setCenter } = useReactFlow();
   const nodesInitialized = useNodesInitialized();
@@ -459,8 +470,14 @@ function WorkflowCanvasInner({
       if (selectedId && deletedNodeIds.includes(selectedId)) {
         onSelectNode(null);
       }
+      // Only a node deletion goes through the confirmation gate (see onBeforeDelete) —
+      // an edge-only removal never showed a dialog, so there is no opener-focus state to
+      // hand back.
+      if (deletedNodeIds.length > 0) {
+        onNodeDeletionCommitted?.();
+      }
     },
-    [model, onModelChange, onSelectNode, readOnly, selectedId],
+    [model, onModelChange, onNodeDeletionCommitted, onSelectNode, readOnly, selectedId],
   );
 
   const onConnect = useCallback(
@@ -511,10 +528,10 @@ function WorkflowCanvasInner({
   );
 
   // Gate the Delete/Backspace-triggered removal behind confirmation for node
-  // deletions (the destructive case the usability audit flagged); edge-only
-  // deletions (no nodes in the batch) proceed immediately — undo already
-  // covers reverting those, and they are not the "step vanished with no
-  // warning" complaint. Resolving `false` cancels the whole batch before any
+  // deletions — losing a whole step is destructive enough to warrant a check;
+  // edge-only deletions (no nodes in the batch) proceed immediately — undo
+  // already covers reverting those, and they are not the "step vanished with
+  // no warning" case. Resolving `false` cancels the whole batch before any
   // change ever reaches onNodesChange/onEdgesChange/onDelete.
   const onBeforeDelete = useCallback(
     ({ nodes: toDeleteNodes }: { nodes: FlowNode[]; edges: Edge[] }): Promise<boolean> =>
@@ -620,6 +637,7 @@ export type WorkflowCanvasProps = {
   onInsertOnEdge?: (edgeId: string) => void;
   hideStarterHint?: boolean;
   confirmNodeDeletion?: (nodeIds: string[]) => Promise<boolean>;
+  onNodeDeletionCommitted?: () => void;
 };
 
 export function WorkflowCanvas({
