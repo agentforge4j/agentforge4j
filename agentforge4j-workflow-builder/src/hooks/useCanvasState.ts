@@ -3,6 +3,8 @@
 import type { CanvasModel, CanvasNode, NodeData } from '../model/canvasModel';
 import { defaultNodeData, newStepId } from '../model/mapper';
 import type { NodeKind } from '../model/nodeKinds';
+import type { HistorySetOptions } from '../state/useHistoryState';
+import { useHistoryState } from '../state/useHistoryState';
 import { useCallback, useState } from 'react';
 
 export function createInitialCanvasModel(): CanvasModel {
@@ -36,7 +38,8 @@ function warnReadOnlyBlocked(operation: string): void {
 }
 
 export function useCanvasState(initialModel: CanvasModel, readOnly = false) {
-  const [model, setModel] = useState<CanvasModel>(initialModel);
+  const history = useHistoryState<CanvasModel>(initialModel);
+  const model = history.present;
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [isDirty, setIsDirty] = useState(false);
 
@@ -50,42 +53,51 @@ export function useCanvasState(initialModel: CanvasModel, readOnly = false) {
 
   // Import-path setter (file-import → fresh model, clears dirty). This is a user
   // mutation, so it is correctly blocked in read-only mode; initial/host load happens
-  // via the mount-time initial model, not through here.
+  // via the mount-time initial model, not through here. A load replaces the working
+  // document wholesale, so it resets undo/redo history rather than becoming an
+  // undoable step back into a different workflow's shape.
   const setModelFromLoad = useCallback(
-    (next: CanvasModel | ((prev: CanvasModel) => CanvasModel)) => {
+    (next: CanvasModel) => {
       if (readOnly) {
         warnReadOnlyBlocked('load model');
         return;
       }
-      setModel((current) => (typeof next === 'function' ? (next as (prev: CanvasModel) => CanvasModel)(current) : next));
+      history.reset(next);
       setIsDirty(false);
     },
-    [readOnly],
+    [history, readOnly],
   );
 
   const setModelDirty = useCallback(
-    (next: CanvasModel | ((prev: CanvasModel) => CanvasModel)) => {
+    (next: CanvasModel | ((prev: CanvasModel) => CanvasModel), options?: HistorySetOptions) => {
       if (readOnly) {
         warnReadOnlyBlocked('edit graph');
         return;
       }
-      setModel((current) => (typeof next === 'function' ? (next as (prev: CanvasModel) => CanvasModel)(current) : next));
+      history.set(next, options);
       setIsDirty(true);
     },
-    [readOnly],
+    [history, readOnly],
   );
 
   const updateNodeData = useCallback(
     (id: string, partial: Partial<NodeData>) => {
-      setModelDirty((m) => ({
-        ...m,
-        nodes: m.nodes.map((n) => {
-          if (n.id !== id) {
-            return n;
-          }
-          return { ...n, data: { ...n.data, ...partial } } as CanvasNode;
+      setModelDirty(
+        (m) => ({
+          ...m,
+          nodes: m.nodes.map((n) => {
+            if (n.id !== id) {
+              return n;
+            }
+            return { ...n, data: { ...n.data, ...partial } } as CanvasNode;
+          }),
         }),
-      }));
+        // Coalesce a node's rapid-fire field edits (typing, selects made in quick
+        // succession) into one undo step per "editing session" on that node;
+        // switching to a different node — or any structural action, which always
+        // omits a coalesceKey — starts a new one.
+        { coalesceKey: `node:${id}` },
+      );
     },
     [setModelDirty],
   );
@@ -127,6 +139,22 @@ export function useCanvasState(initialModel: CanvasModel, readOnly = false) {
     [readOnly, setModelDirty],
   );
 
+  const undo = useCallback(() => {
+    if (readOnly) {
+      warnReadOnlyBlocked('undo');
+      return;
+    }
+    history.undo();
+  }, [history, readOnly]);
+
+  const redo = useCallback(() => {
+    if (readOnly) {
+      warnReadOnlyBlocked('redo');
+      return;
+    }
+    history.redo();
+  }, [history, readOnly]);
+
   return {
     model,
     setModel: setModelDirty,
@@ -138,5 +166,9 @@ export function useCanvasState(initialModel: CanvasModel, readOnly = false) {
     markClean,
     updateNodeData,
     appendNode,
+    undo,
+    redo,
+    canUndo: history.canUndo,
+    canRedo: history.canRedo,
   };
 }

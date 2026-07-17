@@ -37,6 +37,25 @@ and this package adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   persistence purposes: whether drafts restore and save is decided by the mode supplied at
   mount, and changing `mode` at runtime is not a supported transition — remount the builder
   to change posture.
+- Full undo/redo for every meaningful builder change: adding/deleting steps, step config edits,
+  connections (create/delete/reroute), reordering a step in the chain, workflow name/id, and
+  start-step changes. Toolbar Undo/Redo controls (each disabled when its stack is empty) plus
+  Ctrl+Z / Ctrl+Shift+Z (or Ctrl+Y) keyboard shortcuts; shortcuts are skipped while a text field
+  has focus so the browser's native per-field undo is unaffected while typing.
+  Rapid-fire changes to the same field or the same node's config (typing, quick edits) coalesce
+  into one undo step instead of one per keystroke; dragging a step coalesces into a single step
+  for the whole drag gesture, sealed on release.
+- A confirmation dialog before a step is actually deleted — a lightweight, complementary safety
+  net alongside undo/redo for a first-time user who has not yet discovered Ctrl+Z. Shared by
+  every deletion trigger: the inspector's "Delete step" button and the canvas Delete/Backspace
+  key both resolve the same confirmation gate.
+- Dragging an ordinary next-step edge's endpoint to a different step ("rerouting") now actually
+  updates the workflow — previously `edgesReconnectable` was enabled but no `onReconnect` handler
+  was wired, so the drag had no effect and the edge snapped back to its original endpoints.
+  Decision-branch case edges still snap back on purpose: their routing lives in the decision
+  step's case configuration (edited in the inspector), not in the drawn edge, so rerouting the
+  drawing would silently diverge from what the exported workflow actually does.
+
 - A persistent "Start" marker on whichever node is the workflow's current start step,
   visible on the canvas in both Guided and Advanced mode — previously the entry point could
   only be inferred from graph position, or was labeled explicitly in Advanced mode's
@@ -61,6 +80,11 @@ and this package adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   confirmation instead of a fabricated filename. The confirmation is cleared automatically when a different
   workflow is imported, so it never describes a stale document.
 
+### Changed
+- Importing/loading a new workflow document now resets undo/redo history instead of leaving it
+  in place — undoing after an import returns to the freshly-imported document, not back into a
+  different, previously open workflow's shape.
+
 ### Fixed
 - The step-library panel no longer silently clips step types with no scroll affordance:
   `.wf-palette__panel` (between `.wf-palette`, which has the real definite height, and
@@ -69,6 +93,34 @@ and this package adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   sizing on `.wf-palette__body` never took effect. `.wf-palette__panel` is now a column
   flex container that fills its parent, and `.wf-palette__body` gained `min-height: 0` so
   it can shrink below its content size and actually scroll.
+- The validation "N things to fix" popover no longer renders behind an already-open step
+  inspector panel. The pill's own stacking context (established by the toolbar's non-`auto`
+  `z-index`) could never be escaped by raising the popover's `z-index` alone, since a raised value
+  stays scoped inside that ancestor context; the popover is now rendered via a `document.body`
+  portal, positioned from the pill's own screen coordinates, so it always paints above open panels
+  regardless of which ancestor stacking context the pill itself lives in.
+- Guided mode's "Add approval" checklist item now genuinely reveals the field it checks for.
+  `StepConfigPanel`'s Approval control (`TransitionField`) already existed and worked, but was
+  hidden inside the "Behavior" section, which defaults to collapsed in guided mode; the checklist
+  item's action now selects the relevant AI step, force-opens that section, and focuses the field
+  instead of silently choosing "Requires human approval" on the user's behalf.
+- The validation popover (which is portaled to `document.body`, outside the themed builder
+  root) now carries the host's `theme.variables`/`theme.className`, so themed hosts no longer
+  get a default-palette popover.
+- The "Add approval" checklist action no longer silently does nothing on a repeat click after the
+  user has manually collapsed the revealed Behavior section: the section is now force-opened
+  imperatively, not just via a React prop the browser's own `<summary>` toggle can already have
+  invalidated.
+- Dismissing the validation popover by clicking elsewhere, or via its "Fix" action, no longer
+  steals focus back to the pill toggle button — restoring focus to the toggle now only happens on
+  dismissals (Escape, the popover's own close button) that don't already establish a different
+  focus target.
+- Pressing Escape while the validation popover is open now dismisses only the popover, even when a
+  step inspector panel is open underneath it, instead of also closing the inspector.
+- Activating "Fix" on a validation issue now moves focus into the step inspector it opens, instead
+  of leaving it on the document body once the popover (which held it) unmounts.
+- Pressing Escape after focus has already moved away from the open validation popover (e.g. via
+  Tab to another control) no longer steals it back to the pill toggle button on close.
 
 ## [0.5.0] - 2026-07-12
 

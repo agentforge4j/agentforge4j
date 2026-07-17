@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { WorkflowCanvas } from '../canvas/WorkflowCanvas';
 import { ACTION_LABELS, GUIDED_STAGE_LABELS } from '../copy/workflow-terminology';
+import { ConfirmDeleteDialog } from '../dialogs/ConfirmDeleteDialog';
 import { GuidedStepper } from '../guided/GuidedStepper';
 import { StartStepChooser } from '../guided/StartStepChooser';
 import { createInitialCanvasModel, useCanvasState } from '../hooks/useCanvasState';
@@ -20,6 +21,7 @@ import {
 } from '../model/mapper';
 import {
   isInsertableEdge,
+  isInsideLoopBody,
   pruneReferences,
   repositionAfter,
   spliceEdgeWithNode,
@@ -161,7 +163,15 @@ export function WorkflowBuilder({
   const [errors, setErrors] = useState<ErrorState>({});
   const [success, setSuccess] = useState<SuccessState>({});
   const [insertOnEdgeId, setInsertOnEdgeId] = useState<string | null>(null);
+  // One-shot "move focus into the panel" request handed to StepConfigPanel — 'transition' is set
+  // by the guided checklist's "Require approval" action (case 2 of onGuidedStageAction below);
+  // 'panel' is set by focusIssue (the validation popover's "Fix" action) below.
+  const [focusField, setFocusField] = useState<'transition' | 'panel' | null>(null);
+  const onFocusFieldHandled = useCallback(() => setFocusField(null), []);
   const skipDraftSync = useRef(false);
+  // Root element ref used to scope the window-level undo/redo shortcuts to keydowns that
+  // originate inside this builder instance (see the keyboard effect below).
+  const rootRef = useRef<HTMLDivElement>(null);
   const serializeGuardWarnedRef = useRef(false);
   // Bumped whenever the working document is replaced wholesale (currently: import).
   // An in-flight export captures the generation it started against; if the document
@@ -184,7 +194,53 @@ export function WorkflowBuilder({
     markClean,
     updateNodeData,
     appendNode,
+    undo,
+    redo,
+    canUndo,
+    canRedo,
   } = useCanvasState(initialCanvas, readOnly);
+
+  // Pending step-deletion confirmation (shared by the inspector's "Delete step"
+  // button and the canvas Delete/Backspace key — both resolve the same promise
+  // gate so there is exactly one delete-confirmation experience). `null` when
+  // nothing is pending.
+  const [pendingDeletion, setPendingDeletion] = useState<{ ids: string[]; label?: string } | null>(null);
+  const pendingDeletionResolve = useRef<((confirmed: boolean) => void) | null>(null);
+
+  const confirmNodeDeletion = useCallback(
+    (ids: string[]): Promise<boolean> =>
+      new Promise((resolve) => {
+        const label =
+          ids.length === 1
+            ? (() => {
+                const found = model.nodes.find((n) => n.id === ids[0]);
+                return found ? found.data.name?.trim() || NODE_KIND_META[found.kind].label : undefined;
+              })()
+            : undefined;
+        // A newer request supersedes any still-pending one: settle the old promise as
+        // "not confirmed" so its .then chain runs (and does nothing) instead of leaking
+        // an eternally-pending promise whose deletion silently never resolves.
+        pendingDeletionResolve.current?.(false);
+        pendingDeletionResolve.current = resolve;
+        setPendingDeletion({ ids, label });
+      }),
+    [model.nodes],
+  );
+
+  const resolvePendingDeletion = useCallback((confirmed: boolean) => {
+    pendingDeletionResolve.current?.(confirmed);
+    pendingDeletionResolve.current = null;
+    setPendingDeletion(null);
+  }, []);
+
+  // Stable focus target for once a confirmed deletion actually commits (the dialog
+  // itself deliberately does not restore focus on a CONFIRM close — see the CONFIRM-
+  // close note on ConfirmDeleteDialog — because at dialog-close time the deletion is
+  // still in-flight and the usual restoration target, the opener, is about to be
+  // removed from the document along with it).
+  const focusBuilderRoot = useCallback(() => {
+    rootRef.current?.focus();
+  }, []);
 
   const { mode: builderMode, setMode: setBuilderMode } = useBuilderMode(model, !initialWorkflow?.id);
   const { buildFromCanvas } = useWorkflowDraft();
@@ -221,6 +277,54 @@ export function WorkflowBuilder({
     const draft = canvasToWorkflow(model);
     dispatch({ type: 'SET_DRAFT', draft });
   }, [model, dispatch]);
+
+  // Ctrl/Cmd+Z undo, Ctrl/Cmd+Shift+Z or Ctrl/Cmd+Y redo. Scoped to keydowns whose target
+  // lives inside THIS builder's root element — the listener sits on window (to catch keys
+  // while canvas nodes/panes hold focus), but an embedding host page's own Ctrl+Z, or a
+  // second builder instance, must never be hijacked by this one. Also skipped while focus
+  // is inside a text-editing control so a user actively typing keeps the browser's native
+  // per-field undo for that field (Escape-key handlers elsewhere in the builder —
+  // StepConfigPanel, ValidationPill — follow the same window-level listener pattern and do
+  // not need these guards since Escape has no native text-editing meaning and closing on
+  // Escape is per-overlay anyway).
+  useEffect(() => {
+    if (readOnly) {
+      return;
+    }
+    const isEditableTarget = (target: EventTarget | null): boolean => {
+      if (!(target instanceof HTMLElement)) {
+        return false;
+      }
+      return target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable;
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      const root = rootRef.current;
+      if (!root || !(event.target instanceof Node) || !root.contains(event.target)) {
+        return;
+      }
+      // Frozen while a delete confirmation is pending: the dialog's backdrop already blocks
+      // pointer interaction with the builder, and letting Ctrl+Z mutate the model here would
+      // make the dialog's answer apply to a different model than the one it asked about.
+      if (pendingDeletion !== null) {
+        return;
+      }
+      // altKey excluded: AltGr reports as Ctrl+Alt on Windows, and AltGr+Z/Y are bound to
+      // characters on several European layouts — those must never trigger undo/redo.
+      if (!(event.ctrlKey || event.metaKey) || event.altKey || isEditableTarget(event.target)) {
+        return;
+      }
+      const key = event.key.toLowerCase();
+      if (key === 'z' && !event.shiftKey) {
+        event.preventDefault();
+        undo();
+      } else if ((key === 'z' && event.shiftKey) || key === 'y') {
+        event.preventDefault();
+        redo();
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [pendingDeletion, readOnly, undo, redo]);
 
   useEffect(() => {
     let cancelled = false;
@@ -383,7 +487,7 @@ export function WorkflowBuilder({
     });
 
   const onAddStepFromLibrary = useCallback(
-    (kind: NodeKind, options?: { patch?: Record<string, unknown> }) => {
+    (kind: NodeKind) => {
       const prefix: Record<NodeKind, string> = {
         ASK_USER: 'ask-user',
         AI_STEP: 'ai-step',
@@ -398,7 +502,7 @@ export function WorkflowBuilder({
       };
       const backendStepId = newStepId(prefix[kind]);
       const id = `c-${backendStepId}`;
-      const data = { ...defaultNodeData(kind), ...options?.patch };
+      const data = defaultNodeData(kind);
 
       // Edge-insert mode (Part A §6): split the chosen linear edge with this node.
       const activeInsertEdge =
@@ -502,6 +606,24 @@ export function WorkflowBuilder({
     [readOnly, setModel, setSelectedId],
   );
 
+  // Inspector "Delete step" button goes through the same confirm-before-delete
+  // gate as the canvas Delete/Backspace key (see confirmNodeDeletion / WorkflowCanvas
+  // confirmNodeDeletion prop) — a lightweight safety net alongside undo/redo for a
+  // first-time user who has not yet discovered Ctrl+Z.
+  const requestDeleteNode = useCallback(
+    (id: string) => {
+      void confirmNodeDeletion([id]).then((confirmed) => {
+        if (confirmed) {
+          handleDeleteNode(id);
+          // Deletion (and the inspector unmount it causes) has now committed — only
+          // now is it safe to move focus to a stable target; see focusBuilderRoot.
+          focusBuilderRoot();
+        }
+      });
+    },
+    [confirmNodeDeletion, focusBuilderRoot, handleDeleteNode],
+  );
+
   const focusIssue = useCallback(
     (stepId?: string) => {
       if (!stepId) {
@@ -510,6 +632,10 @@ export function WorkflowBuilder({
       const node = model.nodes.find((n) => n.backendStepId === stepId);
       if (node) {
         setSelectedId(node.id);
+        // Move focus into the inspector once it opens — "Fix" is reached from the validation
+        // popover, which force-moves keyboard focus into itself on open; without this, closing it
+        // drops focus to document.body instead of following the step it just opened.
+        setFocusField('panel');
       }
     },
     [model.nodes, setSelectedId],
@@ -556,13 +682,31 @@ export function WorkflowBuilder({
           onAddStepFromLibrary('AI_STEP');
           break;
         case 2: {
-          const aiNode = model.nodes.find((n) => n.kind === 'AI_STEP');
-          if (aiNode) {
-            updateNodeData(aiNode.id, { transition: 'HUMAN_APPROVAL' } as Partial<CanvasNode['data']>);
-            setSelectedId(aiNode.id);
+          // Reveal and focus the transition field rather than silently choosing "Requires human
+          // approval" on the user's behalf — mirrors the "Add input" stage's "select and let the
+          // user act" pattern, rather than the "Add AI step"/"Generate result" stages' "add a step
+          // whose mere presence satisfies the check" pattern, since this stage is about a choice
+          // the user makes, not a step to add.
+          //
+          // Candidates are filtered to nodes StepConfigPanel actually leaves editable: a node
+          // inside a REPEAT loop body renders its whole fieldset disabled there, so revealing and
+          // focusing its transition field would silently do nothing (a disabled <select> refuses
+          // focus) — the guided action must not dead-end on the first matching node regardless of
+          // whether it can actually be edited.
+          const isEditableApprovalCandidate = (n: CanvasNode): boolean =>
+            (n.kind === 'AI_STEP' || n.kind === 'REUSE_WORKFLOW') && !isInsideLoopBody(model, n);
+          const candidateNode = model.nodes.find(isEditableApprovalCandidate);
+          if (candidateNode) {
+            setSelectedId(candidateNode.id);
           } else {
-            onAddStepFromLibrary('AI_STEP', { patch: { transition: 'HUMAN_APPROVAL' } });
+            // No editable AI_STEP/REUSE_WORKFLOW exists yet (e.g. the "Add AI step" stage was
+            // satisfied with an AI_DEBATE step instead, which has no transition control in the
+            // inspector, or the only candidate sits inside a loop body) — add a fresh AI_STEP so
+            // there is a field to reveal, matching the existing "no eligible node yet" fallback
+            // this action already had.
+            onAddStepFromLibrary('AI_STEP');
           }
+          setFocusField('transition');
           break;
         }
         case 3:
@@ -572,7 +716,7 @@ export function WorkflowBuilder({
           break;
       }
     },
-    [askUserNode, model.nodes, onAddStepFromLibrary, setSelectedId, updateNodeData],
+    [askUserNode, model.nodes, onAddStepFromLibrary, setSelectedId],
   );
 
   const rootStyle = theme?.variables
@@ -592,9 +736,15 @@ export function WorkflowBuilder({
 
   return (
     <div
+      ref={rootRef}
       className={rootClass}
       data-testid="workflow-builder"
       aria-readonly={readOnly || undefined}
+      // Not in the natural Tab order (-1) — exists solely as a stable, always-connected
+      // focus target: ConfirmDeleteDialog's own CANCEL-close fallback (fallbackFocusRef
+      // below), and this component's own focusBuilderRoot, called once a CONFIRMED
+      // deletion actually commits (see requestDeleteNode / onNodeDeletionCommitted).
+      tabIndex={-1}
       {...rootStyle}
     >
       <header className="workflow-builder__header workflow-builder__toolbar">
@@ -610,7 +760,9 @@ export function WorkflowBuilder({
             placeholder={ACTION_LABELS.workflowNamePlaceholder}
             aria-label={ACTION_LABELS.workflowNameLabel}
             readOnly={readOnly}
-            onChange={(e) => setModel((m) => ({ ...m, workflowName: e.target.value }))}
+            onChange={(e) =>
+              setModel((m) => ({ ...m, workflowName: e.target.value }), { coalesceKey: 'meta:workflowName' })
+            }
           />
           <input
             className="workflow-builder__id-input"
@@ -618,7 +770,7 @@ export function WorkflowBuilder({
             placeholder={ACTION_LABELS.workflowIdPlaceholder}
             aria-label={ACTION_LABELS.workflowIdLabel}
             readOnly={readOnly}
-            onChange={(e) => setModel((m) => ({ ...m, workflowId: e.target.value }))}
+            onChange={(e) => setModel((m) => ({ ...m, workflowId: e.target.value }), { coalesceKey: 'meta:workflowId' })}
           />
           {readOnly ? (
             <span
@@ -651,6 +803,32 @@ export function WorkflowBuilder({
           </button>
         </div>
         ) : null}
+        {!readOnly ? (
+          <div className="workflow-builder__history-group" role="group" aria-label="History">
+            <button
+              type="button"
+              className="wf-button wf-button--ghost wf-button--icon"
+              data-testid="workflow-builder-undo"
+              aria-label={ACTION_LABELS.undo}
+              title={ACTION_LABELS.undo}
+              disabled={!canUndo}
+              onClick={() => undo()}
+            >
+              ↶
+            </button>
+            <button
+              type="button"
+              className="wf-button wf-button--ghost wf-button--icon"
+              data-testid="workflow-builder-redo"
+              aria-label={ACTION_LABELS.redo}
+              title={ACTION_LABELS.redo}
+              disabled={!canRedo}
+              onClick={() => redo()}
+            >
+              ↷
+            </button>
+          </div>
+        ) : null}
         {!readOnly && capabilities.import ? (
           <button
             type="button"
@@ -662,7 +840,7 @@ export function WorkflowBuilder({
             {pending.import ? ACTION_LABELS.importing : ACTION_LABELS.import}
           </button>
         ) : null}
-        <ValidationPill model={model} clientIssues={validationIssues} onFix={focusIssue} />
+        <ValidationPill model={model} clientIssues={validationIssues} onFix={focusIssue} theme={theme} />
         {capabilities.export ? (
           <button
             type="button"
@@ -804,6 +982,8 @@ export function WorkflowBuilder({
             readOnly={readOnly}
             onInsertOnEdge={onInsertOnEdge}
             hideStarterHint={builderMode === 'guided'}
+            confirmNodeDeletion={confirmNodeDeletion}
+            onNodeDeletionCommitted={focusBuilderRoot}
           />
         </div>
 
@@ -812,13 +992,25 @@ export function WorkflowBuilder({
           selectedId={selectedId}
           mode={builderMode}
           onClose={() => setSelectedId(null)}
-          onDelete={handleDeleteNode}
+          onDelete={requestDeleteNode}
           onUpdateNodeData={updateNodeData}
           agentCatalog={agentCatalog}
           readOnly={readOnly}
           onReposition={onReposition}
+          focusField={focusField}
+          onFocusFieldHandled={onFocusFieldHandled}
         />
       </div>
+
+      {pendingDeletion ? (
+        <ConfirmDeleteDialog
+          count={pendingDeletion.ids.length}
+          singleStepLabel={pendingDeletion.label}
+          onConfirm={() => resolvePendingDeletion(true)}
+          onCancel={() => resolvePendingDeletion(false)}
+          fallbackFocusRef={rootRef}
+        />
+      ) : null}
 
       {activeError ? (
         <p className="workflow-builder__status workflow-builder__status--error" role="alert">
