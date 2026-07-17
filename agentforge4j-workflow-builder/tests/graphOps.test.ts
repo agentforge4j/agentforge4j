@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   getRunsAfterState,
   isInsertableEdge,
+  isInsideLoopBody,
   pruneReferences,
   repositionAfter,
   spliceEdgeWithNode,
@@ -480,5 +481,29 @@ describe('pruneReferences', () => {
     const m = model([node('A'), node('B', 'AI_STEP')], [linEdge('A', 'B')], 'A');
     const next = pruneReferences(m, 'GONE');
     expect(next.nodes).toEqual(m.nodes);
+  });
+});
+
+describe('isInsideLoopBody', () => {
+  it('is true for a node whose parent is a REPEAT node', () => {
+    const repeat = repeatNode('REP', ['B1']);
+    const m = model([node('A'), repeat, bodyNode('B1', 'REP')], [], 'A');
+    const b1 = m.nodes.find((n) => n.id === 'B1')!;
+    expect(isInsideLoopBody(m, b1)).toBe(true);
+  });
+
+  it('is false for a top-level node with no parentNode', () => {
+    const m = model([node('A'), node('B')], [linEdge('A', 'B')], 'A');
+    const b = m.nodes.find((n) => n.id === 'B')!;
+    expect(isInsideLoopBody(m, b)).toBe(false);
+  });
+
+  it('is false when parentNode points at a non-REPEAT (or missing) node', () => {
+    const m = model([node('A'), node('DEC', 'DECISION'), bodyNode('B1', 'DEC')], [], 'A');
+    const b1 = m.nodes.find((n) => n.id === 'B1')!;
+    expect(isInsideLoopBody(m, b1)).toBe(false);
+
+    const dangling = { ...bodyNode('B2', 'GONE') };
+    expect(isInsideLoopBody(model([node('A'), dangling], [], 'A'), dangling)).toBe(false);
   });
 });

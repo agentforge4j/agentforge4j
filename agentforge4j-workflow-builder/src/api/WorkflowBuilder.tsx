@@ -19,6 +19,7 @@ import {
 } from '../model/mapper';
 import {
   isInsertableEdge,
+  isInsideLoopBody,
   pruneReferences,
   repositionAfter,
   spliceEdgeWithNode,
@@ -159,6 +160,11 @@ export function WorkflowBuilder({
   const [errors, setErrors] = useState<ErrorState>({});
   const [success, setSuccess] = useState<SuccessState>({});
   const [insertOnEdgeId, setInsertOnEdgeId] = useState<string | null>(null);
+  // One-shot "move focus into the panel" request handed to StepConfigPanel — 'transition' is set
+  // by the guided checklist's "Require approval" action (case 2 of onGuidedStageAction below);
+  // 'panel' is set by focusIssue (the validation popover's "Fix" action) below.
+  const [focusField, setFocusField] = useState<'transition' | 'panel' | null>(null);
+  const onFocusFieldHandled = useCallback(() => setFocusField(null), []);
   const skipDraftSync = useRef(false);
   const serializeGuardWarnedRef = useRef(false);
   // Bumped whenever the working document is replaced wholesale (currently: import).
@@ -366,7 +372,7 @@ export function WorkflowBuilder({
     });
 
   const onAddStepFromLibrary = useCallback(
-    (kind: NodeKind, options?: { patch?: Record<string, unknown> }) => {
+    (kind: NodeKind) => {
       const prefix: Record<NodeKind, string> = {
         ASK_USER: 'ask-user',
         AI_STEP: 'ai-step',
@@ -381,7 +387,7 @@ export function WorkflowBuilder({
       };
       const backendStepId = newStepId(prefix[kind]);
       const id = `c-${backendStepId}`;
-      const data = { ...defaultNodeData(kind), ...options?.patch };
+      const data = defaultNodeData(kind);
 
       // Edge-insert mode (Part A §6): split the chosen linear edge with this node.
       const activeInsertEdge =
@@ -493,6 +499,10 @@ export function WorkflowBuilder({
       const node = model.nodes.find((n) => n.backendStepId === stepId);
       if (node) {
         setSelectedId(node.id);
+        // Move focus into the inspector once it opens — "Fix" is reached from the validation
+        // popover, which force-moves keyboard focus into itself on open; without this, closing it
+        // drops focus to document.body instead of following the step it just opened.
+        setFocusField('panel');
       }
     },
     [model.nodes, setSelectedId],
@@ -539,13 +549,31 @@ export function WorkflowBuilder({
           onAddStepFromLibrary('AI_STEP');
           break;
         case 2: {
-          const aiNode = model.nodes.find((n) => n.kind === 'AI_STEP');
-          if (aiNode) {
-            updateNodeData(aiNode.id, { transition: 'HUMAN_APPROVAL' } as Partial<CanvasNode['data']>);
-            setSelectedId(aiNode.id);
+          // Reveal and focus the transition field rather than silently choosing "Requires human
+          // approval" on the user's behalf — mirrors the "Add input" stage's "select and let the
+          // user act" pattern, rather than the "Add AI step"/"Generate result" stages' "add a step
+          // whose mere presence satisfies the check" pattern, since this stage is about a choice
+          // the user makes, not a step to add.
+          //
+          // Candidates are filtered to nodes StepConfigPanel actually leaves editable: a node
+          // inside a REPEAT loop body renders its whole fieldset disabled there, so revealing and
+          // focusing its transition field would silently do nothing (a disabled <select> refuses
+          // focus) — the guided action must not dead-end on the first matching node regardless of
+          // whether it can actually be edited.
+          const isEditableApprovalCandidate = (n: CanvasNode): boolean =>
+            (n.kind === 'AI_STEP' || n.kind === 'REUSE_WORKFLOW') && !isInsideLoopBody(model, n);
+          const candidateNode = model.nodes.find(isEditableApprovalCandidate);
+          if (candidateNode) {
+            setSelectedId(candidateNode.id);
           } else {
-            onAddStepFromLibrary('AI_STEP', { patch: { transition: 'HUMAN_APPROVAL' } });
+            // No editable AI_STEP/REUSE_WORKFLOW exists yet (e.g. the "Add AI step" stage was
+            // satisfied with an AI_DEBATE step instead, which has no transition control in the
+            // inspector, or the only candidate sits inside a loop body) — add a fresh AI_STEP so
+            // there is a field to reveal, matching the existing "no eligible node yet" fallback
+            // this action already had.
+            onAddStepFromLibrary('AI_STEP');
           }
+          setFocusField('transition');
           break;
         }
         case 3:
@@ -555,7 +583,7 @@ export function WorkflowBuilder({
           break;
       }
     },
-    [askUserNode, model.nodes, onAddStepFromLibrary, setSelectedId, updateNodeData],
+    [askUserNode, model.nodes, onAddStepFromLibrary, setSelectedId],
   );
 
   const rootStyle = theme?.variables
@@ -645,7 +673,7 @@ export function WorkflowBuilder({
             {pending.import ? ACTION_LABELS.importing : ACTION_LABELS.import}
           </button>
         ) : null}
-        <ValidationPill model={model} clientIssues={validationIssues} onFix={focusIssue} />
+        <ValidationPill model={model} clientIssues={validationIssues} onFix={focusIssue} theme={theme} />
         {capabilities.export ? (
           <button
             type="button"
@@ -775,6 +803,8 @@ export function WorkflowBuilder({
           agentCatalog={agentCatalog}
           readOnly={readOnly}
           onReposition={onReposition}
+          focusField={focusField}
+          onFocusFieldHandled={onFocusFieldHandled}
         />
       </div>
 

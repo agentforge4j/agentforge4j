@@ -1403,6 +1403,11 @@
 }
 
 .wf-validation-pill__popover {
+  /* Base position/z-index kept as a fallback for non-portal contexts (e.g. a snapshot test that
+     renders the class without JS-measured coordinates). The live component always portals this
+     element to document.body and supplies position/top/right inline (see --portal below), since a
+     raised z-index alone cannot escape the toolbar's own stacking context (established by its own
+     non-auto z-index as a flex item) to paint above an open inspector panel. */
   position: absolute;
   top: calc(100% + var(--builder-space-xs));
   right: 0;
@@ -1417,6 +1422,13 @@
   color: var(--afb-chrome-text);
   box-shadow: 0 12px 32px color-mix(in srgb, var(--afb-navy-900) 50%, transparent);
   overflow: hidden;
+}
+
+.wf-validation-pill__popover--portal {
+  /* Portaled to document.body: must out-rank every layer inside the builder itself (max internal
+     z-index elsewhere in this stylesheet is 20) plus reasonable host-page chrome, since it is now
+     a direct child of body rather than nested inside the toolbar's stacking context. */
+  z-index: 1000;
 }
 
 .wf-validation-pill__popover .wf-panel__header {
