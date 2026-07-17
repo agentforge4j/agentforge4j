@@ -123,7 +123,11 @@ suppress a completely unrelated failure that later appears on that same entry.
   result file per test to `visual-output/results/`.
 - `scripts/visual/`:
   - `build-assembled-site.mjs` — reproduces `deploy.yml` locally (slow: full OSS reactor + Javadoc
-    + Docusaurus build) to produce `agentforge4j-docs/_site`.
+    + Docusaurus build) to produce `agentforge4j-docs/_site`; also writes the build-provenance
+    marker (see `site-provenance.mjs`).
+  - `site-provenance.mjs` — writes/reads/evaluates `_site/.build-provenance.json`, the marker
+    `release-check.mjs` uses to prove the composed site reflects current, durable (committed,
+    non-dirty) relevant source — not just that `index.html` happens to exist.
   - `serve-assembled-site.mjs` — a real, GitHub-Pages-equivalent static server for `_site`
     (on-disk-file-or-404.html, never SPA-fallback middleware).
   - `ai-review.mjs` — optional, disabled-by-default AI vision review (see below).
@@ -169,6 +173,43 @@ npm run visual:release-check          # one-shot: capture -> report -> attestati
 module's own `webServer` starts against `agentforge4j-docs/_site`). Set `VISUAL_TARGET_URL` to
 point it at an already-running instance instead (e.g. the Pi preview) — satisfies Day 2's "starts
 OR connects to" requirement without needing a fresh local build every run.
+
+### The valid review → commit → attestation sequence
+
+`npm run visual:release-check` (strict mode) refuses to run — with a clear, specific reason — unless
+this sequence is followed, so the resulting `attestation.json` is durable evidence of a real,
+reviewable source state, not a snapshot that goes stale the moment anyone looks away:
+
+1. Make your relevant source changes (anything `check-freshness.mjs`'s `RELEVANT_PATH_PATTERN`
+   matches: `agentforge4j-web-ui/`, `agentforge4j-workflow-builder/`, `agentforge4j-docs/`,
+   `agentforge4j-ui-e2e/` outside `visual-evidence/`, `agentforge4j-workflows-catalog/`,
+   `agentforge4j-schema/`, `.nvmrc`, `.github/workflows/ui-e2e.yml`).
+2. **Commit them.** A strict release check reviews a durable, committed source state — not a working
+   tree that can change again before anyone reads the result. `visual:release-check` fails immediately,
+   naming the exact dirty file(s), if any relevant file is uncommitted (tracked or untracked) at
+   either the assembled-site-build step or the freshness-check step.
+3. `npm run visual:build-site` (slow — full local composed-site build). Records a
+   `_site/.build-provenance.json` marker: the commit it was built from, plus (informationally) any
+   relevant file that was dirty at that exact moment.
+4. `npm run visual:release-check` — rebuilds capture evidence fresh, then fails closed unless: the
+   assembled site's provenance marker matches the *current* commit with nothing dirty at build time
+   *or since*, real capture evidence exists (not zero captures, not a missing
+   `expected-inventory.json`), and every deterministic check passes (or is explicitly
+   `acceptedFindings`-exempted).
+5. On `PASS`, commit the refreshed `visual-evidence/attestation.json` — that's the artifact CI's
+   warn-only freshness check (`.github/workflows/visual-freshness.yml`) reads.
+
+Skipping step 2 (committing first) is the most common way to hit a `release-check` failure: both the
+assembled-site provenance check and the freshness check's own dirty-tree gate exist specifically to
+catch it, rather than silently attesting a source state that was never actually committed anywhere.
+
+This commit-anchored design was reviewed against the alternative (attesting a hash of the dirty
+working tree instead, letting strict review run before committing) and kept deliberately — see
+`check-freshness.mjs`'s own `getDirtyRelevantFiles()` doc comment for the full trade-off analysis.
+Short version: a commit sha's content is durably retrievable forever; a hash over uncommitted
+content can attest to bytes that may never exist anywhere else, which is a weaker integrity
+guarantee for a real workflow benefit (dirty-tree review) `visual:capture`/`visual:report`
+(non-strict) already provide.
 
 ### AI review
 

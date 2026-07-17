@@ -59,6 +59,24 @@ function collectDomFacts(args: readonly [readonly string[], readonly string[]]):
     return style.display !== 'none' && style.visibility !== 'hidden' && rect.width > 0 && rect.height > 0;
   }
 
+  // `isRendered` above correctly treats a screen-reader-only ("sr-only") element as rendered —
+  // that's the right answer for an accessibility-structure purpose like headings-present/
+  // headings-readable, since checkVisibility() is deliberately designed to still find an element a
+  // screen reader would. It is the WRONG answer for "does a SIGHTED user see meaningful content
+  // here": the sr-only technique (this UI's own BuilderPage.tsx heading, among others) clips its
+  // box to ~1x1px (Tailwind's implementation: width:1px, height:1px, clip-rect, overflow:hidden)
+  // specifically so it passes every display/visibility check while being invisible on-screen. A
+  // size threshold this small can never be genuinely legible rendered content, so it's the correct,
+  // minimal signal to exclude it here without hardcoding the "sr-only" class name (which would
+  // break for any other visually-hidden convention using the same clip-rect idea).
+  function isVisuallyPerceptible(el: Element): boolean {
+    if (!isRendered(el)) {
+      return false;
+    }
+    const rect = el.getBoundingClientRect();
+    return rect.width > 1 && rect.height > 1;
+  }
+
   function resolve(selector: string): Element | null {
     // A small, deliberately non-exhaustive shorthand for role queries the manifest uses
     // (`role=heading[level=1][name="X"]`, `role=navigation`) — full ARIA query semantics live in
@@ -266,13 +284,28 @@ function collectDomFacts(args: readonly [readonly string[], readonly string[]]):
   }
 
   // Unexpected blank region: the primary <main> landmark (or body, if none) renders with no
-  // visible text and no visible image — a genuinely empty page, not just a sparse one.
+  // visible text and no visible image — a genuinely empty page, not just a sparse one. Deliberately
+  // NOT `main.textContent` — that aggregates every descendant's text regardless of visibility, so a
+  // page whose ONLY content is a screen-reader-only label (e.g. this UI's own sr-only Builder page
+  // heading) would report non-empty text despite a sighted user seeing nothing. Instead walks every
+  // non-empty text node and checks whether the specific element it visually renders inside
+  // (its direct parent) is genuinely visually perceptible, not just DOM-accessible — see
+  // `isVisuallyPerceptible`'s own comment for why that's a different, stricter question than
+  // `isRendered` answers.
   const main = document.querySelector('main') ?? document.body;
-  const hasVisibleText = (main.textContent ?? '').trim().length > 0;
-  const hasVisibleImage = Array.from(main.querySelectorAll('img, svg')).some((el) => {
-    const rect = el.getBoundingClientRect();
-    return rect.width > 0 && rect.height > 0;
-  });
+  const hasVisibleText = (() => {
+    const walker = document.createTreeWalker(main, NodeFilter.SHOW_TEXT, {
+      acceptNode: (node) => ((node.textContent ?? '').trim().length > 0 ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_SKIP),
+    });
+    for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+      const parent = node.parentElement;
+      if (parent && isVisuallyPerceptible(parent)) {
+        return true;
+      }
+    }
+    return false;
+  })();
+  const hasVisibleImage = Array.from(main.querySelectorAll('img, svg')).some((el) => isVisuallyPerceptible(el));
   const mainContentBlank = !hasVisibleText && !hasVisibleImage;
 
   // Real count of canvas nodes actually present — the deterministic proof that a Builder setup

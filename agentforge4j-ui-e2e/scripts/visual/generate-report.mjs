@@ -129,9 +129,21 @@ function inventoryDiff(captures) {
   };
 }
 
+/** True when there is no real evidence a capture run happened at all: no
+ *  `expected-inventory.json` — written unconditionally by `specs/visual/capture.spec.ts` at module
+ *  load, before any test runs, so its absence means `visual:capture` never executed this pass —
+ *  or zero recorded captures, meaning even if it did, nothing was recorded. Either case must never
+ *  be reported as `pass`: an entirely absent or empty run silently certifying success would be a
+ *  worse failure mode than a real, reported visual defect, since nothing downstream (a maintainer
+ *  skimming `overallStatus`, `check-freshness.mjs --strict`) has any other signal to catch it. */
+export function hasNoEvidence({ hasExpectedInventory, totalCaptures }) {
+  return !hasExpectedInventory || totalCaptures === 0;
+}
+
 function buildReport() {
   const captures = loadCaptureRecords().map((c) => ({ ...c, classified: classifyFailingChecks(c) }));
   const aiReview = readJsonIfExists(join(OUTPUT_DIR, 'ai-review-results.json'), null);
+  const hasExpectedInventory = existsSync(join(OUTPUT_DIR, 'expected-inventory.json'));
   const { missing: missingCaptures, unexpected: unexpectedCaptures } = inventoryDiff(captures);
 
   const deterministicPass = captures.filter((c) => c.overallStatus === 'pass').length;
@@ -139,14 +151,19 @@ function buildReport() {
   const aiFail = (aiReview?.reviewed ?? []).filter((r) => r.status === 'fail').length;
   const aiWarning = (aiReview?.reviewed ?? []).filter((r) => r.status === 'warning').length;
 
+  const noEvidence = hasNoEvidence({ hasExpectedInventory, totalCaptures: captures.length });
+
   // A capture is a release-blocking failure only if it has at least one failing check that isn't
   // covered by a documented `acceptedFindings` classification — see `classifyFailingChecks` above.
   // A missing or unexpected capture (evidence integrity, not a check result) always blocks
-  // regardless — see `inventoryDiff` above. Together, this is everything
-  // `visual:release-check --strict` fails on.
+  // regardless — see `inventoryDiff` above. `noEvidence` (above) always blocks too, and is checked
+  // first: there is nothing to classify as blocking/non-blocking when no capture run happened at
+  // all. Together, this is everything `visual:release-check --strict` fails on.
   const blockingCaptures = captures.filter((c) => c.classified.blocking.length > 0);
   const overallStatus =
-    blockingCaptures.length > 0 || missingCaptures.length > 0 || unexpectedCaptures.length > 0 ? 'fail' : 'pass';
+    noEvidence || blockingCaptures.length > 0 || missingCaptures.length > 0 || unexpectedCaptures.length > 0
+      ? 'fail'
+      : 'pass';
 
   const viewportsCaptured = [...new Set(captures.map((c) => c.viewport))].sort();
 
@@ -161,6 +178,8 @@ function buildReport() {
     viewportsCaptured,
     summary: {
       totalCaptures: captures.length,
+      noEvidence,
+      hasExpectedInventory,
       deterministicPass,
       deterministicFail,
       blockingFailures: blockingCaptures.length,
@@ -330,14 +349,24 @@ function main() {
   writeFileSync(join(OUTPUT_DIR, 'report.md'), renderMarkdown(report));
   console.log(`[generate-report] wrote ${join(OUTPUT_DIR, 'report.json')} and report.md`);
   console.log(`[generate-report] overall status: ${report.summary.overallStatus}`);
-  if (report.summary.totalCaptures === 0) {
-    console.warn('[generate-report] WARNING: no captures found — run `npm run visual:capture` first.');
+  if (report.summary.noEvidence) {
+    // Exit non-zero even though the (fail-status) report was still written — the report itself is
+    // a useful diagnostic artifact, but nothing calling this script (write-attestation.mjs,
+    // release-check.mjs's own run() helper, a human reading only the exit code) should be able to
+    // mistake an absent or empty capture run for a real, evaluated result.
+    console.error(
+      '[generate-report] ERROR: no visual-review evidence exists ' +
+        `(expected-inventory.json ${report.summary.hasExpectedInventory ? 'present' : 'MISSING'}, ` +
+        `${report.summary.totalCaptures} capture(s) recorded) — run \`npm run visual:capture\` first. ` +
+        'Report forced to overallStatus: fail.',
+    );
+    process.exit(1);
   }
 }
 
-// CLI entry, guarded so `classifyFailingChecks`/`inventoryDiff` can be imported and unit-tested
-// (see specs/visual-unit/generate-report.spec.ts) without this script's real side effects
-// (reading the live repo, writing report.json/md) running on import — same pattern
+// CLI entry, guarded so `classifyFailingChecks`/`inventoryDiff`/`hasNoEvidence` can be imported and
+// unit-tested (see specs/visual-unit/generate-report.spec.ts) without this script's real side
+// effects (reading the live repo, writing report.json/md) running on import — same pattern
 // agentforge4j-docs/scripts/assemble-site.mjs already uses for the same reason.
 if (process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1])) {
   main();

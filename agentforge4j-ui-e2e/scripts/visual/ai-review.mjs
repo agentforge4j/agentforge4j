@@ -31,7 +31,7 @@
 //   AI_VISUAL_REVIEW_MAX_TOKENS    Default: 700 (max_tokens per request — the response is a small
 //                                  structured JSON object, not prose).
 
-import { readFileSync, writeFileSync, existsSync, readdirSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync, existsSync, readdirSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -127,6 +127,13 @@ function parseModelResponse(raw) {
 }
 
 async function main() {
+  // Every write path below targets AI_RESULTS_PATH inside OUTPUT_DIR — on a genuinely clean
+  // checkout (no prior visual:capture/visual:report run) that directory doesn't exist yet, and
+  // writeFileSync would throw ENOENT. Must run before the very first possible write, including the
+  // disabled/no-credentials skip path — that path is explicitly documented as "never a hard
+  // failure", so it must not crash on a clean checkout for exactly the reason it exists.
+  mkdirSync(OUTPUT_DIR, { recursive: true });
+
   const enabled = process.env.AI_VISUAL_REVIEW_ENABLED === 'true';
   const apiKey = process.env.AI_VISUAL_REVIEW_API_KEY;
 

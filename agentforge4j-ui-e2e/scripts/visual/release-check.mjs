@@ -9,18 +9,26 @@
 // Does NOT run `build-assembled-site.mjs` itself (that step is slow — a full OSS reactor +
 // Javadoc + Docusaurus build — and independently useful outside a release check, e.g. while
 // iterating on visual/manifest.ts). Requires the composed site to already exist at
-// `agentforge4j-docs/_site`; fails closed with a clear instruction if it doesn't, rather than
-// silently building it (and silently taking several extra minutes) on a maintainer's behalf.
+// `agentforge4j-docs/_site` AND to carry a fresh build-provenance marker (see
+// site-provenance.mjs) proving it was built from the current commit with no relevant source
+// file left dirty — `existsSync(_site/index.html)` alone only proves *a* composed site exists,
+// never that it reflects anything close to current source; a `_site` built hours or commits ago
+// would pass that check silently. Fails closed with a clear instruction if the site is missing or
+// stale, rather than silently rebuilding it (several extra minutes) on a maintainer's behalf.
 //
 // Usage: node scripts/visual/release-check.mjs
 
+import { execFileSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { run as runShared } from './run-command.mjs';
+import { getDirtyRelevantFiles } from './check-freshness.mjs';
+import { evaluateSiteProvenance, readProvenanceMarker } from './site-provenance.mjs';
 
 const here = fileURLToPath(new URL('.', import.meta.url));
 const E2E_ROOT = resolve(here, '..', '..');
+const REPO_ROOT = resolve(E2E_ROOT, '..');
 const SITE_DIR = resolve(E2E_ROOT, '..', 'agentforge4j-docs', '_site');
 
 const run = (command, args) => runShared('[release-check]', command, args, E2E_ROOT, process.platform === 'win32');
@@ -29,6 +37,13 @@ function main() {
   if (!existsSync(resolve(SITE_DIR, 'index.html'))) {
     console.error(`[release-check] no composed site found at ${SITE_DIR}.`);
     console.error('  Run `npm run visual:build-site` first (slow — full OSS reactor + Javadoc + Docusaurus build).');
+    process.exit(1);
+  }
+
+  const currentCommitSha = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: REPO_ROOT, encoding: 'utf8' }).trim();
+  const provenance = evaluateSiteProvenance(readProvenanceMarker(SITE_DIR), currentCommitSha, getDirtyRelevantFiles());
+  if (!provenance.fresh) {
+    console.error(`[release-check] composed site is stale: ${provenance.reason}`);
     process.exit(1);
   }
 

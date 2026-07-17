@@ -13,11 +13,13 @@
 //
 // Usage: node scripts/visual/build-assembled-site.mjs
 
-import { spawnSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { run as runShared } from './run-command.mjs';
+import { getDirtyRelevantFiles } from './check-freshness.mjs';
+import { writeProvenanceMarker } from './site-provenance.mjs';
 
 const here = fileURLToPath(new URL('.', import.meta.url));
 const REPO_ROOT = resolve(here, '..', '..', '..');
@@ -88,7 +90,23 @@ function main() {
     console.error(`[build-assembled-site] assemble-site.mjs reported success but ${siteDir}/index.html is missing`);
     process.exit(1);
   }
-  console.log(`[build-assembled-site] composed site ready at ${siteDir}`);
+
+  // Records what this build actually reflects, so release-check.mjs can prove the composed site
+  // is current before trusting it as evidence — existsSync(index.html) alone only proves *a* site
+  // exists, never that it's fresh. commitSha is, since git is content-addressed, already a
+  // deterministic hash over the entire relevant source tree at that commit; pairing it with the
+  // dirty-relevant-files list taken at this exact moment is what lets a later check tell a build
+  // taken from a clean, durable commit apart from one taken mid-edit.
+  const commitSha = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: REPO_ROOT, encoding: 'utf8' }).trim();
+  const marker = writeProvenanceMarker(siteDir, { commitSha, dirtyRelevantFilesAtBuildTime: getDirtyRelevantFiles() });
+  if (marker.dirtyRelevantFilesAtBuildTime.length > 0) {
+    console.warn(
+      `[build-assembled-site] WARNING: built while relevant source file(s) were uncommitted: ` +
+        `${marker.dirtyRelevantFilesAtBuildTime.join(', ')} — release-check.mjs will refuse this build ` +
+        'until those changes are committed and the site is rebuilt.',
+    );
+  }
+  console.log(`[build-assembled-site] composed site ready at ${siteDir} (commit ${commitSha.slice(0, 12)})`);
 }
 
 main();

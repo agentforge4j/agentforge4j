@@ -2,7 +2,7 @@
 
 import { expect, test } from '@playwright/test';
 // @ts-expect-error — plain .mjs, no type declarations; see this repo's other scripts/*.mjs.
-import { classifyFailingChecks } from '../../scripts/visual/generate-report.mjs';
+import { classifyFailingChecks, hasNoEvidence } from '../../scripts/visual/generate-report.mjs';
 
 function capture(overrides: Record<string, unknown> = {}) {
   return {
@@ -106,5 +106,26 @@ test.describe('classifyFailingChecks — per-check exemption (not entry-level)',
       }),
     );
     expect(result.nonBlocking).toHaveLength(1);
+  });
+});
+
+test.describe('hasNoEvidence — must never let a zero-evidence run report as pass', () => {
+  test('missing expected-inventory.json alone is no evidence, even with captures present', () => {
+    // Defensive: even if stale result files from an unrelated run somehow survived, no
+    // expected-inventory.json means visual:capture did not run THIS pass, so integrity can't be
+    // proven either way.
+    expect(hasNoEvidence({ hasExpectedInventory: false, totalCaptures: 5 })).toBe(true);
+  });
+
+  test('zero captures alone is no evidence, even with expected-inventory.json present', () => {
+    expect(hasNoEvidence({ hasExpectedInventory: true, totalCaptures: 0 })).toBe(true);
+  });
+
+  test('both missing is no evidence', () => {
+    expect(hasNoEvidence({ hasExpectedInventory: false, totalCaptures: 0 })).toBe(true);
+  });
+
+  test('expected-inventory.json present and captures non-zero is real evidence', () => {
+    expect(hasNoEvidence({ hasExpectedInventory: true, totalCaptures: 73 })).toBe(false);
   });
 });
