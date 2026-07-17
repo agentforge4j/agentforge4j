@@ -324,7 +324,7 @@ export function WorkflowBuilder({
     });
 
   const onAddStepFromLibrary = useCallback(
-    (kind: NodeKind, options?: { patch?: Record<string, unknown> }) => {
+    (kind: NodeKind) => {
       const prefix: Record<NodeKind, string> = {
         ASK_USER: 'ask-user',
         AI_STEP: 'ai-step',
@@ -339,7 +339,7 @@ export function WorkflowBuilder({
       };
       const backendStepId = newStepId(prefix[kind]);
       const id = `c-${backendStepId}`;
-      const data = { ...defaultNodeData(kind), ...options?.patch };
+      const data = defaultNodeData(kind);
 
       // Edge-insert mode (Part A §6): split the chosen linear edge with this node.
       const activeInsertEdge =
@@ -600,7 +600,7 @@ export function WorkflowBuilder({
             {pending.import ? ACTION_LABELS.importing : ACTION_LABELS.import}
           </button>
         ) : null}
-        <ValidationPill model={model} clientIssues={validationIssues} onFix={focusIssue} />
+        <ValidationPill model={model} clientIssues={validationIssues} onFix={focusIssue} theme={theme} />
         {capabilities.export ? (
           <button
             type="button"

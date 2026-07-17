@@ -22,8 +22,11 @@ and this package adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   hidden inside the "Behavior" section, which defaults to collapsed in guided mode; the checklist
   item's action now selects the relevant AI step, force-opens that section, and focuses the field
   instead of silently choosing "Requires human approval" on the user's behalf.
+- The validation popover (which is portaled to `document.body`, outside the themed builder
+  root) now carries the host's `theme.variables`/`theme.className`, so themed hosts no longer
+  get a default-palette popover.
 
-
+## [0.5.0] - 2026-07-12
 
 (0.4.0's changes are folded in below — that version was merged to `main` but never published to
 npm; 0.5.0 supersedes it in source too.)

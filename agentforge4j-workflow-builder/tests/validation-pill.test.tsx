@@ -83,4 +83,25 @@ describe('ValidationPill popover occlusion fix', () => {
 
     expect(popover).toBeInTheDocument();
   });
+
+  it('re-applies the host theme (variables + className) on the portaled popover, which lives outside the themed root', async () => {
+    const user = userEvent.setup();
+    const { container } = render(
+      <WorkflowBuilder
+        capabilities={allDisabled}
+        theme={{ className: 'host-dark', variables: { '--afb-chrome-bg': 'rgb(1, 2, 3)' } }}
+      />,
+    );
+
+    const pillButton = container.querySelector('.wf-validation-pill') as HTMLButtonElement;
+    await user.click(pillButton);
+    const popover = await screen.findByRole('dialog', { name: ACTION_LABELS.clientValidation });
+
+    // The popover is a direct child of document.body — outside the builder root where the
+    // theme's inline variables and class are applied — so both must be re-applied here or a
+    // themed host gets a default-palette popover floating over its UI.
+    expect(popover.parentElement).toBe(document.body);
+    expect(popover).toHaveClass('host-dark');
+    expect(popover.style.getPropertyValue('--afb-chrome-bg')).toBe('rgb(1, 2, 3)');
+  });
 });

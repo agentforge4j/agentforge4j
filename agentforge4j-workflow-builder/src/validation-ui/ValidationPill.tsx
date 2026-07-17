@@ -4,6 +4,7 @@ import { ValidationPanel } from './ValidationPanel';
 import { ACTION_LABELS } from '../copy/workflow-terminology';
 import type { DraftValidationIssue } from '../hooks/useWorkflowDraft';
 import type { CanvasModel } from '../model/canvasModel';
+import type { BuilderTheme } from '../api/types';
 import type { CSSProperties } from 'react';
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
@@ -14,6 +15,13 @@ type ValidationPillProps = {
   serverIssues?: DraftValidationIssue[];
   onFix: (stepId?: string) => void;
   className?: string;
+  /**
+   * The host theme applied on the builder root. Because the popover is portaled to
+   * `document.body` — outside the themed root element — its CSS custom properties and any
+   * `theme.className`-scoped host rules would otherwise not reach it; the portal container
+   * re-applies both so a themed host never gets a default-palette popover.
+   */
+  theme?: BuilderTheme;
 };
 
 // Gap between the pill and its popover, mirroring the --builder-space-xs default this stylesheet
@@ -28,6 +36,7 @@ export function ValidationPill({
   serverIssues = [],
   onFix,
   className,
+  theme,
 }: ValidationPillProps) {
   const [open, setOpen] = useState(false);
   const [popoverPosition, setPopoverPosition] = useState<CSSProperties | null>(null);
@@ -81,7 +90,11 @@ export function ValidationPill({
       setPopoverPosition({
         position: 'fixed',
         top: rect.bottom + POPOVER_GAP_PX,
-        right: window.innerWidth - rect.right,
+        // documentElement.clientWidth, not window.innerWidth: the containing block for
+        // position: fixed (like getBoundingClientRect coordinates) excludes the vertical
+        // scrollbar, which innerWidth includes — using innerWidth shifts the popover left
+        // by the scrollbar width whenever the page scrolls.
+        right: document.documentElement.clientWidth - rect.right,
       });
     };
     updatePosition();
@@ -115,8 +128,10 @@ export function ValidationPill({
         ? createPortal(
             <div
               ref={popoverRef}
-              className="wf-panel wf-validation-pill__popover wf-validation-pill__popover--portal"
-              style={popoverPosition}
+              className={['wf-panel', 'wf-validation-pill__popover', 'wf-validation-pill__popover--portal', theme?.className]
+                .filter(Boolean)
+                .join(' ')}
+              style={{ ...popoverPosition, ...(theme?.variables as CSSProperties | undefined) }}
               role="dialog"
               aria-label={ACTION_LABELS.clientValidation}
             >
