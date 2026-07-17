@@ -11,6 +11,20 @@ and this package adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Narrow-container gate: below a supported container width (`47.9375rem` / 767px, matching
+  the narrow-viewport breakpoint already used elsewhere in `workflow-builder.css`), the builder
+  no longer renders the editor at all. It takes a synchronous first measurement before paint
+  (no editor flash on phones) and then tracks its own rendered root element via
+  `ResizeObserver` (never `window.innerWidth`, since the builder may be embedded in a host panel
+  of arbitrary size), showing a message directing the user to a larger screen instead. This is
+  a full replacement, not an overlay — the canvas, palette, inspector, and toolbar are not
+  mounted underneath it, and there is no reduced or read-only mobile editing surface (deferred,
+  out of scope for 0.1.0). This is the resolution for the mobile "+ Add step" control, the
+  obstructed name field, and the checklist overlay blocking the canvas: those interactions are
+  now unreachable below the breakpoint rather than individually patched. The step palette's
+  compact bottom-sheet variant now keys off the same container measurement (a prop fed from
+  this gate) instead of a viewport media query, so the two narrowness axes can never disagree;
+  the remaining narrow-viewport CSS blocks are cosmetic-only.
 - Full undo/redo for every meaningful builder change: adding/deleting steps, step config edits,
   connections (create/delete/reroute), reordering a step in the chain, workflow name/id, and
   start-step changes. Toolbar Undo/Redo controls (each disabled when its stack is empty) plus
@@ -29,7 +43,6 @@ and this package adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Decision-branch case edges still snap back on purpose: their routing lives in the decision
   step's case configuration (edited in the inspector), not in the drawn edge, so rerouting the
   drawing would silently diverge from what the exported workflow actually does.
-
 - A persistent "Start" marker on whichever node is the workflow's current start step,
   visible on the canvas in both Guided and Advanced mode — previously the entry point could
   only be inferred from graph position, or was labeled explicitly in Advanced mode's

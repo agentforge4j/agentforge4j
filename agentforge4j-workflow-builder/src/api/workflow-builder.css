@@ -1660,3 +1660,30 @@
   text-transform: uppercase;
   white-space: nowrap;
 }
+
+/* Narrow-container gate: replaces the whole editor below the supported container width
+   (see useNarrowContainerGate / NARROW_CONTAINER_BREAKPOINT_PX) instead of a reduced or
+   read-only mobile editing surface, which is out of scope for 0.1.0. */
+.workflow-builder__narrow-notice {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--builder-space-sm);
+  height: 100%;
+  padding: var(--builder-space-lg);
+  text-align: center;
+  background: var(--builder-color-bg);
+  color: var(--builder-color-fg);
+}
+
+.workflow-builder__narrow-notice-title {
+  margin: 0;
+  font-weight: 600;
+}
+
+.workflow-builder__narrow-notice-body {
+  margin: 0;
+  font-size: var(--builder-font-size-sm);
+  color: var(--builder-color-muted);
+}
