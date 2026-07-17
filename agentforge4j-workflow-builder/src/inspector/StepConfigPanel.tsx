@@ -11,7 +11,7 @@ import type {
   MaxIterationsActionUi,
   NodeData,
 } from '../model/canvasModel';
-import { getRunsAfterState, START_SENTINEL } from '../model/graphOps';
+import { getRunsAfterState, isInsideLoopBody, START_SENTINEL } from '../model/graphOps';
 import type { NodeKind } from '../model/nodeKinds';
 import { NODE_KIND_META } from '../model/nodeKinds';
 import type { ReactNode, Ref } from 'react';
@@ -43,8 +43,8 @@ export type StepConfigPanelProps = {
    * One-shot request to reveal and focus a specific field on the currently selected node, even if
    * its containing section is collapsed by default for the current mode. Currently only
    * `'transition'` is supported — wired from the guided-mode checklist's "Require approval" action
-   * (`WorkflowBuilder`'s `onGuidedStageAction`), mirroring how checklist item 1 already jumps to
-   * and reveals the input step rather than silently mutating data for the user.
+   * (`WorkflowBuilder`'s `onGuidedStageAction`), mirroring how the "Add input" stage already jumps
+   * to and reveals the input step rather than silently mutating data for the user.
    */
   focusField?: 'transition' | null;
   /** Called once the requested `focusField` has been applied (or determined inapplicable), so the
@@ -168,12 +168,11 @@ export function StepConfigPanel({
   }
 
   const title = NODE_KIND_META[node.kind].label;
-  const insideLoopBody =
-    Boolean(node.parentNode) && model.nodes.some((p) => p.id === node.parentNode && p.kind === 'REPEAT');
+  const insideLoopBody = isInsideLoopBody(model, node);
   // Forced open (regardless of mode) when a focus request targets the field this section holds, or
-  // once one already has (behaviorRevealed) — mirrors the audit's corrected finding that the
-  // checklist's "Add approval" item is genuinely satisfiable, just hidden by this section
-  // defaulting to collapsed in guided mode. `behaviorRevealed` keeps it open on the render right
+  // once one already has (behaviorRevealed) — the checklist's "Add approval" item is genuinely
+  // satisfiable, just hidden by this section defaulting to collapsed in guided mode.
+  // `behaviorRevealed` keeps it open on the render right
   // after `focusField` itself is cleared (a one-shot signal, consumed immediately by the effect
   // above), instead of the section snapping shut again the instant it was revealed.
   const behaviorOpen = mode === 'advanced' || focusField === 'transition' || behaviorRevealed;

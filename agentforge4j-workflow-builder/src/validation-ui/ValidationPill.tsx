@@ -42,6 +42,7 @@ export function ValidationPill({
   const [popoverPosition, setPopoverPosition] = useState<CSSProperties | null>(null);
   const anchorRef = useRef<HTMLDivElement>(null);
   const popoverRef = useRef<HTMLDivElement>(null);
+  const toggleButtonRef = useRef<HTMLButtonElement>(null);
   const totalIssues = clientIssues.length + serverIssues.length;
   const looksGood = totalIssues === 0;
 
@@ -106,9 +107,33 @@ export function ValidationPill({
     };
   }, [open]);
 
+  // Portaling to document.body detaches the popover from the toggle button's tab-order
+  // adjacency it had before this fix (it was the button's next DOM sibling), so keyboard/AT
+  // users now need explicit focus management: move focus into the dialog once it actually
+  // mounts (guarded by `hasFocusedRef` so the later position recomputes on scroll/resize don't
+  // keep stealing focus back), and restore it to the toggle button once the dialog closes —
+  // but only on an actual open→close transition, never on the initial mount where `open` starts
+  // `false` (that would steal focus from wherever the page already was).
+  const hasFocusedRef = useRef(false);
+  const wasOpenRef = useRef(false);
+  useEffect(() => {
+    if (open && popoverPosition && popoverRef.current && !hasFocusedRef.current) {
+      popoverRef.current.focus();
+      hasFocusedRef.current = true;
+    }
+    if (!open) {
+      hasFocusedRef.current = false;
+      if (wasOpenRef.current) {
+        toggleButtonRef.current?.focus();
+      }
+    }
+    wasOpenRef.current = open;
+  }, [open, popoverPosition]);
+
   return (
     <div ref={anchorRef} className={['wf-validation-pill-anchor', className].filter(Boolean).join(' ')}>
       <button
+        ref={toggleButtonRef}
         type="button"
         className="wf-button wf-button--secondary wf-validation-pill"
         onClick={() => setOpen((value) => !value)}
@@ -128,6 +153,7 @@ export function ValidationPill({
         ? createPortal(
             <div
               ref={popoverRef}
+              tabIndex={-1}
               className={['wf-panel', 'wf-validation-pill__popover', 'wf-validation-pill__popover--portal', theme?.className]
                 .filter(Boolean)
                 .join(' ')}

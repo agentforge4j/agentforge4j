@@ -28,6 +28,18 @@ function isTopLevel(node: CanvasNode): boolean {
   return !node.parentNode;
 }
 
+/**
+ * Whether `node` sits inside a REPEAT loop body — the same membership test
+ * {@link StepConfigPanel} uses to render a node's whole fieldset disabled
+ * (nested step editing is not yet supported). Callers that pick a node to
+ * select/reveal in the inspector (e.g. the guided checklist's "Require
+ * approval" action) must skip these, since a disabled field can never
+ * receive focus.
+ */
+export function isInsideLoopBody(model: CanvasModel, node: CanvasNode): boolean {
+  return Boolean(node.parentNode) && model.nodes.some((p) => p.id === node.parentNode && p.kind === 'REPEAT');
+}
+
 function linearEdgesInto(model: CanvasModel, id: string): CanvasEdge[] {
   return model.edges.filter((e) => isLinearEdge(e) && e.target === id);
 }

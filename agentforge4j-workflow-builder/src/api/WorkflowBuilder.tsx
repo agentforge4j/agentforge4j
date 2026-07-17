@@ -16,7 +16,14 @@ import {
   newStepId,
   workflowToCanvas,
 } from '../model/mapper';
-import { isInsertableEdge, pruneReferences, repositionAfter, spliceEdgeWithNode, unreachableNodeIds } from '../model/graphOps';
+import {
+  isInsertableEdge,
+  isInsideLoopBody,
+  pruneReferences,
+  repositionAfter,
+  spliceEdgeWithNode,
+  unreachableNodeIds,
+} from '../model/graphOps';
 import type { NodeKind } from '../model/nodeKinds';
 import { NODE_KIND_META } from '../model/nodeKinds';
 import { StepPalette } from '../palette/StepPalette';
@@ -488,16 +495,27 @@ export function WorkflowBuilder({
           break;
         case 2: {
           // Reveal and focus the transition field rather than silently choosing "Requires human
-          // approval" on the user's behalf — mirrors item 0's "select and let the user act"
-          // pattern instead of items 1/3's "add a step whose mere presence satisfies the check"
-          // pattern, since this checklist item is about a choice the user makes, not a step to add.
-          const aiNode = model.nodes.find((n) => n.kind === 'AI_STEP');
-          if (aiNode) {
-            setSelectedId(aiNode.id);
+          // approval" on the user's behalf — mirrors the "Add input" stage's "select and let the
+          // user act" pattern, rather than the "Add AI step"/"Generate result" stages' "add a step
+          // whose mere presence satisfies the check" pattern, since this stage is about a choice
+          // the user makes, not a step to add.
+          //
+          // Candidates are filtered to nodes StepConfigPanel actually leaves editable: a node
+          // inside a REPEAT loop body renders its whole fieldset disabled there, so revealing and
+          // focusing its transition field would silently do nothing (a disabled <select> refuses
+          // focus) — the guided action must not dead-end on the first matching node regardless of
+          // whether it can actually be edited.
+          const isEditableApprovalCandidate = (n: CanvasNode): boolean =>
+            (n.kind === 'AI_STEP' || n.kind === 'REUSE_WORKFLOW') && !isInsideLoopBody(model, n);
+          const candidateNode = model.nodes.find(isEditableApprovalCandidate);
+          if (candidateNode) {
+            setSelectedId(candidateNode.id);
           } else {
-            // No AI_STEP exists yet (e.g. item 1 was satisfied with an AI_DEBATE step instead,
-            // which has no transition control in the inspector) — add one so there is a field to
-            // reveal, matching the existing "no eligible node yet" fallback this action already had.
+            // No editable AI_STEP/REUSE_WORKFLOW exists yet (e.g. the "Add AI step" stage was
+            // satisfied with an AI_DEBATE step instead, which has no transition control in the
+            // inspector, or the only candidate sits inside a loop body) — add a fresh AI_STEP so
+            // there is a field to reveal, matching the existing "no eligible node yet" fallback
+            // this action already had.
             onAddStepFromLibrary('AI_STEP');
           }
           setFocusField('transition');

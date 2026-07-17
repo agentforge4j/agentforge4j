@@ -25,8 +25,8 @@ describe('ValidationPill popover occlusion fix', () => {
     const user = userEvent.setup();
     const { container } = render(<WorkflowBuilder capabilities={allDisabled} />);
 
-    // Open the step inspector first — this is the real-world case the audit's corrected finding
-    // identified: the popover only actually occluded when an inspector panel was already open.
+    // Open the step inspector first — this is the real-world case this fix addresses: the
+    // popover only actually occluded when an inspector panel was already open.
     await user.click(screen.getAllByRole('button', { name: NODE_LABELS.AI_STEP })[0]!);
     const inspector = await screen.findByRole('dialog', { name: NODE_LABELS.AI_STEP });
     expect(inspector).toBeInTheDocument();
@@ -37,8 +37,8 @@ describe('ValidationPill popover occlusion fix', () => {
     await user.click(pillButton);
     const popover = await screen.findByRole('dialog', { name: ACTION_LABELS.clientValidation });
 
-    // jsdom has no real layout/paint engine, so `document.elementFromPoint` (what the live
-    // Playwright grounding used to prove the original bug) is not available as a test oracle here.
+    // jsdom has no real layout/paint engine, so `document.elementFromPoint` (what an in-browser
+    // check used to prove the original bug) is not available as a test oracle here.
     // The structural, actually-verifiable proxy for "will paint above the inspector" is: the
     // popover is a portal directly under document.body — never a descendant of the toolbar (whose
     // own non-auto z-index establishes a stacking context a mere z-index bump could never escape)
@@ -103,5 +103,28 @@ describe('ValidationPill popover occlusion fix', () => {
     expect(popover.parentElement).toBe(document.body);
     expect(popover).toHaveClass('host-dark');
     expect(popover.style.getPropertyValue('--afb-chrome-bg')).toBe('rgb(1, 2, 3)');
+  });
+
+  it('moves focus into the portaled dialog on open and restores it to the toggle button on close', async () => {
+    const user = userEvent.setup();
+    const { container } = render(<WorkflowBuilder capabilities={allDisabled} />);
+
+    const pillButton = container.querySelector('.wf-validation-pill') as HTMLButtonElement;
+    // Portaling out of the anchor's DOM subtree drops the tab-order adjacency the popover had
+    // before this fix (it was the button's own next sibling) — focus must be moved explicitly.
+    await user.click(pillButton);
+    const popover = await screen.findByRole('dialog', { name: ACTION_LABELS.clientValidation });
+    expect(popover).toHaveFocus();
+
+    await user.keyboard('{Escape}');
+
+    expect(screen.queryByRole('dialog', { name: ACTION_LABELS.clientValidation })).not.toBeInTheDocument();
+    expect(pillButton).toHaveFocus();
+  });
+
+  it('does not steal focus from the page on initial mount, before the popover has ever been opened', () => {
+    render(<WorkflowBuilder capabilities={allDisabled} />);
+
+    expect(document.body).toHaveFocus();
   });
 });

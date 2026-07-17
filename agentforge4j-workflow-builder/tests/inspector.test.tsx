@@ -102,7 +102,7 @@ describe('WorkflowBuilder inspector delete', () => {
   });
 });
 
-describe('StepConfigPanel focusField (guided checklist item 3 discoverability)', () => {
+describe('StepConfigPanel focusField ("Add approval" guided stage discoverability)', () => {
   function modelWithAiStep(): { model: CanvasModel; aiNode: CanvasNode } {
     const model = createInitialCanvasModel();
     const aiNode = {
@@ -158,7 +158,15 @@ describe('StepConfigPanel focusField (guided checklist item 3 discoverability)',
   });
 });
 
-describe('Guided checklist item 3 ("Add approval") discoverability, end to end', () => {
+// The "Add approval" guided action's editable-candidate filter (skip nodes inside a REPEAT loop
+// body, since StepConfigPanel renders their whole fieldset disabled there) is unit-tested
+// directly against the shared `isInsideLoopBody` predicate in `graphOps.test.ts` — a loop-body
+// node can only be produced via a live canvas drag-reparent (React Flow's own drag/intersection
+// handling), which has no real layout engine to drive in jsdom, and importing a workflow with a
+// loop body is a separate, pre-existing "unsupported" path that never reconstructs it as a live,
+// editable node at all.
+
+describe('Guided "Add approval" stage discoverability, end to end', () => {
   // useBuilderMode persists to localStorage as the initial mode; avoid leaking state across tests.
   beforeEach(() => {
     window.localStorage.clear();
@@ -183,7 +191,7 @@ describe('Guided checklist item 3 ("Add approval") discoverability, end to end',
     });
     await user.click(screen.getAllByRole('button', { name: ACTION_LABELS.configureStepClose })[0]!);
 
-    // Stage 2 ("Add approval") is now the active stage; trigger its guided action.
+    // The "Add approval" stage is now the active stage; trigger its guided action.
     await user.click(screen.getByRole('button', { name: GUIDED_STAGE_LABELS.requireApproval }));
 
     await waitFor(() => {
@@ -193,8 +201,8 @@ describe('Guided checklist item 3 ("Add approval") discoverability, end to end',
 
     const approvalSelect = screen.getByRole('combobox', { name: ACTION_LABELS.approvalField });
     expect(approvalSelect).toHaveFocus();
-    // Genuinely revealed for the user to choose themselves — not auto-completed for them, which
-    // is the corrected root cause: the field and check are real, only discoverability was broken.
+    // Genuinely revealed for the user to choose themselves — not auto-completed for them: the
+    // field and check were always real, only discoverability was broken.
     expect(approvalSelect).toHaveValue('AUTO');
   });
 });
