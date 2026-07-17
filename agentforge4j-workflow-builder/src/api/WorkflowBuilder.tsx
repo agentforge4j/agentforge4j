@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { WorkflowCanvas } from '../canvas/WorkflowCanvas';
 import { ACTION_LABELS, GUIDED_STAGE_LABELS } from '../copy/workflow-terminology';
 import { GuidedStepper } from '../guided/GuidedStepper';
+import { StartStepChooser } from '../guided/StartStepChooser';
 import { createInitialCanvasModel, useCanvasState } from '../hooks/useCanvasState';
 import { useBuilderMode } from '../hooks/useBuilderMode';
 import type { DraftValidationIssue } from '../hooks/useWorkflowDraft';
@@ -16,7 +17,14 @@ import {
   newStepId,
   workflowToCanvas,
 } from '../model/mapper';
-import { isInsertableEdge, pruneReferences, repositionAfter, spliceEdgeWithNode, unreachableNodeIds } from '../model/graphOps';
+import {
+  isInsertableEdge,
+  pruneReferences,
+  repositionAfter,
+  spliceEdgeWithNode,
+  START_SENTINEL,
+  unreachableNodeIds,
+} from '../model/graphOps';
 import type { NodeKind } from '../model/nodeKinds';
 import { NODE_KIND_META } from '../model/nodeKinds';
 import { StepPalette } from '../palette/StepPalette';
@@ -35,6 +43,11 @@ type ActionKey = 'import' | 'export' | 'save' | 'run' | 'publish';
 
 type PendingState = Partial<Record<ActionKey, boolean>>;
 type ErrorState = Partial<Record<ActionKey, string | null>>;
+/** Persisted success message per action, keyed like {@link PendingState}/{@link ErrorState} so a
+ * successful action's confirmation lives in the same state machine as its pending/error states
+ * rather than a parallel one. Currently populated only by export (see `handleExport`); other
+ * action keys stay unused (`null`) until/unless a future phase wants the same treatment. */
+type SuccessState = Partial<Record<ActionKey, string | null>>;
 
 function flattenClientIssues(model: CanvasModel, validation: EditorValidation): DraftValidationIssue[] {
   const safe = (value: string | undefined) => value ?? '';
@@ -144,9 +157,15 @@ export function WorkflowBuilder({
   const { state, dispatch, dirty } = useBuilderState(seed);
   const [pending, setPending] = useState<PendingState>({});
   const [errors, setErrors] = useState<ErrorState>({});
+  const [success, setSuccess] = useState<SuccessState>({});
   const [insertOnEdgeId, setInsertOnEdgeId] = useState<string | null>(null);
   const skipDraftSync = useRef(false);
   const serializeGuardWarnedRef = useRef(false);
+  // Bumped whenever the working document is replaced wholesale (currently: import).
+  // An in-flight export captures the generation it started against; if the document
+  // has since been replaced by the time the export resolves, its confirmation would
+  // describe a document that is no longer loaded, so it is dropped instead of shown.
+  const docGenerationRef = useRef(0);
 
   const initialCanvas = useMemo(
     () => (seed.steps.length > 0 ? workflowToCanvas(seed) : createInitialCanvasModel()),
@@ -259,18 +278,26 @@ export function WorkflowBuilder({
     return counts;
   }, [clientIssues]);
 
-  const runAction = useCallback(async (key: ActionKey, fn: () => Promise<void>) => {
-    setPending((prev) => ({ ...prev, [key]: true }));
-    setErrors((prev) => ({ ...prev, [key]: null }));
-    try {
-      await fn();
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Action failed';
-      setErrors((prev) => ({ ...prev, [key]: message }));
-    } finally {
-      setPending((prev) => ({ ...prev, [key]: false }));
-    }
-  }, []);
+  const runAction = useCallback(
+    // `fn` may resolve a success message to pin to the status area; resolving void shows none.
+    async (key: ActionKey, fn: () => Promise<string | void>) => {
+      setPending((prev) => ({ ...prev, [key]: true }));
+      setErrors((prev) => ({ ...prev, [key]: null }));
+      setSuccess((prev) => ({ ...prev, [key]: null }));
+      try {
+        const successMessage = await fn();
+        if (typeof successMessage === 'string') {
+          setSuccess((prev) => ({ ...prev, [key]: successMessage }));
+        }
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'Action failed';
+        setErrors((prev) => ({ ...prev, [key]: message }));
+      } finally {
+        setPending((prev) => ({ ...prev, [key]: false }));
+      }
+    },
+    [],
+  );
 
   const handleImport = () =>
     runAction('import', async () => {
@@ -283,15 +310,34 @@ export function WorkflowBuilder({
         type: 'SET_IMPORT_META',
         importMeta: { source: 'file', importedAt: new Date().toISOString() },
       });
+      // The working document was just replaced: an export confirmation still describing the
+      // previous document is now a stale claim — drop it, and bump the generation so an
+      // export already in flight against the old document cannot show one either.
+      docGenerationRef.current += 1;
+      setSuccess((prev) => ({ ...prev, export: null }));
     });
 
   const handleExport = () =>
     runAction('export', async () => {
+      const generationAtStart = docGenerationRef.current;
       // 'zip' is the only schemaVersion-stamped export format; the plain-'json' draft round-trip
       // carries no schemaVersion at all. Schema validation itself happens on import, not export,
       // for either format.
-      await resolvedAdapters.exportBundle(state.draft, 'zip');
+      const outcome = await resolvedAdapters.exportBundle(state.draft, 'zip');
+      if (docGenerationRef.current !== generationAtStart) {
+        // The document was replaced (e.g. an import completed) while this export was still
+        // in flight: the confirmation would describe a document that is no longer loaded.
+        return;
+      }
+      // Name the produced file only when the adapter reported one (the built-in adapter does);
+      // a host adapter that resolves void gets a generic confirmation — the builder never
+      // fabricates a filename the adapter did not actually produce.
+      return outcome?.filename ? ACTION_LABELS.exportSuccess(outcome.filename) : ACTION_LABELS.exportSuccessGeneric;
     });
+
+  const dismissExportSuccess = useCallback(() => {
+    setSuccess((prev) => ({ ...prev, export: null }));
+  }, []);
 
   const handleSave = () =>
     runAction('save', async () => {
@@ -399,6 +445,16 @@ export function WorkflowBuilder({
       setModel((m) => repositionAfter(m, nodeId, afterId));
     },
     [setModel],
+  );
+
+  // Guided mode's direct start-step chooser (issue #100): same repositionAfter/START_SENTINEL
+  // mutation the inspector's "Runs after: Start" option performs, just reached from a
+  // more discoverable entry point once the workflow has more than one node.
+  const onSelectStartStep = useCallback(
+    (nodeId: string) => {
+      onReposition(nodeId, START_SENTINEL);
+    },
+    [onReposition],
   );
 
   const onInsertOnEdge = useCallback(
@@ -683,6 +739,7 @@ export function WorkflowBuilder({
               activeIndex={activeGuidedIndex === -1 ? guidedStages.length - 1 : activeGuidedIndex}
               onStageAction={onGuidedStageAction}
             />
+            <StartStepChooser model={model} onSelectStart={onSelectStartStep} />
           </div>
         ) : null}
 
@@ -724,6 +781,23 @@ export function WorkflowBuilder({
       {activeError ? (
         <p className="workflow-builder__status workflow-builder__status--error" role="alert">
           {activeError}
+        </p>
+      ) : null}
+      {success.export ? (
+        <p
+          className="workflow-builder__status workflow-builder__status--success"
+          role="status"
+          data-testid="export-success"
+        >
+          <span>{success.export}</span>
+          <button
+            type="button"
+            className="wf-button wf-button--ghost wf-button--icon workflow-builder__status-dismiss"
+            aria-label={ACTION_LABELS.dismissExportSuccess}
+            onClick={dismissExportSuccess}
+          >
+            ×
+          </button>
         </p>
       ) : null}
     </div>
