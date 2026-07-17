@@ -18,8 +18,8 @@ import java.io.Serial;
  * {@link RunExecutionInterceptor#beforeLlmCall} (mid-step, as opposed to
  * {@link RunExecutionInterceptor#beforeMainExecution}), the exception propagates through the step's own failure
  * handling first, which is why that {@code STEP_FAILED} event for the in-flight step precedes {@code RUN_BLOCKED}.
- * The embedding application resolves the block (for example resume after a top-up, or cancel); any mapping to an
- * application status (such as a billing pause) is the embedder's concern.
+ * The embedding application resolves the block — for example once the vetoing condition no longer applies — or
+ * cancels the run; any mapping to an application-specific status is the embedder's concern.
  */
 public final class ExecutionBlockedException extends RuntimeException {
 
