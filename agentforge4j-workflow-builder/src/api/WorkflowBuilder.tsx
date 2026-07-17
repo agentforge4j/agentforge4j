@@ -699,6 +699,7 @@ export function WorkflowBuilder({
                 mode={builderMode}
                 onAddStep={(kind) => onAddStepFromLibrary(kind)}
                 defaultCollapsed={builderMode !== 'advanced'}
+                containerNarrow={isNarrow}
               />
             ) : null}
 

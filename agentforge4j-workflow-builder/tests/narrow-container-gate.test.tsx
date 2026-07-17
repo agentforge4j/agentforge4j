@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { act, render, screen } from '@testing-library/react';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { WorkflowBuilder } from '../src/api/WorkflowBuilder';
 import { ACTION_LABELS } from '../src/copy/workflow-terminology';
 import { NARROW_CONTAINER_BREAKPOINT_PX } from '../src/hooks/useNarrowContainerGate';
@@ -23,13 +23,16 @@ const allDisabled: BuilderCapabilities = {
 class ControllableResizeObserver {
   static instances: ControllableResizeObserver[] = [];
   private readonly callback: ResizeObserverCallback;
+  readonly targets: Element[] = [];
 
   constructor(callback: ResizeObserverCallback) {
     this.callback = callback;
     ControllableResizeObserver.instances.push(this);
   }
 
-  observe(): void {}
+  observe(target: Element): void {
+    this.targets.push(target);
+  }
   unobserve(): void {}
   disconnect(): void {}
 
@@ -39,6 +42,19 @@ class ControllableResizeObserver {
       this.callback([entry], this as unknown as ResizeObserver);
     });
   }
+}
+
+/**
+ * The gate's own observer is the one watching the builder ROOT element. React Flow also
+ * creates ResizeObservers internally (they land on this mock too since it replaces the
+ * global for the whole file), and the creation order between them is an implementation
+ * detail of effect timing — select by observed target, never by instance order.
+ */
+function gateObserver(): ControllableResizeObserver {
+  const root = screen.getByTestId('workflow-builder');
+  const found = ControllableResizeObserver.instances.find((instance) => instance.targets.includes(root));
+  expect(found, 'expected a ResizeObserver observing the builder root').toBeTruthy();
+  return found!;
 }
 
 let originalResizeObserver: typeof ResizeObserver;
@@ -63,7 +79,7 @@ describe('narrow container gate', () => {
 
   it('replaces the editor with the narrow-viewport notice below the breakpoint, mounting nothing else', () => {
     render(<WorkflowBuilder capabilities={allDisabled} />);
-    const observer = ControllableResizeObserver.instances[ControllableResizeObserver.instances.length - 1]!;
+    const observer = gateObserver();
 
     observer.fire(NARROW_CONTAINER_BREAKPOINT_PX - 1);
 
@@ -83,7 +99,7 @@ describe('narrow container gate', () => {
 
   it('renders the editor normally at and above the breakpoint', () => {
     render(<WorkflowBuilder capabilities={allDisabled} />);
-    const observer = ControllableResizeObserver.instances[ControllableResizeObserver.instances.length - 1]!;
+    const observer = gateObserver();
 
     observer.fire(NARROW_CONTAINER_BREAKPOINT_PX);
 
@@ -93,7 +109,7 @@ describe('narrow container gate', () => {
 
   it('re-shows the editor after growing back above the breakpoint', () => {
     render(<WorkflowBuilder capabilities={allDisabled} />);
-    const observer = ControllableResizeObserver.instances[ControllableResizeObserver.instances.length - 1]!;
+    const observer = gateObserver();
 
     observer.fire(320);
     expect(screen.getByTestId('workflow-builder-narrow-notice')).toBeInTheDocument();
@@ -103,9 +119,26 @@ describe('narrow container gate', () => {
     expect(screen.getByTestId('workflow-builder-canvas')).toBeInTheDocument();
   });
 
+  it('gates synchronously from the first layout measurement — a narrow container shows the notice before paint, no editor flash', () => {
+    // jsdom's getBoundingClientRect returns 0 by default (the "not yet measured" path the
+    // other tests exercise); give the root a real narrow width for this one.
+    const rectSpy = vi
+      .spyOn(window.HTMLElement.prototype, 'getBoundingClientRect')
+      .mockReturnValue({ width: 320, height: 600, top: 0, left: 0, bottom: 600, right: 320, x: 0, y: 0, toJSON: () => ({}) } as DOMRect);
+    try {
+      render(<WorkflowBuilder capabilities={allDisabled} />);
+
+      // The notice is there from the first paint, with no ResizeObserver callback fired.
+      expect(screen.getByTestId('workflow-builder-narrow-notice')).toBeInTheDocument();
+      expect(screen.queryByTestId('workflow-builder-canvas')).not.toBeInTheDocument();
+    } finally {
+      rectSpy.mockRestore();
+    }
+  });
+
   it('ignores a zero-width measurement (not yet laid out) rather than treating it as narrow', () => {
     render(<WorkflowBuilder capabilities={allDisabled} />);
-    const observer = ControllableResizeObserver.instances[ControllableResizeObserver.instances.length - 1]!;
+    const observer = gateObserver();
 
     observer.fire(0);
 

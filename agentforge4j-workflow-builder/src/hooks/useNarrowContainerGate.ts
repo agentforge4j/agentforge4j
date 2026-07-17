@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import type { RefObject } from 'react';
-import { useEffect, useRef, useState } from 'react';
+import { useLayoutEffect, useRef, useState } from 'react';
 
 /**
  * Width (px) below which the builder's own rendered container is too narrow to host
@@ -28,14 +28,27 @@ export interface NarrowContainerGate<T extends HTMLElement> {
  * A measured width of `0` (not yet laid out — e.g. before first paint, or in test
  * environments without real layout) is treated as "not yet measured" rather than
  * "narrow", so the gate never fires before the container has a real size.
+ *
+ * The first measurement is taken SYNCHRONOUSLY (layout effect + `getBoundingClientRect`)
+ * before the browser paints: without it, a phone would mount — and visibly flash — the
+ * full editor (React Flow initialization included) for a frame while waiting for the
+ * observer's first asynchronous callback, and the gated interactions would be briefly
+ * reachable. The observer then keeps the measurement current across resizes.
  */
 export function useNarrowContainerGate<T extends HTMLElement>(): NarrowContainerGate<T> {
   const containerRef = useRef<T | null>(null);
   const [isNarrow, setIsNarrow] = useState(false);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const node = containerRef.current;
-    if (!node || typeof ResizeObserver === 'undefined') {
+    if (!node) {
+      return undefined;
+    }
+    const initialWidth = node.getBoundingClientRect().width;
+    if (initialWidth > 0) {
+      setIsNarrow(initialWidth < NARROW_CONTAINER_BREAKPOINT_PX);
+    }
+    if (typeof ResizeObserver === 'undefined') {
       return undefined;
     }
     const observer = new ResizeObserver((entries) => {
