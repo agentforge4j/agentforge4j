@@ -152,9 +152,10 @@ export function WorkflowBuilder({
   const [pending, setPending] = useState<PendingState>({});
   const [errors, setErrors] = useState<ErrorState>({});
   const [insertOnEdgeId, setInsertOnEdgeId] = useState<string | null>(null);
-  // One-shot "reveal this field" request handed to StepConfigPanel — see the guided checklist's
-  // "Require approval" action below (case 2 of onGuidedStageAction).
-  const [focusField, setFocusField] = useState<'transition' | null>(null);
+  // One-shot "move focus into the panel" request handed to StepConfigPanel — 'transition' is set
+  // by the guided checklist's "Require approval" action (case 2 of onGuidedStageAction below);
+  // 'panel' is set by focusIssue (the validation popover's "Fix" action) below.
+  const [focusField, setFocusField] = useState<'transition' | 'panel' | null>(null);
   const onFocusFieldHandled = useCallback(() => setFocusField(null), []);
   const skipDraftSync = useRef(false);
   const serializeGuardWarnedRef = useRef(false);
@@ -448,6 +449,10 @@ export function WorkflowBuilder({
       const node = model.nodes.find((n) => n.backendStepId === stepId);
       if (node) {
         setSelectedId(node.id);
+        // Move focus into the inspector once it opens — "Fix" is reached from the validation
+        // popover, which force-moves keyboard focus into itself on open; without this, closing it
+        // drops focus to document.body instead of following the step it just opened.
+        setFocusField('panel');
       }
     },
     [model.nodes, setSelectedId],

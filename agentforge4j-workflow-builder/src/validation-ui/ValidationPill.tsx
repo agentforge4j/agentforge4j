@@ -43,12 +43,14 @@ export function ValidationPill({
   const anchorRef = useRef<HTMLDivElement>(null);
   const popoverRef = useRef<HTMLDivElement>(null);
   const toggleButtonRef = useRef<HTMLButtonElement>(null);
-  // Whether the *next* close should restore focus to the toggle button. Defaults to true (the
-  // Escape and × paths establish no new focus target, so restoring is correct there) and is set
-  // to false just before any close path that has already moved focus somewhere the user chose —
-  // an outside click (browser focuses the clicked element) or "Fix" (focus should follow the
-  // inspector it opens) — so the focus-management effect below never overrides that with the
-  // toggle button instead. Read by the first effect below, reset by the third.
+  // Whether the *next* close should restore focus to the toggle button. Defaults to true (the ×
+  // path establishes no new focus target, so restoring is correct there), is computed from focus
+  // containment for Escape (see the keydown handler below — a user may have Tabbed elsewhere while
+  // the popover stayed open), and is set to false just before any close path that has already
+  // moved focus somewhere the user chose — an outside click (browser focuses the clicked element)
+  // or "Fix" (focus follows the inspector it opens) — so the focus-management effect below never
+  // overrides that with the toggle button instead. Read by the first effect below, reset by the
+  // third.
   const restoreFocusOnCloseRef = useRef(true);
   const totalIssues = clientIssues.length + serverIssues.length;
   const looksGood = totalIssues === 0;
@@ -66,7 +68,13 @@ export function ValidationPill({
         // inspector's own Escape handler — for the same event, regardless of mount order, so one
         // Escape press dismisses only this popover and never reaches the inspector beneath it.
         event.stopPropagation();
-        restoreFocusOnCloseRef.current = true;
+        // Only restore focus to the toggle button if it is still inside the popover at this
+        // moment. A keyboard user can Tab out of the popover to some other control while it stays
+        // open (nothing but a pointer click closes it early) and then press Escape out of habit —
+        // restoring unconditionally would steal focus back from that other control.
+        restoreFocusOnCloseRef.current = Boolean(
+          popoverRef.current && document.activeElement && popoverRef.current.contains(document.activeElement),
+        );
         setOpen(false);
       }
     };
@@ -202,8 +210,9 @@ export function ValidationPill({
                   clientIssues={clientIssues}
                   serverIssues={serverIssues}
                   onFix={(stepId) => {
-                    // Focus is about to follow the step this opens in the inspector — don't have
-                    // the close effect steal it back to the toggle button.
+                    // `onFix` (WorkflowBuilder's `focusIssue`) selects the step and requests
+                    // `focusField: 'panel'`, which moves focus into the inspector once it opens —
+                    // don't have the close effect steal it back to the toggle button.
                     restoreFocusOnCloseRef.current = false;
                     onFix(stepId);
                     setOpen(false);

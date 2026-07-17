@@ -40,13 +40,15 @@ export type StepConfigPanelProps = {
   /** Reposition the selected node to run after `afterId` (or START_SENTINEL). */
   onReposition?: (nodeId: string, afterId: string) => void;
   /**
-   * One-shot request to reveal and focus a specific field on the currently selected node, even if
-   * its containing section is collapsed by default for the current mode. Currently only
-   * `'transition'` is supported — wired from the guided-mode checklist's "Require approval" action
-   * (`WorkflowBuilder`'s `onGuidedStageAction`), mirroring how the "Add input" stage already jumps
-   * to and reveals the input step rather than silently mutating data for the user.
+   * One-shot request to move focus somewhere inside the panel once it opens for the currently
+   * selected node. `'transition'` reveals and focuses the Approval field, even if its containing
+   * section is collapsed by default for the current mode — wired from the guided-mode checklist's
+   * "Require approval" action (`WorkflowBuilder`'s `onGuidedStageAction`), mirroring how the "Add
+   * input" stage already jumps to and reveals the input step rather than silently mutating data
+   * for the user. `'panel'` focuses the panel container itself with no specific field target —
+   * wired from the validation popover's "Fix" action, whose issues can point at any field.
    */
-  focusField?: 'transition' | null;
+  focusField?: 'transition' | 'panel' | null;
   /** Called once the requested `focusField` has been applied (or determined inapplicable), so the
    * caller can clear the one-shot request. */
   onFocusFieldHandled?: () => void;
@@ -106,6 +108,7 @@ export function StepConfigPanel({
   const hasAgentCatalog = Boolean(agentCatalog && agentCatalog.length > 0);
   const transitionSelectRef = useRef<HTMLSelectElement>(null);
   const behaviorDetailsRef = useRef<HTMLDetailsElement>(null);
+  const panelRef = useRef<HTMLElement>(null);
   // Sticky memory that the Behavior section was force-opened by a `focusField` reveal request, so
   // it stays open once `focusField` itself is cleared (a one-shot signal — see below) rather than
   // snapping back closed on the very next render.
@@ -145,7 +148,21 @@ export function StepConfigPanel({
   }, [selectedId]);
 
   useEffect(() => {
-    if (focusField !== 'transition' || !node || !selectedId) {
+    if (!focusField) {
+      return;
+    }
+    if (!node || !selectedId) {
+      // No node is selected to apply the request to (e.g. a future caller sets the one-shot
+      // without also selecting a node) — clear it now so it cannot linger and unexpectedly fire
+      // against whatever node is selected next.
+      onFocusFieldHandled?.();
+      return;
+    }
+    if (focusField === 'panel') {
+      // No specific field target — a validation issue can point at any field on any node kind, so
+      // the panel container itself (tabIndex={-1} below) is the focus target.
+      panelRef.current?.focus();
+      onFocusFieldHandled?.();
       return;
     }
     if (node.kind !== 'AI_STEP' && node.kind !== 'REUSE_WORKFLOW') {
@@ -199,6 +216,8 @@ export function StepConfigPanel({
     <>
       <div className="wf-inspector__backdrop" role="presentation" onClick={onClose} />
       <aside
+        ref={panelRef}
+        tabIndex={-1}
         className="wf-panel wf-inspector wf-inspector--open"
         role="dialog"
         aria-label={title}

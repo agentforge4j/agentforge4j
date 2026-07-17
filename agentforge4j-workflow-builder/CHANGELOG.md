@@ -35,6 +35,10 @@ and this package adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   focus target.
 - Pressing Escape while the validation popover is open now dismisses only the popover, even when a
   step inspector panel is open underneath it, instead of also closing the inspector.
+- Activating "Fix" on a validation issue now moves focus into the step inspector it opens, instead
+  of leaving it on the document body once the popover (which held it) unmounts.
+- Pressing Escape after focus has already moved away from the open validation popover (e.g. via
+  Tab to another control) no longer steals it back to the pill toggle button on close.
 
 ## [0.5.0] - 2026-07-12
 

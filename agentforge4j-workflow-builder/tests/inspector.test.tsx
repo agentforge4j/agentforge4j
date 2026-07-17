@@ -142,6 +142,49 @@ describe('StepConfigPanel focusField ("Add approval" guided stage discoverabilit
     expect(onFocusFieldHandled).toHaveBeenCalledTimes(1);
   });
 
+  it('focuses the panel container itself when focusField is "panel" (no specific field target)', () => {
+    const { model, aiNode } = modelWithAiStep();
+    const onFocusFieldHandled = vi.fn();
+
+    render(
+      <StepConfigPanel
+        model={model}
+        selectedId={aiNode.id}
+        mode="guided"
+        onClose={() => {}}
+        onDelete={() => {}}
+        onUpdateNodeData={() => {}}
+        focusField="panel"
+        onFocusFieldHandled={onFocusFieldHandled}
+      />,
+    );
+
+    expect(screen.getByTestId('workflow-builder-inspector-panel')).toHaveFocus();
+    // No specific field is revealed for a plain panel-focus request — Behavior stays collapsed.
+    expect(screen.getByTestId('workflow-builder-inspector-behaviour-section')).not.toHaveAttribute('open');
+    expect(onFocusFieldHandled).toHaveBeenCalledTimes(1);
+  });
+
+  it('clears a pending focusField request without acting when no node is selected', () => {
+    const onFocusFieldHandled = vi.fn();
+
+    render(
+      <StepConfigPanel
+        model={createInitialCanvasModel()}
+        selectedId={null}
+        mode="guided"
+        onClose={() => {}}
+        onDelete={() => {}}
+        onUpdateNodeData={() => {}}
+        focusField="transition"
+        onFocusFieldHandled={onFocusFieldHandled}
+      />,
+    );
+
+    expect(screen.queryByTestId('workflow-builder-inspector-panel')).not.toBeInTheDocument();
+    expect(onFocusFieldHandled).toHaveBeenCalledTimes(1);
+  });
+
   it('leaves the Behavior section collapsed in guided mode when no field focus is requested (baseline)', () => {
     const { model, aiNode } = modelWithAiStep();
 

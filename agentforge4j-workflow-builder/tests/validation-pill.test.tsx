@@ -170,4 +170,62 @@ describe('ValidationPill popover occlusion fix', () => {
     expect(inspector).toBeInTheDocument();
     expect(screen.getByRole('dialog', { name: NODE_LABELS.AI_STEP })).toBeInTheDocument();
   });
+
+  it('moves focus into the step inspector when "Fix" is activated, instead of leaving it on document.body', async () => {
+    const user = userEvent.setup();
+    const { container } = render(<WorkflowBuilder capabilities={allDisabled} />);
+
+    // Add an AI step (left with a blank agentRef) so validation carries a step-level issue tagged
+    // with that step's id — the workflow-level id/name issues alone only ever render disabled Fix
+    // buttons (no stepId to jump to).
+    await user.click(screen.getAllByRole('button', { name: NODE_LABELS.AI_STEP })[0]!);
+    const aiInspector = await screen.findByRole('dialog', { name: NODE_LABELS.AI_STEP });
+    await user.click(within(aiInspector).getByRole('button', { name: ACTION_LABELS.configureStepClose }));
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog', { name: NODE_LABELS.AI_STEP })).not.toBeInTheDocument();
+    });
+
+    const pillButton = container.querySelector('.wf-validation-pill') as HTMLButtonElement;
+    await user.click(pillButton);
+    const popover = await screen.findByRole('dialog', { name: ACTION_LABELS.clientValidation });
+    const fixButton = within(popover)
+      .getAllByRole('button', { name: ACTION_LABELS.fixIssue })
+      .find((button) => !button.hasAttribute('disabled'));
+    expect(fixButton).toBeTruthy();
+
+    await user.click(fixButton!);
+
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog', { name: ACTION_LABELS.clientValidation })).not.toBeInTheDocument();
+    });
+    const inspector = await screen.findByRole('dialog', { name: NODE_LABELS.AI_STEP });
+    // The popover's close effect must not steal focus back to the pill toggle: it follows the
+    // step Fix just opened instead.
+    expect(inspector).toHaveFocus();
+    expect(pillButton).not.toHaveFocus();
+  });
+
+  it('does not steal focus back to the toggle button on Escape when focus already moved elsewhere while the popover stayed open', async () => {
+    const user = userEvent.setup();
+    const { container } = render(<WorkflowBuilder capabilities={allDisabled} />);
+
+    const pillButton = container.querySelector('.wf-validation-pill') as HTMLButtonElement;
+    await user.click(pillButton);
+    await screen.findByRole('dialog', { name: ACTION_LABELS.clientValidation });
+
+    // Simulate a keyboard user Tab-ing out of the still-open popover to another control (only a
+    // pointer/outside click closes it early — Tab alone does not), then pressing Escape out of
+    // habit while focus sits elsewhere.
+    const nameInput = screen.getByRole('textbox', { name: ACTION_LABELS.workflowNameLabel });
+    nameInput.focus();
+    expect(nameInput).toHaveFocus();
+
+    await user.keyboard('{Escape}');
+
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog', { name: ACTION_LABELS.clientValidation })).not.toBeInTheDocument();
+    });
+    expect(nameInput).toHaveFocus();
+    expect(pillButton).not.toHaveFocus();
+  });
 });
