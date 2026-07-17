@@ -11,6 +11,25 @@ and this package adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Full undo/redo for every meaningful builder change: adding/deleting steps, step config edits,
+  connections (create/delete/reroute), reordering a step in the chain, workflow name/id, and
+  start-step changes. Toolbar Undo/Redo controls (each disabled when its stack is empty) plus
+  Ctrl+Z / Ctrl+Shift+Z (or Ctrl+Y) keyboard shortcuts; shortcuts are skipped while a text field
+  has focus so the browser's native per-field undo is unaffected while typing.
+  Rapid-fire changes to the same field or the same node's config (typing, quick edits) coalesce
+  into one undo step instead of one per keystroke; dragging a step coalesces into a single step
+  for the whole drag gesture, sealed on release.
+- A confirmation dialog before a step is actually deleted — a lightweight, complementary safety
+  net alongside undo/redo for a first-time user who has not yet discovered Ctrl+Z. Shared by
+  every deletion trigger: the inspector's "Delete step" button and the canvas Delete/Backspace
+  key both resolve the same confirmation gate.
+- Dragging an ordinary next-step edge's endpoint to a different step ("rerouting") now actually
+  updates the workflow — previously `edgesReconnectable` was enabled but no `onReconnect` handler
+  was wired, so the drag had no effect and the edge snapped back to its original endpoints.
+  Decision-branch case edges still snap back on purpose: their routing lives in the decision
+  step's case configuration (edited in the inspector), not in the drawn edge, so rerouting the
+  drawing would silently diverge from what the exported workflow actually does.
+
 - A persistent "Start" marker on whichever node is the workflow's current start step,
   visible on the canvas in both Guided and Advanced mode — previously the entry point could
   only be inferred from graph position, or was labeled explicitly in Advanced mode's
@@ -34,6 +53,11 @@ and this package adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   adapter resolving `void` (every existing implementation remains valid) gets a generic
   confirmation instead of a fabricated filename. The confirmation is cleared automatically when a different
   workflow is imported, so it never describes a stale document.
+
+### Changed
+- Importing/loading a new workflow document now resets undo/redo history instead of leaving it
+  in place — undoing after an import returns to the freshly-imported document, not back into a
+  different, previously open workflow's shape.
 
 ### Fixed
 - The step-library panel no longer silently clips step types with no scroll affordance:

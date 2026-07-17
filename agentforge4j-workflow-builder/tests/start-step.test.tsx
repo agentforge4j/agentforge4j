@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 // SPDX-License-Identifier: Apache-2.0
 
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { WorkflowBuilder } from '../src/api/WorkflowBuilder';
@@ -141,6 +141,10 @@ describe('Start-step marker and chooser in Guided mode (default)', () => {
     expect(await screen.findByTestId('guided-start-step-select')).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: ACTION_LABELS.deleteStep }));
+    // Deletion is gated behind a confirmation dialog (see undo/redo + delete-confirmation
+    // support) — it must be confirmed before the node, and with it the chooser, is gone.
+    const confirmDialog = await screen.findByRole('alertdialog');
+    await user.click(within(confirmDialog).getByRole('button', { name: ACTION_LABELS.confirmDeleteConfirm }));
     expect(screen.queryByTestId('guided-start-step-select')).not.toBeInTheDocument();
   });
 });
