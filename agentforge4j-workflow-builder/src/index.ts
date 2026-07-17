@@ -5,6 +5,7 @@ export type {
   BuilderActions,
   BuilderAdapters,
   BuilderCapabilities,
+  BuilderPersistenceAdapter,
   BuilderTheme,
   ExportFormat,
   ExportOutcome,

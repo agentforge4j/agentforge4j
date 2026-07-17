@@ -11,6 +11,32 @@ and this package adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Draft-recovery persistence: the canvas model is now saved automatically (debounced) as it is
+  edited and silently restored — with a small dismissible "Restored your previous session"
+  notice offering a "Start fresh" action — after a page reload, so in-progress work is no longer
+  discarded on refresh. Falls back to a built-in `localStorage`-backed implementation when no
+  `persistence` prop is supplied; the package never makes a network call for this either way, so
+  the standalone builder never requires a server. Host applications can supply their own
+  `persistence: { load, save, clear }` adapter on `WorkflowBuilderProps` to replace or intercept
+  local persistence and save drafts to their own backend instead — `clear` is required (not
+  optional): the built-in "Start fresh" action always offers itself once a draft has been
+  restored, and its contract is to permanently discard the saved draft, so every adapter must
+  be able to honor that. Restoring on mount is skipped whenever the host passes
+  `initialWorkflow` (even a metadata-only seed) and in read-only mode. A pending debounced save
+  is flushed when the builder unmounts (covering SPA navigation), and a best-effort
+  `beforeunload` warning covers the remaining page-unload gap. The built-in adapter stores a
+  version-stamped envelope and keeps a single global draft slot per origin; on load, a version
+  mismatch or a draft failing the full structural gate — which validates every field the editor
+  dereferences (per-kind step fields, decision cases, artifact definitions, edges), not just
+  container presence — is discarded fail-closed (never restored into code that cannot render
+  it): built-in drafts are cleared, host-adapter drafts are skipped without touching the host's
+  storage. Adapter writes are serialized in invocation order, so "Start fresh" cannot be
+  silently undone by a debounced save that was still in flight when the draft was cleared. This
+  mechanism is independent of `capabilities.save`, which continues to gate a separate host
+  backend-persistence action. The editing posture (`mode`) is treated as mount-stable for
+  persistence purposes: whether drafts restore and save is decided by the mode supplied at
+  mount, and changing `mode` at runtime is not a supported transition — remount the builder
+  to change posture.
 - Narrow-container gate: below a supported container width (`47.9375rem` / 767px, matching
   the narrow-viewport breakpoint already used elsewhere in `workflow-builder.css`), the builder
   no longer renders the editor at all. It takes a synchronous first measurement before paint
