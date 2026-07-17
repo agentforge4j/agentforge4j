@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
+import { Link } from 'react-router-dom';
 import { USE_COPY } from '@/copy/use';
 
 export default function UsePage() {
@@ -12,6 +13,13 @@ export default function UsePage() {
         Group ID: <code className="rounded bg-bg-elevated px-1.5 py-0.5">{USE_COPY.groupId}</code>
       </p>
       <p className="mt-2 max-w-2xl text-sm text-fg-muted">{USE_COPY.notPublished}</p>
+      <p className="mt-2 max-w-2xl text-sm text-fg-muted">
+        See the{' '}
+        <Link to="/releases" className="text-brand underline">
+          Releases
+        </Link>{' '}
+        page for what's shipped so far.
+      </p>
 
       <h2 className="mt-10 text-lg font-semibold text-fg">What you need</h2>
       <ul className="mt-3 list-disc space-y-2 pl-5 text-sm text-fg">

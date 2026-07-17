@@ -35,6 +35,15 @@ and this package adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   confirmation instead of a fabricated filename. The confirmation is cleared automatically when a different
   workflow is imported, so it never describes a stale document.
 
+### Fixed
+- The step-library panel no longer silently clips step types with no scroll affordance:
+  `.wf-palette__panel` (between `.wf-palette`, which has the real definite height, and
+  `.wf-palette__body`, which declares `flex: 1; overflow: auto;`) had no `display: flex`
+  of its own, so it sized to its content instead of filling `.wf-palette` and the flex
+  sizing on `.wf-palette__body` never took effect. `.wf-palette__panel` is now a column
+  flex container that fills its parent, and `.wf-palette__body` gained `min-height: 0` so
+  it can shrink below its content size and actually scroll.
+
 ## [0.5.0] - 2026-07-12
 
 (0.4.0's changes are folded in below — that version was merged to `main` but never published to
