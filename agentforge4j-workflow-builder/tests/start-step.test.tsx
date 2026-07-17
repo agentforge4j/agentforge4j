@@ -7,7 +7,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { WorkflowBuilder } from '../src/api/WorkflowBuilder';
 import { WorkflowCanvas } from '../src/canvas/WorkflowCanvas';
 import { StartStepChooser } from '../src/guided/StartStepChooser';
-import type { BuilderCapabilities } from '../src/api/types';
+import type { BuilderCapabilities, WorkflowDefinition } from '../src/api/types';
 import { ACTION_LABELS, NODE_LABELS } from '../src/copy/workflow-terminology';
 import type { CanvasModel, CanvasNode } from '../src/model/canvasModel';
 import { defaultNodeData } from '../src/model/mapper';
@@ -141,6 +141,56 @@ describe('Start-step marker and chooser in Guided mode (default)', () => {
     expect(await screen.findByTestId('guided-start-step-select')).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: ACTION_LABELS.deleteStep }));
+    expect(screen.queryByTestId('guided-start-step-select')).not.toBeInTheDocument();
+  });
+});
+
+/** Two plain linear steps: enough nodes for the chooser to render in Guided edit mode. */
+function twoStepWorkflow(): WorkflowDefinition {
+  return {
+    id: 'wf-two',
+    name: 'Two steps',
+    description: '',
+    steps: [
+      { stepId: 'ask1', name: 'First', behaviourType: 'INPUT', config: { artifactId: 'a1', transition: 'AUTO' } },
+      { stepId: 'ask2', name: 'Second', behaviourType: 'INPUT', config: { artifactId: 'a1', transition: 'AUTO' } },
+    ],
+    artifacts: { a1: { id: 'a1', items: [] } },
+  };
+}
+
+describe('Start-step chooser scoping (Guided edit mode only)', () => {
+  beforeEach(() => {
+    window.localStorage.clear();
+  });
+
+  it('does not render in Advanced mode, only once Guided is active', async () => {
+    const user = userEvent.setup();
+    render(<WorkflowBuilder capabilities={allDisabled} initialWorkflow={twoStepWorkflow()} />);
+
+    // A seeded document defaults to Advanced mode: no chooser, despite two eligible nodes.
+    expect(screen.queryByTestId('guided-start-step-select')).not.toBeInTheDocument();
+
+    await user.click(screen.getByTestId('workflow-builder-mode-guided'));
+    expect(await screen.findByTestId('guided-start-step-select')).toBeInTheDocument();
+
+    await user.click(screen.getByTestId('workflow-builder-mode-advanced'));
+    expect(screen.queryByTestId('guided-start-step-select')).not.toBeInTheDocument();
+  });
+
+  it('never renders in read-only mode, even when the stored builder mode is Guided', async () => {
+    const user = userEvent.setup();
+    // Persist Guided mode the way a user would: by selecting it in an edit session.
+    const { unmount } = render(
+      <WorkflowBuilder capabilities={allDisabled} initialWorkflow={twoStepWorkflow()} />,
+    );
+    await user.click(screen.getByTestId('workflow-builder-mode-guided'));
+    expect(await screen.findByTestId('guided-start-step-select')).toBeInTheDocument();
+    unmount();
+
+    render(
+      <WorkflowBuilder capabilities={allDisabled} mode="readOnly" initialWorkflow={twoStepWorkflow()} />,
+    );
     expect(screen.queryByTestId('guided-start-step-select')).not.toBeInTheDocument();
   });
 });

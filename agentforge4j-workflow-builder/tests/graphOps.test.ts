@@ -226,6 +226,15 @@ describe('startStepCandidateIds', () => {
     const m = model([node('A')], [], 'A');
     expect(startStepCandidateIds(m)).toEqual([]);
   });
+
+  it('offers a second-root node whose only possible move is Start (inspector shows disabled/noTargets)', () => {
+    // X has no linear predecessor and is not the start; the only other node is a
+    // DECISION, so the inspector's "Runs after" selector has nothing to offer and is
+    // disabled — but making X the start step is still a real, valid reassignment.
+    const m = model([node('D', 'DECISION'), node('X')], [], 'D');
+    expect(getRunsAfterState(m, 'X')).toEqual({ kind: 'disabled', reason: 'noTargets' });
+    expect(startStepCandidateIds(m)).toEqual(['X']);
+  });
 });
 
 describe('spliceEdgeWithNode / isInsertableEdge', () => {

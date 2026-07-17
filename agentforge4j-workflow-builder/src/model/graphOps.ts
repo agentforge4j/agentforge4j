@@ -233,14 +233,23 @@ export function getRunsAfterState(model: CanvasModel, nodeId: string | null): Ru
  * selector performs when its Start option is chosen. Reuses
  * {@link getRunsAfterState}'s own eligibility rules (top-level, not
  * DECISION/RETRY, not branch-owned, at most one linear predecessor/successor)
- * rather than duplicating them, so a node that cannot be repositioned from the
- * inspector is never offered as a start-step candidate either. Excludes the
- * current start node itself.
+ * rather than duplicating them. Excludes the current start node itself.
+ *
+ * One deliberate widening beyond the inspector: a node whose selector is
+ * `disabled`/`noTargets` is still offered here. Inside this function that state
+ * is only reachable for a second-root node (no linear predecessor, not the
+ * current start) with no move target other than Start — and moving exactly that
+ * node to Start is still a real, valid operation ({@link repositionAfter} makes
+ * it the start step and links the old start after it), even though the
+ * inspector, having no *other* position to offer, stays disabled.
  */
 export function startStepCandidateIds(model: CanvasModel): string[] {
   return model.nodes
     .filter((n) => n.id !== model.startNodeId)
-    .filter((n) => getRunsAfterState(model, n.id).kind === 'editable')
+    .filter((n) => {
+      const state = getRunsAfterState(model, n.id);
+      return state.kind === 'editable' || (state.kind === 'disabled' && state.reason === 'noTargets');
+    })
     .map((n) => n.id);
 }
 
