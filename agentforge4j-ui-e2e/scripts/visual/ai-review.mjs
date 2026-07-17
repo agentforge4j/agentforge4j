@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 //
-// Optional, provider-neutral AI visual review (Day 2 Task 5). Disabled by default — never runs
+// Optional, provider-neutral AI visual review. Disabled by default — never runs
 // unless AI_VISUAL_REVIEW_ENABLED=true AND an API key is present. Never invoked by CI (see
 // `.github/workflows/visual-freshness.yml`, which reads only the committed attestation file and
 // never calls this script) — this is a local-only, explicitly-invoked developer step.
@@ -15,9 +15,9 @@
 // Configuration (all via environment variables, all optional except the API key):
 //   AI_VISUAL_REVIEW_ENABLED       'true' to opt in. Default: disabled.
 //   AI_VISUAL_REVIEW_API_KEY       Required to actually call a model. No key => this script exits
-//                                  0 having reviewed nothing, and says so — never a hard failure,
-//                                  per Day 2's "lack of local AI credentials must not block
-//                                  completion" requirement.
+//                                  0 having reviewed nothing, and says so — never a hard failure:
+//                                  lack of local AI credentials must not block the rest of the
+//                                  visual-review flow.
 //   AI_VISUAL_REVIEW_BASE_URL      Default: https://api.openai.com/v1
 //   AI_VISUAL_REVIEW_MODEL         Default: gpt-4o-mini — today's cheapest OpenAI vision-capable
 //                                  model at the time this was written. Model names and pricing
@@ -51,7 +51,7 @@ function loadCaptureRecords() {
     .map((name) => JSON.parse(readFileSync(join(RESULTS_DIR, name), 'utf8')));
 }
 
-/** Only what the model is allowed to judge (Day 2 Task 5): clipping, overlap, broken alignment,
+/** Only what the model is allowed to judge: clipping, overlap, broken alignment,
  *  unreadable text, poor responsive adaptation, missing content, distorted images, incorrect
  *  spacing, visual inconsistency, controls hidden by overlays, blank/broken rendering — nothing
  *  about backend functionality, architecture, or feature completeness. */

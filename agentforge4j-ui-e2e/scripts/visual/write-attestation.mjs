@@ -2,9 +2,8 @@
 //
 // Writes the small, COMMITTED attestation file CI reads to warn about stale/missing visual-review
 // evidence (`.github/workflows/visual-freshness.yml` / `check-freshness.mjs`) — deliberately just
-// metadata (commit, manifest hash, timestamp, pass/fail), never the full report or any screenshot,
-// per Day 2 Task 6's "prefer a small attestation file ... rather than committing the full report
-// or screenshots" guidance. The full `visual-output/report.md`/`report.json` stay local-only
+// metadata (commit, manifest hash, timestamp, pass/fail), never the full report or any
+// screenshot. The full `visual-output/report.md`/`report.json` stay local-only
 // (gitignored) or become a CI artifact upload — see the module README for the exact policy.
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';

@@ -62,7 +62,7 @@ test.describe('footer navigation', () => {
   });
 
   // Regression guard: /releases previously existed only as a route with no nav/footer entry
-  // anywhere, reachable only by typing the URL directly (Day 1 review finding).
+  // anywhere, reachable only by typing the URL directly.
   test('Releases is reachable from the footer', async ({ page }) => {
     await page.goto('/');
     await page.locator('footer').getByRole('link', { name: 'Releases' }).click();
