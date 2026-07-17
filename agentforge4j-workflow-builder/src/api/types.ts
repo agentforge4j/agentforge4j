@@ -135,10 +135,26 @@ export interface BuilderTheme {
   variables?: Record<string, string>;
 }
 
+/**
+ * Optional outcome descriptor an {@link BuilderAdapters.exportBundle} implementation may
+ * resolve. When `filename` is present, the builder's on-page export confirmation names that
+ * exact file; resolving `void` shows a generic confirmation instead — the builder never
+ * fabricates a filename the adapter did not actually produce.
+ */
+export interface ExportOutcome {
+  /** The filename the export actually produced, for the user-facing confirmation. */
+  filename?: string;
+}
+
 export interface BuilderAdapters {
   validateWorkflow?: (draft: WorkflowDefinition) => ValidationResult | Promise<ValidationResult>;
   importBundle?: () => Promise<WorkflowDefinition>;
-  exportBundle?: (draft: WorkflowDefinition, format: ExportFormat) => Promise<void>;
+  /**
+   * Export the draft. May resolve an {@link ExportOutcome} naming the produced file (the
+   * built-in adapter does); a plain `void` resolution keeps the confirmation generic.
+   * Existing `Promise<void>` implementations remain valid.
+   */
+  exportBundle?: (draft: WorkflowDefinition, format: ExportFormat) => Promise<void | ExportOutcome>;
 }
 
 export interface BuilderActions {

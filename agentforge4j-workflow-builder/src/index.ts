@@ -8,6 +8,7 @@ export type {
   BuilderPersistenceAdapter,
   BuilderTheme,
   ExportFormat,
+  ExportOutcome,
   ValidationIssue,
   ValidationResult,
   WorkflowBuilderMode,

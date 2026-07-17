@@ -1,0 +1,38 @@
+name: Visual Review Freshness
+
+# Non-blocking warning-only check: warns when the committed visual-review attestation
+# (agentforge4j-ui-e2e/visual-evidence/attestation.json) is missing, stale relative to the current
+# commit or the manifest, or reports unresolved visual failures. Never calls an AI model and never
+# launches a browser — a fast git/filesystem comparison only
+# (agentforge4j-ui-e2e/scripts/visual/check-freshness.mjs), with zero npm dependencies, so this
+# workflow needs no install step at all.
+#
+# Deliberately always non-blocking here (warnings only, exit 0) — this is NOT a required status
+# check, so a missing/stale attestation never blocks a PR. A stricter, blocking equivalent
+# (`npm run visual:release-check`) exists for a maintainer to run manually ahead of a real 0.1.0
+# publish; that command is not wired into CI at all.
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  freshness:
+    name: freshness
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Check visual-review evidence freshness (warn-only)
+        working-directory: agentforge4j-ui-e2e
+        run: node scripts/visual/check-freshness.mjs

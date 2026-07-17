@@ -161,6 +161,12 @@ export const ACTION_LABELS = {
   draftRestoredBody: 'We found unsaved changes from your last visit and restored them automatically.',
   startFresh: 'Start fresh',
   dismissDraftRestored: 'Dismiss',
+  startStepField: 'Start step',
+  startStepHint: 'This is the step the workflow runs first. Pick a different step to change it.',
+  startStepPlaceholder: 'Choose a start step',
+  exportSuccess: (filename: string) => `Exported ${filename}`,
+  exportSuccessGeneric: 'Export complete.',
+  dismissExportSuccess: 'Dismiss export confirmation',
 };
 
 export const PALETTE_GROUP_LABELS = {
@@ -194,6 +200,7 @@ export const NODE_STATUS_LABELS = {
   valid: 'Ready',
   hasIssues: 'Needs attention',
   needsApproval: 'Approval required',
+  startStep: 'Start',
 };
 
 export const ISSUE_REWRITES: Record<string, string> = {

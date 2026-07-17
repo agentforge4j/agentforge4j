@@ -14,6 +14,7 @@ export interface SiteRoute {
 export const SITE_ROUTES: readonly SiteRoute[] = [
   { path: '/', heading: 'AgentForge4j' },
   { path: '/docs', heading: 'Documentation' },
+  { path: '/api', heading: 'API reference' },
   { path: '/use', heading: 'Get started' },
   { path: '/catalogue', heading: 'Workflow catalogue' },
   { path: '/architecture', heading: 'Architecture' },
@@ -36,10 +37,10 @@ export interface NamedViewport {
   readonly height: number;
 }
 
-/** Representative sizes per the Day 1 review brief plus the final-review addendum (mobile
- *  landscape, tablet landscape at the `lg:` breakpoint boundary, and a large desktop) — still not
- *  an exhaustive device matrix, but wide enough to catch orientation- and breakpoint-specific
- *  overflow that the original three portrait/laptop sizes couldn't. */
+/** Representative sizes (mobile portrait/landscape, tablet portrait, tablet landscape at the
+ *  `lg:` breakpoint boundary, laptop, and a large desktop) — not an exhaustive device matrix,
+ *  but wide enough to catch orientation- and breakpoint-specific overflow that three
+ *  portrait/laptop sizes alone couldn't. */
 export const VIEWPORTS: readonly NamedViewport[] = [
   { name: 'mobile', width: 390, height: 844 },
   { name: 'mobile-landscape', width: 844, height: 390 },

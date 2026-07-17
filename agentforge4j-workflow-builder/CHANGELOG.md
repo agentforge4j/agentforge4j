@@ -37,6 +37,29 @@ and this package adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   persistence purposes: whether drafts restore and save is decided by the mode supplied at
   mount, and changing `mode` at runtime is not a supported transition — remount the builder
   to change posture.
+- A persistent "Start" marker on whichever node is the workflow's current start step,
+  visible on the canvas in both Guided and Advanced mode — previously the entry point could
+  only be inferred from graph position, or was labeled explicitly in Advanced mode's
+  starter hint alone.
+- A direct "Start step" chooser in Guided mode, shown once a workflow has more than one
+  node and at least one other node is eligible to become the start step: a dropdown
+  listing every eligible node, reassigning the start step on selection.
+  It reuses the same reposition-to-Start mechanism as the inspector's existing "Runs after:
+  Start" option rather than a parallel one; the eligibility rules (top-level, not
+  DECISION/RETRY, not branch-owned, at most one linear predecessor/successor) are shared
+  with that selector too. The chooser also offers a node with no other valid position (a
+  second, detached root) even though the inspector's own selector stays disabled for it —
+  moving such a node to Start still detaches it from whatever it was chained to, the same
+  way every other reposition target already does.
+- A visible, persisted on-page confirmation after a successful Export, showing the produced
+  filename (e.g. "Exported my-workflow.workflow.zip") and a dismiss control — replacing the
+  previous silent revert to the button's resting state with no other feedback. The filename
+  comes from the adapter itself: `BuilderAdapters.exportBundle` may now resolve an
+  `ExportOutcome` (`{ filename?: string }`) — the built-in adapter does, as does the package's
+  public `exportBundle` helper (which now delegates to the same implementation) — while a host
+  adapter resolving `void` (every existing implementation remains valid) gets a generic
+  confirmation instead of a fabricated filename. The confirmation is cleared automatically when a different
+  workflow is imported, so it never describes a stale document.
 
 ### Fixed
 - The step-library panel no longer silently clips step types with no scroll affordance:

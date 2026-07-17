@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
-import { Check, TriangleAlert, UserRoundCheck } from 'lucide-react';
+import { Check, Flag, TriangleAlert, UserRoundCheck } from 'lucide-react';
 import { NODE_STATUS_LABELS } from '../../copy/workflow-terminology';
 import type { NodeKind } from '../../model/nodeKinds';
 import { NODE_KIND_META } from '../../model/nodeKinds';
@@ -16,9 +16,22 @@ export type NodeChromeProps = {
   selected?: boolean;
   issueCount?: number;
   needsApproval?: boolean;
+  /** True when this node is the workflow's current start step; renders a persistent
+   * "Start" marker in the header so the entry point is identifiable from graph
+   * position alone in every mode (not just Advanced mode's transient starter hint). */
+  isStart?: boolean;
   children?: ReactNode;
   className?: string;
 };
+
+function StartBadge() {
+  return (
+    <span className="wf-node-badge wf-node-badge--start" data-testid="node-start-badge">
+      <Flag className="wf-node-badge__icon" aria-hidden size={12} strokeWidth={2.25} />
+      {NODE_STATUS_LABELS.startStep}
+    </span>
+  );
+}
 
 function StatusBadge({ issueCount, needsApproval }: { issueCount: number; needsApproval: boolean }) {
   if (issueCount > 0) {
@@ -53,6 +66,7 @@ export function NodeChrome({
   selected,
   issueCount = 0,
   needsApproval = false,
+  isStart = false,
   children,
   className,
 }: NodeChromeProps) {
@@ -82,6 +96,7 @@ export function NodeChrome({
           <p className="wf-node__kind">{meta.label}</p>
           <p className="wf-node__title">{title}</p>
         </div>
+        {isStart ? <StartBadge /> : null}
       </div>
       <div className="wf-node__body">
         <p className="wf-node__subtitle">{subtitle}</p>

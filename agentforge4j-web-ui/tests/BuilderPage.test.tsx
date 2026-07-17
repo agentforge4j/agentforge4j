@@ -17,6 +17,13 @@ describe('BuilderPage', () => {
     expect(screen.getByTestId('workflow-builder')).toBeInTheDocument();
   });
 
+  test('provides a visually-hidden page heading — the canvas has no other document structure until a step is selected', () => {
+    renderPage();
+    const heading = screen.getByRole('heading', { level: 1, name: BUILDER_COPY.heading });
+    expect(heading).toBeInTheDocument();
+    expect(heading).toHaveClass('sr-only');
+  });
+
   test('does not render a read-only badge (editable mode)', () => {
     renderPage();
     expect(screen.queryByTestId('workflow-builder-readonly-badge')).not.toBeInTheDocument();

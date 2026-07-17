@@ -157,6 +157,9 @@
   bottom: var(--builder-space-sm);
   z-index: 2;
   pointer-events: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--builder-space-sm);
 }
 
 .workflow-builder__guided > * {
@@ -258,6 +261,22 @@
 
 .workflow-builder__status--error {
   color: var(--builder-color-danger);
+}
+
+.workflow-builder__status--success {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--builder-space-sm);
+  color: var(--builder-color-success);
+  font-weight: 600;
+}
+
+.workflow-builder__status-dismiss {
+  flex-shrink: 0;
+  color: inherit;
+  min-width: 1.5rem;
+  min-height: 1.5rem;
 }
 
 .workflow-builder__banner {
@@ -526,6 +545,12 @@
 .wf-node-badge--attention {
   background: color-mix(in srgb, var(--afb-warn) 14%, transparent);
   color: var(--afb-warn);
+}
+
+.wf-node-badge--start {
+  flex-shrink: 0;
+  background: color-mix(in srgb, var(--afb-accent) 16%, transparent);
+  color: var(--afb-accent);
 }
 
 .wf-node__branches {
@@ -1217,6 +1242,33 @@
      when the stage list is taller than the available space, e.g. a short mobile viewport. */
   max-height: 100%;
   overflow-y: auto;
+  /* Allow this flex item to shrink below its content height so the start-step chooser sibling
+     (added below it in the same flex column) always has room, rather than the stepper's own
+     max-height:100% claiming the whole column first. */
+  min-height: 0;
+}
+
+/* Guided-mode start-step chooser: same dark-chrome card language as .wf-guided-stepper, since
+   both live in the same overlay column above the canvas. Only rendered once the workflow has
+   more than one node (see StartStepChooser). */
+.wf-guided-start {
+  flex-shrink: 0;
+  background: var(--afb-chrome-bg);
+  border: 1px solid var(--afb-chrome-border);
+  border-radius: var(--afb-radius-sm);
+  box-shadow: 0 8px 24px color-mix(in srgb, var(--afb-navy-900) 45%, transparent);
+  color: var(--afb-chrome-text);
+  font-family: var(--afb-font-sans);
+  padding: var(--builder-space-sm) var(--builder-space-md);
+}
+
+.wf-guided-start .wf-field {
+  margin-bottom: 0;
+}
+
+.wf-guided-start .wf-field__label,
+.wf-guided-start .wf-field__hint {
+  color: var(--afb-chrome-muted);
 }
 
 .wf-guided-stepper .wf-button--secondary {

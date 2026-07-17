@@ -19,6 +19,14 @@ export default function BuilderPage() {
   // this route. min-h-0 on both levels keeps the flex chain from re-expanding to content size.
   return (
     <div className="flex h-full min-h-0 w-full flex-col">
+      {/* Visually hidden, not omitted: the canvas has no other document heading at all until a
+          step is selected (the inspector panel provides its own), so a screen reader / other
+          assistive tech landing on this route with nothing selected had no page-level heading to
+          announce. sr-only provides that structure without any visible/layout change — same
+          "keep the DOM contract, hide the pixels" technique already used elsewhere in this UI
+          (see visual/checks.ts's clipped-panel check, which explicitly excludes exactly this
+          pattern from being flagged as a clipping defect). */}
+      <h1 className="sr-only">{BUILDER_COPY.heading}</h1>
       <p className="shrink-0 px-4 py-2 text-sm text-fg-muted">{BUILDER_COPY.accessibilityNote}</p>
       {/* overflow-y-auto: on viewports shorter than the builder's own CSS min-height (24rem)
           the builder cannot fit the remaining space — this pane then scrolls internally

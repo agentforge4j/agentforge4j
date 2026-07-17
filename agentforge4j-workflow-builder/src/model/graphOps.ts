@@ -228,6 +228,43 @@ export function getRunsAfterState(model: CanvasModel, nodeId: string | null): Ru
 }
 
 /**
+ * Nodes eligible to become the workflow's start step via {@link repositionAfter}
+ * with {@link START_SENTINEL} — the same operation the inspector's "Runs after"
+ * selector performs when its Start option is chosen. Reuses
+ * {@link getRunsAfterState}'s own eligibility rules (top-level, not
+ * DECISION/RETRY, not branch-owned, at most one linear predecessor/successor)
+ * rather than duplicating them. Excludes the current start node itself.
+ *
+ * One deliberate widening beyond the inspector: a node whose selector is
+ * `disabled`/`noTargets` is still offered here. Inside this function that state
+ * is only reachable for a second-root node (no linear predecessor, not the
+ * current start) with no move target other than Start — and moving exactly that
+ * node to Start is still a real, valid operation ({@link repositionAfter} makes
+ * it the start step and links the old start after it), even though the
+ * inspector, having no *other* position to offer, stays disabled.
+ *
+ * This widening also makes {@link repositionAfter}'s ordinary detach behavior
+ * reachable for a second-root candidate for the first time: if that candidate
+ * already has a linear successor of its own (a detached chain, e.g. `X → Y`,
+ * built independently of the main scope), moving X to Start severs `X → Y` with
+ * no gap closure — X had no predecessor to reconnect to Y, so Y (and anything
+ * chained after it) is left without an incoming linear edge. This matches
+ * {@link repositionAfter}'s existing single-node-move semantics for every other
+ * reposition target (the inspector's own non-Start targets detach the same way);
+ * it is not special-cased here. A severed chain surfaces via the unreachable-step
+ * validation warning, not silently.
+ */
+export function startStepCandidateIds(model: CanvasModel): string[] {
+  return model.nodes
+    .filter((n) => n.id !== model.startNodeId)
+    .filter((n) => {
+      const state = getRunsAfterState(model, n.id);
+      return state.kind === 'editable' || (state.kind === 'disabled' && state.reason === 'noTargets');
+    })
+    .map((n) => n.id);
+}
+
+/**
  * Repair every node-data reference to a just-deleted node id so the model never
  * carries a dangling reference into serialization (where the strict
  * `serializeStepExecutable` throws `Branch target missing`). Pure model→model;
