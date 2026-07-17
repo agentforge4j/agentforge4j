@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, test } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import BuilderPage from '@/pages/BuilderPage';
+import { BUILDER_COPY } from '@/copy/builder';
 
 function renderPage() {
   return render(<BuilderPage />);
@@ -33,6 +34,20 @@ describe('BuilderPage', () => {
     expect(screen.queryByTestId('workflow-builder-run')).not.toBeInTheDocument();
     expect(screen.queryByTestId('workflow-builder-publish')).not.toBeInTheDocument();
     expect(screen.queryByTestId('workflow-builder-ai')).not.toBeInTheDocument();
+  });
+
+  test('hands the shell-provided height down a definite flex chain to the builder', () => {
+    // The builder sizes itself with height:100%, so the page must pass <main>'s definite
+    // height through: a full-height flex column whose non-builder content cannot grow and
+    // whose builder pane is the flex-1/min-h-0 remainder. overflow-y-auto is the short-
+    // viewport fail-safe: when the builder's own CSS min-height (24rem) exceeds the
+    // remaining space, the pane scrolls instead of spilling past the viewport-pinned shell.
+    const { container } = renderPage();
+    const root = container.firstElementChild as HTMLElement;
+    expect(root).toHaveClass('flex', 'flex-col', 'h-full');
+    expect(screen.getByText(BUILDER_COPY.accessibilityNote)).toHaveClass('shrink-0');
+    const builderPane = screen.getByTestId('workflow-builder').parentElement as HTMLElement;
+    expect(builderPane).toHaveClass('flex-1', 'min-h-0', 'overflow-y-auto');
   });
 
   test('structural guard: does not pass a custom adapters prop to WorkflowBuilder', () => {

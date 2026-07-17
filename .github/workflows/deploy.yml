@@ -36,7 +36,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           # Full history + tags: the version-pinned Javadoc surfaces are built from each release
           # tag (build-javadoc-versions.mjs resolves refs/tags/v<version>), which a shallow,
@@ -44,7 +44,7 @@ jobs:
           fetch-depth: 0
 
       - name: Configure Pages
-        uses: actions/configure-pages@v5
+        uses: actions/configure-pages@v6
 
       - name: Set up Node
         uses: actions/setup-node@v6
@@ -87,7 +87,7 @@ jobs:
         run: node scripts/assemble-site.mjs
 
       - name: Upload the Pages artifact
-        uses: actions/upload-pages-artifact@v3
+        uses: actions/upload-pages-artifact@v5
         with:
           path: agentforge4j-docs/_site
 
@@ -101,4 +101,4 @@ jobs:
     steps:
       - name: Deploy to GitHub Pages
         id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5
