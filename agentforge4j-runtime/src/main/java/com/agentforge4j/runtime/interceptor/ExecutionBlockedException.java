@@ -13,9 +13,9 @@ import java.io.Serial;
  *
  * <p>Lifecycle on a block: the runtime records a neutral
  * {@link com.agentforge4j.core.workflow.event.WorkflowEventType#RUN_BLOCKED} audit event and leaves the run status
- * unchanged (non-terminal) — it performs no terminal transition. The embedding application resolves the block (for
- * example resume after a top-up, or cancel); any mapping to an application status (such as a billing pause) is the
- * embedder's concern.
+ * unchanged (non-terminal) — it performs no terminal transition. The embedding application resolves the block — for
+ * example once the vetoing condition no longer applies — or cancels the run; any mapping to an application-specific
+ * status is the embedder's concern.
  */
 public final class ExecutionBlockedException extends RuntimeException {
 

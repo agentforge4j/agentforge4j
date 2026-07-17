@@ -4,8 +4,8 @@ package com.agentforge4j.runtime.execution.loop;
 import com.agentforge4j.core.command.CompleteCommand;
 import com.agentforge4j.core.command.LlmCommand;
 import com.agentforge4j.core.workflow.context.ContextMapping;
+import com.agentforge4j.runtime.LoopEvaluationContext;
 import com.agentforge4j.runtime.LoopEvaluator;
-import com.agentforge4j.runtime.execution.ExecutionContext;
 import com.agentforge4j.runtime.llm.AgentInvocationResult;
 import com.agentforge4j.runtime.llm.AgentInvoker;
 import lombok.RequiredArgsConstructor;
@@ -26,14 +26,14 @@ public final class DefaultLoopEvaluator implements LoopEvaluator {
   @Override
   public boolean shouldTerminate(String evaluatorAgentId,
       int iteration,
-      ExecutionContext executionContext) {
+      LoopEvaluationContext context) {
     AgentInvocationResult result = agentInvoker.invoke(
         evaluatorAgentId,
         ContextMapping.none(),
-        executionContext.getState(),
+        context.state(),
         null,
         null,
-        executionContext.getActiveWorkflowId());
+        context.activeWorkflowId());
     for (LlmCommand command : result.commands()) {
       if (command instanceof CompleteCommand) {
         return true;

@@ -903,7 +903,7 @@ public final class DefaultWorkflowRuntime implements WorkflowRuntime {
   /**
    * Records a neutral {@link WorkflowEventType#RUN_BLOCKED} audit event when a registered interceptor vetoes the run,
    * and marks the run {@link WorkflowStatus#PAUSED} so the embedding application can resume it via {@code continueRun}
-   * once the block is resolved (credits restored, policy lifted) — or cancel it. The {@code RUN_BLOCKED} event is the
+   * once the block is resolved (the vetoing condition lifted) — or cancel it. The {@code RUN_BLOCKED} event is the
    * durable record of <em>why</em> the run paused; OSS performs no terminal transition and sets no {@link RunFailure}.
    */
   private void recordRunBlocked(WorkflowState state, String stepId) {
