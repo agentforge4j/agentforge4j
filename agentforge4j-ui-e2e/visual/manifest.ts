@@ -62,6 +62,18 @@ export interface AcceptedFinding {
 export const CORE_VIEWPORTS = ['mobile', 'tablet-portrait', 'laptop'] as const;
 export const FULL_VIEWPORTS = VIEWPORTS.map((v) => v.name);
 
+/** Viewports at which the builder EDITOR itself is expected to render at all. The builder's
+ *  narrow-container gate (PR #110, `useNarrowContainerGate`) replaces the whole editor with a
+ *  desktop-required notice when its own rendered container is narrower than 767px — and on
+ *  `/builder` the container spans the full viewport width (BuilderPage.tsx applies no horizontal
+ *  padding), so of the named viewports only `mobile` (390px) falls under the gate
+ *  (`mobile-landscape` is 844px and `tablet-portrait` 768px — both clear the breakpoint).
+ *  Editor-state entries below use these sets; the gated-mobile contract itself is certified by
+ *  the dedicated `builder-narrow-gate` entry instead, which asserts the notice IS there and the
+ *  editor is NOT. */
+export const EDITOR_CORE_VIEWPORTS = CORE_VIEWPORTS.filter((name) => name !== 'mobile');
+export const EDITOR_FULL_VIEWPORTS = FULL_VIEWPORTS.filter((name) => name !== 'mobile');
+
 export interface VisualManifestEntry {
   /** Stable id — becomes the screenshot filename stem and the report row key. Never reused once
    *  a report has referenced it; rename means a new id, not an edit in place. */
@@ -242,7 +254,10 @@ export const VISUAL_MANIFEST: readonly VisualManifestEntry[] = [
     surface: 'builder',
     target: { kind: 'builder-route', path: '/builder' },
     stateName: 'Builder — empty workflow (default load)',
-    viewports: FULL_VIEWPORTS,
+    // EDITOR viewports only: at `mobile` the narrow-container gate replaces the editor outright —
+    // that contract (notice present, canvas absent) is certified by `builder-narrow-gate` below,
+    // not by exempting a canvas-visibility failure here.
+    viewports: EDITOR_FULL_VIEWPORTS,
     mustBeVisible: ['[data-testid="workflow-builder"]', '[data-testid="workflow-builder-canvas"]'],
     mustNotBeVisible: [
       '[data-testid="workflow-builder-save"]',
@@ -258,11 +273,49 @@ export const VISUAL_MANIFEST: readonly VisualManifestEntry[] = [
       + 'contract (DOM omission, not disabled buttons).',
   },
   {
+    id: 'builder-narrow-gate',
+    surface: 'builder',
+    target: { kind: 'builder-route', path: '/builder' },
+    stateName: 'Builder — narrow-container gate (desktop-required notice replaces the editor)',
+    viewports: ['mobile'],
+    // The gate's contract is DOM replacement, not visual covering: the notice is the ONLY builder
+    // content, and the editor (canvas, toolbar mode toggle, palette — including the mobile
+    // bottom-sheet trigger the pre-gate mobile experience used) is genuinely absent from the DOM,
+    // matching the package's own DOM-absence unit tests (narrow-container-gate.test.tsx). This is
+    // what makes the old mobile defect families (#97/#98/#103: off-screen palette sheet,
+    // obstructed name field, checklist overlay) unreachable rather than individually patched.
+    mustBeVisible: [
+      '[data-testid="workflow-builder"]',
+      '[data-testid="workflow-builder-narrow-notice"]',
+    ],
+    mustNotBeVisible: [
+      '[data-testid="workflow-builder-canvas"]',
+      '[data-testid="workflow-builder-mode-guided"]',
+      '[data-testid="workflow-builder-palette-mobile-trigger"]',
+      '[data-testid="workflow-builder-import"]',
+      '[data-testid="workflow-builder-export"]',
+    ],
+    aiReviewEnabled: true,
+    releaseImportance: 'blocker',
+    fullPage: false,
+    notes: 'The intended mobile experience after PR #110: workflow building is desktop/tablet-only '
+      + 'for 0.1.0, so below the builder\'s 767px container breakpoint the whole editor is replaced '
+      + 'by a notice directing the user to a larger screen. Editor-state entries deliberately '
+      + 'exclude `mobile` (see EDITOR_*_VIEWPORTS) — this entry is mobile\'s builder coverage.',
+  },
+  {
     id: 'builder-populated',
     surface: 'builder',
     target: { kind: 'builder-route', path: '/builder' },
     stateName: 'Builder — representative populated workflow',
-    viewports: CORE_VIEWPORTS,
+    // EDITOR viewports only (no `mobile`): the narrow-container gate replaces the editor there,
+    // so this entry's palette interaction cannot run — mobile's builder coverage is
+    // `builder-narrow-gate` above. This also retires the former mobile-only `canvas-node-count`
+    // exemption (off-screen palette sheet / page-chrome click interception, confirmed 2026-07-16):
+    // those defects are in the pre-gate mobile editor, which no longer mounts below the
+    // breakpoint — keeping the exemption would have silently absorbed any FUTURE mobile failure
+    // under a cause that no longer exists.
+    viewports: EDITOR_CORE_VIEWPORTS,
     interaction: 'addSampleSteps',
     mustBeVisible: ['[data-testid="workflow-builder-canvas"]'],
     minNodeCount: 2,
@@ -272,78 +325,36 @@ export const VISUAL_MANIFEST: readonly VisualManifestEntry[] = [
     knownIssues: [99, 104],
     notes: 'Adds an AI_STEP and a DECISION step via the palette. Known clipping risk in the '
       + 'step-library panel tracked as #99/#104 (fixed in unmerged PR #108, not yet live).',
-    // Confirmed real, new (2026-07-16 dogfooding, via direct DOM inspection — not guessed), NOT
-    // yet filed as an issue — a separate Builder-remediation triage item, deliberately out of THIS
-    // release gate's scope. Scoped to mobile only, and to (at least) two distinct confirmed
-    // causes: (1) `.wf-palette__mobile-sheet` opens upward from its trigger with
-    // `max-height: min(70vh, 28rem)` and `overflow: hidden` on itself — when the trigger sits low
-    // enough on a short viewport, the sheet, and every button in its first ("Common") group
-    // including AI_STEP, renders above y=0 with no scroll path back into view (its own
-    // `getBoundingClientRect()` measured `top: -88` against an 844px-tall viewport); (2) even a
-    // button that IS within the viewport's y-bounds (DECISION, lower in the sheet) can still be
-    // unclickable because other page chrome — the accessibility-note paragraph above the canvas,
-    // the fixed site header — visually overlaps and intercepts the click. `addStep` cannot deliver
-    // the clicks it needs to reach 2 nodes for either reason, so `canvas-node-count` correctly
-    // fails here — not silently.
-    acceptedFindings: [
-      {
-        checkId: 'canvas-node-count',
-        viewports: ['mobile'],
-        reason: 'The mobile palette sheet (.wf-palette__mobile-sheet) can render above the top of '
-          + 'the viewport with no reachable scroll path, and separately other page chrome (the '
-          + "accessibility note, the site header) can overlap and intercept a button that IS "
-          + 'within the viewport — both confirmed via direct inspection, not assumed. A real '
-          + "Builder defect, pending triage, out of this .org release gate's scope.",
-      },
-    ],
   },
   {
     id: 'builder-inspector-selected',
     surface: 'builder',
     target: { kind: 'builder-route', path: '/builder' },
     stateName: 'Builder — selected-step inspector open',
-    viewports: CORE_VIEWPORTS,
+    // EDITOR viewports only (no `mobile`) — see builder-populated above. This retires BOTH former
+    // mobile-only exemptions (`canvas-node-count`: palette-unclickable defects;
+    // `must-be-visible-present`: the guided-mode stepper panel intercepting canvas pointer events,
+    // confirmed via Playwright trace): both lived in the pre-gate mobile editor, which no longer
+    // mounts below the breakpoint. The interception defect was only ever confirmed at `mobile`
+    // width; if it ever reproduces at a wider viewport it will fail UNEXEMPTED here — that is
+    // deliberate, per this manifest's never-widen-an-exemption rule.
+    viewports: EDITOR_CORE_VIEWPORTS,
     interaction: 'addStepAndSelectNode',
     mustBeVisible: ['[data-testid="workflow-builder-inspector-panel"]'],
     minNodeCount: 1,
     aiReviewEnabled: true,
     releaseImportance: 'blocker',
     fullPage: false,
-    // Two DISTINCT real, mobile-only Builder defect FAMILIES can each independently prevent this
-    // state, and each is scoped to exactly the check it actually causes — never widened to "the
-    // whole entry is fine on mobile":
-    //  1. `canvas-node-count` — the same mobile-palette-unclickable defects as `builder-populated`
-    //     above (off-screen sheet AND page-chrome overlap; this state's own setup also adds an
-    //     AI_STEP first).
-    //  2. `must-be-visible-present` — confirmed via Playwright trace: on a narrow viewport, the
-    //     guided-mode stepper panel (.workflow-builder__guided) intercepts pointer events over the
-    //     canvas, making a node genuinely unclickable even once one exists — the inspector never
-    //     opens. None of these are yet filed as GitHub issues; all are pending Builder-remediation
-    //     triage items, deliberately out of THIS release gate's scope.
-    acceptedFindings: [
-      {
-        checkId: 'canvas-node-count',
-        viewports: ['mobile'],
-        reason: 'Same mobile palette-unclickable defects as builder-populated — see that entry '
-          + 'for the confirmed technical detail.',
-      },
-      {
-        checkId: 'must-be-visible-present',
-        viewports: ['mobile'],
-        reason: 'Confirmed via Playwright trace: on a narrow viewport, the guided-mode stepper '
-          + 'panel (.workflow-builder__guided) intercepts pointer events over the canvas, making a '
-          + 'node genuinely unclickable — the inspector never opens. Real Builder defect, tracked '
-          + 'as a pending triage item (not yet filed as a GitHub issue), out of this .org release '
-          + "gate's scope pending owner decision on which remediation family it joins.",
-      },
-    ],
   },
   {
     id: 'builder-validation',
     surface: 'builder',
     target: { kind: 'builder-route', path: '/builder' },
     stateName: 'Builder — validation state (incomplete DECISION step)',
-    viewports: CORE_VIEWPORTS,
+    // EDITOR viewports only (no `mobile`) — see builder-populated above; the former mobile-only
+    // `canvas-node-count` exemption (DECISION button equally unreachable in the pre-gate mobile
+    // palette) is retired for the same reason.
+    viewports: EDITOR_CORE_VIEWPORTS,
     interaction: 'addUnconfiguredDecisionStep',
     minNodeCount: 1,
     aiReviewEnabled: true,
@@ -353,15 +364,6 @@ export const VISUAL_MANIFEST: readonly VisualManifestEntry[] = [
     notes: 'A DECISION step with no configured branches is expected to surface the validation '
       + 'pill/panel. Known reachability bug tracked as #95/#101 (popover renders behind an open '
       + 'inspector; fixed in unmerged PR #106, not yet live) may reproduce here.',
-    acceptedFindings: [
-      {
-        checkId: 'canvas-node-count',
-        viewports: ['mobile'],
-        reason: 'Same mobile palette-unclickable defects as builder-populated — see that entry '
-          + 'for the confirmed technical detail. The DECISION button sits in the Flow group, a '
-          + "different position than AI_STEP, but is confirmed equally unreachable here.",
-      },
-    ],
   },
   {
     id: 'builder-export-clicked',
