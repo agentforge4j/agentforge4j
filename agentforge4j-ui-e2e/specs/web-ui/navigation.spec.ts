@@ -5,8 +5,11 @@ import { expect, test } from '@playwright/test';
 test.describe('desktop navigation', () => {
   test.use({ viewport: { width: 1440, height: 900 } });
 
+  // Docs is deliberately excluded from this table: it is a real cross-artifact anchor
+  // (`external: true` in nav.ts), not a client-side route — clicking it performs a real browser
+  // navigation to /docs/, which this plain (un-assembled) SPA preview server has no directory for.
+  // See "the Docs nav link is a real anchor, not a client-side route" below instead.
   const PRIMARY_NAV_LINKS: ReadonlyArray<readonly [label: string, path: string]> = [
-    ['Docs', '/docs'],
     ['Catalogue', '/catalogue'],
     ['Builder', '/builder'],
     ['Architecture', '/architecture'],
@@ -20,6 +23,16 @@ test.describe('desktop navigation', () => {
       await expect(page).toHaveURL(new RegExp(`${path}$`));
     });
   }
+
+  // Regression guard for the /docs route-collision bug: the SPA used to own a client-side route at
+  // /docs (agentforge4j-web-ui/src/pages/DocsPage.tsx, removed) that intercepted every click before
+  // a real browser request for the composed Docusaurus artifact could ever happen. The nav entry
+  // must render as a plain anchor (a real navigation), never a client-side <Link>.
+  test('the Docs nav link is a real anchor targeting /docs/, not a client-side route', async ({ page }) => {
+    await page.goto('/');
+    const docsLink = page.getByRole('navigation', { name: 'Primary' }).getByRole('link', { name: 'Docs' });
+    await expect(docsLink).toHaveAttribute('href', '/docs/');
+  });
 
   test('the logo returns home from a non-home route', async ({ page }) => {
     await page.goto('/architecture');
