@@ -19,8 +19,7 @@ const allDisabled: BuilderCapabilities = {
 // tests/setup.ts installs a global no-op ResizeObserver (observe/unobserve/disconnect do
 // nothing) so unrelated tests never see a callback fire. This suite needs to actually
 // drive the callback with a synthetic entry, so it substitutes a controllable
-// mock for the duration of the file — same pattern responsive-shell.test.tsx uses to
-// locally override the global matchMedia default.
+// mock for the duration of the file, restoring the setup.ts default in afterEach.
 class ControllableResizeObserver {
   static instances: ControllableResizeObserver[] = [];
   private readonly callback: ResizeObserverCallback;

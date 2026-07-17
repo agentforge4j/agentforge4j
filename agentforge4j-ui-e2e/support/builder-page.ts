@@ -23,6 +23,7 @@ export const TID = {
   addCase: 'workflow-builder-inspector-add-case',
   removeCase: 'workflow-builder-inspector-remove-case',
   mobileTrigger: 'workflow-builder-palette-mobile-trigger',
+  narrowNotice: 'workflow-builder-narrow-notice',
   // 0.4.0 — read-only mode + step-connection UX seams.
   importButton: 'workflow-builder-import',
   exportButton: 'workflow-builder-export',
