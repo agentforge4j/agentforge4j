@@ -23,9 +23,12 @@ and this package adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   net alongside undo/redo for a first-time user who has not yet discovered Ctrl+Z. Shared by
   every deletion trigger: the inspector's "Delete step" button and the canvas Delete/Backspace
   key both resolve the same confirmation gate.
-- Dragging an existing edge's endpoint to a different step/handle ("rerouting") now actually
+- Dragging an ordinary next-step edge's endpoint to a different step ("rerouting") now actually
   updates the workflow — previously `edgesReconnectable` was enabled but no `onReconnect` handler
   was wired, so the drag had no effect and the edge snapped back to its original endpoints.
+  Decision-branch case edges still snap back on purpose: their routing lives in the decision
+  step's case configuration (edited in the inspector), not in the drawn edge, so rerouting the
+  drawing would silently diverge from what the exported workflow actually does.
 
 ### Changed
 - Importing/loading a new workflow document now resets undo/redo history instead of leaving it

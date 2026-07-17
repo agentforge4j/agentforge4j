@@ -57,12 +57,12 @@ export function useCanvasState(initialModel: CanvasModel, readOnly = false) {
   // document wholesale, so it resets undo/redo history rather than becoming an
   // undoable step back into a different workflow's shape.
   const setModelFromLoad = useCallback(
-    (next: CanvasModel | ((prev: CanvasModel) => CanvasModel)) => {
+    (next: CanvasModel) => {
       if (readOnly) {
         warnReadOnlyBlocked('load model');
         return;
       }
-      history.reset(typeof next === 'function' ? (next as (prev: CanvasModel) => CanvasModel)(history.present) : next);
+      history.reset(next);
       setIsDirty(false);
     },
     [history, readOnly],
@@ -170,6 +170,5 @@ export function useCanvasState(initialModel: CanvasModel, readOnly = false) {
     redo,
     canUndo: history.canUndo,
     canRedo: history.canRedo,
-    commitHistory: history.commit,
   };
 }

@@ -9,7 +9,7 @@ import { DecisionNode } from './nodes/DecisionNode';
 import { LoopNode } from './nodes/LoopNode';
 import { StepNode } from './nodes/StepNode';
 import type { CanvasModel, CanvasNode } from '../model/canvasModel';
-import { isInsertableEdge, pruneReferences } from '../model/graphOps';
+import { isInsertableEdge, isLinearEdge, pruneReferences } from '../model/graphOps';
 import type { NodeKind } from '../model/nodeKinds';
 import { NODE_KIND_META } from '../model/nodeKinds';
 import type { StepTransition } from '../api/types';
@@ -93,12 +93,21 @@ export function resolveNodeDeletionGate(
  * unit testing (React Flow's endpoint-drag wiring needs a real browser; see the note on
  * {@link resolveNodeDeletionGate}).
  *
+ * Only ordinary "runs next" edges ({@link isLinearEdge}) are reroutable, and only onto a plain
+ * (non-case) source handle: decision-branch case edges are node-data routing — the exported
+ * workflow reads `cases[].targetNodeId`, not `model.edges` — so rewriting one here would move
+ * the picture while the real routing (edited in the inspector) stayed put. Refusing makes the
+ * gesture snap back instead of silently diverging.
+ *
  * Rewrites ONLY the rerouted edge — every other edge keeps its exact model object, so no field
- * an untouched edge carries is ever rebuilt or dropped by an unrelated reroute. Returns `null`
- * (caller ignores the gesture) when the connection is incomplete, the edge no longer exists,
- * nothing changed, or — mirroring `onConnect`'s duplicate guard — an edge with the same
- * source/target/sourceHandle already exists, which would otherwise produce parallel duplicate
- * edges in the model.
+ * an untouched edge carries is ever rebuilt or dropped by an unrelated reroute. The rerouted
+ * edge's id is re-minted from its NEW endpoints (with a collision suffix, mirroring
+ * `linkEdge`): `onConnect` derives ids from endpoints and relies on ids matching them — a
+ * rerouted edge keeping its stale endpoint-derived id would let a later connect on the old
+ * endpoints mint a duplicate id. Returns `null` (caller ignores the gesture) when the
+ * connection is incomplete, the edge no longer exists, nothing changed, or — mirroring
+ * `onConnect`'s duplicate guard — an edge with the same source/target/sourceHandle already
+ * exists, which would otherwise produce parallel duplicate edges in the model.
  */
 export function applyEdgeReconnection(
   model: CanvasModel,
@@ -112,12 +121,10 @@ export function applyEdgeReconnection(
   if (!existing) {
     return null;
   }
-  const nextSourceHandle = connection.sourceHandle ?? null;
-  if (
-    existing.source === connection.source &&
-    existing.target === connection.target &&
-    (existing.sourceHandle ?? null) === nextSourceHandle
-  ) {
+  if (!isLinearEdge(existing) || (connection.sourceHandle ?? null) !== null) {
+    return null;
+  }
+  if (existing.source === connection.source && existing.target === connection.target) {
     return null;
   }
   const duplicate = model.edges.some(
@@ -125,15 +132,23 @@ export function applyEdgeReconnection(
       e.id !== oldEdgeId &&
       e.source === connection.source &&
       e.target === connection.target &&
-      (e.sourceHandle ?? '') === (connection.sourceHandle ?? ''),
+      (e.sourceHandle ?? null) === null,
   );
   if (duplicate) {
     return null;
   }
+  const otherIds = new Set(model.edges.filter((e) => e.id !== oldEdgeId).map((e) => e.id));
+  const base = `e-${connection.source}-${connection.target}-src`;
+  let id = base;
+  let suffix = 2;
+  while (otherIds.has(id)) {
+    id = `${base}-${suffix}`;
+    suffix += 1;
+  }
   return {
     ...model,
     edges: model.edges.map((e) =>
-      e.id === oldEdgeId ? { ...e, source: connection.source as string, target: connection.target as string, sourceHandle: nextSourceHandle } : e,
+      e.id === oldEdgeId ? { ...e, id, source: connection.source as string, target: connection.target as string, sourceHandle: null } : e,
     ),
   };
 }

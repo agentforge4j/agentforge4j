@@ -44,8 +44,6 @@ export interface UseHistoryStateResult<T> {
   canUndo: boolean;
   canRedo: boolean;
   set: (updater: T | ((prev: T) => T), options?: HistorySetOptions) => void;
-  /** Seals any in-progress coalescing group without changing `present`. */
-  commit: () => void;
   undo: () => void;
   redo: () => void;
   /** Replaces `present` and clears all history — for a full reload/import, not itself undoable. */
@@ -111,10 +109,6 @@ export function useHistoryState<T>(initial: T, options?: UseHistoryStateOptions)
     [debounceMs, maxHistory],
   );
 
-  const commit = useCallback(() => {
-    coalesceRef.current = null;
-  }, []);
-
   const undo = useCallback(() => {
     coalesceRef.current = null;
     setState((current) => {
@@ -155,7 +149,6 @@ export function useHistoryState<T>(initial: T, options?: UseHistoryStateOptions)
     canUndo: state.past.length > 0,
     canRedo: state.future.length > 0,
     set,
-    commit,
     undo,
     redo,
     reset,

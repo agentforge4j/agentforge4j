@@ -251,7 +251,15 @@ export function WorkflowBuilder({
       if (!root || !(event.target instanceof Node) || !root.contains(event.target)) {
         return;
       }
-      if (!(event.ctrlKey || event.metaKey) || isEditableTarget(event.target)) {
+      // Frozen while a delete confirmation is pending: the dialog's backdrop already blocks
+      // pointer interaction with the builder, and letting Ctrl+Z mutate the model here would
+      // make the dialog's answer apply to a different model than the one it asked about.
+      if (pendingDeletion !== null) {
+        return;
+      }
+      // altKey excluded: AltGr reports as Ctrl+Alt on Windows, and AltGr+Z/Y are bound to
+      // characters on several European layouts — those must never trigger undo/redo.
+      if (!(event.ctrlKey || event.metaKey) || event.altKey || isEditableTarget(event.target)) {
         return;
       }
       const key = event.key.toLowerCase();
@@ -265,7 +273,7 @@ export function WorkflowBuilder({
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [readOnly, undo, redo]);
+  }, [pendingDeletion, readOnly, undo, redo]);
 
   useEffect(() => {
     let cancelled = false;

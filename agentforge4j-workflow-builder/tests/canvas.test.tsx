@@ -117,11 +117,46 @@ describe('applyEdgeReconnection', () => {
     const next = applyEdgeReconnection(model, 'e-A-B', { source: 'A', target: 'C', sourceHandle: null });
 
     expect(next).not.toBeNull();
-    const rerouted = next!.edges.find((e) => e.id === 'e-A-B')!;
+    expect(next!.edges).toHaveLength(2);
+    const rerouted = next!.edges.find((e) => e.id !== 'e-B-C')!;
     expect(rerouted.source).toBe('A');
     expect(rerouted.target).toBe('C');
     // The untouched edge keeps its exact object identity — no field it carries is rebuilt.
     expect(next!.edges.find((e) => e.id === 'e-B-C')).toBe(model.edges[1]);
+  });
+
+  it('re-mints the rerouted edge id from its NEW endpoints so a later connect on the old endpoints cannot collide', () => {
+    const model = reconnectModel();
+    const next = applyEdgeReconnection(model, 'e-A-B', { source: 'A', target: 'C', sourceHandle: null });
+
+    // onConnect derives ids as e-{source}-{target}-{handle ?? 'src'} and relies on ids
+    // matching endpoints; a rerouted edge keeping id 'e-A-B' would let a later A->B
+    // connect mint a duplicate id.
+    const rerouted = next!.edges.find((e) => e.id !== 'e-B-C')!;
+    expect(rerouted.id).toBe('e-A-C-src');
+  });
+
+  it('suffixes the re-minted id when another edge already holds it', () => {
+    const model = reconnectModel();
+    // An unrelated edge already occupies the endpoint-derived id for A->C.
+    model.edges.push({ id: 'e-A-C-src', source: 'B', target: 'C', sourceHandle: null, label: null });
+    const next = applyEdgeReconnection(model, 'e-A-B', { source: 'A', target: 'C', sourceHandle: null });
+
+    expect(next).not.toBeNull();
+    const ids = next!.edges.map((e) => e.id);
+    expect(new Set(ids).size).toBe(ids.length); // all ids stay unique
+    expect(ids).toContain('e-A-C-src-2');
+  });
+
+  it('refuses to reroute a decision-branch (case-handle) edge — its routing is node data, not the drawn edge', () => {
+    const model = reconnectModel();
+    model.edges.push({ id: 'e-branch', source: 'A', target: 'B', sourceHandle: 'yes', label: 'Yes' });
+    expect(applyEdgeReconnection(model, 'e-branch', { source: 'A', target: 'C', sourceHandle: null })).toBeNull();
+  });
+
+  it('refuses a reconnect that would land on a case handle (would create a cosmetic branch edge)', () => {
+    const model = reconnectModel();
+    expect(applyEdgeReconnection(model, 'e-A-B', { source: 'A', target: 'C', sourceHandle: 'yes' })).toBeNull();
   });
 
   it('refuses a reconnect that would duplicate an existing edge (same source/target/handle), mirroring onConnect', () => {
