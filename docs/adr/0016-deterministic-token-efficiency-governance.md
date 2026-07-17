@@ -4,6 +4,9 @@
 
 Proposed
 
+Implementation is deferred beyond the 0.1.0 release: no part of this decision ships in 0.1.0,
+and the ADR remains Proposed until the implementation lands and is promoted separately.
+
 ## Date
 
 2026-07-10 (proposal date)
