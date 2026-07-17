@@ -7,8 +7,8 @@
 // (`agentforge4j-web-ui/dist`) into a reusable, standalone script serving any directory: a real,
 // on-disk-file-or-404 server, never SPA-fallback middleware (which would mask whether the site's
 // own `404.html`/routing actually works — the exact thing the composed site's hosting contract
-// (this module's README, "Hosting") cares about). Deliberately dependency-free (`node:http` only), matching this repo's other `scripts/
-// *.mjs` tooling.
+// (this module's README, "Hosting") cares about). Deliberately dependency-free (`node:http`
+// only), matching this repo's other `scripts/*.mjs` tooling.
 //
 // Usage: node scripts/visual/serve-assembled-site.mjs [--dir <path>] [--port <port>]
 //   --dir  Directory to serve (default: ../../agentforge4j-docs/_site relative to this file).
@@ -49,8 +49,8 @@ export function isWithin(root, candidate) {
 /** Resolves a request path to an on-disk file, the way GitHub Pages does: an exact file match, or
  *  (for a path with no extension, i.e. a client-side route) that directory's own `index.html` if
  *  one exists — never a blanket SPA-fallback to the site root, which is exactly what the composed
- *  site's hosting contract forbids for known routes. `dir` is the already-`resolve()`d site root; every
- *  candidate is resolved and re-checked against it before ever touching the filesystem, so a
+ *  site's hosting contract forbids for known routes. `dir` is the already-`resolve()`d site root;
+ *  every candidate is resolved and re-checked against it before ever touching the filesystem, so a
  *  request path containing `..` (or, on Windows, an absolute drive path) can never escape it —
  *  this is local dev tooling, but it still serves whatever a browser or another local process
  *  asks it for, so it must not become an arbitrary local file reader. */
