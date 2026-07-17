@@ -122,4 +122,45 @@ describe('WorkflowBuilder inspector delete', () => {
     // Selection/inspector stayed open — deletion never happened.
     expect(screen.getByRole('dialog', { name: NODE_LABELS.ASK_USER })).toBeInTheDocument();
   });
+
+  it('cancelling via Escape also keeps the step AND the inspector open (same semantics as the Cancel button)', async () => {
+    const user = userEvent.setup();
+    render(<WorkflowBuilder capabilities={allDisabled} />);
+    const canvas = screen.getByTestId('workflow-builder-canvas');
+
+    await user.click(screen.getByRole('button', { name: GUIDED_STAGE_LABELS.configureInput }));
+    expect(canvas.querySelectorAll('.react-flow__node')).toHaveLength(1);
+
+    await user.click(screen.getByRole('button', { name: ACTION_LABELS.deleteStep }));
+    const confirmDialog = await screen.findByRole('alertdialog');
+
+    // Dispatch on the focused element inside the dialog (as a real keypress would target it) —
+    // the dialog's capture-phase window listener must consume it before the inspector's
+    // bubble-phase Escape handler ever sees it.
+    fireEvent.keyDown(within(confirmDialog).getByRole('button', { name: ACTION_LABELS.confirmDeleteCancel }), {
+      key: 'Escape',
+    });
+
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
+    expect(canvas.querySelectorAll('.react-flow__node')).toHaveLength(1);
+    // The inspector must NOT have been closed by the same Escape press.
+    expect(screen.getByRole('dialog', { name: NODE_LABELS.ASK_USER })).toBeInTheDocument();
+  });
+
+  it('focuses Cancel (not Delete) when the confirmation opens, and restores focus on close', async () => {
+    const user = userEvent.setup();
+    render(<WorkflowBuilder capabilities={allDisabled} />);
+
+    await user.click(screen.getByRole('button', { name: GUIDED_STAGE_LABELS.configureInput }));
+    const deleteButton = screen.getByRole('button', { name: ACTION_LABELS.deleteStep });
+    await user.click(deleteButton);
+
+    const confirmDialog = await screen.findByRole('alertdialog');
+    // Initial focus on the least destructive action: a stray Enter must not delete.
+    expect(within(confirmDialog).getByRole('button', { name: ACTION_LABELS.confirmDeleteCancel })).toHaveFocus();
+
+    await user.click(within(confirmDialog).getByRole('button', { name: ACTION_LABELS.confirmDeleteCancel }));
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
+    expect(deleteButton).toHaveFocus();
+  });
 });

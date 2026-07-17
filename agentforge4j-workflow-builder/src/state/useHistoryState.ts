@@ -21,6 +21,15 @@ export interface HistorySetOptions {
    * on the call that ends a gesture (e.g. drag-release).
    */
   commit?: boolean;
+  /**
+   * Marks the coalescing group as a pointer gesture: subsequent same-key calls
+   * keep coalescing regardless of the debounce window, until the group is
+   * sealed by `commit` (or by any non-coalescing call). Use for drags — a drag
+   * held still mid-gesture emits no changes for arbitrarily long, and must not
+   * split into multiple undo entries when movement resumes. Typing keeps the
+   * windowed behavior (omit this) so distinct typing sessions stay separate.
+   */
+  sticky?: boolean;
 }
 
 export interface UseHistoryStateOptions {
@@ -64,17 +73,29 @@ export function useHistoryState<T>(initial: T, options?: UseHistoryStateOptions)
   const maxHistory = options?.maxHistory ?? DEFAULT_MAX_HISTORY;
 
   const [state, setState] = useState<HistorySnapshot<T>>({ past: [], present: initial, future: [] });
-  const coalesceRef = useRef<{ key: string; timestamp: number } | null>(null);
+  const coalesceRef = useRef<{ key: string; timestamp: number; sticky: boolean } | null>(null);
 
   const set = useCallback(
     (updater: T | ((prev: T) => T), setOptions?: HistorySetOptions) => {
+      // The coalescing decision (and the ref/time bookkeeping it depends on) happens
+      // OUTSIDE the setState updater: updaters must be pure — React StrictMode
+      // double-invokes them in development, and a ref mutated by the first invocation
+      // would make the second one mis-classify the very same call as coalescing,
+      // silently merging an edit into the previous undo entry.
+      const now = Date.now();
+      const key = setOptions?.coalesceKey;
+      const ongoing = coalesceRef.current;
+      const coalesces =
+        key !== undefined &&
+        ongoing !== null &&
+        ongoing.key === key &&
+        (ongoing.sticky || now - ongoing.timestamp <= debounceMs);
+
+      coalesceRef.current =
+        key !== undefined && !setOptions?.commit ? { key, timestamp: now, sticky: setOptions?.sticky === true } : null;
+
       setState((current) => {
         const nextPresent = typeof updater === 'function' ? (updater as (prev: T) => T)(current.present) : updater;
-
-        const now = Date.now();
-        const key = setOptions?.coalesceKey;
-        const ongoing = coalesceRef.current;
-        const coalesces = key !== undefined && ongoing !== null && ongoing.key === key && now - ongoing.timestamp <= debounceMs;
 
         let past = current.past;
         if (!coalesces) {
@@ -83,8 +104,6 @@ export function useHistoryState<T>(initial: T, options?: UseHistoryStateOptions)
             past = past.slice(past.length - maxHistory);
           }
         }
-
-        coalesceRef.current = key !== undefined && !setOptions?.commit ? { key, timestamp: now } : null;
 
         return { past, present: nextPresent, future: [] };
       });

@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { act, renderHook } from '@testing-library/react';
+import { StrictMode } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { useHistoryState } from '../src/state/useHistoryState';
 
@@ -117,6 +118,41 @@ describe('useHistoryState', () => {
     expect(result.current.present).toBe(100);
     expect(result.current.canUndo).toBe(false);
     expect(result.current.canRedo).toBe(false);
+  });
+
+  it('keeps coalescing a sticky (gesture) group across an arbitrarily long mid-gesture pause, until commit seals it', () => {
+    vi.useFakeTimers();
+    const { result } = renderHook(() => useHistoryState(0, { debounceMs: 50 }));
+    act(() => result.current.set(1, { coalesceKey: 'drag', sticky: true }));
+    // The pointer holds still far past the debounce window mid-drag...
+    act(() => vi.advanceTimersByTime(10_000));
+    act(() => result.current.set(2, { coalesceKey: 'drag', sticky: true }));
+    act(() => result.current.set(3, { coalesceKey: 'drag', sticky: true, commit: true })); // release
+
+    expect(result.current.present).toBe(3);
+    act(() => result.current.undo());
+    // The whole gesture — pause included — undoes as ONE step.
+    expect(result.current.present).toBe(0);
+    expect(result.current.canUndo).toBe(false);
+  });
+
+  it('coalescing boundaries survive StrictMode double-invocation (updater purity)', () => {
+    const { result } = renderHook(() => useHistoryState('', { debounceMs: 500 }), { wrapper: StrictMode });
+
+    // A distinct entry, then a coalescing session: under StrictMode, React invokes state
+    // updaters twice in development — an impure updater that stamps its own coalescing ref
+    // would classify the session's FIRST edit as already-coalescing on the second invocation
+    // and silently merge it into the distinct entry below.
+    act(() => result.current.set('structural'));
+    act(() => result.current.set('a', { coalesceKey: 'field' }));
+    act(() => result.current.set('ab', { coalesceKey: 'field' }));
+
+    expect(result.current.present).toBe('ab');
+    act(() => result.current.undo());
+    expect(result.current.present).toBe('structural'); // typing session undone as one step, NOT merged into 'structural'
+    act(() => result.current.undo());
+    expect(result.current.present).toBe('');
+    expect(result.current.canUndo).toBe(false);
   });
 
   it('caps retained history at maxHistory, dropping the oldest entries', () => {

@@ -56,11 +56,30 @@ describe('WorkflowBuilder undo/redo toolbar', () => {
       expect(canvas.querySelectorAll('.react-flow__node')).toHaveLength(2);
     });
 
-    fireEvent.keyDown(window, { key: 'z', ctrlKey: true });
+    // Dispatched on an element inside the builder root: the shortcut listener sits on
+    // window but only accepts keydowns originating within this builder instance.
+    fireEvent.keyDown(canvas, { key: 'z', ctrlKey: true });
     expect(canvas.querySelectorAll('.react-flow__node')).toHaveLength(1);
 
-    fireEvent.keyDown(window, { key: 'Z', ctrlKey: true, shiftKey: true });
+    fireEvent.keyDown(canvas, { key: 'Z', ctrlKey: true, shiftKey: true });
     expect(canvas.querySelectorAll('.react-flow__node')).toHaveLength(2);
+  });
+
+  it('ignores Ctrl+Z originating outside the builder root (host-page undo is not hijacked)', async () => {
+    const user = userEvent.setup();
+    render(<WorkflowBuilder capabilities={allDisabled} />);
+    const canvas = screen.getByTestId('workflow-builder-canvas');
+
+    await user.click(screen.getAllByRole('button', { name: NODE_LABELS.AI_STEP })[0]!);
+    await waitFor(() => {
+      expect(canvas.querySelectorAll('.react-flow__node')).toHaveLength(2);
+    });
+
+    // A keydown targeting the host page (document.body) must leave the builder's
+    // history untouched — an embedding host's own Ctrl+Z is not this builder's.
+    fireEvent.keyDown(document.body, { key: 'z', ctrlKey: true });
+    expect(canvas.querySelectorAll('.react-flow__node')).toHaveLength(2);
+    expect(screen.getByTestId('workflow-builder-undo')).not.toBeDisabled();
   });
 
   it('does not trigger app-level undo while typing in a text field (native field undo stays intact)', () => {

@@ -147,6 +147,9 @@ export function WorkflowBuilder({
   const [errors, setErrors] = useState<ErrorState>({});
   const [insertOnEdgeId, setInsertOnEdgeId] = useState<string | null>(null);
   const skipDraftSync = useRef(false);
+  // Root element ref used to scope the window-level undo/redo shortcuts to keydowns that
+  // originate inside this builder instance (see the keyboard effect below).
+  const rootRef = useRef<HTMLDivElement>(null);
   const serializeGuardWarnedRef = useRef(false);
 
   const initialCanvas = useMemo(
@@ -187,6 +190,10 @@ export function WorkflowBuilder({
                 return found ? found.data.name?.trim() || NODE_KIND_META[found.kind].label : undefined;
               })()
             : undefined;
+        // A newer request supersedes any still-pending one: settle the old promise as
+        // "not confirmed" so its .then chain runs (and does nothing) instead of leaking
+        // an eternally-pending promise whose deletion silently never resolves.
+        pendingDeletionResolve.current?.(false);
         pendingDeletionResolve.current = resolve;
         setPendingDeletion({ ids, label });
       }),
@@ -220,12 +227,15 @@ export function WorkflowBuilder({
     dispatch({ type: 'SET_DRAFT', draft });
   }, [model, dispatch]);
 
-  // Ctrl/Cmd+Z undo, Ctrl/Cmd+Shift+Z or Ctrl/Cmd+Y redo. Skipped while focus is
-  // inside a text-editing control so a user actively typing keeps the browser's
-  // native per-field undo for that field (Escape-key handlers elsewhere in the
-  // builder — StepConfigPanel, ValidationPill — follow the same window-level
-  // listener pattern and do not need this guard since Escape has no native
-  // text-editing meaning).
+  // Ctrl/Cmd+Z undo, Ctrl/Cmd+Shift+Z or Ctrl/Cmd+Y redo. Scoped to keydowns whose target
+  // lives inside THIS builder's root element — the listener sits on window (to catch keys
+  // while canvas nodes/panes hold focus), but an embedding host page's own Ctrl+Z, or a
+  // second builder instance, must never be hijacked by this one. Also skipped while focus
+  // is inside a text-editing control so a user actively typing keeps the browser's native
+  // per-field undo for that field (Escape-key handlers elsewhere in the builder —
+  // StepConfigPanel, ValidationPill — follow the same window-level listener pattern and do
+  // not need these guards since Escape has no native text-editing meaning and closing on
+  // Escape is per-overlay anyway).
   useEffect(() => {
     if (readOnly) {
       return;
@@ -237,6 +247,10 @@ export function WorkflowBuilder({
       return target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable;
     };
     const onKeyDown = (event: KeyboardEvent) => {
+      const root = rootRef.current;
+      if (!root || !(event.target instanceof Node) || !root.contains(event.target)) {
+        return;
+      }
       if (!(event.ctrlKey || event.metaKey) || isEditableTarget(event.target)) {
         return;
       }
@@ -601,6 +615,7 @@ export function WorkflowBuilder({
 
   return (
     <div
+      ref={rootRef}
       className={rootClass}
       data-testid="workflow-builder"
       aria-readonly={readOnly || undefined}

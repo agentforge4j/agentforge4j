@@ -31,7 +31,6 @@ import {
   ReactFlowProvider,
   applyEdgeChanges,
   applyNodeChanges,
-  reconnectEdge,
   useNodesInitialized,
   useNodesState,
   useReactFlow,
@@ -87,6 +86,56 @@ export function resolveNodeDeletionGate(
     return Promise.resolve(true);
   }
   return options.confirmNodeDeletion(nodeIds);
+}
+
+/**
+ * Pure model transform behind edge rerouting (`<ReactFlow onReconnect>`), extracted for direct
+ * unit testing (React Flow's endpoint-drag wiring needs a real browser; see the note on
+ * {@link resolveNodeDeletionGate}).
+ *
+ * Rewrites ONLY the rerouted edge — every other edge keeps its exact model object, so no field
+ * an untouched edge carries is ever rebuilt or dropped by an unrelated reroute. Returns `null`
+ * (caller ignores the gesture) when the connection is incomplete, the edge no longer exists,
+ * nothing changed, or — mirroring `onConnect`'s duplicate guard — an edge with the same
+ * source/target/sourceHandle already exists, which would otherwise produce parallel duplicate
+ * edges in the model.
+ */
+export function applyEdgeReconnection(
+  model: CanvasModel,
+  oldEdgeId: string,
+  connection: { source: string | null; target: string | null; sourceHandle?: string | null },
+): CanvasModel | null {
+  if (!connection.source || !connection.target) {
+    return null;
+  }
+  const existing = model.edges.find((e) => e.id === oldEdgeId);
+  if (!existing) {
+    return null;
+  }
+  const nextSourceHandle = connection.sourceHandle ?? null;
+  if (
+    existing.source === connection.source &&
+    existing.target === connection.target &&
+    (existing.sourceHandle ?? null) === nextSourceHandle
+  ) {
+    return null;
+  }
+  const duplicate = model.edges.some(
+    (e) =>
+      e.id !== oldEdgeId &&
+      e.source === connection.source &&
+      e.target === connection.target &&
+      (e.sourceHandle ?? '') === (connection.sourceHandle ?? ''),
+  );
+  if (duplicate) {
+    return null;
+  }
+  return {
+    ...model,
+    edges: model.edges.map((e) =>
+      e.id === oldEdgeId ? { ...e, source: connection.source as string, target: connection.target as string, sourceHandle: nextSourceHandle } : e,
+    ),
+  };
 }
 
 /** Merge domain-derived nodes onto existing RF nodes, keeping measured dimensions. */
@@ -287,7 +336,10 @@ function WorkflowCanvasInner({
       // followed by one final change (dragging: false) on release; coalesce the
       // whole gesture into a single undo step, sealed at release.
       const dragEnded = positionChanges.some((change) => change.dragging === false);
-      onModelChange({ ...model, nodes: nextNodes }, { coalesceKey: NODE_DRAG_COALESCE_KEY, commit: dragEnded });
+      // sticky: a drag held still emits no changes for arbitrarily long, so the gesture must
+      // keep coalescing past the debounce window until the release (commit) seals it —
+      // otherwise a mid-drag pause splits one physical gesture into two undo entries.
+      onModelChange({ ...model, nodes: nextNodes }, { coalesceKey: NODE_DRAG_COALESCE_KEY, sticky: true, commit: dragEnded });
     },
     [model, onFlowNodesChange, onModelChange, readOnly],
   );
@@ -393,19 +445,12 @@ function WorkflowCanvasInner({
       if (readOnly) {
         return;
       }
-      const nextFlowEdges = reconnectEdge(oldEdge, newConnection, flowEdges);
-      onModelChange({
-        ...model,
-        edges: nextFlowEdges.map((e) => ({
-          id: e.id,
-          source: e.source,
-          target: e.target,
-          sourceHandle: e.sourceHandle ?? null,
-          label: null,
-        })),
-      });
+      const next = applyEdgeReconnection(model, oldEdge.id, newConnection);
+      if (next) {
+        onModelChange(next);
+      }
     },
-    [flowEdges, model, onModelChange, readOnly],
+    [model, onModelChange, readOnly],
   );
 
   // Gate the Delete/Backspace-triggered removal behind confirmation for node

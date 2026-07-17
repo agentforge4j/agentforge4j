@@ -2,8 +2,10 @@
 import { render, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import type { Node } from '@xyflow/react';
-import { mergeModelIntoFlowNodes, resolveNodeDeletionGate, WorkflowCanvas } from '../src/canvas/WorkflowCanvas';
+import { applyEdgeReconnection, mergeModelIntoFlowNodes, resolveNodeDeletionGate, WorkflowCanvas } from '../src/canvas/WorkflowCanvas';
 import { createInitialCanvasModel } from '../src/hooks/useCanvasState';
+import type { CanvasEdge, CanvasModel, CanvasNode } from '../src/model/canvasModel';
+import { defaultNodeData } from '../src/model/mapper';
 
 describe('mergeModelIntoFlowNodes', () => {
   // jsdom has no ResizeObserver — actual visibility:visible is verified in a real browser.
@@ -84,6 +86,59 @@ describe('resolveNodeDeletionGate', () => {
     await expect(
       resolveNodeDeletionGate(['n-1'], { readOnly: false, confirmNodeDeletion: async () => false }),
     ).resolves.toBe(false);
+  });
+});
+
+describe('applyEdgeReconnection', () => {
+  function reconnectModel(): CanvasModel {
+    const mk = (id: string): CanvasNode =>
+      ({ id, backendStepId: id, kind: 'AI_STEP', position: { x: 0, y: 0 }, data: defaultNodeData('AI_STEP') }) as CanvasNode;
+    const edge = (id: string, source: string, target: string, sourceHandle: string | null = null): CanvasEdge => ({
+      id,
+      source,
+      target,
+      sourceHandle,
+      label: null,
+    });
+    return {
+      workflowId: 'wf',
+      workflowName: 'Test',
+      description: '',
+      startNodeId: 'A',
+      nodes: [mk('A'), mk('B'), mk('C')],
+      edges: [edge('e-A-B', 'A', 'B'), edge('e-B-C', 'B', 'C')],
+      artifacts: {},
+      blueprints: {},
+    };
+  }
+
+  it('rewrites only the rerouted edge and keeps every other edge object untouched', () => {
+    const model = reconnectModel();
+    const next = applyEdgeReconnection(model, 'e-A-B', { source: 'A', target: 'C', sourceHandle: null });
+
+    expect(next).not.toBeNull();
+    const rerouted = next!.edges.find((e) => e.id === 'e-A-B')!;
+    expect(rerouted.source).toBe('A');
+    expect(rerouted.target).toBe('C');
+    // The untouched edge keeps its exact object identity — no field it carries is rebuilt.
+    expect(next!.edges.find((e) => e.id === 'e-B-C')).toBe(model.edges[1]);
+  });
+
+  it('refuses a reconnect that would duplicate an existing edge (same source/target/handle), mirroring onConnect', () => {
+    const model = reconnectModel();
+    // Rerouting B->C onto A->B's endpoints would produce two parallel A->B edges.
+    expect(applyEdgeReconnection(model, 'e-B-C', { source: 'A', target: 'B', sourceHandle: null })).toBeNull();
+  });
+
+  it('treats a same-endpoints drop (no change) as a no-op', () => {
+    const model = reconnectModel();
+    expect(applyEdgeReconnection(model, 'e-A-B', { source: 'A', target: 'B', sourceHandle: null })).toBeNull();
+  });
+
+  it('returns null for an incomplete connection or an unknown edge id', () => {
+    const model = reconnectModel();
+    expect(applyEdgeReconnection(model, 'e-A-B', { source: null, target: 'C' })).toBeNull();
+    expect(applyEdgeReconnection(model, 'nope', { source: 'A', target: 'C' })).toBeNull();
   });
 });
 
