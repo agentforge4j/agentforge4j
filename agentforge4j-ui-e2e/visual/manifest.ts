@@ -3,10 +3,10 @@
 import { SITE_ROUTES, REAL_CATALOGUE_WORKFLOW_ID, VIEWPORTS } from '../support/web-ui/routes';
 import { DELIVERY_TOLERANT_INTERACTIONS } from './interactions';
 
-/** Which product this entry belongs to — kept distinct so a Day 2 report can separate ".org"
- *  release-blocker findings from Workflow Builder findings that belong to the dedicated
- *  builder-usability remediation workstream (issues #94-#103), per this workstream's scope
- *  boundary: visual review, not builder remediation. */
+/** Which product this entry belongs to — kept distinct so the generated report can separate
+ *  ".org" release-blocker findings from Workflow Builder findings that belong to the dedicated
+ *  builder-usability issues (#94-#103): this suite's scope is visual review, not builder
+ *  remediation. */
 export type ProductSurface = 'org' | 'builder';
 
 /** How this state is reached: a direct `.org` route, or a named setup routine run against a
@@ -120,16 +120,16 @@ export interface VisualManifestEntry {
 
 const orgRoute = (path: string): EntryTarget => ({ kind: 'route', path });
 
-/** One manifest entry per Day 1 `SITE_ROUTES` row, at the routine coverage level. Extra states
+/** One manifest entry per `SITE_ROUTES` row, at the routine coverage level. Extra states
  *  for the same route (nav open, footer, etc.) are separate entries below — this loop only
  *  covers "the page as it loads". Single source of truth: importing `SITE_ROUTES` instead of
- *  re-listing the 11 routes here is what keeps this manifest and the Day 1 functional testkit
- *  from drifting apart (Day 2 brief, Task 2: "avoid duplicating route lists across scripts"). */
+ *  re-listing the 11 routes here is what keeps this manifest and the functional `web-ui` suite
+ *  from drifting apart (never duplicate route lists across scripts). */
 const ROUTE_ENTRIES: VisualManifestEntry[] = SITE_ROUTES.map((route) => {
   const id = `org-${route.path === '/' ? 'home' : route.path.replace(/^\//, '').replace(/\//g, '-')}`;
-  const overflowProne = route.path === '/architecture'; // embeds two SVG diagrams — see Task 2 brief
+  const overflowProne = route.path === '/architecture'; // embeds two SVG diagrams
   // `/docs` on the ASSEMBLED site (this suite's actual target) is the real, separately-built
-  // Docusaurus site, not agentforge4j-web-ui's own placeholder DocsPage.tsx that Day 1's
+  // Docusaurus site, not agentforge4j-web-ui's own placeholder DocsPage.tsx that the
   // `SITE_ROUTES` heading label describes — its real page title differs and isn't this manifest's
   // concern (Docusaurus already runs its own pa11y-ci WCAG 2.1 AA gate, confirmed passing 28/28
   // pages in this workstream's own real build). Assert only that SOME h1 exists there, not its
@@ -394,7 +394,7 @@ export const VISUAL_MANIFEST: readonly VisualManifestEntry[] = [
     aiReviewEnabled: false,
     releaseImportance: 'nice-to-have',
     fullPage: false,
-    notes: 'Real coverage gap, not a Day 2 omission: no UI path on agentforge4j.org sets '
+    notes: 'Real coverage gap, not an omission of this suite: no UI path on agentforge4j.org sets '
       + "mode='readOnly'. Flag for the .org workstream if read-only is ever meant to be reachable "
       + 'publicly (e.g. a future /visualizer, itself explicitly not built yet).',
     acceptedFindings: [

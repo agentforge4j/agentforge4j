@@ -459,12 +459,12 @@ export function evaluateDeterministicChecks(facts: DomFacts, minNodeCount?: numb
  * The ONE status this suite's own local server (`scripts/visual/serve-assembled-site.mjs`) and a
  * real GitHub Pages deployment can currently, legitimately emit for a known route with no matching
  * on-disk file is a real HTTP 404 whose body is the SPA shell, which then boots and client-side
- * routes to the correct page — this is the exact, currently-tested Day 1 contract
- * `specs/web-ui/hosting.spec.ts` still asserts today. It is NOT the final Day 1.5 hosting contract
- * (this module's own README: known public/catalogue routes must return HTTP 200; only genuinely
- * unknown routes may 404) — rewriting `hosting.spec.ts` and this suite's own acceptance to require
- * HTTP 200 once the Assembler actually generates per-route static output is explicitly tracked as
- * separate work, not part of this visual-review suite. What IS this suite's job: a DIFFERENT 4xx
+ * routes to the correct page — this is the exact SPA-fallback behaviour
+ * `specs/web-ui/hosting.spec.ts` asserts for the plain SPA build. It is NOT the composed-site
+ * hosting contract (this module's own README, "Hosting": known public/catalogue routes must
+ * return HTTP 200; only genuinely unknown routes may 404) — tightening `hosting.spec.ts` and this
+ * suite's own acceptance to require HTTP 200 against per-route static output from the Assembler
+ * is separate work, not part of this visual-review suite. What IS this suite's job: a DIFFERENT 4xx
  * (401, 403, 429, ...) is never the documented SPA-fallback mechanism and must not be silently
  * accepted as if it were — that was a real gap in an earlier version of this check, which accepted
  * any status >= 400 uniformly.
@@ -474,7 +474,7 @@ export function evaluatePageLoadCheck(status: number | undefined): CheckResult {
     return {
       id: 'page-loaded-ok',
       status: 'pass',
-      detail: `HTTP ${status} (accepted SPA-fallback for a known route — see Day 1.5 hosting contract)`,
+      detail: `HTTP ${status} (accepted SPA-fallback for a known route — see the README's "Hosting" section)`,
     };
   }
   if (status !== undefined && status < 400) {

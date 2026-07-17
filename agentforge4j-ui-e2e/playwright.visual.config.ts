@@ -14,7 +14,7 @@ import { defineConfig, devices } from '@playwright/test';
  *
  * `VISUAL_TARGET_URL` overrides the assembled-site target entirely (e.g. to point at an
  * already-running server such as the Pi preview) — set it and this config skips starting its own
- * static server for that target, matching Day 2 Task 1's "starts OR connects to" requirement.
+ * static server for that target, so the suite can either start a server or connect to one.
  */
 const SITE_PORT = 4184;
 const SITE_URL = process.env.VISUAL_TARGET_URL ?? `http://localhost:${SITE_PORT}`;
@@ -37,8 +37,7 @@ export default defineConfig({
   forbidOnly: isCI,
   // Deliberately 0, not the other configs' CI retry allowance: a retry that happens to pass would
   // silently mask a real, reportable visual defect — the opposite of what this suite exists to
-  // surface (Day 2 brief, Task 3: "avoid masking real problems merely to produce stable
-  // screenshots").
+  // surface (never mask real problems merely to produce stable screenshots).
   retries: 0,
   workers: isCI ? 1 : undefined,
   reporter: isCI ? [['github'], ['list']] : [['list']],
