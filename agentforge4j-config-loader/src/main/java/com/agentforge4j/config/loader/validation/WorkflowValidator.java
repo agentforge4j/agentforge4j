@@ -26,6 +26,10 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
+/**
+ * Structural and cross-reference validation checks run against loaded workflow and agent
+ * definitions.
+ */
 public final class WorkflowValidator {
 
   private final int maxTraversalDepth;

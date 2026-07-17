@@ -4,7 +4,7 @@ The `agentforge4j-bootstrap` module is the framework-agnostic entry point for as
 
 ## How it fits
 
-Bootstrap sits at the top of the plain-Java dependency chain: it depends on the core, llm, config-loader, runtime, schema, and workflows modules and composes them into the `AgentForge4j` facade. Providers are discovered separately via `ServiceLoader<LlmClientFactory>`. The [Spring Boot starter](../agentforge4j-spring-boot-starter/README.md) is a thin adapter that delegates assembly to this module.
+Bootstrap sits at the top of the plain-Java dependency chain: it depends on the core, llm, config-loader, runtime, and schema modules and composes them into the `AgentForge4j` facade. Providers are discovered separately via `ServiceLoader<LlmClientFactory>`. The [Spring Boot starter](../agentforge4j-spring-boot-starter/README.md) is a thin adapter that delegates assembly to this module.
 
 ---
 
@@ -54,7 +54,7 @@ Programmatic `with*` calls on `AgentForge4jBootstrap.Builder` always win over en
 
 ## LLM provider configuration
 
-Nine static factories on [`LlmProviderConfig`](src/main/java/com/agentforge4j/bootstrap/LlmProviderConfig.java) each return a `ProviderBuilder`: `defaults()`, `apiKey(...)`, `apiKeyReference(...)`, `baseUrl(...)`, `defaultModel(...)`, `connectTimeout(...)`, `option(key, value)`, and `build()`.
+Nine static factories on [`LlmProviderConfig`](src/main/java/com/agentforge4j/bootstrap/LlmProviderConfig.java) each return a pre-populated `ProviderBuilder`: `openai()`, `claude()`, `gemini()`, `mistral()`, `azureOpenAi()`, `openAiCompatible()`, `bedrock()`, `ollama()`, and `vllm()`. Each returned builder exposes `defaults()`, `apiKey(...)`, `apiKeyReference(...)`, `baseUrl(...)`, `defaultModel(...)`, `connectTimeout(...)`, `option(key, value)`, and `build()`.
 
 These cover only the **common** fields plus an open options map. Provider-specific settings are supplied through `option(key, value)` using the canonical dotted keys the provider consumes — for example `deployment` and `api.version` (Azure OpenAI); `region` and `anthropic.version` (Bedrock); `auth.header.name`, `auth.header.prefix`, and `responses.path` (openai-compatible). The common methods alone are **not** sufficient for those providers. Each provider's README lists its keys; the same settings can instead be configured through the Spring Boot starter's per-provider properties.
 
@@ -239,7 +239,7 @@ Add LLM provider modules (for example `agentforge4j-llm-openai`, `agentforge4j-l
 requires agentforge4j.bootstrap;
 ```
 
-Exports `com.agentforge4j.bootstrap` and declares `uses com.agentforge4j.llm.LlmClientFactory` and `uses com.agentforge4j.core.spi.integration.IntegrationToolProviderFactory`.
+Exports `com.agentforge4j.bootstrap` and declares `uses com.agentforge4j.llm.LlmClientFactory`, `uses com.agentforge4j.core.spi.integration.IntegrationToolProviderFactory`, `uses com.agentforge4j.config.loader.agent.ArtifactValidatorFactory`, and `uses com.agentforge4j.core.spi.aggregation.ContextAggregator`.
 
 ## Licence
 

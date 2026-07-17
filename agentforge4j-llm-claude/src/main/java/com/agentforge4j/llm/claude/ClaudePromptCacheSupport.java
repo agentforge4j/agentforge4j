@@ -126,8 +126,7 @@ final class ClaudePromptCacheSupport {
   }
 
   /**
-   * Selects which layer blocks receive {@code cache_control}, deepest-first within
-   * {@code maxBreakpoints}.
+   * Selects which layer blocks receive {@code cache_control}.
    * <p>
    * Threshold checks use the cumulative UTF-8 prefix length at each layer boundary (Anthropic
    * caches from the start of the prompt through the marked block), not the individual layer slice.

@@ -12,10 +12,10 @@ import java.io.Serial;
  * registered interceptor (supplied by an embedding application) raises it.
  *
  * <p>Lifecycle on a block: the runtime records a neutral
- * {@link com.agentforge4j.core.workflow.event.WorkflowEventType#RUN_BLOCKED} audit event and leaves the run status
- * unchanged (non-terminal) — it performs no terminal transition. The embedding application resolves the block (for
- * example resume after a top-up, or cancel); any mapping to an application status (such as a billing pause) is the
- * embedder's concern.
+ * {@link com.agentforge4j.core.workflow.event.WorkflowEventType#RUN_BLOCKED} audit event and transitions the run to
+ * {@link com.agentforge4j.core.workflow.state.WorkflowStatus#PAUSED} — it performs no terminal transition. The
+ * embedding application resolves the block (for example resume after a top-up, or cancel); any mapping to an
+ * application status (such as a billing pause) is the embedder's concern.
  */
 public final class ExecutionBlockedException extends RuntimeException {
 

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package com.agentforge4j.core.agent;
 
+import com.agentforge4j.core.exception.AgentNotFoundException;
 import java.util.Map;
 
 /**
@@ -13,7 +14,7 @@ public interface AgentRepository {
    *
    * @param id the unique identifier of the agent
    * @return the agent definition
-   * @throws IllegalArgumentException if no agent with the given id exists
+   * @throws AgentNotFoundException if no agent with the given id exists
    */
   AgentDefinition get(String id);
 

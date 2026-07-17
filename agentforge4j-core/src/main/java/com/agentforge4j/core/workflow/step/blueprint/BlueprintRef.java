@@ -7,7 +7,9 @@ import com.agentforge4j.util.Validate;
 /**
  * Reference to a {@link BlueprintDefinition} by id for inclusion in a parent workflow.
  *
- * @param blueprintId non-blank id resolved via repository or catalog at runtime
+ * @param blueprintId non-blank id resolved against the enclosing
+ *                    {@link com.agentforge4j.core.workflow.WorkflowDefinition#blueprints()} map at
+ *                    runtime
  */
 public record BlueprintRef(String blueprintId) implements Executable {
 

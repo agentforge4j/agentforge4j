@@ -16,7 +16,7 @@ reactor** (this tree is not a module of the OSS build).
 |---|---|
 | `framework-examples` | Using the framework directly from Java — bootstrap and run a workflow, suspend/resume for human approval, the Spring Boot starter, HTTP tools, and MCP. |
 | `workflow-language-examples` | The declarative workflow language — branching, loops, SPAR, human-in-the-loop, retries, resources, and agent signals. |
-| `workflow-catalog-examples` | The shipped catalog of ready-made workflows. *(Reserved; lands in a later batch.)* |
+| `workflow-catalog-examples` | The shipped catalog of ready-made workflows — the Agent Creator and Workflow Execution Estimator bundles. |
 
 ---
 
