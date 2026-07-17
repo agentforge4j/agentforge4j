@@ -10,5 +10,14 @@ export default defineConfig({
     environment: 'jsdom',
     setupFiles: ['./tests/setup.ts'],
     include: ['tests/**/*.test.{ts,tsx}'],
+    // The builder package (and its @xyflow/react dependency) ships a CSS side-effect import
+    // in its ESM entrypoint. Vitest externalizes node_modules by default, which skips Vite's
+    // asset transform and fails on the raw `.css` import; inlining these two packages routes
+    // them through Vite's transform pipeline instead.
+    server: {
+      deps: {
+        inline: [/@agentforge4j\/workflow-builder-react/, /@xyflow\/react/],
+      },
+    },
   },
 });

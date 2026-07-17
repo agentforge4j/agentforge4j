@@ -25,7 +25,12 @@ export default function SiteFooter() {
             <h2 className="text-sm font-semibold text-fg">GitHub</h2>
             <ul className="mt-3 space-y-2">
               <li>
-                <a href={GITHUB_URL} target="_blank" rel="noreferrer" className="text-sm text-fg-muted hover:text-fg">
+                <a
+                  href={GITHUB_URL}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="break-words text-sm text-fg-muted hover:text-fg"
+                >
                   agentforge4j/agentforge4j
                 </a>
               </li>
