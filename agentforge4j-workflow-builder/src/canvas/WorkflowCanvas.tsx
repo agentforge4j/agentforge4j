@@ -109,6 +109,7 @@ function toFlowNodes(
         loopBodyLabels,
         issueCount,
         needsApproval: nodeNeedsApproval(n),
+        isStart: model.startNodeId === n.id,
       },
       draggable: !readOnly,
     };

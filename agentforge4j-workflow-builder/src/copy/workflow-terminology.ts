@@ -159,6 +159,12 @@ export const ACTION_LABELS = {
     'This workflow has an incomplete step connection (a decision branch or retry target is unset). Complete the highlighted routing to continue.',
   narrowContainerTitle: 'Workflow building is currently available on desktop or tablet.',
   narrowContainerBody: 'Please revisit this page on a larger screen to use the workflow builder.',
+  startStepField: 'Start step',
+  startStepHint: 'This is the step the workflow runs first. Pick a different step to change it.',
+  startStepPlaceholder: 'Choose a start step',
+  exportSuccess: (filename: string) => `Exported ${filename}`,
+  exportSuccessGeneric: 'Export complete.',
+  dismissExportSuccess: 'Dismiss export confirmation',
 };
 
 export const PALETTE_GROUP_LABELS = {
@@ -192,6 +198,7 @@ export const NODE_STATUS_LABELS = {
   valid: 'Ready',
   hasIssues: 'Needs attention',
   needsApproval: 'Approval required',
+  startStep: 'Start',
 };
 
 export const ISSUE_REWRITES: Record<string, string> = {

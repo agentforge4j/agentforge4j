@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 //
-// Deterministic screenshot + non-AI visual-check runner (Day 2 Tasks 3 + 4). Combined into one
+// Deterministic screenshot + non-AI visual-check runner. Combined into one
 // Playwright pass, not two separate scripts: both need the same settled page, so running them
 // together avoids a second, possibly-inconsistent navigation. Generates one test per manifest
 // entry × viewport (see `visual/manifest.ts`) so Playwright's own reporter, retries (deliberately

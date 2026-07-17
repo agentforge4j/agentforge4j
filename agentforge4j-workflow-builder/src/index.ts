@@ -7,6 +7,7 @@ export type {
   BuilderCapabilities,
   BuilderTheme,
   ExportFormat,
+  ExportOutcome,
   ValidationIssue,
   ValidationResult,
   WorkflowBuilderMode,
