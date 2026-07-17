@@ -124,6 +124,44 @@ describe('Export success confirmation', () => {
     expect(screen.queryByTestId('export-success')).not.toBeInTheDocument();
   });
 
+  it('drops the export confirmation when an import replaces the document while the export was still in flight (ordering race)', async () => {
+    const user = userEvent.setup();
+    // Held open deliberately: the export is still in flight when the import completes below.
+    let resolveExport: ((value: { filename: string } | undefined) => void) | undefined;
+    const exportBundle = vi.fn(
+      () =>
+        new Promise<{ filename: string } | undefined>((resolve) => {
+          resolveExport = resolve;
+        }),
+    );
+    const importBundle = vi.fn().mockResolvedValue(namedWorkflow);
+    render(
+      <WorkflowBuilder
+        capabilities={{ ...allDisabled, export: true, import: true }}
+        adapters={{ exportBundle, importBundle }}
+      />,
+    );
+
+    // Start an export against the original (empty starter) document and leave it pending.
+    await user.click(screen.getByTestId('workflow-builder-export'));
+    await waitFor(() => expect(exportBundle).toHaveBeenCalledTimes(1));
+
+    // While that export is still in flight, import a different document and let it fully
+    // replace the working document.
+    await user.click(screen.getByTestId('workflow-builder-import'));
+    await screen.findByDisplayValue('greeting-flow');
+
+    // Only now does the stale export resolve — naming a file produced from the document that
+    // was replaced out from under it.
+    resolveExport?.({ filename: 'workflow.workflow.zip' });
+    await waitFor(() => {
+      expect(screen.getByTestId('workflow-builder-export')).toHaveTextContent(ACTION_LABELS.export);
+    });
+
+    // The confirmation must not appear: it would describe a document that is no longer loaded.
+    expect(screen.queryByTestId('export-success')).not.toBeInTheDocument();
+  });
+
   it('clears the previous confirmation and shows the error instead when export fails', async () => {
     const user = userEvent.setup();
     const exportBundle = vi.fn().mockRejectedValue(new Error('disk full'));

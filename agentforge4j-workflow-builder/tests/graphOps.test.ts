@@ -119,6 +119,23 @@ describe('repositionAfter', () => {
     expect(chain.B).toEqual(['A']);
     expect(chain.A ?? []).toEqual([]);
   });
+
+  it('moving a detached second-root node (with its own successor) to Start severs it from that successor', () => {
+    // A is the main scope's start; X -> Y is a second, detached root chain reachable via
+    // startStepCandidateIds' noTargets widening (X has no predecessor, is not the current
+    // start, and its only successor Y leaves it with no other reposition target). X has no
+    // predecessor to reconnect to Y, so moving X to Start detaches Y with no gap closure —
+    // the same single-node-move semantics repositionAfter already applies to every other
+    // target (see graphOps.ts startStepCandidateIds doc).
+    const m = model([node('A'), node('X'), node('Y')], [linEdge('X', 'Y')], 'A');
+    const next = repositionAfter(m, 'X', START_SENTINEL);
+    const chain = linearChain(next);
+    expect(next.startNodeId).toBe('X');
+    expect(chain.X).toEqual(['A']);
+    expect(chain.Y ?? []).toEqual([]);
+    // Y has no incoming linear edge left anywhere in the model — it is now unreachable.
+    expect(next.edges.some((e) => e.target === 'Y')).toBe(false);
+  });
 });
 
 describe('getRunsAfterState', () => {

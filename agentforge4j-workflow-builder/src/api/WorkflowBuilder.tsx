@@ -161,6 +161,11 @@ export function WorkflowBuilder({
   const [insertOnEdgeId, setInsertOnEdgeId] = useState<string | null>(null);
   const skipDraftSync = useRef(false);
   const serializeGuardWarnedRef = useRef(false);
+  // Bumped whenever the working document is replaced wholesale (currently: import).
+  // An in-flight export captures the generation it started against; if the document
+  // has since been replaced by the time the export resolves, its confirmation would
+  // describe a document that is no longer loaded, so it is dropped instead of shown.
+  const docGenerationRef = useRef(0);
 
   const initialCanvas = useMemo(
     () => (seed.steps.length > 0 ? workflowToCanvas(seed) : createInitialCanvasModel()),
@@ -306,16 +311,24 @@ export function WorkflowBuilder({
         importMeta: { source: 'file', importedAt: new Date().toISOString() },
       });
       // The working document was just replaced: an export confirmation still describing the
-      // previous document is now a stale claim — drop it.
+      // previous document is now a stale claim — drop it, and bump the generation so an
+      // export already in flight against the old document cannot show one either.
+      docGenerationRef.current += 1;
       setSuccess((prev) => ({ ...prev, export: null }));
     });
 
   const handleExport = () =>
     runAction('export', async () => {
+      const generationAtStart = docGenerationRef.current;
       // 'zip' is the only schemaVersion-stamped export format; the plain-'json' draft round-trip
       // carries no schemaVersion at all. Schema validation itself happens on import, not export,
       // for either format.
       const outcome = await resolvedAdapters.exportBundle(state.draft, 'zip');
+      if (docGenerationRef.current !== generationAtStart) {
+        // The document was replaced (e.g. an import completed) while this export was still
+        // in flight: the confirmation would describe a document that is no longer loaded.
+        return;
+      }
       // Name the produced file only when the adapter reported one (the built-in adapter does);
       // a host adapter that resolves void gets a generic confirmation — the builder never
       // fabricates a filename the adapter did not actually produce.
@@ -434,7 +447,7 @@ export function WorkflowBuilder({
     [setModel],
   );
 
-  // Guided mode's direct start-step chooser (H1): same repositionAfter/START_SENTINEL
+  // Guided mode's direct start-step chooser (issue #100): same repositionAfter/START_SENTINEL
   // mutation the inspector's "Runs after: Start" option performs, just reached from a
   // more discoverable entry point once the workflow has more than one node.
   const onSelectStartStep = useCallback(

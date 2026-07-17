@@ -16,11 +16,15 @@ and this package adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   only be inferred from graph position, or was labeled explicitly in Advanced mode's
   starter hint alone.
 - A direct "Start step" chooser in Guided mode, shown once a workflow has more than one
-  node: a dropdown listing every eligible node, reassigning the start step on selection.
+  node and at least one other node is eligible to become the start step: a dropdown
+  listing every eligible node, reassigning the start step on selection.
   It reuses the same reposition-to-Start mechanism as the inspector's existing "Runs after:
   Start" option rather than a parallel one; the eligibility rules (top-level, not
   DECISION/RETRY, not branch-owned, at most one linear predecessor/successor) are shared
-  with that selector too.
+  with that selector too. The chooser also offers a node with no other valid position (a
+  second, detached root) even though the inspector's own selector stays disabled for it —
+  moving such a node to Start still detaches it from whatever it was chained to, the same
+  way every other reposition target already does.
 - A visible, persisted on-page confirmation after a successful Export, showing the produced
   filename (e.g. "Exported my-workflow.workflow.zip") and a dismiss control — replacing the
   previous silent revert to the button's resting state with no other feedback. The filename

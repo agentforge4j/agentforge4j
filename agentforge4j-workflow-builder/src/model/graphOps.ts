@@ -242,6 +242,17 @@ export function getRunsAfterState(model: CanvasModel, nodeId: string | null): Ru
  * node to Start is still a real, valid operation ({@link repositionAfter} makes
  * it the start step and links the old start after it), even though the
  * inspector, having no *other* position to offer, stays disabled.
+ *
+ * This widening also makes {@link repositionAfter}'s ordinary detach behavior
+ * reachable for a second-root candidate for the first time: if that candidate
+ * already has a linear successor of its own (a detached chain, e.g. `X → Y`,
+ * built independently of the main scope), moving X to Start severs `X → Y` with
+ * no gap closure — X had no predecessor to reconnect to Y, so Y (and anything
+ * chained after it) is left without an incoming linear edge. This matches
+ * {@link repositionAfter}'s existing single-node-move semantics for every other
+ * reposition target (the inspector's own non-Start targets detach the same way);
+ * it is not special-cased here. A severed chain surfaces via the unreachable-step
+ * validation warning, not silently.
  */
 export function startStepCandidateIds(model: CanvasModel): string[] {
   return model.nodes
