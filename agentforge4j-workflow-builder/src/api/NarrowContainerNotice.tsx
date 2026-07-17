@@ -9,11 +9,11 @@ import { ACTION_LABELS } from '../copy/workflow-terminology';
  * the whole of the narrow-container experience; the canvas, palette, inspector, and
  * toolbar are not mounted underneath it.
  */
-export function NarrowViewportNotice() {
+export function NarrowContainerNotice() {
   return (
     <div className="workflow-builder__narrow-notice" role="status" data-testid="workflow-builder-narrow-notice">
-      <p className="workflow-builder__narrow-notice-title">{ACTION_LABELS.narrowViewportTitle}</p>
-      <p className="workflow-builder__narrow-notice-body">{ACTION_LABELS.narrowViewportBody}</p>
+      <p className="workflow-builder__narrow-notice-title">{ACTION_LABELS.narrowContainerTitle}</p>
+      <p className="workflow-builder__narrow-notice-body">{ACTION_LABELS.narrowContainerBody}</p>
     </div>
   );
 }

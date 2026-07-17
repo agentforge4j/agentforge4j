@@ -27,7 +27,7 @@ import type { EditorValidation } from '../validation/validateWorkflow';
 import { validateWorkflow as defaultValidateWorkflow } from '../validation/validateWorkflow';
 import { exportWorkflowBundle } from '../io/browser/download';
 import { importWorkflowFromFilePicker } from '../io/browser/upload';
-import { NarrowViewportNotice } from './NarrowViewportNotice';
+import { NarrowContainerNotice } from './NarrowContainerNotice';
 import type { WorkflowBuilderProps } from './types';
 import { emptyWorkflow } from './types';
 import '../styles/tokens.css';
@@ -529,7 +529,7 @@ export function WorkflowBuilder({
       {...rootStyle}
     >
       {isNarrow ? (
-        <NarrowViewportNotice />
+        <NarrowContainerNotice />
       ) : (
         <>
           <header className="workflow-builder__header workflow-builder__toolbar">

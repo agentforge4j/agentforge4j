@@ -34,6 +34,15 @@ export interface NarrowContainerGate<T extends HTMLElement> {
  * full editor (React Flow initialization included) for a frame while waiting for the
  * observer's first asynchronous callback, and the gated interactions would be briefly
  * reachable. The observer then keeps the measurement current across resizes.
+ *
+ * Both measurements use the BORDER-BOX width. `getBoundingClientRect` is border-box by
+ * definition, and the observer callback reads `borderBoxSize` (falling back to the
+ * target's `getBoundingClientRect` where a browser predates it) rather than
+ * `contentRect`: the observed root element carries a border (`.workflow-builder` in
+ * `workflow-builder.css`), so a content-box read would sit below the border-box read by
+ * the border width, and container widths inside that band would be gated by one
+ * measurement path but not the other — misclassifying containers at the breakpoint and
+ * re-introducing the mount flash there.
  */
 export function useNarrowContainerGate<T extends HTMLElement>(): NarrowContainerGate<T> {
   const containerRef = useRef<T | null>(null);
@@ -56,7 +65,7 @@ export function useNarrowContainerGate<T extends HTMLElement>(): NarrowContainer
       if (!entry) {
         return;
       }
-      const width = entry.contentRect.width;
+      const width = entry.borderBoxSize?.[0]?.inlineSize ?? entry.target.getBoundingClientRect().width;
       if (width > 0) {
         setIsNarrow(width < NARROW_CONTAINER_BREAKPOINT_PX);
       }

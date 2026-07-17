@@ -17,7 +17,7 @@ const allDisabled: BuilderCapabilities = {
 
 // tests/setup.ts installs a global no-op ResizeObserver (observe/unobserve/disconnect do
 // nothing) so unrelated tests never see a callback fire. This suite needs to actually
-// drive the callback with a synthetic contentRect, so it substitutes a controllable
+// drive the callback with a synthetic entry, so it substitutes a controllable
 // mock for the duration of the file — same pattern responsive-shell.test.tsx uses to
 // locally override the global matchMedia default.
 class ControllableResizeObserver {
@@ -36,8 +36,25 @@ class ControllableResizeObserver {
   unobserve(): void {}
   disconnect(): void {}
 
+  /**
+   * Fires with `borderBoxSize` only (no `contentRect`): the hook must read the
+   * BORDER-BOX width — same box model as its initial `getBoundingClientRect`
+   * measurement, since the observed root carries a border — so a regression back to
+   * `contentRect` fails loudly here instead of silently shifting the threshold.
+   */
   fire(width: number): void {
-    const entry = { contentRect: { width } } as ResizeObserverEntry;
+    const entry = {
+      borderBoxSize: [{ inlineSize: width, blockSize: 0 }],
+      target: this.targets[0],
+    } as unknown as ResizeObserverEntry;
+    act(() => {
+      this.callback([entry], this as unknown as ResizeObserver);
+    });
+  }
+
+  /** Fires an entry WITHOUT `borderBoxSize`, exercising the getBoundingClientRect fallback. */
+  fireLegacy(): void {
+    const entry = { target: this.targets[0] } as unknown as ResizeObserverEntry;
     act(() => {
       this.callback([entry], this as unknown as ResizeObserver);
     });
@@ -84,8 +101,8 @@ describe('narrow container gate', () => {
     observer.fire(NARROW_CONTAINER_BREAKPOINT_PX - 1);
 
     expect(screen.getByTestId('workflow-builder-narrow-notice')).toBeInTheDocument();
-    expect(screen.getByText(ACTION_LABELS.narrowViewportTitle)).toBeInTheDocument();
-    expect(screen.getByText(ACTION_LABELS.narrowViewportBody)).toBeInTheDocument();
+    expect(screen.getByText(ACTION_LABELS.narrowContainerTitle)).toBeInTheDocument();
+    expect(screen.getByText(ACTION_LABELS.narrowContainerBody)).toBeInTheDocument();
 
     // The editor itself must be genuinely unmounted underneath the notice, not merely
     // covered by it — this is what makes issues #97/#98/#103 unreachable rather than
@@ -144,5 +161,22 @@ describe('narrow container gate', () => {
 
     expect(screen.getByTestId('workflow-builder-canvas')).toBeInTheDocument();
     expect(screen.queryByTestId('workflow-builder-narrow-notice')).not.toBeInTheDocument();
+  });
+
+  it('falls back to the border-box rect of the observed target when an entry has no borderBoxSize (older engines)', () => {
+    render(<WorkflowBuilder capabilities={allDisabled} />);
+    const observer = gateObserver();
+
+    const rectSpy = vi
+      .spyOn(window.HTMLElement.prototype, 'getBoundingClientRect')
+      .mockReturnValue({ width: 320, height: 600, top: 0, left: 0, bottom: 600, right: 320, x: 0, y: 0, toJSON: () => ({}) } as DOMRect);
+    try {
+      observer.fireLegacy();
+
+      expect(screen.getByTestId('workflow-builder-narrow-notice')).toBeInTheDocument();
+      expect(screen.queryByTestId('workflow-builder-canvas')).not.toBeInTheDocument();
+    } finally {
+      rectSpy.mockRestore();
+    }
   });
 });
