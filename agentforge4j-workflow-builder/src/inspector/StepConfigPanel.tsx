@@ -105,6 +105,7 @@ export function StepConfigPanel({
   const node = useMemo(() => model.nodes.find((n) => n.id === selectedId) ?? null, [model.nodes, selectedId]);
   const hasAgentCatalog = Boolean(agentCatalog && agentCatalog.length > 0);
   const transitionSelectRef = useRef<HTMLSelectElement>(null);
+  const behaviorDetailsRef = useRef<HTMLDetailsElement>(null);
   // Sticky memory that the Behavior section was force-opened by a `focusField` reveal request, so
   // it stays open once `focusField` itself is cleared (a one-shot signal — see below) rather than
   // snapping back closed on the very next render.
@@ -158,6 +159,15 @@ export function StepConfigPanel({
     // the DOM by the time this runs. `behaviorRevealed` is set here so the section stays open on
     // the next render too, once the one-shot `focusField` request itself has been cleared below.
     setBehaviorRevealed(true);
+    // A native <summary> click toggles the DOM `open` attribute directly without React ever
+    // seeing it, so on a repeat reveal request `behaviorOpen` can still evaluate `true` from the
+    // previous request (`behaviorRevealed` stays sticky) and the JSX diff sees no prop change —
+    // React never re-applies the attribute, leaving the section closed in the DOM while React
+    // believes it is open. Setting `.open` imperatively bypasses that diff entirely and forces
+    // the section open regardless of what the user did to it since the last request.
+    if (behaviorDetailsRef.current) {
+      behaviorDetailsRef.current.open = true;
+    }
     transitionSelectRef.current?.scrollIntoView({ block: 'center' });
     transitionSelectRef.current?.focus();
     onFocusFieldHandled?.();
@@ -400,7 +410,12 @@ export function StepConfigPanel({
           </Section>
 
           {showBehaviorSection ? (
-          <details className="wf-inspector__details" open={behaviorOpen} data-testid="workflow-builder-inspector-behaviour-section">
+          <details
+            ref={behaviorDetailsRef}
+            className="wf-inspector__details"
+            open={behaviorOpen}
+            data-testid="workflow-builder-inspector-behaviour-section"
+          >
             <summary className="wf-inspector__details-summary">{ACTION_LABELS.behaviorSection}</summary>
             <div className="wf-inspector__details-body">
               {node.kind === 'AI_STEP' ? (

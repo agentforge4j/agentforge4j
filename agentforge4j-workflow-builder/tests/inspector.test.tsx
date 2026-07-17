@@ -6,6 +6,8 @@ import { createInitialCanvasModel } from '../src/hooks/useCanvasState';
 import { defaultNodeData } from '../src/model/mapper';
 import type { CanvasModel, CanvasNode } from '../src/model/canvasModel';
 import type { BuilderCapabilities } from '../src/api/types';
+import type { ReactNode } from 'react';
+import { useState } from 'react';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -155,6 +157,50 @@ describe('StepConfigPanel focusField ("Add approval" guided stage discoverabilit
     );
 
     expect(screen.getByTestId('workflow-builder-inspector-behaviour-section')).not.toHaveAttribute('open');
+  });
+
+  it('reopens and refocuses on a repeat focusField request after the user has natively collapsed the section', () => {
+    const { model, aiNode } = modelWithAiStep();
+
+    function Harness(): ReactNode {
+      const [focusField, setFocusField] = useState<'transition' | null>(null);
+      return (
+        <>
+          <button type="button" onClick={() => setFocusField('transition')}>
+            trigger
+          </button>
+          <StepConfigPanel
+            model={model}
+            selectedId={aiNode.id}
+            mode="guided"
+            onClose={() => {}}
+            onDelete={() => {}}
+            onUpdateNodeData={() => {}}
+            focusField={focusField}
+            onFocusFieldHandled={() => setFocusField(null)}
+          />
+        </>
+      );
+    }
+
+    render(<Harness />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'trigger' }));
+    const section = screen.getByTestId('workflow-builder-inspector-behaviour-section');
+    expect(section).toHaveAttribute('open');
+
+    // Simulate the user natively collapsing the section via the <summary> — this updates the DOM
+    // `open` attribute directly, without React ever seeing the change (mirrors what a real
+    // <summary> click does; jsdom's own toggle behavior is not what's under test here, only the
+    // resulting DOM/React divergence).
+    (section as HTMLDetailsElement).open = false;
+    expect(section).not.toHaveAttribute('open');
+
+    // A second "Require approval" request must still force the section open and refocus the
+    // field — not silently no-op because React's last-rendered `open` value was already `true`.
+    fireEvent.click(screen.getByRole('button', { name: 'trigger' }));
+    expect(section).toHaveAttribute('open');
+    expect(screen.getByRole('combobox', { name: ACTION_LABELS.approvalField })).toHaveFocus();
   });
 });
 

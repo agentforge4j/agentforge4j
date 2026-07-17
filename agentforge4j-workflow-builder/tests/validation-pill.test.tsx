@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { WorkflowBuilder } from '../src/api/WorkflowBuilder';
@@ -126,5 +126,48 @@ describe('ValidationPill popover occlusion fix', () => {
     render(<WorkflowBuilder capabilities={allDisabled} />);
 
     expect(document.body).toHaveFocus();
+  });
+
+  it('does not steal focus back to the toggle button when an outside click already moved it elsewhere', async () => {
+    const user = userEvent.setup();
+    const { container } = render(<WorkflowBuilder capabilities={allDisabled} />);
+
+    const pillButton = container.querySelector('.wf-validation-pill') as HTMLButtonElement;
+    await user.click(pillButton);
+    await screen.findByRole('dialog', { name: ACTION_LABELS.clientValidation });
+
+    // Establish the user's own focus target deterministically first, then fire the exact
+    // "outside click" mousedown the dismiss listener reacts to — this isolates the specific
+    // defect (a later focus-restore effect overriding an already-established focus target) from
+    // the browser's own click-focuses-input default action, whose timing relative to React's
+    // effect flush is not something a test should assert through indirectly.
+    const nameInput = screen.getByRole('textbox', { name: ACTION_LABELS.workflowNameLabel });
+    nameInput.focus();
+    expect(nameInput).toHaveFocus();
+    fireEvent.mouseDown(nameInput);
+
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog', { name: ACTION_LABELS.clientValidation })).not.toBeInTheDocument();
+    });
+    expect(nameInput).toHaveFocus();
+    expect(pillButton).not.toHaveFocus();
+  });
+
+  it('closes only the popover on Escape when a step inspector is open underneath it, leaving the inspector open', async () => {
+    const user = userEvent.setup();
+    const { container } = render(<WorkflowBuilder capabilities={allDisabled} />);
+
+    await user.click(screen.getAllByRole('button', { name: NODE_LABELS.AI_STEP })[0]!);
+    const inspector = await screen.findByRole('dialog', { name: NODE_LABELS.AI_STEP });
+
+    const pillButton = container.querySelector('.wf-validation-pill') as HTMLButtonElement;
+    await user.click(pillButton);
+    await screen.findByRole('dialog', { name: ACTION_LABELS.clientValidation });
+
+    await user.keyboard('{Escape}');
+
+    expect(screen.queryByRole('dialog', { name: ACTION_LABELS.clientValidation })).not.toBeInTheDocument();
+    expect(inspector).toBeInTheDocument();
+    expect(screen.getByRole('dialog', { name: NODE_LABELS.AI_STEP })).toBeInTheDocument();
   });
 });

@@ -43,6 +43,13 @@ export function ValidationPill({
   const anchorRef = useRef<HTMLDivElement>(null);
   const popoverRef = useRef<HTMLDivElement>(null);
   const toggleButtonRef = useRef<HTMLButtonElement>(null);
+  // Whether the *next* close should restore focus to the toggle button. Defaults to true (the
+  // Escape and × paths establish no new focus target, so restoring is correct there) and is set
+  // to false just before any close path that has already moved focus somewhere the user chose —
+  // an outside click (browser focuses the clicked element) or "Fix" (focus should follow the
+  // inspector it opens) — so the focus-management effect below never overrides that with the
+  // toggle button instead. Read by the first effect below, reset by the third.
+  const restoreFocusOnCloseRef = useRef(true);
   const totalIssues = clientIssues.length + serverIssues.length;
   const looksGood = totalIssues === 0;
 
@@ -52,6 +59,14 @@ export function ValidationPill({
     }
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
+        // Capture phase + stopPropagation: this popover is the top-most layered surface whenever
+        // it is open, including above an already-open step inspector (which the portal fix above
+        // now makes reachable simultaneously, with focus moved into this dialog). A window-level
+        // capture listener always runs before any bubble-phase window listener — including the
+        // inspector's own Escape handler — for the same event, regardless of mount order, so one
+        // Escape press dismisses only this popover and never reaches the inspector beneath it.
+        event.stopPropagation();
+        restoreFocusOnCloseRef.current = true;
         setOpen(false);
       }
     };
@@ -60,12 +75,16 @@ export function ValidationPill({
       if (anchorRef.current?.contains(target) || popoverRef.current?.contains(target)) {
         return;
       }
+      // The browser has already (or is about to) move focus to whatever the user clicked as part
+      // of the click's own default action — restoring focus to the toggle button here would
+      // override that and steal focus from the element the user just interacted with.
+      restoreFocusOnCloseRef.current = false;
       setOpen(false);
     };
-    window.addEventListener('keydown', onKeyDown);
+    window.addEventListener('keydown', onKeyDown, true);
     window.addEventListener('mousedown', onPointerDown);
     return () => {
-      window.removeEventListener('keydown', onKeyDown);
+      window.removeEventListener('keydown', onKeyDown, true);
       window.removeEventListener('mousedown', onPointerDown);
     };
   }, [open]);
@@ -123,9 +142,10 @@ export function ValidationPill({
     }
     if (!open) {
       hasFocusedRef.current = false;
-      if (wasOpenRef.current) {
+      if (wasOpenRef.current && restoreFocusOnCloseRef.current) {
         toggleButtonRef.current?.focus();
       }
+      restoreFocusOnCloseRef.current = true;
     }
     wasOpenRef.current = open;
   }, [open, popoverPosition]);
@@ -168,7 +188,10 @@ export function ValidationPill({
                   type="button"
                   className="wf-button wf-button--icon wf-button--ghost wf-panel__close"
                   aria-label="Close"
-                  onClick={() => setOpen(false)}
+                  onClick={() => {
+                    restoreFocusOnCloseRef.current = true;
+                    setOpen(false);
+                  }}
                 >
                   ×
                 </button>
@@ -179,6 +202,9 @@ export function ValidationPill({
                   clientIssues={clientIssues}
                   serverIssues={serverIssues}
                   onFix={(stepId) => {
+                    // Focus is about to follow the step this opens in the inspector — don't have
+                    // the close effect steal it back to the toggle button.
+                    restoreFocusOnCloseRef.current = false;
                     onFix(stepId);
                     setOpen(false);
                   }}

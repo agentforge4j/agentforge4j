@@ -25,6 +25,16 @@ and this package adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The validation popover (which is portaled to `document.body`, outside the themed builder
   root) now carries the host's `theme.variables`/`theme.className`, so themed hosts no longer
   get a default-palette popover.
+- The "Add approval" checklist action no longer silently does nothing on a repeat click after the
+  user has manually collapsed the revealed Behavior section: the section is now force-opened
+  imperatively, not just via a React prop the browser's own `<summary>` toggle can already have
+  invalidated.
+- Dismissing the validation popover by clicking elsewhere, or via its "Fix" action, no longer
+  steals focus back to the pill toggle button — restoring focus to the toggle now only happens on
+  dismissals (Escape, the popover's own close button) that don't already establish a different
+  focus target.
+- Pressing Escape while the validation popover is open now dismisses only the popover, even when a
+  step inspector panel is open underneath it, instead of also closing the inspector.
 
 ## [0.5.0] - 2026-07-12
 
