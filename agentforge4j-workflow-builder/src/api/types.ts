@@ -209,7 +209,14 @@ export interface WorkflowBuilderProps {
   initialWorkflow?: WorkflowDefinition;
   /** Host-supplied agent catalog for inspector pickers (text fallback when omitted). */
   agentCatalog?: AgentRef[];
-  /** Editing posture; defaults to `editable`. See {@link WorkflowBuilderMode}. */
+  /**
+   * Editing posture; defaults to `editable`. See {@link WorkflowBuilderMode}.
+   *
+   * Treated as mount-stable: draft-recovery persistence reads the mode supplied at mount
+   * to decide whether a saved draft may restore and whether edits are persisted. Changing
+   * `mode` at runtime is not a supported transition — persistence behavior across such a
+   * flip is best-effort and undefined; remount the builder to change posture.
+   */
   mode?: WorkflowBuilderMode;
   /**
    * Draft-recovery persistence override. Defaults to a built-in `localStorage`-backed

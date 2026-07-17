@@ -33,7 +33,10 @@ and this package adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   storage. Adapter writes are serialized in invocation order, so "Start fresh" cannot be
   silently undone by a debounced save that was still in flight when the draft was cleared. This
   mechanism is independent of `capabilities.save`, which continues to gate a separate host
-  backend-persistence action.
+  backend-persistence action. The editing posture (`mode`) is treated as mount-stable for
+  persistence purposes: whether drafts restore and save is decided by the mode supplied at
+  mount, and changing `mode` at runtime is not a supported transition — remount the builder
+  to change posture.
 
 ### Fixed
 - The step-library panel no longer silently clips step types with no scroll affordance:

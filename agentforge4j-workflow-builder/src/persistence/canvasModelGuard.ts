@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
+import type { EditableArtifactItem } from '../api/types';
 import type { ArtifactItemDraft, CanvasModel, DecisionCaseDraft, NodeDataByKind } from '../model/canvasModel';
 import type { NodeKind } from '../model/nodeKinds';
 import { NODE_KIND_META } from '../model/nodeKinds';
@@ -32,17 +33,18 @@ type FieldSpec =
   | 'decisionCases';
 
 /**
- * Field requirements for artifact items, shared by `ASK_USER.artifactItems` drafts and the
- * items of `CanvasModel.artifacts` values: `id`/`label` are `.trim()`ed and `type` is
- * compared by the editor validator (`validateWorkflow.ts`), `options` elements are
- * `.trim()`ed by `hasOptions`. `key` is required — `ArtifactItemDraft.key` is a required
- * TypeScript field and `StepConfigPanel`'s inspector input renders it as a controlled value
- * (`value={item.key}`) with no fallback; `artifactFromAskUser`'s `it.key?.trim()` optional
- * chain only guards a missing draft *field*, not the controlled-input consumer, so treating
- * `key` as optional here would let a restored draft desync React's controlled/uncontrolled
- * input state.
+ * Field requirements for `ASK_USER.artifactItems` entries (`ArtifactItemDraft` — and only
+ * that type; the items of `CanvasModel.artifacts` values are `EditableArtifactItem`, a
+ * *different* type validated by {@link EDITABLE_ARTIFACT_ITEM_SPECS} below): `id`/`label`
+ * are `.trim()`ed and `type` is compared by the editor validator (`validateWorkflow.ts`),
+ * `options` elements are `.trim()`ed by `hasOptions`. `key` is required —
+ * `ArtifactItemDraft.key` is a required TypeScript field and `StepConfigPanel`'s inspector
+ * input renders it as a controlled value (`value={item.key}`) with no fallback;
+ * `artifactFromAskUser`'s `it.key?.trim()` optional chain only guards a missing draft
+ * *field*, not the controlled-input consumer, so treating `key` as optional here would let
+ * a restored draft desync React's controlled/uncontrolled input state.
  */
-const ARTIFACT_ITEM_SPECS = {
+const ARTIFACT_ITEM_DRAFT_SPECS = {
   id: 'string',
   type: 'string',
   label: 'string',
@@ -50,6 +52,24 @@ const ARTIFACT_ITEM_SPECS = {
   required: 'optionalBoolean',
   options: 'optionalStringArray',
 } as const satisfies { [F in keyof Required<ArtifactItemDraft>]: FieldSpec };
+
+/**
+ * Field requirements for the items of `CanvasModel.artifacts` values
+ * (`EditableArtifactItem`). Deliberately a separate table from
+ * {@link ARTIFACT_ITEM_DRAFT_SPECS}: `EditableArtifactItem` has **no `key` field** —
+ * the builder's own import path (`workflowToCanvas`, which copies `workflow.artifacts`
+ * verbatim) legitimately produces items without one, so requiring `key` here would
+ * reject (and, for the built-in adapter, destroy) every saved draft of an imported
+ * workflow. Each table is `satisfies`-tied to its concrete type so field drift on either
+ * type fails compilation independently.
+ */
+const EDITABLE_ARTIFACT_ITEM_SPECS = {
+  id: 'string',
+  type: 'string',
+  label: 'string',
+  required: 'optionalBoolean',
+  options: 'optionalStringArray',
+} as const satisfies { [F in keyof Required<EditableArtifactItem>]: FieldSpec };
 
 /** `value`/`targetNodeId` are `.trim()`ed by the mapper, `label` is rendered by `DecisionNode`. */
 const DECISION_CASE_SPECS = {
@@ -68,8 +88,8 @@ const DECISION_CASE_SPECS = {
  * Required vs optional follows what production code actually tolerates, not only the
  * TypeScript optionality: everything the render/mapping/validation pipeline dereferences
  * unconditionally (see the doc on {@link isRestorableCanvasModel}) is required; fields it
- * only reads behind `?.`/fallbacks (`forEachKey`, `evaluatorAgentId`, item `key`,
- * `required`, `options`) are optional but still type-checked when present.
+ * only reads behind `?.`/fallbacks (`forEachKey`, `evaluatorAgentId`, item `required`,
+ * `options`) are optional but still type-checked when present.
  */
 const NODE_DATA_SPECS = {
   ASK_USER: { name: 'string', question: 'string', artifactItems: 'artifactItems' },
@@ -120,7 +140,7 @@ function matchesSpec(value: unknown, spec: FieldSpec): boolean {
     case 'optionalStringArray':
       return value === undefined || isStringArray(value);
     case 'artifactItems':
-      return Array.isArray(value) && value.every(isRestorableArtifactItem);
+      return Array.isArray(value) && value.every(isRestorableArtifactItemDraft);
     case 'decisionCases':
       return Array.isArray(value) && value.every(isRestorableDecisionCase);
   }
@@ -130,21 +150,29 @@ function matchesSpecs(value: Record<string, unknown>, specs: Record<string, Fiel
   return Object.entries(specs).every(([field, spec]) => matchesSpec(value[field], spec));
 }
 
-function isRestorableArtifactItem(item: unknown): boolean {
-  return isPlainObject(item) && matchesSpecs(item, ARTIFACT_ITEM_SPECS);
+function isRestorableArtifactItemDraft(item: unknown): boolean {
+  return isPlainObject(item) && matchesSpecs(item, ARTIFACT_ITEM_DRAFT_SPECS);
+}
+
+function isRestorableEditableArtifactItem(item: unknown): boolean {
+  return isPlainObject(item) && matchesSpecs(item, EDITABLE_ARTIFACT_ITEM_SPECS);
 }
 
 function isRestorableDecisionCase(entry: unknown): boolean {
   return isPlainObject(entry) && matchesSpecs(entry, DECISION_CASE_SPECS);
 }
 
-/** An `artifacts` map value: `id` and every item are dereferenced by the editor validator. */
+/**
+ * An `artifacts` map value (`EditableArtifact`): `id` and every item are dereferenced by
+ * the editor validator. Items are `EditableArtifactItem` (no `key`), not
+ * `ArtifactItemDraft` — see {@link EDITABLE_ARTIFACT_ITEM_SPECS}.
+ */
 function isRestorableArtifact(value: unknown): boolean {
   return (
     isPlainObject(value) &&
     typeof value.id === 'string' &&
     Array.isArray(value.items) &&
-    value.items.every(isRestorableArtifactItem)
+    value.items.every(isRestorableEditableArtifactItem)
   );
 }
 

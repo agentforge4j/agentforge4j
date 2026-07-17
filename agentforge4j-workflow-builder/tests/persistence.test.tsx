@@ -9,6 +9,7 @@ import { WorkflowBuilder } from '../src/api/WorkflowBuilder';
 import type { BuilderCapabilities, BuilderPersistenceAdapter } from '../src/api/types';
 import { ACTION_LABELS } from '../src/copy/workflow-terminology';
 import type { CanvasModel } from '../src/model/canvasModel';
+import { canvasToWorkflow, workflowToCanvas } from '../src/model/mapper';
 import { DRAFT_STORAGE_VERSION } from '../src/persistence/localStoragePersistence';
 
 const allDisabled: BuilderCapabilities = {
@@ -149,6 +150,45 @@ describe('workflow-builder draft persistence', () => {
 
       expect(screen.queryByTestId('draft-restored-banner')).not.toBeInTheDocument();
       expect(screen.getByLabelText(ACTION_LABELS.workflowNameLabel)).toHaveValue('Restored Workflow');
+    });
+
+    it('restores a draft produced by the real export→import mapping, whose artifacts-map items carry no `key`', async () => {
+      // Regression guard: `CanvasModel.artifacts` values hold `EditableArtifactItem`s — a
+      // different type from `ASK_USER.artifactItems` drafts, with no `key` field. The
+      // import path (`handleImport` → `workflowToCanvas`) copies `workflow.artifacts`
+      // verbatim into the canvas, and the builder's own exports always contain an artifact
+      // per ASK_USER step, so a draft saved after an import must restore — not be rejected
+      // by the structural gate and destroyed by the built-in adapter.
+      const authored: CanvasModel = {
+        ...sampleCanvasModel('Imported Workflow'),
+        nodes: [
+          {
+            id: 'c-ask-1',
+            backendStepId: 'ask-1',
+            kind: 'ASK_USER',
+            position: { x: 80, y: 120 },
+            data: {
+              name: 'Question',
+              question: 'What?',
+              artifactItems: [{ id: 'item-1', type: 'TEXT', label: 'Response', key: 'value', required: true }],
+            },
+          },
+        ],
+      } as CanvasModel;
+      const imported = workflowToCanvas(canvasToWorkflow(authored)); // the literal import pipeline
+      const artifactValues = Object.values(imported.artifacts);
+      expect(artifactValues.length).toBeGreaterThan(0);
+      // The shape under test: real persisted artifact items have no `key`.
+      expect((artifactValues[0].items[0] as { key?: string }).key).toBeUndefined();
+
+      window.localStorage.setItem(DRAFT_KEY, storedDraft(imported));
+
+      render(<WorkflowBuilder capabilities={allDisabled} />);
+
+      expect(await screen.findByTestId('draft-restored-banner')).toBeInTheDocument();
+      expect(screen.getByLabelText(ACTION_LABELS.workflowNameLabel)).toHaveValue('Imported Workflow');
+      // The built-in adapter must not have discarded the draft as mis-shaped.
+      expect(window.localStorage.getItem(DRAFT_KEY)).not.toBeNull();
     });
   });
 
@@ -335,6 +375,16 @@ describe('workflow-builder draft persistence', () => {
         JSON.stringify({
           version: DRAFT_STORAGE_VERSION,
           model: { ...sampleCanvasModel('Bad Artifacts'), artifacts: { a1: {} } },
+        }),
+      ],
+      [
+        'an artifact value whose item is mis-typed (numeric id — malformed EditableArtifactItem)',
+        JSON.stringify({
+          version: DRAFT_STORAGE_VERSION,
+          model: {
+            ...sampleCanvasModel('Bad Artifact Item'),
+            artifacts: { a1: { id: 'a1', items: [{ id: 5, type: 'TEXT', label: 'Response' }] } },
+          },
         }),
       ],
       [
