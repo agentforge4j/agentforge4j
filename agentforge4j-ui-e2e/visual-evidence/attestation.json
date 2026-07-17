@@ -1,7 +1,7 @@
 {
-  "generatedAt": "2026-07-16T20:20:38.534Z",
-  "commitSha": "cbdd41f69ef624aa9a0e9354cf2e5288dd557b88",
-  "manifestHash": "f5db1cf7c4156fa095b994ef324092e694178e14165bb7006d159f6adf822ffb",
+  "generatedAt": "2026-07-17T07:19:31.251Z",
+  "commitSha": "f536f5f3d770a418b5b6a930446ba5a17dad303b",
+  "manifestHash": "0bc954e0ee9e9fbf3778ab036aafe104b5cce203809901939871cccdfc4c139f",
   "versions": {
     "webUi": "0.1.0",
     "workflowBuilder": "0.5.0"
@@ -14,7 +14,7 @@
     "tablet-landscape",
     "tablet-portrait"
   ],
-  "totalCaptures": 67,
+  "totalCaptures": 73,
   "overallStatus": "pass",
   "aiReviewEnabled": false
 }
