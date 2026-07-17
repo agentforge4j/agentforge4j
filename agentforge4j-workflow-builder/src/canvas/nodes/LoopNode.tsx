@@ -12,11 +12,12 @@ export type LoopNodeProps = {
     selected?: boolean;
     issueCount?: number;
     loopBodyLabels?: string[];
+    isStart?: boolean;
   };
 };
 
 export function LoopNode({ data }: LoopNodeProps) {
-  const { canvasNode: node, selected, issueCount = 0, loopBodyLabels } = data;
+  const { canvasNode: node, selected, issueCount = 0, loopBodyLabels, isStart = false } = data;
   if (node.kind !== 'REPEAT') {
     return null;
   }
@@ -35,6 +36,7 @@ export function LoopNode({ data }: LoopNodeProps) {
         subtitle={`${d.strategy} · up to ${d.maxIterations} iteration${d.maxIterations === 1 ? '' : 's'}`}
         selected={selected}
         issueCount={issueCount}
+        isStart={isStart}
         className="wf-node--loop-wide"
       >
         <div className="wf-node__loop-body">

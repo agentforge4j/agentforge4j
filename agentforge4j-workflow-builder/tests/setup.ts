@@ -26,4 +26,10 @@ beforeAll(() => {
     unobserve(): void {}
     disconnect(): void {}
   } as unknown as typeof ResizeObserver;
+
+  // jsdom does not implement scrollIntoView at all (not even as a no-op) — needed by the guided
+  // checklist's "reveal and focus" field behavior (StepConfigPanel).
+  if (!window.HTMLElement.prototype.scrollIntoView) {
+    window.HTMLElement.prototype.scrollIntoView = () => {};
+  }
 });

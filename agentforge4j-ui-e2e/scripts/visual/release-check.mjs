@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 //
-// One-shot "full visual release check" (Day 2 Tasks 7 + 8): regenerates every piece of evidence
+// One-shot "full visual release check": regenerates every piece of evidence
 // fresh (never trusts a possibly-stale prior run) and then fails closed via
 // `check-freshness.mjs --strict` if anything is missing, stale, or reports an unresolved visual
 // failure. Meant to be run manually by a maintainer ahead of a real 0.1.0 publish — never wired

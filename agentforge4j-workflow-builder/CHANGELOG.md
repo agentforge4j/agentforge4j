@@ -30,6 +30,30 @@ and this package adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   step's case configuration (edited in the inspector), not in the drawn edge, so rerouting the
   drawing would silently diverge from what the exported workflow actually does.
 
+- A persistent "Start" marker on whichever node is the workflow's current start step,
+  visible on the canvas in both Guided and Advanced mode — previously the entry point could
+  only be inferred from graph position, or was labeled explicitly in Advanced mode's
+  starter hint alone.
+- A direct "Start step" chooser in Guided mode, shown once a workflow has more than one
+  node and at least one other node is eligible to become the start step: a dropdown
+  listing every eligible node, reassigning the start step on selection.
+  It reuses the same reposition-to-Start mechanism as the inspector's existing "Runs after:
+  Start" option rather than a parallel one; the eligibility rules (top-level, not
+  DECISION/RETRY, not branch-owned, at most one linear predecessor/successor) are shared
+  with that selector too. The chooser also offers a node with no other valid position (a
+  second, detached root) even though the inspector's own selector stays disabled for it —
+  moving such a node to Start still detaches it from whatever it was chained to, the same
+  way every other reposition target already does.
+- A visible, persisted on-page confirmation after a successful Export, showing the produced
+  filename (e.g. "Exported my-workflow.workflow.zip") and a dismiss control — replacing the
+  previous silent revert to the button's resting state with no other feedback. The filename
+  comes from the adapter itself: `BuilderAdapters.exportBundle` may now resolve an
+  `ExportOutcome` (`{ filename?: string }`) — the built-in adapter does, as does the package's
+  public `exportBundle` helper (which now delegates to the same implementation) — while a host
+  adapter resolving `void` (every existing implementation remains valid) gets a generic
+  confirmation instead of a fabricated filename. The confirmation is cleared automatically when a different
+  workflow is imported, so it never describes a stale document.
+
 ### Changed
 - Importing/loading a new workflow document now resets undo/redo history instead of leaving it
   in place — undoing after an import returns to the freshly-imported document, not back into a
@@ -43,6 +67,34 @@ and this package adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   sizing on `.wf-palette__body` never took effect. `.wf-palette__panel` is now a column
   flex container that fills its parent, and `.wf-palette__body` gained `min-height: 0` so
   it can shrink below its content size and actually scroll.
+- The validation "N things to fix" popover no longer renders behind an already-open step
+  inspector panel. The pill's own stacking context (established by the toolbar's non-`auto`
+  `z-index`) could never be escaped by raising the popover's `z-index` alone, since a raised value
+  stays scoped inside that ancestor context; the popover is now rendered via a `document.body`
+  portal, positioned from the pill's own screen coordinates, so it always paints above open panels
+  regardless of which ancestor stacking context the pill itself lives in.
+- Guided mode's "Add approval" checklist item now genuinely reveals the field it checks for.
+  `StepConfigPanel`'s Approval control (`TransitionField`) already existed and worked, but was
+  hidden inside the "Behavior" section, which defaults to collapsed in guided mode; the checklist
+  item's action now selects the relevant AI step, force-opens that section, and focuses the field
+  instead of silently choosing "Requires human approval" on the user's behalf.
+- The validation popover (which is portaled to `document.body`, outside the themed builder
+  root) now carries the host's `theme.variables`/`theme.className`, so themed hosts no longer
+  get a default-palette popover.
+- The "Add approval" checklist action no longer silently does nothing on a repeat click after the
+  user has manually collapsed the revealed Behavior section: the section is now force-opened
+  imperatively, not just via a React prop the browser's own `<summary>` toggle can already have
+  invalidated.
+- Dismissing the validation popover by clicking elsewhere, or via its "Fix" action, no longer
+  steals focus back to the pill toggle button — restoring focus to the toggle now only happens on
+  dismissals (Escape, the popover's own close button) that don't already establish a different
+  focus target.
+- Pressing Escape while the validation popover is open now dismisses only the popover, even when a
+  step inspector panel is open underneath it, instead of also closing the inspector.
+- Activating "Fix" on a validation issue now moves focus into the step inspector it opens, instead
+  of leaving it on the document body once the popover (which held it) unmounts.
+- Pressing Escape after focus has already moved away from the open validation popover (e.g. via
+  Tab to another control) no longer steals it back to the pill toggle button on close.
 
 ## [0.5.0] - 2026-07-12
 

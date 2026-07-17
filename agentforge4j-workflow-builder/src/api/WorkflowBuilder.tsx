@@ -5,6 +5,7 @@ import { WorkflowCanvas } from '../canvas/WorkflowCanvas';
 import { ACTION_LABELS, GUIDED_STAGE_LABELS } from '../copy/workflow-terminology';
 import { ConfirmDeleteDialog } from '../dialogs/ConfirmDeleteDialog';
 import { GuidedStepper } from '../guided/GuidedStepper';
+import { StartStepChooser } from '../guided/StartStepChooser';
 import { createInitialCanvasModel, useCanvasState } from '../hooks/useCanvasState';
 import { useBuilderMode } from '../hooks/useBuilderMode';
 import type { DraftValidationIssue } from '../hooks/useWorkflowDraft';
@@ -17,7 +18,15 @@ import {
   newStepId,
   workflowToCanvas,
 } from '../model/mapper';
-import { isInsertableEdge, pruneReferences, repositionAfter, spliceEdgeWithNode, unreachableNodeIds } from '../model/graphOps';
+import {
+  isInsertableEdge,
+  isInsideLoopBody,
+  pruneReferences,
+  repositionAfter,
+  spliceEdgeWithNode,
+  START_SENTINEL,
+  unreachableNodeIds,
+} from '../model/graphOps';
 import type { NodeKind } from '../model/nodeKinds';
 import { NODE_KIND_META } from '../model/nodeKinds';
 import { StepPalette } from '../palette/StepPalette';
@@ -36,6 +45,11 @@ type ActionKey = 'import' | 'export' | 'save' | 'run' | 'publish';
 
 type PendingState = Partial<Record<ActionKey, boolean>>;
 type ErrorState = Partial<Record<ActionKey, string | null>>;
+/** Persisted success message per action, keyed like {@link PendingState}/{@link ErrorState} so a
+ * successful action's confirmation lives in the same state machine as its pending/error states
+ * rather than a parallel one. Currently populated only by export (see `handleExport`); other
+ * action keys stay unused (`null`) until/unless a future phase wants the same treatment. */
+type SuccessState = Partial<Record<ActionKey, string | null>>;
 
 function flattenClientIssues(model: CanvasModel, validation: EditorValidation): DraftValidationIssue[] {
   const safe = (value: string | undefined) => value ?? '';
@@ -145,12 +159,23 @@ export function WorkflowBuilder({
   const { state, dispatch, dirty } = useBuilderState(seed);
   const [pending, setPending] = useState<PendingState>({});
   const [errors, setErrors] = useState<ErrorState>({});
+  const [success, setSuccess] = useState<SuccessState>({});
   const [insertOnEdgeId, setInsertOnEdgeId] = useState<string | null>(null);
+  // One-shot "move focus into the panel" request handed to StepConfigPanel — 'transition' is set
+  // by the guided checklist's "Require approval" action (case 2 of onGuidedStageAction below);
+  // 'panel' is set by focusIssue (the validation popover's "Fix" action) below.
+  const [focusField, setFocusField] = useState<'transition' | 'panel' | null>(null);
+  const onFocusFieldHandled = useCallback(() => setFocusField(null), []);
   const skipDraftSync = useRef(false);
   // Root element ref used to scope the window-level undo/redo shortcuts to keydowns that
   // originate inside this builder instance (see the keyboard effect below).
   const rootRef = useRef<HTMLDivElement>(null);
   const serializeGuardWarnedRef = useRef(false);
+  // Bumped whenever the working document is replaced wholesale (currently: import).
+  // An in-flight export captures the generation it started against; if the document
+  // has since been replaced by the time the export resolves, its confirmation would
+  // describe a document that is no longer loaded, so it is dropped instead of shown.
+  const docGenerationRef = useRef(0);
 
   const initialCanvas = useMemo(
     () => (seed.steps.length > 0 ? workflowToCanvas(seed) : createInitialCanvasModel()),
@@ -357,18 +382,26 @@ export function WorkflowBuilder({
     return counts;
   }, [clientIssues]);
 
-  const runAction = useCallback(async (key: ActionKey, fn: () => Promise<void>) => {
-    setPending((prev) => ({ ...prev, [key]: true }));
-    setErrors((prev) => ({ ...prev, [key]: null }));
-    try {
-      await fn();
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Action failed';
-      setErrors((prev) => ({ ...prev, [key]: message }));
-    } finally {
-      setPending((prev) => ({ ...prev, [key]: false }));
-    }
-  }, []);
+  const runAction = useCallback(
+    // `fn` may resolve a success message to pin to the status area; resolving void shows none.
+    async (key: ActionKey, fn: () => Promise<string | void>) => {
+      setPending((prev) => ({ ...prev, [key]: true }));
+      setErrors((prev) => ({ ...prev, [key]: null }));
+      setSuccess((prev) => ({ ...prev, [key]: null }));
+      try {
+        const successMessage = await fn();
+        if (typeof successMessage === 'string') {
+          setSuccess((prev) => ({ ...prev, [key]: successMessage }));
+        }
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'Action failed';
+        setErrors((prev) => ({ ...prev, [key]: message }));
+      } finally {
+        setPending((prev) => ({ ...prev, [key]: false }));
+      }
+    },
+    [],
+  );
 
   const handleImport = () =>
     runAction('import', async () => {
@@ -381,15 +414,34 @@ export function WorkflowBuilder({
         type: 'SET_IMPORT_META',
         importMeta: { source: 'file', importedAt: new Date().toISOString() },
       });
+      // The working document was just replaced: an export confirmation still describing the
+      // previous document is now a stale claim — drop it, and bump the generation so an
+      // export already in flight against the old document cannot show one either.
+      docGenerationRef.current += 1;
+      setSuccess((prev) => ({ ...prev, export: null }));
     });
 
   const handleExport = () =>
     runAction('export', async () => {
+      const generationAtStart = docGenerationRef.current;
       // 'zip' is the only schemaVersion-stamped export format; the plain-'json' draft round-trip
       // carries no schemaVersion at all. Schema validation itself happens on import, not export,
       // for either format.
-      await resolvedAdapters.exportBundle(state.draft, 'zip');
+      const outcome = await resolvedAdapters.exportBundle(state.draft, 'zip');
+      if (docGenerationRef.current !== generationAtStart) {
+        // The document was replaced (e.g. an import completed) while this export was still
+        // in flight: the confirmation would describe a document that is no longer loaded.
+        return;
+      }
+      // Name the produced file only when the adapter reported one (the built-in adapter does);
+      // a host adapter that resolves void gets a generic confirmation — the builder never
+      // fabricates a filename the adapter did not actually produce.
+      return outcome?.filename ? ACTION_LABELS.exportSuccess(outcome.filename) : ACTION_LABELS.exportSuccessGeneric;
     });
+
+  const dismissExportSuccess = useCallback(() => {
+    setSuccess((prev) => ({ ...prev, export: null }));
+  }, []);
 
   const handleSave = () =>
     runAction('save', async () => {
@@ -418,7 +470,7 @@ export function WorkflowBuilder({
     });
 
   const onAddStepFromLibrary = useCallback(
-    (kind: NodeKind, options?: { patch?: Record<string, unknown> }) => {
+    (kind: NodeKind) => {
       const prefix: Record<NodeKind, string> = {
         ASK_USER: 'ask-user',
         AI_STEP: 'ai-step',
@@ -433,7 +485,7 @@ export function WorkflowBuilder({
       };
       const backendStepId = newStepId(prefix[kind]);
       const id = `c-${backendStepId}`;
-      const data = { ...defaultNodeData(kind), ...options?.patch };
+      const data = defaultNodeData(kind);
 
       // Edge-insert mode (Part A §6): split the chosen linear edge with this node.
       const activeInsertEdge =
@@ -499,6 +551,16 @@ export function WorkflowBuilder({
     [setModel],
   );
 
+  // Guided mode's direct start-step chooser (issue #100): same repositionAfter/START_SENTINEL
+  // mutation the inspector's "Runs after: Start" option performs, just reached from a
+  // more discoverable entry point once the workflow has more than one node.
+  const onSelectStartStep = useCallback(
+    (nodeId: string) => {
+      onReposition(nodeId, START_SENTINEL);
+    },
+    [onReposition],
+  );
+
   const onInsertOnEdge = useCallback(
     (edgeId: string) => {
       if (readOnly) {
@@ -553,6 +615,10 @@ export function WorkflowBuilder({
       const node = model.nodes.find((n) => n.backendStepId === stepId);
       if (node) {
         setSelectedId(node.id);
+        // Move focus into the inspector once it opens — "Fix" is reached from the validation
+        // popover, which force-moves keyboard focus into itself on open; without this, closing it
+        // drops focus to document.body instead of following the step it just opened.
+        setFocusField('panel');
       }
     },
     [model.nodes, setSelectedId],
@@ -599,13 +665,31 @@ export function WorkflowBuilder({
           onAddStepFromLibrary('AI_STEP');
           break;
         case 2: {
-          const aiNode = model.nodes.find((n) => n.kind === 'AI_STEP');
-          if (aiNode) {
-            updateNodeData(aiNode.id, { transition: 'HUMAN_APPROVAL' } as Partial<CanvasNode['data']>);
-            setSelectedId(aiNode.id);
+          // Reveal and focus the transition field rather than silently choosing "Requires human
+          // approval" on the user's behalf — mirrors the "Add input" stage's "select and let the
+          // user act" pattern, rather than the "Add AI step"/"Generate result" stages' "add a step
+          // whose mere presence satisfies the check" pattern, since this stage is about a choice
+          // the user makes, not a step to add.
+          //
+          // Candidates are filtered to nodes StepConfigPanel actually leaves editable: a node
+          // inside a REPEAT loop body renders its whole fieldset disabled there, so revealing and
+          // focusing its transition field would silently do nothing (a disabled <select> refuses
+          // focus) — the guided action must not dead-end on the first matching node regardless of
+          // whether it can actually be edited.
+          const isEditableApprovalCandidate = (n: CanvasNode): boolean =>
+            (n.kind === 'AI_STEP' || n.kind === 'REUSE_WORKFLOW') && !isInsideLoopBody(model, n);
+          const candidateNode = model.nodes.find(isEditableApprovalCandidate);
+          if (candidateNode) {
+            setSelectedId(candidateNode.id);
           } else {
-            onAddStepFromLibrary('AI_STEP', { patch: { transition: 'HUMAN_APPROVAL' } });
+            // No editable AI_STEP/REUSE_WORKFLOW exists yet (e.g. the "Add AI step" stage was
+            // satisfied with an AI_DEBATE step instead, which has no transition control in the
+            // inspector, or the only candidate sits inside a loop body) — add a fresh AI_STEP so
+            // there is a field to reveal, matching the existing "no eligible node yet" fallback
+            // this action already had.
+            onAddStepFromLibrary('AI_STEP');
           }
+          setFocusField('transition');
           break;
         }
         case 3:
@@ -615,7 +699,7 @@ export function WorkflowBuilder({
           break;
       }
     },
-    [askUserNode, model.nodes, onAddStepFromLibrary, setSelectedId, updateNodeData],
+    [askUserNode, model.nodes, onAddStepFromLibrary, setSelectedId],
   );
 
   const rootStyle = theme?.variables
@@ -739,7 +823,7 @@ export function WorkflowBuilder({
             {pending.import ? ACTION_LABELS.importing : ACTION_LABELS.import}
           </button>
         ) : null}
-        <ValidationPill model={model} clientIssues={validationIssues} onFix={focusIssue} />
+        <ValidationPill model={model} clientIssues={validationIssues} onFix={focusIssue} theme={theme} />
         {capabilities.export ? (
           <button
             type="button"
@@ -833,6 +917,7 @@ export function WorkflowBuilder({
               activeIndex={activeGuidedIndex === -1 ? guidedStages.length - 1 : activeGuidedIndex}
               onStageAction={onGuidedStageAction}
             />
+            <StartStepChooser model={model} onSelectStart={onSelectStartStep} />
           </div>
         ) : null}
 
@@ -870,6 +955,8 @@ export function WorkflowBuilder({
           agentCatalog={agentCatalog}
           readOnly={readOnly}
           onReposition={onReposition}
+          focusField={focusField}
+          onFocusFieldHandled={onFocusFieldHandled}
         />
       </div>
 
@@ -886,6 +973,23 @@ export function WorkflowBuilder({
       {activeError ? (
         <p className="workflow-builder__status workflow-builder__status--error" role="alert">
           {activeError}
+        </p>
+      ) : null}
+      {success.export ? (
+        <p
+          className="workflow-builder__status workflow-builder__status--success"
+          role="status"
+          data-testid="export-success"
+        >
+          <span>{success.export}</span>
+          <button
+            type="button"
+            className="wf-button wf-button--ghost wf-button--icon workflow-builder__status-dismiss"
+            aria-label={ACTION_LABELS.dismissExportSuccess}
+            onClick={dismissExportSuccess}
+          >
+            ×
+          </button>
         </p>
       ) : null}
     </div>

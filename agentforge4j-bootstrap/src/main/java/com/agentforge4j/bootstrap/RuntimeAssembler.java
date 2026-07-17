@@ -81,7 +81,7 @@ final class RuntimeAssembler {
       LOGGER.log(System.Logger.Level.WARNING,
           """
               No LLM providers configured. Workflows that invoke agents will fail at runtime. \
-              Set AGENTFORGE4J_LLM_<PROVIDER>_API_KEY, agentforge4j.llm.<provider>.api-key, \
+              Set AGENTFORGE4J_LLM_<PROVIDER>_API_KEY, agentforge4j.llm.<provider>.api.key, \
               or use withLlmProvider(...).""");
     }
   }
