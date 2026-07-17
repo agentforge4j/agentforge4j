@@ -37,6 +37,16 @@ test('every extra committed-content file the gate depends on actually exists', (
   }
 });
 
+// Requires `npm run catalogue:build` to have already run (the `check` script's own ordering) —
+// the generated file carries shipped workflows' own author/contact/description text, which the
+// gate must scan the same as any other committed prose surface.
+test('the generated catalogue-data.json the gate also scans actually exists', () => {
+  assert.ok(
+    statSync(join(MODULE_ROOT, 'src/generated/catalogue-data.json')).isFile(),
+    'src/generated/catalogue-data.json should exist — run `npm run catalogue:build` first',
+  );
+});
+
 test('running the content gate scans the extra files and passes on real repository content', () => {
   const result = spawnSync(process.execPath, ['scripts/lint-content-gate.mjs'], {
     cwd: MODULE_ROOT,

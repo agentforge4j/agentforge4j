@@ -18,8 +18,8 @@ private application (not published to npm) and is independent of the Maven react
 ## Structure
 
 - **Routing** (`react-router-dom`): the launch-required routes listed above, plus a catch-all 404.
-  Route content is placeholder-only in the foundation track — real copy is authored by later
-  tracks (content/builder/catalogue).
+  `/builder` and `/catalogue` are real embeds (workflow-builder component; generated catalogue
+  data), lazy-loaded on demand; the rest carry real authored copy.
 - **Nav/footer**: data-driven from `src/config/nav.ts`, internal to this module for now (no
   cross-build sharing with the Docusaurus navbar yet).
 - **Branding**: the canonical logo (`public/brand/logo-horizontal.svg`) and the palette recorded in
@@ -44,8 +44,8 @@ npm install
 npm run dev
 ```
 
-To develop against the **unpublished** workflow-builder source instead of the released npm package
-(relevant once the builder track wires `/builder` to a real embed), use:
+To develop against the **unpublished** workflow-builder source instead of the released npm package,
+use:
 
 ```bash
 npm run dev:local

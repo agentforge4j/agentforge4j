@@ -686,8 +686,16 @@
   font-family: var(--afb-font-sans);
 }
 
+.wf-palette__panel {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
 .wf-palette__body {
   flex: 1;
+  min-height: 0;
   overflow: auto;
   padding: var(--builder-space-sm);
 }
