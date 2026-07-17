@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { BuilderPersistenceAdapter } from '../api/types';
 import type { CanvasModel } from '../model/canvasModel';
 import { createLocalStoragePersistence } from '../persistence/localStoragePersistence';
@@ -58,10 +58,15 @@ export type UseModelPersistenceResult = {
  * the built-in localStorage-backed adapter. The package never makes a network call for this
  * either way.
  *
- * Restore is fail-closed: a loaded draft must pass a structural plausibility check
- * (`isRestorableCanvasModel`) before it may replace the live model, and it is skipped entirely
- * if the user has already started editing by the time an (async) `load()` resolves — a slow
- * host backend must never clobber in-progress work with a stale draft.
+ * Restore is fail-closed: a loaded draft must pass the full structural gate
+ * (`isRestorableCanvasModel` — every field the editor dereferences, not just containers)
+ * before it may replace the live model, and it is skipped entirely if the user has already
+ * started editing by the time an (async) `load()` resolves — a slow host backend must never
+ * clobber in-progress work with a stale draft.
+ *
+ * Adapter writes (`save`/`clear`) are serialized in invocation order through a single
+ * promise chain, so "Start fresh" cannot be silently undone by a debounced save that was
+ * still in flight when the draft was cleared.
  */
 export function useModelPersistence({
   persistence,
@@ -93,6 +98,25 @@ export function useModelPersistence({
   adapterRef.current = adapter;
   const allowSaveRef = useRef(allowSave);
   allowSaveRef.current = allowSave;
+
+  // Serializes every adapter *write* (save/clear) through one promise chain so completion
+  // order always matches invocation order. Without this, "Start fresh" could dispatch
+  // `clear()` while a debounced `save()` was still in flight on an async host adapter —
+  // out-of-order completion (two independent HTTP calls, say) would re-persist the
+  // discarded draft after the clear, resurrecting it on the next mount. A rejected or
+  // synchronously-throwing operation is logged and never poisons the chain. `load()` stays
+  // outside the queue: it is read-only and mount-scoped, so it has no ordering hazard.
+  const writeQueueRef = useRef<Promise<void>>(Promise.resolve());
+  const enqueueAdapterWrite = useCallback((operation: () => Promise<void> | void, failureMessage: string): void => {
+    writeQueueRef.current = writeQueueRef.current
+      .then(() => operation())
+      .then(
+        () => undefined,
+        (err) => {
+          warnPersistence(failureMessage, err);
+        },
+      );
+  }, []);
 
   // Load on mount.
   useEffect(() => {
@@ -155,23 +179,19 @@ export function useModelPersistence({
     debounceTimerRef.current = setTimeout(() => {
       const generation = ++saveGenerationRef.current;
       // Cleared only once this save actually settles successfully, and only if no later
-      // edit has started another save in the meantime (see `saveGenerationRef` above) —
-      // while a save is still in flight, or has failed, both the `beforeunload` warning and
-      // the unmount flush must keep treating this edit as unprotected rather than assuming
-      // it landed.
-      try {
-        void Promise.resolve(adapterRef.current.save(model))
-          .then(() => {
+      // edit — or "Start fresh" — has bumped the generation in the meantime (see
+      // `saveGenerationRef` above) — while a save is still in flight, or has failed, both
+      // the `beforeunload` warning and the unmount flush must keep treating this edit as
+      // unprotected rather than assuming it landed.
+      enqueueAdapterWrite(
+        () =>
+          Promise.resolve(adapterRef.current.save(model)).then(() => {
             if (saveGenerationRef.current === generation) {
               pendingFlushRef.current = false;
             }
-          })
-          .catch((err) => {
-            warnPersistence('Failed to save the draft.', err);
-          });
-      } catch (err) {
-        warnPersistence('Failed to save the draft.', err);
-      }
+          }),
+        'Failed to save the draft.',
+      );
     }, SAVE_DEBOUNCE_MS);
     return () => {
       if (debounceTimerRef.current) {
@@ -195,15 +215,9 @@ export function useModelPersistence({
         return;
       }
       pendingFlushRef.current = false;
-      try {
-        void Promise.resolve(adapterRef.current.save(latestModelRef.current)).catch((err) => {
-          warnPersistence('Failed to flush the draft on unmount.', err);
-        });
-      } catch (err) {
-        warnPersistence('Failed to flush the draft on unmount.', err);
-      }
+      enqueueAdapterWrite(() => adapterRef.current.save(latestModelRef.current), 'Failed to flush the draft on unmount.');
     };
-  }, []);
+  }, [enqueueAdapterWrite]);
 
   // Best-effort secondary safety net for the gap between an edit and the debounce flushing.
   useEffect(() => {
@@ -233,20 +247,20 @@ export function useModelPersistence({
       clearTimeout(debounceTimerRef.current);
     }
     pendingFlushRef.current = false;
+    // A save whose debounce already fired may still be in flight; bump the generation so
+    // its settlement can no longer mark the discarded state as protected, and enqueue the
+    // clear on the write queue so it runs strictly after that save settles — see
+    // `enqueueAdapterWrite` for why ordering matters here.
+    saveGenerationRef.current += 1;
     // `clear` is required by BuilderPersistenceAdapter (TypeScript enforces this on every
     // conforming adapter), so this is a direct call, not `adapter.clear?.()` — the button's
     // whole meaning is "no saved draft remains", so silently skipping the clear for an
     // adapter that lacks one would make "Start fresh" misleading rather than merely
-    // incomplete. The try/catch below is defense-in-depth for a JS (non-TypeScript) caller
-    // that bypasses the type system and supplies an adapter object without `clear`: the
-    // canvas still resets and the failure is logged, rather than the action crashing.
-    try {
-      void Promise.resolve(adapter.clear()).catch((err) => {
-        warnPersistence('Failed to clear the saved draft.', err);
-      });
-    } catch (err) {
-      warnPersistence('Failed to clear the saved draft.', err);
-    }
+    // incomplete. The queue's failure handling is defense-in-depth for a JS
+    // (non-TypeScript) caller that bypasses the type system and supplies an adapter object
+    // without `clear`: the canvas still resets and the failure is logged, rather than the
+    // action crashing.
+    enqueueAdapterWrite(() => adapter.clear(), 'Failed to clear the saved draft.');
     setModelFromLoad(createInitialCanvasModel());
     setRestored(false);
   };

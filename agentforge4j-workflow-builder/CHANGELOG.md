@@ -26,10 +26,14 @@ and this package adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   is flushed when the builder unmounts (covering SPA navigation), and a best-effort
   `beforeunload` warning covers the remaining page-unload gap. The built-in adapter stores a
   version-stamped envelope and keeps a single global draft slot per origin; on load, a version
-  mismatch or structurally unrecognizable draft is discarded fail-closed (never restored into
-  code that cannot render it), and drafts resolved by host adapters pass the same structural
-  gate. This mechanism is independent of `capabilities.save`, which continues to gate a separate
-  host backend-persistence action.
+  mismatch or a draft failing the full structural gate — which validates every field the editor
+  dereferences (per-kind step fields, decision cases, artifact definitions, edges), not just
+  container presence — is discarded fail-closed (never restored into code that cannot render
+  it): built-in drafts are cleared, host-adapter drafts are skipped without touching the host's
+  storage. Adapter writes are serialized in invocation order, so "Start fresh" cannot be
+  silently undone by a debounced save that was still in flight when the draft was cleared. This
+  mechanism is independent of `capabilities.save`, which continues to gate a separate host
+  backend-persistence action.
 
 ### Fixed
 - The step-library panel no longer silently clips step types with no scroll affordance:

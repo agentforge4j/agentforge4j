@@ -213,9 +213,9 @@ export interface WorkflowBuilderProps {
   mode?: WorkflowBuilderMode;
   /**
    * Draft-recovery persistence override. Defaults to a built-in `localStorage`-backed
-   * implementation when omitted. See {@link BuilderPersistenceAdapter}. Pass a referentially
-   * stable object (e.g. via `useMemo`/module scope) — a new object identity on every render
-   * resets the internal save debounce.
+   * implementation when omitted. See {@link BuilderPersistenceAdapter}. Adapter identity may
+   * change between renders without penalty: debounced saves always go to the most recently
+   * supplied adapter, and the mount-time `load()` uses the adapter supplied at mount.
    */
   persistence?: BuilderPersistenceAdapter;
 }

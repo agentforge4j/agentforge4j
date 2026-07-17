@@ -255,6 +255,27 @@ describe('workflow-builder draft persistence', () => {
         'an ASK_USER node missing its artifactItems array (would crash StepConfigPanel)',
         draftWithNodes('Ask No Items', [{ id: 'n1', kind: 'ASK_USER', position: { x: 0, y: 0 }, data: { name: '', question: '' } }]),
       ],
+      [
+        'an AI_STEP node with empty data (missing agentRef etc. — would crash validateWorkflowEditor)',
+        draftWithNodes('Ai Empty Data', [{ id: 'n1', kind: 'AI_STEP', position: { x: 0, y: 0 }, data: {} }]),
+      ],
+      [
+        'a DECISION case entry missing its value/targetNodeId strings (would crash canvasToWorkflow)',
+        draftWithNodes('Decision Bad Case', [
+          { id: 'n1', kind: 'DECISION', position: { x: 0, y: 0 }, data: { name: 'D', contextKey: '', defaultTargetNodeId: '', cases: [{}] } },
+        ]),
+      ],
+      [
+        'a SAVE_RESULT node missing resultName (would crash canvasToWorkflow)',
+        draftWithNodes('Save No Result', [{ id: 'n1', kind: 'SAVE_RESULT', position: { x: 0, y: 0 }, data: { name: 'S' } }]),
+      ],
+      [
+        'an artifact definition with no items array (would crash validateWorkflowEditor)',
+        JSON.stringify({
+          version: DRAFT_STORAGE_VERSION,
+          model: { ...sampleCanvasModel('Bad Artifacts'), artifacts: { a1: {} } },
+        }),
+      ],
     ])('discards %s instead of restoring (and clears it so it cannot crash the next mount)', async (_label, raw) => {
       window.localStorage.setItem(DRAFT_KEY, raw);
 
@@ -375,7 +396,8 @@ describe('workflow-builder draft persistence', () => {
       // Unmount immediately — well inside the debounce window — as an SPA route change would.
       unmount();
 
-      expect(adapter.save).toHaveBeenCalled();
+      // The flush is dispatched through the ordered write queue (one microtask), so await it.
+      await waitFor(() => expect(adapter.save).toHaveBeenCalled());
       const lastCall = adapter.save.mock.calls[adapter.save.mock.calls.length - 1]?.[0] as CanvasModel;
       expect(lastCall.workflowName).toBe('Typed Right Before Navigating');
     });
@@ -422,6 +444,81 @@ describe('workflow-builder draft persistence', () => {
 
       expect(screen.getByLabelText(ACTION_LABELS.workflowNameLabel)).toHaveValue('Fresh Work In Progress');
       expect(screen.queryByTestId('draft-restored-banner')).not.toBeInTheDocument();
+    });
+  });
+
+  describe('beforeunload safety net', () => {
+    it('blocks unload only while an edit is still unflushed', async () => {
+      const adapter = {
+        load: vi.fn().mockResolvedValue(null),
+        save: vi.fn().mockResolvedValue(undefined),
+        clear: vi.fn().mockResolvedValue(undefined),
+      };
+      render(<WorkflowBuilder capabilities={allDisabled} persistence={adapter} />);
+      await waitFor(() => expect(adapter.load).toHaveBeenCalledTimes(1));
+
+      // Nothing pending yet: unload is not blocked.
+      const beforeEdit = new Event('beforeunload', { cancelable: true });
+      window.dispatchEvent(beforeEdit);
+      expect(beforeEdit.defaultPrevented).toBe(false);
+
+      fireEvent.change(screen.getByLabelText(ACTION_LABELS.workflowNameLabel), {
+        target: { value: 'Unflushed Edit' },
+      });
+
+      // Inside the debounce window the edit is unprotected — unload must warn.
+      const whilePending = new Event('beforeunload', { cancelable: true });
+      window.dispatchEvent(whilePending);
+      expect(whilePending.defaultPrevented).toBe(true);
+
+      // Once the debounced save settles, the warning disarms again.
+      await waitFor(() => expect(adapter.save).toHaveBeenCalled(), DEBOUNCE_WAIT);
+      await waitFor(() => {
+        const afterFlush = new Event('beforeunload', { cancelable: true });
+        window.dispatchEvent(afterFlush);
+        expect(afterFlush.defaultPrevented).toBe(false);
+      });
+    });
+  });
+
+  describe('in-flight save racing "Start fresh"', () => {
+    it('runs clear() strictly after a still-in-flight save so the discarded draft cannot resurrect', async () => {
+      const events: string[] = [];
+      let resolveSave: () => void = () => {};
+      const adapter = {
+        load: vi.fn().mockResolvedValue(sampleCanvasModel('Restored Workflow')),
+        save: vi.fn().mockImplementation(
+          () =>
+            new Promise<void>((resolve) => {
+              resolveSave = () => {
+                events.push('save-settled');
+                resolve();
+              };
+            }),
+        ),
+        clear: vi.fn().mockImplementation(() => {
+          events.push('clear');
+        }),
+      };
+
+      render(<WorkflowBuilder capabilities={allDisabled} persistence={adapter} />);
+      expect(await screen.findByTestId('draft-restored-banner')).toBeInTheDocument();
+
+      fireEvent.change(screen.getByLabelText(ACTION_LABELS.workflowNameLabel), {
+        target: { value: 'Edited Before Discard' },
+      });
+      await waitFor(() => expect(adapter.save).toHaveBeenCalledTimes(1), DEBOUNCE_WAIT);
+
+      const user = userEvent.setup();
+      await user.click(screen.getByTestId('draft-restored-start-fresh'));
+
+      // The save dispatched before "Start fresh" is still in flight: the clear must wait
+      // for it — issuing it now would let the slow save re-persist the discarded draft.
+      expect(adapter.clear).not.toHaveBeenCalled();
+
+      resolveSave();
+      await waitFor(() => expect(adapter.clear).toHaveBeenCalledTimes(1));
+      expect(events).toEqual(['save-settled', 'clear']);
     });
   });
 
