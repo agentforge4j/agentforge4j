@@ -7,6 +7,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { WorkflowBuilder } from '../src/api/WorkflowBuilder';
 import type { BuilderCapabilities, WorkflowDefinition } from '../src/api/types';
 import { ACTION_LABELS } from '../src/copy/workflow-terminology';
+import { workflowZipFileName } from '../src/io/browser/zip';
 
 const allDisabled: BuilderCapabilities = {
   import: false,
@@ -35,7 +36,9 @@ describe('Export success confirmation', () => {
 
   it('shows a persisted, visible confirmation with the produced filename after a successful export', async () => {
     const user = userEvent.setup();
-    const exportBundle = vi.fn().mockResolvedValue(undefined);
+    // The adapter reports the file it actually produced (the built-in adapter does this);
+    // the confirmation must use that reported name.
+    const exportBundle = vi.fn().mockResolvedValue({ filename: 'workflow.workflow.zip' });
     render(
       <WorkflowBuilder
         capabilities={{ ...allDisabled, export: true }}
@@ -58,8 +61,14 @@ describe('Export success confirmation', () => {
     expect(screen.getByTestId('export-success')).toBeInTheDocument();
   });
 
-  it('names the file after the workflow id, matching the zip export convention', async () => {
+  it('the built-in zip convention names the file after the workflow id (what the built-in adapter reports)', () => {
+    expect(workflowZipFileName(namedWorkflow)).toBe('greeting-flow.workflow.zip');
+  });
+
+  it('shows a generic confirmation — never a fabricated filename — when a host adapter resolves no outcome', async () => {
     const user = userEvent.setup();
+    // A host adapter that saves the draft elsewhere and resolves void: the builder has no
+    // idea what file (if any) was produced, so it must not claim one.
     const exportBundle = vi.fn().mockResolvedValue(undefined);
     render(
       <WorkflowBuilder
@@ -72,7 +81,8 @@ describe('Export success confirmation', () => {
     await user.click(screen.getByTestId('workflow-builder-export'));
 
     const confirmation = await screen.findByTestId('export-success');
-    expect(confirmation).toHaveTextContent('greeting-flow.workflow.zip');
+    expect(confirmation).toHaveTextContent(ACTION_LABELS.exportSuccessGeneric);
+    expect(confirmation).not.toHaveTextContent('.zip');
   });
 
   it('can be dismissed', async () => {
@@ -89,6 +99,28 @@ describe('Export success confirmation', () => {
     await screen.findByTestId('export-success');
 
     await user.click(screen.getByRole('button', { name: ACTION_LABELS.dismissExportSuccess }));
+    expect(screen.queryByTestId('export-success')).not.toBeInTheDocument();
+  });
+
+  it('clears a previous export confirmation when a new workflow is imported (the claim is stale)', async () => {
+    const user = userEvent.setup();
+    const exportBundle = vi.fn().mockResolvedValue({ filename: 'workflow.workflow.zip' });
+    const importBundle = vi.fn().mockResolvedValue(namedWorkflow);
+    render(
+      <WorkflowBuilder
+        capabilities={{ ...allDisabled, export: true, import: true }}
+        adapters={{ exportBundle, importBundle }}
+      />,
+    );
+
+    await user.click(screen.getByTestId('workflow-builder-export'));
+    await screen.findByTestId('export-success');
+
+    await user.click(screen.getByTestId('workflow-builder-import'));
+    await waitFor(() => expect(importBundle).toHaveBeenCalledTimes(1));
+
+    // The confirmation described the previous document; after the import replaced it, the
+    // claim must not linger.
     expect(screen.queryByTestId('export-success')).not.toBeInTheDocument();
   });
 

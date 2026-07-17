@@ -23,7 +23,12 @@ and this package adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   with that selector too.
 - A visible, persisted on-page confirmation after a successful Export, showing the produced
   filename (e.g. "Exported my-workflow.workflow.zip") and a dismiss control — replacing the
-  previous silent revert to the button's resting state with no other feedback.
+  previous silent revert to the button's resting state with no other feedback. The filename
+  comes from the adapter itself: `BuilderAdapters.exportBundle` may now resolve an
+  `ExportOutcome` (`{ filename?: string }`) — the built-in adapter does — while a host adapter
+  resolving `void` (every existing implementation remains valid) gets a generic confirmation
+  instead of a fabricated filename. The confirmation is cleared automatically when a different
+  workflow is imported, so it never describes a stale document.
 
 ## [0.5.0] - 2026-07-12
 

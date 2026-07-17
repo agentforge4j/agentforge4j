@@ -51,7 +51,16 @@ export function StartStepChooser({ model, onSelectStart }: StartStepChooserProps
             }
           }}
         >
-          {currentId ? <option value={currentId}>{labelForNode(model, currentId)}</option> : null}
+          {currentId ? (
+            <option value={currentId}>{labelForNode(model, currentId)}</option>
+          ) : (
+            // Controlled select needs an option matching the empty value when startNodeId is
+            // null, or the selection state is indeterminate (browser shows the first option's
+            // text while the value stays '').
+            <option value="" disabled>
+              {ACTION_LABELS.startStepPlaceholder}
+            </option>
+          )}
           {candidateIds.map((id) => (
             <option key={id} value={id}>
               {labelForNode(model, id)}

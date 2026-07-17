@@ -6,6 +6,7 @@ import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { WorkflowBuilder } from '../src/api/WorkflowBuilder';
 import { WorkflowCanvas } from '../src/canvas/WorkflowCanvas';
+import { StartStepChooser } from '../src/guided/StartStepChooser';
 import type { BuilderCapabilities } from '../src/api/types';
 import { ACTION_LABELS, NODE_LABELS } from '../src/copy/workflow-terminology';
 import type { CanvasModel, CanvasNode } from '../src/model/canvasModel';
@@ -84,6 +85,18 @@ describe('Start-step marker (canvas)', () => {
       />,
     );
     expect(screen.getByTestId('node-start-badge').closest('.wf-node')).toHaveTextContent('Second');
+  });
+});
+
+describe('StartStepChooser with a null startNodeId', () => {
+  it('renders a disabled placeholder option so the controlled select is never in an unmatched state', () => {
+    const model = { ...twoNodeModel('c-a'), startNodeId: null };
+    render(<StartStepChooser model={model} onSelectStart={() => {}} />);
+
+    const select = screen.getByTestId('guided-start-step-select') as HTMLSelectElement;
+    expect(select.value).toBe('');
+    expect(select.options[0]?.disabled).toBe(true);
+    expect(select.options[0]?.text).toBe(ACTION_LABELS.startStepPlaceholder);
   });
 });
 

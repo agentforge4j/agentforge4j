@@ -33,7 +33,6 @@ import { ValidationPill } from '../validation-ui/ValidationPill';
 import type { EditorValidation } from '../validation/validateWorkflow';
 import { validateWorkflow as defaultValidateWorkflow } from '../validation/validateWorkflow';
 import { exportWorkflowBundle } from '../io/browser/download';
-import { workflowZipFileName } from '../io/browser/zip';
 import { importWorkflowFromFilePicker } from '../io/browser/upload';
 import type { WorkflowBuilderProps } from './types';
 import { emptyWorkflow } from './types';
@@ -275,13 +274,14 @@ export function WorkflowBuilder({
   }, [clientIssues]);
 
   const runAction = useCallback(
-    async (key: ActionKey, fn: () => Promise<void>, successMessage?: string) => {
+    // `fn` may resolve a success message to pin to the status area; resolving void shows none.
+    async (key: ActionKey, fn: () => Promise<string | void>) => {
       setPending((prev) => ({ ...prev, [key]: true }));
       setErrors((prev) => ({ ...prev, [key]: null }));
       setSuccess((prev) => ({ ...prev, [key]: null }));
       try {
-        await fn();
-        if (successMessage) {
+        const successMessage = await fn();
+        if (typeof successMessage === 'string') {
           setSuccess((prev) => ({ ...prev, [key]: successMessage }));
         }
       } catch (err) {
@@ -305,23 +305,22 @@ export function WorkflowBuilder({
         type: 'SET_IMPORT_META',
         importMeta: { source: 'file', importedAt: new Date().toISOString() },
       });
+      // The working document was just replaced: an export confirmation still describing the
+      // previous document is now a stale claim — drop it.
+      setSuccess((prev) => ({ ...prev, export: null }));
     });
 
   const handleExport = () =>
-    runAction(
-      'export',
-      async () => {
-        // 'zip' is the only schemaVersion-stamped export format; the plain-'json' draft round-trip
-        // carries no schemaVersion at all. Schema validation itself happens on import, not export,
-        // for either format.
-        await resolvedAdapters.exportBundle(state.draft, 'zip');
-      },
-      // Computed from the same draft passed to exportBundle, using the exact naming convention
-      // exportWorkflowZip itself downloads under — accurate for the built-in zip adapter; a
-      // host-supplied custom exportBundle may produce a different file, but the package has no
-      // way to learn that without a breaking adapter-contract change (out of scope here).
-      ACTION_LABELS.exportSuccess(workflowZipFileName(state.draft)),
-    );
+    runAction('export', async () => {
+      // 'zip' is the only schemaVersion-stamped export format; the plain-'json' draft round-trip
+      // carries no schemaVersion at all. Schema validation itself happens on import, not export,
+      // for either format.
+      const outcome = await resolvedAdapters.exportBundle(state.draft, 'zip');
+      // Name the produced file only when the adapter reported one (the built-in adapter does);
+      // a host adapter that resolves void gets a generic confirmation — the builder never
+      // fabricates a filename the adapter did not actually produce.
+      return outcome?.filename ? ACTION_LABELS.exportSuccess(outcome.filename) : ACTION_LABELS.exportSuccessGeneric;
+    });
 
   const dismissExportSuccess = useCallback(() => {
     setSuccess((prev) => ({ ...prev, export: null }));

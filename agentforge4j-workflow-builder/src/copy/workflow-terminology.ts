@@ -159,7 +159,9 @@ export const ACTION_LABELS = {
     'This workflow has an incomplete step connection (a decision branch or retry target is unset). Complete the highlighted routing to continue.',
   startStepField: 'Start step',
   startStepHint: 'This is the step the workflow runs first. Pick a different step to change it.',
+  startStepPlaceholder: 'Choose a start step',
   exportSuccess: (filename: string) => `Exported ${filename}`,
+  exportSuccessGeneric: 'Export complete.',
   dismissExportSuccess: 'Dismiss export confirmation',
 };
 
