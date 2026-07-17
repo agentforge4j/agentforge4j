@@ -23,7 +23,7 @@ export interface NarrowContainerGate<T extends HTMLElement> {
  * never `window.innerWidth` — since the builder may be embedded in a host panel of
  * arbitrary size unrelated to the browser viewport. The observed element does not
  * unmount across narrow/wide transitions (the caller swaps its children instead), so a
- * single observer subscription tracks it for the component's whole lifetime.
+ * single observer instance tracks it for the component's whole lifetime.
  *
  * A measured width of `0` (not yet laid out — e.g. before first paint, or in test
  * environments without real layout) is treated as "not yet measured" rather than
