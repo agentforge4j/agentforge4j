@@ -362,9 +362,10 @@ public final class WorkflowTestHarness {
     }
 
     /**
-     * Overrides the tool policy evaluated before a tool invocation. Defaults to allow-all when unset;
-     * supply a policy returning {@code RequireApproval} or {@code Deny} to exercise the
-     * approval/decision suspend-resume paths.
+     * Overrides the tool policy evaluated before a tool invocation. Defaults to the bootstrap's
+     * secure-by-default policy ({@code SecureDefaultToolPolicy}) when unset; supply
+     * {@code ToolPolicy.allowAll()} or a custom policy returning {@code RequireApproval} or
+     * {@code Deny} to exercise the approval/decision suspend-resume paths.
      *
      * @param value the tool policy; must not be {@code null}
      *

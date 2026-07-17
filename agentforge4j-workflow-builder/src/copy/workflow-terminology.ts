@@ -157,6 +157,12 @@ export const ACTION_LABELS = {
   readOnlyBadgeTitle: 'This workflow is read-only. Steps can be viewed but not changed.',
   incompleteRoutingError:
     'This workflow has an incomplete step connection (a decision branch or retry target is unset). Complete the highlighted routing to continue.',
+  draftRestoredTitle: 'Restored your previous session',
+  draftRestoredBody: 'We found unsaved changes from your last visit and restored them automatically.',
+  startFresh: 'Start fresh',
+  dismissDraftRestored: 'Dismiss',
+  narrowContainerTitle: 'Workflow building is currently available on desktop or tablet.',
+  narrowContainerBody: 'Please revisit this page on a larger screen to use the workflow builder.',
   undo: 'Undo',
   redo: 'Redo',
   confirmDeleteTitle: (count: number) => (count === 1 ? 'Delete this step?' : `Delete ${count} steps?`),

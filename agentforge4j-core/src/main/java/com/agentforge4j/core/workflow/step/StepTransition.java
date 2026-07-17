@@ -15,7 +15,7 @@ public enum StepTransition {
   HUMAN_REVIEW,
   /**
    * Requires an explicit approval decision matching
-   * {@link com.agentforge4j.core.workflow.state.WorkflowStatus#AWAITING_APPROVAL}.
+   * {@link com.agentforge4j.core.workflow.state.WorkflowStatus#AWAITING_STEP_APPROVAL}.
    */
   HUMAN_APPROVAL
 }

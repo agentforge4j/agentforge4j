@@ -44,8 +44,9 @@ public final class WorkflowAgentRefCollector {
    *
    * @return list of all agent references with context
    *
-   * @throws IllegalArgumentException if the tree nests deeper than {@link #MAX_TRAVERSAL_DEPTH},
-   *                                  which indicates a circular blueprint reference
+   * @throws BlueprintStructureException if the tree nests deeper than {@link #MAX_TRAVERSAL_DEPTH},
+   *                                      or a blueprint reference does not resolve — both indicating
+   *                                      a broken or circular blueprint reference
    */
   public static List<AgentRefSite> collect(WorkflowDefinition root) {
     Validate.notNull(root, "root must not be null");

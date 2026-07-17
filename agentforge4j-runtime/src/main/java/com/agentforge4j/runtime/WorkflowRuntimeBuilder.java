@@ -68,10 +68,9 @@ import static com.agentforge4j.runtime.command.ShellCommandRunner.NO_OP_SHELL_CO
  * Fluent builder that wires a {@link DefaultWorkflowRuntime} with the canonical executor graph, behaviour handlers,
  * loop strategies, and command handlers.
  *
- * <p>Required collaborators are repositories, a pre-built {@link AgentInvoker}, {@link FileSink},
- * and {@link ShellCommandRunner}. {@link java.time.Clock}, {@link LoopEvaluator}, and {@link RunContextManager} default
- * when omitted. A {@link com.agentforge4j.schema.SchemaProvider} may be configured but is not read by the current
- * {@link #build()} implementation.
+ * <p>Required collaborators are the {@link WorkflowRepository}, {@link WorkflowStateRepository},
+ * {@link WorkflowEventLog}, and a pre-built {@link AgentInvoker}. {@link FileSink}, {@link ShellCommandRunner},
+ * {@link java.time.Clock}, {@link LoopEvaluator}, and {@link RunContextManager} default when omitted.
  *
  * <p>Public construction path for {@link com.agentforge4j.core.runtime.WorkflowRuntime};
  * {@link DefaultWorkflowRuntime} constructors stay package-private because they accept non-exported execution types.

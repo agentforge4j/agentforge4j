@@ -6,7 +6,8 @@ package com.agentforge4j.runtime.command;
  *
  * <p>Shell execution is opt-in by design. An embedding application that does not
  * want its agents running shell commands simply does not register a {@code ShellCommandRunner} —
- * the runtime then rejects any {@code RUN_COMMAND} command with a clear error.
+ * the runtime then falls back to {@link #NO_OP_SHELL_COMMAND_RUNNER}, which runs no process and
+ * returns an empty result for any {@code RUN_COMMAND} command.
  *
  * <p><strong>Sandboxing is entirely the embedder's responsibility.</strong> Implementations
  * receive <em>unvalidated, LLM-produced command strings</em>. The runtime does not sanitize,

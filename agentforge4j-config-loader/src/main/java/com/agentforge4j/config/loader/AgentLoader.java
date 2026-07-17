@@ -19,5 +19,13 @@ public interface AgentLoader {
    */
   Map<String, AgentDefinition> loadAgents();
 
+  /**
+   * Loads agents from the given bundle entries, ignoring entries that do not identify an agent
+   * bundle.
+   *
+   * @param bundleFiles candidate bundle entry paths
+   * @return agents keyed by id
+   * @throws RuntimeException when a matching entry cannot be read or contains an invalid definition
+   */
   Map<String, AgentDefinition> loadAgents(List<String> bundleFiles);
 }
