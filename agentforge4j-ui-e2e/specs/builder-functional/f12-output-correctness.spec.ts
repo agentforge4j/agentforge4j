@@ -79,4 +79,22 @@ test.describe('F12 — output correctness (exported workflow definition)', () =>
     const second = await builder.exportDraft();
     expect(second).toEqual(first);
   });
+
+  test('the all-step-types fixture round-trips: every represented behaviour type survives export unchanged', async ({
+    page,
+  }) => {
+    const builder = new BuilderPage(page);
+    await builder.goto(`?${FUNCTIONAL_FIXTURES.allStepTypes.query}&caps=export`);
+    const draft = await builder.exportDraft();
+    expect(draft.steps).toHaveLength(FUNCTIONAL_FIXTURES.allStepTypes.nodeCount);
+    const byStepId = (a: { stepId: string }, b: { stepId: string }) => a.stepId.localeCompare(b.stepId);
+    const exported = draft.steps
+      .map((s) => {
+        const step = s as unknown as ExportedStep;
+        return { stepId: step.stepId, name: step.name, behaviourType: step.behaviourType };
+      })
+      .sort(byStepId);
+    const expected = [...FUNCTIONAL_FIXTURES.allStepTypes.steps].sort(byStepId);
+    expect(exported).toEqual(expected);
+  });
 });

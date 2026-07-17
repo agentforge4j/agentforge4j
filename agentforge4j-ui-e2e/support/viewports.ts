@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 /**
- * Shared viewport matrix for the Day 4 Builder functional testkit
+ * Shared viewport matrix for the Builder functional testkit
  * (`specs/builder-functional/**`). Kept separate from `support/web-ui/routes.ts`'s
  * `VIEWPORTS` (visual-review capture matrix, different purpose/values) — this one is sized for
  * interaction testing, not screenshot comparison.

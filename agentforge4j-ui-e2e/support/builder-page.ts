@@ -34,7 +34,7 @@ export const TID = {
   inspectorReadonlyBanner: 'inspector-readonly-banner',
   runsAfterSelect: 'runs-after-select',
   insertBanner: 'insert-mode-banner',
-  // Unreleased (builder-usability-remediation-plan, issues #94-#103) — persistence, undo/redo,
+  // Unreleased at the time these were added (issues #94-#103) — persistence, undo/redo,
   // start-step chooser, export confirmation.
   undoButton: 'workflow-builder-undo',
   redoButton: 'workflow-builder-redo',
@@ -282,11 +282,6 @@ export class BuilderPage {
   /** The Guided-mode "Start step" chooser (only rendered once >1 node exists). */
   get startStepSelect(): Locator {
     return this.page.getByTestId(TID.startStepSelect);
-  }
-
-  /** The "Start" badge rendered on the current start node. */
-  get startBadge(): Locator {
-    return this.page.getByTestId(TID.nodeStartBadge);
   }
 
   /** The destructive-delete confirmation dialog (`role="alertdialog"`). */

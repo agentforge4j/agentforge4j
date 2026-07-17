@@ -4,7 +4,7 @@ import type { WorkflowDefinition } from '../src/index';
 import { sampleWorkflow } from './sample-workflow';
 
 /**
- * Named, deterministic `WorkflowDefinition` fixtures for the Day 4 functional testkit
+ * Named, deterministic `WorkflowDefinition` fixtures for the Builder functional testkit
  * (`agentforge4j-ui-e2e/specs/builder-functional`), selected via `?fixture=<name>` on the dev
  * harness. Dev-harness-only test infrastructure, excluded from the published package — same
  * category as the existing `?mode=`/`?caps=` query params and the `__afbExport` capture seam.

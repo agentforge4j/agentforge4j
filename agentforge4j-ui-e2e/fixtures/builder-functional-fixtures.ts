@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 /**
- * Deterministic facts about the Day 4 functional-testkit fixtures
+ * Deterministic facts about the Builder functional-testkit fixtures
  * (`agentforge4j-workflow-builder/dev/fixtures.ts`), selected via `?fixture=<name>` on the dev
  * harness. Mirrors the existing `fixtures/builder-fixture.ts` convention: specs assert against
  * these constants rather than importing the `WorkflowDefinition` objects themselves.
@@ -30,19 +30,24 @@ export const FUNCTIONAL_FIXTURES = {
     query: 'fixture=multi-step',
     nodeCount: 5,
   },
-  /** One node per WorkflowDefinition-representable behaviour type (8 of the 10 NodeKinds). */
+  /**
+   * One node per WorkflowDefinition-representable behaviour type (8 of the 10 NodeKinds).
+   * `steps` is unordered w.r.t. the export — `BRANCH`/`RETRY_PREVIOUS` targets get
+   * topologically reordered ahead of some earlier canvas nodes, same as the `multiStep`
+   * fixture's `decision-dev` case — so assertions must match by `stepId`, not array position.
+   */
   allStepTypes: {
     query: 'fixture=all-step-types',
     nodeCount: 8,
-    stepNames: [
-      'Ask a Question',
-      'AI Step',
-      'AI with Tools',
-      'Decision',
-      'Load External Resource',
-      'Reuse Existing Workflow',
-      'Stop with Error',
-      'Retry Previous Step',
+    steps: [
+      { stepId: 'ask-user', name: 'Ask a Question', behaviourType: 'INPUT' },
+      { stepId: 'ai-step', name: 'AI Step', behaviourType: 'AGENT' },
+      { stepId: 'ai-debate', name: 'AI with Tools', behaviourType: 'SPAR' },
+      { stepId: 'decision', name: 'Decision', behaviourType: 'BRANCH' },
+      { stepId: 'load-resource', name: 'Load External Resource', behaviourType: 'RESOURCE' },
+      { stepId: 'reuse-workflow', name: 'Reuse Existing Workflow', behaviourType: 'WORKFLOW_BEHAVIOUR' },
+      { stepId: 'stop', name: 'Stop with Error', behaviourType: 'FAIL' },
+      { stepId: 'retry-previous', name: 'Retry Previous Step', behaviourType: 'RETRY_PREVIOUS' },
     ],
   },
   /**

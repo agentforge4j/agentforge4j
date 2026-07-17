@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { expect, test } from '@playwright/test';
-import { BuilderPage } from '../../support/builder-page';
+import { BuilderPage, TID } from '../../support/builder-page';
 import { FUNCTIONAL_FIXTURES } from '../../fixtures/builder-functional-fixtures';
 
 test.describe('F9 — start-step indicator/chooser (#100) and export confirmation (#102)', () => {
@@ -12,7 +12,7 @@ test.describe('F9 — start-step indicator/chooser (#100) and export confirmatio
     await builder.goto(`?${FUNCTIONAL_FIXTURES.empty.query}`);
     // The single untouched starter step is itself already the start node.
     await expect(builder.canvasNodes).toHaveCount(1);
-    await expect(builder.canvasNodes.first().getByTestId('node-start-badge')).toBeVisible();
+    await expect(builder.canvasNodes.first().getByTestId(TID.nodeStartBadge)).toBeVisible();
     await expect(builder.startStepSelect).toHaveCount(0); // nothing to choose between yet
 
     await builder.addStep('ai-step');
@@ -22,8 +22,8 @@ test.describe('F9 — start-step indicator/chooser (#100) and export confirmatio
     const newNodeId = await builder.canvasNodes.nth(1).getAttribute('data-id');
     expect(newNodeId).toBeTruthy();
     await builder.startStepSelect.selectOption(newNodeId as string);
-    await expect(builder.canvasNodes.nth(1).getByTestId('node-start-badge')).toBeVisible();
-    await expect(builder.canvasNodes.nth(0).getByTestId('node-start-badge')).toHaveCount(0);
+    await expect(builder.canvasNodes.nth(1).getByTestId(TID.nodeStartBadge)).toBeVisible();
+    await expect(builder.canvasNodes.nth(0).getByTestId(TID.nodeStartBadge)).toHaveCount(0);
   });
 
   test('the start-step chooser is Guided-mode-editable-only: absent in Advanced and in read-only', async ({

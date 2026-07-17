@@ -145,13 +145,14 @@ implement, redesign, or fix Builder behaviour — only tests it.
 | `f9-start-step-and-export-confirmation` | Start badge/chooser; mode/read-only scoping; export confirmation | #100, #102 |
 | `f10-accessibility-keyboard` | Accessible names, keyboard activation, Escape, focus trap, focus restoration | — |
 | `f11-responsive` | Mobile gate (notice replaces editor, no overflow), tablet full palette access, tablet creation smoke | #97, #98, #99, #103 (regression) |
-| `f12-output-correctness` | Export contract shape, edited values present, deleted values absent, order, determinism | — |
+| `f12-output-correctness` | Export contract shape, edited values present, deleted values absent, order, determinism, all-step-types round-trip | — |
 
-Not in scope (per the Day 4 brief): the 4 `advanced`-group palette kinds (`AI_DEBATE`,
-`LOAD_RESOURCE`, `STOP`, `RETRY`) beyond what `f12`'s `all-step-types` fixture round-trips — the
-remediation plan and issues #94-#103 both frame "step types" as the 6 COMMON+FLOW kinds
-(`3 of 6 step types...` in #99); extending `f6`'s loop to the 4 advanced kinds is a natural,
-low-risk follow-up, not attempted here to stay within the stated behaviour-area scope.
+Not in scope: the 4 `advanced`-group palette kinds (`AI_DEBATE`, `LOAD_RESOURCE`, `STOP`,
+`RETRY`) as live palette-add-and-configure journeys — issue #99 frames "step types" as the 6
+COMMON+FLOW kinds (`3 of 6 step types...`); extending `f6`'s loop to the 4 advanced kinds is a
+natural, low-risk follow-up, not attempted here to stay within the stated behaviour-area scope.
+(`f12`'s `all-step-types` fixture separately round-trips all 8 `WorkflowDefinition`-representable
+behaviour types through export, including these 4 — see the Fixtures table below.)
 
 ### Fixtures
 
@@ -214,7 +215,7 @@ for whatever the *next* Builder defect turns out to be, not for #94-#103 specifi
 npm ci
 npm run playwright:install                        # one-off: download Chromium
 npm run test:e2e:builder-functional                # mandatory regression tests: desktop, tablet, mobile
-npm run test:e2e:builder-functional -- --project=desktop   # a single project
+npx playwright test --config=playwright.builder-functional.config.ts --project=desktop   # a single project
 npm run test:e2e:builder-functional:known-issues    # strict: the known-issues project only (see above)
 ```
 
@@ -259,9 +260,9 @@ a mandatory regression test immediately, no registration needed.
 ### Troubleshooting
 
 - **`webServer` fails to start / port 4193 in use**: another process (a prior interrupted run, a
-  manual `npm run preview`) is holding the port. Find and stop it, or pass
-  `--project=desktop -- --port <other>` is not supported by this config directly; edit the `PORT`
-  constant in `playwright.builder-functional.config.ts` for a one-off local override.
+  manual `npm run preview`) is holding the port. Find and stop it. Passing a different port on the
+  command line is not supported by this config; edit the `PORT` constant in
+  `playwright.builder-functional.config.ts` for a one-off local override.
 - **`build:dev-harness` fails with a schema sync error**: run `npm run sync-schema` in
   `agentforge4j-workflow-builder` manually first — it copies `agentforge4j-schema`'s JSON Schema
   into the package; a stale/missing copy fails the Vite build outright.

@@ -7,8 +7,8 @@ import { PALETTE_STEP_KINDS } from '../../fixtures/builder-functional-fixtures';
 import { FUNCTIONAL_VIEWPORTS } from '../../support/viewports';
 
 /**
- * Targeted responsive journeys (Task 6: "do not duplicate every test at every viewport"). The
- * mobile-width overflow/no-editor assertion already exists in `specs/builder/c6-responsive.spec.ts`
+ * Targeted responsive journeys — intentionally does not duplicate every test at every viewport.
+ * The mobile-width overflow/no-editor assertion already exists in `specs/builder/c6-responsive.spec.ts`
  * against the dev-server project — these tests cover the angle that suite doesn't: that below the
  * breakpoint the previously-broken controls (#97/#98/#103) are simply unreachable (the editor is
  * gone, not merely resized), at a narrower width than that suite checks, and that the palette
@@ -61,7 +61,7 @@ test.describe('F11 — responsive coverage', () => {
     expect(draft.steps).toHaveLength(3);
   });
 
-  test('@responsive: no horizontal page overflow at tablet or desktop width', async ({ page }) => {
+  test('@responsive: no horizontal page overflow at any viewport', async ({ page }) => {
     const builder = new BuilderPage(page);
     await builder.goto(`?${FUNCTIONAL_FIXTURES.multiStep.query}`);
     const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);

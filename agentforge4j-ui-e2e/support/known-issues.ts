@@ -22,15 +22,18 @@ type BuilderTestFn = (
  *   CI (not merely skipped-and-visible; excluded up front), while it is a **plain, fully-executing
  *   `test()`** underneath — deliberately *not* `test.fixme()`, whose body never actually runs even
  *   under `--grep`, which would defeat the point of a *strict* command. `npm run
- *   test:e2e:builder-functional:known-issues` (`--grep @known-issue`, no project's `grepInvert`
- *   applies to a direct `--grep` invocation) runs it for real and reports its genuine pass/fail —
- *   the point of exercising it during remediation work.
+ *   test:e2e:builder-functional:known-issues` runs a dedicated `known-issues` project
+ *   (`grep: /@known-issue/`, no `grepInvert`) — a plain CLI `--grep @known-issue` against the
+ *   normal three projects would select nothing, since Playwright ANDs a CLI `--grep` with each
+ *   project's own `grep`/`grepInvert`, and those three all `grepInvert` this exact tag. The
+ *   dedicated project runs it for real and reports its genuine pass/fail — the point of
+ *   exercising it during remediation work.
  * - **Promotion path**: once the fix merges, move the test out of `knownIssueTest(...)` into a
  *   plain `test(...)` call (dropping the `@known-issue` tag) and flip the entry's `status` to
  *   `'closed'` here, for record-keeping. It now runs in every project like any other test.
  *
- * #94-#103 (the builder-usability-remediation-plan issues this testkit was originally built
- * against) are all listed below as worked examples, and all are `'closed'` — every remediation PR
+ * #94-#103 (the issues this testkit was originally built against) are all listed below as worked
+ * examples, and all are `'closed'` — every remediation PR
  * (#105-110) had already merged by the time this testkit was built, so none of them are actually
  * quarantined; they run as ordinary mandatory tests via `test()` directly in the `f*.spec.ts`
  * files, not through `knownIssueTest`. This registry and {@link knownIssueTest} exist for the

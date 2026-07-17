@@ -4,17 +4,17 @@ import { defineConfig } from '@playwright/test';
 import { FUNCTIONAL_VIEWPORTS } from './support/viewports';
 
 /**
- * Day 4 functional testkit — separate config file (not a `playwright.config.ts` project) for the
- * same reason `playwright.web-ui.config.ts` is separate: Playwright starts every configured
- * `webServer` unconditionally regardless of `--project`, so folding this in would force the
- * existing `builder` (dev-server) CI job to also build+preview this target, and vice versa.
+ * Functional testkit for the Workflow Builder — separate config file (not a
+ * `playwright.config.ts` project) for the same reason `playwright.web-ui.config.ts` is separate:
+ * Playwright starts every configured `webServer` unconditionally regardless of `--project`, so
+ * folding this in would force the existing `builder` (dev-server) CI job to also build+preview
+ * this target, and vice versa.
  *
- * Server model: unlike `playwright.config.ts` (which runs `npm run dev`, the dev server, since
- * the builder previously had no `preview` script), this config runs the dev harness through a
- * real production-style build (`vite build` + `vite preview`) — Objective 1 ("runs against the
- * real built Workflow Builder") and Task 9 ("uses a production-style build"). The dev-harness
- * source itself (React component tree) is identical either way; this only changes whether it's
- * served pre-bundled/minified or through Vite's dev transform pipeline.
+ * Server model: unlike `playwright.config.ts` (which runs `npm run dev`, the dev server), this
+ * config runs the dev harness through a real production-style build (`vite build` +
+ * `vite preview`) so specs exercise the actual built Workflow Builder, not the dev transform
+ * pipeline. The dev-harness source itself (React component tree) is identical either way; this
+ * only changes whether it's served pre-bundled/minified or through Vite's dev server.
  */
 const BUILDER_DIR = '../agentforge4j-workflow-builder';
 const PORT = 4193;
@@ -43,15 +43,16 @@ export default defineConfig({
     {
       // Full critical-journey coverage. Excludes @tablet-only/@mobile-only (narrow-viewport-
       // specific scenarios aren't run twice at the wrong viewport) and @known-issue (quarantined
-      // tests — see support/known-issues.ts — never run as part of normal CI; only
-      // `npm run test:e2e:builder-functional:known-issues`'s direct --grep picks them up).
+      // tests — see support/known-issues.ts — never run as part of normal CI; only the dedicated
+      // `known-issues` project below, run via `npm run test:e2e:builder-functional:known-issues`,
+      // picks them up).
       name: 'desktop',
       grepInvert: /@tablet-only|@mobile-only|@known-issue/,
       use: { viewport: FUNCTIONAL_VIEWPORTS.desktop },
     },
     {
-      // Targeted responsive journeys only (Task 6: "do not duplicate every test at every
-      // viewport") — tests tagged @responsive, plus anything tagged @tablet-only.
+      // Targeted responsive journeys only — this project intentionally does not duplicate every
+      // test at every viewport; only tests tagged @responsive, plus anything tagged @tablet-only.
       name: 'tablet',
       grep: /@responsive|@tablet-only/,
       grepInvert: /@mobile-only|@known-issue/,
