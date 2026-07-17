@@ -3,13 +3,17 @@ name: UI E2E
 # Browser-level gate for the JavaScript UI packages. Installs the workflow-builder and the
 # agentforge4j-ui-e2e module, runs the builder unit tests (typecheck + vitest), then drives the
 # builder dev harness with Playwright (Chromium, headless). Also builds and drives the
-# agentforge4j.org public site (agentforge4j-web-ui) with its own Playwright project. Separate
+# agentforge4j.org public site (agentforge4j-web-ui) with its own Playwright project, and the
+# Workflow Builder's functional testkit (creation/persistence/undo-redo/validation/step-types/
+# responsive/output-correctness — see agentforge4j-ui-e2e/README.md's "Functional testkit
+# (Builder)" section) against a production-style build across desktop/tablet/mobile. Separate
 # from the Maven `CI` workflow (this never touches Java) and from CodeQL/Gitleaks.
 #
-# This workflow ALWAYS triggers on pushes/PRs to `main` (no `on: paths:` filter) and both the
-# `builder` and `web-ui-e2e` jobs ALWAYS run, so both checks are always reported and can safely be
-# required status checks. A cheap `changes` job detects, independently, whether a builder-relevant
-# or a web-ui-relevant path changed:
+# This workflow ALWAYS triggers on pushes/PRs to `main` (no `on: paths:` filter) and the `builder`,
+# `builder-functional`, and `web-ui-e2e` jobs ALWAYS run, so all three checks are always reported
+# and can safely be required status checks. A cheap `changes` job detects, independently, whether a
+# builder-relevant or a web-ui-relevant path changed (`builder-functional` reuses the `builder`
+# output — it is relevant to exactly the same paths):
 #   - if change-detection itself does not succeed, BOTH jobs FAIL FAST (fail-closed — never a
 #     silent pass when we could not determine what changed);
 #   - if the relevant path didn't change, that job skips only its expensive install/Playwright
@@ -173,6 +177,80 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: playwright-report-builder
+          path: |
+            agentforge4j-ui-e2e/playwright-report/**
+            agentforge4j-ui-e2e/test-results/**
+          if-no-files-found: ignore
+          retention-days: 7
+
+  builder-functional:
+    name: builder-functional
+    needs: changes
+    # Always run so the required `builder-functional` check is always reported — never
+    # "skipped"/"missing".
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    steps:
+      # Fail-closed: if we could not determine what changed, do not let the gate pass silently.
+      - name: Fail if change detection did not succeed
+        if: ${{ needs.changes.result != 'success' }}
+        run: |
+          echo "::error::change-detection job concluded '${{ needs.changes.result }}'; failing the UI E2E gate (fail-closed)."
+          exit 1
+
+      # Gated on the same `builder` output as the `builder` job above — this suite is relevant to
+      # exactly the same paths (agentforge4j-workflow-builder/, agentforge4j-ui-e2e/).
+      - name: Checkout
+        if: ${{ needs.changes.outputs.builder == 'true' }}
+        uses: actions/checkout@v7
+
+      - name: Set up Node
+        if: ${{ needs.changes.outputs.builder == 'true' }}
+        uses: actions/setup-node@v6
+        with:
+          node-version-file: '.nvmrc'
+          cache: npm
+          cache-dependency-path: |
+            agentforge4j-workflow-builder/package-lock.json
+            agentforge4j-ui-e2e/package-lock.json
+
+      - name: Install workflow-builder
+        if: ${{ needs.changes.outputs.builder == 'true' }}
+        working-directory: agentforge4j-workflow-builder
+        run: npm ci
+
+      - name: Install ui-e2e
+        if: ${{ needs.changes.outputs.builder == 'true' }}
+        working-directory: agentforge4j-ui-e2e
+        run: npm ci
+
+      - name: Cache Playwright browsers
+        if: ${{ needs.changes.outputs.builder == 'true' }}
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('agentforge4j-ui-e2e/package-lock.json') }}
+          restore-keys: |
+            playwright-${{ runner.os }}-
+
+      - name: Install Playwright Chromium
+        if: ${{ needs.changes.outputs.builder == 'true' }}
+        working-directory: agentforge4j-ui-e2e
+        run: npx playwright install --with-deps chromium
+
+      # This project's own webServer builds the dev harness (npm run build:dev-harness) then
+      # serves it (npm run preview) — a production-style build, unlike the `builder` job's dev
+      # server. Runs all 3 projects (desktop, tablet, mobile).
+      - name: Run builder functional e2e
+        if: ${{ needs.changes.outputs.builder == 'true' }}
+        working-directory: agentforge4j-ui-e2e
+        run: npm run test:e2e:builder-functional
+
+      - name: Upload Playwright report
+        if: ${{ failure() && needs.changes.outputs.builder == 'true' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: playwright-report-builder-functional
           path: |
             agentforge4j-ui-e2e/playwright-report/**
             agentforge4j-ui-e2e/test-results/**
