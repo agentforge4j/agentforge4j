@@ -20,16 +20,12 @@ only here; the shipped packages gain no runtime dependency.
 - `specs/web-ui/` — the `web-ui` project's specs: every public route, desktop/mobile/footer
   navigation, responsive overflow across a representative viewport set, keyboard navigation, the
   Builder/Catalogue public entry surfaces (stops at "loads without crashing" — deep editor UX is
-  the separate Workflow Builder usability workstream), and `hosting.spec.ts`, which documents the
-  **current, temporary** Day 1 GitHub-Pages SPA-fallback mechanism — see "Day 1.5 hosting
-  contract" below for the release-blocking requirement it does not yet meet.
+  covered by the Workflow Builder's own suites), and `hosting.spec.ts`, which pins the plain SPA
+  build's GitHub-Pages SPA-fallback behaviour — see "Hosting" below.
 - `support/` — shared page objects and selector constants, one subfolder per project
   (`support/web-ui/routes.ts` is the single source of truth for the site's route list, expected
   headings, and representative viewport sizes).
 - `fixtures/` — deterministic facts about the builder harness's sample workflow.
-
-Projects added as each target becomes release-critical: `builder` (v1, the 1.0.0 gate); `web-ui`
-(added for the 0.1.0 launch, once `agentforge4j-web-ui` had real routes/content to test against).
 
 ## Running locally
 
@@ -56,50 +52,48 @@ module must have its own dependencies installed (`npm ci` there) first.
 Chromium only, headless by default. Use `--headed` / `--debug` for local debugging (works with
 either `npm run test:e2e:builder -- --headed` or `npm run test:e2e:web-ui -- --headed`).
 
-## Day 1.5 hosting contract
+## Hosting
 
-`specs/web-ui/hosting.spec.ts` currently documents, not endorses, the site's Day 1 hosting
-mechanism: an un-assembled SPA build on plain GitHub Pages, where any known route with no matching
-on-disk file (every route except `/`) is served via the `404.html` SPA-fallback trick and returns
-a real HTTP 404 before the SPA boots and renders the correct page client-side. That 404 is an
-artifact of shipping a plain client-side-routed SPA to static hosting, not a deliberate design
-choice, and it is **not** the contract the site must meet to launch.
+`specs/web-ui/hosting.spec.ts` pins how the plain (un-assembled) `agentforge4j-web-ui` SPA build
+behaves on GitHub-Pages-style static hosting: any known route with no matching on-disk file
+(every route except `/`) is served via the `404.html` SPA-fallback (`scripts/copy-404.mjs` makes
+it byte-identical to `index.html`), so the response carries a real HTTP 404 status and the page
+then boots the SPA client-side to render the correct route. The spec runs a minimal
+GitHub-Pages-equivalent static server against the already-built `dist/` rather than Vite's preview
+server, whose built-in SPA-fallback middleware would return 200 and mask whether the `404.html`
+mechanism itself works.
 
-The Day 1.5 Assembler (not implemented in Day 1) must produce a build where, once deployed:
+That 404-for-known-routes behaviour is an artifact of serving a client-side-routed SPA from plain
+static hosting; it is **not** the production hosting contract. The deployable production artifact
+is the composed site produced by the Assembler (`agentforge4j-docs/scripts/assemble-site.mjs` —
+SPA + docs + Javadoc), whose hosting contract is:
 
 - every known public route (e.g. `/architecture`, `/catalogue`, `/community`) returns HTTP 200;
 - every known catalogue detail route (e.g. `/catalogue/<workflow-id>` for a real workflow id)
   returns HTTP 200;
 - only genuinely unknown routes (no matching public or catalogue-detail route) return HTTP 404.
 
-This is a release-blocking requirement for the Day 1.5 milestone. `hosting.spec.ts` will need
-rewriting once the Assembler exists, to assert HTTP 200 for known routes instead of documenting
-the current 404 fallback.
+`hosting.spec.ts` covers the plain SPA build only; it does not assert the composed artifact's
+route contract.
 
-> The Assembler (`agentforge4j-docs/scripts/assemble-site.mjs`) has since merged (PR #126). This
-> file is left as historical record of the Day 1 state, per this module's own convention of
-> documenting rather than silently rewriting prior sessions' notes — `hosting.spec.ts` rewriting
-> its assertions to HTTP 200 is tracked separately, not part of the Day 2 visual-review tooling
-> below.
-
-## Visual review (Day 2)
+## Visual review
 
 A local, repeatable visual-review system for the **assembled** agentforge4j.org site (SPA + docs +
-Javadoc composed by `assemble-site.mjs` — not the un-assembled SPA `hosting.spec.ts` above tests)
-and the Workflow Builder's public entry surface. Separate from the functional Day 1 testkit above:
-this suite answers "does it *look* right", not "does it route/render correctly" (Day 1's job,
-reused rather than duplicated — see `visual/manifest.ts`, which imports `support/web-ui/routes.ts`
-directly instead of re-listing routes).
+Javadoc composed by `assemble-site.mjs` — not the plain SPA build `hosting.spec.ts` above tests)
+and the Workflow Builder's public entry surface. Separate from the functional suites above: this
+suite answers "does it *look* right", not "does it route/render correctly" (the functional suites'
+job, reused rather than duplicated — see `visual/manifest.ts`, which imports
+`support/web-ui/routes.ts` directly instead of re-listing routes).
 
 **Scope note:** this tooling exposes visual problems on the Workflow Builder's public entry
 surface; it does not implement, redesign, or fix anything tracked by the dedicated builder-
-usability remediation workstream (issues #94-#103, PRs #105-#110). Findings that intersect those
-issues are tagged `knownIssues` in the manifest and called out separately in the generated report,
-never silently duplicated or fixed here. `knownIssues` is informational only — a real GitHub issue
-number tagged on an entry does not, by itself, exempt anything from the strict release check. The
-only thing that does is a `checkId`-specific `acceptedFindings` entry (which may itself reference
-an issue number). This distinction matters: tagging an entry with a known issue must never silently
-suppress a completely unrelated failure that later appears on that same entry.
+usability issues (#94-#103). Findings that intersect those issues are tagged `knownIssues` in the
+manifest and called out separately in the generated report, never silently duplicated or fixed
+here. `knownIssues` is informational only — a real GitHub issue number tagged on an entry does
+not, by itself, exempt anything from the strict release check. The only thing that does is a
+`checkId`-specific `acceptedFindings` entry (which may itself reference an issue number). This
+distinction matters: tagging an entry with a known issue must never silently suppress a completely
+unrelated failure that later appears on that same entry.
 
 ### Layout
 
@@ -171,8 +165,8 @@ npm run visual:release-check          # one-shot: capture -> report -> attestati
 
 `npm run visual:capture` targets `http://localhost:4184` by default (the static server this
 module's own `webServer` starts against `agentforge4j-docs/_site`). Set `VISUAL_TARGET_URL` to
-point it at an already-running instance instead (e.g. the Pi preview) — satisfies Day 2's "starts
-OR connects to" requirement without needing a fresh local build every run.
+point it at an already-running instance instead (e.g. a preview host), so capturing doesn't
+require a fresh local build every run.
 
 ### The valid review → commit → attestation sequence
 

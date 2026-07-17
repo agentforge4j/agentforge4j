@@ -29,7 +29,7 @@ test.describe('mobile navigation', () => {
     await expect(page.getByRole('navigation', { name: 'Primary' })).toHaveCount(0);
   });
 
-  // Day 1 review finding: the mobile GitHub link opens a new tab but previously left the menu
+  // Regression guard: the mobile GitHub link opens a new tab but previously left the menu
   // open behind it, unlike every other link in the panel.
   test('clicking the GitHub link inside the open menu also closes the menu', async ({ page }) => {
     await page.goto('/');
@@ -42,7 +42,7 @@ test.describe('mobile navigation', () => {
     await expect(page.getByRole('navigation', { name: 'Primary' })).toHaveCount(0);
   });
 
-  // Day 1 review finding: Escape did nothing while the mobile menu was open.
+  // Regression guard: Escape previously did nothing while the mobile menu was open.
   test('pressing Escape closes the open menu', async ({ page }) => {
     await page.goto('/');
     await page.getByRole('button', { name: 'Open menu' }).click();
