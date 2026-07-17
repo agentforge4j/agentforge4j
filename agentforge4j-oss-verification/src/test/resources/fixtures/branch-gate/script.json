@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "responses": [
+    {
+      "workflowId": "gate-under-branch",
+      "stepId": "decide",
+      "agentId": "branch-agent",
+      "ordinal": 0,
+      "responseText": "[{\"type\":\"SET_CONTEXT\",\"key\":\"decision\",\"value\":{\"type\":\"STRING\",\"value\":\"go\"}}]"
+    },
+    {
+      "workflowId": "gate-under-branch-default",
+      "stepId": "decide",
+      "agentId": "branch-agent",
+      "ordinal": 0,
+      "responseText": "[{\"type\":\"SET_CONTEXT\",\"key\":\"decision\",\"value\":{\"type\":\"STRING\",\"value\":\"go\"}}]"
+    },
+    {
+      "workflowId": "gate-under-branch-predicate",
+      "stepId": "decide",
+      "agentId": "branch-agent",
+      "ordinal": 0,
+      "responseText": "[{\"type\":\"SET_CONTEXT\",\"key\":\"decision\",\"value\":{\"type\":\"STRING\",\"value\":\"go\"}}]"
+    }
+  ]
+}

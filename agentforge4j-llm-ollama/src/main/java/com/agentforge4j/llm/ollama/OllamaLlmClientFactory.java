@@ -9,8 +9,7 @@ import com.agentforge4j.util.Validate;
 /**
  * Factory for creating Ollama {@link LlmClient} instances.
  * <p>
- * Requires an {@link OllamaConfiguration} instance; any other configuration type will raise an
- * {@link IllegalArgumentException}.
+ * Discovered via JPMS ServiceLoader to provide Ollama-specific client instances.
  */
 public final class OllamaLlmClientFactory implements LlmClientFactory {
 

@@ -1,5 +1,6 @@
 {
   "kind": "WORKFLOW",
+  "schemaVersion": 1,
   "id": "mcp-demo",
   "name": "MCP Demo",
   "description": "A single agent step that calls an MCP tool and then completes.",

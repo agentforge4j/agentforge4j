@@ -15,9 +15,10 @@ package com.agentforge4j.runtime.interceptor;
  * thread-safe.
  *
  * <p>When a hook throws {@link ExecutionBlockedException} the runtime records a neutral
- * {@link com.agentforge4j.core.workflow.event.WorkflowEventType#RUN_BLOCKED} audit event and leaves the run status
- * unchanged (non-terminal); the embedding application resolves the block (resume or cancel). OSS performs no terminal
- * transition.
+ * {@link com.agentforge4j.core.workflow.event.WorkflowEventType#RUN_BLOCKED} audit event and transitions the run to
+ * {@link com.agentforge4j.core.workflow.state.WorkflowStatus#PAUSED}; the embedding application resolves the block
+ * (resume or cancel). OSS performs no terminal transition. See {@link ExecutionBlockedException} for the additional
+ * {@code STEP_FAILED} event a {@link #beforeLlmCall} veto records ahead of {@code RUN_BLOCKED}.
  */
 public interface RunExecutionInterceptor {
 

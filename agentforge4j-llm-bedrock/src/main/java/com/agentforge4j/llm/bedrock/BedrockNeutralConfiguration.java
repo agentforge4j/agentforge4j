@@ -36,6 +36,10 @@ record BedrockNeutralConfiguration(
    * Maps a neutral configuration into this provider's validated form. No credential is resolved: Bedrock uses the AWS
    * default credentials chain.
    *
+   * <p>An absent {@code request.timeout} option defaults to {@link BedrockDefaults#REQUEST_TIMEOUT} — the same value
+   * {@link BedrockConfigurationAdapter} applies for the properties-configured path — so the two construction paths
+   * cannot silently diverge on what "the" default is.
+   *
    * @param neutral the neutral provider configuration
    *
    * @return the validated configuration
@@ -50,7 +54,7 @@ record BedrockNeutralConfiguration(
         neutral.getConnectTimeout(),
         options.requireString("region"),
         options.requireString("anthropic.version"),
-        options.duration("request.timeout").orElse(Duration.ofSeconds(30)),
+        options.duration("request.timeout").orElse(BedrockDefaults.REQUEST_TIMEOUT),
         options.integer("max.tokens").orElse(null),
         options.decimal("temperature").orElse(null));
   }

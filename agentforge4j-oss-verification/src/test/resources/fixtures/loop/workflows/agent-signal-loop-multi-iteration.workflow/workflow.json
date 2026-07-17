@@ -1,0 +1,12 @@
+{
+  "kind": "WORKFLOW",
+  "schemaVersion": 1,
+  "id": "agent-signal-loop-multi-iteration",
+  "name": "Agent Signal Loop Multi Iteration",
+  "steps": [
+    {
+      "kind": "BLUEPRINT_REF",
+      "blueprintId": "agent-signal-multi-iteration-body"
+    }
+  ]
+}

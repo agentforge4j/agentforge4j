@@ -7,14 +7,13 @@ import com.agentforge4j.llm.api.LlmExecutionResponse;
 import com.agentforge4j.llm.api.LlmInvocationException;
 import com.agentforge4j.llm.api.LlmRetryPolicy;
 import com.agentforge4j.util.Validate;
+import com.agentforge4j.util.retry.DecorrelatedJitter;
+import com.agentforge4j.util.retry.RetryableHttpStatuses;
 
 import java.io.IOException;
 import java.net.ConnectException;
 import java.net.SocketTimeoutException;
 import java.net.http.HttpTimeoutException;
-import java.util.Optional;
-import java.util.Set;
-import java.util.concurrent.ThreadLocalRandom;
 
 /**
  * Wraps an LLM client with retry logic for transient failures (decorrelated jitter backoff).
@@ -22,8 +21,6 @@ import java.util.concurrent.ThreadLocalRandom;
 public final class RetryingLlmClient implements LlmClient {
 
   private static final System.Logger LOG = System.getLogger(RetryingLlmClient.class.getName());
-
-  private static final Set<Integer> RETRYABLE_HTTP_STATUS = Set.of(429, 500, 502, 503, 504);
 
   private final LlmClient delegate;
   private final LlmRetryPolicy policy;
@@ -39,7 +36,7 @@ public final class RetryingLlmClient implements LlmClient {
   }
 
   @Override
-  public Optional<LlmRetryPolicy> getRetryPolicy() {
+  public LlmRetryPolicy getRetryPolicy() {
     return delegate.getRetryPolicy();
   }
 
@@ -101,28 +98,8 @@ public final class RetryingLlmClient implements LlmClient {
   }
 
   private static long nextDecorrelatedSleepMs(LlmRetryPolicy policy, long lastSleepMs) {
-    long drawn = randomBetweenBaseAndTriple(policy.baseBackoffMs(), lastSleepMs);
-    return Math.min(policy.maxBackoffMs(), drawn);
-  }
-
-  private static long randomBetweenBaseAndTriple(long baseBackoffMs, long lastSleepMs) {
-    long triple = cappedMultiplyByThree(lastSleepMs);
-    long upperInclusive = Math.max(baseBackoffMs, triple);
-    if (upperInclusive == baseBackoffMs) {
-      return baseBackoffMs;
-    }
-    long hiExclusive = upperInclusive + 1;
-    if (hiExclusive <= upperInclusive) {
-      return ThreadLocalRandom.current().nextLong(baseBackoffMs, Long.MAX_VALUE);
-    }
-    return ThreadLocalRandom.current().nextLong(baseBackoffMs, hiExclusive);
-  }
-
-  private static long cappedMultiplyByThree(long value) {
-    if (value > Long.MAX_VALUE / 3) {
-      return Long.MAX_VALUE;
-    }
-    return value * 3;
+    return DecorrelatedJitter.nextDelayMillis(
+        policy.baseBackoffMs(), lastSleepMs, policy.maxBackoffMs());
   }
 
   private static long elapsedMillisSince(long startNanos) {
@@ -144,7 +121,7 @@ public final class RetryingLlmClient implements LlmClient {
       return false;
     }
     Integer httpStatus = invocationException.getHttpStatus();
-    return httpStatus != null && RETRYABLE_HTTP_STATUS.contains(httpStatus);
+    return httpStatus != null && RetryableHttpStatuses.isRetryable(httpStatus);
   }
 
   private static void sleep(long durationMs) {

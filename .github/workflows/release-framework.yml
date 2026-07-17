@@ -1,0 +1,246 @@
+name: Release framework
+
+# Tag-triggered release pipeline for the framework track (`framework-v*` tags; the catalog and
+# builder release on their own prefixed tracks with their own workflows). Four stages, each a
+# single stable job name so protection contexts and environment bindings never chase matrix legs:
+#
+#   release-guard    — fails fast before any expensive work: full tag-format check, tag version
+#                      equals the reactor POM version and is not a SNAPSHOT, the tagged commit is
+#                      on `main` or a `release/framework-*` branch, and the committed release-note
+#                      source `docs/releases/framework/<version>.md` exists with its mandatory
+#                      headings. Needs no secrets.
+#   release-verify   — full release-profile build (sources + javadoc jars, tests, static-analysis
+#                      gates) unsigned, on the same OS × JDK matrix as CI (JDK 26 excluded — it
+#                      crashes the pinned SpotBugs tooling). Uploads the aggregate CycloneDX SBOM
+#                      for the announce stage. Needs no secrets and no approval.
+#   release-publish  — signs every artifact and uploads the deployment bundle to the Maven Central
+#                      Portal. Gated by the `maven-central` GitHub environment, whose
+#                      required-reviewer rule holds the job until it is approved. Even then, the
+#                      upload stops in VALIDATED state on the portal (autoPublish=false in the
+#                      POM) — the final release-to-Central action is a manual portal step.
+#   release-announce — creates the GitHub Release from the tag: title = tag, body = the committed
+#                      release-note source published verbatim, aggregate SBOM attached. RC tags
+#                      get the pre-release flag. Skipped whenever publish did not run.
+#
+# Expected configuration (owner-managed): environment `maven-central` with a required
+# reviewer, holding the secrets GPG_PRIVATE_KEY, GPG_PASSPHRASE, CENTRAL_TOKEN_USERNAME,
+# CENTRAL_TOKEN_PASSWORD.
+
+on:
+  push:
+    tags:
+      - "framework-v*"
+
+permissions:
+  contents: read
+
+# One release run at a time; never cancel a release mid-flight.
+concurrency:
+  group: release-framework-${{ github.ref }}
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  release-guard:
+    name: release-guard
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        # Full history and all branches: the branch-ancestry guard below needs origin/main and
+        # origin/release/framework-* to exist locally.
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Guard tag format
+        # The trigger pattern is prefix-only; this enforces the full track grammar, so a malformed
+        # tag (framework-v1.2, framework-v1.2.3-beta) dies here instead of publishing.
+        run: |
+          if [[ ! "$GITHUB_REF_NAME" =~ ^framework-v[0-9]+\.[0-9]+\.[0-9]+(-RC[0-9]+)?$ ]]; then
+            echo "Tag '${GITHUB_REF_NAME}' does not match framework-v<major>.<minor>.<patch>[-RCn]." >&2
+            exit 1
+          fi
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: maven
+
+      - name: Guard release tag matches the POM version
+        run: |
+          TAG_VERSION="${GITHUB_REF_NAME#framework-v}"
+          POM_VERSION="$(./mvnw -q help:evaluate -Dexpression=project.version -DforceStdout)"
+          if [ "$TAG_VERSION" != "$POM_VERSION" ]; then
+            echo "Tag version (${TAG_VERSION}) does not match POM version (${POM_VERSION})." >&2
+            exit 1
+          fi
+          case "$POM_VERSION" in
+            *-SNAPSHOT)
+              echo "Refusing to release SNAPSHOT version ${POM_VERSION}." >&2
+              exit 1
+              ;;
+          esac
+
+      - name: Guard tagged commit is on main or a release branch
+        # A release must come from the trunk or a maintenance line — a tag on any other commit
+        # (feature branch, detached experiment) is a mis-tag, not a release.
+        run: |
+          if git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "Tagged commit is on main."
+            exit 0
+          fi
+          for REF in $(git for-each-ref --format='%(refname:short)' 'refs/remotes/origin/release/framework-*'); do
+            if git merge-base --is-ancestor "$GITHUB_SHA" "$REF"; then
+              echo "Tagged commit is on ${REF}."
+              exit 0
+            fi
+          done
+          echo "Tagged commit ${GITHUB_SHA} is not on main or any release/framework-* branch." >&2
+          exit 1
+
+      - name: Guard committed release-note source exists with mandatory headings
+        # The tagged tree must contain its own release record; the announce stage publishes this
+        # file verbatim as the GitHub Release body.
+        run: |
+          VERSION="${GITHUB_REF_NAME#framework-v}"
+          NOTES="docs/releases/framework/${VERSION}.md"
+          if [ ! -f "$NOTES" ]; then
+            echo "Missing release-note source ${NOTES} in the tagged tree." >&2
+            exit 1
+          fi
+          MISSING=0
+          for HEADING in "Highlights" "Breaking changes" "Compatibility" "Coordinates" "Support"; do
+            if ! grep -Eq "^#{1,6} +${HEADING}" "$NOTES"; then
+              echo "Release-note source ${NOTES} is missing the mandatory heading '${HEADING}'." >&2
+              MISSING=1
+            fi
+          done
+          exit $MISSING
+
+  release-verify:
+    name: release-verify (${{ matrix.os }}, JDK ${{ matrix.java }})
+    needs: release-guard
+    runs-on: ${{ matrix.os }}
+    strategy:
+      # Run every leg to completion even if one fails, so a 17-only, 21-only, or Windows-only
+      # break is visible in the same run.
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        java: ["17", "21"]
+        # Windows runs a single JDK-21 leg (path/symlink coverage); ubuntu covers both JDKs.
+        exclude:
+          - os: windows-latest
+            java: "17"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up JDK ${{ matrix.java }}
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: ${{ matrix.java }}
+          cache: maven
+
+      # Unsigned: the release profile's GPG step is skipped so this stage needs no key
+      # material. Signing correctness is exercised in the publish stage.
+      - name: Full release-profile verify
+        run: ./mvnw -B -ntp -Prelease verify -Dgpg.skip=true
+
+      - name: Upload aggregate SBOM for the announce stage
+        # One leg only — the aggregate CycloneDX BOM is identical across legs.
+        if: ${{ matrix.os == 'ubuntu-latest' && matrix.java == '17' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-sbom
+          path: |
+            target/bom.json
+            target/bom.xml
+          if-no-files-found: error
+
+      - name: Upload test reports
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-test-reports-${{ matrix.os }}-jdk-${{ matrix.java }}
+          path: |
+            **/target/surefire-reports/**
+            **/target/failsafe-reports/**
+          if-no-files-found: ignore
+          retention-days: 7
+
+  release-publish:
+    name: release-publish
+    needs: release-verify
+    runs-on: ubuntu-latest
+    environment: maven-central
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      # Writes a settings.xml server entry `central` whose username/password resolve from the
+      # CENTRAL_TOKEN_USERNAME / CENTRAL_TOKEN_PASSWORD environment variables at run time, and
+      # imports the GPG private key. The gpg-passphrase input names the environment variable
+      # the maven-gpg-plugin reads (bestPractices mode).
+      - name: Set up JDK 17 with Central credentials and GPG key
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: maven
+          server-id: central
+          server-username: CENTRAL_TOKEN_USERNAME
+          server-password: CENTRAL_TOKEN_PASSWORD
+          gpg-private-key: ${{ secrets.GPG_PRIVATE_KEY }}
+          gpg-passphrase: MAVEN_GPG_PASSPHRASE
+
+      # Tests, coverage, and analysis gates already ran against this exact tag in the verify
+      # stage; this stage repeats the packaging, signs, and uploads the bundle to the portal.
+      - name: Sign and upload to the Central Portal
+        run: ./mvnw -B -ntp -Prelease deploy -DskipTests
+        env:
+          CENTRAL_TOKEN_USERNAME: ${{ secrets.CENTRAL_TOKEN_USERNAME }}
+          CENTRAL_TOKEN_PASSWORD: ${{ secrets.CENTRAL_TOKEN_PASSWORD }}
+          MAVEN_GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+
+  release-announce:
+    name: release-announce
+    needs: release-publish
+    runs-on: ubuntu-latest
+    permissions:
+      # Creating the GitHub Release needs write access; every other job stays read-only.
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Download aggregate SBOM
+        uses: actions/download-artifact@v8
+        with:
+          name: release-sbom
+          path: sbom
+
+      - name: Create GitHub Release from the committed note source
+        # Body is the tagged tree's own release record, published verbatim — never generated
+        # here. RC tags are flagged pre-release; artifacts live on Central, the notes carry the
+        # coordinates.
+        run: |
+          VERSION="${GITHUB_REF_NAME#framework-v}"
+          NOTES="docs/releases/framework/${VERSION}.md"
+          PRERELEASE=""
+          if [[ "$GITHUB_REF_NAME" == *-RC* ]]; then
+            PRERELEASE="--prerelease"
+          fi
+          gh release create "$GITHUB_REF_NAME" sbom/bom.json sbom/bom.xml \
+            --title "$GITHUB_REF_NAME" \
+            --notes-file "$NOTES" \
+            --verify-tag \
+            $PRERELEASE
+        env:
+          GH_TOKEN: ${{ github.token }}

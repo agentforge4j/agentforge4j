@@ -19,8 +19,4 @@ public record OpenAiResponsesRequestDto(
     List<InputItem> input,
     @JsonProperty("max_output_tokens") Integer maxOutputTokens
 ) {
-
-  public OpenAiResponsesRequestDto(String model, List<InputItem> input) {
-    this(model, input, null);
-  }
 }

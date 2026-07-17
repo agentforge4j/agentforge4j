@@ -72,7 +72,7 @@ class EvaluatorLoopStrategyTest {
         WorkflowLifecycle.ACTIVE,
         Map.of(),
         Map.of(),
-        List.of(dummyStep()));
+        List.of(dummyStep()), List.of());
     executionContext = new ExecutionContext(state, workflow, 32);
     loopConfig = LoopConfig.withDefaults(
         LoopTerminationStrategy.EVALUATOR, null, "eval-agent", 5, null);

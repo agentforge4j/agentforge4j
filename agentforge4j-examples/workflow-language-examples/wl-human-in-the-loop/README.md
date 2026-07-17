@@ -6,18 +6,20 @@ How the workflow language expresses human-in-the-loop control: an `INPUT` step t
 collect data from a person, and a `HUMAN_APPROVAL` gate that suspends for an approve/reject decision
 — and the resume verbs that drive each forward. This is the workflow-language companion to
 `framework-examples/human-approval`; that example covers the suspend/resume basics, this one focuses
-on the language constructs and the resume-verb contract. No Spring, no real LLM keys, no network.
+on the language constructs and the resume-verb contract. The example is LLM-agnostic: it runs offline
+against a deterministic fake by default, or against a real provider with no code change. No Spring, no
+network on the default path.
 
 ## AgentForge4j capability demonstrated
 
 `InputBehaviour` and the `HUMAN_APPROVAL` step gate. The run suspends at `AWAITING_INPUT`;
 `WorkflowRuntime.submitInput(runId, answers, actorId)` supplies the artifact's fields (stored in the
-context under `<artifactId>.<itemId>`). The reviewer agent then finishes its step (a scripted
-`COMPLETE` from `agentforge4j-llm-fake`) and the run suspends at `AWAITING_STEP_APPROVAL`;
-`WorkflowRuntime.decideStepApproval(...)` decides: `Approve` → `COMPLETED`, `Reject` → `FAILED` (with
-a `StepRejectionFailure` carrying the reason). These two gates use different resume verbs —
-`submitInput` for input, `decideStepApproval` for the approval — which is the contract this example
-makes concrete.
+context under `<artifactId>.<itemId>`). The reviewer agent then finishes its step (served by the LLM —
+a scripted `COMPLETE` from `agentforge4j-llm-fake` offline, or a real model when configured) and the
+run suspends at `AWAITING_STEP_APPROVAL`; `WorkflowRuntime.decideStepApproval(...)` decides: `Approve`
+→ `COMPLETED`, `Reject` → `FAILED` (with a `StepRejectionFailure` carrying the reason). These two gates
+use different resume verbs — `submitInput` for input, `decideStepApproval` for the approval — which is
+the contract this example makes concrete.
 
 ## How to run
 
@@ -28,12 +30,26 @@ From the examples root (`agentforge4j-examples/`), after installing the framewor
 ./mvnw -pl workflow-language-examples/wl-human-in-the-loop -am verify
 ```
 
-`verify` runs the deterministic tests, which assert both suspends and both terminal outcomes. To
-watch both paths print, run `WlHumanInTheLoopExample.main` from your IDE.
+`verify` runs the deterministic tests, which always use the bundled fake and assert both suspends and
+both terminal outcomes.
+
+**Offline (default).** `WlHumanInTheLoopApp.main` runs with no configuration: the `api-key` in
+`src/main/resources/example.properties` is blank, so the deterministic `agentforge4j-llm-fake` provider
+serves the reviewer agent's step — no key, no network, no extra dependency. Run it from your IDE to
+watch both paths print.
+
+**Against a real LLM.** Set a provider key — either `agentforge4j.example.llm.api-key` in
+`example.properties`, or the `AGENTFORGE4J_EXAMPLE_LLM_API_KEY` environment variable (see `.env.example`)
+— **and** add a provider module dependency (for example `agentforge4j-llm-openai`) to this module's
+`pom.xml`. No code changes: the same workflow and agents run, with the reviewer agent's step now served
+by the real model. The input and the approval decision are still supplied in code — they are human
+gates, not model output. With a key set but no provider module on the classpath, the run fails fast with
+a clear "no provider factory" message. Precedence for every value is system property, then environment
+variable, then `example.properties`.
 
 ## Expected behaviour / output
 
-`main` runs the approve and reject paths and prints, for example:
+On the offline fake path, `main` runs the approve and reject paths and prints, for example:
 
 ```text
 approve — after start: AWAITING_INPUT
@@ -44,7 +60,7 @@ reject — after reject: FAILED
 ```
 
 The bundled tests assert the `AWAITING_INPUT` → `AWAITING_STEP_APPROVAL` → terminal sequence, the
-stored input value, and the `StepRejectionFailure` on reject — all deterministically.
+stored input value, and the `StepRejectionFailure` on reject — all deterministically against the fake.
 
 ## Files to read first
 
@@ -52,6 +68,9 @@ stored input value, and the `StepRejectionFailure` on reject — all determinist
    the agent step gated by `HUMAN_APPROVAL`.
 2. `src/main/resources/workflows/wl-human-in-the-loop.workflow/request-form.artifact.json` — the
    input artifact whose fields `submitInput` supplies.
-3. `src/main/java/.../WlHumanInTheLoopExample.java` — the start → submit input → decide approval flow
-   for both outcomes.
-4. `src/test/java/.../WlHumanInTheLoopExampleTest.java` — the deterministic assertions for both paths.
+3. `src/main/java/.../WlHumanInTheLoopApp.java` — the start → submit input → decide approval flow
+   for both outcomes, resolving fake vs. real.
+4. `src/main/java/.../WlHumanInTheLoopFakeLlm.java` — the single source of truth for the offline
+   scripted reviewer response.
+5. `src/main/java/.../ExampleLlmConfig.java` — how the fake/real toggle, provider, and key are resolved.
+6. `src/test/java/.../WlHumanInTheLoopAppTest.java` — the deterministic assertions for both paths.

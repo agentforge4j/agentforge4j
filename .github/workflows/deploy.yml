@@ -1,0 +1,104 @@
+name: Deploy Docs
+
+# Publishes the agentforge4j.org site to GitHub Pages. Builds the SPA (agentforge4j-web-ui), the
+# docs site with the same shared .github/actions/build-docs-site composite action the Docs gate
+# uses (one pipeline definition, no drift), and the Javadoc surfaces, then composes all three into
+# a single Pages artifact (SPA at the root, /docs, /javadoc/{next,latest}, archived versions carried
+# forward) and deploys it. Never runs on pull requests (previews are the build artifacts uploaded
+# by the Web UI and Docs workflows).
+#
+# MANUAL DISPATCH ONLY — deliberately fail-closed. GitHub Pages serves one site per custom domain,
+# and how this repository's /docs and /javadoc surfaces compose with the project website under
+# `agentforge4j.org` is not settled yet. Until it is, nothing may publish automatically: a deploy
+# happens only when a maintainer dispatches this workflow, and the artifact carries no CNAME unless
+# the repository variable DOCS_CUSTOM_DOMAIN is set (mapped below into the assemble step; see
+# scripts/assemble-site.mjs — an unset/empty variable resolves to no CNAME, the same as today). When
+# automatic publishing is enabled later, prefer an unfiltered `push: main` trigger — the generated
+# reference and the Javadoc surface depend on essentially the whole reactor, so any path filter
+# would let the published site go silently stale.
+
+on:
+  workflow_dispatch:
+
+# Allow one concurrent deployment; do not cancel an in-progress deploy (Pages best practice).
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+jobs:
+  build:
+    name: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          # Full history + tags: the version-pinned Javadoc surfaces are built from each release
+          # tag (build-javadoc-versions.mjs resolves refs/tags/v<version>), which a shallow,
+          # tagless default checkout cannot see.
+          fetch-depth: 0
+
+      - name: Configure Pages
+        uses: actions/configure-pages@v6
+
+      - name: Set up Node
+        uses: actions/setup-node@v6
+        with:
+          node-version-file: '.nvmrc'
+          cache: npm
+          cache-dependency-path: agentforge4j-web-ui/package-lock.json
+
+      - name: Install web-ui dependencies
+        working-directory: agentforge4j-web-ui
+        run: npm ci
+
+      - name: Build the agentforge4j.org SPA
+        # Build-only (lint/type-check/test already run on every push/PR via web-ui.yml) — a build
+        # failure here still fails this step (tsc/vite/copy-404.mjs all exit non-zero on error), and
+        # the assemble step below fails closed if the SPA build, the docs/Javadoc assembly, or the
+        # composed output itself is missing an expected entry (assemble-site.mjs's requireDir /
+        # verifyComposedArtifact).
+        working-directory: agentforge4j-web-ui
+        run: npm run build
+
+      - name: Build the documentation site
+        uses: ./.github/actions/build-docs-site
+        with:
+          # The Docs gate is the emitter's test stage; the deploy only needs the compiled classes.
+          emitter-maven-phases: compile
+
+      - name: Build the version-pinned Javadoc surfaces (from release tags)
+        # One frozen /javadoc/<version>/ per active OR archived released version — the versioned
+        # docs snapshots link these. No-op pre-first-release (versions.json absent).
+        working-directory: agentforge4j-docs
+        run: node scripts/build-javadoc-versions.mjs
+
+      - name: Assemble the Pages artifact (SPA + /docs + /javadoc)
+        working-directory: agentforge4j-docs
+        env:
+          # Repository (or org) Actions variable — unset/empty means no custom domain (default,
+          # since the domain composition with the project website is not settled yet).
+          DOCS_CUSTOM_DOMAIN: ${{ vars.DOCS_CUSTOM_DOMAIN }}
+        run: node scripts/assemble-site.mjs
+
+      - name: Upload the Pages artifact
+        uses: actions/upload-pages-artifact@v5
+        with:
+          path: agentforge4j-docs/_site
+
+  deploy:
+    name: deploy
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v5

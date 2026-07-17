@@ -57,6 +57,11 @@
       </dependency>
       <dependency>
         <groupId>org.agentforge4j</groupId>
+        <artifactId>agentforge4j-util</artifactId>
+        <version>${agentforge4j.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>org.agentforge4j</groupId>
         <artifactId>agentforge4j-spring-boot-starter</artifactId>
         <version>${agentforge4j.version}</version>
       </dependency>
@@ -74,6 +79,20 @@
         <groupId>org.agentforge4j</groupId>
         <artifactId>agentforge4j-llm-fake</artifactId>
         <version>${agentforge4j.version}</version>
+      </dependency>
+      <!-- Test-scope only: proves the real-provider assembly path resolves a working LlmClient without a
+           network call (client construction, not invocation). Not a runtime dependency of any example. -->
+      <dependency>
+        <groupId>org.agentforge4j</groupId>
+        <artifactId>agentforge4j-llm-openai</artifactId>
+        <version>${agentforge4j.version}</version>
+      </dependency>
+      <!-- Independently versioned shipped-workflow catalog — pinned to its own version, NOT
+           ${agentforge4j.version}. Consumers pin this version explicitly. -->
+      <dependency>
+        <groupId>org.agentforge4j</groupId>
+        <artifactId>agentforge4j-workflows-catalog</artifactId>
+        <version>0.1.0-SNAPSHOT</version>
       </dependency>
       <!-- Pin the framework's commons-lang3 ahead of the Spring BOM (first-declared wins). -->
       <dependency>
@@ -95,6 +114,7 @@
   <modules>
     <module>framework-examples</module>
     <module>workflow-language-examples</module>
+    <module>workflow-catalog-examples</module>
   </modules>
 
   <build>

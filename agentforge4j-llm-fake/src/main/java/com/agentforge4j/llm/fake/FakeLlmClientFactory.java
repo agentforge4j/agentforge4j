@@ -11,7 +11,7 @@ import com.agentforge4j.util.Validate;
 /**
  * {@link LlmClientFactory} for the fake provider, discovered via {@link java.util.ServiceLoader}. Requires a
  * {@link FakeConfiguration} (carrying the shared {@link FakeResponseSource}); any other configuration type raises an
- * {@link IllegalArgumentException}, the same contract Ollama uses for its configuration subtype.
+ * {@link LlmProviderConfigurationException}.
  */
 public final class FakeLlmClientFactory implements LlmClientFactory {
 

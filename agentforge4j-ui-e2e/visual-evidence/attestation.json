@@ -1,0 +1,20 @@
+{
+  "generatedAt": "2026-07-17T13:17:33.621Z",
+  "commitSha": "ce5e63623947feb92458fba72f01084810d5f57f",
+  "manifestHash": "912282b8cce7c3e50da8d663228bafb539d23035c8420d9f4db743b8bd2ee932",
+  "versions": {
+    "webUi": "0.1.0",
+    "workflowBuilder": "0.6.0"
+  },
+  "viewportsCaptured": [
+    "laptop",
+    "large-desktop",
+    "mobile",
+    "mobile-landscape",
+    "tablet-landscape",
+    "tablet-portrait"
+  ],
+  "totalCaptures": 70,
+  "overallStatus": "pass",
+  "aiReviewEnabled": false
+}

@@ -2,7 +2,6 @@
 package com.agentforge4j.llm.gemini;
 
 import com.agentforge4j.llm.AbstractHttpLlmClient;
-import com.agentforge4j.llm.api.LlmClient;
 import com.agentforge4j.llm.api.LlmExecutionRequest;
 import com.agentforge4j.llm.api.LlmExecutionResponse;
 import com.agentforge4j.llm.api.LlmInvocationException;
@@ -18,6 +17,7 @@ import com.agentforge4j.llm.gemini.dto.GeminiSystemInstruction;
 import com.agentforge4j.llm.gemini.dto.GeminiUsageMetadata;
 import com.agentforge4j.llm.gemini.dto.InputRole;
 import com.agentforge4j.util.Validate;
+import com.agentforge4j.util.text.CodeFence;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
 import java.net.URI;
@@ -139,7 +139,7 @@ public final class GeminiLlmClient extends AbstractHttpLlmClient {
     String text = Validate.notBlank(joined,
         () -> new LlmInvocationException("Gemini response text is blank: %s".formatted(json)));
     return new LlmExecutionResponse(
-        LlmClient.stripCodeFence(text.strip()),
+        CodeFence.strip(text.strip()),
         StringUtils.trimToNull(dto.modelVersion()),
         toTokenUsageReport(dto.usageMetadata()));
   }

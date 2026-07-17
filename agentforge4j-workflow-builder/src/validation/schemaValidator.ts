@@ -14,6 +14,21 @@ type SchemaValidationResult = {
   errors: Array<{ path: string; message: string }>;
 };
 
+/**
+ * Workflow definition format version this builder writes into every exported document.
+ * `schemaVersion` is a required property of the runtime workflow schema; consumers accept only
+ * schema versions they know and reject anything else.
+ */
+export const WORKFLOW_SCHEMA_VERSION = 1;
+
+/**
+ * Workflow schema versions this builder can read on import. A superset of
+ * {@link WORKFLOW_SCHEMA_VERSION} only once the builder supports reading an older format after a
+ * framework minor moves the write version forward (design §4 rule 3); today the read and write
+ * versions coincide.
+ */
+export const SUPPORTED_WORKFLOW_SCHEMA_VERSIONS: readonly number[] = [WORKFLOW_SCHEMA_VERSION];
+
 const ajv = new Ajv({
   strict: false,
   allErrors: true,
@@ -102,6 +117,7 @@ export function toRuntimeWorkflowDocument(workflow: WorkflowDefinition): Record<
 
   const doc: Record<string, unknown> = {
     kind: 'WORKFLOW',
+    schemaVersion: WORKFLOW_SCHEMA_VERSION,
     id: workflow.id,
     name: workflow.name,
     steps,
@@ -110,6 +126,54 @@ export function toRuntimeWorkflowDocument(workflow: WorkflowDefinition): Record<
     doc.description = workflow.description;
   }
   return doc;
+}
+
+/**
+ * Validates the `schemaVersion` declared in a raw runtime workflow document — the document as
+ * parsed from an imported `.workflow.zip`, before it is converted into this builder's internal
+ * draft shape.
+ *
+ * This check must run against the raw document, not the internal draft: {@link
+ * toRuntimeWorkflowDocument} always regenerates a document carrying the builder's own {@link
+ * WORKFLOW_SCHEMA_VERSION}, so validating the round-tripped document would silently accept (and
+ * re-stamp) a document declaring an unknown or missing version instead of rejecting it.
+ */
+export function validateSchemaVersion(doc: Record<string, unknown>): SchemaValidationResult {
+  const declared = doc.schemaVersion;
+  if (declared === undefined || declared === null) {
+    return {
+      valid: false,
+      errors: [
+        {
+          path: 'workflow.schemaVersion',
+          message: `must declare a schemaVersion; supported: ${SUPPORTED_WORKFLOW_SCHEMA_VERSIONS.join(', ')}`,
+        },
+      ],
+    };
+  }
+  if (typeof declared !== 'number' || !Number.isInteger(declared)) {
+    return {
+      valid: false,
+      errors: [
+        {
+          path: 'workflow.schemaVersion',
+          message: `schemaVersion '${String(declared)}' must be an integer; supported: ${SUPPORTED_WORKFLOW_SCHEMA_VERSIONS.join(', ')}`,
+        },
+      ],
+    };
+  }
+  if (!SUPPORTED_WORKFLOW_SCHEMA_VERSIONS.includes(declared)) {
+    return {
+      valid: false,
+      errors: [
+        {
+          path: 'workflow.schemaVersion',
+          message: `schemaVersion ${declared} is not supported; supported: ${SUPPORTED_WORKFLOW_SCHEMA_VERSIONS.join(', ')}`,
+        },
+      ],
+    };
+  }
+  return { valid: true, errors: [] };
 }
 
 function mapAjvPath(error: ErrorObject): string {

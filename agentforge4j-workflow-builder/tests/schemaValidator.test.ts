@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import type { WorkflowDefinition } from '../src/api/types';
-import { validateAgainstSchema } from '../src/validation/schemaValidator';
+import packageJson from '../package.json';
+import {
+  SUPPORTED_WORKFLOW_SCHEMA_VERSIONS,
+  toRuntimeWorkflowDocument,
+  validateAgainstSchema,
+  validateSchemaVersion,
+  WORKFLOW_SCHEMA_VERSION,
+} from '../src/validation/schemaValidator';
 
 function minimalWorkflow(overrides: Partial<WorkflowDefinition> = {}): WorkflowDefinition {
   return {
@@ -62,5 +69,67 @@ describe('validateAgainstSchema', () => {
       })),
     });
     expect(result.valid).toBe(false);
+  });
+});
+
+describe('validateSchemaVersion', () => {
+  it('rejects a document with no schemaVersion', () => {
+    const result = validateSchemaVersion({ kind: 'WORKFLOW', id: 'x', name: 'X', steps: [] });
+    expect(result.valid).toBe(false);
+    expect(result.errors[0]?.message).toContain('must declare a schemaVersion');
+  });
+
+  it('rejects a non-integer schemaVersion', () => {
+    const result = validateSchemaVersion({
+      kind: 'WORKFLOW',
+      schemaVersion: 'one',
+      id: 'x',
+      name: 'X',
+      steps: [],
+    });
+    expect(result.valid).toBe(false);
+    expect(result.errors[0]?.message).toContain('must be an integer');
+  });
+
+  it('rejects a schemaVersion outside the supported set', () => {
+    const result = validateSchemaVersion({
+      kind: 'WORKFLOW',
+      schemaVersion: 2,
+      id: 'x',
+      name: 'X',
+      steps: [],
+    });
+    expect(result.valid).toBe(false);
+    expect(result.errors[0]?.message).toContain('schemaVersion 2 is not supported');
+  });
+
+  it('accepts a document declaring a supported schemaVersion', () => {
+    const result = validateSchemaVersion({
+      kind: 'WORKFLOW',
+      schemaVersion: WORKFLOW_SCHEMA_VERSION,
+      id: 'x',
+      name: 'X',
+      steps: [],
+    });
+    expect(result.valid).toBe(true);
+    expect(result.errors).toHaveLength(0);
+  });
+
+  it('exported documents always declare a schemaVersion this same builder accepts on import', () => {
+    // Contract: export and import must agree on the version this builder writes — a document it
+    // exports must never be a version its own import path would reject.
+    const doc = toRuntimeWorkflowDocument(minimalWorkflow());
+    expect(doc.schemaVersion).toBe(WORKFLOW_SCHEMA_VERSION);
+    expect(SUPPORTED_WORKFLOW_SCHEMA_VERSIONS).toContain(doc.schemaVersion);
+    expect(validateSchemaVersion(doc).valid).toBe(true);
+  });
+
+  it('the published manifest declares the same supported set as this builder actually enforces', () => {
+    // Regression guard: package.json's agentforge4j.supportedSchemaVersions is a second,
+    // independently-hardcoded literal read by the release-builder guard (manifest-field
+    // presence only, per design) — nothing else cross-checks it against the value this
+    // builder's import path actually enforces, so a future schemaVersion bump could update
+    // one and silently miss the other.
+    expect(packageJson.agentforge4j.supportedSchemaVersions).toEqual([...SUPPORTED_WORKFLOW_SCHEMA_VERSIONS]);
   });
 });

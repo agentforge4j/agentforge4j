@@ -48,7 +48,7 @@
     <commons-lang3.version>3.20.0</commons-lang3.version>
     <maven-compiler-plugin.version>3.15.0</maven-compiler-plugin.version>
     <lombok-mapstruct-binding.version>0.2.0</lombok-mapstruct-binding.version>
-    <jackson-databind.version>2.22.0</jackson-databind.version>
+    <jackson-databind.version>2.22.1</jackson-databind.version>
     <assertj-core.version>3.27.7</assertj-core.version>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     <aws.sdk.version>2.29.51</aws.sdk.version>
@@ -58,14 +58,15 @@
     <maven-surefire-plugin.version>3.5.6</maven-surefire-plugin.version>
     <maven-failsafe-plugin.version>3.5.6</maven-failsafe-plugin.version>
     <mcp-sdk.version>1.1.3</mcp-sdk.version>
-    <spotbugs-maven-plugin.version>4.10.2.0</spotbugs-maven-plugin.version>
+    <spotbugs-maven-plugin.version>4.10.3.0</spotbugs-maven-plugin.version>
     <maven-checkstyle-plugin.version>3.6.0</maven-checkstyle-plugin.version>
-    <!-- Checkstyle 10.x is the last line that runs on Java 17 (the OSS build JDK); 11+ requires
-         Java 21. Keep this on the latest 10.x until the OSS build JDK is raised. -->
-    <checkstyle.version>10.26.1</checkstyle.version>
+    <!-- Checkstyle must stay runnable on Java 17 (the OSS build JDK). Contrary to earlier belief,
+         the 11.x/12.x lines still target Java 17 (12.3.1 manifests Java-Version: 17); verify the
+         jar's required Java version before accepting future major bumps. -->
+    <checkstyle.version>12.3.1</checkstyle.version>
     <dependency-check-maven.version>12.2.2</dependency-check-maven.version>
     <cyclonedx-maven-plugin.version>2.9.2</cyclonedx-maven-plugin.version>
-    <spotbugs-annotations.version>4.10.2</spotbugs-annotations.version>
+    <spotbugs-annotations.version>4.10.3</spotbugs-annotations.version>
     <jqwik.version>1.10.1</jqwik.version>
     <jacoco-maven-plugin.version>0.8.15</jacoco-maven-plugin.version>
     <sonar-maven-plugin.version>5.7.0.6970</sonar-maven-plugin.version>
@@ -79,7 +80,9 @@
     <config.dir>${maven.multiModuleProjectDirectory}/config</config.dir>
     <!-- Empty by default; CI overrides with -Dnvd.api.key=$NVD_API_KEY for usable NVD rate limits. -->
     <nvd.api.key></nvd.api.key>
-    <json-schema-validator.version>2.0.3</json-schema-validator.version>
+    <json-schema-validator.version>2.0.4</json-schema-validator.version>
+    <maven-gpg-plugin.version>3.2.8</maven-gpg-plugin.version>
+    <central-publishing-maven-plugin.version>0.11.0</central-publishing-maven-plugin.version>
   </properties>
 
   <modules>
@@ -124,7 +127,7 @@
       <dependency>
         <groupId>org.junit</groupId>
         <artifactId>junit-bom</artifactId>
-        <version>6.1.1</version>
+        <version>6.1.2</version>
         <type>pom</type>
         <scope>import</scope>
       </dependency>
@@ -563,9 +566,11 @@
   </build>
 
   <profiles>
-    <!-- Release artifacts: -sources.jar and -javadoc.jar for every published module, as required
-         by Maven Central. Activate with -Prelease. Signing and deployment configuration are
-         deliberately absent — they belong to the release pipeline, not the build. -->
+    <!-- Release artifacts and publishing: -sources.jar and -javadoc.jar for every published
+         module (required by Maven Central), GPG signing, and the Central Portal upload.
+         Activate with -Prelease. Local/CI verify-only runs pass -Dgpg.skip=true; signing and
+         the upload itself happen only in the release workflow's approval-gated publish job
+         (.github/workflows/release-framework.yml), never from a developer machine. -->
     <profile>
       <id>release</id>
       <build>
@@ -616,6 +621,55 @@
                 </goals>
               </execution>
             </executions>
+          </plugin>
+          <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-gpg-plugin</artifactId>
+            <version>${maven-gpg-plugin.version}</version>
+            <configuration>
+              <!-- bestPractices: no passphrase on the command line or in settings; the plugin
+                   reads it from the MAVEN_GPG_PASSPHRASE environment variable (supplied by the
+                   release workflow's publish job from the GPG_PASSPHRASE secret). -->
+              <bestPractices>true</bestPractices>
+            </configuration>
+            <executions>
+              <execution>
+                <id>sign-artifacts</id>
+                <phase>verify</phase>
+                <goals>
+                  <goal>sign</goal>
+                </goals>
+              </execution>
+            </executions>
+          </plugin>
+          <plugin>
+            <groupId>org.sonatype.central</groupId>
+            <artifactId>central-publishing-maven-plugin</artifactId>
+            <version>${central-publishing-maven-plugin.version}</version>
+            <extensions>true</extensions>
+            <configuration>
+              <!-- Server id resolved against the CI-generated settings.xml entry whose
+                   credentials come from the CENTRAL_TOKEN_USERNAME / CENTRAL_TOKEN_PASSWORD
+                   secrets. -->
+              <publishingServerId>central</publishingServerId>
+              <!-- Uploaded deployments stop in VALIDATED state on the Central Portal; the final
+                   release-to-Central click stays a manual owner action there. -->
+              <autoPublish>false</autoPublish>
+              <waitUntil>validated</waitUntil>
+              <!-- Internal verification/fixture modules never publish (they also carry
+                   maven.deploy.skip). The catalog releases on its own catalog-v* track with a
+                   flattened POM through a separate workflow; it is not part of the framework
+                   release. NOTE: exclusion takes effect at deploy time only, so it is
+                   unverifiable until the first publish run — re-check the deployment content on
+                   the Central Portal before the first release click. -->
+              <excludeArtifacts>
+                <artifactId>agentforge4j-workflow-fixtures</artifactId>
+                <artifactId>agentforge4j-oss-verification</artifactId>
+                <artifactId>agentforge4j-starter-verification</artifactId>
+                <artifactId>agentforge4j-testkit-consumer-verification</artifactId>
+                <artifactId>agentforge4j-workflows-catalog</artifactId>
+              </excludeArtifacts>
+            </configuration>
           </plugin>
         </plugins>
       </build>

@@ -51,7 +51,19 @@ abstract class AbstractSdkMcpTransport implements McpTransport {
     McpSyncClient created = McpClient.sync(createSdkTransport())
         .requestTimeout(requestTimeout)
         .build();
-    created.initialize();
+    try {
+      created.initialize();
+    } catch (RuntimeException e) {
+      // initialize() is where the SDK actually connects (spawns the subprocess / opens the HTTP
+      // transport), so a failed handshake still leaves a live resource behind on `created`; it was
+      // never assigned to the `client` field, so close() would otherwise never see it.
+      try {
+        created.closeGracefully();
+      } catch (RuntimeException closeFailure) {
+        e.addSuppressed(closeFailure);
+      }
+      throw e;
+    }
     client = created;
     LOG.log(System.Logger.Level.DEBUG, "MCP SDK transport initialized");
   }

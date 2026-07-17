@@ -3,6 +3,7 @@ package com.agentforge4j.runtime;
 
 import com.agentforge4j.core.command.LlmCommand;
 import com.agentforge4j.core.runtime.WorkflowRuntime;
+import com.agentforge4j.core.spi.aggregation.ContextAggregator;
 import com.agentforge4j.core.spi.tool.PendingToolInvocationStore;
 import com.agentforge4j.core.spi.validation.ArtifactValidator;
 import com.agentforge4j.core.spi.tool.ToolExecutionService;
@@ -33,6 +34,7 @@ import com.agentforge4j.runtime.execution.TransitionGate;
 import com.agentforge4j.runtime.execution.WorkflowExecutor;
 import com.agentforge4j.runtime.execution.behaviour.BehaviourHandler;
 import com.agentforge4j.runtime.execution.behaviour.handler.AgentBehaviourHandler;
+import com.agentforge4j.runtime.execution.behaviour.handler.AggregateBehaviourHandler;
 import com.agentforge4j.runtime.execution.behaviour.handler.AssignContextBehaviourHandler;
 import com.agentforge4j.runtime.execution.behaviour.handler.BranchBehaviourHandler;
 import com.agentforge4j.runtime.execution.behaviour.handler.FailBehaviourHandler;
@@ -66,10 +68,9 @@ import static com.agentforge4j.runtime.command.ShellCommandRunner.NO_OP_SHELL_CO
  * Fluent builder that wires a {@link DefaultWorkflowRuntime} with the canonical executor graph, behaviour handlers,
  * loop strategies, and command handlers.
  *
- * <p>Required collaborators are repositories, a pre-built {@link AgentInvoker}, {@link FileSink},
- * and {@link ShellCommandRunner}. {@link java.time.Clock}, {@link LoopEvaluator}, and {@link RunContextManager} default
- * when omitted. A {@link com.agentforge4j.schema.SchemaProvider} may be configured but is not read by the current
- * {@link #build()} implementation.
+ * <p>Required collaborators are the {@link WorkflowRepository}, {@link WorkflowStateRepository},
+ * {@link WorkflowEventLog}, and a pre-built {@link AgentInvoker}. {@link FileSink}, {@link ShellCommandRunner},
+ * {@link java.time.Clock}, {@link LoopEvaluator}, and {@link RunContextManager} default when omitted.
  *
  * <p>Public construction path for {@link com.agentforge4j.core.runtime.WorkflowRuntime};
  * {@link DefaultWorkflowRuntime} constructors stay package-private because they accept non-exported execution types.
@@ -93,6 +94,7 @@ public final class WorkflowRuntimeBuilder {
   private RunExecutionInterceptor runExecutionInterceptor = RunExecutionInterceptor.NO_OP;
   private GeneratedArtifactStore generatedArtifactStore;
   private List<ArtifactValidator> artifactValidators = List.of();
+  private List<ContextAggregator> contextAggregators = List.of();
 
   /**
    * Configures the workflow definition source.
@@ -318,6 +320,21 @@ public final class WorkflowRuntimeBuilder {
   }
 
   /**
+   * Configures the {@link ContextAggregator}s an {@code AGGREGATE} step may select by
+   * {@code aggregatorId}. Defaults to none; an embedding assembly (for example bootstrap) supplies
+   * the defaults.
+   *
+   * @param value aggregators registered by id (no duplicate ids)
+   *
+   * @return this builder
+   */
+  public WorkflowRuntimeBuilder contextAggregators(List<ContextAggregator> value) {
+    this.contextAggregators =
+        List.copyOf(Validate.notNull(value, "contextAggregators must not be null"));
+    return this;
+  }
+
+  /**
    * Validates required dependencies, wires executors and handlers, and returns a runnable
    * {@link com.agentforge4j.core.runtime.WorkflowRuntime}.
    *
@@ -380,7 +397,8 @@ public final class WorkflowRuntimeBuilder {
 
     setupBlueprintLoopStrategies(blueprintExecutor, stepSequenceExecutor, resolvedEventRecorder,
         maxIterationsHandler,
-        resolvedEvaluator);
+        resolvedEvaluator,
+        resolvedGeneratedArtifactStore);
     blueprintExecutor.setStepSequenceExecutor(stepSequenceExecutor);
     blueprintExecutor.setTransitionGate(transitionGate);
     workflowExecutor.setStepSequenceExecutor(stepSequenceExecutor);
@@ -403,10 +421,12 @@ public final class WorkflowRuntimeBuilder {
 
   private static void setupBlueprintLoopStrategies(BlueprintExecutor blueprintExecutor,
       StepSequenceExecutor stepSequenceExecutor, EventRecorder eventRecorder,
-      MaxIterationsHandler maxIterationsHandler, LoopEvaluator resolvedEvaluator) {
+      MaxIterationsHandler maxIterationsHandler, LoopEvaluator resolvedEvaluator,
+      GeneratedArtifactStore resolvedGeneratedArtifactStore) {
     blueprintExecutor.setLoopStrategies(List.of(
         new FixedCountLoopStrategy(stepSequenceExecutor, eventRecorder, maxIterationsHandler),
-        new ForEachLoopStrategy(stepSequenceExecutor, eventRecorder, maxIterationsHandler),
+        new ForEachLoopStrategy(stepSequenceExecutor, eventRecorder, maxIterationsHandler,
+            resolvedGeneratedArtifactStore),
         new AgentSignalLoopStrategy(stepSequenceExecutor, eventRecorder, maxIterationsHandler),
         new EvaluatorLoopStrategy(
             stepSequenceExecutor, eventRecorder, maxIterationsHandler, resolvedEvaluator)));
@@ -452,7 +472,8 @@ public final class WorkflowRuntimeBuilder {
         new FailBehaviourHandler(),
         retryPreviousBehaviourHandler,
         new ValidateBehaviourHandler(generatedArtifactStore, artifactValidators, eventRecorder),
-        new AssignContextBehaviourHandler(eventRecorder));
+        new AssignContextBehaviourHandler(eventRecorder),
+        new AggregateBehaviourHandler(contextAggregators, eventRecorder));
     return new StepExecutor(handlers, eventRecorder, resolvedClock, transitionGate);
   }
 

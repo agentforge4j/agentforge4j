@@ -11,7 +11,8 @@ import com.agentforge4j.llm.LlmClientFactory;
  */
 module agentforge4j.llm {
   requires transitive agentforge4j.llm.api;
-  requires com.fasterxml.jackson.databind;
+  // transitive: LlmClientFactoryContext (exported) takes ObjectMapper directly as a parameter.
+  requires transitive com.fasterxml.jackson.databind;
   requires org.apache.commons.lang3;
   requires java.net.http;
   requires static lombok;

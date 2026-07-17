@@ -3,16 +3,17 @@ package com.agentforge4j.llm.bedrock;
 
 import com.agentforge4j.llm.LlmClientConfiguration;
 import com.agentforge4j.llm.LlmClientConfigurationAdapter;
-import com.agentforge4j.llm.LlmProviderOptions;
 import com.agentforge4j.llm.NeutralOptions;
 import com.agentforge4j.llm.RawProviderConfiguration;
-import java.time.Duration;
+import com.agentforge4j.llm.StandardNeutralConfiguration;
 
 /**
  * Maps the provider configuration subtree ({@code agentforge4j.llm.bedrock.*}) into the neutral
  * {@link LlmClientConfiguration} the {@link BedrockLlmClientFactory} consumes. Bedrock authenticates through the AWS SDK
  * credential chain rather than a static key, so no API-key reference or base URL is supplied. Activates when
- * {@code enabled} is {@code true}; connect/request timeout defaults are 10s / 2m.
+ * {@code enabled} is {@code true}; connect/request timeout defaults are {@link BedrockDefaults#CONNECT_TIMEOUT} /
+ * {@link BedrockDefaults#REQUEST_TIMEOUT} — the same constants {@link BedrockNeutralConfiguration#fromNeutral} falls
+ * back to for a programmatically constructed neutral configuration that omits {@code request.timeout}.
  */
 public final class BedrockConfigurationAdapter implements LlmClientConfigurationAdapter {
 
@@ -28,44 +29,18 @@ public final class BedrockConfigurationAdapter implements LlmClientConfiguration
 
   @Override
   public LlmClientConfiguration adapt(RawProviderConfiguration raw) {
-    return new NeutralConfiguration(
+    return new StandardNeutralConfiguration(
+        "bedrock",
         raw.get("model-id").orElse(null),
-        raw.getDuration("connect-timeout").orElse(Duration.ofSeconds(10)),
-        raw.get("region").orElse(null),
-        raw.get("anthropic-version").orElse(null),
-        raw.getInt("max-tokens").orElse(null),
-        raw.getDouble("temperature").orElse(null),
-        raw.getDuration("request-timeout").orElse(Duration.ofMinutes(2)));
-  }
-
-  private record NeutralConfiguration(String defaultModel, Duration connectTimeout, String region,
-                                      String anthropicVersion, Integer maxTokens, Double temperature,
-                                      Duration requestTimeout) implements LlmClientConfiguration {
-
-    @Override
-    public String getProviderName() {
-      return "bedrock";
-    }
-
-    @Override
-    public String getDefaultModel() {
-      return defaultModel;
-    }
-
-    @Override
-    public Duration getConnectTimeout() {
-      return connectTimeout;
-    }
-
-    @Override
-    public LlmProviderOptions getOptions() {
-      return LlmProviderOptions.of("bedrock", NeutralOptions.create()
-          .string("region", region)
-          .string("anthropic.version", anthropicVersion)
-          .duration("request.timeout", requestTimeout)
-          .number("max.tokens", maxTokens)
-          .number("temperature", temperature)
-          .toMap());
-    }
+        raw.getDuration("connect-timeout").orElse(BedrockDefaults.CONNECT_TIMEOUT),
+        null,
+        null,
+        NeutralOptions.create()
+            .string("region", raw.get("region").orElse(null))
+            .string("anthropic.version", raw.get("anthropic-version").orElse(null))
+            .duration("request.timeout", raw.getDuration("request-timeout").orElse(BedrockDefaults.REQUEST_TIMEOUT))
+            .number("max.tokens", raw.getInt("max-tokens").orElse(null))
+            .number("temperature", raw.getDouble("temperature").orElse(null))
+            .toMap());
   }
 }

@@ -77,6 +77,20 @@
       "agentId": "loop-agent",
       "ordinal": 0,
       "responseText": "[{\"type\":\"COMPLETE\"}]"
+    },
+    {
+      "workflowId": "agent-signal-loop-multi-iteration",
+      "stepId": "body",
+      "agentId": "loop-agent",
+      "ordinal": 0,
+      "responseText": "[{\"type\":\"CONTINUE\"}]"
+    },
+    {
+      "workflowId": "agent-signal-loop-multi-iteration",
+      "stepId": "body",
+      "agentId": "loop-agent",
+      "ordinal": 1,
+      "responseText": "[{\"type\":\"COMPLETE\"}]"
     }
   ]
 }

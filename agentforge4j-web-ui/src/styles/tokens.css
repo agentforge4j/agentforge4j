@@ -1,14 +1,20 @@
 /* SPDX-License-Identifier: Apache-2.0 */
+/*
+ * Palette sourced from the canonical mark (agentforge4j-web-ui/public/brand/logo-horizontal.svg)
+ * and recorded in the repository's BRAND.md — see that file for provenance.
+ */
 :root {
   --color-bg:          #ffffff;
   --color-bg-elevated: #f8f9fb;
-  --color-fg:          #0f1117;
+  --color-fg:          #1a202c;
   --color-fg-muted:    #6b7280;
   --color-border:      #e5e7eb;
-  --color-brand:       #0066ff;
+  --color-brand:       #2d6ab2;
+  --color-brand-shade: #2a4a6e;
   --color-brand-ink:   #ffffff;
-  --color-accent:      #7c3aed;
+  --color-accent:      #3b82f6;
   --color-success:     #16a34a;
+  --color-success-ink: #14532d;
   --color-warning:     #d97706;
   --color-danger:      #dc2626;
   --max-content-width: 1200px;

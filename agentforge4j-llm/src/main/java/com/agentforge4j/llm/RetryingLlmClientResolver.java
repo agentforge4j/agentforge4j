@@ -30,8 +30,8 @@ public final class RetryingLlmClientResolver implements LlmClientResolver {
   }
 
   private RetryingLlmClient wrap(LlmClient inner) {
-    LlmRetryPolicy policy = inner.getRetryPolicy().orElse(defaultPolicy);
-    return new RetryingLlmClient(inner, policy);
+    LlmRetryPolicy policy = inner.getRetryPolicy();
+    return new RetryingLlmClient(inner, policy != null ? policy : defaultPolicy);
   }
 
   @Override

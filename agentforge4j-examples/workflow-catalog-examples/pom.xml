@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <parent>
+    <groupId>org.agentforge4j.examples</groupId>
+    <artifactId>agentforge4j-examples</artifactId>
+    <version>0.0.1-SNAPSHOT</version>
+    <relativePath>../pom.xml</relativePath>
+  </parent>
+
+  <artifactId>agentforge4j-workflow-catalog-examples</artifactId>
+  <packaging>pom</packaging>
+  <name>AgentForge4j Workflow Catalog Examples</name>
+  <description>Examples that demonstrate the shipped catalog of ready-made AgentForge4j workflows —
+    how to discover, configure, and run the workflows the framework provides out of the box, rather
+    than authoring your own from scratch. Each leaf is deterministic and offline, driven by the
+    shipped fake LLM provider.</description>
+
+  <licenses>
+    <license>
+      <name>Apache License, Version 2.0</name>
+      <url>https://www.apache.org/licenses/LICENSE-2.0</url>
+      <distribution>repo</distribution>
+    </license>
+  </licenses>
+
+  <modules>
+    <module>agent-creator</module>
+    <module>workflow-execution-estimator</module>
+  </modules>
+</project>

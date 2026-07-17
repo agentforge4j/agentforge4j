@@ -7,7 +7,6 @@ import com.agentforge4j.llm.api.LlmExecutionResponse;
 import com.agentforge4j.llm.api.LlmInvocationException;
 import com.agentforge4j.llm.api.LlmRetryPolicy;
 import java.util.List;
-import java.util.Optional;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -24,9 +23,9 @@ class RetryingLlmClientResolverTest {
   static final class Fail503Client implements LlmClient {
 
     private final AtomicInteger executeCalls = new AtomicInteger();
-    private final Optional<LlmRetryPolicy> retryPolicyOverride;
+    private final LlmRetryPolicy retryPolicyOverride;
 
-    Fail503Client(Optional<LlmRetryPolicy> retryPolicyOverride) {
+    Fail503Client(LlmRetryPolicy retryPolicyOverride) {
       this.retryPolicyOverride = retryPolicyOverride;
     }
 
@@ -36,7 +35,7 @@ class RetryingLlmClientResolverTest {
     }
 
     @Override
-    public Optional<LlmRetryPolicy> getRetryPolicy() {
+    public LlmRetryPolicy getRetryPolicy() {
       return retryPolicyOverride;
     }
 
@@ -150,7 +149,7 @@ class RetryingLlmClientResolverTest {
 
     @Test
     void cachesByNormalizedProviderKey_openAiAnd_openai_shareInstance() {
-      LlmClient inner = new Fail503Client(Optional.empty());
+      LlmClient inner = new Fail503Client(null);
       CountingDelegatingResolver counting = new CountingDelegatingResolver(inner);
       LlmRetryPolicy defaultPolicy =
           new LlmRetryPolicy(2, 1L, 6L, 0L);
@@ -167,7 +166,7 @@ class RetryingLlmClientResolverTest {
     @Test
     void usesInnerClientRetryPolicy_whenPresent() {
       LlmRetryPolicy custom = new LlmRetryPolicy(5, 1L, 6L, 0L);
-      Fail503Client inner = new Fail503Client(Optional.of(custom));
+      Fail503Client inner = new Fail503Client(custom);
       CountingDelegatingResolver counting = new CountingDelegatingResolver(inner);
       LlmRetryPolicy defaultPolicy = new LlmRetryPolicy(2, 1L, 6L, 0L);
       RetryingLlmClientResolver resolver =
@@ -183,8 +182,8 @@ class RetryingLlmClientResolverTest {
     }
 
     @Test
-    void usesDefaultRetryPolicy_whenInnerReturnsEmpty_optional() {
-      Fail503Client inner = new Fail503Client(Optional.empty());
+    void usesDefaultRetryPolicy_whenInnerReturnsNull() {
+      Fail503Client inner = new Fail503Client(null);
       CountingDelegatingResolver counting = new CountingDelegatingResolver(inner);
       LlmRetryPolicy defaultPolicy = new LlmRetryPolicy(3, 1L, 6L, 0L);
       RetryingLlmClientResolver resolver =

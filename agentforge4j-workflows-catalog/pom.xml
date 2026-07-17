@@ -12,8 +12,8 @@
   <artifactId>agentforge4j-workflows-catalog</artifactId>
   <!-- Independently versioned: the shipped-workflow catalog releases on its own cadence, decoupled
        from the framework's 0.0.1-SNAPSHOT reactor version. Pre-release SNAPSHOT on its own 0.1.x
-       line — the current bundles are legacy and slated for a rewrite; this graduates to 1.0.0 when
-       the redesigned catalog becomes the intended public release. -->
+       line; ships 1.0.0 at the framework's first public release — the catalog, framework, and UI
+       packages each version and release independently under their own tag prefixes. -->
   <version>0.1.0-SNAPSHOT</version>
   <packaging>jar</packaging>
   <name>AgentForge4J Workflows Catalog</name>
@@ -182,6 +182,46 @@
         <configuration>
           <useModulePath>false</useModulePath>
         </configuration>
+      </plugin>
+      <plugin>
+        <!-- Publishes a standalone flattened POM: no <parent> reference to the framework's
+             0.0.1-SNAPSHOT reactor version, and every dependency version resolved to a literal
+             (the in-reactor overrides above use ${project.parent.version}, meaningless outside
+             this reactor). This module deploys alone on its own catalog-v* track. -->
+        <groupId>org.codehaus.mojo</groupId>
+        <artifactId>flatten-maven-plugin</artifactId>
+        <version>1.7.3</version>
+        <configuration>
+          <flattenMode>defaults</flattenMode>
+          <updatePomFile>true</updatePomFile>
+          <!-- Central requires name/description/url/scm/developers on every published artifact;
+               defaults mode drops them, so resolve them explicitly (pulling the inherited root
+               pom's url/scm/developers into this standalone POM; name/description come from this
+               module's own declaration). -->
+          <pomElements>
+            <name>resolve</name>
+            <description>resolve</description>
+            <url>resolve</url>
+            <scm>resolve</scm>
+            <developers>resolve</developers>
+          </pomElements>
+        </configuration>
+        <executions>
+          <execution>
+            <id>flatten</id>
+            <phase>process-resources</phase>
+            <goals>
+              <goal>flatten</goal>
+            </goals>
+          </execution>
+          <execution>
+            <id>flatten-clean</id>
+            <phase>clean</phase>
+            <goals>
+              <goal>clean</goal>
+            </goals>
+          </execution>
+        </executions>
       </plugin>
     </plugins>
   </build>

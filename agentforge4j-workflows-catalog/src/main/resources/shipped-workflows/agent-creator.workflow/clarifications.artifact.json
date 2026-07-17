@@ -1,0 +1,12 @@
+{
+  "id": "clarifications",
+  "items": [
+    {
+      "type": "TEXT_AREA",
+      "id": "clarificationAnswers",
+      "label": "Answer the open questions",
+      "required": true,
+      "hint": "Answer the open questions raised about your agent idea, one per line. These refine the requirements before the agent is designed."
+    }
+  ]
+}

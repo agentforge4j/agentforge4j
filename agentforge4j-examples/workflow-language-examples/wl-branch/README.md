@@ -4,13 +4,14 @@
 
 How a workflow makes a deterministic, author-controlled routing decision in the workflow language —
 not an LLM picking the next step at runtime, but a `BRANCH` step that reads a value from the context
-and dispatches to one of several targets. It also shows `FAIL` as an explicit terminal. No Spring,
-no real LLM keys, no network.
+and dispatches to one of several targets. It also shows `FAIL` as an explicit terminal. The example is
+LLM-agnostic: it runs offline against a deterministic fake by default, or against a real provider with
+no code change. No Spring, no network on the default path.
 
 ## AgentForge4j capability demonstrated
 
 `BranchBehaviour` and `FailBehaviour`. An agent step (`decide`) writes the `decision` context key
-with a scripted `SET_CONTEXT` command; the `BRANCH` step's `contextKey` reads that value and matches
+with a `SET_CONTEXT` command; the `BRANCH` step's `contextKey` reads that value and matches
 it against its `branches` map. The `approve` branch is an inline agent step that finishes the run
 (`COMPLETED`); the `reject` branch is an inline `FAIL` step that ends the run (`FAILED`). The branch
 step itself calls no model — routing is pure, deterministic dispatch.
@@ -24,26 +25,39 @@ From the examples root (`agentforge4j-examples/`), after installing the framewor
 ./mvnw -pl workflow-language-examples/wl-branch -am verify
 ```
 
-`verify` runs the deterministic tests, which assert both routes. To watch both paths print, run
-`WlBranchExample.main` from your IDE.
+`verify` runs the deterministic tests, which always use the bundled fake and assert both routes.
+
+**Offline (default).** `WlBranchApp.main` runs with no configuration: the `api-key` in
+`src/main/resources/example.properties` is blank, so the deterministic `agentforge4j-llm-fake` provider
+is used — no key, no network, no extra dependency. Run it from your IDE to watch both paths print.
+
+**Against a real LLM.** Set a provider key — either `agentforge4j.example.llm.api-key` in
+`example.properties`, or the `AGENTFORGE4J_EXAMPLE_LLM_API_KEY` environment variable (see `.env.example`)
+— **and** add a provider module dependency (for example `agentforge4j-llm-openai`) to this module's
+`pom.xml`. No code changes: the same workflow and agents run against the real model, which now makes the
+`decide` decision itself. With a key set but no provider module on the classpath, the run fails fast with
+a clear "no provider factory" message. Precedence for every value is system property, then environment
+variable, then `example.properties`.
 
 ## Expected behaviour / output
 
-`main` runs the workflow once per decision and prints, for example:
+On the offline fake path, `main` runs the workflow once per decision and prints:
 
 ```text
 decision=approve -> status=COMPLETED
 decision=reject -> status=FAILED
 ```
 
-The bundled test asserts both terminal states and the routing value deterministically.
+On the real-provider path the model decides, so the workflow runs once and prints the resulting status.
+The bundled test asserts both terminal states and the routing value deterministically against the fake.
 
 ## Files to read first
 
-1. `src/main/java/.../WlBranchExample.java` — assembles the runtime and scripts the `decide` agent's
-   decision so each branch can be driven from one workflow.
-2. `src/main/resources/workflows/wl-branch.workflow/workflow.json` — the `BRANCH` step, its
+1. `src/main/java/.../WlBranchApp.java` — the entry point: resolves fake vs. real, then assembles the
+   runtime and runs the workflow.
+2. `src/main/java/.../WlBranchFakeLlm.java` — the single source of truth for the offline scripted
+   responses (the `decide` agent's decision and the approved branch's `COMPLETE`).
+3. `src/main/java/.../ExampleLlmConfig.java` — how the fake/real toggle, provider, and key are resolved.
+4. `src/main/resources/workflows/wl-branch.workflow/workflow.json` — the `BRANCH` step, its
    `contextKey`, and the two inline branch targets (an agent step and a `FAIL` step).
-3. `src/main/resources/agents/branch-agent.agent/agent.json` — the routing agent that writes the
-   decision via `SET_CONTEXT`.
-4. `src/test/java/.../WlBranchExampleTest.java` — the deterministic assertions for both routes.
+5. `src/test/java/.../WlBranchAppTest.java` — the deterministic assertions for both routes.

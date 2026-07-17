@@ -27,6 +27,7 @@ class FakeProviderSelectionTest {
   private static final String WORKFLOW_JSON = """
       {
         "kind": "WORKFLOW",
+        "schemaVersion": 1,
         "id": "exotic-provider",
         "name": "Exotic Provider",
         "steps": [

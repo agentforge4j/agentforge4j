@@ -23,6 +23,10 @@ record VllmNeutralConfiguration(
   /**
    * Maps a neutral configuration into this provider's validated form.
    *
+   * <p>An absent {@code request.timeout} option defaults to {@link VllmDefaults#REQUEST_TIMEOUT} — the same value
+   * {@link VllmConfigurationAdapter} applies for the properties-configured path — so the two construction paths
+   * cannot silently diverge on what "the" default is.
+   *
    * @param neutral the neutral provider configuration
    *
    * @return the validated configuration
@@ -35,7 +39,7 @@ record VllmNeutralConfiguration(
         neutral.getDefaultModel(),
         neutral.getConnectTimeout(),
         neutral.requireBaseUrl(),
-        neutral.getOptions().duration("request.timeout").orElse(Duration.ofSeconds(30)));
+        neutral.getOptions().duration("request.timeout").orElse(VllmDefaults.REQUEST_TIMEOUT));
   }
 
   @Override

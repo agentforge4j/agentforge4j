@@ -1,5 +1,6 @@
 {
   "kind": "WORKFLOW",
+  "schemaVersion": 1,
   "id": "loader-fixture",
   "name": "Loader Fixture",
   "description": "Minimal synthetic shipped workflow for classpath loader/locator tests.",

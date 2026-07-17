@@ -23,6 +23,7 @@ export const TID = {
   addCase: 'workflow-builder-inspector-add-case',
   removeCase: 'workflow-builder-inspector-remove-case',
   mobileTrigger: 'workflow-builder-palette-mobile-trigger',
+  narrowNotice: 'workflow-builder-narrow-notice',
   // 0.4.0 — read-only mode + step-connection UX seams.
   importButton: 'workflow-builder-import',
   exportButton: 'workflow-builder-export',
@@ -175,6 +176,20 @@ export class BuilderPage {
       await this.page.keyboard.press('Escape');
       await expect(this.inspector).toHaveCount(0);
     }
+  }
+
+  /**
+   * Clicks the inspector's "Delete step" button and confirms the resulting
+   * `ConfirmDeleteDialog` — deletion no longer commits on the first click alone.
+   * Scoped to the alertdialog so its "Delete" button is never confused with the
+   * inspector's own "Delete step" trigger, which also contains the word "Delete".
+   */
+  async deleteSelectedStepFromInspector(): Promise<void> {
+    await this.inspector.getByRole('button', { name: /delete step/i }).click();
+    const dialog = this.page.getByRole('alertdialog');
+    await expect(dialog).toBeVisible();
+    await dialog.getByRole('button', { name: 'Delete', exact: true }).click();
+    await expect(dialog).toHaveCount(0);
   }
 
   /**

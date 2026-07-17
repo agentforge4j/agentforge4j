@@ -1,0 +1,28 @@
+name: Tag guard
+
+# Rejects any pushed tag that does not match one of the three release-track prefixes this repo
+# recognises (framework-v*, builder-v*, catalog-v*). A malformed or off-track tag never reaches
+# the track-specific release workflows (release-framework.yml, release-builder.yml,
+# release-catalog.yml) because those only trigger on their own exact prefix — this workflow's job
+# is to fail loudly on anything else, rather than let a stray tag sit silently unreleased.
+
+on:
+  push:
+    tags:
+      - "*"
+
+permissions:
+  contents: read
+
+jobs:
+  guard:
+    name: guard
+    runs-on: ubuntu-latest
+    steps:
+      - name: Guard tag matches a known release track
+        run: |
+          if [[ ! "$GITHUB_REF_NAME" =~ ^(framework|builder|catalog)-v[0-9]+\.[0-9]+\.[0-9]+(-RC[0-9]+)?$ ]]; then
+            echo "Tag '${GITHUB_REF_NAME}' does not match (framework|builder|catalog)-v<major>.<minor>.<patch>[-RCn]." >&2
+            exit 1
+          fi
+          echo "Tag '${GITHUB_REF_NAME}' matches a known release track."
