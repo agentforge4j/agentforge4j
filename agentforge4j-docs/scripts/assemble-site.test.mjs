@@ -51,6 +51,21 @@ test('SPA files coexist with docs/ and javadoc/ without collision', () => {
   assert.ok(existsSync(join(siteDir, 'javadoc', 'next', 'index.html')));
 });
 
+test('the composed docs/index.html is the real Docusaurus homepage, not the SPA shell or a placeholder', () => {
+  // Regression guard for the /docs route-collision bug (agentforge4j-web-ui/src/pages/DocsPage.tsx,
+  // removed): the SPA used to own a client-side route at /docs rendering a placeholder ("Continue
+  // to the documentation ...") instead of ever letting a real request reach the composed
+  // Docusaurus build mounted at this exact path. The composed docs/index.html must be the real
+  // Docusaurus output — distinct from the SPA's own index.html — and must not carry the removed
+  // placeholder's exact wording.
+  const {spaDir, buildDir, javadocDir, archiveDir, siteDir} = fixture();
+  assembleSite({spaDir, buildDir, javadocDir, archiveDir, siteDir, customDomain: null});
+  const spaIndex = readFileSync(join(siteDir, 'index.html'), 'utf8');
+  const docsIndex = readFileSync(join(siteDir, 'docs', 'index.html'), 'utf8');
+  assert.notEqual(docsIndex, spaIndex);
+  assert.doesNotMatch(docsIndex, /Continue to the documentation/);
+});
+
 test('fails closed when spaDir does not exist', () => {
   const {buildDir, javadocDir, archiveDir, siteDir} = fixture();
   const exitCodes = [];

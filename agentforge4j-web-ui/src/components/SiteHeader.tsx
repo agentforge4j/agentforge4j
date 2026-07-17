@@ -40,11 +40,17 @@ export default function SiteHeader() {
         </Link>
 
         <nav aria-label="Primary" className="hidden flex-1 items-center gap-6 lg:flex">
-          {PRIMARY_NAV.map((item) => (
-            <Link key={item.to} to={item.to} className="text-sm font-medium text-fg hover:text-brand">
-              {item.label}
-            </Link>
-          ))}
+          {PRIMARY_NAV.map((item) =>
+            item.external ? (
+              <a key={item.to} href={item.to} className="text-sm font-medium text-fg hover:text-brand">
+                {item.label}
+              </a>
+            ) : (
+              <Link key={item.to} to={item.to} className="text-sm font-medium text-fg hover:text-brand">
+                {item.label}
+              </Link>
+            ),
+          )}
         </nav>
         <a
           href={GITHUB_URL}
@@ -81,16 +87,27 @@ export default function SiteHeader() {
           aria-label="Primary"
           className="flex flex-col gap-1 border-t border-border px-6 py-4 lg:hidden"
         >
-          {PRIMARY_NAV.map((item) => (
-            <Link
-              key={item.to}
-              to={item.to}
-              onClick={() => setMenuOpen(false)}
-              className="rounded-md px-2 py-2 text-sm font-medium text-fg hover:bg-bg hover:text-brand"
-            >
-              {item.label}
-            </Link>
-          ))}
+          {PRIMARY_NAV.map((item) =>
+            item.external ? (
+              <a
+                key={item.to}
+                href={item.to}
+                onClick={() => setMenuOpen(false)}
+                className="rounded-md px-2 py-2 text-sm font-medium text-fg hover:bg-bg hover:text-brand"
+              >
+                {item.label}
+              </a>
+            ) : (
+              <Link
+                key={item.to}
+                to={item.to}
+                onClick={() => setMenuOpen(false)}
+                className="rounded-md px-2 py-2 text-sm font-medium text-fg hover:bg-bg hover:text-brand"
+              >
+                {item.label}
+              </Link>
+            ),
+          )}
           <a
             href={GITHUB_URL}
             target="_blank"

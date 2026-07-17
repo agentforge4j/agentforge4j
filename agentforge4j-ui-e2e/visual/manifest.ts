@@ -140,13 +140,6 @@ const orgRoute = (path: string): EntryTarget => ({ kind: 'route', path });
 const ROUTE_ENTRIES: VisualManifestEntry[] = SITE_ROUTES.map((route) => {
   const id = `org-${route.path === '/' ? 'home' : route.path.replace(/^\//, '').replace(/\//g, '-')}`;
   const overflowProne = route.path === '/architecture'; // embeds two SVG diagrams
-  // `/docs` on the ASSEMBLED site (this suite's actual target) is the real, separately-built
-  // Docusaurus site, not agentforge4j-web-ui's own placeholder DocsPage.tsx that the
-  // `SITE_ROUTES` heading label describes — its real page title differs and isn't this manifest's
-  // concern (Docusaurus already runs its own pa11y-ci WCAG 2.1 AA gate, confirmed passing 28/28
-  // pages in this workstream's own real build). Assert only that SOME h1 exists there, not its
-  // exact wording.
-  const isDocsHandoff = route.path === '/docs';
   // Computed once and reused by both `viewports` and `releaseImportance` below: every
   // release-blocking route gets full viewport coverage, not just the routes hand-picked here — a
   // future blocker route silently getting only CORE_VIEWPORTS (this file's own documented rule for
@@ -164,32 +157,51 @@ const ROUTE_ENTRIES: VisualManifestEntry[] = SITE_ROUTES.map((route) => {
     // clicked (SiteHeader.tsx conditionally renders the mobile `<nav>` only while open) — the
     // dedicated `org-home-nav-mobile-open`/`org-home-nav-mobile-closed` entries below cover that
     // interactive contract instead of asserting it unconditionally on every route/viewport.
-    mustBeVisible: [isDocsHandoff ? 'role=heading[level=1]' : `role=heading[level=1][name="${route.heading}"]`],
+    mustBeVisible: [`role=heading[level=1][name="${route.heading}"]`],
     aiReviewEnabled: true,
     releaseImportance,
     fullPage: true,
-    // Docusaurus's own fixed top navbar and its collapsible sidebar viewport geometrically
-    // intersect at rest — plausibly correct, by-design fixed-header stacking (Docusaurus's real
-    // pa11y-ci gate independently passes 28/28 pages at WCAG 2.1 AA in this workstream's own real
-    // build), but not independently confirmed by this suite as either genuinely fine or a real
-    // defect — a warning, not an accepted-and-explained non-issue like the Builder dev-harness
-    // finding above.
-    acceptedFindings: isDocsHandoff
-      ? [
-          {
-            checkId: 'no-overlapping-fixed-elements',
-            reason: "Docusaurus's own internal navbar/sidebar chrome, not .org site code — likely "
-              + 'by-design fixed-header layering (backed by Docusaurus\'s own real, passing pa11y-ci '
-              + 'WCAG 2.1 AA gate), but not independently confirmed by this check as correct.',
-            requiresHumanConfirmation: true,
-          },
-        ]
-      : undefined,
   };
 });
 
+// `/docs` is deliberately NOT in `SITE_ROUTES` (see that file's comment): it is not an
+// agentforge4j-web-ui SPA route — the Assembler track composes the real, separately-built
+// Docusaurus site at that exact path on the deployed artifact. On THIS suite's actual target (the
+// assembled site, served by serve-assembled-site.mjs), `/docs/` is real, valuable content worth
+// capturing — a standalone entry rather than a `ROUTE_ENTRIES` row, since its real page
+// title/heading is Docusaurus's own and unrelated to any `agentforge4j-web-ui` copy (Docusaurus
+// already runs its own pa11y-ci WCAG 2.1 AA gate, confirmed passing 28/28 pages in this
+// workstream's own real build). Assert only that SOME h1 exists there, not its exact wording.
+const DOCS_HANDOFF_ENTRY: VisualManifestEntry = {
+  id: 'org-docs',
+  surface: 'org',
+  target: orgRoute('/docs/'),
+  stateName: 'Documentation (composed Docusaurus site)',
+  viewports: CORE_VIEWPORTS,
+  mustBeVisible: ['role=heading[level=1]'],
+  aiReviewEnabled: true,
+  releaseImportance: 'important',
+  fullPage: true,
+  // Docusaurus's own fixed top navbar and its collapsible sidebar viewport geometrically
+  // intersect at rest — plausibly correct, by-design fixed-header stacking (Docusaurus's real
+  // pa11y-ci gate independently passes 28/28 pages at WCAG 2.1 AA in this workstream's own real
+  // build), but not independently confirmed by this suite as either genuinely fine or a real
+  // defect — a warning, not an accepted-and-explained non-issue like the Builder dev-harness
+  // finding above.
+  acceptedFindings: [
+    {
+      checkId: 'no-overlapping-fixed-elements',
+      reason: "Docusaurus's own internal navbar/sidebar chrome, not .org site code — likely "
+        + 'by-design fixed-header layering (backed by Docusaurus\'s own real, passing pa11y-ci '
+        + 'WCAG 2.1 AA gate), but not independently confirmed by this check as correct.',
+      requiresHumanConfirmation: true,
+    },
+  ],
+};
+
 export const VISUAL_MANIFEST: readonly VisualManifestEntry[] = [
   ...ROUTE_ENTRIES,
+  DOCS_HANDOFF_ENTRY,
 
   // --- Additional ".org" visual states beyond "page as it loads" -------------------------------
   {
