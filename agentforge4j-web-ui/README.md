@@ -11,15 +11,18 @@ content and purpose have been superseded wholesale by the `.org` site, per desig
 identity carries forward unchanged (`agentforge4j-web-ui`), and there is no separate sibling
 module — this is it.
 
-`/builder` is one route among several (Home, Docs handoff, Use, Catalogue, Builder, Architecture,
-Releases, Community, Security, Legal, Contact); it is not the app's sole purpose any more. It is a
-private application (not published to npm) and is independent of the Maven reactor.
+`/builder` is one route among several (Home, Use, Catalogue, Builder, Architecture, Releases,
+Community, Security, Legal, Contact); it is not the app's sole purpose any more. It is a private
+application (not published to npm) and is independent of the Maven reactor.
 
 ## Structure
 
 - **Routing** (`react-router-dom`): the launch-required routes listed above, plus a catch-all 404.
   `/builder` and `/catalogue` are real embeds (workflow-builder component; generated catalogue
-  data), lazy-loaded on demand; the rest carry real authored copy.
+  data), lazy-loaded on demand; the rest carry real authored copy. `/docs` is deliberately NOT an
+  SPA route: the Assembler track composes the real Docusaurus build at that exact path in the
+  deployed artifact, so the SPA must not intercept it client-side — the Docs nav entry
+  (`src/config/nav.ts`) is a real anchor (`external: true`) to `/docs/`, not a `<Link>`.
 - **Nav/footer**: data-driven from `src/config/nav.ts`, internal to this module for now (no
   cross-build sharing with the Docusaurus navbar yet).
 - **Branding**: the canonical logo (`public/brand/logo-horizontal.svg`) and the palette recorded in

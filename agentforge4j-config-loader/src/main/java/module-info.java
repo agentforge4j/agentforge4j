@@ -17,9 +17,11 @@
  */
 module agentforge4j.config.loader {
   requires agentforge4j.util;
-  requires agentforge4j.core;
   requires agentforge4j.schema;
-  requires com.fasterxml.jackson.databind;
+  // transitive: ArtifactValidatorFactory.create (exported) takes ObjectMapper directly as a parameter
+  // and returns core's ArtifactValidator.
+  requires transitive agentforge4j.core;
+  requires transitive com.fasterxml.jackson.databind;
   requires com.networknt.schema;
   requires org.apache.commons.lang3;
   requires static lombok;

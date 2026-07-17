@@ -204,6 +204,20 @@ export class BuilderPage {
   }
 
   /**
+   * Clicks the inspector's "Delete step" button and confirms the resulting
+   * `ConfirmDeleteDialog` — deletion no longer commits on the first click alone.
+   * Scoped to the alertdialog so its "Delete" button is never confused with the
+   * inspector's own "Delete step" trigger, which also contains the word "Delete".
+   */
+  async deleteSelectedStepFromInspector(): Promise<void> {
+    await this.inspector.getByRole('button', { name: /delete step/i }).click();
+    const dialog = this.page.getByRole('alertdialog');
+    await expect(dialog).toBeVisible();
+    await dialog.getByRole('button', { name: 'Delete', exact: true }).click();
+    await expect(dialog).toHaveCount(0);
+  }
+
+  /**
    * Attempt a pointer drag of a node by `(dx, dy)`. In read-only mode React Flow
    * is non-draggable, so this is expected to be a no-op the spec then asserts.
    */

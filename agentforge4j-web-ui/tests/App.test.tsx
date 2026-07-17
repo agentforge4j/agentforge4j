@@ -16,7 +16,6 @@ function renderAt(path: string) {
 describe('App routing', () => {
   test.each([
     ['/', 'AgentForge4j'],
-    ['/docs', 'Documentation'],
     ['/api', 'API reference'],
     ['/use', 'Get started'],
     ['/catalogue', 'Workflow catalogue'],
@@ -58,6 +57,35 @@ describe('App routing', () => {
   test('renders NotFoundPage for an unmatched path', () => {
     renderAt('/this-route-does-not-exist');
     expect(screen.getByRole('heading', { level: 1, name: 'Page not found' })).toBeInTheDocument();
+  });
+});
+
+describe('docs route collision', () => {
+  // Regression guard: /docs must not be an SPA-owned client route. The Assembler track composes
+  // the real Docusaurus build at that exact path in the deployed artifact — an SPA route at the
+  // same path would intercept every client-side navigation before a real browser request for the
+  // real docs could ever happen (the bug this guards against; see nav.ts's `external` flag).
+  test('/docs is not a registered SPA route — client-side navigation falls through to the 404 fallback', () => {
+    renderAt('/docs');
+    expect(screen.getByRole('heading', { level: 1, name: 'Page not found' })).toBeInTheDocument();
+    expect(screen.queryByText(/Continue to the documentation/)).not.toBeInTheDocument();
+  });
+
+  test('the header Docs link is a real anchor targeting the composed docs artifact, not a client-side route', () => {
+    renderAt('/');
+    const primaryNav = screen.getByRole('navigation', { name: 'Primary' });
+    const docsLink = within(primaryNav).getByRole('link', { name: 'Docs' });
+    expect(docsLink).toHaveAttribute('href', '/docs/');
+    expect(docsLink.tagName).toBe('A');
+  });
+
+  test('the footer Docs link is a real anchor targeting the composed docs artifact, not a client-side route', () => {
+    const { container } = renderAt('/');
+    const footer = container.querySelector('footer');
+    expect(footer).not.toBeNull();
+    const docsLink = within(footer as HTMLElement).getByRole('link', { name: 'Docs' });
+    expect(docsLink).toHaveAttribute('href', '/docs/');
+    expect(docsLink.tagName).toBe('A');
   });
 });
 
@@ -182,12 +210,14 @@ describe('header and footer GitHub links', () => {
 describe('footer navigation', () => {
   test('every route is reachable from either the primary nav or the footer, except deliberate aliases', () => {
     // /contributing is a deliberate alias of /community (same content, same nav entry) —
-    // not a defect, so it's excluded here rather than asserted unreachable.
+    // not a defect, so it's excluded here rather than asserted unreachable. /docs is excluded
+    // too: it is deliberately NOT an SPA route (the docs link nav test above covers its real
+    // href, /docs/, into the composed artifact rather than an internal route).
     renderAt('/');
     const reachableHrefs = new Set(
       screen.getAllByRole('link').map((link) => link.getAttribute('href')),
     );
-    for (const path of ['/docs', '/api', '/use', '/catalogue', '/builder', '/architecture', '/releases', '/community', '/security', '/legal', '/contact']) {
+    for (const path of ['/api', '/use', '/catalogue', '/builder', '/architecture', '/releases', '/community', '/security', '/legal', '/contact']) {
       expect(reachableHrefs.has(path)).toBe(true);
     }
   });

@@ -15,10 +15,14 @@ export const GITHUB_URL = 'https://github.com/agentforge4j/agentforge4j';
 export interface NavLink {
   readonly label: string;
   readonly to: string;
+  // True for a link that must leave the SPA via a real browser navigation (plain <a>) rather
+  // than client-side routing (<Link>) — e.g. Docs, which targets the real Docusaurus artifact
+  // the Assembler track composes at this exact path (/docs/), not an SPA-owned route.
+  readonly external?: boolean;
 }
 
 export const PRIMARY_NAV: readonly NavLink[] = [
-  { label: 'Docs', to: '/docs' },
+  { label: 'Docs', to: '/docs/', external: true },
   { label: 'API', to: '/api' },
   { label: 'Catalogue', to: '/catalogue' },
   { label: 'Builder', to: '/builder' },
@@ -37,7 +41,7 @@ export const FOOTER_COLUMNS: readonly FooterColumn[] = [
   {
     heading: 'Product',
     links: [
-      { label: 'Docs', to: '/docs' },
+      { label: 'Docs', to: '/docs/', external: true },
       { label: 'API', to: '/api' },
       { label: 'Catalogue', to: '/catalogue' },
       { label: 'Builder', to: '/builder' },

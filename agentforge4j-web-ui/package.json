@@ -24,7 +24,7 @@
     "check": "npm run lint && npm run lint:content-gate && npm run typecheck && npm run test && npm run test:content-gate && npm run test:catalogue-data && npm run build"
   },
   "dependencies": {
-    "@agentforge4j/workflow-builder-react": "^0.5.0",
+    "@agentforge4j/workflow-builder-react": "^0.6.0",
     "dagre": "^0.8.5",
     "lucide-react": "^1.23.0",
     "react": "^19.2.7",
