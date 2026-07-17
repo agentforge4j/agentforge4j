@@ -80,6 +80,11 @@ export function useModelPersistence({
   const skipNextSaveRef = useRef(true);
   const pendingFlushRef = useRef(false);
   const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Incremented each time a debounced save actually starts; lets an in-flight save's `.then`
+  // tell whether a *later* edit has since kicked off another save before clearing
+  // `pendingFlushRef` — otherwise an earlier, slower save resolving after a newer one has
+  // already started would incorrectly mark the newer (still-unsaved) edit as protected.
+  const saveGenerationRef = useRef(0);
   // Always-current mirrors for the unmount flush and the async-load race guard, which both
   // need the *latest* values from inside mount-scoped effects.
   const latestModelRef = useRef(model);
@@ -95,7 +100,12 @@ export function useModelPersistence({
       return;
     }
     let cancelled = false;
-    Promise.resolve(adapter.load())
+    // Deferred into the chain (`.then(() => adapter.load())`, not `Promise.resolve(adapter.load())`)
+    // so a *synchronously* throwing host `load` becomes a rejection routed to `.catch` below,
+    // never an uncaught error that tears down the whole tree from inside a mount effect —
+    // mirrors the same-file rationale in WorkflowBuilder.tsx for validateWorkflow.
+    Promise.resolve()
+      .then(() => adapter.load())
       .then((loaded) => {
         if (cancelled || !loaded) {
           return;
@@ -143,11 +153,22 @@ export function useModelPersistence({
       clearTimeout(debounceTimerRef.current);
     }
     debounceTimerRef.current = setTimeout(() => {
-      pendingFlushRef.current = false;
+      const generation = ++saveGenerationRef.current;
+      // Cleared only once this save actually settles successfully, and only if no later
+      // edit has started another save in the meantime (see `saveGenerationRef` above) —
+      // while a save is still in flight, or has failed, both the `beforeunload` warning and
+      // the unmount flush must keep treating this edit as unprotected rather than assuming
+      // it landed.
       try {
-        void Promise.resolve(adapter.save(model)).catch((err) => {
-          warnPersistence('Failed to save the draft.', err);
-        });
+        void Promise.resolve(adapterRef.current.save(model))
+          .then(() => {
+            if (saveGenerationRef.current === generation) {
+              pendingFlushRef.current = false;
+            }
+          })
+          .catch((err) => {
+            warnPersistence('Failed to save the draft.', err);
+          });
       } catch (err) {
         warnPersistence('Failed to save the draft.', err);
       }
@@ -157,7 +178,12 @@ export function useModelPersistence({
         clearTimeout(debounceTimerRef.current);
       }
     };
-  }, [model, adapter, allowSave]);
+    // `adapterRef` (not `adapter`) is read inside the timeout so an unstable `persistence`
+    // prop identity is not a dependency here — only `model` changes should schedule a new
+    // save; re-running this effect on every adapter-identity change would otherwise
+    // re-persist an unchanged model and re-arm the unmount/beforeunload nets for no edit.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- adapter read via adapterRef
+  }, [model, allowSave]);
 
   // Flush a pending (debounced but not yet written) save on unmount. `beforeunload` below
   // only covers page unloads; an SPA route change unmounts the builder without any browser

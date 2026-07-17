@@ -219,20 +219,56 @@ describe('workflow-builder draft persistence', () => {
   });
 
   describe('fail-closed restore (mis-shaped or stale drafts)', () => {
+    /** Otherwise-valid envelope; only `nodes` is swapped in per case below. */
+    function draftWithNodes(workflowName: string, nodes: unknown[]): string {
+      return JSON.stringify({
+        version: DRAFT_STORAGE_VERSION,
+        model: {
+          workflowId: 'wf',
+          workflowName,
+          description: '',
+          startNodeId: 'n1',
+          nodes,
+          edges: [],
+          artifacts: {},
+          blueprints: {},
+        },
+      });
+    }
+
     it.each([
       ['legacy unversioned draft (raw model, pre-envelope format)', JSON.stringify(sampleCanvasModel('Old Format'))],
       ['plausible-envelope but mis-shaped model', JSON.stringify({ version: DRAFT_STORAGE_VERSION, model: { nodes: [] } })],
       ['unknown future version', JSON.stringify({ version: 9999, model: sampleCanvasModel('From The Future') })],
       ['truncated/corrupt JSON', '{"version":1,"model":{"nodes":['],
-    ])('discards %s instead of restoring (and clears it so it cannot crash the next mount)', (_label, raw) => {
+      [
+        'a node with an unrecognized kind (e.g. from a newer builder version)',
+        draftWithNodes('Unknown Kind', [{ id: 'n1', kind: 'FUTURE_KIND', position: { x: 0, y: 0 }, data: {} }]),
+      ],
+      [
+        'a DECISION node missing its cases array (would crash DecisionNode/canvasNodeToStep)',
+        draftWithNodes('Decision No Cases', [
+          { id: 'n1', kind: 'DECISION', position: { x: 0, y: 0 }, data: { name: 'D', contextKey: '', defaultTargetNodeId: '' } },
+        ]),
+      ],
+      [
+        'an ASK_USER node missing its artifactItems array (would crash StepConfigPanel)',
+        draftWithNodes('Ask No Items', [{ id: 'n1', kind: 'ASK_USER', position: { x: 0, y: 0 }, data: { name: '', question: '' } }]),
+      ],
+    ])('discards %s instead of restoring (and clears it so it cannot crash the next mount)', async (_label, raw) => {
       window.localStorage.setItem(DRAFT_KEY, raw);
 
       render(<WorkflowBuilder capabilities={allDisabled} />);
 
-      // Fresh editor, no banner, no crash — and the bad draft is gone.
+      // Fresh editor, no banner, no crash — and the bad draft is gone. The load-on-mount
+      // path always resolves through a promise chain (deferred so a synchronously-throwing
+      // host `load` can't escape it — see useModelPersistence.ts), so the clear is awaited
+      // rather than asserted synchronously right after render.
       expect(screen.queryByTestId('draft-restored-banner')).not.toBeInTheDocument();
       expect(screen.getByLabelText(ACTION_LABELS.workflowNameLabel)).toHaveValue('');
-      expect(window.localStorage.getItem(DRAFT_KEY)).toBeNull();
+      await waitFor(() => {
+        expect(window.localStorage.getItem(DRAFT_KEY)).toBeNull();
+      });
     });
 
     it('skips (without clearing) a host adapter draft that fails the structural gate', async () => {
@@ -277,6 +313,30 @@ describe('workflow-builder draft persistence', () => {
       expect(screen.getByLabelText(ACTION_LABELS.workflowNameLabel)).toHaveValue('');
       await waitFor(() => {
         expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('Failed to clear the saved draft'), expect.any(Error));
+      });
+      warnSpy.mockRestore();
+    });
+  });
+
+  describe('synchronously throwing host load()', () => {
+    it('skips the restore instead of crashing the tree when a host adapter throws synchronously from load()', async () => {
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      const adapter = {
+        load: vi.fn(() => {
+          throw new Error('boom');
+        }),
+        save: vi.fn().mockResolvedValue(undefined),
+        clear: vi.fn().mockResolvedValue(undefined),
+      };
+
+      render(<WorkflowBuilder capabilities={allDisabled} persistence={adapter} />);
+
+      // The editor must still render and be usable — a sync throw from load() would
+      // previously escape the mount effect uncaught and tear down the whole tree.
+      expect(await screen.findByLabelText(ACTION_LABELS.workflowNameLabel)).toHaveValue('');
+      expect(screen.queryByTestId('draft-restored-banner')).not.toBeInTheDocument();
+      await waitFor(() => {
+        expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('Failed to load a saved draft'), expect.any(Error));
       });
       warnSpy.mockRestore();
     });
