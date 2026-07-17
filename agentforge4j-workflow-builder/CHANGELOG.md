@@ -11,6 +11,13 @@ and this package adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- The step-library panel no longer silently clips step types with no scroll affordance:
+  `.wf-palette__panel` (between `.wf-palette`, which has the real definite height, and
+  `.wf-palette__body`, which declares `flex: 1; overflow: auto;`) had no `display: flex`
+  of its own, so it sized to its content instead of filling `.wf-palette` and the flex
+  sizing on `.wf-palette__body` never took effect. `.wf-palette__panel` is now a column
+  flex container that fills its parent, and `.wf-palette__body` gained `min-height: 0` so
+  it can shrink below its content size and actually scroll.
 - The validation "N things to fix" popover no longer renders behind an already-open step
   inspector panel. The pill's own stacking context (established by the toolbar's non-`auto`
   `z-index`) could never be escaped by raising the popover's `z-index` alone, since a raised value

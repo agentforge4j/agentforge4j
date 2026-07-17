@@ -21,4 +21,16 @@ beforeAll(() => {
       dispatchEvent: () => false,
     }),
   });
+
+  // jsdom has no ResizeObserver implementation; the workflow builder's canvas
+  // (@xyflow/react) requires one to observe its container size.
+  class ResizeObserverStub {
+    observe(): void {}
+    unobserve(): void {}
+    disconnect(): void {}
+  }
+  Object.defineProperty(window, 'ResizeObserver', {
+    writable: true,
+    value: ResizeObserverStub,
+  });
 });
