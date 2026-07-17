@@ -161,10 +161,12 @@ export const ACTION_LABELS = {
   redo: 'Redo',
   confirmDeleteTitle: (count: number) => (count === 1 ? 'Delete this step?' : `Delete ${count} steps?`),
   confirmDeleteTitleNamed: (label: string) => `Delete "${label}"?`,
+  // Platform-neutral: names the toolbar Undo button rather than a keyboard shortcut, so
+  // the claim holds on every keyboard layout and OS (Ctrl+Z does nothing on macOS).
   confirmDeleteBody: (count: number) =>
     count === 1
-      ? 'This removes the step from the workflow. You can undo this afterwards with Ctrl+Z.'
-      : `This removes ${count} steps from the workflow. You can undo this afterwards with Ctrl+Z.`,
+      ? 'This removes the step from the workflow. You can undo this afterwards with the toolbar Undo button.'
+      : `This removes ${count} steps from the workflow. You can undo this afterwards with the toolbar Undo button.`,
   confirmDeleteConfirm: 'Delete',
   confirmDeleteCancel: 'Cancel',
 };

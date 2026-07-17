@@ -627,6 +627,10 @@ export function WorkflowBuilder({
       className={rootClass}
       data-testid="workflow-builder"
       aria-readonly={readOnly || undefined}
+      // Not in the natural Tab order (-1) — exists solely so ConfirmDeleteDialog has a
+      // stable, always-connected element to focus when its usual restoration target
+      // (the element that opened it) has unmounted; see fallbackFocusRef below.
+      tabIndex={-1}
       {...rootStyle}
     >
       <header className="workflow-builder__header workflow-builder__toolbar">
@@ -861,6 +865,7 @@ export function WorkflowBuilder({
           singleStepLabel={pendingDeletion.label}
           onConfirm={() => resolvePendingDeletion(true)}
           onCancel={() => resolvePendingDeletion(false)}
+          fallbackFocusRef={rootRef}
         />
       ) : null}
 

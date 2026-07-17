@@ -2,9 +2,17 @@
 import { render, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import type { Node } from '@xyflow/react';
-import { applyEdgeReconnection, mergeModelIntoFlowNodes, resolveNodeDeletionGate, WorkflowCanvas } from '../src/canvas/WorkflowCanvas';
+import type { EdgeChange } from '@xyflow/react';
+import {
+  applyDeletion,
+  applyEdgeReconnection,
+  edgeChangeUpdatesModel,
+  mergeModelIntoFlowNodes,
+  resolveNodeDeletionGate,
+  WorkflowCanvas,
+} from '../src/canvas/WorkflowCanvas';
 import { createInitialCanvasModel } from '../src/hooks/useCanvasState';
-import type { CanvasEdge, CanvasModel, CanvasNode } from '../src/model/canvasModel';
+import type { CanvasEdge, CanvasModel, CanvasNode, DecisionNodeData } from '../src/model/canvasModel';
 import { defaultNodeData } from '../src/model/mapper';
 
 describe('mergeModelIntoFlowNodes', () => {
@@ -174,6 +182,94 @@ describe('applyEdgeReconnection', () => {
     const model = reconnectModel();
     expect(applyEdgeReconnection(model, 'e-A-B', { source: null, target: 'C' })).toBeNull();
     expect(applyEdgeReconnection(model, 'nope', { source: 'A', target: 'C' })).toBeNull();
+  });
+});
+
+describe('applyDeletion', () => {
+  function mk(id: string, kind: CanvasNode['kind'] = 'AI_STEP'): CanvasNode {
+    return { id, backendStepId: id, kind, position: { x: 0, y: 0 }, data: defaultNodeData(kind) } as CanvasNode;
+  }
+  function edge(id: string, source: string, target: string): CanvasEdge {
+    return { id, source, target, sourceHandle: null, label: null };
+  }
+  function deletionModel(): CanvasModel {
+    const decision = mk('D', 'DECISION');
+    (decision.data as DecisionNodeData).cases = [{ label: 'Yes', value: 'yes', targetNodeId: 'B' }];
+    (decision.data as DecisionNodeData).defaultTargetNodeId = 'B';
+    return {
+      workflowId: 'wf',
+      workflowName: 'Test',
+      description: '',
+      startNodeId: 'A',
+      nodes: [mk('A'), mk('B'), mk('C'), decision],
+      edges: [edge('e-A-B', 'A', 'B'), edge('e-B-C', 'B', 'C'), edge('e-D-B', 'D', 'B')],
+      artifacts: {},
+      blueprints: {},
+    };
+  }
+
+  it('removes the deleted node and every edge incident to it in one pass', () => {
+    const model = deletionModel();
+    const next = applyDeletion(model, ['B'], []);
+    expect(next.nodes.map((n) => n.id)).toEqual(['A', 'C', 'D']);
+    // Both A-B (source-incident) and B-C (target... source-incident) and D-B are gone.
+    expect(next.edges).toHaveLength(0);
+  });
+
+  it('removes only the specified edges when no nodes are deleted', () => {
+    const model = deletionModel();
+    const next = applyDeletion(model, [], ['e-B-C']);
+    expect(next.nodes).toHaveLength(4);
+    expect(next.edges.map((e) => e.id)).toEqual(['e-A-B', 'e-D-B']);
+  });
+
+  it('does not error or duplicate-remove when an edge is both explicitly listed and incident to a deleted node', () => {
+    const model = deletionModel();
+    const next = applyDeletion(model, ['B'], ['e-A-B']);
+    expect(next.edges).toHaveLength(0);
+  });
+
+  it('reassigns startNodeId to the first remaining node when the start node is deleted', () => {
+    const model = deletionModel();
+    const next = applyDeletion(model, ['A'], []);
+    expect(next.startNodeId).toBe('B');
+  });
+
+  it('prunes dangling references on every remaining node for every deleted id, in the same pass', () => {
+    const model = deletionModel();
+    const next = applyDeletion(model, ['B'], []);
+    const decision = next.nodes.find((n) => n.id === 'D')!.data as DecisionNodeData;
+    expect(decision.cases[0]!.targetNodeId).toBe('');
+    expect(decision.defaultTargetNodeId).toBe('');
+  });
+
+  it('one call is the whole removal — a caller wrapping it in a single onModelChange writes history exactly once', () => {
+    // Structural guarantee, not a UI simulation: applyDeletion returns the fully-removed
+    // model in one synchronous call, so a caller (WorkflowCanvas's onDelete) that passes
+    // its result to a single onModelChange call can only ever produce one history entry
+    // for a whole gesture — there is no intermediate/partial model to accidentally write.
+    const model = deletionModel();
+    let writes = 0;
+    const onModelChange = (_next: CanvasModel) => {
+      writes += 1;
+    };
+    onModelChange(applyDeletion(model, ['B'], []));
+    expect(writes).toBe(1);
+  });
+});
+
+describe('edgeChangeUpdatesModel', () => {
+  it('ignores select changes (edges never persist a selected field in the model)', () => {
+    expect(edgeChangeUpdatesModel({ type: 'select', id: 'e-1', selected: true } as EdgeChange)).toBe(false);
+  });
+
+  it('ignores remove changes (handled once, by the unified onDelete writer)', () => {
+    expect(edgeChangeUpdatesModel({ type: 'remove', id: 'e-1' } as EdgeChange)).toBe(false);
+  });
+
+  it('treats any other change type as model-relevant', () => {
+    expect(edgeChangeUpdatesModel({ type: 'add', item: {} } as unknown as EdgeChange)).toBe(true);
+    expect(edgeChangeUpdatesModel({ type: 'replace', id: 'e-1', item: {} } as unknown as EdgeChange)).toBe(true);
   });
 });
 

@@ -89,6 +89,42 @@ export function resolveNodeDeletionGate(
 }
 
 /**
+ * Pure model transform behind the unified Delete/Backspace removal (`<ReactFlow onDelete>`),
+ * extracted for direct unit testing (React Flow's own deletion wiring needs a real browser; see
+ * the note on {@link resolveNodeDeletionGate}).
+ *
+ * React Flow v12's `deleteElements` calls `onEdgesDelete`, then feeds the removed edges through
+ * `onEdgesChange` (`remove` changes), then calls `onNodesDelete`, then feeds the removed nodes
+ * through `onNodesChange` (`remove` changes), and only THEN calls `onDelete` once with the full
+ * `{ nodes, edges }` that were removed. `onDelete` is therefore the only one of those five
+ * notifications that fires exactly once per gesture with the complete removed set — every write
+ * to the model for a Delete/Backspace-triggered removal must happen here, and nowhere else, or
+ * one gesture produces multiple history entries (one of them a corrupted intermediate: nodes
+ * already gone from the flow view but not yet pruned from the model, or vice versa). Both
+ * `onNodesChange` and `onEdgesChange` ignore `remove`-type changes for exactly this reason (see
+ * {@link nodeChangeUpdatesModel} / {@link edgeChangeUpdatesModel}).
+ *
+ * `deletedEdgeIds` covers edges removed directly (an edge was itself selected) union edges
+ * incident to a removed node (React Flow includes those in the same `edges` array); either way
+ * they are filtered out in one pass alongside the explicit node-incident filter, so an edge
+ * cannot survive by being in neither set and cannot be double-counted by being in both.
+ */
+export function applyDeletion(model: CanvasModel, deletedNodeIds: string[], deletedEdgeIds: string[]): CanvasModel {
+  const nodeIdSet = new Set(deletedNodeIds);
+  const edgeIdSet = new Set(deletedEdgeIds);
+  const nodes = model.nodes.filter((node) => !nodeIdSet.has(node.id));
+  const edges = model.edges.filter(
+    (edge) => !edgeIdSet.has(edge.id) && !nodeIdSet.has(edge.source) && !nodeIdSet.has(edge.target),
+  );
+  const startNodeId = model.startNodeId && nodeIdSet.has(model.startNodeId) ? (nodes[0]?.id ?? null) : model.startNodeId;
+  let next: CanvasModel = { ...model, nodes, edges, startNodeId };
+  for (const deletedId of nodeIdSet) {
+    next = pruneReferences(next, deletedId);
+  }
+  return next;
+}
+
+/**
  * Pure model transform behind edge rerouting (`<ReactFlow onReconnect>`), extracted for direct
  * unit testing (React Flow's endpoint-drag wiring needs a real browser; see the note on
  * {@link resolveNodeDeletionGate}).
@@ -177,7 +213,32 @@ function nodeChangeUpdatesModel(change: NodeChange): boolean {
   if (change.type === 'select') {
     return false;
   }
+  // 'remove' changes are applied once, by the unified onDelete handler (see
+  // applyDeletion) — writing them here too would double-write the same gesture.
+  if (change.type === 'remove') {
+    return false;
+  }
   return true;
+}
+
+/**
+ * Edge-side counterpart of {@link nodeChangeUpdatesModel}, exported (unlike its node
+ * counterpart) for direct unit testing: driving a real edge `select`/`remove` change
+ * through React Flow needs a real browser (see the note on {@link resolveNodeDeletionGate}),
+ * but this predicate is exactly the fix for a real bug — clicking an edge (a `select`
+ * change) used to push a content-identical history entry on every click, silently
+ * clearing the redo stack — so it gets its own regression test rather than relying on
+ * (currently nonexistent) full-wiring coverage.
+ *
+ * Edge selection has no persisted `selected` field in {@link CanvasModel} (edges are
+ * re-derived from the model on every render, so a selection change would be silently
+ * dropped anyway — see {@link toFlowEdges}), and 'remove' changes are applied once, by
+ * the unified onDelete handler (see {@link applyDeletion}). Writing either here would
+ * push a spurious or duplicate history entry for a gesture that made no model-relevant
+ * change.
+ */
+export function edgeChangeUpdatesModel(change: EdgeChange): boolean {
+  return change.type !== 'select' && change.type !== 'remove';
 }
 
 function toFlowNodes(
@@ -332,9 +393,9 @@ function WorkflowCanvasInner({
       }
 
       // Only a 'position' change actually needs remapping onto the model here;
-      // 'remove' changes are applied by onNodesDelete instead (a plain lookup
-      // miss below would otherwise leave the deleted node's stale entry
-      // untouched and still emit a no-op model update — polluting undo with a
+      // 'remove' changes are applied once, by the unified onDelete handler instead
+      // (a plain lookup miss below would otherwise leave the deleted node's stale
+      // entry untouched and still emit a no-op model update — polluting undo with a
       // spurious extra step for every delete).
       const positionChanges = changes.filter((change) => change.type === 'position');
       if (positionChanges.length === 0) {
@@ -361,7 +422,7 @@ function WorkflowCanvasInner({
 
   const onEdgesChange = useCallback(
     (changes: EdgeChange[]) => {
-      if (readOnly) {
+      if (readOnly || !changes.some(edgeChangeUpdatesModel)) {
         return;
       }
       const nextFlow = applyEdgeChanges(changes, flowEdges);
@@ -379,46 +440,27 @@ function WorkflowCanvasInner({
     [flowEdges, model, onModelChange, readOnly],
   );
 
-  const onNodesDelete = useCallback(
-    (deletedNodes: FlowNode[]) => {
-      if (readOnly || deletedNodes.length === 0) {
+  // Unified writer for a Delete/Backspace-triggered removal — see {@link applyDeletion}
+  // for why this is the ONLY handler that writes the model for such a removal (both
+  // onNodesChange and onEdgesChange ignore 'remove' changes for the same reason).
+  const onDelete = useCallback(
+    ({ nodes: deletedNodes, edges: deletedEdges }: { nodes: FlowNode[]; edges: Edge[] }) => {
+      if (readOnly || (deletedNodes.length === 0 && deletedEdges.length === 0)) {
         return;
       }
-      const deletedIds = new Set(deletedNodes.map((node) => node.id));
-      const nodes = model.nodes.filter((node) => !deletedIds.has(node.id));
-      const startNodeId =
-        model.startNodeId && deletedIds.has(model.startNodeId) ? (nodes[0]?.id ?? null) : model.startNodeId;
-      // Scrub node-data references to every deleted node so serialization never
-      // receives a dangling id (Part: delete-cleanup).
-      let next: CanvasModel = {
-        ...model,
-        nodes,
-        edges: model.edges.filter((edge) => !deletedIds.has(edge.source) && !deletedIds.has(edge.target)),
-        startNodeId,
-      };
-      for (const deletedId of deletedIds) {
-        next = pruneReferences(next, deletedId);
-      }
-      onModelChange(next);
-      if (selectedId && deletedIds.has(selectedId)) {
+      const deletedNodeIds = deletedNodes.map((node) => node.id);
+      onModelChange(
+        applyDeletion(
+          model,
+          deletedNodeIds,
+          deletedEdges.map((edge) => edge.id),
+        ),
+      );
+      if (selectedId && deletedNodeIds.includes(selectedId)) {
         onSelectNode(null);
       }
     },
     [model, onModelChange, onSelectNode, readOnly, selectedId],
-  );
-
-  const onEdgesDelete = useCallback(
-    (deletedEdges: Edge[]) => {
-      if (readOnly || deletedEdges.length === 0) {
-        return;
-      }
-      const deletedIds = new Set(deletedEdges.map((edge) => edge.id));
-      onModelChange({
-        ...model,
-        edges: model.edges.filter((edge) => !deletedIds.has(edge.id)),
-      });
-    },
-    [model, onModelChange, readOnly],
   );
 
   const onConnect = useCallback(
@@ -473,7 +515,7 @@ function WorkflowCanvasInner({
   // deletions (no nodes in the batch) proceed immediately — undo already
   // covers reverting those, and they are not the "step vanished with no
   // warning" complaint. Resolving `false` cancels the whole batch before any
-  // change ever reaches onNodesChange/onNodesDelete/onEdgesDelete.
+  // change ever reaches onNodesChange/onEdgesChange/onDelete.
   const onBeforeDelete = useCallback(
     ({ nodes: toDeleteNodes }: { nodes: FlowNode[]; edges: Edge[] }): Promise<boolean> =>
       resolveNodeDeletionGate(
@@ -520,8 +562,7 @@ function WorkflowCanvasInner({
         edgeTypes={edgeTypes}
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
-        onNodesDelete={onNodesDelete}
-        onEdgesDelete={onEdgesDelete}
+        onDelete={onDelete}
         onBeforeDelete={onBeforeDelete}
         onConnect={onConnect}
         onReconnect={onReconnect}

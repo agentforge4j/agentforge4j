@@ -12,21 +12,37 @@ export type ConfirmDeleteDialogProps = {
   count: number;
   onConfirm: () => void;
   onCancel: () => void;
+  /**
+   * Focus target used on close when the element that opened the dialog is no longer
+   * in the document (e.g. confirming a deletion whose opener — the inspector's
+   * "Delete step" button — unmounts along with the inspector once the step is gone).
+   * Should point at something always connected while the builder is mounted (its root
+   * element, made programmatically focusable via `tabIndex={-1}`).
+   */
+  fallbackFocusRef?: { current: HTMLElement | null };
 };
 
 /**
  * Lightweight, low-friction confirmation gate for a destructive step deletion
- * — the complementary safety net alongside undo/redo (Ctrl+Z) for a
- * first-time user who has not yet discovered undo. Shared by every deletion
- * trigger (inspector "Delete step" button, canvas Delete/Backspace key) so
- * the confirmation experience is identical regardless of entry point.
+ * — the complementary safety net alongside undo/redo for a first-time user who
+ * has not yet discovered undo. Shared by every deletion trigger (inspector
+ * "Delete step" button, canvas Delete/Backspace key) so the confirmation
+ * experience is identical regardless of entry point.
  *
  * Focus behavior: initial focus goes to Cancel (the least destructive action,
  * per the ARIA alertdialog pattern — a stray Enter must not delete), Tab is
- * trapped inside the dialog while it is open, and focus returns to whatever
- * element opened it once it closes.
+ * trapped inside the dialog while it is open, and on close focus returns to
+ * whatever element opened it — or, if that element is gone (the confirm path
+ * can unmount it), to `fallbackFocusRef` — so keyboard users are never
+ * dropped at the document root.
  */
-export function ConfirmDeleteDialog({ singleStepLabel, count, onConfirm, onCancel }: ConfirmDeleteDialogProps) {
+export function ConfirmDeleteDialog({
+  singleStepLabel,
+  count,
+  onConfirm,
+  onCancel,
+  fallbackFocusRef,
+}: ConfirmDeleteDialogProps) {
   const dialogRef = useRef<HTMLDivElement>(null);
   const cancelButtonRef = useRef<HTMLButtonElement>(null);
 
@@ -35,15 +51,25 @@ export function ConfirmDeleteDialog({ singleStepLabel, count, onConfirm, onCance
       return;
     }
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        // Capture-phase + stopPropagation: the step inspector (and other overlays)
-        // also close on window-level Escape; while this dialog is open, Escape means
-        // "cancel the deletion" only — it must not also close the inspector the
-        // deletion was requested from (button-cancel keeps it open, so key-cancel
-        // must too).
-        event.stopPropagation();
-        onCancel();
+      if (event.key !== 'Escape') {
+        return;
       }
+      // Scoped to this dialog's own subtree (focus is trapped inside it while open,
+      // so a real keypress always targets somewhere in here) — a window-wide,
+      // unscoped listener would let ANY Escape in the document cancel this dialog,
+      // including one meant for a host page's own overlay or a second builder
+      // instance's own confirmation dialog.
+      const dialog = dialogRef.current;
+      if (!dialog || !(event.target instanceof Node) || !dialog.contains(event.target)) {
+        return;
+      }
+      // Capture-phase + stopPropagation: the step inspector (and other overlays)
+      // also close on window-level Escape; while this dialog is open, Escape means
+      // "cancel the deletion" only — it must not also close the inspector the
+      // deletion was requested from (button-cancel keeps it open, so key-cancel
+      // must too).
+      event.stopPropagation();
+      onCancel();
     };
     window.addEventListener('keydown', onKeyDown, true);
     return () => window.removeEventListener('keydown', onKeyDown, true);
@@ -51,7 +77,9 @@ export function ConfirmDeleteDialog({ singleStepLabel, count, onConfirm, onCance
 
   // Initial focus + focus restoration. Focus moves to Cancel on open; on close, it
   // returns to the element that had it (the delete button / canvas) so keyboard users
-  // are not dropped at the document root.
+  // are not dropped at the document root — falling back to `fallbackFocusRef` when
+  // that element is no longer connected (the confirm path can unmount the opener,
+  // e.g. the inspector's "Delete step" button, along with the inspector itself).
   useEffect(() => {
     if (count === 0) {
       return;
@@ -61,9 +89,11 @@ export function ConfirmDeleteDialog({ singleStepLabel, count, onConfirm, onCance
     return () => {
       if (previouslyFocused && previouslyFocused.isConnected) {
         previouslyFocused.focus();
+      } else {
+        fallbackFocusRef?.current?.focus();
       }
     };
-  }, [count]);
+  }, [count, fallbackFocusRef]);
 
   if (count === 0) {
     return null;

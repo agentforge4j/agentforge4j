@@ -52,10 +52,45 @@ describe('ConfirmDeleteDialog', () => {
     expect(onCancel).toHaveBeenCalledTimes(1);
   });
 
-  it('calls onCancel on Escape', () => {
+  it('calls onCancel on Escape dispatched from inside the dialog (as a real keypress would target it — focus is trapped there)', () => {
     const onCancel = vi.fn();
     render(<ConfirmDeleteDialog count={1} onConfirm={() => {}} onCancel={onCancel} />);
-    fireEvent.keyDown(window, { key: 'Escape' });
+    fireEvent.keyDown(screen.getByRole('button', { name: ACTION_LABELS.confirmDeleteCancel }), { key: 'Escape' });
     expect(onCancel).toHaveBeenCalledTimes(1);
+  });
+
+  it('ignores Escape dispatched outside the dialog (a host page or a second instance must not be cancelled by this one)', () => {
+    const onCancel = vi.fn();
+    render(<ConfirmDeleteDialog count={1} onConfirm={() => {}} onCancel={onCancel} />);
+    fireEvent.keyDown(document.body, { key: 'Escape' });
+    expect(onCancel).not.toHaveBeenCalled();
+    expect(screen.getByRole('alertdialog')).toBeInTheDocument();
+  });
+
+  it('falls back to fallbackFocusRef on close when the opener is no longer connected', () => {
+    const opener = document.createElement('button');
+    document.body.appendChild(opener);
+    opener.focus();
+
+    const fallback = document.createElement('div');
+    fallback.tabIndex = -1;
+    document.body.appendChild(fallback);
+    const fallbackFocusRef = { current: fallback };
+
+    // Mount while the opener is still focused/connected — its identity is captured as the
+    // usual restoration target, exactly as it would be for a real "Delete step" click.
+    const { rerender } = render(
+      <ConfirmDeleteDialog count={1} onConfirm={() => {}} onCancel={() => {}} fallbackFocusRef={fallbackFocusRef} />,
+    );
+
+    // The opener unmounts while the dialog is still open — the real confirm path does this:
+    // the inspector (and its "Delete step" button) unmount once the deletion goes through.
+    opener.remove();
+
+    rerender(
+      <ConfirmDeleteDialog count={0} onConfirm={() => {}} onCancel={() => {}} fallbackFocusRef={fallbackFocusRef} />,
+    );
+
+    expect(document.activeElement).toBe(fallback);
   });
 });
