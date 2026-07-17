@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 package com.agentforge4j.runtime;
 
-import com.agentforge4j.runtime.execution.ExecutionContext;
-
 /**
  * Evaluates whether an
  * {@link com.agentforge4j.core.workflow.step.loop.LoopTerminationStrategy#EVALUATOR} loop should
@@ -16,9 +14,8 @@ public interface LoopEvaluator {
   /**
    * @param evaluatorAgentId id of the agent registered in the repository
    * @param iteration        current iteration number, 1-based
-   * @param executionContext the run-time execution context
+   * @param context           the run's current state and active workflow id
    * @return true if the loop should terminate, false to continue iterating
    */
-  boolean shouldTerminate(String evaluatorAgentId, int iteration,
-      ExecutionContext executionContext);
+  boolean shouldTerminate(String evaluatorAgentId, int iteration, LoopEvaluationContext context);
 }
