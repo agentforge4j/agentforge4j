@@ -13,7 +13,7 @@
 // instead of expecting one already-consolidated result.
 
 import { test } from '@playwright/test';
-import { mkdirSync, renameSync, writeFileSync } from 'node:fs';
+import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { VISUAL_MANIFEST, validateManifest, type VisualManifestEntry } from '../../visual/manifest';
 import { INTERACTIONS } from '../../visual/interactions';
@@ -85,19 +85,26 @@ const DISABLE_ANIMATIONS_CSS =
  * `visual/interactions.ts`) produces an entry here with no matching result file, which the report
  * surfaces as a missing, release-blocking capture instead of silently reporting fewer states than
  * the manifest actually defines. Written unconditionally at module load (every worker process
- * evaluates this file once before running any test in it), so multiple workers write the same,
- * idempotent content — the *content* is harmless to race on, but a plain `writeFileSync` from
- * several OS processes truncating and writing the identical path concurrently is still a real
- * hazard on Windows (unlike POSIX, Windows enforces mandatory per-handle locking in cases where two
- * processes can otherwise interleave writes), so each worker writes to its own temp file first and
- * renames into place — a same-directory rename is atomic on both platforms, so the final file is
- * always either the previous complete write or this worker's complete write, never a torn mix.
+ * evaluates this file once before running any test in it), so multiple workers race to produce the
+ * same, deterministic, idempotent content — a temp-file-then-rename approach was tried here first,
+ * but still throws on Windows: renaming several temp files from different OS processes into the
+ * same destination concurrently can fail with EPERM (reproduced directly, not theoretical — Windows
+ * does not give concurrent same-destination renames the crash-safe atomicity POSIX rename
+ * provides). `{ flag: 'wx' }` (`O_CREAT|O_EXCL`) is instead a single atomic OS-level "create only if
+ * absent" syscall: exactly one worker's write wins and the rest predictably fail with `EEXIST`,
+ * which is always safe to ignore here since every worker would have written byte-identical content
+ * anyway — no locking, no retry, no temp file, and confirmed race-free under real concurrent OS
+ * processes (see specs/visual-unit/expected-inventory-write.spec.ts).
  */
 const expectedInventory = VISUAL_MANIFEST.flatMap((entry) => entry.viewports.map((viewportName) => `${entry.id}--${viewportName}`));
 const expectedInventoryPath = join(OUTPUT_DIR, 'expected-inventory.json');
-const expectedInventoryTmpPath = `${expectedInventoryPath}.${process.pid}.tmp`;
-writeFileSync(expectedInventoryTmpPath, JSON.stringify(expectedInventory, null, 2));
-renameSync(expectedInventoryTmpPath, expectedInventoryPath);
+try {
+  writeFileSync(expectedInventoryPath, JSON.stringify(expectedInventory, null, 2), { flag: 'wx' });
+} catch (error) {
+  if ((error as NodeJS.ErrnoException).code !== 'EEXIST') {
+    throw error;
+  }
+}
 
 for (const entry of VISUAL_MANIFEST) {
   for (const viewportName of entry.viewports) {

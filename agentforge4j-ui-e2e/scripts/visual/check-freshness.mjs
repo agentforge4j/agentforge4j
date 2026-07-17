@@ -31,8 +31,16 @@ const MANIFEST_PATH = join(E2E_ROOT, 'visual', 'manifest.ts');
 // itself. Broader than strictly necessary in places (e.g. an unrelated specs/web-ui/ change also
 // counts as "relevant") is the correct, safe direction for a warn-only freshness check — see this
 // file's own "fail open (warn) rather than silently assume it's still fresh" precedent below.
+//
+// EXCLUDES `agentforge4j-ui-e2e/visual-evidence/` (the negative lookahead below) — that directory
+// IS this script's own output (`ATTESTATION_PATH`, above), not a UI source. Matching the whole
+// `agentforge4j-ui-e2e/` tree without this exclusion reintroduced the exact circular
+// self-invalidation bug the `commitSha !== currentSha` comment below already explains and was
+// fixed for once: committing the attestation is itself a change under `agentforge4j-ui-e2e/`, so an
+// attestation-only commit would immediately register as "predates a relevant change" against
+// itself, permanently, the moment the path pattern was widened past `visual/` to the whole tree.
 const RELEVANT_PATH_PATTERN =
-  /^(agentforge4j-web-ui\/|agentforge4j-workflow-builder\/|agentforge4j-docs\/|agentforge4j-ui-e2e\/|agentforge4j-workflows-catalog\/|agentforge4j-schema\/|\.nvmrc$|\.github\/workflows\/ui-e2e\.yml$)/;
+  /^(agentforge4j-web-ui\/|agentforge4j-workflow-builder\/|agentforge4j-docs\/|agentforge4j-ui-e2e\/(?!visual-evidence\/)|agentforge4j-workflows-catalog\/|agentforge4j-schema\/|\.nvmrc$|\.github\/workflows\/ui-e2e\.yml$)/;
 
 function parseArgs(argv) {
   const args = { strict: false };
@@ -141,4 +149,12 @@ function report(warnings, strict) {
   }
 }
 
-main();
+// CLI entry, guarded so `RELEVANT_PATH_PATTERN` can be imported and unit-tested (see
+// specs/visual-unit/check-freshness.spec.ts) without this script's real side effects (running git,
+// reading the live attestation) running on import — same pattern generate-report.mjs/
+// clean-output.mjs already use for the same reason.
+if (process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1])) {
+  main();
+}
+
+export { RELEVANT_PATH_PATTERN };
