@@ -85,15 +85,20 @@ function sourceFiles() {
 }
 
 // Checks the packed ESM and CJS entry artifacts — not source — for the two retired RetryPolicy
-// fields, including whatever workflow.schema.json copy tsup bundled into them at build time. Skips
-// silently (rather than failing) when a path isn't in the packed set or hasn't been built yet
-// (`npm run build` must run before this script for the check to be meaningful; wired that way in
-// release-builder.yml), since packedFiles() already separately enforces that only dist/ ships.
+// fields, including whatever workflow.schema.json copy tsup bundled into them at build time. Fails
+// closed, not silently, when an expected artifact is missing from the packed set: `npm run build`
+// must run before this script for the check to be meaningful (wired that way in
+// release-builder.yml), and a missing artifact means this check verified nothing — that must be
+// loud, not a quiet pass, or a reordered/skipped build step would silently defeat the whole point
+// of this check.
 function retiredRetryPolicyFieldViolations(packed) {
   const violations = [];
   const packedSet = new Set(packed);
   for (const relativePath of RETRY_POLICY_ARTIFACT_PATHS) {
     if (!packedSet.has(relativePath)) {
+      violations.push(
+        `${relativePath}: expected packed artifact not found — run "npm run build" before this script`,
+      );
       continue;
     }
     const content = readFileSync(resolve(packageRoot, relativePath), 'utf8');
