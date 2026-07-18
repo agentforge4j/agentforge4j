@@ -10,6 +10,17 @@
   ],
   "expect": {
     "status": "AWAITING_STEP_APPROVAL",
-    "notVisitedSteps": ["generate-agent", "generate-verification"]
+    "notVisitedSteps": [
+      "generate-agent",
+      "generate-verification"
+    ],
+    "absentFiles": [
+      "shipped-agents/generated.agent/agent.json",
+      "shipped-agents/generated.agent/systemprompt.md",
+      "shipped-agents/generated.agent/README.md",
+      "shipped-agents/generated.agent/verification/script.json",
+      "shipped-agents/generated.agent/verification/expected-result.json",
+      "shipped-agents/generated.agent/verification/README.md"
+    ]
   }
 }

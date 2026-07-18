@@ -10,7 +10,12 @@
   ],
   "expect": {
     "status": "FAILED",
-    "emittedEvents": ["RUN_FAILED"],
-    "notVisitedSteps": ["assess"]
+    "failedBecause": "Command type 'CREATE_FILE' is not enabled for this agent",
+    "emittedEvents": [
+      "RUN_FAILED"
+    ],
+    "notVisitedSteps": [
+      "assess"
+    ]
   }
 }

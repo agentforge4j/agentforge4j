@@ -15,8 +15,15 @@
   ],
   "expect": {
     "status": "FAILED",
-    "emittedEvents": ["RUN_FAILED"],
-    "visitedSteps": ["generate-agent"],
-    "notVisitedSteps": ["generate-verification"]
+    "failedBecause": "at step 'validate-agent': equality contract violated at shipped-agents/generated.agent/agent.json/modelTier",
+    "emittedEvents": [
+      "RUN_FAILED"
+    ],
+    "visitedSteps": [
+      "generate-agent"
+    ],
+    "notVisitedSteps": [
+      "generate-verification"
+    ]
   }
 }

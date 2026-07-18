@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 package com.agentforge4j.verification.command;
 
+import com.agentforge4j.core.workflow.context.ContextProvenance;
+import com.agentforge4j.core.workflow.context.ContextValue;
+import com.agentforge4j.core.workflow.context.StringContextValue;
 import com.agentforge4j.core.workflow.event.WorkflowEventType;
 import com.agentforge4j.core.workflow.state.WorkflowStatus;
 import com.agentforge4j.llm.fake.FakeScript;
@@ -8,11 +11,16 @@ import com.agentforge4j.llm.fake.FakeScriptParser;
 import com.agentforge4j.testkit.assertion.WorkflowRunAssert;
 import com.agentforge4j.testkit.capture.WorkflowRunResult;
 import com.agentforge4j.testkit.harness.WorkflowTestHarness;
+import com.agentforge4j.testkit.scenario.GateResponse;
 import com.agentforge4j.verification.support.Fixtures;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.file.Files;
+import java.util.List;
+import java.util.Map;
 import org.junit.jupiter.api.Test;
+
+import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * Black-box coverage of the LLM command handlers an agent can emit (8 of the 9; {@code TOOL_INVOCATION}
@@ -75,6 +83,24 @@ class CommandHandlingTest {
     WorkflowRunResult result = harness().run("cmd-generate-questions");
     WorkflowRunAssert.assertThat(result)
         .reachedPendingState(WorkflowStatus.AWAITING_INPUT);
+  }
+
+  @Test
+  void generateQuestionsResumeWithAnswersLandsThemInContextUserSupplied() {
+    // Resume the GENERATE_QUESTIONS pause with an answer: it lands in context under the generated
+    // artifact's namespaced key (generated.<uuid>.q1) with user-supplied provenance, and the agent
+    // resumes to completion on its next scripted turn.
+    WorkflowRunResult result = harness().run("cmd-generate-questions",
+        List.of(GateResponse.input(Map.of("q1", "Alice"))));
+
+    WorkflowRunAssert.assertThat(result).isCompleted();
+    Map.Entry<String, ContextValue> answer = result.finalState().getContext().entrySet().stream()
+        .filter(entry -> entry.getKey().startsWith("generated.") && entry.getKey().endsWith(".q1"))
+        .findFirst()
+        .orElseThrow(() -> new AssertionError(
+            "No generated.<id>.q1 answer key found in context"));
+    assertThat(((StringContextValue) answer.getValue()).value()).isEqualTo("Alice");
+    assertThat(answer.getValue().provenance()).isEqualTo(ContextProvenance.USER_SUPPLIED);
   }
 
   @Test

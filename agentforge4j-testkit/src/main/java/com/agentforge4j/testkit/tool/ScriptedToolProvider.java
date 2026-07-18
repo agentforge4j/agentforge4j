@@ -15,9 +15,10 @@ import java.util.List;
 
 /**
  * A deterministic, in-process {@link ToolProvider} for tests: it advertises a single capability and
- * returns a fixed {@link ToolResult} on every invocation, with no network transport. Use it to drive
- * the runtime tool-governance path (resolve → validate → policy → invoke and the approval / decision
- * suspend-resume branches) without standing up an MCP server.
+ * — depending on the factory — returns a fixed {@link ToolResult}, throws, or blocks until
+ * interrupted, with no network transport. Use it to drive the runtime tool-governance path
+ * (resolve → validate → policy → invoke, the approval / decision suspend-resume branches, and the
+ * provider-crash / authoritative-timeout failure arms) without standing up an MCP server.
  */
 public final class ScriptedToolProvider implements ToolProvider {
 
@@ -27,6 +28,8 @@ public final class ScriptedToolProvider implements ToolProvider {
   private final String capability;
   private final ToolResult result;
   private final String inputSchema;
+  private final RuntimeException thrownFailure;
+  private final boolean hang;
 
   /**
    * Creates a provider serving one capability with a fixed result and an explicit input schema (used
@@ -39,10 +42,18 @@ public final class ScriptedToolProvider implements ToolProvider {
    */
   public ScriptedToolProvider(String providerId, String capability, ToolResult result,
       String inputSchema) {
+    this(providerId, capability, Validate.notNull(result, "result must not be null"), inputSchema,
+        null, false);
+  }
+
+  private ScriptedToolProvider(String providerId, String capability, ToolResult result,
+      String inputSchema, RuntimeException thrownFailure, boolean hang) {
     this.providerId = Validate.notBlank(providerId, "providerId must not be blank");
     this.capability = Validate.notBlank(capability, "capability must not be blank");
-    this.result = Validate.notNull(result, "result must not be null");
+    this.result = result;
     this.inputSchema = Validate.notBlank(inputSchema, "inputSchema must not be blank");
+    this.thrownFailure = thrownFailure;
+    this.hang = hang;
   }
 
   /**
@@ -94,6 +105,38 @@ public final class ScriptedToolProvider implements ToolProvider {
         OBJECT_SCHEMA);
   }
 
+  /**
+   * Creates a provider whose capability <em>throws</em> from {@code invoke} instead of returning a
+   * result — driving the execution-exception arm of the governance chokepoint (a provider bug or
+   * transport crash), which a result-failure cannot reach.
+   *
+   * @param providerId stable provider id
+   * @param capability the capability id
+   * @param failure    the exception thrown on every invocation; must not be {@code null}
+   *
+   * @return a throwing provider
+   */
+  public static ScriptedToolProvider throwing(String providerId, String capability,
+      RuntimeException failure) {
+    return new ScriptedToolProvider(providerId, capability, null, OBJECT_SCHEMA,
+        Validate.notNull(failure, "failure must not be null"), false);
+  }
+
+  /**
+   * Creates a provider whose capability blocks until interrupted — driving the authoritative-timeout
+   * arm of the governance chokepoint. Pair it with a short
+   * {@code ToolExecutionOptions} timeout on the harness so the test stays fast; the execution
+   * service cancels the invocation, which interrupts and releases the blocked call.
+   *
+   * @param providerId stable provider id
+   * @param capability the capability id
+   *
+   * @return a hanging provider
+   */
+  public static ScriptedToolProvider hanging(String providerId, String capability) {
+    return new ScriptedToolProvider(providerId, capability, null, OBJECT_SCHEMA, null, true);
+  }
+
   @Override
   public String providerId() {
     return providerId;
@@ -109,6 +152,17 @@ public final class ScriptedToolProvider implements ToolProvider {
   @Override
   public ToolResult invoke(ToolDescriptor descriptor, String arguments, ToolInvocationContext ctx,
       ToolExecutionOptions options) {
+    if (thrownFailure != null) {
+      throw thrownFailure;
+    }
+    if (hang) {
+      try {
+        Thread.sleep(Long.MAX_VALUE);
+      } catch (InterruptedException e) {
+        Thread.currentThread().interrupt();
+      }
+      return ToolResult.failure("hanging invocation was interrupted", 0L);
+    }
     return result;
   }
 

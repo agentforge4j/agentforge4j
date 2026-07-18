@@ -15,8 +15,15 @@
   ],
   "expect": {
     "status": "FAILED",
-    "emittedEvents": ["RUN_FAILED"],
-    "visitedSteps": ["generate-agent"],
-    "notVisitedSteps": ["generate-verification"]
+    "failedBecause": "required artifacts not captured: [shipped-agents/generated.agent/README.md]",
+    "emittedEvents": [
+      "RUN_FAILED"
+    ],
+    "visitedSteps": [
+      "generate-agent"
+    ],
+    "notVisitedSteps": [
+      "generate-verification"
+    ]
   }
 }

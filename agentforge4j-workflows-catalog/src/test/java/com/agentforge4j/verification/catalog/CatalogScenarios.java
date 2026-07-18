@@ -115,6 +115,185 @@ public final class CatalogScenarios {
     return ids;
   }
 
+  /**
+   * Lists {@code verification/} sub-folders that carry scenario content but no
+   * {@code expected-result.json} discovery marker. Such a folder silently stops being a test (the
+   * marker is the sole discovery trigger), so the conformance gate fails on any hit — a renamed or
+   * deleted marker must not silently drop a scenario while its sibling files sit there looking
+   * covered.
+   *
+   * @return {@code <workflowId>/<scenario>} names of marker-less scenario folders, sorted
+   */
+  public static List<String> unmarkedScenarioFolders() {
+    return unmarkedScenarioFolders(SHIPPED_WORKFLOWS_ROOT);
+  }
+
+  static List<String> unmarkedScenarioFolders(String classpathRoot) {
+    URL root = CatalogScenarios.class.getResource(classpathRoot);
+    if (root == null) {
+      return List.of();
+    }
+    List<String> unmarked = new ArrayList<>();
+    switch (root.getProtocol()) {
+      case "file" -> {
+        for (Path workflowDir : workflowDirectories(root)) {
+          String workflowId = workflowIdOf(workflowDir.getFileName().toString());
+          Path verificationDir = workflowDir.resolve(VERIFICATION_SUBDIR);
+          if (!Files.isDirectory(verificationDir)) {
+            continue;
+          }
+          try (Stream<Path> scenarioDirs = Files.list(verificationDir)) {
+            scenarioDirs
+                .filter(Files::isDirectory)
+                .filter(dir -> !Files.exists(dir.resolve(EXPECTED_RESULT_FILE)))
+                .sorted()
+                .forEach(dir -> unmarked.add(workflowId + "/" + dir.getFileName()));
+          } catch (IOException exception) {
+            throw new UncheckedIOException(
+                "Failed to enumerate verification folders under " + workflowDir, exception);
+          }
+        }
+      }
+      case "jar" -> {
+        String prefix = stripLeadingSlash(classpathRoot);
+        Pattern scenarioEntry = Pattern.compile("^" + Pattern.quote(prefix) + "/([^/]+)"
+            + Pattern.quote(WORKFLOW_SUFFIX) + "/" + VERIFICATION_SUBDIR + "/([^/]+)/.+$");
+        Set<String> seen = new LinkedHashSet<>();
+        Set<String> marked = new LinkedHashSet<>();
+        for (String entryName : jarEntryNames(root)) {
+          Matcher matcher = scenarioEntry.matcher(entryName);
+          if (matcher.matches()) {
+            String scenario = matcher.group(1) + "/" + matcher.group(2);
+            seen.add(scenario);
+            if (entryName.endsWith("/" + EXPECTED_RESULT_FILE)) {
+              marked.add(scenario);
+            }
+          }
+        }
+        seen.stream().filter(scenario -> !marked.contains(scenario)).sorted()
+            .forEach(unmarked::add);
+      }
+      default -> throw new IllegalStateException(
+          "Unsupported shipped-workflows catalog URL protocol: " + root);
+    }
+    return unmarked;
+  }
+
+  /**
+   * Enumerates the ids of every physical {@code <id>.workflow} folder under the catalog root —
+   * regardless of index membership or verification content. The conformance gate cross-checks this
+   * against the shipped index so an unindexed folder cannot ship as silent dead cargo in the jar.
+   *
+   * @return ids of all physical workflow folders (empty when the catalog root is absent)
+   */
+  public static Set<String> physicalWorkflowFolderIds() {
+    return physicalWorkflowFolderIds(SHIPPED_WORKFLOWS_ROOT);
+  }
+
+  static Set<String> physicalWorkflowFolderIds(String classpathRoot) {
+    URL root = CatalogScenarios.class.getResource(classpathRoot);
+    if (root == null) {
+      return Set.of();
+    }
+    Set<String> ids = new LinkedHashSet<>();
+    switch (root.getProtocol()) {
+      case "file" -> {
+        for (Path workflowDir : workflowDirectories(root)) {
+          ids.add(workflowIdOf(workflowDir.getFileName().toString()));
+        }
+      }
+      case "jar" -> {
+        String prefix = stripLeadingSlash(classpathRoot);
+        Pattern workflowEntry = Pattern.compile("^" + Pattern.quote(prefix) + "/([^/]+)"
+            + Pattern.quote(WORKFLOW_SUFFIX) + "/.+$");
+        for (String entryName : jarEntryNames(root)) {
+          Matcher matcher = workflowEntry.matcher(entryName);
+          if (matcher.matches()) {
+            ids.add(matcher.group(1));
+          }
+        }
+      }
+      default -> throw new IllegalStateException(
+          "Unsupported shipped-workflows catalog URL protocol: " + root);
+    }
+    return ids;
+  }
+
+  /**
+   * Lists catalog-root directory entries that are neither {@code <id>.workflow} folders nor the two
+   * known root files ({@code index}, the compatibility manifest). A directory whose name lacks the
+   * {@code .workflow} suffix is invisible to both discovery and the production loader, so the
+   * conformance gate fails on any hit rather than letting it ship unnoticed.
+   *
+   * @return names of unexpected catalog-root entries, sorted (empty when the root is absent or a
+   *         jar — jar layouts have no stray-entry surface of their own; the exploded module source
+   *         is the authoritative check site)
+   */
+  public static List<String> strayCatalogRootEntries() {
+    return strayCatalogRootEntries(SHIPPED_WORKFLOWS_ROOT);
+  }
+
+  static List<String> strayCatalogRootEntries(String classpathRoot) {
+    URL root = CatalogScenarios.class.getResource(classpathRoot);
+    if (root == null || !"file".equals(root.getProtocol())) {
+      return List.of();
+    }
+    try {
+      Path rootDir = Path.of(root.toURI());
+      try (Stream<Path> entries = Files.list(rootDir)) {
+        return entries
+            .filter(entry -> !(Files.isDirectory(entry)
+                && entry.getFileName().toString().endsWith(WORKFLOW_SUFFIX)))
+            .map(entry -> entry.getFileName().toString())
+            .filter(name -> !"index".equals(name) && !"agentforge4j-catalog.json".equals(name))
+            .sorted()
+            .toList();
+      }
+    } catch (URISyntaxException | IOException exception) {
+      throw new UncheckedIOException(
+          "Failed to enumerate catalog root at " + root, new IOException(exception));
+    }
+  }
+
+  private static List<Path> workflowDirectories(URL fileRoot) {
+    try {
+      Path rootDir = Path.of(fileRoot.toURI());
+      try (Stream<Path> entries = Files.list(rootDir)) {
+        return entries
+            .filter(Files::isDirectory)
+            .filter(dir -> dir.getFileName().toString().endsWith(WORKFLOW_SUFFIX))
+            .sorted()
+            .toList();
+      }
+    } catch (URISyntaxException | IOException exception) {
+      throw new UncheckedIOException(
+          "Failed to enumerate shipped-workflows catalog at " + fileRoot,
+          new IOException(exception));
+    }
+  }
+
+  private static List<String> jarEntryNames(URL jarRoot) {
+    try {
+      JarURLConnection connection = (JarURLConnection) jarRoot.openConnection();
+      connection.setUseCaches(true);
+      // The JarFile is owned by the URL connection cache; it is deliberately not closed here.
+      JarFile jar = connection.getJarFile();
+      List<String> names = new ArrayList<>();
+      Enumeration<JarEntry> entries = jar.entries();
+      while (entries.hasMoreElements()) {
+        names.add(entries.nextElement().getName());
+      }
+      return names;
+    } catch (IOException exception) {
+      throw new UncheckedIOException(
+          "Failed to enumerate shipped-workflows catalog jar at " + jarRoot, exception);
+    }
+  }
+
+  private static String stripLeadingSlash(String classpathRoot) {
+    return classpathRoot.startsWith("/") ? classpathRoot.substring(1) : classpathRoot;
+  }
+
   private static List<ScenarioRef> scenarioRefs(String classpathRoot) {
     URL root = CatalogScenarios.class.getResource(classpathRoot);
     if (root == null) {
@@ -273,8 +452,18 @@ public final class CatalogScenarios {
     if (expect.emittedEvents() != null) {
       expect.emittedEvents().forEach(name -> assertion.emittedEvent(WorkflowEventType.valueOf(name)));
     }
+    if (expect.notEmittedEvents() != null) {
+      expect.notEmittedEvents()
+          .forEach(name -> assertion.didNotEmitEvent(WorkflowEventType.valueOf(name)));
+    }
     if (expect.createdFiles() != null) {
       expect.createdFiles().forEach(assertion::createdFile);
+    }
+    if (expect.absentFiles() != null) {
+      expect.absentFiles().forEach(assertion::artifactAbsent);
+    }
+    if (expect.failedBecause() != null) {
+      assertion.failedBecause(expect.failedBecause());
     }
     if (expect.stepVisitCounts() != null) {
       expect.stepVisitCounts().forEach((stepId, count) -> {
@@ -306,9 +495,16 @@ public final class CatalogScenarios {
     return switch (spec.type()) {
       case "input" -> GateResponse.input(spec.answers() == null ? Map.of() : spec.answers());
       case "review" -> GateResponse.review(spec.note());
-      case "stepApproval" -> Boolean.TRUE.equals(spec.approve())
-          ? GateResponse.approveStep(spec.note())
-          : GateResponse.rejectStep(spec.note());
+      case "stepApproval" -> {
+        if (spec.approve() == null) {
+          throw new IllegalArgumentException(
+              "A stepApproval gate must state approve explicitly; an omitted flag must not "
+                  + "silently become a rejection");
+        }
+        yield spec.approve()
+            ? GateResponse.approveStep(spec.note())
+            : GateResponse.rejectStep(spec.note());
+      }
       case "escalation" -> GateResponse.escalationApproval(spec.note());
       case "toolApprove" -> toolId == null
           ? GateResponse.toolApprove()

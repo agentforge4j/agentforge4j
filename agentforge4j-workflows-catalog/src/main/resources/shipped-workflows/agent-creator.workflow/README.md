@@ -17,7 +17,7 @@ validate → `review` → verdict.
   contract), and by the `agent-creator-bundle` validator after `generate-verification` (the same checks plus the
   verification starter's structural shape), each against an exact file allowlist and an `id == agentId` equality
   contract.
-- **Tokens only.** The estimate is in tokens; there is no credit or currency concept (OSS layer).
+- **Tokens only.** The estimate is in tokens; there is no monetary concept (OSS layer).
 
 ## Output bundle
 

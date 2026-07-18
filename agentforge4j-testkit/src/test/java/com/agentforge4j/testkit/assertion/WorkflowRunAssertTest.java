@@ -261,6 +261,15 @@ class WorkflowRunAssertTest {
   }
 
   @Test
+  void tokenTotalsFailsWhenNoTotalWasRecorded() {
+    // No LLM_TOKENS_TOTAL on the state: asserting 0 must fail — "token tracking never ran" and
+    // "tracking recorded zero" are different facts and only the latter may satisfy the verb.
+    assertThatThrownBy(() -> assertRun().tokenTotals(0))
+        .isInstanceOf(AssertionError.class)
+        .hasMessageContaining("no token total was recorded");
+  }
+
+  @Test
   void failedBecauseMatchesFailureReason() {
     state.setStatus(WorkflowStatus.FAILED);
     state.setRunFailure(new RunFailure.ExceptionFailure("path escape blocked", "step-a", "sup-1"));

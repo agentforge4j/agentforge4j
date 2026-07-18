@@ -18,7 +18,8 @@ import java.util.Map;
 import org.junit.jupiter.api.Test;
 
 /**
- * Black-box coverage of the step behaviours (FAIL, BRANCH, RESOURCE, WORKFLOW nesting, INPUT, SPAR). AGENT is exercised
+ * Black-box coverage of the step behaviours (FAIL, BRANCH, RESOURCE, WORKFLOW nesting, INPUT, SPAR,
+ * ASSIGN_CONTEXT). AGENT is exercised
  * throughout the command/loop tiers. Each behaviour drives a focused fixture and asserts its observable effect.
  */
 class StepBehaviourTest {
@@ -70,7 +71,26 @@ class StepBehaviourTest {
     WorkflowRunResult result = harness().run("beh-resource");
     WorkflowRunAssert.assertThat(result)
         .isCompleted()
-        .contextNonEmpty("res.out");
+        // Pin the actual fixture content (modulo trailing whitespace), not mere non-emptiness — a
+        // resolver regression serving the wrong resource must not pass.
+        .contextMatchesRegex("res.out", "resource-behaviour-content\\s*");
+  }
+
+  @Test
+  void resourceBehaviourFailsClosedWhenTheResourceIsMissing() {
+    WorkflowRunResult result = harness().run("beh-resource-missing");
+    WorkflowRunAssert.assertThat(result)
+        .isFailed()
+        .failedBecause("does-not-exist")
+        .eventsInOrder(WorkflowEventType.STEP_FAILED, WorkflowEventType.RUN_FAILED);
+  }
+
+  @Test
+  void assignContextBehaviourWritesTheScalarValueEndToEnd() {
+    WorkflowRunResult result = harness().run("beh-assign");
+    WorkflowRunAssert.assertThat(result)
+        .isCompleted()
+        .contextEquals("assigned.tier", "POWERFUL");
   }
 
   @Test
@@ -82,6 +102,23 @@ class StepBehaviourTest {
   @Test
   void sparAppliesResolutionRound() {
     WorkflowRunResult result = harness().run("beh-spar");
+    WorkflowRunAssert.assertThat(result)
+        .isCompleted()
+        .contextHas("spar.primary.round.1");
+  }
+
+  @Test
+  void sparWithHumanApprovalParksAwaitingStepApproval() {
+    WorkflowRunResult result = harness().run("beh-spar-gated");
+    WorkflowRunAssert.assertThat(result)
+        .reachedPendingState(WorkflowStatus.AWAITING_STEP_APPROVAL)
+        .approvalRequested("review");
+  }
+
+  @Test
+  void sparWithHumanApprovalResumesToCompletionOnApproval() {
+    WorkflowRunResult result = harness().run("beh-spar-gated",
+        List.of(GateResponse.approveStep("looks good")));
     WorkflowRunAssert.assertThat(result)
         .isCompleted()
         .contextHas("spar.primary.round.1");

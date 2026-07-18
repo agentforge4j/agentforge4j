@@ -47,3 +47,28 @@ artifact check (no `.class`, no `Class-Path`, `Automatic-Module-Name: agentforge
 > Note: this module is resources-only and has no `module-info` (an automatic module); it is consumed
 > on the class path or module path via `ClassLoader.getResource`, which resolves the hyphenated,
 > non-encapsulated `/shipped-workflows/` and `/shipped-agents/` roots across both layouts.
+
+## Adding a shipped workflow
+
+Discovery of verification scenarios is registry-free, but shipping the workflow itself is
+**index-driven** — two hand-maintained files are load-bearing, and the conformance gate turns
+omissions into loud failures:
+
+1. Create `src/main/resources/shipped-workflows/<id>.workflow/` with a `workflow.json` whose `id`
+   equals the folder name and declares the supported `schemaVersion`.
+2. Add `<id>` as a line in `shipped-workflows/index` (the list the production loader drives).
+3. List every additional bundle entry (blueprints, artifacts, `agents/<x>.agent` folders, step
+   prompts) in the bundle's own `<id>.workflow/index`.
+4. Add at least one `verification/<scenario>/` folder with `script.json`, `README.md`, and an
+   `expected-result.json` that names `<id>` and asserts at least the run's final `status`
+   (assertion-free scenarios are rejected by the conformance gate).
+5. Add a bundle-level `README.md` describing the workflow and its scenarios.
+6. Keep every `.json`/`.md` resource free of monetary/billing vocabulary — the whole catalog is
+   scanned, including "never do X" phrasing.
+
+No Java, pom, CI, or test-class changes are needed: the scenario factory, schema validation,
+conformance gate, and forbidden-term scan pick the new folder up automatically.
+
+> Local caveat: Maven copies changed resources into `target/classes` on incremental builds but
+> never deletes removed ones — after **deleting or renaming** catalog files, run with `clean` or
+> the stale copy keeps tests green locally (CI always builds clean).
