@@ -53,6 +53,10 @@ public final class RetryPolicyAttemptCounter {
    * (for example a {@code RETRY_PREVIOUS} fallback, which never re-executes the target) must never
    * call this.
    *
+   * <p>Prefer {@link #reserve} over calling this directly after a separate {@link #read}: a
+   * check-then-call-this sequence is not atomic against a concurrent caller doing the same for the
+   * same {@code targetStepId} — see {@link #reserve}.
+   *
    * @param state        the run state
    * @param targetStepId the retried step's id
    */
@@ -60,6 +64,40 @@ public final class RetryPolicyAttemptCounter {
     int next = read(state, targetStepId) + 1;
     state.putContextValue(key(targetStepId),
         new StringContextValue(String.valueOf(next), ContextProvenance.SYSTEM_GENERATED));
+  }
+
+  /**
+   * Atomically checks {@code targetStepId}'s shared attempt count against {@code maxAttempts} and,
+   * only if still under the ceiling, records one more attempt — a single indivisible
+   * check-and-increment, not a separate {@link #read} followed by a separate {@link #increment}.
+   *
+   * <p>{@code WorkflowRuntime.retry()} and a {@code RETRY_PREVIOUS} step targeting the same step
+   * share this exact counter and can race each other for the same run's {@link WorkflowState} — the
+   * same in-process, live-mutable instance both mechanisms observe (see
+   * {@code DefaultWorkflowRuntime}'s run-lock-stripe javadoc for the general shape of this hazard). A
+   * separate read-then-increment lets two concurrent callers both observe the count just under the
+   * ceiling and both proceed, together exceeding {@code maxAttempts}; synchronizing the read and the
+   * increment on {@code state} here — the one monitor every caller for this run already shares —
+   * makes exactly one of two racing callers at the ceiling win the reservation, with the other
+   * observing the now-updated count and correctly failing the ceiling check.
+   *
+   * @param state        the run state
+   * @param targetStepId the retried step's id
+   * @param maxAttempts  the shared {@code RetryPolicy} ceiling
+   *
+   * @return {@code true} if the reservation was granted (the attempt is now recorded); {@code false}
+   *     if the ceiling was already reached (state left untouched)
+   */
+  public static boolean reserve(WorkflowState state, String targetStepId, int maxAttempts) {
+    synchronized (state) {
+      int attempts = read(state, targetStepId);
+      if (attempts >= maxAttempts) {
+        return false;
+      }
+      state.putContextValue(key(targetStepId),
+          new StringContextValue(String.valueOf(attempts + 1), ContextProvenance.SYSTEM_GENERATED));
+      return true;
+    }
   }
 
   private static String key(String targetStepId) {

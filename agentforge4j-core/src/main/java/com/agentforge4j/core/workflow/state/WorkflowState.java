@@ -36,6 +36,16 @@ public final class WorkflowState {
   @Setter
   private String currentStepId;
   private WorkflowStatus status;
+  /**
+   * Durable, one-way marker set only by {@code DefaultWorkflowRuntime.cancel()} — never by a step
+   * behaviour handler's own status transitions (which routinely overwrite {@link #status} with
+   * {@code AWAITING_*}/{@code PAUSED} values as a normal part of driving a run, entirely
+   * unsynchronized against a concurrent {@code cancel()}). {@link #status} alone cannot reliably
+   * signal "a cancellation happened during this drive" once such a handler has run afterward and
+   * silently clobbered it; this field survives that clobber so the drive's own finalisation can
+   * still detect the cancellation and correct the persisted status before saving.
+   */
+  private boolean cancellationRequested;
   private Instant lastUpdatedAt;
   @Setter
   private ArtifactDefinition pendingArtifact;
@@ -210,6 +220,15 @@ public final class WorkflowState {
 
   public void setStatus(WorkflowStatus status) {
     this.status = Validate.notNull(status, "WorkflowState status must not be null");
+  }
+
+  /**
+   * Durably records that cancellation was requested for this run. One-way: never cleared. Distinct
+   * from {@link #setStatus}, which a step behaviour handler may still overwrite afterward as a
+   * normal part of driving the run — this marker survives that overwrite.
+   */
+  public void markCancellationRequested() {
+    this.cancellationRequested = true;
   }
 
   public void setLastUpdatedAt(Instant lastUpdatedAt) {
@@ -765,6 +784,9 @@ public final class WorkflowState {
         new WorkflowState(runId, workflowId, parentRunId, startedAt);
     copy.setCurrentStepId(currentStepId);
     copy.setStatus(status);
+    if (cancellationRequested) {
+      copy.markCancellationRequested();
+    }
     copy.setLastUpdatedAt(lastUpdatedAt);
     copy.setPendingArtifact(pendingArtifact);
     copy.setPendingUserPrompt(pendingUserPrompt);

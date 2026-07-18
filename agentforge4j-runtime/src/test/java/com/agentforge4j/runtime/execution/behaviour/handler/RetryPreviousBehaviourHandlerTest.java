@@ -804,6 +804,45 @@ class RetryPreviousBehaviourHandlerTest {
     }
 
     @Test
+    void fallback_runs_when_the_local_cap_is_reached_even_though_the_shared_ceiling_is_also_already_exhausted() {
+      // Regression for the reorder bug: previously validateSharedRetryPolicyCeiling ran
+      // unconditionally before the local-cap-vs-fallback decision, so an already-exhausted shared
+      // ceiling threw StepExecutionException and wrongly prevented the fallback from ever running —
+      // even though the fallback never touches that budget. Local cap=1 (already reached) and the
+      // target's shared RetryPolicy cap=1 (already consumed by a prior retry() call) simultaneously:
+      // the fallback must still run, the target must never be dispatched, and neither counter changes.
+      AgentBehaviour permitting = new AgentBehaviour("agent-1", StepTransition.AUTO,
+          new RetryPolicy(true, true, 1));
+      StepDefinition target = StepDefinition.builder()
+          .withStepId("s2")
+          .withName("s2")
+          .withBehaviour(permitting)
+          .withContextMapping(ContextMapping.none())
+          .build();
+      Executable fallback = fallbackStep("fallback");
+      TestFixture f = fixture()
+          .retryStepId("s2")
+          .maxAttempts(1)
+          .fallback(fallback)
+          .owningStepId("s3")
+          .sequence("s1", "s2", "s3")
+          .retryStepExecuted(2)
+          .attemptCount(1)
+          .executableOverride("s2", target)
+          .build();
+      RetryPolicyAttemptCounter.increment(f.state(), "s2");
+
+      ExecutionOutcome outcome = f.handle();
+
+      assertThat(outcome).isEqualTo(ExecutionOutcome.COMPLETED);
+      verify(executableExecutor, times(1)).execute(fallback, f.context());
+      verify(executableExecutor, never()).execute(target, f.context());
+      assertThat(f.attemptCount()).isEqualTo(1);
+      assertThat(RetryPolicyAttemptCounter.read(f.state(), "s2")).isEqualTo(1);
+      assertThat(f.state().getStepOutputs()).containsKey("s3");
+    }
+
+    @Test
     void rejection_leaves_local_counter_context_and_step_state_completely_unchanged() {
       AgentBehaviour permitting = new AgentBehaviour("agent-1", StepTransition.AUTO,
           new RetryPolicy(true, true, 1));

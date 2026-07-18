@@ -80,28 +80,26 @@ public final class RetryPreviousBehaviourHandler implements
     String attemptKey = RETRY_COUNTER_PREFIX + behaviour.retryStepId() + RETRY_COUNTER_SUFFIX;
     int attempts = readAttemptCount(state, attemptKey);
 
-    // Single pre-mutation validation phase: runs unconditionally, before the local maxAttempts
+    // Structural pre-mutation validation phase: runs unconditionally, before the local maxAttempts
     // check, before either counter is incremented, and before clearEntriesFromUid — a misconfigured
-    // RETRY_PREVIOUS (a composite executable whose cleared state this handler never replays, a
-    // target whose RetryPolicy forbids rewind-retry, or a target whose RetryPolicy's shared
-    // maxAttempts budget is already exhausted) must fail loudly on every invocation, leaving state
-    // untouched, rather than silently corrupting state or bypassing governance on whichever attempt
-    // happens to run.
+    // RETRY_PREVIOUS (a composite executable whose cleared state this handler never replays, or a
+    // target whose RetryPolicy forbids rewind-retry outright) must fail loudly on every invocation,
+    // leaving state untouched, rather than silently corrupting state or bypassing governance on
+    // whichever attempt happens to run. This deliberately excludes the target's shared RetryPolicy
+    // ceiling: that budget governs only a genuine replay dispatch (below), never the workflow-authored
+    // fallback, so it must not be checked — let alone reject — before the fallback-vs-replay decision.
     RetryPolicy targetPolicy = resolveTargetRetryPolicy(behaviour, executionContext);
     validateAllowRetryFromPrevious(step, behaviour, targetPolicy);
     validateReplayRangeContainsOnlyPlainSteps(step, behaviour,
         executionContext.getCurrentSequenceExecutableList());
-    if (targetPolicy != null) {
-      validateSharedRetryPolicyCeiling(step, behaviour, state, targetPolicy);
-    }
 
     LOG.log(System.Logger.Level.INFO,
         "Retry behaviour start stepId={0}, retryStepId={1}, attempt={2}, maxAttempts={3}",
         step.stepId(), behaviour.retryStepId(), attempts + 1, behaviour.maxAttempts());
     if (attempts >= behaviour.maxAttempts()) {
-      // The local RETRY_PREVIOUS cap is exhausted: run the workflow-authored fallback instead. This
-      // never re-executes retryStepId, so it must never consume the target's shared RetryPolicy
-      // budget — only a genuine replay dispatch below does that.
+      // The local RETRY_PREVIOUS cap is exhausted: run the workflow-authored fallback instead,
+      // regardless of the target's shared RetryPolicy ceiling — reached, exhausted, or not — since
+      // this never re-executes retryStepId and so never touches that budget.
       LOG.log(System.Logger.Level.WARNING, "Retry max attempts reached stepId={0}, retryStepId={1}",
           step.stepId(), behaviour.retryStepId());
       eventRecorder.record(state.getRunId(), step.stepId(),
@@ -118,12 +116,17 @@ public final class RetryPreviousBehaviourHandler implements
         "RetryPreviousBehaviour in step '%s' references step '%s' which has not been executed yet"
             .formatted(step.stepId(), behaviour.retryStepId())));
 
+    // Reserved atomically (check-and-increment as one indivisible operation — see
+    // RetryPolicyAttemptCounter.reserve) only now that every rejecting precondition, including the
+    // retryUid check just above, has passed: nothing left below this point can reject the dispatch,
+    // so a granted reservation is never left stranded against a replay that did not happen.
+    if (targetPolicy != null) {
+      reserveSharedRetryPolicyCeiling(step, behaviour, state, targetPolicy);
+    }
+
     attempts++;
     state.putContextValue(attemptKey,
         new StringContextValue(String.valueOf(attempts), ContextProvenance.SYSTEM_GENERATED));
-    if (targetPolicy != null) {
-      RetryPolicyAttemptCounter.increment(state, behaviour.retryStepId());
-    }
 
     // Evict captured bytes for artifacts emitted at or after the rewind point before clearing the
     // descriptors, so a re-emit on the re-drive upserts cleanly and an un-re-emitted path does not linger.
@@ -177,22 +180,25 @@ public final class RetryPreviousBehaviourHandler implements
   }
 
   /**
-   * Validates that the number of attempts already made against {@code targetPolicy}'s shared
+   * Atomically reserves one attempt against {@code targetPolicy}'s shared
    * {@link RetryPolicyAttemptCounter} budget — across both {@code WorkflowRuntime.retry()} and every
-   * {@code RETRY_PREVIOUS} step targeting the same step — has not yet reached {@code maxAttempts}.
-   * {@code RetryPolicy.maxAttempts} is the hard aggregate ceiling for retries of that step across
-   * every supported mechanism; {@code RetryPreviousBehaviour.maxAttempts} (checked separately, and
-   * enforced by falling back rather than rejecting) is an additional local cap, never a way to
-   * exceed this one.
+   * {@code RETRY_PREVIOUS} step targeting the same step — rejecting if {@code maxAttempts} is already
+   * reached. {@code RetryPolicy.maxAttempts} is the hard aggregate ceiling for retries of that step
+   * across every supported mechanism; {@code RetryPreviousBehaviour.maxAttempts} (checked separately,
+   * and enforced by falling back rather than rejecting) is an additional local cap, never a way to
+   * exceed this one. The check and the increment are one atomic operation (see
+   * {@link RetryPolicyAttemptCounter#reserve}), not a separate read followed by a separate increment,
+   * so two concurrent callers racing at the ceiling can never both be granted.
    */
-  private static void validateSharedRetryPolicyCeiling(StepDefinition step,
+  private static void reserveSharedRetryPolicyCeiling(StepDefinition step,
       RetryPreviousBehaviour behaviour, WorkflowState state, RetryPolicy targetPolicy) {
-    int sharedAttempts = RetryPolicyAttemptCounter.read(state, behaviour.retryStepId());
-    Validate.isTrue(sharedAttempts < targetPolicy.maxAttempts(), () -> new StepExecutionException(
+    boolean reserved =
+        RetryPolicyAttemptCounter.reserve(state, behaviour.retryStepId(), targetPolicy.maxAttempts());
+    Validate.isTrue(reserved, () -> new StepExecutionException(
         ("RetryPreviousBehaviour step '%s': target step '%s' RetryPolicy maxAttempts (%d) already "
             + "reached (%d attempts already used across retry() and RETRY_PREVIOUS); rejected")
             .formatted(step.stepId(), behaviour.retryStepId(), targetPolicy.maxAttempts(),
-                sharedAttempts)));
+                RetryPolicyAttemptCounter.read(state, behaviour.retryStepId()))));
   }
 
   /**

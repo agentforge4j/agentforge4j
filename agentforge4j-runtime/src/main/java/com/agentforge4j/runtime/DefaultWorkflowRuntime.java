@@ -51,13 +51,12 @@ import com.agentforge4j.runtime.interceptor.RunExecutionInterceptor;
 import com.agentforge4j.runtime.tool.ToolResultApplier;
 import com.agentforge4j.util.Validate;
 import java.time.Clock;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentMap;
 import org.apache.commons.lang3.StringUtils;
 
 /**
@@ -102,25 +101,45 @@ public final class DefaultWorkflowRuntime implements WorkflowRuntime {
   private final GeneratedArtifactStore generatedArtifactStore;
 
   /**
-   * Per-run monitor objects guarding the terminal-status transition ({@code cancel()} racing a
-   * concurrent drive's own completion/failure decision) against another thread mutating the same
-   * in-process {@link WorkflowState} instance — {@link WorkflowStateRepository} implementations
-   * "may return live mutable {@code WorkflowState} instances", and this runtime's own in-memory
-   * repository always does, so two callers acting on the same run id can genuinely hold the same
-   * object. Synchronizing the check-then-set sequence in {@link #cancel}, {@link #finaliseDrive},
-   * and {@link #failRun} on the same per-run monitor makes exactly one of a racing cancel/complete/
-   * fail pair win the terminal status, with the loser's guard (already checking the terminal status
-   * before acting) correctly observing the winner's fully-applied change.
+   * Fixed-size pool of monitor objects guarding the terminal-status transition ({@code cancel()}
+   * racing a concurrent drive's own completion/failure decision, and a concurrent completion racing
+   * a concurrent failure) against another thread mutating the same in-process {@link WorkflowState}
+   * instance — {@link WorkflowStateRepository} implementations "may return live mutable
+   * {@code WorkflowState} instances", and this runtime's own in-memory repository always does, so
+   * two callers acting on the same run id can genuinely hold the same object. Synchronizing the
+   * check-then-set sequence in {@link #cancel}, {@link #finaliseDrive}, {@link #failRun}, and
+   * {@link #enforceCancellationWon} on the same per-run stripe makes exactly one of a racing
+   * cancel/complete/fail set win the terminal status, with every loser's guard (already checking the
+   * terminal status before acting) correctly observing the winner's fully-applied change.
+   *
+   * <p>A run id is mapped to one of a fixed {@link #RUN_LOCK_STRIPE_COUNT} stripes by hash, striped
+   * locking (the same technique {@code java.util.concurrent.locks.StripedLock}-style utilities use)
+   * rather than one monitor allocated per run id forever: memory is bounded at
+   * {@link #RUN_LOCK_STRIPE_COUNT} monitors for the lifetime of this runtime instance, regardless of
+   * how many distinct runs it ever drives, unlike a map that grows by one entry per run id and never
+   * shrinks. Two unrelated run ids occasionally hashing to the same stripe only costs a little extra
+   * contention between those two runs' terminal transitions, never a correctness problem.
    *
    * <p>This closes only the in-process race. A durable or distributed {@link WorkflowStateRepository}
    * serving multiple runtime processes must provide its own cross-process concurrency control (for
    * example optimistic locking on save, or a transactional read-modify-write) — no in-process monitor
-   * can substitute for that, and this map is never a source of truth across processes.
+   * can substitute for that, and this pool is never a source of truth across processes.
    */
-  private final ConcurrentMap<String, Object> runLocks = new ConcurrentHashMap<>();
+  private static final int RUN_LOCK_STRIPE_COUNT = 256;
+
+  private final Object[] runLockStripes = createRunLockStripes();
+
+  private static Object[] createRunLockStripes() {
+    Object[] stripes = new Object[RUN_LOCK_STRIPE_COUNT];
+    for (int i = 0; i < stripes.length; i++) {
+      stripes[i] = new Object();
+    }
+    return stripes;
+  }
 
   private Object runLock(String runId) {
-    return runLocks.computeIfAbsent(runId, id -> new Object());
+    int index = Math.floorMod(runId.hashCode(), runLockStripes.length);
+    return runLockStripes[index];
   }
 
   /**
@@ -188,8 +207,17 @@ public final class DefaultWorkflowRuntime implements WorkflowRuntime {
       // The definition actually retrieved for this start — not WorkflowRuntimeBuilder.build()'s
       // stale construction-time snapshot — is what is about to run; validated against the live
       // registry so a COLLECTION step reachable through any workflow reference is caught here,
-      // before any run state or RUN_STARTED event exists.
-      START_TIME_VALIDATOR.validateNoCollectionSteps(workflowRepository.findAll());
+      // before any run state or RUN_STARTED event exists. findAll() covers reachability through
+      // every other registered workflow's own references, but a WorkflowRepository whose get() and
+      // findAll() disagree (for example get() serving a fresher entry than a stale findAll() snapshot)
+      // could otherwise validate a different object than the one actually driven below; overriding
+      // the workflowId entry with the exact retrieved `workflow` instance guarantees that the object
+      // this call is about to drive is always the one checked, never a possibly-divergent findAll()
+      // copy of it.
+      Map<String, WorkflowDefinition> collectionStepValidationSet =
+          new HashMap<>(workflowRepository.findAll());
+      collectionStepValidationSet.put(workflowId, workflow);
+      START_TIME_VALIDATOR.validateNoCollectionSteps(collectionStepValidationSet);
       RequirementCheckpoint.assertNonDeferredResolved(workflow, runId, requirementResolver);
       WorkflowState state = new WorkflowState(runId, workflowId, null, clock.instant());
       workflowStateRepository.save(state);
@@ -281,11 +309,12 @@ public final class DefaultWorkflowRuntime implements WorkflowRuntime {
       WorkflowDefinition workflow = workflowRepository.get(state.getWorkflowId());
       StepDefinition target = resolveTopLevelRetryTarget(workflow, stepId);
 
-      // Validates the target step's RetryPolicy (allowRetry + the shared maxAttempts ceiling — see
-      // RetryPolicyAttemptCounter) before any mutation below. A step type carrying no RetryPolicy
-      // (anything but AGENT/SPAR) is unrestricted — this operator verb never had a governance
-      // concept for those step types. Pure validation: the shared counter is only incremented once
-      // this retry is fully accepted for actual execution, immediately before drive() below.
+      // Validates allowRetry and atomically reserves one attempt against the shared maxAttempts
+      // ceiling (see RetryPolicyAttemptCounter.reserve) before any other mutation below. A step type
+      // carrying no RetryPolicy (anything but AGENT/SPAR) is unrestricted — this operator verb never
+      // had a governance concept for those step types. Nothing between this point and drive() below
+      // can reject the retry, so a granted reservation is never left stranded against a retry that
+      // did not happen.
       RetryPolicy targetRetryPolicy = retryPolicyOf(target.behaviour());
       enforceRetryPolicy(state, target, targetRetryPolicy);
 
@@ -326,14 +355,6 @@ public final class DefaultWorkflowRuntime implements WorkflowRuntime {
       state.setLastUpdatedAt(clock.instant());
       eventRecorder.record(runId, target.stepId(), WorkflowEventType.STEP_RETRIED, null, actorId);
 
-      // The retry is now fully accepted for actual execution — every rejecting precondition above
-      // has passed and every mutation above is committed. Record the attempt against the target's
-      // shared RetryPolicy budget only now, so a run that never reached this point (rejected by
-      // enforceRetryPolicy) never consumes it.
-      if (targetRetryPolicy != null) {
-        RetryPolicyAttemptCounter.increment(state, target.stepId());
-      }
-
       // Re-drive the enclosing top-level sequence: StepSequenceExecutor replays from the start,
       // skips steps that still have outputs, re-runs the target and its downstream continuation,
       // and finalises through the normal terminal path (COMPLETED, a pause, or FAILED).
@@ -343,13 +364,16 @@ public final class DefaultWorkflowRuntime implements WorkflowRuntime {
 
   /**
    * Validates {@code target}'s {@code RetryPolicy} (when it carries one) for the {@code retry(...)}
-   * operator verb, before any state mutation. Rejects when {@code allowRetry == false}, or when the
-   * number of attempts already made against {@code target}'s shared {@link RetryPolicyAttemptCounter}
-   * budget — shared with any {@code RETRY_PREVIOUS} step targeting the same step — has reached
-   * {@code maxAttempts}. A step type with no {@code RetryPolicy} concept (anything but
-   * {@link AgentBehaviour}/{@link SparBehaviour}) is left unrestricted. Pure validation: callers
-   * increment the counter separately, only once the retry this validates is fully accepted for
-   * actual execution.
+   * operator verb, and atomically reserves one attempt against it. Rejects when
+   * {@code allowRetry == false}, or when the number of attempts already made against
+   * {@code target}'s shared {@link RetryPolicyAttemptCounter} budget — shared with any
+   * {@code RETRY_PREVIOUS} step targeting the same step — has reached {@code maxAttempts}. A step
+   * type with no {@code RetryPolicy} concept (anything but {@link AgentBehaviour}/
+   * {@link SparBehaviour}) is left unrestricted. The ceiling check and the reservation are one atomic
+   * operation (see {@link RetryPolicyAttemptCounter#reserve}), not a separate read followed by a
+   * separate increment, so two concurrent callers racing at the ceiling — whether both via
+   * {@code retry()}, or one via {@code retry()} and one via a {@code RETRY_PREVIOUS} step targeting
+   * the same step — can never both be granted.
    *
    * @throws IllegalStateException if the policy forbids retry, or the shared attempt cap is already
    *                                reached
@@ -361,11 +385,12 @@ public final class DefaultWorkflowRuntime implements WorkflowRuntime {
     Validate.isTrue(policy.allowRetry(), () -> new IllegalStateException(
         "Step '%s' RetryPolicy does not allow retry (allowRetry=false)"
             .formatted(target.stepId())));
-    int attempts = RetryPolicyAttemptCounter.read(state, target.stepId());
-    Validate.isTrue(attempts < policy.maxAttempts(), () -> new IllegalStateException(
+    boolean reserved = RetryPolicyAttemptCounter.reserve(state, target.stepId(), policy.maxAttempts());
+    Validate.isTrue(reserved, () -> new IllegalStateException(
         ("Step '%s' RetryPolicy maxAttempts (%d) already reached (%d attempts already used across "
             + "retry() and RETRY_PREVIOUS); retry rejected")
-            .formatted(target.stepId(), policy.maxAttempts(), attempts)));
+            .formatted(target.stepId(), policy.maxAttempts(),
+                RetryPolicyAttemptCounter.read(state, target.stepId()))));
   }
 
   private static RetryPolicy retryPolicyOf(StepBehaviour behaviour) {
@@ -626,15 +651,21 @@ public final class DefaultWorkflowRuntime implements WorkflowRuntime {
    * @throws ExecutionNotFoundException if no state exists for {@code runId}
    * @throws IllegalStateException      if no tool-execution service is configured, or the run is in
    *                                    {@link WorkflowStatus#AWAITING_APPROVAL} (use {@code approve} instead)
-   * @throws IllegalArgumentException   if the run is cancelled, not {@link WorkflowStatus#AWAITING_TOOL_DECISION}, no
-   *                                    pending invocation matches, or an id is blank or the decision null
+   * @throws IllegalArgumentException   if the run is cancelled, not {@link WorkflowStatus#AWAITING_TOOL_DECISION}, or
+   *                                    an id is blank or the decision null
    * @throws com.agentforge4j.core.spi.tool.PolicyDenialTerminalException if {@code decision} is a
    *                                    {@link ToolDecision.Retry} against a policy-denied pending
    *                                    invocation
-   * @throws ToolInvocationClaimLostException if {@code decision} is a {@link ToolDecision.Retry} and
-   *                                    a concurrent resume already claimed or replaced the pending
-   *                                    invocation between this call's peek and its own claim attempt;
-   *                                    no run state is mutated when this is thrown
+   * @throws ToolInvocationClaimLostException if there is no claimable pending invocation for this
+   *                                    id — whether because it was already claimed and resolved by a
+   *                                    concurrent resolution before this call's own peek, or because
+   *                                    a concurrent resolution claimed or replaced it between this
+   *                                    call's peek and its own claim attempt. For
+   *                                    {@link ToolDecision.Retry} the latter is detected inside
+   *                                    {@code toolExecutionService.resume}; for
+   *                                    {@link ToolDecision.Continue} this method claims the row
+   *                                    itself before applying anything. No run state is mutated when
+   *                                    this is thrown
    */
   @Override
   public WorkflowState resolveToolDecision(String runId, String toolInvocationId,
@@ -648,10 +679,18 @@ public final class DefaultWorkflowRuntime implements WorkflowRuntime {
       validateToolResumeStatus(runId, state, WorkflowStatus.AWAITING_TOOL_DECISION,
           "resolveToolDecision");
 
-      PendingToolInvocation pending = Validate.notNull(
-          pendingToolInvocationStore.find(runId, toolInvocationId),
-          () -> new IllegalArgumentException(
-              "No pending tool invocation '%s' for run '%s'".formatted(toolInvocationId, runId)));
+      // validateToolResumeStatus just confirmed AWAITING_TOOL_DECISION, so a null find() here means
+      // a concurrent resolution (another resolveToolDecision call for this same invocation) already
+      // claimed and fully resolved it — including, potentially, driving the run past this status —
+      // between that check and this line. This is the same benign concurrency-loss signal as a lost
+      // claim deeper in either branch below, never a caller error at this point.
+      PendingToolInvocation pending = pendingToolInvocationStore.find(runId, toolInvocationId);
+      if (pending == null) {
+        throw new ToolInvocationClaimLostException(
+            "No claimable pending tool invocation '%s' for run '%s' (already claimed and resolved "
+                .formatted(toolInvocationId, runId)
+                + "by a concurrent resolution before this call reached it)");
+      }
       String capability = pending.capability();
 
       LOG.log(System.Logger.Level.INFO,
@@ -680,9 +719,21 @@ public final class DefaultWorkflowRuntime implements WorkflowRuntime {
           return state.snapshot();
         }
       } else {
-        // Continue without the tool: surface the recorded reason and drop the pending row.
-        toolResultApplier.applyError(capability, pending.reason(), state, actorId);
-        pendingToolInvocationStore.remove(runId, toolInvocationId);
+        // Continue without the tool: atomically claim the exact row this call observed before
+        // applying anything. A plain remove(runId, toolInvocationId) here would be keyed only by
+        // id, so it could consume a replacement row (persisted meanwhile by a resume that failed
+        // and re-suspended) under this call's stale authorization, or race a concurrent second
+        // resolution (another Continue, or a Retry) that has already claimed the same row. On loss,
+        // nothing is mutated: no error is applied, no row is removed.
+        PendingToolInvocation claimed =
+            pendingToolInvocationStore.claim(runId, toolInvocationId, pending);
+        if (claimed == null) {
+          throw new ToolInvocationClaimLostException(
+              "Pending tool invocation '%s' for run '%s' was claimed or replaced by a concurrent "
+                  .formatted(toolInvocationId, runId)
+                  + "resolution between this call's peek and its own claim attempt");
+        }
+        toolResultApplier.applyError(capability, claimed.reason(), state, actorId);
       }
 
       advancePastToolStep(state, "tool-decision:" + decision.getClass().getSimpleName());
@@ -781,6 +832,12 @@ public final class DefaultWorkflowRuntime implements WorkflowRuntime {
         }
         Validate.isTrue(status != WorkflowStatus.COMPLETED && status != WorkflowStatus.FAILED,
             "Cannot cancel run '%s' in status %s".formatted(runId, status));
+        // Durable marker, distinct from the status field a concurrently-running step behaviour
+        // handler may still overwrite afterward (with its own AWAITING_*/PAUSED transition) entirely
+        // unsynchronized against this call — see WorkflowState.markCancellationRequested. drive()'s
+        // own finalisation re-checks this marker and corrects the persisted status if a handler
+        // clobbered it after this point.
+        state.markCancellationRequested();
         state.setStatus(WorkflowStatus.CANCELLED);
         state.setLastUpdatedAt(clock.instant());
         workflowStateRepository.save(state);
@@ -1021,6 +1078,7 @@ public final class DefaultWorkflowRuntime implements WorkflowRuntime {
       failRun(state, state.getCurrentStepId(), throwable);
     } finally {
       executionContext.exitWorkflow();
+      enforceCancellationWon(state);
       workflowStateRepository.save(state);
       // Release the run's transient generated-artifact bytes once it reaches a terminal state; the
       // content-free descriptors on the persisted state remain the durable record. A paused run keeps
@@ -1029,6 +1087,51 @@ public final class DefaultWorkflowRuntime implements WorkflowRuntime {
         generatedArtifactStore.clear(state.getRunId());
       }
     }
+  }
+
+  /**
+   * Final, unconditional corrective pass, run at the very end of every drive before the state is
+   * persisted: a concurrent {@link #cancel} may have durably marked this run cancelled (see
+   * {@link WorkflowState#markCancellationRequested}) while a step behaviour handler, entirely
+   * unsynchronized against that call, later overwrote {@code state}'s own status field with its own
+   * suspension transition (for example {@code AWAITING_INPUT} for a {@code PAUSED} outcome) —
+   * clobbering the {@code CANCELLED} value {@code cancel()} set. {@link #finaliseDrive} and
+   * {@link #failRun} only ever guard against this for the {@code COMPLETED}/{@code FAILED} outcomes
+   * they themselves decide; nothing guards a bare {@code PAUSED} outcome, since the fine-grained
+   * suspension status there is deliberately left to whichever handler set it. Cancellation always
+   * wins regardless of outcome: if it was requested and the persisted status is not already
+   * {@code CANCELLED}, this restores it, under the same per-run lock {@link #cancel} itself uses, so
+   * this correction can never itself race a concurrent {@code cancel()} call. {@code RUN_CANCELLED}
+   * was already recorded once by {@code cancel()}; only the status field needs correcting here, not
+   * a second event.
+   */
+  private void enforceCancellationWon(WorkflowState state) {
+    synchronized (runLock(state.getRunId())) {
+      if (state.isCancellationRequested() && state.getStatus() != WorkflowStatus.CANCELLED) {
+        state.setStatus(WorkflowStatus.CANCELLED);
+        state.setLastUpdatedAt(clock.instant());
+      }
+    }
+  }
+
+  /**
+   * Attempts to transition {@code state} into the terminal {@code target} status, but only if it has
+   * not already reached any terminal status ({@link WorkflowStatus#CANCELLED},
+   * {@link WorkflowStatus#COMPLETED}, or {@link WorkflowStatus#FAILED}) — whichever of
+   * {@link #cancel}, {@link #finaliseDrive}'s {@code COMPLETED}/{@code FAILED} arms, or
+   * {@link #failRun} first reaches this check wins, and every later caller for the same run is a
+   * no-op that mutates and records nothing. Callers must hold this run's own {@link #runLock} for the
+   * whole check-and-set (and any event recording contingent on it).
+   *
+   * @return {@code true} if this call's transition was applied (this call won); {@code false} if the
+   * run had already reached a (possibly different) terminal status
+   */
+  private static boolean tryEnterTerminalStatus(WorkflowState state, WorkflowStatus target) {
+    if (isTerminal(state.getStatus())) {
+      return false;
+    }
+    state.setStatus(target);
+    return true;
   }
 
   private static boolean isTerminal(WorkflowStatus status) {
@@ -1057,14 +1160,15 @@ public final class DefaultWorkflowRuntime implements WorkflowRuntime {
     state.setLastUpdatedAt(clock.instant());
     switch (outcome) {
       case COMPLETED -> {
-        // Synchronized against cancel()'s own check-then-set on the same per-run monitor: a
-        // concurrent cancel() may transition the run to CANCELLED (and record RUN_CANCELLED) while
-        // the last step was still executing on this drive, and without this lock the two
-        // check-then-set sequences could interleave so this arm overwrites CANCELLED back to
-        // COMPLETED. Exactly one of the two wins the terminal status atomically.
+        // Synchronized against cancel()'s and failRun()'s own check-then-set on the same per-run
+        // lock: a concurrent cancel() may transition the run to CANCELLED (and record RUN_CANCELLED)
+        // while the last step was still executing on this drive, and a concurrent failure on another
+        // overlapping drive of the same run (a caller-side contract violation this still defends
+        // against) may transition it to FAILED — either winning first must make this arm a no-op.
+        // tryEnterTerminalStatus makes exactly one of any racing cancel/complete/fail set win the
+        // terminal status atomically; the loser here records nothing.
         synchronized (runLock(state.getRunId())) {
-          if (state.getStatus() != WorkflowStatus.CANCELLED) {
-            state.setStatus(WorkflowStatus.COMPLETED);
+          if (tryEnterTerminalStatus(state, WorkflowStatus.COMPLETED)) {
             eventRecorder.record(state.getRunId(), null,
                 WorkflowEventType.RUN_COMPLETED, null, "runtime");
           }
@@ -1072,22 +1176,22 @@ public final class DefaultWorkflowRuntime implements WorkflowRuntime {
       }
       case PAUSED -> {
         // Handlers have already set a fine-grained status (AWAITING_INPUT /
-        // AWAITING_APPROVAL / PAUSED) — do not overwrite it here.
+        // AWAITING_APPROVAL / PAUSED) — do not overwrite it here. enforceCancellationWon (in drive()'s
+        // finally block) still corrects this afterward if a concurrent cancel() was clobbered by that
+        // handler's own unsynchronized status write.
       }
       case FAILED -> {
         // A handler (e.g. MaxIterationsHandler on MaxIterationsAction.FAIL) may already have
         // transitioned the run to FAILED and recorded its own RUN_FAILED event with a specific
-        // payload; guard on both CANCELLED and FAILED so this generic fallback never double-fires
-        // RUN_FAILED for the same terminal failure. The FAILED half of the guard is currently
-        // unreachable in practice (the only present ExecutionOutcome.FAILED producer,
-        // MaxIterationsHandler.handleFailed, always sets FAILED and records RUN_FAILED itself
-        // first); it is kept as defense-in-depth against a future FAILED-outcome producer that
-        // does not self-record RUN_FAILED. Synchronized against cancel() for the same reason as the
-        // COMPLETED arm above.
+        // payload; tryEnterTerminalStatus's terminal-status guard (any of CANCELLED/COMPLETED/FAILED)
+        // makes this generic fallback a no-op in that case, never double-firing RUN_FAILED for the
+        // same terminal failure. The FAILED half of that guard is currently unreachable in practice
+        // (the only present ExecutionOutcome.FAILED producer, MaxIterationsHandler.handleFailed,
+        // always sets FAILED and records RUN_FAILED itself first); it is kept as defense-in-depth
+        // against a future FAILED-outcome producer that does not self-record RUN_FAILED. Synchronized
+        // against cancel()/failRun() for the same reason as the COMPLETED arm above.
         synchronized (runLock(state.getRunId())) {
-          if (state.getStatus() != WorkflowStatus.CANCELLED
-              && state.getStatus() != WorkflowStatus.FAILED) {
-            state.setStatus(WorkflowStatus.FAILED);
+          if (tryEnterTerminalStatus(state, WorkflowStatus.FAILED)) {
             eventRecorder.record(state.getRunId(), state.getCurrentStepId(),
                 WorkflowEventType.RUN_FAILED, null, "runtime");
           }
@@ -1097,20 +1201,20 @@ public final class DefaultWorkflowRuntime implements WorkflowRuntime {
   }
 
   private void failRun(WorkflowState state, String failedStepId, RuntimeException throwable) {
-    // Synchronized against cancel() for the same reason as finaliseDrive's terminal arms: a
-    // concurrent cancel() must atomically win or lose against this failure transition.
+    // Synchronized against cancel()/finaliseDrive() for the same reason as finaliseDrive's terminal
+    // arms: whichever of a concurrent cancel(), a concurrent completion, or this failure reaches the
+    // terminal-status guard first wins; every other one is a no-op.
     synchronized (runLock(state.getRunId())) {
-      if (state.getStatus() == WorkflowStatus.CANCELLED) {
+      if (!tryEnterTerminalStatus(state, WorkflowStatus.FAILED)) {
         String supportId = UUID.randomUUID().toString();
         LOG.log(System.Logger.Level.INFO,
-            "Throwable during cancelled run suppressed runId={0} supportId={1}",
-            state.getRunId(), supportId);
+            "Throwable during already-terminal run (status={0}) suppressed runId={1} supportId={2}",
+            state.getStatus(), state.getRunId(), supportId);
         LOG.log(System.Logger.Level.DEBUG,
-            "Cancelled run throwable detail supportId=" + supportId, throwable);
+            "Already-terminal run throwable detail supportId=" + supportId, throwable);
         return;
       }
       String supportId = UUID.randomUUID().toString();
-      state.setStatus(WorkflowStatus.FAILED);
       state.setRunFailure(new RunFailure.ExceptionFailure(
           failureSanitiser.sanitiseFailureReason(failedStepId, throwable),
           failedStepId,

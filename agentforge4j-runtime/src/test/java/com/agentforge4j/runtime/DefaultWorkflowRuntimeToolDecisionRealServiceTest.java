@@ -6,6 +6,7 @@ import com.agentforge4j.core.command.ToolInvocationCommand;
 import com.agentforge4j.core.spi.tool.ApprovalDecision;
 import com.agentforge4j.core.spi.tool.HealthStatus;
 import com.agentforge4j.core.spi.tool.PendingToolInvocation;
+import com.agentforge4j.core.spi.tool.PendingToolInvocationStore;
 import com.agentforge4j.core.spi.tool.PolicyDecision;
 import com.agentforge4j.core.spi.tool.PolicyDenialTerminalException;
 import com.agentforge4j.core.spi.tool.ToolDecision;
@@ -54,7 +55,10 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.CyclicBarrier;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -367,6 +371,248 @@ class DefaultWorkflowRuntimeToolDecisionRealServiceTest {
         .count()).isEqualTo(1);
   }
 
+  /**
+   * {@code ToolDecision.Continue} did not participate in the atomic claim protocol: it applied an
+   * error and dropped the pending row using a plain {@code remove(runId, toolInvocationId)}, keyed
+   * only by id. Racing it against a {@code Retry} on the same pending (execution-failure) row must
+   * now leave exactly one winner — the loser observes the typed conflict, never a silently-applied
+   * second result.
+   */
+  @Test
+  void concurrentContinueAndRetryOnAnExecutionFailureRaceLeavesExactlyOneWinner()
+      throws InterruptedException {
+    provider.failFirstInvocation = true;
+    DefaultToolExecutionService toolService = toolService(allow());
+    WorkflowState state = seedState();
+    ToolInvocationCommand command = command();
+    ToolExecutionOutcome first = toolService.execute(command, ctx(state));
+    assertThat(first.status()).isEqualTo(ToolExecutionOutcome.Status.FAILED);
+    state.setStatus(WorkflowStatus.AWAITING_TOOL_DECISION);
+    stateRepo.save(state);
+
+    DefaultWorkflowRuntime runtime = runtime(toolService);
+
+    CyclicBarrier barrier = new CyclicBarrier(2);
+    List<WorkflowState> successes = Collections.synchronizedList(new ArrayList<>());
+    List<Throwable> conflicts = Collections.synchronizedList(new ArrayList<>());
+    Thread continueThread = new Thread(() -> {
+      awaitBarrier(barrier);
+      try {
+        successes.add(runtime.resolveToolDecision(
+            "run-1", command.toolInvocationId(), new ToolDecision.Continue("op-continue")));
+      } catch (ToolInvocationClaimLostException e) {
+        conflicts.add(e);
+      }
+    });
+    Thread retryThread = new Thread(() -> {
+      awaitBarrier(barrier);
+      try {
+        successes.add(runtime.resolveToolDecision(
+            "run-1", command.toolInvocationId(), new ToolDecision.Retry("op-retry")));
+      } catch (ToolInvocationClaimLostException e) {
+        conflicts.add(e);
+      }
+    });
+    continueThread.start();
+    retryThread.start();
+    continueThread.join();
+    retryThread.join();
+
+    assertThat(successes).hasSize(1);
+    assertThat(conflicts).hasSize(1);
+    // The initial execute() already invoked the provider once (and failed); the winner is either
+    // Continue (no further invocation) or Retry (one more, successful) — never both.
+    assertThat(provider.invocations).isBetween(1, 2);
+
+    List<WorkflowEventType> eventTypes = eventLog.getEvents("run-1").stream()
+        .map(WorkflowEvent::eventType)
+        .toList();
+    assertThat(eventTypes.stream().filter(t -> t == WorkflowEventType.RUN_COMPLETED).count())
+        .isEqualTo(1);
+
+    // No contradictory tool result/error: exactly one of the two possible context outcomes exists,
+    // never both and never neither.
+    WorkflowState finalState = stateRepo.findById("run-1").orElseThrow();
+    boolean hasSuccessValue = finalState.getContextValue("tool." + CAPABILITY).isPresent();
+    boolean hasErrorValue = finalState.getContextValue("tool." + CAPABILITY + ".error").isPresent();
+    assertThat(hasSuccessValue ^ hasErrorValue).isTrue();
+  }
+
+  /**
+   * Two concurrent {@code Continue} calls against the same pending row must not both apply the
+   * error result: exactly one claims the row, the other observes the typed conflict.
+   */
+  @Test
+  void concurrentContinueAndContinueRaceLeavesExactlyOneWinner() throws InterruptedException {
+    DefaultToolExecutionService toolService = toolService(deny("nope"));
+    WorkflowState state = seedState();
+    ToolInvocationCommand command = command();
+    ToolExecutionOutcome denyOutcome = toolService.execute(command, ctx(state));
+    assertThat(denyOutcome.status()).isEqualTo(ToolExecutionOutcome.Status.DENIED);
+    state.setStatus(WorkflowStatus.AWAITING_TOOL_DECISION);
+    stateRepo.save(state);
+
+    DefaultWorkflowRuntime runtime = runtime(toolService);
+
+    CyclicBarrier barrier = new CyclicBarrier(2);
+    List<WorkflowState> successes = Collections.synchronizedList(new ArrayList<>());
+    List<Throwable> conflicts = Collections.synchronizedList(new ArrayList<>());
+    List<Thread> threads = new ArrayList<>();
+    for (int i = 0; i < 2; i++) {
+      String op = "op-" + i;
+      Thread thread = new Thread(() -> {
+        awaitBarrier(barrier);
+        try {
+          successes.add(runtime.resolveToolDecision(
+              "run-1", command.toolInvocationId(), new ToolDecision.Continue(op)));
+        } catch (ToolInvocationClaimLostException e) {
+          conflicts.add(e);
+        }
+      });
+      threads.add(thread);
+      thread.start();
+    }
+    for (Thread thread : threads) {
+      thread.join();
+    }
+
+    assertThat(successes).hasSize(1);
+    assertThat(conflicts).hasSize(1);
+    assertThat(provider.invocations).isZero();
+    assertThat(successes.get(0).getStatus()).isEqualTo(WorkflowStatus.COMPLETED);
+    List<WorkflowEventType> eventTypes = eventLog.getEvents("run-1").stream()
+        .map(WorkflowEvent::eventType)
+        .toList();
+    assertThat(eventTypes.stream().filter(t -> t == WorkflowEventType.RUN_COMPLETED).count())
+        .isEqualTo(1);
+  }
+
+  /**
+   * Deterministic proof (no timing race — a store-level interceptor forces the exact interleaving)
+   * that a {@code Continue} call which peeked a row before a concurrent {@code Retry} replaced it
+   * cannot consume the replacement under stale authorization. The interceptor delays only the very
+   * first {@code claim} attempt (the {@code Continue} call's own), letting the {@code Retry}'s own
+   * peek-then-claim run to completion — including persisting its failure replacement — before the
+   * blocked {@code Continue} call is allowed to attempt its own (now-stale) claim.
+   */
+  @Test
+  void staleContinueClaimAgainstAReplacementRowFromAFailedRetryIsRejectedWithoutConsumingIt()
+      throws Exception {
+    // Distinct failure reasons per invocation, so the replacement row's content is genuinely
+    // different from the row Continue observed — matching a real provider, whose retried failure
+    // detail (or timestamp) will practically never collide with the original. A provider that always
+    // fails with the exact same message under this suite's fixed clock would make the two rows
+    // value-equal, which is not the scenario under test here.
+    provider.alwaysFailWithDistinctReasons = true;
+    ClaimDelayingStore delayingStore = new ClaimDelayingStore(store);
+    DefaultToolExecutionService toolService = new DefaultToolExecutionService(
+        new IntegrationToolProviderResolver(new InMemoryIntegrationRepository(), unusedFactory(),
+            List.of(provider)),
+        allow(), delayingStore, ToolExecutionOptions.defaults(), eventRecorder,
+        new ObjectMapper(), CLOCK);
+    WorkflowState state = seedState();
+    ToolInvocationCommand command = command();
+    toolService.execute(command, ctx(state));
+    state.setStatus(WorkflowStatus.AWAITING_TOOL_DECISION);
+    stateRepo.save(state);
+
+    when(stepSequenceExecutor.executeAll(anyList(), any())).thenReturn(ExecutionOutcome.COMPLETED);
+    DefaultWorkflowRuntime runtime = new DefaultWorkflowRuntime(
+        new InMemoryWorkflowRepository(Map.of("wf-1", workflow())),
+        stateRepo,
+        stepSequenceExecutor,
+        eventRecorder,
+        CLOCK,
+        RunContextManager.NO_OP,
+        DefaultWorkflowRuntime.DEFAULT_MAX_NESTING_DEPTH,
+        toolService,
+        delayingStore,
+        new DefaultRequirementResolver(),
+        new TransitionGate(eventRecorder),
+        RunExecutionInterceptor.NO_OP,
+        new InMemoryGeneratedArtifactStore());
+
+    AtomicReference<Throwable> continueError = new AtomicReference<>();
+    Thread continueThread = new Thread(() -> {
+      try {
+        runtime.resolveToolDecision(
+            "run-1", command.toolInvocationId(), new ToolDecision.Continue("op-continue"));
+      } catch (Throwable t) {
+        continueError.set(t);
+      }
+    });
+    continueThread.start();
+    delayingStore.claimAttempted.await();
+
+    // While Continue is blocked inside its own (first) claim attempt, holding the pre-replacement
+    // row reference, a Retry runs to completion: it fails again and persists a replacement pending
+    // row (a fresh EXECUTION_FAILED row, different content from the one Continue observed).
+    runtime.resolveToolDecision("run-1", command.toolInvocationId(), new ToolDecision.Retry("op-retry"));
+    PendingToolInvocation replacement = store.find("run-1", command.toolInvocationId());
+    assertThat(replacement).isNotNull();
+    assertThat(replacement.origin()).isEqualTo(PendingToolInvocation.Origin.EXECUTION_FAILED);
+
+    delayingStore.proceed.countDown();
+    continueThread.join();
+
+    assertThat(continueError.get()).isInstanceOf(ToolInvocationClaimLostException.class);
+    // The replacement must remain exactly as Retry left it — Continue's stale claim attempt must
+    // not have consumed or otherwise altered it — so a later legitimate decision can still resolve it.
+    assertThat(store.find("run-1", command.toolInvocationId())).isSameAs(replacement);
+  }
+
+  /**
+   * Delegates every call to the wrapped store, except that the very first {@link #claim} call
+   * blocks (after signalling {@link #claimAttempted}) until {@link #proceed} is counted down —
+   * deterministically forcing a claim attempt to be stale by the time it actually runs, without any
+   * timing-dependent race.
+   */
+  private static final class ClaimDelayingStore implements PendingToolInvocationStore {
+
+    private final PendingToolInvocationStore delegate;
+    private final CountDownLatch claimAttempted = new CountDownLatch(1);
+    private final CountDownLatch proceed = new CountDownLatch(1);
+    private final AtomicBoolean intercepted = new AtomicBoolean(false);
+
+    ClaimDelayingStore(PendingToolInvocationStore delegate) {
+      this.delegate = delegate;
+    }
+
+    @Override
+    public void save(PendingToolInvocation pending) {
+      delegate.save(pending);
+    }
+
+    @Override
+    public PendingToolInvocation find(String runId, String toolInvocationId) {
+      return delegate.find(runId, toolInvocationId);
+    }
+
+    @Override
+    public List<PendingToolInvocation> findByRun(String runId) {
+      return delegate.findByRun(runId);
+    }
+
+    @Override
+    public void remove(String runId, String toolInvocationId) {
+      delegate.remove(runId, toolInvocationId);
+    }
+
+    @Override
+    public PendingToolInvocation claim(String runId, String toolInvocationId,
+        PendingToolInvocation expectedPending) {
+      if (intercepted.compareAndSet(false, true)) {
+        claimAttempted.countDown();
+        try {
+          proceed.await();
+        } catch (InterruptedException e) {
+          Thread.currentThread().interrupt();
+        }
+      }
+      return delegate.claim(runId, toolInvocationId, expectedPending);
+    }
+  }
+
   private static void awaitBarrier(CyclicBarrier barrier) {
     try {
       barrier.await();
@@ -471,6 +717,7 @@ class DefaultWorkflowRuntimeToolDecisionRealServiceTest {
     private int invocations;
     private boolean failFirstInvocation;
     private boolean alwaysFail;
+    private boolean alwaysFailWithDistinctReasons;
 
     @Override
     public String providerId() {
@@ -488,6 +735,9 @@ class DefaultWorkflowRuntimeToolDecisionRealServiceTest {
     public ToolResult invoke(ToolDescriptor descriptor, String arguments,
         ToolInvocationContext ctx, ToolExecutionOptions options) {
       invocations++;
+      if (alwaysFailWithDistinctReasons) {
+        return ToolResult.failure("boom-" + invocations, 1L);
+      }
       if (alwaysFail || (failFirstInvocation && invocations == 1)) {
         return ToolResult.failure("boom", 1L);
       }

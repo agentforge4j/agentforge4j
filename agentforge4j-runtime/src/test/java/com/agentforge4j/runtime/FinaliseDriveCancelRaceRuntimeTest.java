@@ -165,6 +165,126 @@ class FinaliseDriveCancelRaceRuntimeTest {
     assertThat(countEvents(eventLog, runId, WorkflowEventType.RUN_COMPLETED)).isEqualTo(1);
   }
 
+  /**
+   * The gap {@code finaliseDrive}'s {@code PAUSED} arm left open: nothing there ever checked for a
+   * concurrent cancellation, because the fine-grained suspension status ({@code AWAITING_INPUT} here)
+   * is deliberately left to whichever handler set it. Genuinely concurrent, via the real
+   * {@code cancel()} API on a second thread: the mocked {@link StepSequenceExecutor} blocks (signalling
+   * entry first) until {@code cancel()} has returned, then — simulating a step handler that is entirely
+   * unaware of the concurrent cancellation — sets {@code AWAITING_INPUT} directly on the shared state
+   * and reports {@code PAUSED}. {@code enforceCancellationWon} must restore {@code CANCELLED}
+   * afterward, with no contradictory completion/failure event.
+   */
+  @Test
+  void cancelWhileBlockedThenHandlerSetsAwaitingStatusAndReturnsPausedStaysCancelled()
+      throws InterruptedException {
+    InMemoryWorkflowStateRepository stateRepository = new InMemoryWorkflowStateRepository();
+    StepSequenceExecutor stepSequenceExecutor = mock(StepSequenceExecutor.class);
+    InMemoryWorkflowEventLog eventLog = new InMemoryWorkflowEventLog();
+    EventRecorder eventRecorder = new EventRecorder(eventLog, CLOCK);
+
+    CountDownLatch driveEnteredExecuteAll = new CountDownLatch(1);
+    CountDownLatch cancelReturned = new CountDownLatch(1);
+    when(stepSequenceExecutor.executeAll(anyList(), any())).thenAnswer(invocation -> {
+      driveEnteredExecuteAll.countDown();
+      cancelReturned.await();
+      ExecutionContext context = invocation.getArgument(1);
+      context.getState().setStatus(WorkflowStatus.AWAITING_INPUT);
+      return ExecutionOutcome.PAUSED;
+    });
+
+    WorkflowDefinition workflow = workflow("wf-cancel-then-pause");
+    DefaultWorkflowRuntime runtime = runtime(stateRepository, stepSequenceExecutor, eventRecorder);
+
+    WorkflowState seeded = new WorkflowState("run-cancel-then-pause", workflow.id(), null,
+        Instant.parse("2026-07-01T12:00:00Z"));
+    seeded.setStatus(WorkflowStatus.PAUSED);
+    stateRepository.save(seeded);
+
+    Thread driveThread = new Thread(() -> runtime.continueRun(seeded.getRunId(), "resumer"));
+    driveThread.start();
+    try {
+      driveEnteredExecuteAll.await();
+      runtime.cancel(seeded.getRunId(), "operator");
+      cancelReturned.countDown();
+      driveThread.join();
+
+      assertThat(runtime.getState(seeded.getRunId()).getStatus()).isEqualTo(WorkflowStatus.CANCELLED);
+      assertThat(countEvents(eventLog, seeded.getRunId(), WorkflowEventType.RUN_CANCELLED))
+          .isEqualTo(1);
+      assertThat(countEvents(eventLog, seeded.getRunId(), WorkflowEventType.RUN_COMPLETED)).isZero();
+      assertThat(countEvents(eventLog, seeded.getRunId(), WorkflowEventType.RUN_FAILED)).isZero();
+    } finally {
+      cancelReturned.countDown();
+      driveThread.join();
+    }
+  }
+
+  /**
+   * Before this fix, {@code finaliseDrive}'s {@code COMPLETED} arm excluded only {@code CANCELLED},
+   * so it could overwrite a {@code FAILED} status a handler had already committed (and already
+   * recorded {@code RUN_FAILED} for) with a contradictory {@code COMPLETED}/{@code RUN_COMPLETED}.
+   * Deterministic, single-threaded simulation (the same established idiom as this file's first test
+   * above): the mocked executor plays the handler's already-applied failure directly on the shared
+   * state before returning {@code COMPLETED} as the (mismatched) top-level outcome.
+   */
+  @Test
+  void aHandlerCommittedFailureWinsOverAMismatchedCompletedOutcome() {
+    InMemoryWorkflowStateRepository stateRepository = new InMemoryWorkflowStateRepository();
+    StepSequenceExecutor stepSequenceExecutor = mock(StepSequenceExecutor.class);
+    InMemoryWorkflowEventLog eventLog = new InMemoryWorkflowEventLog();
+    EventRecorder eventRecorder = new EventRecorder(eventLog, CLOCK);
+
+    when(stepSequenceExecutor.executeAll(anyList(), any())).thenAnswer(invocation -> {
+      ExecutionContext context = invocation.getArgument(1);
+      WorkflowState state = context.getState();
+      state.setStatus(WorkflowStatus.FAILED);
+      eventRecorder.record(state.getRunId(), state.getCurrentStepId(),
+          WorkflowEventType.RUN_FAILED, null, "runtime");
+      return ExecutionOutcome.COMPLETED;
+    });
+
+    WorkflowDefinition workflow = workflow("wf-failed-before-completed-outcome");
+    DefaultWorkflowRuntime runtime = runtime(stateRepository, stepSequenceExecutor, eventRecorder);
+    String runId = runtime.start(workflow.id());
+
+    assertThat(runtime.getState(runId).getStatus()).isEqualTo(WorkflowStatus.FAILED);
+    assertThat(countEvents(eventLog, runId, WorkflowEventType.RUN_FAILED)).isEqualTo(1);
+    assertThat(countEvents(eventLog, runId, WorkflowEventType.RUN_COMPLETED)).isZero();
+  }
+
+  /**
+   * The reverse ordering: before this fix, {@code failRun} excluded only {@code CANCELLED}, so an
+   * exception reaching {@code drive()}'s catch block after the run had already committed to
+   * {@code COMPLETED} (and already recorded {@code RUN_COMPLETED}) would still overwrite it with a
+   * contradictory {@code FAILED}/{@code RUN_FAILED}. Same deterministic, single-threaded idiom: the
+   * mocked executor commits {@code COMPLETED} directly on the shared state, then throws.
+   */
+  @Test
+  void aHandlerCommittedCompletionWinsOverASubsequentThrowLeadingToFailRun() {
+    InMemoryWorkflowStateRepository stateRepository = new InMemoryWorkflowStateRepository();
+    StepSequenceExecutor stepSequenceExecutor = mock(StepSequenceExecutor.class);
+    InMemoryWorkflowEventLog eventLog = new InMemoryWorkflowEventLog();
+    EventRecorder eventRecorder = new EventRecorder(eventLog, CLOCK);
+
+    when(stepSequenceExecutor.executeAll(anyList(), any())).thenAnswer(invocation -> {
+      ExecutionContext context = invocation.getArgument(1);
+      WorkflowState state = context.getState();
+      state.setStatus(WorkflowStatus.COMPLETED);
+      eventRecorder.record(state.getRunId(), null,
+          WorkflowEventType.RUN_COMPLETED, null, "runtime");
+      throw new IllegalStateException("unexpected failure after commit");
+    });
+
+    WorkflowDefinition workflow = workflow("wf-completed-before-throw");
+    DefaultWorkflowRuntime runtime = runtime(stateRepository, stepSequenceExecutor, eventRecorder);
+    String runId = runtime.start(workflow.id());
+
+    assertThat(runtime.getState(runId).getStatus()).isEqualTo(WorkflowStatus.COMPLETED);
+    assertThat(countEvents(eventLog, runId, WorkflowEventType.RUN_COMPLETED)).isEqualTo(1);
+    assertThat(countEvents(eventLog, runId, WorkflowEventType.RUN_FAILED)).isZero();
+  }
+
   private static WorkflowDefinition workflow(String id) {
     return new WorkflowDefinition(
         id, id, null, null, null, null, null,
@@ -183,7 +303,10 @@ class FinaliseDriveCancelRaceRuntimeTest {
         new InMemoryWorkflowRepository(Map.of(
             "wf-cancel-race", workflow("wf-cancel-race"),
             "wf-cancel-wins-race", workflow("wf-cancel-wins-race"),
-            "wf-completed-before-cancel", workflow("wf-completed-before-cancel"))),
+            "wf-completed-before-cancel", workflow("wf-completed-before-cancel"),
+            "wf-cancel-then-pause", workflow("wf-cancel-then-pause"),
+            "wf-failed-before-completed-outcome", workflow("wf-failed-before-completed-outcome"),
+            "wf-completed-before-throw", workflow("wf-completed-before-throw"))),
         stateRepository,
         stepSequenceExecutor,
         eventRecorder,

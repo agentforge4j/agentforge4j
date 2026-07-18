@@ -28,17 +28,21 @@ public interface ToolExecutionService {
    * {@link PendingToolInvocation.Origin#EXECUTION_FAILED} row, the human decision supersedes the
    * original {@link PolicyDecision.RequireApproval} rule: policy is not re-evaluated. The capability
    * is re-resolved and arguments re-validated against current configuration, and the pending record
-   * is atomically claimed (see {@link PendingToolInvocationStore#claim}) before invocation so that
-   * two concurrent resumes on the same invocation never both execute; the loser observes a
-   * claimed/not-pending {@link ToolExecutionOutcome.Status#FAILED} outcome instead. If the claimed
-   * attempt itself fails, a fresh pending row is persisted so the operator gets a further decision
-   * point.
+   * is atomically claimed — tied to the exact row this call observed (see
+   * {@link PendingToolInvocationStore#claim}) — before invocation, so that two concurrent resumes on
+   * the same invocation never both execute. There is no claimable pending row for this invocation —
+   * whether because it was never pending, already resolved, or claimed/replaced by a concurrent
+   * resume before this call's own claim attempt — this call throws
+   * {@link ToolInvocationClaimLostException} without mutating any state; this is a benign
+   * concurrency-loss signal, never reported as a provider/tool failure. If the claimed attempt
+   * itself fails, a fresh pending row is persisted so the operator gets a further decision point.
    *
    * <p>For a {@link PendingToolInvocation.Origin#POLICY_DENIED} row the denial is terminal:
    * {@link ApprovalDecision.Approve} is rejected with a {@link PolicyDenialTerminalException}
    * without invoking the provider and without consuming the pending row; only
    * {@link ApprovalDecision.Reject} resolves it through this method (the runtime's non-executing
-   * {@code ToolDecision.Continue} resolves it without ever calling {@code resume}).
+   * {@code ToolDecision.Continue} resolves it without ever calling {@code resume} — it claims the
+   * pending row directly, using the same atomic, exact-row-tied contract).
    *
    * @param runId            non-blank run that owns the pending invocation
    * @param toolInvocationId non-blank pending invocation id
@@ -49,6 +53,10 @@ public interface ToolExecutionService {
    * @throws PolicyDenialTerminalException if {@code decision} is {@link ApprovalDecision.Approve}
    *                                        and the pending row's origin is
    *                                        {@link PendingToolInvocation.Origin#POLICY_DENIED}
+   * @throws ToolInvocationClaimLostException if there is no claimable pending row for this
+   *                                        invocation, whether because it was never pending,
+   *                                        already resolved, or claimed/replaced by a concurrent
+   *                                        resume before this call's own claim attempt
    */
   ToolExecutionOutcome resume(String runId, String toolInvocationId, ApprovalDecision decision);
 }

@@ -14,6 +14,8 @@ import com.agentforge4j.core.workflow.context.ContextMapping;
 import com.agentforge4j.core.workflow.context.ContextProvenance;
 import com.agentforge4j.core.workflow.context.StringContextValue;
 import com.agentforge4j.core.workflow.event.WorkflowEventType;
+import com.agentforge4j.core.workflow.repository.WorkflowRepository;
+import com.agentforge4j.core.workflow.requirement.DefaultRequirementResolver;
 import com.agentforge4j.core.workflow.state.WorkflowState;
 import com.agentforge4j.core.workflow.state.WorkflowStatus;
 import com.agentforge4j.core.workflow.step.StepDefinition;
@@ -31,6 +33,9 @@ import com.agentforge4j.llm.LlmClientResolver;
 import com.agentforge4j.runtime.command.FileSink;
 import com.agentforge4j.runtime.command.ShellCommandRunner;
 import com.agentforge4j.runtime.event.EventRecorder;
+import com.agentforge4j.runtime.execution.StepSequenceExecutor;
+import com.agentforge4j.runtime.execution.TransitionGate;
+import com.agentforge4j.runtime.interceptor.RunExecutionInterceptor;
 import com.agentforge4j.runtime.llm.AgentInvoker;
 import com.agentforge4j.runtime.llm.ContextRenderer;
 import com.agentforge4j.runtime.llm.FirstAvailableProviderSelectionStrategy;
@@ -268,6 +273,54 @@ class WorkflowRuntimeCollectionGateTest {
     assertThat(after.getRunFailure().failureReason())
         .contains("collect-in-late-sub")
         .contains("CollectionBehaviour");
+  }
+
+  @Test
+  void start_rejectsWhenGetAndFindAllDisagreeAndGetsOwnResultCarriesTheCollectionStep() {
+    // A WorkflowRepository whose get() and findAll() genuinely disagree for the same id — get()
+    // (what start() actually drives) returns a COLLECTION-bearing definition, while findAll()'s
+    // separate snapshot for that same id is clean. Validating only findAll() would miss this
+    // entirely; start() must validate the exact object it retrieved via get().
+    WorkflowDefinition brokenAsRetrievedByGet = workflow("wf-divergent", Map.of(),
+        List.of(collectionStep("collect1")));
+    WorkflowDefinition cleanAsSeenByFindAll = workflow("wf-divergent", Map.of(),
+        List.of(resourceStep("s1", "s1.out")));
+    WorkflowRepository divergent = new WorkflowRepository() {
+      @Override
+      public WorkflowDefinition get(String id) {
+        return brokenAsRetrievedByGet;
+      }
+
+      @Override
+      public Map<String, WorkflowDefinition> findAll() {
+        return Map.of(cleanAsSeenByFindAll.id(), cleanAsSeenByFindAll);
+      }
+    };
+    InMemoryWorkflowStateRepository stateRepository = new InMemoryWorkflowStateRepository();
+    InMemoryWorkflowEventLog eventLog = new InMemoryWorkflowEventLog();
+    EventRecorder eventRecorder = new EventRecorder(eventLog, CLOCK);
+    DefaultWorkflowRuntime runtime = new DefaultWorkflowRuntime(
+        divergent,
+        stateRepository,
+        mock(StepSequenceExecutor.class),
+        eventRecorder,
+        CLOCK,
+        RunContextManager.NO_OP,
+        DefaultWorkflowRuntime.DEFAULT_MAX_NESTING_DEPTH,
+        null,
+        null,
+        new DefaultRequirementResolver(),
+        new TransitionGate(eventRecorder),
+        RunExecutionInterceptor.NO_OP,
+        new InMemoryGeneratedArtifactStore());
+
+    assertThatThrownBy(() -> runtime.start("wf-divergent"))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("collect1")
+        .hasMessageContaining("CollectionBehaviour");
+
+    assertThat(stateRepository.findAll()).isEmpty();
+    assertThat(eventLog.getEvents("wf-divergent")).isEmpty();
   }
 
   @Test
