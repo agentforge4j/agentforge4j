@@ -41,7 +41,14 @@ public interface WorkflowRuntime {
   void continueRun(String runId, String actorId);
 
   /**
-   * Retry the given step on the given run. Honours the step's {@code RetryPolicy}.
+   * Retry the given step on the given run. Honours the step's {@code RetryPolicy}: an AGENT or SPAR target is retried
+   * only when its policy's {@code allowRetry} is {@code true} and the number of attempts already made against that
+   * step's shared attempt budget — shared between this verb and any {@code RETRY_PREVIOUS} step targeting the same
+   * step — is still under the policy's {@code maxAttempts} ceiling; a granted retry consumes one unit of that budget.
+   * An AGENT/SPAR step that declares <strong>no</strong> policy defaults to {@code RetryPolicy.none()} and is
+   * therefore <strong>not retryable at all</strong> through this verb (fail-closed). A step type with no
+   * {@code RetryPolicy} concept (anything other than AGENT/SPAR) is unrestricted. A rejected retry throws
+   * {@link IllegalStateException} and leaves the run untouched.
    *
    * <p>{@code stepId} must name a <strong>top-level</strong> step — one that appears directly in the
    * workflow's top-level sequence. The run is repositioned at that step and the sequence is re-driven, so the target
@@ -53,6 +60,10 @@ public interface WorkflowRuntime {
    * @param stepId  id of the top-level step to retry
    * @param actorId Opaque identifier supplied by the embedding application representing the entity responsible for the
    *                action. AgentForge4j treats the value as opaque and does not interpret its structure or meaning.
+   *
+   * @throws IllegalStateException if the target's {@code RetryPolicy} forbids operator retry
+   *                               ({@code allowRetry=false} — including the undeclared-policy {@code RetryPolicy.none()}
+   *                               default), or its shared {@code maxAttempts} ceiling is already reached
    */
   void retry(String runId, String stepId, String actorId);
 

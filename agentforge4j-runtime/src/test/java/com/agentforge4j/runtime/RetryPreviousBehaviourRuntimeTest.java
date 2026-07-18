@@ -3,7 +3,19 @@ package com.agentforge4j.runtime;
 
 import com.agentforge4j.config.loader.repository.InMemoryWorkflowRepository;
 import com.agentforge4j.core.command.ContinueCommand;
+import com.agentforge4j.core.command.ToolInvocationCommand;
 import com.agentforge4j.core.runtime.WorkflowRuntime;
+import com.agentforge4j.core.spi.tool.ApprovalDecision;
+import com.agentforge4j.core.spi.tool.HealthStatus;
+import com.agentforge4j.core.spi.tool.PolicyDecision;
+import com.agentforge4j.core.spi.tool.ToolDescriptor;
+import com.agentforge4j.core.spi.tool.ToolExecutionOptions;
+import com.agentforge4j.core.spi.tool.ToolInvocationContext;
+import com.agentforge4j.core.spi.tool.ToolProvider;
+import com.agentforge4j.core.spi.tool.ToolResult;
+import com.agentforge4j.core.spi.tool.ToolRiskMetadata;
+import com.agentforge4j.core.spi.tool.ToolSource;
+import com.agentforge4j.core.spi.tool.ToolSourceKind;
 import com.agentforge4j.core.workflow.WorkflowDefinition;
 import com.agentforge4j.core.workflow.WorkflowLifecycle;
 import com.agentforge4j.core.workflow.WorkflowSource;
@@ -29,11 +41,17 @@ import com.agentforge4j.core.workflow.step.behaviour.RetryPreviousBehaviour;
 import com.agentforge4j.core.workflow.step.retry.RetryPolicy;
 import com.agentforge4j.runtime.command.FileSink;
 import com.agentforge4j.runtime.command.ShellCommandRunner;
+import com.agentforge4j.runtime.event.EventRecorder;
 import com.agentforge4j.runtime.execution.RetryPolicyAttemptCounter;
 import com.agentforge4j.runtime.llm.AgentInvocationResult;
 import com.agentforge4j.runtime.llm.AgentInvoker;
 import com.agentforge4j.runtime.repository.InMemoryWorkflowEventLog;
 import com.agentforge4j.runtime.repository.InMemoryWorkflowStateRepository;
+import com.agentforge4j.runtime.tool.DefaultToolExecutionService;
+import com.agentforge4j.runtime.tool.InMemoryIntegrationRepository;
+import com.agentforge4j.runtime.tool.InMemoryPendingToolInvocationStore;
+import com.agentforge4j.runtime.tool.IntegrationToolProviderResolver;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
@@ -43,7 +61,10 @@ import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /**
@@ -54,6 +75,8 @@ import static org.mockito.Mockito.when;
  * unit-mocked executor, so the resume-skip guard is genuinely exercised.
  */
 class RetryPreviousBehaviourRuntimeTest {
+
+  private static final String TOOL_CAPABILITY = "github.create_pull_request";
 
   @Test
   void retry_previous_does_not_refire_on_a_downstream_resume() {
@@ -375,6 +398,214 @@ class RetryPreviousBehaviourRuntimeTest {
     assertThat(RetryPolicyAttemptCounter.read(after, "x")).isZero();
   }
 
+  /**
+   * L3-01 regression (INPUT fallback): a {@code RETRY_PREVIOUS} fallback that pauses — the natural
+   * authored shape "automatic retries exhausted → ask a human" — must be <em>resumed</em> as the
+   * same dispatch on re-entry, never restarted. Before the fix, the re-entered {@code r} bore no
+   * in-flight marker for its fallback arm, so every redrive re-fired the fallback from scratch:
+   * the just-submitted answer (recorded against the fallback's own step id) never satisfied
+   * {@code r}, the identical form was re-prompted on every submission, and the run livelocked. The
+   * fallback is reached deterministically via an external {@code retry()} rewind: the rewind
+   * clears {@code r}'s completion marker while the {@code __}-prefixed local attempt counter
+   * survives, so the re-entered {@code r} (local cap 1) is exhausted on entry.
+   */
+  @Test
+  void paused_input_fallback_resumes_the_same_dispatch_instead_of_reprompting_forever() {
+    // [a(agent, shared ceiling 5), r(RETRY_PREVIOUS a, local cap 1, fallback=fb INPUT), b(INPUT),
+    // fail(FAIL)].
+    StepDefinition a = StepDefinition.builder()
+        .withStepId("a")
+        .withName("a")
+        .withBehaviour(new AgentBehaviour("a-agent", StepTransition.AUTO,
+            new RetryPolicy(true, true, 5)))
+        .withContextMapping(ContextMapping.none())
+        .build();
+    ArtifactDefinition fallbackForm = new ArtifactDefinition("form-fb",
+        List.of(new TextArtifactItem("answer", "Answer", true, null)));
+    StepDefinition fallback = StepDefinition.builder()
+        .withStepId("fb")
+        .withName("fb")
+        .withBehaviour(new InputBehaviour("form-fb", StepTransition.AUTO))
+        .build();
+    StepDefinition r = StepDefinition.builder()
+        .withStepId("r")
+        .withName("r")
+        .withBehaviour(new RetryPreviousBehaviour("a", RetryMode.SINGLE_STEP, 1, fallback))
+        .build();
+    ArtifactDefinition bForm = new ArtifactDefinition("form-b",
+        List.of(new TextArtifactItem("field1", "Field", true, null)));
+    StepDefinition b = StepDefinition.builder()
+        .withStepId("b")
+        .withName("b")
+        .withBehaviour(new InputBehaviour("form-b", StepTransition.AUTO))
+        .build();
+    StepDefinition fail = StepDefinition.builder()
+        .withStepId("fail")
+        .withName("fail")
+        .withBehaviour(new FailBehaviour("expected"))
+        .build();
+    WorkflowDefinition workflow = new WorkflowDefinition(
+        "wf-retry-previous-fallback-pause", "wf-retry-previous-fallback-pause", null, null, null,
+        null, null, WorkflowSource.CUSTOM, WorkflowLifecycle.ACTIVE,
+        Map.of("form-fb", fallbackForm, "form-b", bForm), Map.of(),
+        List.of(a, r, b, fail), List.of());
+
+    Fixture fixture = fixture(workflow, continuingAgentInvoker());
+    String runId = fixture.runtime().start(workflow.id());
+
+    // Drive 1: a executes, r fires attempt 1 (replays a), b pauses; answering b fails the run at
+    // the terminal FAIL step.
+    assertThat(fixture.runtime().getState(runId).getStatus()).isEqualTo(WorkflowStatus.AWAITING_INPUT);
+    fixture.runtime().submitInput(runId, Map.of("field1", "b answer"), "user");
+    assertThat(fixture.runtime().getState(runId).getStatus()).isEqualTo(WorkflowStatus.FAILED);
+    assertThat(countEvents(fixture, runId, "a", WorkflowEventType.STEP_STARTED)).isEqualTo(2);
+
+    // External rewind targeting "a": clears r's completion marker; the surviving local counter
+    // exhausts the re-entered r (cap 1), so its INPUT fallback dispatches — and pauses.
+    fixture.runtime().retry(runId, "a", "operator");
+    WorkflowState fallbackPaused = fixture.runtime().getState(runId);
+    assertThat(fallbackPaused.getStatus()).isEqualTo(WorkflowStatus.AWAITING_INPUT);
+    assertThat(countEvents(fixture, runId, "a", WorkflowEventType.STEP_STARTED)).isEqualTo(3);
+    assertThat(countEvents(fixture, runId, "fb", WorkflowEventType.AWAITING_INPUT)).isEqualTo(1);
+    // STEP_RETRIED on r: the drive-1 attempt event plus exactly one exhaustion event.
+    assertThat(countEvents(fixture, runId, "r", WorkflowEventType.STEP_RETRIED)).isEqualTo(2);
+    assertThat(fallbackPaused.getContext().get("__retry_previous_fallback_inflight:r")).isNotNull();
+
+    // Answering the fallback resumes the SAME dispatch: r completes off the recorded answer — the
+    // fallback is not re-fired (prompted exactly once), no further exhaustion event is recorded,
+    // neither budget is touched — and the run advances to b's second prompt.
+    fixture.runtime().submitInput(runId, Map.of("answer", "human says go"), "user");
+    WorkflowState resumed = fixture.runtime().getState(runId);
+    assertThat(resumed.getStatus()).isEqualTo(WorkflowStatus.AWAITING_INPUT);
+    assertThat(countEvents(fixture, runId, "fb", WorkflowEventType.AWAITING_INPUT)).isEqualTo(1);
+    assertThat(countEvents(fixture, runId, "r", WorkflowEventType.STEP_RETRIED)).isEqualTo(2);
+    assertThat(countEvents(fixture, runId, "a", WorkflowEventType.STEP_STARTED)).isEqualTo(3);
+    assertThat(countEvents(fixture, runId, "b", WorkflowEventType.AWAITING_INPUT)).isEqualTo(2);
+    assertThat(resumed.getStepOutputs()).containsKey("r");
+    assertThat(resumed.getContext().get("__retry_previous_fallback_inflight:r")).isNull();
+    assertThat(((StringContextValue) resumed.getContext().get("__retry_previous_attempts:a")).value())
+        .isEqualTo("1");
+    // Drive-1 dispatch reserved 1, the external retry() reserved 1 — the fallback resume none.
+    assertThat(((StringContextValue) resumed.getContext().get("__retry_policy_attempts:a")).value())
+        .isEqualTo("2");
+    assertThat(((StringContextValue) resumed.getContext().get("form-fb.answer")).value())
+        .isEqualTo("human says go");
+  }
+
+  /**
+   * L3-01 regression (approval-style pause): an AGENT fallback whose tool invocation suspends the
+   * run in {@code AWAITING_TOOL_APPROVAL} must likewise resume as the same dispatch once the
+   * operator approves — {@code advancePastToolStep} records the synthetic output against the
+   * fallback's own step id, which the re-entered {@code r} must accept as this dispatch's
+   * completed fallback instead of re-invoking the agent (and re-requesting the same tool call)
+   * from scratch.
+   */
+  @Test
+  void paused_approval_style_fallback_resumes_the_same_dispatch_after_the_tool_is_approved() {
+    StepDefinition a = StepDefinition.builder()
+        .withStepId("a")
+        .withName("a")
+        .withBehaviour(new AgentBehaviour("a-agent", StepTransition.AUTO,
+            new RetryPolicy(true, true, 5)))
+        .withContextMapping(ContextMapping.none())
+        .build();
+    StepDefinition fallback = StepDefinition.builder()
+        .withStepId("fb")
+        .withName("fb")
+        .withBehaviour(new AgentBehaviour("fb-agent", StepTransition.AUTO, null))
+        .withContextMapping(ContextMapping.none())
+        .build();
+    StepDefinition r = StepDefinition.builder()
+        .withStepId("r")
+        .withName("r")
+        .withBehaviour(new RetryPreviousBehaviour("a", RetryMode.SINGLE_STEP, 1, fallback))
+        .build();
+    ArtifactDefinition bForm = new ArtifactDefinition("form-b",
+        List.of(new TextArtifactItem("field1", "Field", true, null)));
+    StepDefinition b = StepDefinition.builder()
+        .withStepId("b")
+        .withName("b")
+        .withBehaviour(new InputBehaviour("form-b", StepTransition.AUTO))
+        .build();
+    StepDefinition fail = StepDefinition.builder()
+        .withStepId("fail")
+        .withName("fail")
+        .withBehaviour(new FailBehaviour("expected"))
+        .build();
+    WorkflowDefinition workflow = new WorkflowDefinition(
+        "wf-retry-previous-approval-fallback", "wf-retry-previous-approval-fallback", null, null,
+        null, null, null, WorkflowSource.CUSTOM, WorkflowLifecycle.ACTIVE, Map.of("form-b", bForm),
+        Map.of(), List.of(a, r, b, fail), List.of());
+
+    AgentInvoker invoker = mock(AgentInvoker.class);
+    when(invoker.invoke(eq("a-agent"), any(), any(), any(), any(), any()))
+        .thenReturn(AgentInvocationResult.builder()
+            .withRawResponse("agent-output")
+            .withCommands(List.of(new ContinueCommand(null, null, null)))
+            .build());
+    when(invoker.invoke(eq("fb-agent"), any(), any(), any(), any(), any()))
+        .thenReturn(AgentInvocationResult.builder()
+            .withRawResponse("fb-agent-output")
+            .withCommands(List.of(new ToolInvocationCommand(
+                "inv-1", TOOL_CAPABILITY, Map.of("title", "x"), "because")))
+            .build());
+
+    ApprovingToolProvider provider = new ApprovingToolProvider();
+    InMemoryPendingToolInvocationStore pendingStore = new InMemoryPendingToolInvocationStore();
+    WorkflowEventLog eventLog = new InMemoryWorkflowEventLog();
+    Clock clock = Clock.fixed(Instant.parse("2026-05-01T12:00:00Z"), ZoneOffset.UTC);
+    DefaultToolExecutionService toolService = new DefaultToolExecutionService(
+        new IntegrationToolProviderResolver(new InMemoryIntegrationRepository(),
+            definition -> {
+              throw new AssertionError("factory must not be called for pre-built providers");
+            },
+            List.of(provider)),
+        (cmd, descriptor, ctx) -> new PolicyDecision.RequireApproval("needs review", "OPERATOR"),
+        pendingStore,
+        ToolExecutionOptions.defaults(),
+        new EventRecorder(eventLog, clock),
+        new ObjectMapper(),
+        clock);
+
+    Fixture fixture = fixture(workflow, invoker, toolService, pendingStore, eventLog, clock);
+    String runId = fixture.runtime().start(workflow.id());
+
+    // Drive 1: a executes, r fires attempt 1 (replays a), b pauses; answering b fails the run.
+    assertThat(fixture.runtime().getState(runId).getStatus()).isEqualTo(WorkflowStatus.AWAITING_INPUT);
+    fixture.runtime().submitInput(runId, Map.of("field1", "b answer"), "user");
+    assertThat(fixture.runtime().getState(runId).getStatus()).isEqualTo(WorkflowStatus.FAILED);
+
+    // External rewind targeting "a": the re-entered r is exhausted (local cap 1) and dispatches
+    // its AGENT fallback, whose tool invocation suspends for operator approval.
+    fixture.runtime().retry(runId, "a", "operator");
+    WorkflowState awaitingApproval = fixture.runtime().getState(runId);
+    assertThat(awaitingApproval.getStatus()).isEqualTo(WorkflowStatus.AWAITING_TOOL_APPROVAL);
+    assertThat(provider.invocations).isZero();
+    assertThat(countEvents(fixture, runId, "fb", WorkflowEventType.STEP_STARTED)).isEqualTo(1);
+    assertThat(countEvents(fixture, runId, "r", WorkflowEventType.STEP_RETRIED)).isEqualTo(2);
+    assertThat(awaitingApproval.getContext().get("__retry_previous_fallback_inflight:r")).isNotNull();
+
+    // Approving the tool call resumes the SAME dispatch: the tool executes exactly once, the
+    // fallback agent is never re-invoked, no further exhaustion event is recorded, and r completes
+    // off the fallback's synthetic output before the run advances to b's second prompt.
+    fixture.runtime().continueAfterToolApproval(runId, "inv-1",
+        new ApprovalDecision.Approve("alice"));
+    WorkflowState resumed = fixture.runtime().getState(runId);
+    assertThat(resumed.getStatus()).isEqualTo(WorkflowStatus.AWAITING_INPUT);
+    assertThat(provider.invocations).isEqualTo(1);
+    verify(invoker, times(1)).invoke(eq("fb-agent"), any(), any(), any(), any(), any());
+    assertThat(countEvents(fixture, runId, "fb", WorkflowEventType.STEP_STARTED)).isEqualTo(1);
+    assertThat(countEvents(fixture, runId, "r", WorkflowEventType.STEP_RETRIED)).isEqualTo(2);
+    assertThat(resumed.getStepOutputs()).containsKey("r");
+    assertThat(resumed.getContext().get("__retry_previous_fallback_inflight:r")).isNull();
+    assertThat(((StringContextValue) resumed.getContext().get("__retry_previous_attempts:a")).value())
+        .isEqualTo("1");
+    assertThat(((StringContextValue) resumed.getContext().get("__retry_policy_attempts:a")).value())
+        .isEqualTo("2");
+    assertThat(((StringContextValue) resumed.getContext().get("tool." + TOOL_CAPABILITY)).value())
+        .isEqualTo(ApprovingToolProvider.SUCCESS_OUTPUT);
+  }
+
   private static long countEvents(Fixture fixture, String runId, String stepId,
       WorkflowEventType type) {
     List<WorkflowEvent> events = fixture.eventLog().getEvents(runId);
@@ -412,8 +643,66 @@ class RetryPreviousBehaviourRuntimeTest {
     return new Fixture(runtime, stateRepository, eventLog);
   }
 
+  /**
+   * Fixture variant with the tool-execution chokepoint wired, sharing {@code eventLog} and
+   * {@code clock} with the externally constructed {@link DefaultToolExecutionService} so tool
+   * audit events land in the same log the assertions read.
+   */
+  private static Fixture fixture(WorkflowDefinition workflow, AgentInvoker agentInvoker,
+      DefaultToolExecutionService toolService, InMemoryPendingToolInvocationStore pendingStore,
+      WorkflowEventLog eventLog, Clock clock) {
+    WorkflowStateRepository stateRepository = new InMemoryWorkflowStateRepository();
+
+    WorkflowRuntime runtime = new WorkflowRuntimeBuilder()
+        .workflowRepository(new InMemoryWorkflowRepository(Map.of(workflow.id(), workflow)))
+        .workflowStateRepository(stateRepository)
+        .workflowEventLog(eventLog)
+        .agentInvoker(agentInvoker)
+        .clock(clock)
+        .fileSink(FileSink.NO_OP_FILE_SINK)
+        .shellCommandRunner(ShellCommandRunner.NO_OP_SHELL_COMMAND_RUNNER)
+        .toolExecutionService(toolService)
+        .pendingToolInvocationStore(pendingStore)
+        .build();
+
+    return new Fixture(runtime, stateRepository, eventLog);
+  }
+
   private record Fixture(WorkflowRuntime runtime, WorkflowStateRepository stateRepository,
                          WorkflowEventLog eventLog) {
 
+  }
+
+  /** Always-succeeding provider counting its invocations, for the approval-style fallback test. */
+  private static final class ApprovingToolProvider implements ToolProvider {
+
+    private static final String SUCCESS_OUTPUT = "{\"ok\":true}";
+
+    private int invocations;
+
+    @Override
+    public String providerId() {
+      return "test:approving";
+    }
+
+    @Override
+    public List<ToolDescriptor> listTools() {
+      return List.of(new ToolDescriptor(TOOL_CAPABILITY, "Create PR", null,
+          "{\"type\":\"object\"}", null,
+          new ToolSource("test:approving", "create_pull_request", ToolSourceKind.REMOTE_HTTP),
+          ToolRiskMetadata.conservative()));
+    }
+
+    @Override
+    public ToolResult invoke(ToolDescriptor descriptor, String arguments,
+        ToolInvocationContext ctx, ToolExecutionOptions options) {
+      invocations++;
+      return ToolResult.success(SUCCESS_OUTPUT, 1L);
+    }
+
+    @Override
+    public HealthStatus health() {
+      return new HealthStatus(HealthStatus.State.UP, null);
+    }
   }
 }

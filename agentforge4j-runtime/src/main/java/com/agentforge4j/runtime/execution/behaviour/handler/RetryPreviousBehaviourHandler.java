@@ -59,6 +59,27 @@ public final class RetryPreviousBehaviourHandler implements
   private static final String INFLIGHT_MARKER_PREFIX = "__retry_previous_inflight:";
 
   /**
+   * Fallback-arm sibling of {@link #INFLIGHT_MARKER_PREFIX}: reserved, {@code __}-prefixed context
+   * key (per owning {@code RETRY_PREVIOUS} step id) recording that an exhaustion-triggered
+   * <em>fallback</em> dispatch of that step is currently in flight — written when the fallback
+   * pauses (an INPUT fallback awaiting a human, an AGENT fallback awaiting tool approval), cleared
+   * when the dispatch genuinely completes. Lets the re-entry drive <em>resume</em> that same
+   * fallback dispatch — treating a fallback step already satisfied by the pause's resolution (it
+   * bears a step output, recorded by {@code handleUserAnswers}/{@code advancePastToolStep}) as this
+   * dispatch's completed fallback — instead of restarting it: re-emitting another exhaustion
+   * {@code STEP_RETRIED} event and re-firing the fallback from scratch, which for a pausing
+   * fallback re-prompts the identical form on every submission and livelocks the run. For a
+   * {@link StepDefinition} fallback the marker is paired with that step's execution uid as a
+   * staleness anchor, exactly like the replay marker: an external rewind that wiped the fallback's
+   * uid invalidates the marker and the next entry dispatches fresh. A composite fallback has no
+   * single uid to anchor on; its own executor is contractually resume-safe within its body, so a
+   * surviving marker is honoured — after an external rewind the composite simply re-runs its
+   * cleared body without a duplicate exhaustion event.
+   */
+  private static final String FALLBACK_INFLIGHT_MARKER_PREFIX =
+      "__retry_previous_fallback_inflight:";
+
+  /**
    * Synthetic, non-agent step-output marker recorded for the owning {@code RETRY_PREVIOUS} step
    * itself once its dispatch genuinely completes (mirrors the pattern
    * {@code DefaultWorkflowRuntime.advancePastToolStep} uses for its own synthetic marker). Lets
@@ -136,6 +157,23 @@ public final class RetryPreviousBehaviourHandler implements
     // — was wiped by an external rewind): drop it so this entry dispatches fresh.
     state.removeContextValue(inflightKey);
 
+    String fallbackInflightKey = FALLBACK_INFLIGHT_MARKER_PREFIX + step.stepId();
+    if (isResumingInterruptedFallbackDispatch(state, behaviour, fallbackInflightKey)) {
+      // An exhaustion-triggered fallback dispatch of this step already recorded its exhaustion
+      // event and then paused: continue that same dispatch — record no further exhaustion event,
+      // consume no attempt (local or shared; a fallback never touches either budget), and treat a
+      // fallback the pause's resolution already satisfied as done rather than re-firing it (which
+      // for a pausing fallback would re-prompt forever). See FALLBACK_INFLIGHT_MARKER_PREFIX.
+      LOG.log(System.Logger.Level.INFO,
+          "Resuming interrupted fallback dispatch stepId={0}, retryStepId={1} (no further exhaustion event recorded)",
+          step.stepId(), behaviour.retryStepId());
+      ExecutionOutcome resumedFallback = resumeFallback(behaviour, executionContext);
+      return markCompletionIfDispatched(step, resumedFallback, executionContext);
+    }
+    // Same staleness rule as the replay marker above: a fallback marker whose anchor was wiped by
+    // an external rewind no longer describes anything resumable — drop it and dispatch fresh.
+    state.removeContextValue(fallbackInflightKey);
+
     LOG.log(System.Logger.Level.INFO,
         "Retry behaviour start stepId={0}, retryStepId={1}, attempt={2}, maxAttempts={3}",
         step.stepId(), behaviour.retryStepId(), attempts + 1, behaviour.maxAttempts());
@@ -151,6 +189,12 @@ public final class RetryPreviousBehaviourHandler implements
               .formatted(behaviour.maxAttempts(), behaviour.retryStepId()),
           "runtime");
       ExecutionOutcome fallbackOutcome = executeStep(behaviour.fallback(), executionContext);
+      if (fallbackOutcome == ExecutionOutcome.PAUSED) {
+        // The fallback paused: record the fallback in-flight marker so the re-entry drive resumes
+        // this dispatch instead of restarting it (see FALLBACK_INFLIGHT_MARKER_PREFIX).
+        state.putContextValue(fallbackInflightKey,
+            new StringContextValue(String.valueOf(attempts), ContextProvenance.SYSTEM_GENERATED));
+      }
       return markCompletionIfDispatched(step, fallbackOutcome, executionContext);
     }
 
@@ -214,11 +258,12 @@ public final class RetryPreviousBehaviourHandler implements
    * in the same uid-ordered sweep {@link WorkflowState#clearEntriesFromUid}/{@link
    * WorkflowState#clearStepEntriesFromUid} performs for every other step's output — no parallel
    * bookkeeping, and no marker left stranded at a uid earlier than state it was recorded after. A
-   * non-{@code COMPLETED} outcome (a pause within this step's own replay) leaves no completion
-   * marker; the separate in-flight marker {@code handle} records for a paused replay makes the next
-   * drive re-enter this step and <em>resume</em> the interrupted dispatch where it paused —
-   * skipping range steps that already completed, reserving no further local or shared attempt —
-   * never restarting it. A completed dispatch also clears that in-flight marker here.
+   * non-{@code COMPLETED} outcome (a pause within this step's own replay or its fallback) leaves no
+   * completion marker; the separate in-flight markers {@code handle} records for a paused replay or
+   * a paused fallback make the next drive re-enter this step and <em>resume</em> the interrupted
+   * dispatch where it paused — skipping range steps that already completed, reserving no further
+   * local or shared attempt, recording no further exhaustion event — never restarting it. A
+   * completed dispatch also clears both in-flight markers here.
    */
   private static ExecutionOutcome markCompletionIfDispatched(StepDefinition step,
       ExecutionOutcome outcome, ExecutionContext executionContext) {
@@ -228,6 +273,7 @@ public final class RetryPreviousBehaviourHandler implements
       state.putStepExecutionUid(step.stepId(), freshUid);
       state.putStepOutput(step.stepId(), RETRY_COMPLETION_MARKER);
       state.removeContextValue(INFLIGHT_MARKER_PREFIX + step.stepId());
+      state.removeContextValue(FALLBACK_INFLIGHT_MARKER_PREFIX + step.stepId());
     }
     return outcome;
   }
@@ -245,6 +291,44 @@ public final class RetryPreviousBehaviourHandler implements
       return false;
     }
     return state.getStepExecutionUid().get(behaviour.retryStepId()) != null;
+  }
+
+  /**
+   * An interrupted fallback dispatch of this owning step is resumable when its fallback in-flight
+   * marker is present <em>and</em> — for a {@link StepDefinition} fallback — that step still has an
+   * execution uid (the dispatch's anchor, allocated by {@code executeStep} when the fallback
+   * fired). A marker whose anchor was wiped (an external rewind cleared the fallback's uid) no
+   * longer describes anything resumable and is treated as stale: the caller drops it and
+   * dispatches fresh, re-recording the exhaustion event. A composite fallback carries no single
+   * uid; see {@link #FALLBACK_INFLIGHT_MARKER_PREFIX} for why its marker is honoured as-is.
+   */
+  private static boolean isResumingInterruptedFallbackDispatch(WorkflowState state,
+      RetryPreviousBehaviour behaviour, String fallbackInflightKey) {
+    if (state.getContext().get(fallbackInflightKey) == null) {
+      return false;
+    }
+    if (behaviour.fallback() instanceof StepDefinition fallbackStep) {
+      return state.getStepExecutionUid().get(fallbackStep.stepId()) != null;
+    }
+    return true;
+  }
+
+  /**
+   * Continuation of an interrupted fallback dispatch: a {@link StepDefinition} fallback that
+   * already bears a step output — recorded by the pause's resolution ({@code submitInput} for an
+   * INPUT fallback, {@code advancePastToolStep} for an approval-style pause) — is this dispatch's
+   * completed fallback, so there is nothing left to execute; otherwise (the pause is still
+   * unresolved, or the fallback is a composite whose own executor is resume-safe within its body)
+   * the fallback is executed again as the continuation of the same dispatch.
+   */
+  private ExecutionOutcome resumeFallback(RetryPreviousBehaviour behaviour,
+      ExecutionContext executionContext) {
+    Executable fallback = behaviour.fallback();
+    if (fallback instanceof StepDefinition fallbackStep
+        && executionContext.getState().getStepOutputs().containsKey(fallbackStep.stepId())) {
+      return ExecutionOutcome.COMPLETED;
+    }
+    return executeStep(fallback, executionContext);
   }
 
   /**

@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 package com.agentforge4j.runtime.execution;
 
-import static org.assertj.core.api.Assertions.assertThat;
-
 import com.agentforge4j.core.workflow.state.WorkflowState;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -14,6 +12,8 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
+
+import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * Regression coverage for {@link RetryPolicyAttemptCounter#reserve} being a single atomic

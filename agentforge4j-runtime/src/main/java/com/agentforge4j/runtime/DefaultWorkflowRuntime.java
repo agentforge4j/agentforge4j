@@ -289,6 +289,11 @@ public final class DefaultWorkflowRuntime implements WorkflowRuntime {
    *                                    {@link WorkflowStatus#FAILED} or {@link WorkflowStatus#PAUSED}, {@code stepId}
    *                                    does not identify a top-level step in the workflow definition, or {@code runId}
    *                                    is blank
+   * @throws IllegalStateException      if the target's {@code RetryPolicy} forbids operator retry
+   *                                    ({@code allowRetry=false} — including the undeclared-policy
+   *                                    {@code RetryPolicy.none()} default on an AGENT/SPAR step), or the shared
+   *                                    {@code maxAttempts} ceiling (shared with {@code RETRY_PREVIOUS} steps targeting
+   *                                    the same step) is already reached; the run is left untouched
    * @implSpec {@code retry} is a top-level-step contract: {@code stepId} must name a step that appears directly in the
    * workflow's top-level sequence. The run is repositioned at that step and the enclosing sequence is re-driven, so the
    * target and every downstream step execute again and the run finalises on the real downstream outcome. A step that
