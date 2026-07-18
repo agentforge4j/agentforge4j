@@ -4,6 +4,9 @@ package com.agentforge4j.runtime;
 import com.agentforge4j.config.loader.repository.InMemoryWorkflowRepository;
 import com.agentforge4j.core.runtime.StepApprovalDecision;
 import com.agentforge4j.core.runtime.WorkflowRuntime;
+import com.agentforge4j.core.spi.tool.ApprovalDecision;
+import com.agentforge4j.core.spi.tool.ToolDecision;
+import com.agentforge4j.core.spi.tool.ToolExecutionService;
 import com.agentforge4j.core.workflow.Executable;
 import com.agentforge4j.core.workflow.WorkflowDefinition;
 import com.agentforge4j.core.workflow.WorkflowLifecycle;
@@ -23,6 +26,7 @@ import com.agentforge4j.runtime.command.ShellCommandRunner;
 import com.agentforge4j.runtime.llm.AgentInvoker;
 import com.agentforge4j.runtime.repository.InMemoryWorkflowEventLog;
 import com.agentforge4j.runtime.repository.InMemoryWorkflowStateRepository;
+import com.agentforge4j.runtime.tool.InMemoryPendingToolInvocationStore;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
@@ -38,8 +42,10 @@ import static org.mockito.Mockito.mock;
 /**
  * Lifecycle coverage for {@link WorkflowRuntime#cancel(String, String)} over the real
  * {@link WorkflowRuntimeBuilder} graph: cancelling a suspended run marks it CANCELLED and emits
- * {@code RUN_CANCELLED}; every later verb is rejected via the cancellation guard; a repeated cancel
- * is idempotent; terminal COMPLETED/FAILED runs cannot be cancelled.
+ * {@code RUN_CANCELLED}; every later run-mutating verb — continueRun, retry, approve, submitInput,
+ * submitReview, decideStepApproval, continueAfterToolApproval, and resolveToolDecision — is
+ * rejected via the cancellation guard; a repeated cancel is idempotent; terminal COMPLETED/FAILED
+ * runs cannot be cancelled.
  */
 class CancelRuntimeTest {
 
@@ -50,6 +56,9 @@ class CancelRuntimeTest {
 
   private WorkflowRuntime runtime(WorkflowDefinition workflow) {
     eventLog = new InMemoryWorkflowEventLog();
+    // The tool wiring exists only so the two tool-resume verbs reach the cancellation guard
+    // (they reject an unconfigured service before ever loading the run); the guard fires before
+    // either collaborator is used.
     return new WorkflowRuntimeBuilder()
         .workflowRepository(new InMemoryWorkflowRepository(Map.of(workflow.id(), workflow)))
         .workflowStateRepository(new InMemoryWorkflowStateRepository())
@@ -58,6 +67,8 @@ class CancelRuntimeTest {
         .clock(CLOCK)
         .fileSink(FileSink.NO_OP_FILE_SINK)
         .shellCommandRunner(ShellCommandRunner.NO_OP_SHELL_COMMAND_RUNNER)
+        .toolExecutionService(mock(ToolExecutionService.class))
+        .pendingToolInvocationStore(new InMemoryPendingToolInvocationStore())
         .build();
   }
 
@@ -94,6 +105,17 @@ class CancelRuntimeTest {
         .hasMessageContaining("CANCELLED");
     assertThatThrownBy(() -> runtime.decideStepApproval(runId, "in",
         new StepApprovalDecision.Approve("bob", "ok")))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("CANCELLED");
+    assertThatThrownBy(() -> runtime.approve(runId, "in", "note", "bob"))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("CANCELLED");
+    assertThatThrownBy(() -> runtime.continueAfterToolApproval(runId, "tid-1",
+        new ApprovalDecision.Approve("bob")))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("CANCELLED");
+    assertThatThrownBy(() -> runtime.resolveToolDecision(runId, "tid-1",
+        new ToolDecision.Continue("bob")))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("CANCELLED");
     // No state mutation and no resume happened: still CANCELLED, no late input in context.

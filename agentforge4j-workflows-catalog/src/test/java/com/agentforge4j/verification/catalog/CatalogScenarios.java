@@ -51,11 +51,18 @@ import java.util.stream.Stream;
  * <p>The runner drives the <em>real</em> shipped workflow through the testkit harness with fake
  * responses and the scenario's scripted human gates, then projects the expectations onto
  * {@link WorkflowRunAssert}.
+ *
+ * <p>Also hosts the structural discovery-integrity helpers (physical-folder and stray-root-entry
+ * enumeration) for both shipped catalog roots, {@code /shipped-workflows} and
+ * {@code /shipped-agents}, so the conformance gate closes the dead-cargo class for workflows and
+ * agents alike.
  */
 public final class CatalogScenarios {
 
   private static final String SHIPPED_WORKFLOWS_ROOT = "/shipped-workflows";
+  private static final String SHIPPED_AGENTS_ROOT = "/shipped-agents";
   private static final String WORKFLOW_SUFFIX = ".workflow";
+  private static final String AGENT_SUFFIX = ".agent";
   private static final String VERIFICATION_SUBDIR = "verification";
   private static final String SCRIPT_FILE = "script.json";
   private static final String EXPECTED_RESULT_FILE = "expected-result.json";
@@ -122,6 +129,11 @@ public final class CatalogScenarios {
    * deleted marker must not silently drop a scenario while its sibling files sit there looking
    * covered.
    *
+   * <p>Under {@code jar:} protocol a scenario folder that contains no files at all (only a
+   * directory entry) never matches the file-entry pattern and is invisible to this check; the
+   * exploded module source ({@code file:} protocol) is the authoritative check site, where such a
+   * folder is reported.
+   *
    * @return {@code <workflowId>/<scenario>} names of marker-less scenario folders, sorted
    */
   public static List<String> unmarkedScenarioFolders() {
@@ -136,7 +148,7 @@ public final class CatalogScenarios {
     List<String> unmarked = new ArrayList<>();
     switch (root.getProtocol()) {
       case "file" -> {
-        for (Path workflowDir : workflowDirectories(root)) {
+        for (Path workflowDir : bundleDirectories(root, WORKFLOW_SUFFIX)) {
           String workflowId = workflowIdOf(workflowDir.getFileName().toString());
           Path verificationDir = workflowDir.resolve(VERIFICATION_SUBDIR);
           if (!Files.isDirectory(verificationDir)) {
@@ -187,10 +199,26 @@ public final class CatalogScenarios {
    * @return ids of all physical workflow folders (empty when the catalog root is absent)
    */
   public static Set<String> physicalWorkflowFolderIds() {
-    return physicalWorkflowFolderIds(SHIPPED_WORKFLOWS_ROOT);
+    return physicalBundleFolderIds(SHIPPED_WORKFLOWS_ROOT, WORKFLOW_SUFFIX);
   }
 
   static Set<String> physicalWorkflowFolderIds(String classpathRoot) {
+    return physicalBundleFolderIds(classpathRoot, WORKFLOW_SUFFIX);
+  }
+
+  /**
+   * Enumerates the ids of every physical {@code <id>.agent} folder under the shipped-agents root —
+   * regardless of index membership. The conformance gate cross-checks this against
+   * {@code AgentBundleLocator.shippedAgentIds()} (the very list the production loader drives) so an
+   * unindexed agent bundle cannot ship as silent dead cargo in the jar.
+   *
+   * @return ids of all physical agent folders (empty when the shipped-agents root is absent)
+   */
+  public static Set<String> physicalAgentFolderIds() {
+    return physicalBundleFolderIds(SHIPPED_AGENTS_ROOT, AGENT_SUFFIX);
+  }
+
+  static Set<String> physicalBundleFolderIds(String classpathRoot, String bundleSuffix) {
     URL root = CatalogScenarios.class.getResource(classpathRoot);
     if (root == null) {
       return Set.of();
@@ -198,23 +226,23 @@ public final class CatalogScenarios {
     Set<String> ids = new LinkedHashSet<>();
     switch (root.getProtocol()) {
       case "file" -> {
-        for (Path workflowDir : workflowDirectories(root)) {
-          ids.add(workflowIdOf(workflowDir.getFileName().toString()));
+        for (Path bundleDir : bundleDirectories(root, bundleSuffix)) {
+          ids.add(bundleIdOf(bundleDir.getFileName().toString(), bundleSuffix));
         }
       }
       case "jar" -> {
         String prefix = stripLeadingSlash(classpathRoot);
-        Pattern workflowEntry = Pattern.compile("^" + Pattern.quote(prefix) + "/([^/]+)"
-            + Pattern.quote(WORKFLOW_SUFFIX) + "/.+$");
+        Pattern bundleEntry = Pattern.compile("^" + Pattern.quote(prefix) + "/([^/]+)"
+            + Pattern.quote(bundleSuffix) + "/.+$");
         for (String entryName : jarEntryNames(root)) {
-          Matcher matcher = workflowEntry.matcher(entryName);
+          Matcher matcher = bundleEntry.matcher(entryName);
           if (matcher.matches()) {
             ids.add(matcher.group(1));
           }
         }
       }
       default -> throw new IllegalStateException(
-          "Unsupported shipped-workflows catalog URL protocol: " + root);
+          "Unsupported catalog URL protocol: " + root);
     }
     return ids;
   }
@@ -230,10 +258,31 @@ public final class CatalogScenarios {
    *         is the authoritative check site)
    */
   public static List<String> strayCatalogRootEntries() {
-    return strayCatalogRootEntries(SHIPPED_WORKFLOWS_ROOT);
+    return strayRootEntries(SHIPPED_WORKFLOWS_ROOT, WORKFLOW_SUFFIX,
+        Set.of("index", "agentforge4j-catalog.json"));
   }
 
   static List<String> strayCatalogRootEntries(String classpathRoot) {
+    return strayRootEntries(classpathRoot, WORKFLOW_SUFFIX,
+        Set.of("index", "agentforge4j-catalog.json"));
+  }
+
+  /**
+   * Lists shipped-agents-root entries that are neither {@code <id>.agent} folders nor the
+   * {@code index} root file. A directory whose name lacks the {@code .agent} suffix is invisible to
+   * the production agent loader, so the conformance gate fails on any hit rather than letting it
+   * ship unnoticed.
+   *
+   * @return names of unexpected shipped-agents-root entries, sorted (empty when the root is absent
+   *         or a jar — jar layouts have no stray-entry surface of their own; the exploded module
+   *         source is the authoritative check site)
+   */
+  public static List<String> strayAgentRootEntries() {
+    return strayRootEntries(SHIPPED_AGENTS_ROOT, AGENT_SUFFIX, Set.of("index"));
+  }
+
+  static List<String> strayRootEntries(String classpathRoot, String bundleSuffix,
+      Set<String> allowedRootFiles) {
     URL root = CatalogScenarios.class.getResource(classpathRoot);
     if (root == null || !"file".equals(root.getProtocol())) {
       return List.of();
@@ -243,9 +292,9 @@ public final class CatalogScenarios {
       try (Stream<Path> entries = Files.list(rootDir)) {
         return entries
             .filter(entry -> !(Files.isDirectory(entry)
-                && entry.getFileName().toString().endsWith(WORKFLOW_SUFFIX)))
+                && entry.getFileName().toString().endsWith(bundleSuffix)))
             .map(entry -> entry.getFileName().toString())
-            .filter(name -> !"index".equals(name) && !"agentforge4j-catalog.json".equals(name))
+            .filter(name -> !allowedRootFiles.contains(name))
             .sorted()
             .toList();
       }
@@ -255,19 +304,19 @@ public final class CatalogScenarios {
     }
   }
 
-  private static List<Path> workflowDirectories(URL fileRoot) {
+  private static List<Path> bundleDirectories(URL fileRoot, String bundleSuffix) {
     try {
       Path rootDir = Path.of(fileRoot.toURI());
       try (Stream<Path> entries = Files.list(rootDir)) {
         return entries
             .filter(Files::isDirectory)
-            .filter(dir -> dir.getFileName().toString().endsWith(WORKFLOW_SUFFIX))
+            .filter(dir -> dir.getFileName().toString().endsWith(bundleSuffix))
             .sorted()
             .toList();
       }
     } catch (URISyntaxException | IOException exception) {
       throw new UncheckedIOException(
-          "Failed to enumerate shipped-workflows catalog at " + fileRoot,
+          "Failed to enumerate catalog at " + fileRoot,
           new IOException(exception));
     }
   }
@@ -387,7 +436,11 @@ public final class CatalogScenarios {
   }
 
   private static String workflowIdOf(String folderName) {
-    return folderName.substring(0, folderName.length() - WORKFLOW_SUFFIX.length());
+    return bundleIdOf(folderName, WORKFLOW_SUFFIX);
+  }
+
+  private static String bundleIdOf(String folderName, String bundleSuffix) {
+    return folderName.substring(0, folderName.length() - bundleSuffix.length());
   }
 
   private static String readResource(String classpathPath, String scenarioLabel) {
