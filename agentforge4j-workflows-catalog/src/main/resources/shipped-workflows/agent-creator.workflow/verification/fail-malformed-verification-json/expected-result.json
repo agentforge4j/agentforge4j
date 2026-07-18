@@ -16,14 +16,8 @@
   "expect": {
     "status": "FAILED",
     "failedBecause": "verification/script.json is not valid JSON",
-    "emittedEvents": [
-      "RUN_FAILED"
-    ],
-    "visitedSteps": [
-      "generate-verification"
-    ],
-    "notVisitedSteps": [
-      "review"
-    ]
+    "emittedEvents": ["RUN_FAILED"],
+    "visitedSteps": ["generate-verification"],
+    "notVisitedSteps": ["review"]
   }
 }

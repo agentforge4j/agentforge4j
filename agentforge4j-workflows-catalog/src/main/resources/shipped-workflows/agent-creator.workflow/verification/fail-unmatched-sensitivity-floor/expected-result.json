@@ -11,11 +11,7 @@
   "expect": {
     "status": "FAILED",
     "failedBecause": "matched no predicate, branch, or default for value 'WEIRD'",
-    "emittedEvents": [
-      "RUN_FAILED"
-    ],
-    "notVisitedSteps": [
-      "design-preview"
-    ]
+    "emittedEvents": ["RUN_FAILED"],
+    "notVisitedSteps": ["design-preview"]
   }
 }

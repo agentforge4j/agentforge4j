@@ -11,11 +11,7 @@
   "expect": {
     "status": "FAILED",
     "failedBecause": "matched no predicate, branch, or default for value 'intricate'",
-    "emittedEvents": [
-      "RUN_FAILED"
-    ],
-    "notVisitedSteps": [
-      "generate-agent"
-    ]
+    "emittedEvents": ["RUN_FAILED"],
+    "notVisitedSteps": ["generate-agent"]
   }
 }

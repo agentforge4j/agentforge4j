@@ -16,13 +16,7 @@
   "expect": {
     "status": "FAILED",
     "failedBecause": "Final review returned BLOCKING_ISSUES",
-    "emittedEvents": [
-      "RUN_FAILED"
-    ],
-    "visitedSteps": [
-      "review",
-      "verdict-branch",
-      "fail-blocking"
-    ]
+    "emittedEvents": ["RUN_FAILED"],
+    "visitedSteps": ["review", "verdict-branch", "fail-blocking"]
   }
 }
