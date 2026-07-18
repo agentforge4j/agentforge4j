@@ -49,6 +49,13 @@
       "agentId": "restricted-agent",
       "ordinal": 0,
       "responseText": "[{\"type\":\"SET_CONTEXT\",\"key\":\"x\",\"value\":{\"type\":\"STRING\",\"value\":\"y\"}}]"
+    },
+    {
+      "workflowId": "cmd-generate-questions",
+      "stepId": "run",
+      "agentId": "cmd-agent",
+      "ordinal": 1,
+      "responseText": "[{\"type\":\"COMPLETE\"}]"
     }
   ]
 }

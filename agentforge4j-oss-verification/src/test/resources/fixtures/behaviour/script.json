@@ -42,6 +42,27 @@
       "agentId": "nested-agent",
       "ordinal": 0,
       "responseText": "[{\"type\":\"COMPLETE\"}]"
+    },
+    {
+      "workflowId": "beh-spar-gated",
+      "stepId": "review",
+      "agentId": "architect",
+      "ordinal": 0,
+      "responseText": "[{\"type\":\"CONTINUE\"}]"
+    },
+    {
+      "workflowId": "beh-spar-gated",
+      "stepId": "review",
+      "agentId": "developer",
+      "ordinal": 0,
+      "responseText": "[{\"type\":\"CONTINUE\"}]"
+    },
+    {
+      "workflowId": "beh-spar-gated",
+      "stepId": "review",
+      "agentId": "architect",
+      "ordinal": 1,
+      "responseText": "[{\"type\":\"COMPLETE\"}]"
     }
   ]
 }

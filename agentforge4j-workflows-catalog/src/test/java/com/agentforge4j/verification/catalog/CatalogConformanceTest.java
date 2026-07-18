@@ -22,7 +22,9 @@ import org.junit.jupiter.api.Test;
  * entry).
  *
  * <p>Each scenario must carry a {@code README.md}, a parseable {@code script.json}, and an
- * {@code expected-result.json} naming the same workflow as the folder that owns it.
+ * {@code expected-result.json} naming the same workflow as the folder that owns it and asserting at
+ * least the run's final status — an assertion-free scenario would otherwise pass even over a run
+ * that genuinely fails, so the floor is enforced here, not left to convention.
  */
 class CatalogConformanceTest {
 
@@ -61,6 +63,50 @@ class CatalogConformanceTest {
       assertThatCode(() -> new FakeScriptParser().parse(scenario.scriptJson()))
           .as("scenario '%s' script.json must parse", scenario.name())
           .doesNotThrowAnyException();
+      assertThat(scenario.expected().expect())
+          .as("scenario '%s' must declare an expect block — an assertion-free scenario passes "
+              + "even when the run fails, which is not verification", scenario.name())
+          .isNotNull();
+      assertThat(scenario.expected().expect().status())
+          .as("scenario '%s' must assert at least the run's final status", scenario.name())
+          .isNotBlank();
+    }
+  }
+
+  @Test
+  void noScenarioFolderLacksItsDiscoveryMarker() {
+    assertThat(CatalogScenarios.unmarkedScenarioFolders())
+        .as("a verification/ sub-folder without expected-result.json silently stops being a test "
+            + "(the marker is the sole discovery trigger) — restore or remove the folder")
+        .isEmpty();
+  }
+
+  @Test
+  void everyPhysicalWorkflowFolderIsIndexed() {
+    assertThat(shippedWorkflows())
+        .as("every physical <id>.workflow folder must be listed in shipped-workflows/index — an "
+            + "unindexed folder ships as dead cargo in the jar, invisible to the loader and to "
+            + "every scenario gate")
+        .containsAll(CatalogScenarios.physicalWorkflowFolderIds());
+  }
+
+  @Test
+  void noStrayEntriesAtCatalogRoot() {
+    assertThat(CatalogScenarios.strayCatalogRootEntries())
+        .as("the catalog root may contain only <id>.workflow folders, the index, and the "
+            + "compatibility manifest — anything else (e.g. a folder missing the .workflow "
+            + "suffix) is invisible to discovery and the loader")
+        .isEmpty();
+  }
+
+  @Test
+  void everyShippedWorkflowCarriesAReadme() {
+    for (String workflowId : shippedWorkflows()) {
+      String readme = "/shipped-workflows/" + workflowId + ".workflow/README.md";
+      assertThat(CatalogConformanceTest.class.getResource(readme))
+          .as("shipped workflow '%s' must carry a bundle-level README.md (%s) describing what it "
+              + "does and how its verification scenarios drive it", workflowId, readme)
+          .isNotNull();
     }
   }
 

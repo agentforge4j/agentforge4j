@@ -1,0 +1,10 @@
+{
+  "id": "retry-spar-agent",
+  "name": "Retry Spar Primary",
+  "locality": "CLOUD",
+  "enabled": true,
+  "version": "1.0.0",
+  "providerPreferences": [
+    { "provider": "openai", "model": null }
+  ]
+}

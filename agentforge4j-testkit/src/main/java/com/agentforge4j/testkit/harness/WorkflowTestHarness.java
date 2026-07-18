@@ -9,6 +9,7 @@ import com.agentforge4j.core.spi.tool.ApprovalDecision;
 import com.agentforge4j.core.spi.tool.PendingToolInvocation;
 import com.agentforge4j.core.spi.tool.PendingToolInvocationStore;
 import com.agentforge4j.core.spi.tool.ToolDecision;
+import com.agentforge4j.core.spi.tool.ToolExecutionOptions;
 import com.agentforge4j.core.spi.tool.ToolPolicy;
 import com.agentforge4j.core.spi.tool.ToolProvider;
 import com.agentforge4j.core.workflow.state.WorkflowState;
@@ -58,6 +59,7 @@ public final class WorkflowTestHarness {
   private final Clock clock;
   private final List<ToolProvider> toolProviders;
   private final ToolPolicy toolPolicy;
+  private final ToolExecutionOptions toolExecutionOptions;
   private final Path fileSinkDir;
 
   private WorkflowTestHarness(Builder builder) {
@@ -68,6 +70,7 @@ public final class WorkflowTestHarness {
     this.clock = Validate.notNull(builder.clock, "clock must not be null");
     this.toolProviders = builder.toolProviders;
     this.toolPolicy = builder.toolPolicy;
+    this.toolExecutionOptions = builder.toolExecutionOptions;
     this.fileSinkDir = builder.fileSinkDir;
     Validate.isTrue(shippedCatalog || workflowsDir != null,
         "either shippedCatalog(true) or workflowsDir must be set");
@@ -245,6 +248,9 @@ public final class WorkflowTestHarness {
     if (toolPolicy != null) {
       bootstrap.withToolPolicy(toolPolicy);
     }
+    if (toolExecutionOptions != null) {
+      bootstrap.withToolExecutionOptions(toolExecutionOptions);
+    }
     return bootstrap.build();
   }
 
@@ -262,6 +268,7 @@ public final class WorkflowTestHarness {
     private Clock clock = DEFAULT_CLOCK;
     private List<ToolProvider> toolProviders = List.of();
     private ToolPolicy toolPolicy;
+    private ToolExecutionOptions toolExecutionOptions;
     private Path fileSinkDir;
 
     private Builder() {
@@ -373,6 +380,22 @@ public final class WorkflowTestHarness {
      */
     public Builder toolPolicy(ToolPolicy value) {
       this.toolPolicy = Validate.notNull(value, "toolPolicy must not be null");
+      return this;
+    }
+
+    /**
+     * Overrides the tool-invocation tunables, most usefully the authoritative per-invocation
+     * timeout — pair a short timeout with a deliberately hanging provider to exercise the
+     * timeout arm of the governance chokepoint. Defaults to the bootstrap's
+     * {@code ToolExecutionOptions.defaults()} when unset.
+     *
+     * @param value the options; must not be {@code null}
+     *
+     * @return this builder
+     */
+    public Builder toolExecutionOptions(ToolExecutionOptions value) {
+      this.toolExecutionOptions =
+          Validate.notNull(value, "toolExecutionOptions must not be null");
       return this;
     }
 

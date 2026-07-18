@@ -42,6 +42,48 @@
       "agentId": "retry-agent",
       "ordinal": 1,
       "responseText": "[{\"type\":\"COMPLETE\"}]"
+    },
+    {
+      "workflowId": "retry-previous-spar-single",
+      "stepId": "seed",
+      "agentId": "retry-spar-agent",
+      "ordinal": 0,
+      "responseText": "[{\"type\":\"CONTINUE\"}]"
+    },
+    {
+      "workflowId": "retry-previous-spar-single",
+      "stepId": "seed",
+      "agentId": "retry-challenger",
+      "ordinal": 0,
+      "responseText": "[{\"type\":\"CONTINUE\"}]"
+    },
+    {
+      "workflowId": "retry-previous-spar-single",
+      "stepId": "seed",
+      "agentId": "retry-spar-agent",
+      "ordinal": 1,
+      "responseText": "[{\"type\":\"COMPLETE\"}]"
+    },
+    {
+      "workflowId": "retry-previous-spar-single",
+      "stepId": "seed",
+      "agentId": "retry-spar-agent",
+      "ordinal": 2,
+      "responseText": "[{\"type\":\"CONTINUE\"}]"
+    },
+    {
+      "workflowId": "retry-previous-spar-single",
+      "stepId": "seed",
+      "agentId": "retry-challenger",
+      "ordinal": 1,
+      "responseText": "[{\"type\":\"CONTINUE\"}]"
+    },
+    {
+      "workflowId": "retry-previous-spar-single",
+      "stepId": "seed",
+      "agentId": "retry-spar-agent",
+      "ordinal": 3,
+      "responseText": "[{\"type\":\"COMPLETE\"}]"
     }
   ]
 }

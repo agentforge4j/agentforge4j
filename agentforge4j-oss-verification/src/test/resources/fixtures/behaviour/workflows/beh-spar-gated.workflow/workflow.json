@@ -1,0 +1,23 @@
+{
+  "kind": "WORKFLOW",
+  "schemaVersion": 1,
+  "id": "beh-spar-gated",
+  "name": "Spar Behaviour",
+  "steps": [
+    {
+      "kind": "STEP",
+      "stepId": "review",
+      "name": "Adversarial Review",
+      "behaviour": {
+        "type": "SPAR",
+        "agentRef": "architect",
+        "sparConfig": {
+          "challengerAgentId": "developer",
+          "maxRounds": 1,
+          "resolutionPrompt": "Make a final decision."
+        },
+        "transition": "HUMAN_APPROVAL"
+      }
+    }
+  ]
+}

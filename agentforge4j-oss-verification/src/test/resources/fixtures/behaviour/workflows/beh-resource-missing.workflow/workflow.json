@@ -1,0 +1,19 @@
+{
+  "kind": "WORKFLOW",
+  "schemaVersion": 1,
+  "id": "beh-resource-missing",
+  "name": "Resource Behaviour Missing Resource",
+  "steps": [
+    {
+      "kind": "STEP",
+      "stepId": "load",
+      "name": "Load Missing Resource",
+      "behaviour": {
+        "type": "RESOURCE",
+        "resourcePath": "/workflow-resources/does-not-exist.txt",
+        "contextKey": "res.out",
+        "transition": "AUTO"
+      }
+    }
+  ]
+}

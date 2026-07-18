@@ -1,0 +1,18 @@
+{
+  "kind": "WORKFLOW",
+  "schemaVersion": 1,
+  "id": "beh-assign",
+  "name": "Assign Context Behaviour",
+  "steps": [
+    {
+      "kind": "STEP",
+      "stepId": "assign",
+      "name": "Assign Tier",
+      "behaviour": {
+        "type": "ASSIGN_CONTEXT",
+        "contextKey": "assigned.tier",
+        "value": { "type": "STRING", "value": "POWERFUL" }
+      }
+    }
+  ]
+}
