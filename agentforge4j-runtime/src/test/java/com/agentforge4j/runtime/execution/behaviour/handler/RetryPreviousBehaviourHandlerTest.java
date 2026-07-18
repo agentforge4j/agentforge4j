@@ -144,7 +144,7 @@ class RetryPreviousBehaviourHandlerTest {
           .owningStepId("s3")
           .sequence("s1", "s2", "s3")
           .retryStepExecuted(2)
-          .contextValue("__retry_s2_attempts", new NumberContextValue(99, ContextProvenance.USER_SUPPLIED))
+          .contextValue("__retry_previous_attempts:s2", new NumberContextValue(99, ContextProvenance.USER_SUPPLIED))
           .build();
 
       f.handle();
@@ -1226,7 +1226,7 @@ class RetryPreviousBehaviourHandlerTest {
       WorkflowState state = new WorkflowState(
           RUN_ID, WORKFLOW_ID, null, Instant.parse("2026-05-01T12:00:00Z"));
 
-      String attemptKey = "__retry_" + retryStepId + "_attempts";
+      String attemptKey = "__retry_previous_attempts:" + retryStepId;
       if (attemptCount != null) {
         state.putContextValue(attemptKey, new StringContextValue(String.valueOf(attemptCount), ContextProvenance.USER_SUPPLIED));
       } else if (attemptCounterString != null) {

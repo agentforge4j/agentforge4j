@@ -201,8 +201,8 @@ public final class DefaultToolExecutionService implements ToolExecutionService {
   /**
    * {@inheritDoc}
    *
-   * <p>There is no claimable pending row for {@code runId}/{@code toolInvocationId} — never pending,
-   * already resolved, or already claimed/replaced by a concurrent resume — this call throws
+   * <p>If there is no claimable pending row for {@code runId}/{@code toolInvocationId} — never
+   * pending, already resolved, or already claimed/replaced by a concurrent resume — this call throws
    * {@link ToolInvocationClaimLostException} without mutating any state; this is a benign
    * concurrency-loss signal, never reported as a provider/tool failure. When a row is found, a
    * {@link PendingToolInvocation.Origin#POLICY_DENIED} row is terminal: an

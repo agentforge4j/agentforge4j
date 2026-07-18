@@ -23,8 +23,15 @@ import org.apache.commons.lang3.math.NumberUtils;
  */
 public final class RetryPolicyAttemptCounter {
 
-  private static final String KEY_PREFIX = "__retry_policy_";
-  private static final String KEY_SUFFIX = "_attempts";
+  /**
+   * Fixed prefix with the target step id <em>last</em>: no runtime-owned retry-key prefix (this
+   * one, or {@code RetryPreviousBehaviourHandler}'s local-counter and in-flight-marker prefixes) is
+   * a prefix of another, so keys from different families can never be equal regardless of step
+   * ids. The previous {@code __retry_policy_<id>_attempts} shape put the id in the middle, letting
+   * the local counter of a step literally named {@code policy_x} alias this shared counter of a
+   * step named {@code x}.
+   */
+  private static final String KEY_PREFIX = "__retry_policy_attempts:";
 
   private RetryPolicyAttemptCounter() {
   }
@@ -101,6 +108,6 @@ public final class RetryPolicyAttemptCounter {
   }
 
   private static String key(String targetStepId) {
-    return KEY_PREFIX + targetStepId + KEY_SUFFIX;
+    return KEY_PREFIX + targetStepId;
   }
 }

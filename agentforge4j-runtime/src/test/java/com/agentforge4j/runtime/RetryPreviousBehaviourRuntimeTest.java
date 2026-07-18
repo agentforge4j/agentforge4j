@@ -29,6 +29,7 @@ import com.agentforge4j.core.workflow.step.behaviour.RetryPreviousBehaviour;
 import com.agentforge4j.core.workflow.step.retry.RetryPolicy;
 import com.agentforge4j.runtime.command.FileSink;
 import com.agentforge4j.runtime.command.ShellCommandRunner;
+import com.agentforge4j.runtime.execution.RetryPolicyAttemptCounter;
 import com.agentforge4j.runtime.llm.AgentInvocationResult;
 import com.agentforge4j.runtime.llm.AgentInvoker;
 import com.agentforge4j.runtime.repository.InMemoryWorkflowEventLog;
@@ -97,7 +98,7 @@ class RetryPreviousBehaviourRuntimeTest {
     assertThat(pausedState.getStatus()).isEqualTo(WorkflowStatus.AWAITING_INPUT);
     assertThat(countEvents(fixture, runId, "a", WorkflowEventType.STEP_STARTED)).isEqualTo(2);
     assertThat(countEvents(fixture, runId, "b", WorkflowEventType.AWAITING_INPUT)).isEqualTo(1);
-    ContextValue attemptsBeforeResume = pausedState.getContext().get("__retry_a_attempts");
+    ContextValue attemptsBeforeResume = pausedState.getContext().get("__retry_previous_attempts:a");
     assertThat(attemptsBeforeResume).isNotNull();
     assertThat(((StringContextValue) attemptsBeforeResume).value()).isEqualTo("1");
 
@@ -109,7 +110,7 @@ class RetryPreviousBehaviourRuntimeTest {
     assertThat(after.getStatus()).isEqualTo(WorkflowStatus.COMPLETED);
     assertThat(countEvents(fixture, runId, "a", WorkflowEventType.STEP_STARTED)).isEqualTo(2);
     assertThat(countEvents(fixture, runId, "b", WorkflowEventType.AWAITING_INPUT)).isEqualTo(1);
-    assertThat(((StringContextValue) after.getContext().get("__retry_a_attempts")).value())
+    assertThat(((StringContextValue) after.getContext().get("__retry_previous_attempts:a")).value())
         .isEqualTo("1");
   }
 
@@ -195,6 +196,183 @@ class RetryPreviousBehaviourRuntimeTest {
     int bUid = afterRetry.getStepExecutionUid().get("b");
     assertThat(aUid).isLessThan(rUid);
     assertThat(rUid).isLessThan(bUid);
+  }
+
+  /**
+   * L2-03 regression (FROM_STEP): a pause <em>inside</em> the replay range must resume the same
+   * dispatch on re-entry — consuming no further local attempt and no further shared-ceiling
+   * reservation, and never re-clearing the state the pause's resolution just satisfied. The shared
+   * {@code RetryPolicy} ceiling is deliberately 1: before the fix, the re-entry restarted the
+   * dispatch and re-reserved the exhausted ceiling, failing the run outright where the author had
+   * supplied a fallback — and with a larger ceiling it silently burned two budget units per
+   * logical retry while wiping the just-submitted input and re-prompting.
+   */
+  @Test
+  void pause_inside_the_replay_range_resumes_the_same_dispatch_without_burning_further_attempts() {
+    // [a(agent, RetryPolicy maxAttempts=1), inp(INPUT), r(FROM_STEP targeting a)].
+    StepDefinition a = StepDefinition.builder()
+        .withStepId("a")
+        .withName("a")
+        .withBehaviour(new AgentBehaviour("a-agent", StepTransition.AUTO,
+            new RetryPolicy(false, true, 1)))
+        .withContextMapping(ContextMapping.none())
+        .build();
+    ArtifactDefinition form = new ArtifactDefinition("form1",
+        List.of(new TextArtifactItem("field1", "Field", true, null)));
+    StepDefinition inp = StepDefinition.builder()
+        .withStepId("inp")
+        .withName("inp")
+        .withBehaviour(new InputBehaviour("form1", StepTransition.AUTO))
+        .build();
+    StepDefinition fallback = StepDefinition.builder()
+        .withStepId("fallback")
+        .withName("fallback")
+        .withBehaviour(new ResourceBehaviour("/workflow-resources/info.txt", "fallback.out",
+            StepTransition.AUTO))
+        .build();
+    StepDefinition r = StepDefinition.builder()
+        .withStepId("r")
+        .withName("r")
+        .withBehaviour(new RetryPreviousBehaviour("a", RetryMode.FROM_STEP, 2, fallback))
+        .build();
+    WorkflowDefinition workflow = new WorkflowDefinition(
+        "wf-retry-previous-in-range-pause", "wf-retry-previous-in-range-pause", null, null, null,
+        null, null, WorkflowSource.CUSTOM, WorkflowLifecycle.ACTIVE, Map.of("form1", form),
+        Map.of(), List.of(a, inp, r), List.of());
+
+    Fixture fixture = fixture(workflow, continuingAgentInvoker());
+    String runId = fixture.runtime().start(workflow.id());
+
+    // Drive 1: a executes, inp pauses — r has not fired yet.
+    assertThat(fixture.runtime().getState(runId).getStatus()).isEqualTo(WorkflowStatus.AWAITING_INPUT);
+    assertThat(countEvents(fixture, runId, "a", WorkflowEventType.STEP_STARTED)).isEqualTo(1);
+    assertThat(countEvents(fixture, runId, "inp", WorkflowEventType.AWAITING_INPUT)).isEqualTo(1);
+
+    // Resume 1: r fires its dispatch — reserves the single shared attempt, records one local
+    // attempt, replays a, and pauses again on the replayed inp (the pause is INSIDE the range).
+    fixture.runtime().submitInput(runId, Map.of("field1", "first answer"), "user");
+    WorkflowState midDispatch = fixture.runtime().getState(runId);
+    assertThat(midDispatch.getStatus()).isEqualTo(WorkflowStatus.AWAITING_INPUT);
+    assertThat(countEvents(fixture, runId, "a", WorkflowEventType.STEP_STARTED)).isEqualTo(2);
+    assertThat(countEvents(fixture, runId, "inp", WorkflowEventType.AWAITING_INPUT)).isEqualTo(2);
+    assertThat(((StringContextValue) midDispatch.getContext().get("__retry_previous_attempts:a")).value())
+        .isEqualTo("1");
+    assertThat(((StringContextValue) midDispatch.getContext().get("__retry_policy_attempts:a")).value())
+        .isEqualTo("1");
+
+    // Resume 2: the re-entered r must CONTINUE the interrupted dispatch — the run completes; the
+    // exhausted shared ceiling is not re-reserved (before the fix: StepExecutionException →
+    // FAILED), no further attempt is recorded, the answer just submitted survives, and inp is
+    // never re-prompted.
+    fixture.runtime().submitInput(runId, Map.of("field1", "second answer"), "user");
+    WorkflowState after = fixture.runtime().getState(runId);
+    assertThat(after.getStatus()).isEqualTo(WorkflowStatus.COMPLETED);
+    assertThat(countEvents(fixture, runId, "a", WorkflowEventType.STEP_STARTED)).isEqualTo(2);
+    assertThat(countEvents(fixture, runId, "inp", WorkflowEventType.AWAITING_INPUT)).isEqualTo(2);
+    assertThat(((StringContextValue) after.getContext().get("__retry_previous_attempts:a")).value())
+        .isEqualTo("1");
+    assertThat(((StringContextValue) after.getContext().get("__retry_policy_attempts:a")).value())
+        .isEqualTo("1");
+    assertThat(((StringContextValue) after.getContext().get("form1.field1")).value())
+        .isEqualTo("second answer");
+    // The dispatch genuinely completed: its in-flight marker is cleared and r bears its marker.
+    assertThat(after.getContext().get("__retry_previous_inflight:r")).isNull();
+    assertThat(after.getStepOutputs()).containsKey("r");
+  }
+
+  /**
+   * L2-03 regression (SINGLE_STEP): the replayed target itself pausing must likewise resume the
+   * same dispatch on re-entry instead of re-clearing and re-prompting.
+   */
+  @Test
+  void pause_of_the_single_step_replay_target_resumes_the_same_dispatch() {
+    ArtifactDefinition form = new ArtifactDefinition("form1",
+        List.of(new TextArtifactItem("field1", "Field", true, null)));
+    StepDefinition inp = StepDefinition.builder()
+        .withStepId("inp")
+        .withName("inp")
+        .withBehaviour(new InputBehaviour("form1", StepTransition.AUTO))
+        .build();
+    StepDefinition fallback = StepDefinition.builder()
+        .withStepId("fallback")
+        .withName("fallback")
+        .withBehaviour(new ResourceBehaviour("/workflow-resources/info.txt", "fallback.out",
+            StepTransition.AUTO))
+        .build();
+    StepDefinition r = StepDefinition.builder()
+        .withStepId("r")
+        .withName("r")
+        .withBehaviour(new RetryPreviousBehaviour("inp", RetryMode.SINGLE_STEP, 3, fallback))
+        .build();
+    WorkflowDefinition workflow = new WorkflowDefinition(
+        "wf-retry-previous-single-step-pause", "wf-retry-previous-single-step-pause", null, null,
+        null, null, null, WorkflowSource.CUSTOM, WorkflowLifecycle.ACTIVE, Map.of("form1", form),
+        Map.of(), List.of(inp, r), List.of());
+
+    Fixture fixture = fixture(workflow, continuingAgentInvoker());
+    String runId = fixture.runtime().start(workflow.id());
+    assertThat(fixture.runtime().getState(runId).getStatus()).isEqualTo(WorkflowStatus.AWAITING_INPUT);
+
+    // Resume 1: r fires, clears the target, replays inp — which pauses again (second prompt).
+    fixture.runtime().submitInput(runId, Map.of("field1", "first answer"), "user");
+    assertThat(fixture.runtime().getState(runId).getStatus()).isEqualTo(WorkflowStatus.AWAITING_INPUT);
+    assertThat(countEvents(fixture, runId, "inp", WorkflowEventType.AWAITING_INPUT)).isEqualTo(2);
+
+    // Resume 2: the re-entered r continues the same dispatch — completed, one attempt, no third
+    // prompt, the second answer intact.
+    fixture.runtime().submitInput(runId, Map.of("field1", "second answer"), "user");
+    WorkflowState after = fixture.runtime().getState(runId);
+    assertThat(after.getStatus()).isEqualTo(WorkflowStatus.COMPLETED);
+    assertThat(countEvents(fixture, runId, "inp", WorkflowEventType.AWAITING_INPUT)).isEqualTo(2);
+    assertThat(((StringContextValue) after.getContext().get("__retry_previous_attempts:inp")).value())
+        .isEqualTo("1");
+    assertThat(((StringContextValue) after.getContext().get("form1.field1")).value())
+        .isEqualTo("second answer");
+  }
+
+  /**
+   * L2-09 regression: the local RETRY_PREVIOUS counter of a step literally named {@code policy_x}
+   * must not alias the shared {@code RetryPolicy} counter of a step named {@code x}. Under the old
+   * {@code __retry_<id>_attempts} key shape both resolved to {@code __retry_policy_x_attempts};
+   * the prefix-free key layout keeps the two families disjoint for every possible step id.
+   */
+  @Test
+  void local_counter_of_a_policy_prefixed_step_does_not_alias_the_shared_policy_counter() {
+    StepDefinition policyX = StepDefinition.builder()
+        .withStepId("policy_x")
+        .withName("policy_x")
+        .withBehaviour(new AgentBehaviour("a-agent", StepTransition.AUTO,
+            new RetryPolicy(false, true, 5)))
+        .withContextMapping(ContextMapping.none())
+        .build();
+    StepDefinition fallback = StepDefinition.builder()
+        .withStepId("fallback")
+        .withName("fallback")
+        .withBehaviour(new ResourceBehaviour("/workflow-resources/info.txt", "fallback.out",
+            StepTransition.AUTO))
+        .build();
+    StepDefinition r = StepDefinition.builder()
+        .withStepId("r")
+        .withName("r")
+        .withBehaviour(new RetryPreviousBehaviour("policy_x", RetryMode.SINGLE_STEP, 3, fallback))
+        .build();
+    WorkflowDefinition workflow = new WorkflowDefinition(
+        "wf-retry-previous-key-alias", "wf-retry-previous-key-alias", null, null, null, null, null,
+        WorkflowSource.CUSTOM, WorkflowLifecycle.ACTIVE, Map.of(), Map.of(),
+        List.of(policyX, r), List.of());
+
+    Fixture fixture = fixture(workflow, continuingAgentInvoker());
+    String runId = fixture.runtime().start(workflow.id());
+
+    WorkflowState after = fixture.runtime().getState(runId);
+    assertThat(after.getStatus()).isEqualTo(WorkflowStatus.COMPLETED);
+    // One local attempt for policy_x, one shared reservation for policy_x's own budget…
+    assertThat(((StringContextValue) after.getContext().get("__retry_previous_attempts:policy_x")).value())
+        .isEqualTo("1");
+    assertThat(RetryPolicyAttemptCounter.read(after, "policy_x")).isEqualTo(1);
+    // …and the shared budget of an unrelated step named "x" is untouched (the old key shape
+    // reported 1 here — silent cross-talk between two unrelated budgets).
+    assertThat(RetryPolicyAttemptCounter.read(after, "x")).isZero();
   }
 
   private static long countEvents(Fixture fixture, String runId, String stepId,

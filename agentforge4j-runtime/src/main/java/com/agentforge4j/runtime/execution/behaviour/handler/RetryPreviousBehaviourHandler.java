@@ -35,8 +35,28 @@ public final class RetryPreviousBehaviourHandler implements
   private static final System.Logger LOG = System.getLogger(
       RetryPreviousBehaviourHandler.class.getName());
 
-  private static final String RETRY_COUNTER_PREFIX = "__retry_";
-  private static final String RETRY_COUNTER_SUFFIX = "_attempts";
+  /**
+   * Reserved-key layout: every runtime-owned retry key is a fixed prefix with the step id
+   * <em>last</em>, and no fixed prefix (here or in {@link RetryPolicyAttemptCounter}) is a prefix
+   * of another — so keys from different families can never be equal, whatever the step ids are.
+   * The previous {@code __retry_<id>_attempts} shape put the id in the middle, letting a step
+   * literally named {@code policy_x} alias the shared {@code __retry_policy_x_attempts} counter of
+   * a step named {@code x} — silent cross-talk between two unrelated budgets.
+   */
+  private static final String RETRY_COUNTER_PREFIX = "__retry_previous_attempts:";
+
+  /**
+   * Reserved, {@code __}-prefixed context key (per owning {@code RETRY_PREVIOUS} step id) recording
+   * that a replay dispatch of that step is currently in flight — written when a dispatch pauses
+   * inside its own replay range, cleared when the dispatch genuinely completes. Lets the re-entry
+   * drive <em>resume</em> the interrupted dispatch (skipping range steps that already completed,
+   * reserving no further local or shared attempt, and never re-clearing state the pause's
+   * resolution just satisfied) instead of restarting it from scratch. Being {@code __}-prefixed it
+   * survives {@link WorkflowState#clearEntriesFromUid}'s sweep, so re-entry pairs it with the
+   * replayed target's execution uid as a staleness anchor: an external rewind that wiped the
+   * target's uid invalidates the marker.
+   */
+  private static final String INFLIGHT_MARKER_PREFIX = "__retry_previous_inflight:";
 
   /**
    * Synthetic, non-agent step-output marker recorded for the owning {@code RETRY_PREVIOUS} step
@@ -77,7 +97,7 @@ public final class RetryPreviousBehaviourHandler implements
     Validate.notNull(executableExecutor,
         "executableExecutor must be configured on RetryPreviousBehaviourHandler");
     WorkflowState state = executionContext.getState();
-    String attemptKey = RETRY_COUNTER_PREFIX + behaviour.retryStepId() + RETRY_COUNTER_SUFFIX;
+    String attemptKey = RETRY_COUNTER_PREFIX + behaviour.retryStepId();
     int attempts = readAttemptCount(state, attemptKey);
 
     // Structural pre-mutation validation phase: runs unconditionally, before the local maxAttempts
@@ -92,6 +112,29 @@ public final class RetryPreviousBehaviourHandler implements
     validateAllowRetryFromPrevious(step, behaviour, targetPolicy);
     validateReplayRangeContainsOnlyPlainSteps(step, behaviour,
         executionContext.getCurrentSequenceExecutableList());
+
+    String inflightKey = INFLIGHT_MARKER_PREFIX + step.stepId();
+    if (isResumingInterruptedDispatch(state, behaviour, inflightKey)) {
+      // A dispatch of this step already reserved its budgets, cleared the range, and then paused
+      // inside its own replay: continue that same dispatch — skip range steps that already
+      // completed, consume no further local attempt and no further shared-ceiling reservation,
+      // and leave the state the pause's resolution just satisfied untouched. Restarting instead
+      // would double-burn both budgets per logical retry (failing the run outright when the
+      // shared ceiling exhausts first, where the authored fallback was intended) and re-clear the
+      // range, wiping a just-submitted input and re-prompting. No further STEP_RETRIED event is
+      // recorded: the interrupted attempt already recorded its own, and this is that same attempt.
+      LOG.log(System.Logger.Level.INFO,
+          "Resuming interrupted retry dispatch stepId={0}, retryStepId={1} (no further attempt consumed)",
+          step.stepId(), behaviour.retryStepId());
+      ExecutionOutcome resumedOutcome = switch (behaviour.retryMode()) {
+        case SINGLE_STEP -> resumeSingleStep(step, behaviour, executionContext);
+        case FROM_STEP -> executeFromStep(step, behaviour, executionContext, true);
+      };
+      return markCompletionIfDispatched(step, resumedOutcome, executionContext);
+    }
+    // Any marker that survived to here is stale (its dispatch anchor — the target's execution uid
+    // — was wiped by an external rewind): drop it so this entry dispatches fresh.
+    state.removeContextValue(inflightKey);
 
     LOG.log(System.Logger.Level.INFO,
         "Retry behaviour start stepId={0}, retryStepId={1}, attempt={2}, maxAttempts={3}",
@@ -141,8 +184,14 @@ public final class RetryPreviousBehaviourHandler implements
         behaviour.retryMode(), behaviour.retryStepId());
     ExecutionOutcome outcome = switch (behaviour.retryMode()) {
       case SINGLE_STEP -> executeSingleStep(step, behaviour, executionContext);
-      case FROM_STEP -> executeFromStep(step, behaviour, executionContext);
+      case FROM_STEP -> executeFromStep(step, behaviour, executionContext, false);
     };
+    if (outcome == ExecutionOutcome.PAUSED) {
+      // The dispatch paused inside its own replay: record the in-flight marker so the re-entry
+      // drive resumes this dispatch instead of restarting it (see INFLIGHT_MARKER_PREFIX).
+      state.putContextValue(inflightKey,
+          new StringContextValue(String.valueOf(attempts), ContextProvenance.SYSTEM_GENERATED));
+    }
 
     eventRecorder.record(state.getRunId(), step.stepId(),
         WorkflowEventType.STEP_RETRIED,
@@ -165,8 +214,11 @@ public final class RetryPreviousBehaviourHandler implements
    * in the same uid-ordered sweep {@link WorkflowState#clearEntriesFromUid}/{@link
    * WorkflowState#clearStepEntriesFromUid} performs for every other step's output — no parallel
    * bookkeeping, and no marker left stranded at a uid earlier than state it was recorded after. A
-   * non-{@code COMPLETED} outcome (a downstream pause within this step's own replay) leaves no
-   * marker, so the next drive re-enters this step and completes the interrupted dispatch.
+   * non-{@code COMPLETED} outcome (a pause within this step's own replay) leaves no completion
+   * marker; the separate in-flight marker {@code handle} records for a paused replay makes the next
+   * drive re-enter this step and <em>resume</em> the interrupted dispatch where it paused —
+   * skipping range steps that already completed, reserving no further local or shared attempt —
+   * never restarting it. A completed dispatch also clears that in-flight marker here.
    */
   private static ExecutionOutcome markCompletionIfDispatched(StepDefinition step,
       ExecutionOutcome outcome, ExecutionContext executionContext) {
@@ -175,8 +227,38 @@ public final class RetryPreviousBehaviourHandler implements
       int freshUid = executionContext.allocateStepSequenceUid();
       state.putStepExecutionUid(step.stepId(), freshUid);
       state.putStepOutput(step.stepId(), RETRY_COMPLETION_MARKER);
+      state.removeContextValue(INFLIGHT_MARKER_PREFIX + step.stepId());
     }
     return outcome;
+  }
+
+  /**
+   * An interrupted dispatch of this owning step is resumable when its in-flight marker is present
+   * <em>and</em> the replayed target still has an execution uid — the dispatch's anchor. A marker
+   * whose anchor was wiped (an external rewind, e.g. {@code WorkflowRuntime.retry}, cleared the
+   * range including the target's uid) no longer describes anything resumable and is treated as
+   * stale: the caller drops it and dispatches fresh, reserving budgets properly.
+   */
+  private static boolean isResumingInterruptedDispatch(WorkflowState state,
+      RetryPreviousBehaviour behaviour, String inflightKey) {
+    if (state.getContext().get(inflightKey) == null) {
+      return false;
+    }
+    return state.getStepExecutionUid().get(behaviour.retryStepId()) != null;
+  }
+
+  /**
+   * {@code SINGLE_STEP} arm of an in-flight dispatch resumption: the interrupted dispatch's only
+   * replayed step is the target itself, so if the pause's resolution already completed it (it
+   * bears a step output) there is nothing left to execute; otherwise the target is executed as the
+   * continuation of the same dispatch.
+   */
+  private ExecutionOutcome resumeSingleStep(StepDefinition step, RetryPreviousBehaviour behaviour,
+      ExecutionContext executionContext) {
+    if (executionContext.getState().getStepOutputs().containsKey(behaviour.retryStepId())) {
+      return ExecutionOutcome.COMPLETED;
+    }
+    return executeSingleStep(step, behaviour, executionContext);
   }
 
   /**
@@ -326,9 +408,18 @@ public final class RetryPreviousBehaviourHandler implements
     return executeStep(target, executionContext);
   }
 
+  /**
+   * Replays the {@code [retryStepId, owningStep)} range in order. With
+   * {@code skipAlreadyCompleted} (an in-flight dispatch resumption) a range step that already
+   * bears a step output — recorded either by the interrupted dispatch itself or by the pause's
+   * resolution (e.g. {@code submitInput}) — is not re-executed: the range was cleared once, at the
+   * interrupted dispatch's start, so any output present now belongs to this same dispatch. A fresh
+   * dispatch passes {@code false}; its range was just cleared, so nothing could be skipped anyway.
+   */
   private ExecutionOutcome executeFromStep(StepDefinition step,
       RetryPreviousBehaviour behaviour,
-      ExecutionContext executionContext) {
+      ExecutionContext executionContext,
+      boolean skipAlreadyCompleted) {
     List<String> orderedIds = executionContext.getCurrentSequenceStepIds();
     int fromIndex = orderedIds.indexOf(behaviour.retryStepId());
     int toIndex = orderedIds.indexOf(step.stepId());
@@ -343,8 +434,12 @@ public final class RetryPreviousBehaviourHandler implements
         "RetryPreviousBehaviour step '%s': retryStepId '%s' must appear before owning step in current sequence"
             .formatted(step.stepId(), behaviour.retryStepId())));
 
+    WorkflowState state = executionContext.getState();
     ExecutionOutcome last = ExecutionOutcome.COMPLETED;
     for (String rangeStepId : orderedIds.subList(fromIndex, toIndex)) {
+      if (skipAlreadyCompleted && state.getStepOutputs().containsKey(rangeStepId)) {
+        continue;
+      }
       Executable target = resolveExecutable(rangeStepId, orderedIds, executionContext,
           step.stepId());
       last = executeStep(target, executionContext);

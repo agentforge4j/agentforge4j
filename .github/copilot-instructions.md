@@ -183,8 +183,8 @@ These are non-negotiable. Flag any existing code that violates them.
   `COLLECTION_CLOSE_REQUESTED`, `COLLECTION_CLOSE_REJECTED`, `COLLECTION_CLOSED`,
   `COLLECTION_REOPENED`, `COLLECTION_AUTHORIZATION_DENIED`, `COLLECTION_DEADLINE_CLOSE_REQUESTED`),
   and loop/context/LLM diagnostics (`LOOP_ITERATION_STARTED`, `LOOP_ITERATION_COMPLETED`,
-  `CONTEXT_UPDATED`, `LLM_OUTPUT`, `LLM_CALL_COMPLETED`, `USAGE_RECORD_FAILED`, `AGENT_SWAPPED`,
-  `PROMPT_OVERRIDDEN`, `USER_PROMPT_LIMIT_REACHED`).
+  `CONTEXT_UPDATED`, `LLM_OUTPUT`, `LLM_CALL_COMPLETED`, `USAGE_RECORD_FAILED`,
+  `USER_PROMPT_LIMIT_REACHED`).
 - `ContextValue` — sealed interface: `StringContextValue`, `NumberContextValue`, `BooleanContextValue`, `JsonContextValue`, `ContextValueList`. All records.
 
 ### Retry and loop concepts

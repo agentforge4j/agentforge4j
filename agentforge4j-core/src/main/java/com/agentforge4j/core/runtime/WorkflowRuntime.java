@@ -131,8 +131,12 @@ public interface WorkflowRuntime {
    *
    * <p>Distinct from {@link #approve(String, String, String, String)} (which resumes a step and may
    * re-invoke the agent): this delegates to the tool-execution service's resume path — re-resolving and invoking the
-   * exact approved tool without re-invoking the LLM — applies the outcome to state, and advances past the requesting
-   * step. Valid only when the run is in
+   * exact approved tool without re-invoking the LLM — and applies the outcome to state. An approved invocation that
+   * executes successfully, or a rejected one, advances past the requesting step. An approved invocation whose call
+   * <em>fails</em> (resolution, validation, or the provider itself) does not advance: a fresh pending row (origin
+   * {@code EXECUTION_FAILED}) is persisted and the run re-suspends in
+   * {@link com.agentforge4j.core.workflow.state.WorkflowStatus#AWAITING_TOOL_DECISION}, giving the operator a further
+   * decision point via {@link #resolveToolDecision}. Valid only when the run is in
    * {@link com.agentforge4j.core.workflow.state.WorkflowStatus#AWAITING_TOOL_APPROVAL}.
    *
    * @param runId            id of the run
@@ -140,6 +144,14 @@ public interface WorkflowRuntime {
    * @param decision         the human approve/reject decision
    *
    * @return a snapshot of the resumed run state
+   *
+   * @throws com.agentforge4j.core.spi.tool.PolicyDenialTerminalException if {@code decision} is an
+   *                                    {@link ApprovalDecision.Approve} against a policy-denied pending invocation —
+   *                                    a policy denial is terminal for that invocation and is never executed; no run
+   *                                    state is mutated
+   * @throws com.agentforge4j.core.spi.tool.ToolInvocationClaimLostException if a concurrent resume already claimed or
+   *                                    replaced the pending invocation; a benign concurrency-loss signal — no run
+   *                                    state is mutated
    */
   WorkflowState continueAfterToolApproval(String runId, String toolInvocationId,
       ApprovalDecision decision);
@@ -149,8 +161,13 @@ public interface WorkflowRuntime {
    * a tool invocation was denied by policy or failed after retries, applying the operator's decision.
    *
    * <p>{@link ToolDecision.Continue} proceeds without the tool result, writing
-   * {@code tool.<capability>.error} to context; {@link ToolDecision.Retry} replays the exact stored call without
-   * re-invoking the LLM. Either way the requesting step is advanced. Valid only when the run is in
+   * {@code tool.<capability>.error} to context and advancing past the requesting step. {@link ToolDecision.Retry}
+   * replays the exact stored call without re-invoking the LLM: a successful replay applies the tool result and
+   * advances the requesting step, but a replay that fails again does <em>not</em> advance — a fresh pending row
+   * (origin {@code EXECUTION_FAILED}) is persisted and the run re-suspends in {@code AWAITING_TOOL_DECISION} for a
+   * further decision. {@code Retry} against a pending invocation that was denied by policy is invalid: a denial is
+   * terminal for that invocation, so the call throws without invoking the provider or mutating run state, leaving the
+   * pending row intact for a later {@link ToolDecision.Continue}. Valid only when the run is in
    * {@code AWAITING_TOOL_DECISION}; use {@link #approve(String, String, String, String)} for escalation approvals instead.
    *
    * @param runId            id of the run
@@ -158,6 +175,13 @@ public interface WorkflowRuntime {
    * @param decision         the operator continue/retry decision
    *
    * @return a snapshot of the resumed run state
+   *
+   * @throws com.agentforge4j.core.spi.tool.PolicyDenialTerminalException if {@code decision} is a
+   *                                    {@link ToolDecision.Retry} against a policy-denied pending invocation; no run
+   *                                    state is mutated
+   * @throws com.agentforge4j.core.spi.tool.ToolInvocationClaimLostException if a concurrent resolution already claimed
+   *                                    or replaced the pending invocation; a benign concurrency-loss signal — no run
+   *                                    state is mutated
    */
   WorkflowState resolveToolDecision(String runId, String toolInvocationId, ToolDecision decision);
 }

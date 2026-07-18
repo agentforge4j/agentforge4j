@@ -14,7 +14,7 @@ package com.agentforge4j.core.spi.tool;
  * invocation. The pending row is left untouched by the rejected attempt, so a later legitimate
  * Reject/Continue can still resolve it.
  */
-public class PolicyDenialTerminalException extends RuntimeException {
+public final class PolicyDenialTerminalException extends RuntimeException {
 
   /**
    * Creates the exception with a detail message.

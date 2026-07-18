@@ -669,7 +669,7 @@ class RetryContinuationRuntimeTest {
 
     // The runtime-owned counter is shared with RETRY_PREVIOUS targeting the same step — see
     // RetryPolicyAttemptCounter.
-    String attemptKey = "__retry_policy_s1_attempts";
+    String attemptKey = "__retry_policy_attempts:s1";
 
     fixture.runtime().retry(runId, "s1", "user");
     assertThat(fixture.runtime().getState(runId).getStatus()).isEqualTo(WorkflowStatus.FAILED);

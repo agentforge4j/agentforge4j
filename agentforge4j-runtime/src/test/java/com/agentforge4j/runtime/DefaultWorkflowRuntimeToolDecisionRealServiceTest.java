@@ -28,6 +28,7 @@ import com.agentforge4j.core.workflow.WorkflowSource;
 import com.agentforge4j.core.workflow.context.ContextMapping;
 import com.agentforge4j.core.workflow.context.ContextValue;
 import com.agentforge4j.core.workflow.event.WorkflowEvent;
+import com.agentforge4j.core.workflow.event.WorkflowEventLog;
 import com.agentforge4j.core.workflow.event.WorkflowEventType;
 import com.agentforge4j.core.workflow.context.StringContextValue;
 import com.agentforge4j.core.workflow.requirement.DefaultRequirementResolver;
@@ -337,7 +338,11 @@ class DefaultWorkflowRuntimeToolDecisionRealServiceTest {
         try {
           successes.add(runtime.continueAfterToolApproval(
               "run-1", command.toolInvocationId(), new ApprovalDecision.Approve(actor)));
-        } catch (ToolInvocationClaimLostException e) {
+        } catch (ToolInvocationClaimLostException | IllegalArgumentException e) {
+          // Both are legitimate loser outcomes: the typed claim-loss when the loser reaches the
+          // store first, or the status-guard rejection when the winner's whole resume+drive
+          // already completed before the loser even reached validateToolResumeStatus. Neither
+          // mutates run state.
           conflicts.add(e);
         }
       });
@@ -400,7 +405,9 @@ class DefaultWorkflowRuntimeToolDecisionRealServiceTest {
       try {
         successes.add(runtime.resolveToolDecision(
             "run-1", command.toolInvocationId(), new ToolDecision.Continue("op-continue")));
-      } catch (ToolInvocationClaimLostException e) {
+      } catch (ToolInvocationClaimLostException | IllegalArgumentException e) {
+        // Typed claim-loss, or the status-guard rejection when the winner's whole resume+drive
+        // completed before this loser reached validateToolResumeStatus. Neither mutates state.
         conflicts.add(e);
       }
     });
@@ -409,7 +416,8 @@ class DefaultWorkflowRuntimeToolDecisionRealServiceTest {
       try {
         successes.add(runtime.resolveToolDecision(
             "run-1", command.toolInvocationId(), new ToolDecision.Retry("op-retry")));
-      } catch (ToolInvocationClaimLostException e) {
+      } catch (ToolInvocationClaimLostException | IllegalArgumentException e) {
+        // Same accepted loser outcomes as the Continue thread above.
         conflicts.add(e);
       }
     });
@@ -465,7 +473,9 @@ class DefaultWorkflowRuntimeToolDecisionRealServiceTest {
         try {
           successes.add(runtime.resolveToolDecision(
               "run-1", command.toolInvocationId(), new ToolDecision.Continue(op)));
-        } catch (ToolInvocationClaimLostException e) {
+        } catch (ToolInvocationClaimLostException | IllegalArgumentException e) {
+          // Typed claim-loss, or the status-guard rejection when the winner's whole resume+drive
+          // completed before this loser reached validateToolResumeStatus. Neither mutates state.
           conflicts.add(e);
         }
       });
@@ -562,6 +572,173 @@ class DefaultWorkflowRuntimeToolDecisionRealServiceTest {
   }
 
   /**
+   * L2-01 regression: an operator {@code Approve} whose resumed call then fails must NOT advance
+   * the run. The service has already persisted a fresh {@code EXECUTION_FAILED} pending row, so
+   * {@code continueAfterToolApproval} must re-suspend the run in {@code AWAITING_TOOL_DECISION} —
+   * the exact status that row resolves — leaving it fully resolvable, never orphaned against a run
+   * that recorded the error and moved on (where a later direct SPI {@code resume(Approve)} could
+   * still claim it and re-invoke the provider).
+   */
+  @Test
+  void approvedInvocationWhoseCallFailsReSuspendsInAwaitingToolDecisionWithTheFreshRow() {
+    provider.alwaysFail = true;
+    DefaultToolExecutionService toolService = toolService(requireApproval());
+    WorkflowState state = seedState();
+    ToolInvocationCommand command = command();
+    toolService.execute(command, ctx(state));
+    state.setStatus(WorkflowStatus.AWAITING_TOOL_APPROVAL);
+    stateRepo.save(state);
+
+    DefaultWorkflowRuntime runtime = runtime(toolService);
+    WorkflowState resumed = runtime.continueAfterToolApproval(
+        "run-1", command.toolInvocationId(), new ApprovalDecision.Approve("alice"));
+
+    assertThat(provider.invocations).isEqualTo(1);
+    assertThat(resumed.getStatus()).isEqualTo(WorkflowStatus.AWAITING_TOOL_DECISION);
+    assertThat(stateRepo.findById("run-1").orElseThrow().getStatus())
+        .isEqualTo(WorkflowStatus.AWAITING_TOOL_DECISION);
+    PendingToolInvocation fresh = store.find("run-1", command.toolInvocationId());
+    assertThat(fresh).isNotNull();
+    assertThat(fresh.origin()).isEqualTo(PendingToolInvocation.Origin.EXECUTION_FAILED);
+    // Exactly the one fresh row — nothing orphaned or duplicated for this run.
+    assertThat(store.findByRun("run-1")).hasSize(1);
+    // The step was not advanced and no tool error was applied yet — the operator decides first.
+    assertThat(stateRepo.findById("run-1").orElseThrow()
+        .getContextValue("tool." + CAPABILITY + ".error")).isEmpty();
+
+    // The fresh row is genuinely resolvable: the operator's Continue applies the recorded failure
+    // and the run completes — proving the row was never orphaned.
+    WorkflowState resolved = runtime.resolveToolDecision(
+        "run-1", command.toolInvocationId(), new ToolDecision.Continue("op-1"));
+    assertThat(resolved.getStatus()).isEqualTo(WorkflowStatus.COMPLETED);
+    assertThat(store.find("run-1", command.toolInvocationId())).isNull();
+    assertThat(contextValue("tool." + CAPABILITY + ".error")).isEqualTo("boom");
+  }
+
+  /**
+   * L2-02 regression (re-suspend sibling): a {@code cancel()} acknowledged while the retried
+   * provider call is still in flight — a window spanning the whole invocation — must not be
+   * clobbered back to {@code AWAITING_TOOL_DECISION} by the Retry-failed re-suspend write.
+   * Cancellation always wins; the interleaving is deterministic (the provider itself cancels the
+   * run mid-invocation).
+   */
+  @Test
+  void cancelDuringAnInFlightRetriedCallWinsOverTheReSuspendWrite() {
+    provider.alwaysFail = true;
+    DefaultToolExecutionService toolService = toolService(allow());
+    WorkflowState state = seedState();
+    ToolInvocationCommand command = command();
+    toolService.execute(command, ctx(state));
+    state.setStatus(WorkflowStatus.AWAITING_TOOL_DECISION);
+    stateRepo.save(state);
+
+    DefaultWorkflowRuntime runtime = runtime(toolService);
+    provider.onInvoke = () -> runtime.cancel("run-1", "canceller");
+
+    WorkflowState resumed = runtime.resolveToolDecision(
+        "run-1", command.toolInvocationId(), new ToolDecision.Retry("op-1"));
+
+    assertThat(resumed.getStatus()).isEqualTo(WorkflowStatus.CANCELLED);
+    assertThat(stateRepo.findById("run-1").orElseThrow().getStatus())
+        .isEqualTo(WorkflowStatus.CANCELLED);
+    List<WorkflowEventType> eventTypes = eventLog.getEvents("run-1").stream()
+        .map(WorkflowEvent::eventType)
+        .toList();
+    assertThat(eventTypes.stream().filter(t -> t == WorkflowEventType.RUN_CANCELLED).count())
+        .isEqualTo(1);
+  }
+
+  /**
+   * L2-02 regression (handleRejected sibling): a step rejection's {@code FAILED} write racing a
+   * {@code cancel()} must not overwrite the already-won {@code CANCELLED} terminal status —
+   * terminal transitions are mutually exclusive and whichever wins first is final. The
+   * interleaving is forced deterministically: the hooked event log fires {@code cancel()} exactly
+   * between {@code decideStepApproval}'s cancellation guard (already passed) and
+   * {@code handleRejected}'s terminal write — the {@code STEP_REJECTED} audit append sits between
+   * the two.
+   */
+  @Test
+  void stepRejectionRacingACancelDoesNotOverwriteCancelledWithFailed() {
+    AtomicReference<DefaultWorkflowRuntime> runtimeRef = new AtomicReference<>();
+    AtomicBoolean cancelFired = new AtomicBoolean(false);
+    WorkflowEventLog hookedLog = new WorkflowEventLog() {
+      @Override
+      public void append(WorkflowEvent event) {
+        eventLog.append(event);
+        if (event.eventType() == WorkflowEventType.STEP_REJECTED
+            && cancelFired.compareAndSet(false, true)) {
+          runtimeRef.get().cancel("run-1", "canceller");
+        }
+      }
+
+      @Override
+      public List<WorkflowEvent> getEvents(String runId) {
+        return eventLog.getEvents(runId);
+      }
+    };
+    EventRecorder hookedRecorder = new EventRecorder(hookedLog, CLOCK);
+    when(stepSequenceExecutor.executeAll(anyList(), any())).thenReturn(ExecutionOutcome.COMPLETED);
+    DefaultWorkflowRuntime runtime = new DefaultWorkflowRuntime(
+        new InMemoryWorkflowRepository(Map.of("wf-1", workflow())),
+        stateRepo,
+        stepSequenceExecutor,
+        hookedRecorder,
+        CLOCK,
+        RunContextManager.NO_OP,
+        DefaultWorkflowRuntime.DEFAULT_MAX_NESTING_DEPTH,
+        toolService(allow()),
+        store,
+        new DefaultRequirementResolver(),
+        new TransitionGate(hookedRecorder),
+        RunExecutionInterceptor.NO_OP,
+        new InMemoryGeneratedArtifactStore());
+    runtimeRef.set(runtime);
+
+    WorkflowState state = seedState();
+    state.setStatus(WorkflowStatus.AWAITING_STEP_APPROVAL);
+    stateRepo.save(state);
+
+    runtime.decideStepApproval("run-1", "s1",
+        new com.agentforge4j.core.runtime.StepApprovalDecision.Reject("bob", "no"));
+
+    WorkflowState finalState = stateRepo.findById("run-1").orElseThrow();
+    assertThat(finalState.getStatus()).isEqualTo(WorkflowStatus.CANCELLED);
+    // The losing FAILED transition mutated nothing — no failure detail was recorded either.
+    assertThat(finalState.getFailureReason()).isNull();
+    List<WorkflowEventType> eventTypes = eventLog.getEvents("run-1").stream()
+        .map(WorkflowEvent::eventType)
+        .toList();
+    assertThat(eventTypes).contains(
+        WorkflowEventType.STEP_REJECTED, WorkflowEventType.RUN_CANCELLED);
+  }
+
+  /**
+   * L2-02 regression (transition-gate sibling): a {@code cancel()} acknowledged during the
+   * approved tool call must not be clobbered by {@code gateCompletedStep}'s suspension save when
+   * the requesting step carries a {@code HUMAN_APPROVAL} transition gate — the run must end
+   * {@code CANCELLED}, not {@code AWAITING_STEP_APPROVAL}.
+   */
+  @Test
+  void cancelDuringAnApprovedToolCallWinsOverTheTransitionGateSuspension() {
+    DefaultToolExecutionService toolService = toolService(requireApproval());
+    WorkflowState state = seedState();
+    ToolInvocationCommand command = command();
+    toolService.execute(command, ctx(state));
+    state.setStatus(WorkflowStatus.AWAITING_TOOL_APPROVAL);
+    stateRepo.save(state);
+
+    DefaultWorkflowRuntime runtime = runtime(toolService, gatedWorkflow());
+    provider.onInvoke = () -> runtime.cancel("run-1", "canceller");
+
+    WorkflowState resumed = runtime.continueAfterToolApproval(
+        "run-1", command.toolInvocationId(), new ApprovalDecision.Approve("alice"));
+
+    assertThat(resumed.getStatus()).isEqualTo(WorkflowStatus.CANCELLED);
+    assertThat(stateRepo.findById("run-1").orElseThrow().getStatus())
+        .isEqualTo(WorkflowStatus.CANCELLED);
+  }
+
+  /**
    * Delegates every call to the wrapped store, except that the very first {@link #claim} call
    * blocks (after signalling {@link #claimAttempted}) until {@link #proceed} is counted down —
    * deterministically forcing a claim attempt to be stale by the time it actually runs, without any
@@ -650,9 +827,14 @@ class DefaultWorkflowRuntimeToolDecisionRealServiceTest {
   }
 
   private DefaultWorkflowRuntime runtime(DefaultToolExecutionService toolService) {
+    return runtime(toolService, workflow());
+  }
+
+  private DefaultWorkflowRuntime runtime(DefaultToolExecutionService toolService,
+      WorkflowDefinition workflow) {
     when(stepSequenceExecutor.executeAll(anyList(), any())).thenReturn(ExecutionOutcome.COMPLETED);
     return new DefaultWorkflowRuntime(
-        new InMemoryWorkflowRepository(Map.of("wf-1", workflow())),
+        new InMemoryWorkflowRepository(Map.of("wf-1", workflow)),
         stateRepo,
         stepSequenceExecutor,
         eventRecorder,
@@ -694,12 +876,21 @@ class DefaultWorkflowRuntimeToolDecisionRealServiceTest {
   }
 
   private static WorkflowDefinition workflow() {
+    return workflow(StepTransition.AUTO);
+  }
+
+  /** Same single-step workflow, but "s1" carries a HUMAN_APPROVAL transition gate. */
+  private static WorkflowDefinition gatedWorkflow() {
+    return workflow(StepTransition.HUMAN_APPROVAL);
+  }
+
+  private static WorkflowDefinition workflow(StepTransition transition) {
     return new WorkflowDefinition(
         "wf-1", "wf-1", null, null, null, null, null,
         WorkflowSource.CUSTOM, WorkflowLifecycle.ACTIVE, Map.of(), Map.of(),
         List.of(new StepDefinition(
             "s1", "s1",
-            new ResourceBehaviour("/examples/sample.txt", "out", StepTransition.AUTO),
+            new ResourceBehaviour("/examples/sample.txt", "out", transition),
             ContextMapping.none(), null, null, null, null, null)), List.of());
   }
 
@@ -724,6 +915,8 @@ class DefaultWorkflowRuntimeToolDecisionRealServiceTest {
     private boolean failFirstInvocation;
     private boolean alwaysFail;
     private boolean alwaysFailWithDistinctReasons;
+    /** Optional hook run at the start of every invocation (set after any setup execute() calls). */
+    private Runnable onInvoke;
 
     @Override
     public String providerId() {
@@ -741,6 +934,9 @@ class DefaultWorkflowRuntimeToolDecisionRealServiceTest {
     public ToolResult invoke(ToolDescriptor descriptor, String arguments,
         ToolInvocationContext ctx, ToolExecutionOptions options) {
       invocations++;
+      if (onInvoke != null) {
+        onInvoke.run();
+      }
       if (alwaysFailWithDistinctReasons) {
         return ToolResult.failure("boom-" + invocations, 1L);
       }

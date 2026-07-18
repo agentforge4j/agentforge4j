@@ -30,8 +30,8 @@ public interface ToolExecutionService {
    * is re-resolved and arguments re-validated against current configuration, and the pending record
    * is atomically claimed — tied to the exact row this call observed (see
    * {@link PendingToolInvocationStore#claim}) — before invocation, so that two concurrent resumes on
-   * the same invocation never both execute. There is no claimable pending row for this invocation —
-   * whether because it was never pending, already resolved, or claimed/replaced by a concurrent
+   * the same invocation never both execute. If there is no claimable pending row for this invocation
+   * — whether because it was never pending, already resolved, or claimed/replaced by a concurrent
    * resume before this call's own claim attempt — this call throws
    * {@link ToolInvocationClaimLostException} without mutating any state; this is a benign
    * concurrency-loss signal, never reported as a provider/tool failure. If the claimed attempt
