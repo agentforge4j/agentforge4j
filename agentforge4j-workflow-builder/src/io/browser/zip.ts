@@ -10,6 +10,7 @@ import type {
   WorkflowDefinition,
 } from '../../api/types';
 import {
+  normalizeBlueprintForSchema,
   normalizeRuntimeDocumentForSchema,
   toRuntimeWorkflowDocument,
   validateAgainstSchema,
@@ -266,7 +267,7 @@ export async function buildWorkflowZipBlob(workflow: WorkflowDefinition): Promis
   }
 
   for (const [blueprintId, blueprint] of Object.entries(workflow.blueprintBodies ?? {})) {
-    folder.file(`${blueprintId}.blueprint.json`, JSON.stringify(blueprint, null, 2));
+    folder.file(`${blueprintId}.blueprint.json`, JSON.stringify(normalizeBlueprintForSchema(blueprint), null, 2));
   }
 
   for (const [stepId, prompt] of collectStepPrompts(workflow)) {

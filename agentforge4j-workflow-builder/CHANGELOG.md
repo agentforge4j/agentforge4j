@@ -17,6 +17,16 @@ and this package adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   three-field shape (`allowRetry`, `allowRetryFromPrevious`, `maxAttempts`) with
   `additionalProperties: false`, rejecting any document that still declares either field. No
   public API change; patch release.
+- A `retryPolicy` at its default (disabled) setting is now also omitted from a REPEAT loop's
+  exported blueprint body, not only from the top-level `workflow.json`. The runtime schema
+  requires `maxAttempts >= 1`, so a disabled policy must be omitted rather than emitted with
+  `maxAttempts: 0`; blueprint bodies were missing this normalization, so a loop body containing an
+  AI Step or AI Debate step at its default retry setting produced an invalid
+  `<blueprintId>.blueprint.json`.
+- The release-time check for the two retired `RetryPolicy` fields now scans every packed
+  JavaScript artifact under `dist/` — not only the two ESM/CJS entry files — because the ESM build
+  is code-split into content-hashed chunk files, and the RetryPolicy-emitting code (and its bundled
+  schema copy) can land in one of those chunks rather than the entry file itself.
 
 ## [0.6.0] - 2026-07-17
 
