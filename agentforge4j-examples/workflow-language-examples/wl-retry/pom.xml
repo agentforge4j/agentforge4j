@@ -15,8 +15,9 @@
   <packaging>jar</packaging>
   <name>AgentForge4j Workflow Language — Retry Example</name>
   <description>Deterministic re-execution of a previous step in the workflow language: a
-    RETRY_PREVIOUS step re-runs an earlier agent step, advancing its scripted call ordinal. No
-    network, no real API keys.</description>
+    RETRY_PREVIOUS step rewinds an earlier INPUT step (retryMode FROM_STEP) and re-requests it,
+    bounded by maxAttempts, falling through to a fallback agent step once attempts are exhausted.
+    No network, no real API keys.</description>
 
   <!-- Re-declares the Apache-2.0 licence even though it is inherited from the examples parent. This
        is intentional, not redundant: each example module is meant to be self-contained and

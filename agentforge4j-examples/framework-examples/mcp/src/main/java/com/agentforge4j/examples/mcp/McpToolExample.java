@@ -6,6 +6,7 @@ import com.agentforge4j.bootstrap.AgentForge4jBootstrap;
 import com.agentforge4j.core.spi.tool.ToolPolicy;
 import com.agentforge4j.core.spi.tool.ToolProvider;
 import com.agentforge4j.core.spi.tool.ToolSourceKind;
+import com.agentforge4j.core.workflow.context.StringContextValue;
 import com.agentforge4j.core.workflow.state.WorkflowState;
 import com.agentforge4j.llm.DefaultLlmClientResolver;
 import com.agentforge4j.llm.api.LlmClient;
@@ -89,7 +90,8 @@ public final class McpToolExample {
     WorkflowState state = agentForge4j.runtime().getState(runId);
 
     System.out.printf("Workflow '%s' (run %s) finished with status: %s%n", WORKFLOW_ID, runId, state.getStatus());
-    System.out.printf("Tool result (%s): %s%n", TOOL_CONTEXT_KEY, state.getContext().get(TOOL_CONTEXT_KEY));
+    StringContextValue toolResult = (StringContextValue) state.getContext().get(TOOL_CONTEXT_KEY);
+    System.out.printf("Tool result (%s): %s%n", TOOL_CONTEXT_KEY, toolResult.value());
   }
 
   /**

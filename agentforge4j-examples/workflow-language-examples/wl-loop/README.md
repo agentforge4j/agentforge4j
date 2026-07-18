@@ -5,8 +5,9 @@
 How the workflow language expresses bounded iteration through a looped blueprint, and how the
 termination strategy decides when the loop stops. Two variants are shown side by side: a fixed-count
 loop and an agent-signalled loop. The example is LLM-agnostic: it runs offline against a deterministic
-fake by default, or against a real provider with no code change. No Spring, no network on the default
-path.
+fake by default; pointing it at a real provider needs a provider module, credentials, and the agent
+repointed away from the fake — no change to the workflow structure itself. No Spring, no network on
+the default path.
 
 ## AgentForge4j capability demonstrated
 
@@ -45,11 +46,16 @@ watch both loops print.
 
 **Against a real LLM.** Set a provider key — either `agentforge4j.example.llm.api-key` in
 `example.properties`, or the `AGENTFORGE4J_EXAMPLE_LLM_API_KEY` environment variable (see `.env.example`)
-— **and** add a provider module dependency (for example `agentforge4j-llm-openai`) to this module's
-`pom.xml`. No code changes: the same workflows run, with the loop body served by the real model (so the
-agent-signal loop now stops when the real model emits `COMPLETE`). With a key set but no provider module
-on the classpath, the run fails fast with a clear "no provider factory" message. Precedence for every
-value is system property, then environment variable, then `example.properties`.
+— add a provider module dependency (for example `agentforge4j-llm-openai`) to this module's `pom.xml`,
+and edit the `providerPreferences` in `src/main/resources/agents/loop-agent.agent/agent.json` to name
+the chosen provider instead of `fake` (the agent ships pinned to the fake provider so the offline
+default is deterministic). With those three changes made, the same workflow structure runs unchanged,
+with the loop body served by the real model — so the agent-signal loop stops whenever the real model
+emits `COMPLETE`, which may take a different number of iterations than the scripted fake. With a key set
+but no provider module on the classpath, assembly fails fast with a clear "no provider factory" message;
+with the module present but the agent still pinned to `fake`, the run fails at the first agent step with
+an `LlmInvocationException` saying the agent has no available provider preferences. Precedence for
+every value is system property, then environment variable, then `example.properties`.
 
 ## Expected behaviour / output
 

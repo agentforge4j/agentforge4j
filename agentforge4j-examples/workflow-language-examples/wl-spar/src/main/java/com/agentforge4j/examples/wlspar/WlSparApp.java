@@ -24,9 +24,10 @@ import java.util.Objects;
  *
  * <p>The example is LLM-agnostic. Out of the box it runs offline against the deterministic
  * {@code agentforge4j-llm-fake} provider (one scripted response per agent turn, no key, no network, no extra
- * dependency). Configure a provider key in {@code example.properties} (or via the environment) <em>and</em>
- * add a provider module to this module's POM to run the same workflow against a real model — no code change.
- * The fake/real choice is resolved by {@link ExampleLlmConfig}.
+ * dependency). Configure a provider key in {@code example.properties} (or via the environment), add a
+ * provider module to this module's POM, <em>and</em> point both agents' {@code providerPreferences} at that
+ * provider instead of {@code fake} to run the same workflow against a real model. The fake/real choice is
+ * resolved by {@link ExampleLlmConfig}.
  */
 public final class WlSparApp {
 
@@ -114,7 +115,7 @@ public final class WlSparApp {
   /**
    * Builds the real-provider configuration from {@code config}'s provider name, starting from that
    * provider's own {@link LlmProviderConfig} factory so the base URL and default model are populated (a
-   * provider selected via configuration only, with no code change, must still resolve a working model).
+   * provider selected via configuration only must still resolve a working model).
    *
    * @param config the resolved example configuration carrying the provider name and API key
    *

@@ -4,8 +4,9 @@
 
 How `RETRY_PREVIOUS` rewinds a workflow and re-executes an earlier step, bounded by a maximum number
 of attempts, with a fallback once those attempts are exhausted. The example is LLM-agnostic: it runs
-offline against a deterministic fake by default, or against a real provider with no code change. No
-Spring, no network on the default path.
+offline against a deterministic fake by default; pointing it at a real provider needs a provider
+module, credentials, and the agent repointed away from the fake — no change to the workflow structure
+itself. No Spring, no network on the default path.
 
 ## AgentForge4j capability demonstrated
 
@@ -39,11 +40,16 @@ watch the rewind and completion print.
 
 **Against a real LLM.** Set a provider key — either `agentforge4j.example.llm.api-key` in
 `example.properties`, or the `AGENTFORGE4J_EXAMPLE_LLM_API_KEY` environment variable (see `.env.example`)
-— **and** add a provider module dependency (for example `agentforge4j-llm-openai`) to this module's
-`pom.xml`. No code changes: the same workflow runs, with the fallback agent's step now served by the
-real model; the inputs are still supplied in code. With a key set but no provider module on the
-classpath, the run fails fast with a clear "no provider factory" message. Precedence for every value is
-system property, then environment variable, then `example.properties`.
+— add a provider module dependency (for example `agentforge4j-llm-openai`) to this module's `pom.xml`,
+and edit the `providerPreferences` in `src/main/resources/agents/finalize-agent.agent/agent.json` to
+name the chosen provider instead of `fake` (the agent ships pinned to the fake provider so the offline
+default is deterministic). With those three changes made, the same workflow structure runs unchanged,
+with the fallback agent's step now served by the real model; the inputs are still supplied in code. With
+a key set but no provider module on the classpath, assembly fails fast with a clear "no provider
+factory" message; with the module present but the agent still pinned to `fake`, the run fails at the
+first agent step with an `LlmInvocationException` saying the agent has no available provider
+preferences. Precedence for every value is system property, then environment variable, then
+`example.properties`.
 
 ## Expected behaviour / output
 

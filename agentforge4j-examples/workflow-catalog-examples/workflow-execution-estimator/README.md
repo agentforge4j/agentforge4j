@@ -3,11 +3,12 @@
 ## What this teaches
 
 How to use a **shipped catalog workflow** rather than authoring your own, and how a caller is
-expected to behave around it: analyse a target workflow deterministically, run the shipped
-estimator bundle to its approval pause, aggregate the sized figures it produced, and show the full
-disclosure — token range, minimum required tokens, confidence, complexity, risk flags, and a
-continue/narrow/stop recommendation — before deciding whether to approve. No network calls, no
-real LLM keys, and no external service dependency.
+expected to behave around it: analyse a target workflow deterministically, supply that analysis as
+input to the shipped estimator bundle, and let its `aggregate-estimate` step combine the analysis
+with the agent's sizing into the full disclosure — token range, minimum required tokens,
+confidence, complexity, risk flags, and a continue/narrow/stop recommendation — before the run
+pauses; the caller then reads and shows that disclosure before deciding whether to approve. No
+network calls, no real LLM keys, and no external service dependency.
 
 ## AgentForge4j capability demonstrated
 
@@ -23,9 +24,10 @@ the estimator:
 
 The target workflow this describes (`baby-agent-birth`) never runs — it exists only as data for the
 deterministic structural analyser to examine. The estimator workflow is the only thing that
-executes, and this example is the **compliant caller** its own contract requires: it reads the
-estimator's sized figures at the approval pause, combines them with the target's structural
-analysis, and discloses the result before ever deciding to approve.
+executes, and this example is the **compliant caller** its own contract requires: it supplies the
+target's structural analysis as input to the run, the bundle's `aggregate-estimate` step combines
+that analysis with the agent's sizing into the full disclosure before the run pauses for approval,
+and the example reads and shows that disclosure before ever deciding to approve.
 
 ## How to run
 
@@ -63,8 +65,9 @@ The bundled test asserts the estimate's shape (ordered token envelope, positive 
 
 1. `src/main/java/.../WorkflowExecutionEstimatorExample.java` — loads the target workflow as data,
    assembles the runtime with the shipped catalog enabled and the estimator agent's response
-   scripted, and shows the compliant-caller sequence: analyse → run to the pause → read the sized
-   figures → aggregate → disclose → decide.
+   scripted, and shows the compliant-caller sequence: analyse → submit the analysis as input → run
+   to the pause (the workflow's own `aggregate-estimate` step aggregates) → read the disclosed
+   estimate → disclose → decide.
 2. `src/main/resources/target-workflow/baby-agent-birth.workflow.json` — the target workflow being
    estimated (never executed).
 3. `src/test/java/.../WorkflowExecutionEstimatorExampleTest.java` — the deterministic assertions on
