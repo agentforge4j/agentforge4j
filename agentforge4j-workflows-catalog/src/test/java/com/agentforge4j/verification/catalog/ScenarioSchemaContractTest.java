@@ -129,29 +129,38 @@ class ScenarioSchemaContractTest {
     assertThat(violations).isEmpty();
   }
 
+  // Each negative document below carries a valid expect block so the only schema violation left
+  // is the one the test names — without it, the required-expect rule would reject the document
+  // for an incidental second reason and the named coverage would be silently lost.
+
   @Test
   void schemaRejectsAMissingWorkflowId() throws IOException {
-    assertThat(SCENARIO_SCHEMA.validate(MAPPER.readTree("{\"gates\": []}"))).isNotEmpty();
+    assertThat(SCENARIO_SCHEMA.validate(MAPPER.readTree(
+        "{\"gates\": [], \"expect\": {\"status\": \"COMPLETED\"}}")))
+        .isNotEmpty();
   }
 
   @Test
   void schemaRejectsAnUnknownGateType() throws IOException {
-    assertThat(SCENARIO_SCHEMA.validate(
-        MAPPER.readTree("{\"workflowId\": \"w\", \"gates\": [{\"type\": \"telepathy\"}]}")))
+    assertThat(SCENARIO_SCHEMA.validate(MAPPER.readTree(
+        "{\"workflowId\": \"w\", \"gates\": [{\"type\": \"telepathy\"}], "
+            + "\"expect\": {\"status\": \"COMPLETED\"}}")))
         .isNotEmpty();
   }
 
   @Test
   void schemaRejectsAToolGateWithAnUnknownProperty() throws IOException {
     assertThat(SCENARIO_SCHEMA.validate(MAPPER.readTree(
-        "{\"workflowId\": \"w\", \"gates\": [{\"type\": \"toolApprove\", \"bogus\": true}]}")))
+        "{\"workflowId\": \"w\", \"gates\": [{\"type\": \"toolApprove\", \"bogus\": true}], "
+            + "\"expect\": {\"status\": \"COMPLETED\"}}")))
         .isNotEmpty();
   }
 
   @Test
   void schemaRejectsAToolGateWithABlankInvocationId() throws IOException {
     assertThat(SCENARIO_SCHEMA.validate(MAPPER.readTree(
-        "{\"workflowId\": \"w\", \"gates\": [{\"type\": \"toolRetry\", \"toolInvocationId\": \"\"}]}")))
+        "{\"workflowId\": \"w\", \"gates\": [{\"type\": \"toolRetry\", \"toolInvocationId\": \"\"}], "
+            + "\"expect\": {\"status\": \"COMPLETED\"}}")))
         .isNotEmpty();
   }
 

@@ -1,0 +1,2 @@
+A loose file at the agent root (other than the index) is not loadable content; the stray-entry gate
+must report it.
