@@ -8,6 +8,16 @@ workflow catalog.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this package adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.1] - 2026-07-18
+
+### Fixed
+- The exporter no longer emits the retired `allowAgentSwap` / `allowPromptOverride` fields on an
+  AI Step or AI Debate step's `retryPolicy`. Both fields were always decorative — the runtime
+  never read them — and the framework's `RetryPolicy` schema definition was tightened to a
+  three-field shape (`allowRetry`, `allowRetryFromPrevious`, `maxAttempts`) with
+  `additionalProperties: false`, rejecting any document that still declares either field. No
+  public API change; patch release.
+
 ## [0.6.0] - 2026-07-17
 
 ### Added

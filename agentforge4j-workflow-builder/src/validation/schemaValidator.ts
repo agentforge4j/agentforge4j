@@ -41,7 +41,7 @@ ajv.addSchema(workflowSchema, 'workflow.schema.json');
 ajv.addSchema(artifactSchema, 'artifact.schema.json');
 ajv.addSchema(agentSchema, 'agent.schema.json');
 
-const validateRuntimeDocument = ajv.compile(workflowSchema);
+const compiledValidateRuntimeDocument = ajv.compile(workflowSchema);
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -193,6 +193,27 @@ function mapAjvPath(error: ErrorObject): string {
   return instancePath.startsWith('/') ? instancePath.slice(1).replace(/\//g, '.') : instancePath;
 }
 
+/**
+ * Validates a raw runtime workflow document — the same document shape a `.workflow.zip` bundle
+ * carries — against the canonical `workflow.schema.json` this build was synced from. Exposed
+ * (rather than kept private to {@link validateAgainstSchema}) so tests, and any future import-path
+ * caller, can validate a document directly without going through this builder's own draft/export
+ * shape — for example to prove a document produced by a since-fixed exporter bug would have been
+ * (or, for an older/foreign producer's document, still is) rejected.
+ */
+export function validateRuntimeDocument(doc: Record<string, unknown>): SchemaValidationResult {
+  const valid = compiledValidateRuntimeDocument(doc) as boolean;
+  if (valid) {
+    return { valid: true, errors: [] };
+  }
+
+  const errors = (compiledValidateRuntimeDocument.errors ?? []).map((error) => ({
+    path: mapAjvPath(error),
+    message: error.message ?? 'Schema validation failed',
+  }));
+  return { valid: false, errors };
+}
+
 export function validateAgainstSchema(workflow: WorkflowDefinition): SchemaValidationResult {
   if (!workflow.id.trim()) {
     return {
@@ -202,14 +223,5 @@ export function validateAgainstSchema(workflow: WorkflowDefinition): SchemaValid
   }
 
   const runtimeDoc = normalizeRuntimeDocumentForSchema(workflow, toRuntimeWorkflowDocument(workflow));
-  const valid = validateRuntimeDocument(runtimeDoc) as boolean;
-  if (valid) {
-    return { valid: true, errors: [] };
-  }
-
-  const errors = (validateRuntimeDocument.errors ?? []).map((error) => ({
-    path: mapAjvPath(error),
-    message: error.message ?? 'Schema validation failed',
-  }));
-  return { valid: false, errors };
+  return validateRuntimeDocument(runtimeDoc);
 }
