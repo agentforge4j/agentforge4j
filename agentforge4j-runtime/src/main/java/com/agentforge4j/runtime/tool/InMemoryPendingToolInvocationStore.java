@@ -44,6 +44,38 @@ public final class InMemoryPendingToolInvocationStore implements PendingToolInvo
     byRunAndId.remove(key(runId, toolInvocationId));
   }
 
+  @Override
+  public PendingToolInvocation claim(String runId, String toolInvocationId,
+      PendingToolInvocation expectedPending) {
+    Validate.notBlank(runId, "runId must not be blank");
+    Validate.notBlank(toolInvocationId, "toolInvocationId must not be blank");
+    Validate.notNull(expectedPending, "expectedPending must not be null");
+    // ConcurrentHashMap.remove(key, value) is an atomic compare-and-delete: it removes and returns
+    // true only if the currently mapped value equals expectedPending. Of any number of concurrent
+    // callers racing the same key with the same expected row, exactly one observes true and every
+    // other observes false, closing the find-then-remove race window this method exists to
+    // eliminate; a caller whose expected row was replaced by a different row also observes false,
+    // rather than claiming the replacement under the stale row's authorization.
+    Key key = key(runId, toolInvocationId);
+    return byRunAndId.remove(key, expectedPending) ? expectedPending : null;
+  }
+
+  @Override
+  public PendingToolInvocation verifyStillCurrent(String runId, String toolInvocationId,
+      PendingToolInvocation expectedPending) {
+    Validate.notBlank(runId, "runId must not be blank");
+    Validate.notBlank(toolInvocationId, "toolInvocationId must not be blank");
+    Validate.notNull(expectedPending, "expectedPending must not be null");
+    // ConcurrentHashMap.get is linearizable with every put/remove on the same map, including
+    // claim's own remove(key, value) and save's put — the same total order claim's compare-and-delete
+    // already relies on for correctness. A true-equivalent result here is therefore a genuine,
+    // race-free confirmation that expectedPending was still the current row at a single well-defined
+    // point after every concurrent claim/save/remove that had already completed, not merely another
+    // independently-timed read assembled from two separate calls.
+    PendingToolInvocation current = byRunAndId.get(key(runId, toolInvocationId));
+    return expectedPending.equals(current) ? expectedPending : null;
+  }
+
   private static Key key(String runId, String toolInvocationId) {
     return new Key(runId, toolInvocationId);
   }

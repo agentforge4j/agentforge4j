@@ -34,11 +34,13 @@ import com.agentforge4j.core.workflow.step.blueprint.BlueprintRef;
 import com.agentforge4j.core.workflow.step.loop.LoopConfig;
 import com.agentforge4j.core.workflow.step.loop.LoopTerminationStrategy;
 import com.agentforge4j.core.workflow.step.loop.MaxIterationsAction;
+import com.agentforge4j.core.workflow.step.retry.RetryPolicy;
 import com.agentforge4j.llm.LlmClientResolver;
 import com.agentforge4j.llm.api.LlmClient;
 import com.agentforge4j.runtime.command.FileSink;
 import com.agentforge4j.runtime.command.ShellCommandRunner;
 import com.agentforge4j.runtime.event.EventRecorder;
+import com.agentforge4j.runtime.execution.RetryPolicyAttemptCounter;
 import com.agentforge4j.runtime.llm.AgentInvocationResult;
 import com.agentforge4j.runtime.llm.AgentInvoker;
 import com.agentforge4j.runtime.llm.ContextRenderer;
@@ -95,7 +97,15 @@ class RetryContinuationRuntimeTest {
     // were not cleared. This isolates the clearing: a1 (upstream of the target) is kept and skipped;
     // a2 (the target) is cleared and re-executes.
     StepDefinition a1 = agentStep("a1");
-    StepDefinition a2 = agentStep("a2");
+    // a2 is retried via the runtime.retry() operator verb below, which enforces RetryPolicy: an
+    // explicit permissive policy is required here, unlike agentStep("a2")'s default
+    // RetryPolicy.none() (which this test predates and which retry() now rejects).
+    StepDefinition a2 = StepDefinition.builder()
+        .withStepId("a2")
+        .withName("a2")
+        .withBehaviour(new AgentBehaviour("a2-agent", StepTransition.AUTO, RetryPolicy.simple(5)))
+        .withContextMapping(ContextMapping.none())
+        .build();
     StepDefinition terminalFail = failStep("fail");
     WorkflowDefinition workflow = workflow("wf-retry-stale", Map.of(),
         List.of(a1, a2, terminalFail));
@@ -612,6 +622,126 @@ class RetryContinuationRuntimeTest {
     assertThatThrownBy(() -> fixture.runtime().retry(runId, "ghost", "user"))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("not found in workflow 'wf-retry-unknown'");
+  }
+
+  @Test
+  void retry_operator_verb_rejects_step_whose_retry_policy_disallows_retry() {
+    // RetryPolicy.none() (the default for an AgentBehaviour with no explicit policy) must reject
+    // the retry() operator verb outright, before any mutation.
+    StepDefinition s1 = agentStep("s1");
+    WorkflowDefinition workflow = workflow("wf-retry-policy-none", Map.of(), List.of(s1));
+
+    Fixture fixture = fixture(workflow);
+    String runId = seedFailedRun(fixture, workflow);
+    long eventsBefore = fixture.eventLog().getEvents(runId).size();
+
+    assertThatThrownBy(() -> fixture.runtime().retry(runId, "s1", "user"))
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessageContaining("s1")
+        .hasMessageContaining("allowRetry=false");
+
+    WorkflowState after = fixture.runtime().getState(runId);
+    assertThat(after.getStatus()).isEqualTo(WorkflowStatus.FAILED);
+    assertThat(after.getContext()).isEmpty();
+    assertThat(fixture.eventLog().getEvents(runId)).hasSize((int) eventsBefore);
+  }
+
+  @Test
+  void retry_operator_verb_enforces_max_attempts_and_survives_reload() {
+    // Retries through the configured maxAttempts succeed via retry(); the next retry past
+    // maxAttempts is rejected with state and events completely unchanged; the attempt counter is
+    // carried on WorkflowState's own (persisted) context map, so it survives a reload — proxied here
+    // via getState()'s snapshot(), which deep-copies the context map the same way a real repository
+    // would serialize it, rather than reading a transient field of the runtime object.
+    StepDefinition s1 = StepDefinition.builder()
+        .withStepId("s1")
+        .withName("s1")
+        .withBehaviour(new AgentBehaviour("s1-agent", StepTransition.AUTO, RetryPolicy.simple(2)))
+        .withContextMapping(ContextMapping.none())
+        .build();
+    StepDefinition terminalFail = failStep("fail");
+    WorkflowDefinition workflow = workflow("wf-retry-policy-max-attempts", Map.of(),
+        List.of(s1, terminalFail));
+
+    Fixture fixture = fixture(workflow, continuingAgentInvoker());
+    String runId = fixture.runtime().start(workflow.id());
+    assertThat(fixture.runtime().getState(runId).getStatus()).isEqualTo(WorkflowStatus.FAILED);
+
+    // The runtime-owned counter is shared with RETRY_PREVIOUS targeting the same step — see
+    // RetryPolicyAttemptCounter.
+    String attemptKey = "__retry_policy_attempts:s1";
+
+    fixture.runtime().retry(runId, "s1", "user");
+    assertThat(fixture.runtime().getState(runId).getStatus()).isEqualTo(WorkflowStatus.FAILED);
+    WorkflowState afterFirst = fixture.runtime().getState(runId);
+    assertThat(((StringContextValue) afterFirst.getContext().get(attemptKey)).value())
+        .isEqualTo("1");
+
+    fixture.runtime().retry(runId, "s1", "user");
+    WorkflowState afterSecond = fixture.runtime().getState(runId);
+    assertThat(afterSecond.getStatus()).isEqualTo(WorkflowStatus.FAILED);
+    assertThat(((StringContextValue) afterSecond.getContext().get(attemptKey)).value())
+        .isEqualTo("2");
+
+    long eventsBeforeRejection = fixture.eventLog().getEvents(runId).size();
+
+    assertThatThrownBy(() -> fixture.runtime().retry(runId, "s1", "user"))
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessageContaining("s1")
+        .hasMessageContaining("maxAttempts");
+
+    WorkflowState afterRejected = fixture.runtime().getState(runId);
+    assertThat(afterRejected.getStatus()).isEqualTo(WorkflowStatus.FAILED);
+    assertThat(((StringContextValue) afterRejected.getContext().get(attemptKey)).value())
+        .isEqualTo("2");
+    assertThat(fixture.eventLog().getEvents(runId)).hasSize((int) eventsBeforeRejection);
+  }
+
+  @Test
+  void retry_operator_verb_is_rejected_when_the_shared_budget_was_already_consumed_by_retry_previous() {
+    // RetryPolicy.maxAttempts is a hard aggregate ceiling shared with RETRY_PREVIOUS targeting the
+    // same step (see RetryPolicyAttemptCounter) — simulate a prior RETRY_PREVIOUS attempt having
+    // already consumed "s1"'s only permitted attempt, and confirm the retry() operator verb, a
+    // different mechanism entirely, is rejected by the same shared budget.
+    StepDefinition s1 = StepDefinition.builder()
+        .withStepId("s1")
+        .withName("s1")
+        .withBehaviour(new AgentBehaviour("s1-agent", StepTransition.AUTO, RetryPolicy.simple(1)))
+        .withContextMapping(ContextMapping.none())
+        .build();
+    WorkflowDefinition workflow = workflow("wf-retry-shared-ceiling-from-retry-previous", Map.of(),
+        List.of(s1));
+
+    Fixture fixture = fixture(workflow);
+    String runId = seedFailedRun(fixture, workflow);
+    WorkflowState seeded = fixture.stateRepository().findById(runId).orElseThrow();
+    RetryPolicyAttemptCounter.increment(seeded, "s1");
+    fixture.stateRepository().save(seeded);
+
+    assertThatThrownBy(() -> fixture.runtime().retry(runId, "s1", "user"))
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessageContaining("s1")
+        .hasMessageContaining("maxAttempts");
+
+    // Rejected before any mutation: status and context stay exactly as seeded.
+    WorkflowState after = fixture.runtime().getState(runId);
+    assertThat(after.getStatus()).isEqualTo(WorkflowStatus.FAILED);
+    assertThat(RetryPolicyAttemptCounter.read(after, "s1")).isEqualTo(1);
+  }
+
+  @Test
+  void retry_operator_verb_is_unrestricted_for_step_types_with_no_retry_policy() {
+    // A ResourceBehaviour step carries no RetryPolicy concept at all; retry() must not invent a new
+    // restriction for it.
+    StepDefinition s1 = resourceStep("s1", "/examples/sample.txt", "k1");
+    WorkflowDefinition workflow = workflow("wf-retry-no-policy-concept", Map.of(), List.of(s1));
+
+    Fixture fixture = fixture(workflow);
+    String runId = seedFailedRun(fixture, workflow);
+
+    fixture.runtime().retry(runId, "s1", "user");
+
+    assertThat(fixture.runtime().getState(runId).getStatus()).isEqualTo(WorkflowStatus.COMPLETED);
   }
 
   private static long countEvents(Fixture fixture, String runId, String stepId,

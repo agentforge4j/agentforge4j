@@ -352,8 +352,6 @@
       "properties": {
         "allowRetry": { "type": "boolean" },
         "allowRetryFromPrevious": { "type": "boolean" },
-        "allowAgentSwap": { "type": "boolean" },
-        "allowPromptOverride": { "type": "boolean" },
         "maxAttempts": { "type": "integer", "minimum": 1 }
       }
     },

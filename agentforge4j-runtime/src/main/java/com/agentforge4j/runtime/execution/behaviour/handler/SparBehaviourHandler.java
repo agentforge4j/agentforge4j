@@ -11,6 +11,7 @@ import com.agentforge4j.core.workflow.step.spar.SparConfig;
 import com.agentforge4j.runtime.command.CommandApplicationResult;
 import com.agentforge4j.runtime.command.CommandApplier;
 import com.agentforge4j.runtime.event.EventRecorder;
+import com.agentforge4j.runtime.execution.AgentSignalPersistence;
 import com.agentforge4j.runtime.execution.CommandApplicationResults;
 import com.agentforge4j.runtime.execution.ExecutionContext;
 import com.agentforge4j.runtime.execution.ExecutionOutcome;
@@ -133,7 +134,11 @@ public final class SparBehaviourHandler implements BehaviourHandler<SparBehaviou
         "SPAR completed stepId={0}, executedRounds={1}, maxRounds={2}, loopTermination={3}",
         step.stepId(), executedRounds, config.maxRounds(), loopTermination);
     // Surface a COMPLETE command to an enclosing AGENT_SIGNAL loop without altering the outcome.
-    executionContext.setAgentCompletionSignalled(result == CommandApplicationResult.COMPLETE_SIGNAL);
+    boolean signalled = result == CommandApplicationResult.COMPLETE_SIGNAL;
+    executionContext.setAgentCompletionSignalled(signalled);
+    // Also persist the signal on WorkflowState (see AgentSignalPersistence) so it survives
+    // a pause/resume occurring later in the same iteration.
+    AgentSignalPersistence.record(step, executionContext, signalled);
     return CommandApplicationResults.toExecutionOutcome(result);
   }
 

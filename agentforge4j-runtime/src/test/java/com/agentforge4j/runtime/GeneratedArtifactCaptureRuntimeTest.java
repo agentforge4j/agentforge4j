@@ -22,6 +22,7 @@ import com.agentforge4j.core.workflow.step.StepDefinition;
 import com.agentforge4j.core.workflow.step.StepTransition;
 import com.agentforge4j.core.workflow.step.behaviour.AgentBehaviour;
 import com.agentforge4j.core.workflow.step.behaviour.ValidateBehaviour;
+import com.agentforge4j.core.workflow.step.retry.RetryPolicy;
 import com.agentforge4j.llm.LlmClientResolver;
 import com.agentforge4j.llm.api.LlmClient;
 import com.agentforge4j.llm.api.LlmExecutionResponse;
@@ -147,7 +148,10 @@ class GeneratedArtifactCaptureRuntimeTest {
     StepDefinition generate = StepDefinition.builder()
         .withStepId("generate")
         .withName("Generate")
-        .withBehaviour(new AgentBehaviour("a1", StepTransition.AUTO, null))
+        // Explicit permissive RetryPolicy: this file's retry-regression test retries "generate" via
+        // the runtime.retry() operator verb, which gates on allowRetry — the default
+        // RetryPolicy.none() (from a null policy) would reject it.
+        .withBehaviour(new AgentBehaviour("a1", StepTransition.AUTO, RetryPolicy.simple(5)))
         .withContextMapping(ContextMapping.none())
         .build();
     List<StepDefinition> steps;

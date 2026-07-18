@@ -12,6 +12,7 @@ import com.agentforge4j.core.workflow.reachability.AmbiguousStepId;
 import com.agentforge4j.core.workflow.reachability.ReachableStepGraph;
 import com.agentforge4j.core.workflow.reachability.WorkflowRefResolver;
 import com.agentforge4j.core.workflow.requirement.WorkflowRequirement;
+import com.agentforge4j.core.workflow.step.behaviour.CollectionBehaviour;
 import com.agentforge4j.core.workflow.step.behaviour.ContextEqualityContract;
 import com.agentforge4j.core.workflow.step.behaviour.InputBehaviour;
 import com.agentforge4j.core.workflow.step.behaviour.RetryPreviousBehaviour;
@@ -330,6 +331,31 @@ public final class WorkflowValidator {
           "Workflow '%s' declares conflicting requirements of type '%s' for the same target"
               .formatted(workflow.id(), requirement.type()));
     }
+  }
+
+  /**
+   * Verifies that no step in any workflow uses {@link CollectionBehaviour}. The {@code COLLECTION}
+   * step type is a half-landed public surface: its sealed permit, state, and event types are kept
+   * intact for a planned future completion, but no runtime {@code BehaviourHandler} is registered for
+   * it, so a run reaching such a step can only fail deep inside execution. The JSON schema's
+   * step-type enum already omits {@code COLLECTION}, so this check only ever fires against a
+   * programmatically-constructed {@link WorkflowDefinition} tree; it exists as defense-in-depth
+   * alongside that schema gate so a future schema change cannot silently reopen the load path.
+   *
+   * @param workflows workflows to validate
+   *
+   * @throws IllegalArgumentException when a step uses {@code CollectionBehaviour}
+   */
+  public void validateNoCollectionSteps(Map<String, WorkflowDefinition> workflows) {
+    workflows.values().forEach(workflow -> runIgnoringBlueprintStructure(() ->
+        WorkflowTreeWalker.walk(workflow, maxTraversalDepth, (step, scope) -> {
+          if (step.behaviour() instanceof CollectionBehaviour) {
+            throw new IllegalArgumentException(
+                ("Step '%s' in workflow '%s' uses CollectionBehaviour (COLLECTION), which has no "
+                    + "registered runtime handler in this release and is rejected at load time")
+                    .formatted(step.stepId(), scope.id()));
+          }
+        })));
   }
 
   /**

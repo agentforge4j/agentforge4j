@@ -62,6 +62,16 @@ public final class ExecutionContext {
    */
   private List<String> currentSequenceStepIds = List.of();
   private Map<String, Executable> currentSequenceExecutables = Map.of();
+  /**
+   * Full ordered list of every {@link Executable} in the current sequence — unlike
+   * {@link #currentSequenceStepIds}/{@link #currentSequenceExecutables} (which only ever hold
+   * {@link com.agentforge4j.core.workflow.step.StepDefinition} entries), this also carries
+   * {@code BlueprintRef} and nested {@code WorkflowDefinition} entries in their original position.
+   * Set by {@code StepSequenceExecutor} alongside the other two so a {@code RetryPreviousBehaviour}
+   * can detect a composite executable sitting inside a replay range that only plain step ids would
+   * make invisible.
+   */
+  private List<Executable> currentSequenceExecutableList = List.of();
 
   /**
    * Stack of blueprint ids of loops whose iteration body is currently executing (innermost at the head) —
@@ -159,6 +169,11 @@ public final class ExecutionContext {
 
   public void setCurrentSequenceExecutables(Map<String, Executable> executables) {
     this.currentSequenceExecutables = Validate.notNull(executables, "executables must not be null");
+  }
+
+  public void setCurrentSequenceExecutableList(List<Executable> executables) {
+    this.currentSequenceExecutableList = Validate.notNull(executables,
+        "executables must not be null");
   }
 
   /**

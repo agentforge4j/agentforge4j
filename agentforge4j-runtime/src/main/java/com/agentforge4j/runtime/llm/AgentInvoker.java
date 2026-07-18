@@ -13,6 +13,7 @@ import com.agentforge4j.core.spi.tool.ToolCatalog;
 import com.agentforge4j.core.spi.tool.ToolDescriptor;
 import com.agentforge4j.core.spi.tool.ToolScope;
 import com.agentforge4j.core.workflow.context.ContextMapping;
+import com.agentforge4j.core.workflow.context.UntrustedToolMetadataEnvelope;
 import com.agentforge4j.core.workflow.event.WorkflowEventType;
 import com.agentforge4j.core.workflow.state.WorkflowState;
 import com.agentforge4j.llm.LlmClientResolver;
@@ -48,6 +49,14 @@ public final class AgentInvoker {
    */
   public static final int DEFAULT_LLM_OUTPUT_EVENT_CHAR_CAP = 8000;
 
+  /**
+   * Default maximum characters for the rendered, untrusted tool-catalog section appended to the
+   * system prompt. A registered MCP/HTTP tool server is an external, untrusted-provenance source;
+   * without a bound, an oversized {@code description()}/{@code inputSchema()} could mount a
+   * prompt-stuffing/token-cost attack. {@code 0} disables truncation.
+   */
+  public static final int DEFAULT_TOOL_CATALOG_CHAR_CAP = 8000;
+
   private final AgentRepository agentRepository;
   private final LlmClientResolver llmClientResolver;
   private final LlmProviderSelectionStrategy llmProviderSelectionStrategy;
@@ -56,6 +65,7 @@ public final class AgentInvoker {
   private final ObjectMapper objectMapper;
   private final EventRecorder eventRecorder;
   private final int llmOutputEventCharCap;
+  private final int toolCatalogCharCap;
   private final boolean promptCacheEnabled;
   private final LlmCallObserver llmCallObserver;
   private final ModelTierResolver modelTierResolver;
@@ -87,6 +97,7 @@ public final class AgentInvoker {
     this.objectMapper = builder.objectMapper;
     this.eventRecorder = builder.eventRecorder;
     this.llmOutputEventCharCap = builder.llmOutputEventCharCap;
+    this.toolCatalogCharCap = builder.toolCatalogCharCap;
     this.promptCacheEnabled = builder.promptCacheEnabled;
     this.llmCallObserver = builder.llmCallObserver;
     this.modelTierResolver = builder.modelTierResolver;
@@ -109,6 +120,7 @@ public final class AgentInvoker {
     private LlmCallObserver llmCallObserver;
     private ModelTierResolver modelTierResolver;
     private int llmOutputEventCharCap = DEFAULT_LLM_OUTPUT_EVENT_CHAR_CAP;
+    private int toolCatalogCharCap = DEFAULT_TOOL_CATALOG_CHAR_CAP;
     private boolean promptCacheEnabled = false;
     private ToolCatalog toolCatalog;
     private RunExecutionInterceptor runExecutionInterceptor = RunExecutionInterceptor.NO_OP;
@@ -232,6 +244,18 @@ public final class AgentInvoker {
     public Builder llmOutputEventCharCap(int llmOutputEventCharCap) {
       this.llmOutputEventCharCap = Validate.isNotNegative(llmOutputEventCharCap,
           "LLM output event character cap must be zero or greater").intValue();
+      return this;
+    }
+
+    /**
+     * @param toolCatalogCharCap maximum characters for the rendered untrusted tool-catalog section
+     *                           (0 disables truncation); see {@link #DEFAULT_TOOL_CATALOG_CHAR_CAP}
+     *
+     * @return this builder; never {@code null}
+     */
+    public Builder toolCatalogCharCap(int toolCatalogCharCap) {
+      this.toolCatalogCharCap = Validate.isNotNegative(toolCatalogCharCap,
+          "Tool catalog character cap must be zero or greater").intValue();
       return this;
     }
 
@@ -599,6 +623,18 @@ public final class AgentInvoker {
    * Appends a tool-capabilities section (uncached suffix, so prompt-cache boundaries are unchanged) when a
    * {@link ToolCatalog} is configured, the agent has opted into {@code TOOL_INVOCATION}, and the catalog is non-empty
    * for the run's scope. Otherwise returns {@code assembled} unchanged.
+   *
+   * <p>Every tool's {@code capability()}/{@code description()}/{@code inputSchema()} originates from a
+   * registered MCP/HTTP tool server — external, untrusted-provenance content, the same class as
+   * user-supplied input — so the section is delimited with {@link UntrustedToolMetadataEnvelope}'s
+   * markers (which {@link SystemRulesProvider}'s trusted rules text instructs the model to treat as
+   * data, not instructions) rather than folded undelimited into the trusted prefix. Each field is
+   * escaped (see {@link #escapeDelimiterMarkers}) before rendering, so a malicious value cannot embed
+   * the literal marker text and escape the delimited section, and the whole rendered catalog is then
+   * size-bounded via {@link #toolCatalogCharCap} so an oversized description/schema cannot mount a
+   * prompt-stuffing or token-cost attack. This changes only how the catalog is isolated and bounded —
+   * capability names, descriptions, and input schemas are still fully rendered (up to the bound) so
+   * the model can still construct a valid {@code TOOL_INVOCATION}.
    */
   private AssembledSystemPrompt appendToolCatalog(AssembledSystemPrompt assembled,
       CommandResponseSchema schema, WorkflowState state) {
@@ -613,8 +649,34 @@ public final class AgentInvoker {
     }
     String separator = System.lineSeparator() + System.lineSeparator();
     return new AssembledSystemPrompt(
-        assembled.text() + separator + renderToolCatalog(tools),
+        assembled.text() + separator + renderUntrustedToolCatalogSection(tools),
         assembled.promptLayerBoundaries());
+  }
+
+  /**
+   * Wraps the rendered, size-bounded tool catalog in the untrusted tool-metadata delimiter markers.
+   */
+  private String renderUntrustedToolCatalogSection(List<ToolDescriptor> tools) {
+    return UntrustedToolMetadataEnvelope.BEGIN_MARKER
+        + System.lineSeparator()
+        + capToolCatalog(renderToolCatalog(tools))
+        + System.lineSeparator()
+        + UntrustedToolMetadataEnvelope.END_MARKER;
+  }
+
+  /**
+   * Truncates an oversized rendered tool catalog to {@link #toolCatalogCharCap} characters, appending
+   * a note with the original length — the same bounded-truncation shape as
+   * {@link #cappedLlmOutputPayload(String)}, applied here to defend the prompt itself rather than the
+   * audit log. {@code toolCatalogCharCap == 0} disables truncation.
+   */
+  private String capToolCatalog(String catalog) {
+    if (toolCatalogCharCap == 0 || catalog.length() <= toolCatalogCharCap) {
+      return catalog;
+    }
+    return catalog.substring(0, toolCatalogCharCap)
+        + "... [tool catalog truncated for prompt-size safety; original length=%d chars]".formatted(
+        catalog.length());
   }
 
   private static String renderToolCatalog(List<ToolDescriptor> tools) {
@@ -629,17 +691,47 @@ public final class AgentInvoker {
         .append("you never reach the external system directly.")
         .append(System.lineSeparator());
     for (ToolDescriptor tool : tools) {
-      builder.append("- ").append(tool.capability());
+      builder.append("- ").append(escapeDelimiterMarkers(tool.capability()));
       if (StringUtils.isNotBlank(tool.description())) {
-        builder.append(": ").append(tool.description());
+        builder.append(": ").append(escapeDelimiterMarkers(tool.description()));
       }
       if (StringUtils.isNotBlank(tool.inputSchema())) {
         builder.append(System.lineSeparator())
-            .append("  input schema: ").append(tool.inputSchema());
+            .append("  input schema: ").append(escapeDelimiterMarkers(tool.inputSchema()));
       }
       builder.append(System.lineSeparator());
     }
     return builder.toString().stripTrailing();
+  }
+
+  /**
+   * Neutralizes any literal occurrence of {@link UntrustedToolMetadataEnvelope#BEGIN_MARKER} or
+   * {@link UntrustedToolMetadataEnvelope#END_MARKER} inside externally-supplied tool metadata
+   * (capability, description, input schema), before it is ever concatenated with the real markers
+   * this class inserts around the catalog section. Without this, a malicious tool server could embed
+   * the exact end-marker text in its own description and everything the tool server supplies after
+   * it would render, structurally, outside the untrusted section — appearing to the model as trusted
+   * instruction text.
+   *
+   * <p>A literal, non-regex replacement: since the substitution text does not itself contain the
+   * marker's distinctive {@code "=== ... ==="} framing, no amount of concatenation or truncation of
+   * escaped content can ever reconstruct the exact marker string. This guarantees the only two
+   * occurrences of the exact marker text in the assembled prompt are the real wrapper this class
+   * inserts — never one contributed by tool-provided content — without needing to detect or reason
+   * about attacker-chosen marker-like text via {@code indexOf}/{@code lastIndexOf} scanning.
+   *
+   * @param value external metadata field text, or {@code null}
+   *
+   * @return {@code value} with every literal marker occurrence replaced by a non-matching, readable
+   * placeholder, or {@code null} if {@code value} was {@code null}
+   */
+  private static String escapeDelimiterMarkers(String value) {
+    if (value == null) {
+      return null;
+    }
+    return value
+        .replace(UntrustedToolMetadataEnvelope.BEGIN_MARKER, "[escaped-marker: BEGIN EXTERNAL TOOL METADATA]")
+        .replace(UntrustedToolMetadataEnvelope.END_MARKER, "[escaped-marker: END EXTERNAL TOOL METADATA]");
   }
 
   private static boolean appendStepPrompt(String stepPrompt, StringBuilder promptBuilder,
