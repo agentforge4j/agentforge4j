@@ -36,12 +36,12 @@ export const BLOCKED = [
 ];
 
 // General structural guard, not a maintained module roster: the private Platform/Cloud reactor
-// names its modules `<layer>-<capability>` (platform-engine, cloud-enforcement, billing-stripe,
-// entitlement-default, ...). Matching that naming convention catches a bare short-form module name
-// without the OSS repo carrying a literal, update-on-every-rename inventory of the private reactor's
-// current module list as shipped source. A handful of legitimate generic-English compounds share a
-// layer word (platform-agnostic, cloud-native); those are exempted individually below rather than
-// narrowing the pattern, so a genuinely new compound just needs one reviewed addition, not a redesign.
+// names its modules `<layer>-<capability>` (e.g. `platform-<capability>`, `cloud-<capability>`).
+// Matching that naming convention catches a bare short-form module name without the OSS repo
+// carrying a literal, update-on-every-rename inventory of the private reactor's current module
+// list as shipped source. A handful of legitimate generic-English compounds share a layer word
+// (platform-agnostic, cloud-native); those are exempted individually below rather than narrowing
+// the pattern, so a genuinely new compound just needs one reviewed addition, not a redesign.
 const STRUCTURAL_LAYER_PREFIXES = ['platform', 'cloud', 'billing', 'entitlement'];
 const STRUCTURAL_GENERIC_COMPOUNDS = new Set([
   'platform-agnostic',
