@@ -1,8 +1,8 @@
 @startuml oss-module-dependency
 '==============================================================================
 ' Diagram : OSS Module Dependency (Component Diagram)
-' Version : v1.3
-' Date    : 2026-07-01
+' Version : v1.4
+' Date    : 2026-07-18 (starter also depends directly on runtime, not only bootstrap -- ADR-0009 amendment)
 ' Source  : each module's module-info.java + root reactor pom.xml (live source)
 ' Note    : solid edges are JPMS `requires` (modules with module-info.java).
 '           `agentforge4j-mcp` and `agentforge4j-spring-boot-starter` have no
@@ -116,7 +116,11 @@ bootstrap --> schema
 bootstrap --> util
 
 ' spring-boot-starter has NO module-info.java -> Maven compile dependency.
+' The starter depends on both bootstrap (shared assembly defaults) and runtime directly
+' (Spring-specific wiring over runtime types bootstrap's framework-agnostic surface does not
+' itself expose) -- see ADR-0009's 2026-07-18 amendment.
 starter .[#darkorange].> bootstrap : <<compile>>
+starter .[#darkorange].> runtime   : <<compile>>
 
 '---------------------------- ServiceLoader seams -----------------------------
 bootstrap ..> providers  : <<discovers>>\nServiceLoader<LlmClientFactory>

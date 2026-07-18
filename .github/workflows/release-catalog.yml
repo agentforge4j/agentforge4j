@@ -122,8 +122,8 @@ jobs:
           exit $MISSING
 
       - name: Guard catalog manifest pins min = max = a released framework version
-        # Pre-1.0 the compatibility model promises no cross-version read support (design §4 rule
-        # 3): a released catalog must declare it works against exactly one framework version, not
+        # Pre-1.0 the compatibility model promises no cross-version read support (see ADR-0032):
+        # a released catalog must declare it works against exactly one framework version, not
         # a range. Dev-time the manifest is intentionally unbounded (maximumAgentForge4jVersion:
         # null) so in-reactor builds against a moving framework SNAPSHOT don't need constant
         # edits; this guard only fires at release-tag time.

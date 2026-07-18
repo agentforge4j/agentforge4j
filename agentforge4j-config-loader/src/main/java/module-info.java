@@ -17,7 +17,9 @@
  */
 module agentforge4j.config.loader {
   requires agentforge4j.util;
-  requires agentforge4j.schema;
+  // transitive: FileSystemIntegrationConfigLoader's exported constructor takes a
+  // com.agentforge4j.schema.SchemaProvider parameter directly.
+  requires transitive agentforge4j.schema;
   // transitive: ArtifactValidatorFactory.create (exported) takes ObjectMapper directly as a parameter
   // and returns core's ArtifactValidator.
   requires transitive agentforge4j.core;
