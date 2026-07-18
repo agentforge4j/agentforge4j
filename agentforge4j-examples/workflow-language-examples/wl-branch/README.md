@@ -5,8 +5,9 @@
 How a workflow makes a deterministic, author-controlled routing decision in the workflow language —
 not an LLM picking the next step at runtime, but a `BRANCH` step that reads a value from the context
 and dispatches to one of several targets. It also shows `FAIL` as an explicit terminal. The example is
-LLM-agnostic: it runs offline against a deterministic fake by default, or against a real provider with
-no code change. No Spring, no network on the default path.
+LLM-agnostic: it runs offline against a deterministic fake by default; pointing it at a real provider
+needs a provider module, credentials, and the agents repointed away from the fake — no change to the
+workflow structure itself. No Spring, no network on the default path.
 
 ## AgentForge4j capability demonstrated
 
@@ -33,10 +34,15 @@ is used — no key, no network, no extra dependency. Run it from your IDE to wat
 
 **Against a real LLM.** Set a provider key — either `agentforge4j.example.llm.api-key` in
 `example.properties`, or the `AGENTFORGE4J_EXAMPLE_LLM_API_KEY` environment variable (see `.env.example`)
-— **and** add a provider module dependency (for example `agentforge4j-llm-openai`) to this module's
-`pom.xml`. No code changes: the same workflow and agents run against the real model, which now makes the
-`decide` decision itself. With a key set but no provider module on the classpath, the run fails fast with
-a clear "no provider factory" message. Precedence for every value is system property, then environment
+— add a provider module dependency (for example `agentforge4j-llm-openai`) to this module's `pom.xml`,
+and edit the `providerPreferences` in `src/main/resources/agents/branch-agent.agent/agent.json` and
+`src/main/resources/agents/approve-agent.agent/agent.json` to name the chosen provider instead of `fake`
+(both agents ship pinned to the fake provider so the offline default is deterministic). With those three
+changes made, the same workflow structure runs unchanged, and the real model now makes the `decide`
+decision itself. With a key set but no provider module on the classpath, assembly fails fast with a
+clear "no provider factory" message; with the module present but the agents still pinned to `fake`,
+the run fails at the first agent step with an `LlmInvocationException` saying the agent has no
+available provider preferences. Precedence for every value is system property, then environment
 variable, then `example.properties`.
 
 ## Expected behaviour / output

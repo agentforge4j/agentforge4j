@@ -34,6 +34,8 @@ reactor** (this tree is not a module of the OSS build).
 
 ## Prerequisite — install the framework into your local repository
 
+Building and running the examples requires JDK 17 or newer.
+
 Until AgentForge4j publishes `0.1.0` to Maven Central, the examples resolve
 `org.agentforge4j:*:0.0.1-SNAPSHOT` from your local `~/.m2`. Build and install the framework once
 before building the examples:

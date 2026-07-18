@@ -6,6 +6,8 @@ import com.agentforge4j.bootstrap.AgentForge4jBootstrap;
 import com.agentforge4j.core.spi.tool.ToolExecutionOptions;
 import com.agentforge4j.core.spi.tool.ToolPolicy;
 import com.agentforge4j.core.spi.tool.ToolProvider;
+import com.agentforge4j.core.workflow.context.ContextValue;
+import com.agentforge4j.core.workflow.context.StringContextValue;
 import com.agentforge4j.core.workflow.state.WorkflowState;
 import com.agentforge4j.llm.DefaultLlmClientResolver;
 import com.agentforge4j.llm.api.LlmClient;
@@ -101,7 +103,13 @@ public final class HttpToolExample {
       WorkflowState state = agentForge4j.runtime().getState(runId);
 
       System.out.printf("Workflow '%s' (run %s) finished with status: %s%n", WORKFLOW_ID, runId, state.getStatus());
-      System.out.printf("Tool result (%s): %s%n", TOOL_CONTEXT_KEY, state.getContext().get(TOOL_CONTEXT_KEY));
+      // On the documented deterministic path the result is always a StringContextValue; if the run
+      // failed (or the key is absent), print what is there instead of crashing on the unwrap.
+      ContextValue toolResult = state.getContext().get(TOOL_CONTEXT_KEY);
+      String toolResultText = toolResult instanceof StringContextValue stringResult
+          ? stringResult.value()
+          : String.valueOf(toolResult);
+      System.out.printf("Tool result (%s): %s%n", TOOL_CONTEXT_KEY, toolResultText);
     } finally {
       stubServer.stop(0);
     }
