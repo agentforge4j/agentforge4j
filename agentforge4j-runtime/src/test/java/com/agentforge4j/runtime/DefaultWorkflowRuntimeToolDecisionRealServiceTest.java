@@ -611,6 +611,12 @@ class DefaultWorkflowRuntimeToolDecisionRealServiceTest {
       }
       return delegate.claim(runId, toolInvocationId, expectedPending);
     }
+
+    @Override
+    public PendingToolInvocation verifyStillCurrent(String runId, String toolInvocationId,
+        PendingToolInvocation expectedPending) {
+      return delegate.verifyStillCurrent(runId, toolInvocationId, expectedPending);
+    }
   }
 
   private static void awaitBarrier(CyclicBarrier barrier) {

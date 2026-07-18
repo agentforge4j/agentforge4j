@@ -218,6 +218,67 @@ class InMemoryPendingToolInvocationStoreTest {
         .isInstanceOf(IllegalArgumentException.class);
   }
 
+  @Test
+  void verifyStillCurrentReturnsTheExpectedRowWithoutRemovingItWhenItStillMatches() {
+    PendingToolInvocation pending = pending("run-1", "tool-x");
+    store.save(pending);
+
+    assertThat(store.verifyStillCurrent("run-1", "tool-x", pending)).isSameAs(pending);
+    // Unlike claim, this must never consume the row: a later legitimate resolver still finds it.
+    assertThat(store.find("run-1", "tool-x")).isSameAs(pending);
+  }
+
+  @Test
+  void verifyStillCurrentReturnsNullWhenTheRowIsAlreadyGone() {
+    PendingToolInvocation neverSaved = pending("run-1", "missing");
+    assertThat(store.verifyStillCurrent("run-1", "missing", neverSaved)).isNull();
+  }
+
+  @Test
+  void verifyStillCurrentReturnsNullWithoutMutatingWhenTheStoredRowNoLongerMatchesExpected() {
+    PendingToolInvocation original = pending("run-1", "tool-x");
+    store.save(original);
+    PendingToolInvocation staleExpectation = pending("run-1", "tool-x", "different reason");
+
+    assertThat(store.verifyStillCurrent("run-1", "tool-x", staleExpectation)).isNull();
+
+    // Neither the failed match nor the call itself removes whatever is actually stored.
+    assertThat(store.find("run-1", "tool-x")).isSameAs(original);
+  }
+
+  @Test
+  void verifyStillCurrentDetectsARowClaimedByAConcurrentCallerBetweenPeekAndCheck() {
+    PendingToolInvocation original = pending("run-1", "tool-x");
+    store.save(original);
+    // Simulates a concurrent Reject/Continue having already claimed (removed) the exact row this
+    // caller peeked, strictly between that peek and this re-check.
+    store.claim("run-1", "tool-x", original);
+
+    assertThat(store.verifyStillCurrent("run-1", "tool-x", original)).isNull();
+  }
+
+  @Test
+  void verifyStillCurrentIsRunScopedAndLeavesAnotherRunsEntryIntact() {
+    PendingToolInvocation inRun1 = pending("run-1", "tool-x");
+    store.save(inRun1);
+    PendingToolInvocation inRun2 = pending("run-2", "tool-x");
+    store.save(inRun2);
+
+    assertThat(store.verifyStillCurrent("run-2", "tool-x", inRun1)).isNull();
+    assertThat(store.verifyStillCurrent("run-1", "tool-x", inRun1)).isSameAs(inRun1);
+  }
+
+  @Test
+  void verifyStillCurrentRejectsBlankIdentifiersOrNullExpectedPending() {
+    PendingToolInvocation pending = pending("run-1", "tool-x");
+    assertThatThrownBy(() -> store.verifyStillCurrent(" ", "tool-x", pending))
+        .isInstanceOf(IllegalArgumentException.class);
+    assertThatThrownBy(() -> store.verifyStillCurrent("run-1", " ", pending))
+        .isInstanceOf(IllegalArgumentException.class);
+    assertThatThrownBy(() -> store.verifyStillCurrent("run-1", "tool-x", null))
+        .isInstanceOf(IllegalArgumentException.class);
+  }
+
   private static PendingToolInvocation pending(String runId, String toolInvocationId) {
     return new PendingToolInvocation(toolInvocationId, runId, "7", "agent-1", "wf-1",
         "github.create_pull_request", "{\"title\":\"x\"}", "because", "needs review", "OPERATOR",

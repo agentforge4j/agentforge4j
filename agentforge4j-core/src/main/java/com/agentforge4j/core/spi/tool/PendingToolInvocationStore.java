@@ -82,4 +82,40 @@ public interface PendingToolInvocationStore {
    */
   PendingToolInvocation claim(String runId, String toolInvocationId,
       PendingToolInvocation expectedPending);
+
+  /**
+   * Atomically checks whether the row currently stored for {@code runId}/{@code toolInvocationId} is
+   * still exactly {@code expectedPending} — the same exact-row-identity guarantee {@link #claim}
+   * provides, but without removing the row. Used when a caller must act on a previously observed
+   * row's content without itself consuming it, so a legitimate later resolver (for example a
+   * {@code Reject}, or the runtime's non-executing {@code Continue}) can still resolve the row
+   * afterward.
+   *
+   * <p>This exists because a caller re-issuing a plain {@link #find} and comparing the result against
+   * its own earlier observation in application code is not equivalent to this method: that second
+   * {@code find} is itself just another independent read, with no contract binding it to observe a
+   * result consistent with any other caller's concurrent {@link #claim}/{@link #save}/{@link #remove}
+   * on the same row — an implementation would be free to satisfy both methods' individual contracts
+   * while still letting the two calls interleave with an intervening mutation in a way that leaves the
+   * caller's decision based on data that was never simultaneously true. This method's contract fixes
+   * that: it is required to observe the exact same total order over {@code claim}/{@code save}/
+   * {@code remove}/{@code find} for a given key that {@link #claim}'s compare-and-delete already
+   * relies on, so a {@code true}-equivalent result here is a genuine, race-free confirmation that
+   * {@code expectedPending} was still the current row at a single well-defined point after every
+   * concurrent mutation that had already completed. Implementations backed by a durable or
+   * distributed store <strong>must</strong> provide this with the same atomicity guarantee as
+   * {@link #claim} (for example a conditional read tied to the expected row's identity/version,
+   * consistent with whatever mechanism backs {@code claim}'s compare-and-delete) — never a plain,
+   * independently-timed {@code find} call assembled in caller code.
+   *
+   * @param runId            owning run id
+   * @param toolInvocationId pending invocation id
+   * @param expectedPending  the pending invocation the caller previously observed
+   *
+   * @return {@code expectedPending} if the currently stored row for this key still equals it;
+   * {@code null} if it does not belong to {@code runId}, is already gone, or no longer equals
+   * {@code expectedPending} (it was claimed or replaced by a concurrent caller)
+   */
+  PendingToolInvocation verifyStillCurrent(String runId, String toolInvocationId,
+      PendingToolInvocation expectedPending);
 }

@@ -60,6 +60,22 @@ public final class InMemoryPendingToolInvocationStore implements PendingToolInvo
     return byRunAndId.remove(key, expectedPending) ? expectedPending : null;
   }
 
+  @Override
+  public PendingToolInvocation verifyStillCurrent(String runId, String toolInvocationId,
+      PendingToolInvocation expectedPending) {
+    Validate.notBlank(runId, "runId must not be blank");
+    Validate.notBlank(toolInvocationId, "toolInvocationId must not be blank");
+    Validate.notNull(expectedPending, "expectedPending must not be null");
+    // ConcurrentHashMap.get is linearizable with every put/remove on the same map, including
+    // claim's own remove(key, value) and save's put — the same total order claim's compare-and-delete
+    // already relies on for correctness. A true-equivalent result here is therefore a genuine,
+    // race-free confirmation that expectedPending was still the current row at a single well-defined
+    // point after every concurrent claim/save/remove that had already completed, not merely another
+    // independently-timed read assembled from two separate calls.
+    PendingToolInvocation current = byRunAndId.get(key(runId, toolInvocationId));
+    return expectedPending.equals(current) ? expectedPending : null;
+  }
+
   private static Key key(String runId, String toolInvocationId) {
     return new Key(runId, toolInvocationId);
   }

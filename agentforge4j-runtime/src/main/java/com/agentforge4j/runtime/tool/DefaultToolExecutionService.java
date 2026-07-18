@@ -207,11 +207,16 @@ public final class DefaultToolExecutionService implements ToolExecutionService {
    * concurrency-loss signal, never reported as a provider/tool failure. When a row is found, a
    * {@link PendingToolInvocation.Origin#POLICY_DENIED} row is terminal: an
    * {@link ApprovalDecision.Approve} — whether issued by the runtime's {@code ToolDecision.Retry} or
-   * a direct SPI call — never reaches the provider for such a row; it is rejected with a
-   * {@link PolicyDenialTerminalException} and an audited override-rejected event, and the pending
-   * row is left in place so a later {@link ApprovalDecision.Reject} (or the runtime's non-executing
-   * {@code ToolDecision.Continue}, which never calls this method) can still resolve it. Every other
-   * pending row is claimed atomically, tied to the exact row this call observed via {@link
+   * a direct SPI call — never reaches the provider for such a row. Before treating it as terminal,
+   * this re-verifies (via {@link PendingToolInvocationStore#verifyStillCurrent}) that the exact row
+   * this call originally observed is still the current one — a concurrent {@link
+   * ApprovalDecision.Reject} or the runtime's non-executing {@code ToolDecision.Continue} may have
+   * already resolved it in the meantime, in which case this call throws
+   * {@link ToolInvocationClaimLostException} instead, never an override-rejected event for a row that
+   * is no longer even pending. Only once still confirmed current is it rejected with a
+   * {@link PolicyDenialTerminalException} and an audited override-rejected event, with the row left
+   * in place (never claimed/removed here) so that later legitimate resolver can still resolve it.
+   * Every other pending row is claimed atomically, tied to the exact row this call observed via {@link
    * PendingToolInvocationStore#find} (see {@link PendingToolInvocationStore#claim}), before its
    * provider is invoked, so at most one of two concurrent resumes on the same invocation executes;
    * the other — or a resume whose observed row was replaced by a different one before its own claim
@@ -254,14 +259,26 @@ public final class DefaultToolExecutionService implements ToolExecutionService {
 
     // Sealed ApprovalDecision has exactly two variants; Reject is handled above, so this is Approve.
     if (peeked.origin() == PendingToolInvocation.Origin.POLICY_DENIED) {
+      // peeked may already be stale by the time this line runs (a concurrent Reject, or the
+      // runtime's non-executing Continue, may have already resolved this exact row between this
+      // call's find() above and here) — verifyStillCurrent re-confirms, atomically against every
+      // concurrent claim/save/remove, that the row is still exactly the one this call observed
+      // before treating it as a terminal-denial override attempt. A caller whose row was already
+      // resolved elsewhere in the meantime must be reported as a lost claim instead, never as an
+      // override rejection for a row that is no longer even pending.
+      PendingToolInvocation stillDenied =
+          pendingStore.verifyStillCurrent(runId, toolInvocationId, peeked);
+      if (stillDenied == null) {
+        throw claimLost(runId, toolInvocationId);
+      }
       // Terminal: a policy denial can never be executed via Retry/Approve. The row is deliberately
       // NOT claimed/removed here, so a later Reject or the runtime's non-executing Continue still
       // resolves it.
-      ToolInvocationContext ctx = contextOf(peeked);
+      ToolInvocationContext ctx = contextOf(stillDenied);
       String reason = "Tool invocation '%s' for run '%s' was denied by policy (%s); only Reject or "
-          .formatted(toolInvocationId, runId, peeked.reason())
+          .formatted(toolInvocationId, runId, stillDenied.reason())
           + "the runtime's non-executing Continue may resolve it, never Retry/Approve";
-      emitOverrideRejected(peeked.capability(), ctx, reason);
+      emitOverrideRejected(stillDenied.capability(), ctx, reason);
       throw new PolicyDenialTerminalException(reason);
     }
 
