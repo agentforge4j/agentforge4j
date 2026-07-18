@@ -57,10 +57,12 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.CyclicBarrier;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -77,6 +79,7 @@ import static org.mockito.Mockito.when;
  * {@code continueAfterToolApproval} against a scripted stub and so cannot observe whether the
  * chokepoint itself ever reaches the provider.
  */
+@Timeout(value = 30)
 class DefaultWorkflowRuntimeToolDecisionRealServiceTest {
 
   private static final Clock CLOCK =
@@ -110,6 +113,35 @@ class DefaultWorkflowRuntimeToolDecisionRealServiceTest {
     assertThat(store.find("run-1", command.toolInvocationId())).isNotNull();
     assertThat(stateRepo.findById("run-1").orElseThrow().getStatus())
         .isEqualTo(WorkflowStatus.AWAITING_TOOL_DECISION);
+  }
+
+  /**
+   * L4-03 regression: a pre-peek concurrent claim loss on {@code continueAfterToolApproval} — the
+   * row was already claimed and fully resolved by a concurrent resolution before this call's own
+   * peek — must surface as the typed, benign {@link ToolInvocationClaimLostException} its javadoc
+   * promises (mirroring {@code resolveToolDecision}'s classification of the identical race), never
+   * as a caller-error {@code IllegalArgumentException}. No run state is mutated.
+   */
+  @Test
+  void prePeekClaimLossOnContinueAfterToolApprovalThrowsTheTypedClaimLostSignal() {
+    DefaultToolExecutionService toolService = toolService(requireApproval());
+    WorkflowState state = seedState();
+    ToolInvocationCommand command = command();
+    toolService.execute(command, ctx(state));
+    state.setStatus(WorkflowStatus.AWAITING_TOOL_APPROVAL);
+    stateRepo.save(state);
+    // Simulate the concurrent winner: the row is claimed and resolved before this call peeks.
+    store.remove("run-1", command.toolInvocationId());
+
+    DefaultWorkflowRuntime runtime = runtime(toolService);
+
+    assertThatThrownBy(() -> runtime.continueAfterToolApproval(
+        "run-1", command.toolInvocationId(), new ApprovalDecision.Approve("alice")))
+        .isInstanceOf(ToolInvocationClaimLostException.class);
+
+    assertThat(provider.invocations).isZero();
+    assertThat(stateRepo.findById("run-1").orElseThrow().getStatus())
+        .isEqualTo(WorkflowStatus.AWAITING_TOOL_APPROVAL);
   }
 
   @Test
@@ -495,6 +527,12 @@ class DefaultWorkflowRuntimeToolDecisionRealServiceTest {
         .toList();
     assertThat(eventTypes.stream().filter(t -> t == WorkflowEventType.RUN_COMPLETED).count())
         .isEqualTo(1);
+    // The winner's side effects genuinely applied exactly once: the denial reason landed in the
+    // tool error context key and the pending row was consumed — the loser applied nothing.
+    WorkflowState finalState = stateRepo.findById("run-1").orElseThrow();
+    assertThat(contextValue("tool." + CAPABILITY + ".error")).isEqualTo("nope");
+    assertThat(finalState.getContextValue("tool." + CAPABILITY)).isEmpty();
+    assertThat(store.find("run-1", command.toolInvocationId())).isNull();
   }
 
   /**
@@ -552,7 +590,9 @@ class DefaultWorkflowRuntimeToolDecisionRealServiceTest {
       }
     });
     continueThread.start();
-    delayingStore.claimAttempted.await();
+    assertThat(delayingStore.claimAttempted.await(10, TimeUnit.SECONDS))
+        .as("claim() was never attempted - the claim protocol regressed to a plain remove()")
+        .isTrue();
 
     // While Continue is blocked inside its own (first) claim attempt, holding the pre-replacement
     // row reference, a Retry runs to completion: it fails again and persists a replacement pending
@@ -713,10 +753,11 @@ class DefaultWorkflowRuntimeToolDecisionRealServiceTest {
   }
 
   /**
-   * L2-02 regression (transition-gate sibling): a {@code cancel()} acknowledged during the
-   * approved tool call must not be clobbered by {@code gateCompletedStep}'s suspension save when
-   * the requesting step carries a {@code HUMAN_APPROVAL} transition gate — the run must end
-   * {@code CANCELLED}, not {@code AWAITING_STEP_APPROVAL}.
+   * L2-02/L4-01 regression (transition-gate sibling): a {@code cancel()} acknowledged during the
+   * approved tool call must win — the resume verb now rejects at its cancellation-aware RUNNING
+   * transition instead of proceeding into {@code gateCompletedStep}'s suspension save (or letting a
+   * later drive record a terminal lifecycle event after {@code RUN_CANCELLED}). The run must end
+   * {@code CANCELLED} with {@code RUN_CANCELLED} as its only lifecycle event.
    */
   @Test
   void cancelDuringAnApprovedToolCallWinsOverTheTransitionGateSuspension() {
@@ -730,12 +771,20 @@ class DefaultWorkflowRuntimeToolDecisionRealServiceTest {
     DefaultWorkflowRuntime runtime = runtime(toolService, gatedWorkflow());
     provider.onInvoke = () -> runtime.cancel("run-1", "canceller");
 
-    WorkflowState resumed = runtime.continueAfterToolApproval(
-        "run-1", command.toolInvocationId(), new ApprovalDecision.Approve("alice"));
+    assertThatThrownBy(() -> runtime.continueAfterToolApproval(
+        "run-1", command.toolInvocationId(), new ApprovalDecision.Approve("alice")))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("CANCELLED");
 
-    assertThat(resumed.getStatus()).isEqualTo(WorkflowStatus.CANCELLED);
     assertThat(stateRepo.findById("run-1").orElseThrow().getStatus())
         .isEqualTo(WorkflowStatus.CANCELLED);
+    List<WorkflowEventType> eventTypes = eventLog.getEvents("run-1").stream()
+        .map(WorkflowEvent::eventType)
+        .toList();
+    assertThat(eventTypes).containsOnlyOnce(WorkflowEventType.RUN_CANCELLED);
+    assertThat(eventTypes).doesNotContain(
+        WorkflowEventType.RUN_COMPLETED, WorkflowEventType.RUN_FAILED,
+        WorkflowEventType.RUN_BLOCKED);
   }
 
   /**

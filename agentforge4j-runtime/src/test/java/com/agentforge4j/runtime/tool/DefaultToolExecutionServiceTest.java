@@ -35,12 +35,15 @@ import java.util.Deque;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+@Timeout(value = 30)
 class DefaultToolExecutionServiceTest {
 
   private static final String SCHEMA = "{\"type\":\"object\",\"required\":[\"title\"]}";
@@ -212,7 +215,9 @@ class DefaultToolExecutionServiceTest {
     });
     approveThread.start();
     try {
-      verifyEntered.await();
+      assertThat(verifyEntered.await(10, TimeUnit.SECONDS))
+          .as("verifyStillCurrent() was never entered - the stale-peek re-check regressed")
+          .isTrue();
 
       ToolExecutionOutcome rejectOutcome = service.resume("run-1", command.toolInvocationId(),
           new ApprovalDecision.Reject("bob", "not allowed"));

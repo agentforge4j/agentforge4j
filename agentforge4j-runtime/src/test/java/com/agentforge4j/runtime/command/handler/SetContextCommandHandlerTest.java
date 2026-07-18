@@ -100,18 +100,15 @@ class SetContextCommandHandlerTest {
   }
 
   @Test
-  void reserved_namespace_rejection_applies_regardless_of_output_keys_allow_list() {
-    WorkflowState state = stateAtStep("s1");
-    SetContextCommand cmd = new SetContextCommand("__retry_a_attempts",
-        new StringContextValue("0", ContextProvenance.USER_SUPPLIED));
-    // An outputKeys allow-list that explicitly names the reserved key must not rescue it: the
-    // reserved-namespace guard is absolute, checked independently of the allow-list.
-    ContextMapping mapping = new ContextMapping(List.of(), List.of("__retry_a_attempts"));
-
-    assertThatThrownBy(() ->
-        handler.apply(cmd, new CommandApplicationRequest(state, mapping, "agent-1", 1)))
+  void reserved_namespace_cannot_even_be_declared_in_an_output_keys_allow_list() {
+    // An outputKeys allow-list naming a reserved key can no longer exist at all: ContextMapping
+    // rejects it at construction, closing the "allow-list rescues a reserved key" avenue one layer
+    // before the handler's own absolute guard (which remains as write-path defense, proven by the
+    // rejection tests above against an empty mapping).
+    assertThatThrownBy(() -> new ContextMapping(List.of(), List.of("__retry_a_attempts")))
         .isInstanceOf(IllegalArgumentException.class)
-        .hasMessageContaining("reserved");
+        .hasMessageContaining("reserved")
+        .hasMessageContaining("__retry_a_attempts");
   }
 
   @Test
@@ -125,6 +122,32 @@ class SetContextCommandHandlerTest {
 
     assertThat(result).isEqualTo(CommandApplicationResult.CONTINUE);
     assertThat(state.getContextValue("myKey")).isPresent();
+  }
+
+  @Test
+  void single_underscore_key_is_not_reserved_and_writes() {
+    WorkflowState state = stateAtStep("s1");
+    SetContextCommand cmd = new SetContextCommand("_x",
+        new StringContextValue("v", ContextProvenance.USER_SUPPLIED));
+
+    CommandApplicationResult result =
+        handler.apply(cmd, new CommandApplicationRequest(state, ContextMapping.none(), "agent-1", 1));
+
+    assertThat(result).isEqualTo(CommandApplicationResult.CONTINUE);
+    assertThat(state.getContextValue("_x")).isPresent();
+  }
+
+  @Test
+  void interior_double_underscore_key_is_not_reserved_and_writes() {
+    WorkflowState state = stateAtStep("s1");
+    SetContextCommand cmd = new SetContextCommand("a__b",
+        new StringContextValue("v", ContextProvenance.USER_SUPPLIED));
+
+    CommandApplicationResult result =
+        handler.apply(cmd, new CommandApplicationRequest(state, ContextMapping.none(), "agent-1", 1));
+
+    assertThat(result).isEqualTo(CommandApplicationResult.CONTINUE);
+    assertThat(state.getContextValue("a__b")).isPresent();
   }
 
   private static WorkflowState stateAtStep(String stepId) {

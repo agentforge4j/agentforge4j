@@ -29,6 +29,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -146,6 +147,38 @@ class DefaultWorkflowRuntimeInterceptorTest {
 
     assertThat(stateRepo.findById("run-blk2").orElseThrow().getStatus())
         .isEqualTo(WorkflowStatus.COMPLETED);
+  }
+
+  /**
+   * L4-02 regression: a {@code cancel()} landing while the interceptor is vetoing the run (the
+   * first-entry blocked path, which persists outside {@code drive()}'s finally block) must not be
+   * clobbered back to a resumable {@code PAUSED} — the run stays {@code CANCELLED}, no
+   * {@code RUN_BLOCKED} event follows the terminal {@code RUN_CANCELLED} record, and the
+   * cancellation-wins persistence path saves the corrected status.
+   */
+  @Test
+  void aCancelLandingDuringTheInterceptorVetoStaysCancelledNotPaused() {
+    AtomicReference<DefaultWorkflowRuntime> runtimeRef = new AtomicReference<>();
+    RunExecutionInterceptor cancellingBlocker = new RunExecutionInterceptor() {
+      @Override
+      public void beforeMainExecution(RunExecutionContext context) {
+        runtimeRef.get().cancel(context.runId(), "operator");
+        throw new ExecutionBlockedException("insufficient credits");
+      }
+    };
+    DefaultWorkflowRuntime runtime = runtime(cancellingBlocker);
+    runtimeRef.set(runtime);
+
+    assertThatThrownBy(() -> runtime.start("wf-1"))
+        .isInstanceOf(ExecutionBlockedException.class);
+    verify(stepSequenceExecutor, never()).executeAll(anyList(), any());
+
+    WorkflowState persisted = stateRepo.findAll().get(0);
+    assertThat(persisted.getStatus()).isEqualTo(WorkflowStatus.CANCELLED);
+    assertThat(blockedEventCount(persisted.getRunId())).isZero();
+    assertThat(eventLog.getEvents(persisted.getRunId()).stream()
+        .filter(event -> event.eventType() == WorkflowEventType.RUN_CANCELLED)
+        .count()).isEqualTo(1L);
   }
 
   @Test

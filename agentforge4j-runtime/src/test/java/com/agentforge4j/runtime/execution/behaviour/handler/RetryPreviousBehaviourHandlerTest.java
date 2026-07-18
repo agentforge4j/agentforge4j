@@ -1094,6 +1094,186 @@ class RetryPreviousBehaviourHandlerTest {
     }
   }
 
+  /**
+   * L4-05 coverage: the staleness-anchor invalidation branches (a surviving in-flight or fallback
+   * marker whose dispatch anchor was wiped by an external rewind must be dropped, never honoured)
+   * and the composite-fallback arms (fresh dispatch, pause-marker write, and the anchor-less
+   * resume that honours the marker as-is).
+   */
+  @Nested
+  class StalenessAnchorsAndCompositeFallback {
+
+    private static final String INFLIGHT_KEY = "__retry_previous_inflight:s3";
+    private static final String FALLBACK_INFLIGHT_KEY = "__retry_previous_fallback_inflight:s3";
+
+    @Test
+    void stale_replay_marker_with_wiped_anchor_is_dropped_not_resumed() {
+      // Marker survived (reserved __ keys are rewind-exempt) but the target's uid — the dispatch
+      // anchor — was wiped: the resume path must NOT fire; the entry falls through to the fresh
+      // dispatch preconditions, which reject loudly because the target never re-executed.
+      TestFixture f = fixture()
+          .retryStepId("s2")
+          .maxAttempts(5)
+          .retryMode(RetryMode.SINGLE_STEP)
+          .owningStepId("s3")
+          .sequence("s1", "s2", "s3")
+          .contextValue(INFLIGHT_KEY,
+              new StringContextValue("1", ContextProvenance.SYSTEM_GENERATED))
+          .build();
+
+      assertThatThrownBy(f::handle)
+          .isInstanceOf(StepExecutionException.class)
+          .hasMessageContaining("has not been executed yet");
+
+      assertThat(f.state().getContextValue(INFLIGHT_KEY)).isEmpty();
+      assertThat(f.attemptCount()).isZero();
+      verify(executableExecutor, never()).execute(f.executable("s2"), f.context());
+    }
+
+    @Test
+    void stale_replay_marker_with_wiped_anchor_and_exhausted_cap_dispatches_the_fallback_fresh() {
+      Executable fallback = fallbackStep("fallback");
+      TestFixture f = fixture()
+          .retryStepId("s2")
+          .maxAttempts(2)
+          .retryMode(RetryMode.SINGLE_STEP)
+          .fallback(fallback)
+          .owningStepId("s3")
+          .sequence("s1", "s2", "s3")
+          .attemptCount(2)
+          .contextValue(INFLIGHT_KEY,
+              new StringContextValue("1", ContextProvenance.SYSTEM_GENERATED))
+          .build();
+
+      ExecutionOutcome outcome = f.handle();
+
+      // A regression honouring the stale marker would resume the replay instead: no fallback
+      // execution and no exhaustion event. Both must happen on a fresh dispatch.
+      assertThat(outcome).isEqualTo(ExecutionOutcome.COMPLETED);
+      verify(executableExecutor, times(1)).execute(fallback, f.context());
+      verify(eventRecorder).record(
+          eq(RUN_ID), eq("s3"), eq(WorkflowEventType.STEP_RETRIED),
+          eq("maxAttempts 2 reached for retryStepId 's2', executing fallback"),
+          eq("runtime"));
+      assertThat(f.state().getContextValue(INFLIGHT_KEY)).isEmpty();
+    }
+
+    @Test
+    void stale_fallback_marker_with_wiped_fallback_anchor_re_records_exhaustion_and_dispatches_fresh() {
+      Executable fallback = fallbackStep("fallback");
+      TestFixture f = fixture()
+          .retryStepId("s2")
+          .maxAttempts(2)
+          .retryMode(RetryMode.SINGLE_STEP)
+          .fallback(fallback)
+          .owningStepId("s3")
+          .sequence("s1", "s2", "s3")
+          .retryStepExecuted(2)
+          .attemptCount(2)
+          .contextValue(FALLBACK_INFLIGHT_KEY,
+              new StringContextValue("2", ContextProvenance.SYSTEM_GENERATED))
+          .build();
+
+      ExecutionOutcome outcome = f.handle();
+
+      // The fallback step never executed (no uid): the marker is stale. A fresh fallback dispatch
+      // re-records the exhaustion event; the resume path would record none.
+      assertThat(outcome).isEqualTo(ExecutionOutcome.COMPLETED);
+      verify(executableExecutor, times(1)).execute(fallback, f.context());
+      verify(eventRecorder).record(
+          eq(RUN_ID), eq("s3"), eq(WorkflowEventType.STEP_RETRIED),
+          eq("maxAttempts 2 reached for retryStepId 's2', executing fallback"),
+          eq("runtime"));
+      assertThat(f.state().getContextValue(FALLBACK_INFLIGHT_KEY)).isEmpty();
+    }
+
+    @Test
+    void interrupted_step_fallback_with_surviving_anchor_resumes_without_a_further_exhaustion_event() {
+      Executable fallback = fallbackStep("fallback");
+      TestFixture f = fixture()
+          .retryStepId("s2")
+          .maxAttempts(2)
+          .retryMode(RetryMode.SINGLE_STEP)
+          .fallback(fallback)
+          .owningStepId("s3")
+          .sequence("s1", "s2", "s3")
+          .retryStepExecuted(2)
+          .attemptCount(2)
+          .stepExecuted("fallback", 7, "fallback-out")
+          .contextValue(FALLBACK_INFLIGHT_KEY,
+              new StringContextValue("2", ContextProvenance.SYSTEM_GENERATED))
+          .build();
+
+      ExecutionOutcome outcome = f.handle();
+
+      // The pause's resolution already satisfied the fallback (it bears an output): the dispatch
+      // completes without re-executing it and without recording a second exhaustion event.
+      assertThat(outcome).isEqualTo(ExecutionOutcome.COMPLETED);
+      verify(executableExecutor, never()).execute(fallback, f.context());
+      verify(eventRecorder, never()).record(
+          any(), any(), eq(WorkflowEventType.STEP_RETRIED), any(), any());
+      assertThat(f.state().getContextValue(FALLBACK_INFLIGHT_KEY)).isEmpty();
+      assertThat(f.state().getStepOutputs()).containsEntry("s3", "retry-previous:dispatched");
+    }
+
+    @Test
+    void composite_fallback_marker_is_honoured_as_is_and_resumes_the_composite() {
+      Executable compositeFallback = new BlueprintRef("bp-1");
+      TestFixture f = fixture()
+          .retryStepId("s2")
+          .maxAttempts(2)
+          .retryMode(RetryMode.SINGLE_STEP)
+          .fallback(compositeFallback)
+          .owningStepId("s3")
+          .sequence("s1", "s2", "s3")
+          .retryStepExecuted(2)
+          .attemptCount(2)
+          .contextValue(FALLBACK_INFLIGHT_KEY,
+              new StringContextValue("2", ContextProvenance.SYSTEM_GENERATED))
+          .build();
+
+      ExecutionOutcome outcome = f.handle();
+
+      // A composite fallback carries no single anchor uid, so its marker is honoured as-is: the
+      // composite is re-executed as the continuation of the same dispatch — no further exhaustion
+      // event, no attempt consumed.
+      assertThat(outcome).isEqualTo(ExecutionOutcome.COMPLETED);
+      verify(executableExecutor, times(1)).execute(compositeFallback, f.context());
+      verify(eventRecorder, never()).record(
+          any(), any(), eq(WorkflowEventType.STEP_RETRIED), any(), any());
+      assertThat(f.attemptCount()).isEqualTo(2);
+      assertThat(f.state().getContextValue(FALLBACK_INFLIGHT_KEY)).isEmpty();
+    }
+
+    @Test
+    void composite_fallback_fresh_dispatch_records_exhaustion_and_writes_the_marker_on_pause() {
+      Executable compositeFallback = new BlueprintRef("bp-1");
+      TestFixture f = fixture()
+          .retryStepId("s2")
+          .maxAttempts(2)
+          .retryMode(RetryMode.SINGLE_STEP)
+          .fallback(compositeFallback)
+          .owningStepId("s3")
+          .sequence("s1", "s2", "s3")
+          .retryStepExecuted(2)
+          .attemptCount(2)
+          .build();
+      when(executableExecutor.execute(compositeFallback, f.context()))
+          .thenReturn(ExecutionOutcome.PAUSED);
+
+      ExecutionOutcome outcome = f.handle();
+
+      assertThat(outcome).isEqualTo(ExecutionOutcome.PAUSED);
+      verify(eventRecorder).record(
+          eq(RUN_ID), eq("s3"), eq(WorkflowEventType.STEP_RETRIED),
+          eq("maxAttempts 2 reached for retryStepId 's2', executing fallback"),
+          eq("runtime"));
+      assertThat(f.state().getContextValue(FALLBACK_INFLIGHT_KEY)).isPresent();
+      // No completion marker while paused — the next drive resumes this same dispatch.
+      assertThat(f.state().getStepOutputs()).doesNotContainKey("s3");
+    }
+  }
+
   private FixtureBuilder fixture() {
     return new FixtureBuilder(executableExecutor, handler);
   }

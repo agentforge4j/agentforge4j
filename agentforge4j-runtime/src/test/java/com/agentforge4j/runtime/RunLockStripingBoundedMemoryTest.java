@@ -35,9 +35,9 @@ import static org.mockito.Mockito.when;
 /**
  * Regression coverage for the terminal-transition lock pool being fixed-size striped locking rather
  * than a per-run-id map that grows by one entry forever: driving many thousands of distinct runs to
- * completion must never grow the pool beyond {@code RUN_LOCK_STRIPE_COUNT}, and the existing
- * terminal-race guarantees (see {@link FinaliseDriveCancelRaceRuntimeTest}) must still hold on a
- * runtime instance that has already driven many other runs.
+ * completion must never grow the pool beyond {@code RUN_LOCK_STRIPE_COUNT}. The terminal-race
+ * guarantees themselves are pinned separately by {@link FinaliseDriveCancelRaceRuntimeTest}; this
+ * test asserts only the memory bound (it does not re-exercise a cancel race after the churn).
  */
 class RunLockStripingBoundedMemoryTest {
 

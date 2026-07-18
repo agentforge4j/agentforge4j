@@ -12,6 +12,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -25,6 +26,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * and the cross-mechanism race ({@code retry()} racing a {@code RETRY_PREVIOUS} step) at once, since
  * neither caller has any additional state of its own that could diverge the outcome.
  */
+@Timeout(value = 30)
 class RetryPolicyAttemptCounterConcurrencyTest {
 
   private static final String STEP_ID = "s1";

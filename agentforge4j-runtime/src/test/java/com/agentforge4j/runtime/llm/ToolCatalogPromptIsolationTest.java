@@ -29,6 +29,7 @@ import java.time.ZoneOffset;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
@@ -77,10 +78,10 @@ class ToolCatalogPromptIsolationTest {
     assertThat(injectionIndex).isGreaterThan(beginIndex);
     assertThat(injectionIndex).isLessThan(endIndex);
 
-    // The trusted prefix (everything before the delimited section) must never carry the raw
-    // injection text undelimited.
-    String trustedPrefix = systemPrompt.substring(0, beginIndex);
-    assertThat(trustedPrefix).doesNotContain(INJECTION);
+    // The injection text appears EXACTLY once in the whole prompt — inside the wrapper (asserted
+    // above). This also closes the suffix hole: a second undelimited copy rendered after the END
+    // marker would evade a prefix-only check.
+    assertThat(countOccurrences(systemPrompt, INJECTION)).isEqualTo(1);
 
     // Ordinary tool discovery still works: the benign tool's capability, description, and input
     // schema are all present (inside the delimited section) so the model can still construct a
@@ -212,12 +213,36 @@ class ToolCatalogPromptIsolationTest {
     String section = systemPrompt.substring(beginIndex, endIndex);
 
     assertThat(section).contains("truncated for prompt-size safety");
-    // Bounded: the delimited section must not simply reflect the full 500-character description
-    // unbounded — it stays well short of the untruncated size.
-    assertThat(section.length()).isLessThan(longDescription.length());
+    // Tight bound: the rendered catalog was cut at the 100-character cap, so no run of more than
+    // 100 consecutive description characters can survive — a cap implementation quietly truncating
+    // at, say, 400 would still fail this.
+    assertThat(section).doesNotContain("x".repeat(101));
   }
 
-  private String invokeAndCaptureSystemPrompt(ToolCatalog catalog, int toolCatalogCharCap)
+  @Test
+  void defaultCapOf8000TruncatesAnOversizedCatalogWithoutAnyExplicitConfiguration()
+      throws Exception {
+    String longDescription = "x".repeat(AgentInvoker.DEFAULT_TOOL_CATALOG_CHAR_CAP + 1_000);
+    ToolDescriptor tool = new ToolDescriptor(
+        "bulky.capability", "Bulky", longDescription, null, null,
+        new ToolSource("mcp:bulky-server", "bulky_tool", ToolSourceKind.REMOTE_HTTP),
+        ToolRiskMetadata.conservative());
+    ToolCatalog catalog = scope -> List.of(tool);
+
+    String systemPrompt = invokeAndCaptureSystemPrompt(catalog, null);
+
+    assertThat(systemPrompt).contains("truncated for prompt-size safety");
+    assertThat(systemPrompt)
+        .doesNotContain("x".repeat(AgentInvoker.DEFAULT_TOOL_CATALOG_CHAR_CAP + 1));
+  }
+
+  @Test
+  void negativeCapIsRejectedAtBuilderTime() {
+    assertThatThrownBy(() -> AgentInvoker.builder().toolCatalogCharCap(-1))
+        .isInstanceOf(IllegalArgumentException.class);
+  }
+
+  private String invokeAndCaptureSystemPrompt(ToolCatalog catalog, Integer toolCatalogCharCap)
       throws Exception {
     ObjectMapper mapper = new ObjectMapper();
     LlmClient client = mock(LlmClient.class);
@@ -233,7 +258,7 @@ class ToolCatalogPromptIsolationTest {
     when(resolver.listAvailableClients()).thenReturn(List.of("openai"));
 
     EventRecorder recorder = new EventRecorder(new InMemoryWorkflowEventLog(), CLOCK);
-    AgentInvoker invoker = AgentInvoker.builder()
+    AgentInvoker.Builder builder = AgentInvoker.builder()
         .agentRepository(repo)
         .llmClientResolver(resolver)
         .contextRenderer(new ContextRenderer(mapper))
@@ -243,9 +268,12 @@ class ToolCatalogPromptIsolationTest {
         .llmProviderSelectionStrategy(new FirstAvailableProviderSelectionStrategy())
         .llmCallObserver(new LlmCallObserver(recorder, mapper))
         .modelTierResolver((provider, tier) -> null)
-        .toolCatalog(catalog)
-        .toolCatalogCharCap(toolCatalogCharCap)
-        .build();
+        .toolCatalog(catalog);
+    // null = leave the builder's default cap (DEFAULT_TOOL_CATALOG_CHAR_CAP) in place.
+    if (toolCatalogCharCap != null) {
+      builder.toolCatalogCharCap(toolCatalogCharCap);
+    }
+    AgentInvoker invoker = builder.build();
 
     WorkflowState state =
         new WorkflowState("run-tools", "wf-1", null, Instant.parse("2026-07-01T00:00:00Z"));

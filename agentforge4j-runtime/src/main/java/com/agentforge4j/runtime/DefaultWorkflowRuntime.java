@@ -25,6 +25,7 @@ import com.agentforge4j.core.workflow.event.WorkflowEventType;
 import com.agentforge4j.core.workflow.repository.WorkflowRepository;
 import com.agentforge4j.core.workflow.repository.WorkflowStateRepository;
 import com.agentforge4j.core.workflow.requirement.RequirementResolver;
+import com.agentforge4j.core.workflow.state.ReservedContextKeys;
 import com.agentforge4j.core.workflow.state.RunFailure;
 import com.agentforge4j.core.workflow.state.WorkflowState;
 import com.agentforge4j.core.workflow.state.WorkflowStatus;
@@ -248,8 +249,7 @@ public final class DefaultWorkflowRuntime implements WorkflowRuntime {
       Validate.isTrue(state.getStatus() == WorkflowStatus.PAUSED,
           "Cannot continue run '%s' in status %s".formatted(runId, state.getStatus()));
       rewindLoopAwaitingMaxIterationsDecision(state);
-      state.setStatus(WorkflowStatus.RUNNING);
-      state.setLastUpdatedAt(clock.instant());
+      enterRunning(state, "continue");
       WorkflowDefinition workflow = workflowRepository.get(state.getWorkflowId());
       drive(state, workflow);
     }
@@ -357,9 +357,8 @@ public final class DefaultWorkflowRuntime implements WorkflowRuntime {
       state.setPendingArtifact(null);
       state.setPendingUserPrompt(null);
       state.setRunFailure(null);
-      state.setStatus(WorkflowStatus.RUNNING);
+      enterRunning(state, "retry");
       state.setCurrentStepId(target.stepId());
-      state.setLastUpdatedAt(clock.instant());
       eventRecorder.record(runId, target.stepId(), WorkflowEventType.STEP_RETRIED, null, actorId);
 
       // Re-drive the enclosing top-level sequence: StepSequenceExecutor replays from the start,
@@ -545,8 +544,7 @@ public final class DefaultWorkflowRuntime implements WorkflowRuntime {
       LOG.log(System.Logger.Level.INFO, "Approve requested runId={0}, stepId={1}, note={2}", runId,
           stepId, truncated);
       eventRecorder.record(runId, stepId, WorkflowEventType.APPROVED, approverNote, actorId);
-      state.setStatus(WorkflowStatus.RUNNING);
-      state.setLastUpdatedAt(clock.instant());
+      enterRunning(state, "approve");
       WorkflowDefinition workflow = workflowRepository.get(state.getWorkflowId());
       drive(state, workflow);
     }
@@ -613,15 +611,18 @@ public final class DefaultWorkflowRuntime implements WorkflowRuntime {
    * @throws IllegalStateException      if no tool-execution service is configured, or the run is in
    *                                    {@link WorkflowStatus#AWAITING_APPROVAL} (use {@code approve}) or
    *                                    {@link WorkflowStatus#AWAITING_TOOL_DECISION} (use {@code resolveToolDecision})
-   * @throws IllegalArgumentException   if the run is cancelled, not {@link WorkflowStatus#AWAITING_TOOL_APPROVAL}, no
-   *                                    pending invocation matches, or an id/argument is blank or null
+   * @throws IllegalArgumentException   if the run is cancelled, not {@link WorkflowStatus#AWAITING_TOOL_APPROVAL}, or
+   *                                    an id/argument is blank or null
    * @throws com.agentforge4j.core.spi.tool.PolicyDenialTerminalException if {@code decision} is an
    *                                    {@link ApprovalDecision.Approve} against a policy-denied
    *                                    pending invocation (a denial is terminal; see
    *                                    {@code ToolExecutionService.resume})
-   * @throws ToolInvocationClaimLostException if a concurrent resume already claimed or replaced the
-   *                                    pending invocation between this call's peek and its own claim
-   *                                    attempt; no run state is mutated when this is thrown
+   * @throws ToolInvocationClaimLostException if there is no claimable pending invocation for this
+   *                                    id — whether because a concurrent resolution already claimed
+   *                                    and resolved it before this call's own peek, or because a
+   *                                    concurrent resume claimed or replaced it between this call's
+   *                                    peek and its own claim attempt; no run state is mutated when
+   *                                    this is thrown
    */
   @Override
   public WorkflowState continueAfterToolApproval(String runId, String toolInvocationId,
@@ -662,7 +663,8 @@ public final class DefaultWorkflowRuntime implements WorkflowRuntime {
         toolResultApplier.applyError(capability, outcome.detail(), state, actor);
       }
 
-      advancePastToolStep(state, "tool-invocation:" + outcome.status());
+      advancePastToolStep(state, "tool-invocation:" + outcome.status(),
+          "continue after tool approval");
       return state.snapshot();
     }
   }
@@ -768,12 +770,13 @@ public final class DefaultWorkflowRuntime implements WorkflowRuntime {
         toolResultApplier.applyError(capability, claimed.reason(), state, actorId);
       }
 
-      advancePastToolStep(state, "tool-decision:" + decision.getClass().getSimpleName());
+      advancePastToolStep(state, "tool-decision:" + decision.getClass().getSimpleName(),
+          "resolve tool decision");
       return state.snapshot();
     }
   }
 
-  private void advancePastToolStep(WorkflowState state, String stepOutputMarker) {
+  private void advancePastToolStep(WorkflowState state, String stepOutputMarker, String operation) {
     String stepId = state.getCurrentStepId();
     if (StringUtils.isNotBlank(stepId)) {
       // Synthetic step output (not the agent's response): marks the requesting step done so the
@@ -781,8 +784,7 @@ public final class DefaultWorkflowRuntime implements WorkflowRuntime {
       // in the tool.<capability> / tool.<capability>.error context keys.
       state.putStepOutput(stepId, stepOutputMarker);
     }
-    state.setStatus(WorkflowStatus.RUNNING);
-    state.setLastUpdatedAt(clock.instant());
+    enterRunning(state, operation);
     WorkflowDefinition workflow = workflowRepository.get(state.getWorkflowId());
     if (gateCompletedStep(state, workflow)) {
       return;
@@ -801,11 +803,23 @@ public final class DefaultWorkflowRuntime implements WorkflowRuntime {
         "Unexpected ApprovalDecision subtype: " + decision.getClass().getName());
   }
 
+  /**
+   * Resolves the pending invocation's capability for {@code continueAfterToolApproval}. The status
+   * guard just confirmed a tool suspension, so a missing row here means a concurrent resolution
+   * already claimed and fully resolved it before this call's own peek — the same benign
+   * concurrency-loss signal as a lost claim deeper in the resume path, never a caller error at this
+   * point (mirrors {@code resolveToolDecision}'s pre-peek classification).
+   *
+   * @throws ToolInvocationClaimLostException if no pending invocation matches
+   */
   private String determineCapability(String runId, String toolInvocationId) {
-    PendingToolInvocation pending = Validate.notNull(
-        pendingToolInvocationStore.find(runId, toolInvocationId),
-        () -> new IllegalArgumentException(
-            "No pending tool invocation '%s' for run '%s'".formatted(toolInvocationId, runId)));
+    PendingToolInvocation pending = pendingToolInvocationStore.find(runId, toolInvocationId);
+    if (pending == null) {
+      throw new ToolInvocationClaimLostException(
+          "No claimable pending tool invocation '%s' for run '%s' (already claimed and resolved "
+              .formatted(toolInvocationId, runId)
+              + "by a concurrent resolution before this call reached it)");
+    }
     return pending.capability();
   }
 
@@ -859,7 +873,11 @@ public final class DefaultWorkflowRuntime implements WorkflowRuntime {
       // transition atomically, and the loser's guard correctly sees the winner's applied change.
       synchronized (runLock(runId)) {
         WorkflowStatus status = state.getStatus();
-        if (status == WorkflowStatus.CANCELLED) {
+        if (status == WorkflowStatus.CANCELLED || state.isCancellationRequested()) {
+          // Idempotent repeat cancel — including the case where a concurrently-running handler
+          // clobbered the CANCELLED status after the first cancel: restore it, but never record a
+          // second RUN_CANCELLED.
+          state.setStatus(WorkflowStatus.CANCELLED);
           return;
         }
         Validate.isTrue(status != WorkflowStatus.COMPLETED && status != WorkflowStatus.FAILED,
@@ -898,8 +916,7 @@ public final class DefaultWorkflowRuntime implements WorkflowRuntime {
     try (RunContextManager.Scope ignored = runContextManager.open(runId, state.getWorkflowId(), stepId, null)) {
       LOG.log(System.Logger.Level.INFO, "Review submitted runId={0}, stepId={1}", runId, stepId);
       eventRecorder.record(runId, stepId, WorkflowEventType.STEP_REVIEWED, reviewNote, actorId);
-      state.setStatus(WorkflowStatus.RUNNING);
-      state.setLastUpdatedAt(clock.instant());
+      enterRunning(state, "submit review");
       WorkflowDefinition workflow = workflowRepository.get(state.getWorkflowId());
       drive(state, workflow);
     }
@@ -954,8 +971,7 @@ public final class DefaultWorkflowRuntime implements WorkflowRuntime {
   private void handleApproved(String runId, String stepId, Approve approve, WorkflowState state) {
     LOG.log(System.Logger.Level.INFO, "Step approved runId={0}, stepId={1}", runId, stepId);
     eventRecorder.record(runId, stepId, WorkflowEventType.STEP_APPROVED, approve.note(), approve.approvedBy());
-    state.setStatus(WorkflowStatus.RUNNING);
-    state.setLastUpdatedAt(clock.instant());
+    enterRunning(state, "decide step approval");
     WorkflowDefinition workflow = workflowRepository.get(state.getWorkflowId());
     drive(state, workflow);
   }
@@ -1044,8 +1060,7 @@ public final class DefaultWorkflowRuntime implements WorkflowRuntime {
         "submitted input for artifact " + pending.id(), actorId);
 
     state.setPendingArtifact(null);
-    state.setStatus(WorkflowStatus.RUNNING);
-    state.setLastUpdatedAt(clock.instant());
+    enterRunning(state, "submit input");
 
     if (state.getCurrentStepId() != null) {
       state.putStepOutput(state.getCurrentStepId(), "submitted");
@@ -1072,8 +1087,7 @@ public final class DefaultWorkflowRuntime implements WorkflowRuntime {
         state.getCurrentStepId(), null)) {
       writePromptAnswerToContext(state, answers);
       state.setPendingUserPrompt(null);
-      state.setStatus(WorkflowStatus.RUNNING);
-      state.setLastUpdatedAt(clock.instant());
+      enterRunning(state, "submit input");
       drive(state, workflow);
     }
   }
@@ -1100,9 +1114,11 @@ public final class DefaultWorkflowRuntime implements WorkflowRuntime {
         runExecutionInterceptor.beforeMainExecution(new RunExecutionContext(state.getRunId(), state.snapshot()));
       } catch (ExecutionBlockedException blocked) {
         recordRunBlocked(state, null);
-        // This catch sits outside the try/finally below, so it must persist the PAUSED
-        // transition itself — nothing downstream saves the state on this path.
-        workflowStateRepository.save(state);
+        // This catch sits outside the try/finally below, so it must persist the transition itself
+        // — nothing downstream saves the state on this path. Persist via the cancellation-aware
+        // helper: a concurrent cancel() landing during the interceptor veto must keep its durable
+        // CANCELLED status, never be clobbered back to a resumable PAUSED by a bare save.
+        persistSuspensionCancellationWins(state);
         throw blocked;
       }
     }
@@ -1187,11 +1203,22 @@ public final class DefaultWorkflowRuntime implements WorkflowRuntime {
    * no-op that mutates and records nothing. Callers must hold this run's own {@link #runLock} for the
    * whole check-and-set (and any event recording contingent on it).
    *
+   * <p>A durably requested cancellation (see {@link WorkflowState#markCancellationRequested}) also
+   * loses this check even when the {@code CANCELLED} status itself was clobbered by an
+   * unsynchronized transition in between: {@code RUN_CANCELLED} is already the run's terminal
+   * record, so no caller may record a contradictory {@code RUN_COMPLETED}/{@code RUN_FAILED} after
+   * it. The clobbered status is restored here — at the decision point, before any event is
+   * recorded — rather than corrected after the fact.
+   *
    * @return {@code true} if this call's transition was applied (this call won); {@code false} if the
-   * run had already reached a (possibly different) terminal status
+   * run had already reached a (possibly different) terminal status, or cancellation was requested
    */
   private static boolean tryEnterTerminalStatus(WorkflowState state, WorkflowStatus target) {
     if (isTerminal(state.getStatus())) {
+      return false;
+    }
+    if (state.isCancellationRequested()) {
+      state.setStatus(WorkflowStatus.CANCELLED);
       return false;
     }
     state.setStatus(target);
@@ -1211,9 +1238,19 @@ public final class DefaultWorkflowRuntime implements WorkflowRuntime {
    * durable record of <em>why</em> the run paused; OSS performs no terminal transition and sets no {@link RunFailure}.
    */
   private void recordRunBlocked(WorkflowState state, String stepId) {
-    state.setStatus(WorkflowStatus.PAUSED);
-    state.setLastUpdatedAt(clock.instant());
-    eventRecorder.record(state.getRunId(), stepId, WorkflowEventType.RUN_BLOCKED, null, "runtime");
+    // Cancellation-aware under the per-run lock: a concurrent cancel() that already durably
+    // recorded RUN_CANCELLED must not be clobbered to a resumable PAUSED, and no RUN_BLOCKED event
+    // may follow the run's terminal RUN_CANCELLED record.
+    synchronized (runLock(state.getRunId())) {
+      if (state.isCancellationRequested() || state.getStatus() == WorkflowStatus.CANCELLED) {
+        state.setStatus(WorkflowStatus.CANCELLED);
+        state.setLastUpdatedAt(clock.instant());
+        return;
+      }
+      state.setStatus(WorkflowStatus.PAUSED);
+      state.setLastUpdatedAt(clock.instant());
+      eventRecorder.record(state.getRunId(), stepId, WorkflowEventType.RUN_BLOCKED, null, "runtime");
+    }
   }
 
   private ExecutionContext newExecutionContext(WorkflowState state, WorkflowDefinition workflow) {
@@ -1303,9 +1340,31 @@ public final class DefaultWorkflowRuntime implements WorkflowRuntime {
   }
 
   private static void ensureNotCancelled(WorkflowState state, String operation) {
-    Validate.isTrue(state.getStatus() != WorkflowStatus.CANCELLED,
+    Validate.isTrue(state.getStatus() != WorkflowStatus.CANCELLED
+            && !state.isCancellationRequested(),
         "Cannot %s run '%s' because it is CANCELLED"
             .formatted(operation, state.getRunId()));
+  }
+
+  /**
+   * Transitions the run to {@link WorkflowStatus#RUNNING} for a resume verb, atomically re-checking
+   * cancellation under the per-run lock. Every resume verb's own status guard runs off-lock, so a
+   * concurrent {@link #cancel} can land between that guard and the {@code RUNNING} write — and must
+   * win: the resume is rejected here with the same {@code IllegalArgumentException} the verb's
+   * off-lock guard uses, instead of the {@code RUNNING} write clobbering the durable
+   * {@code CANCELLED} status (which would let a later {@link #finaliseDrive} record a terminal
+   * lifecycle event after {@code RUN_CANCELLED}). Checks the durable
+   * {@link WorkflowState#isCancellationRequested} marker as well as the status field, so a
+   * cancellation whose status write was itself already clobbered still wins.
+   *
+   * @throws IllegalArgumentException if the run has been cancelled
+   */
+  private void enterRunning(WorkflowState state, String operation) {
+    synchronized (runLock(state.getRunId())) {
+      ensureNotCancelled(state, operation);
+      state.setStatus(WorkflowStatus.RUNNING);
+      state.setLastUpdatedAt(clock.instant());
+    }
   }
 
   private static void writeAnswersToContext(WorkflowState state,
@@ -1314,6 +1373,14 @@ public final class DefaultWorkflowRuntime implements WorkflowRuntime {
       List<String> outputKeys) {
     for (Map.Entry<String, String> entry : answers.entrySet()) {
       Validate.notBlank(entry.getKey(), "answer key must not be blank");
+      // Write-path defense for the reserved runtime namespace, ahead of any write or clear:
+      // ContextMapping rejects reserved outputKeys and ArtifactDefinition rejects reserved ids at
+      // construction, but the answer keys themselves are raw end-user input — a reserved key must
+      // never reach the bare-key write/clear below (retry-attempt counters, token totals, ...) no
+      // matter what a workflow definition declares.
+      Validate.isTrue(!ReservedContextKeys.isReserved(entry.getKey()),
+          "answer key must not use the reserved '%s' namespace: %s"
+              .formatted(ReservedContextKeys.RESERVED_PREFIX, entry.getKey()));
     }
     for (Map.Entry<String, String> entry : answers.entrySet()) {
       String namespacedKey = "%s.%s".formatted(pending.id(), entry.getKey());

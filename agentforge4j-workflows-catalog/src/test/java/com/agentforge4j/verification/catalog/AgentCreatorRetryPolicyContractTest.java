@@ -11,8 +11,10 @@ import com.agentforge4j.core.workflow.step.behaviour.BranchBehaviour;
 import com.agentforge4j.core.workflow.step.retry.RetryPolicy;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -27,8 +29,17 @@ import static org.assertj.core.api.Assertions.assertThat;
  */
 class AgentCreatorRetryPolicyContractTest {
 
+  private static final Set<String> POLICY_CARRYING_STEP_IDS = Set.of(
+      "structure-requirements",
+      "assess",
+      "design-preview",
+      "estimate-tokens",
+      "generate-agent",
+      "generate-verification",
+      "review");
+
   @Test
-  void allSevenDeclaredRetryPoliciesMatchTheThreeFieldContract() {
+  void theSevenNamedStepsCarryTheExactThreeFieldContractPolicy() {
     // loadWorkflows() loads every shipped workflow, not only agent-creator; the production loading
     // path (ConfigurationLoader.defaultObjectMapper()) disables FAIL_ON_UNKNOWN_PROPERTIES for
     // forward-compatible, lenient deserialisation — matched here so an unrelated fixture field on a
@@ -39,39 +50,40 @@ class AgentCreatorRetryPolicyContractTest {
     WorkflowDefinition agentCreator = load.workflows().get("agent-creator");
     assertThat(agentCreator).as("agent-creator must be a shipped workflow").isNotNull();
 
-    List<RetryPolicy> declared = collectRetryPolicies(agentCreator);
+    Map<String, RetryPolicy> declared = collectAgentRetryPolicies(agentCreator);
 
-    assertThat(declared)
-        .as("agent-creator declares retryPolicy on exactly 7 steps")
-        .hasSize(7);
-    for (RetryPolicy policy : declared) {
-      assertThat(policy.allowRetry()).isTrue();
-      assertThat(policy.allowRetryFromPrevious()).isFalse();
-      assertThat(policy.maxAttempts()).isEqualTo(2);
-    }
+    // Pinned by step id, not just count: a policy silently migrating to a different step — or one
+    // step's policy degrading to the undeclared/none() default — changes the key set and fails.
+    // (A declared all-false policy normalises to RetryPolicy.none() and is indistinguishable from
+    // an undeclared one, so "carries a policy" is defined as "differs from none()".)
+    assertThat(declared.keySet())
+        .as("exactly these agent-creator steps carry a governing retryPolicy")
+        .containsExactlyInAnyOrderElementsOf(POLICY_CARRYING_STEP_IDS);
+    RetryPolicy expected = new RetryPolicy(true, false, 2);
+    declared.forEach((stepId, policy) ->
+        assertThat(policy).as("retryPolicy on step '%s'", stepId).isEqualTo(expected));
   }
 
-  private static List<RetryPolicy> collectRetryPolicies(WorkflowDefinition workflow) {
-    List<RetryPolicy> policies = new ArrayList<>();
-    collectRetryPolicies(workflow.steps(), policies);
+  private static Map<String, RetryPolicy> collectAgentRetryPolicies(WorkflowDefinition workflow) {
+    Map<String, RetryPolicy> policies = new LinkedHashMap<>();
+    collectAgentRetryPolicies(workflow.steps(), policies);
     return policies;
   }
 
-  private static void collectRetryPolicies(List<Executable> executables,
-      List<RetryPolicy> accumulator) {
+  private static void collectAgentRetryPolicies(List<Executable> executables,
+      Map<String, RetryPolicy> accumulator) {
     for (Executable executable : executables) {
       if (executable instanceof StepDefinition step
           && step.behaviour() instanceof AgentBehaviour agentBehaviour
-          && (agentBehaviour.retryPolicy().allowRetry()
-              || agentBehaviour.retryPolicy().allowRetryFromPrevious())) {
-        accumulator.add(agentBehaviour.retryPolicy());
+          && !RetryPolicy.none().equals(agentBehaviour.retryPolicy())) {
+        accumulator.put(step.stepId(), agentBehaviour.retryPolicy());
       }
       if (executable instanceof StepDefinition step
           && step.behaviour() instanceof BranchBehaviour branchBehaviour) {
         // Branch arms embed nested Executables directly (not present in the top-level steps
         // list), so a retryPolicy-declaring agent step reachable only through a branch would
         // otherwise be invisible to this scan.
-        collectRetryPolicies(branchBehaviour.childExecutables(), accumulator);
+        collectAgentRetryPolicies(branchBehaviour.childExecutables(), accumulator);
       }
     }
   }

@@ -14,6 +14,7 @@ import com.agentforge4j.core.workflow.context.ContextMapping;
 import com.agentforge4j.core.workflow.step.StepDefinition;
 import com.agentforge4j.core.workflow.step.StepTransition;
 import com.agentforge4j.core.workflow.step.behaviour.AgentBehaviour;
+import com.agentforge4j.core.workflow.step.behaviour.BranchBehaviour;
 import com.agentforge4j.core.workflow.step.behaviour.CollectionBehaviour;
 import com.agentforge4j.core.workflow.step.behaviour.ContextEqualityContract;
 import com.agentforge4j.core.workflow.step.behaviour.FailBehaviour;
@@ -612,6 +613,48 @@ class WorkflowValidatorTest {
     assertThatThrownBy(() -> validator.validateNoCollectionSteps(Map.of("wf1", wf)))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("collect-in-bp")
+        .hasMessageContaining("wf1");
+  }
+
+  /**
+   * L4-08 coverage: the walker descends through branch children — a COLLECTION step reachable only
+   * as a branch arm must be rejected the same as a top-level one.
+   */
+  @Test
+  void validateNoCollectionSteps_rejectsCollectionStepInsideABranchChild() {
+    StepDefinition branchStep = StepDefinition.builder()
+        .withStepId("router")
+        .withName("router")
+        .withBehaviour(new BranchBehaviour("routeKey",
+            Map.of("path-a", collectionStep("collect-in-branch")), List.of(), null, false))
+        .withContextMapping(new ContextMapping(List.of("routeKey"), List.of()))
+        .build();
+    WorkflowDefinition wf = wf("wf1", List.of(branchStep));
+
+    assertThatThrownBy(() -> validator.validateNoCollectionSteps(Map.of("wf1", wf)))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("collect-in-branch")
+        .hasMessageContaining("wf1");
+  }
+
+  /**
+   * L4-08 coverage: the walker descends through retry-fallback executables — a COLLECTION step
+   * reachable only as a RETRY_PREVIOUS fallback must be rejected the same as a top-level one.
+   */
+  @Test
+  void validateNoCollectionSteps_rejectsCollectionStepInsideARetryFallback() {
+    StepDefinition retryStep = StepDefinition.builder()
+        .withStepId("r")
+        .withName("r")
+        .withBehaviour(new RetryPreviousBehaviour("s1", RetryMode.SINGLE_STEP, 1,
+            collectionStep("collect-in-fallback")))
+        .withContextMapping(new ContextMapping(List.of(), List.of()))
+        .build();
+    WorkflowDefinition wf = wf("wf1", List.of(terminalStep("s1"), retryStep));
+
+    assertThatThrownBy(() -> validator.validateNoCollectionSteps(Map.of("wf1", wf)))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("collect-in-fallback")
         .hasMessageContaining("wf1");
   }
 

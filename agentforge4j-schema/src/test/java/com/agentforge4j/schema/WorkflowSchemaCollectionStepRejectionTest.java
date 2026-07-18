@@ -16,10 +16,14 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * {@code CollectionBehaviour} is a half-landed public surface kept intact for a planned
- * future completion (ADR-0014 / #19), but has no registered runtime handler. This pins the
- * existing protection that a JSON-authored workflow can never declare a {@code COLLECTION} step:
- * the step-type enum in {@code workflow.schema.json} omits it, so schema validation rejects the
- * document before it ever reaches a loader or the runtime.
+ * future completion (ADR-0014 / #19), but has no registered runtime handler. This pins one layer of
+ * the protection: the step-type enum in {@code workflow.schema.json} omits {@code COLLECTION}, so a
+ * schema-validating author or tool rejects the document up front. It is a contract gate, not the
+ * runtime enforcement point — no production loader validates bundles against this schema (and
+ * {@code CollectionBehaviour} is a registered Jackson subtype, so lenient JSON loading would still
+ * deserialize it); the enforcing gates are {@code WorkflowValidator.validateNoCollectionSteps} at
+ * load/build/start time and {@code WorkflowBehaviourHandler}'s nested-workflow re-check (see
+ * {@code WorkflowRuntimeCollectionGateTest}).
  */
 class WorkflowSchemaCollectionStepRejectionTest {
 

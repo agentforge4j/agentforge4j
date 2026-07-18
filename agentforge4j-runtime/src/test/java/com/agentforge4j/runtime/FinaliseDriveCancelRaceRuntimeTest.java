@@ -27,7 +27,9 @@ import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -42,6 +44,7 @@ import static org.mockito.Mockito.when;
  * and the drive's own completion of the last step must not both apply, and whichever transition wins
  * must leave a single, non-contradictory terminal status and event.
  */
+@Timeout(value = 30)
 class FinaliseDriveCancelRaceRuntimeTest {
 
   private static final Clock CLOCK = Clock.fixed(Instant.parse("2026-07-01T12:00:00Z"), ZoneOffset.UTC);
@@ -118,7 +121,7 @@ class FinaliseDriveCancelRaceRuntimeTest {
     Thread driveThread = new Thread(() -> runtime.continueRun(seeded.getRunId(), "resumer"));
     driveThread.start();
     try {
-      driveEnteredExecuteAll.await();
+      assertThat(driveEnteredExecuteAll.await(10, TimeUnit.SECONDS)).isTrue();
 
       // The real cancel() API, called concurrently while the drive thread is blocked inside the last
       // step: this must succeed (status is still RUNNING at this point).
@@ -204,7 +207,7 @@ class FinaliseDriveCancelRaceRuntimeTest {
     Thread driveThread = new Thread(() -> runtime.continueRun(seeded.getRunId(), "resumer"));
     driveThread.start();
     try {
-      driveEnteredExecuteAll.await();
+      assertThat(driveEnteredExecuteAll.await(10, TimeUnit.SECONDS)).isTrue();
       runtime.cancel(seeded.getRunId(), "operator");
       cancelReturned.countDown();
       driveThread.join();

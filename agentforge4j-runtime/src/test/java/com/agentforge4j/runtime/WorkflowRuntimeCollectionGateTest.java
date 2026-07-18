@@ -13,6 +13,8 @@ import com.agentforge4j.core.workflow.artifact.TextArtifactItem;
 import com.agentforge4j.core.workflow.context.ContextMapping;
 import com.agentforge4j.core.workflow.context.ContextProvenance;
 import com.agentforge4j.core.workflow.context.StringContextValue;
+import com.agentforge4j.core.workflow.event.WorkflowEvent;
+import com.agentforge4j.core.workflow.event.WorkflowEventLog;
 import com.agentforge4j.core.workflow.event.WorkflowEventType;
 import com.agentforge4j.core.workflow.repository.WorkflowRepository;
 import com.agentforge4j.core.workflow.requirement.DefaultRequirementResolver;
@@ -47,6 +49,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
@@ -60,8 +63,10 @@ import static org.mockito.Mockito.mock;
  * runtime {@code BehaviourHandler} in this release (the completion is planned for a later
  * milestone, ADR-0014 / #19). {@link WorkflowRuntimeBuilder#build()} rejects such a definition up
  * front as early feedback, reusing {@code agentforge4j-config-loader}'s bounded tree walker so the
- * check covers every structural nesting form (blueprint bodies, branch children, retry fallbacks,
- * inline nested workflows) as well as every workflow registered in the repository (including one
+ * check covers every structural nesting form — blueprint bodies, branch children, retry fallbacks,
+ * inline nested workflows; the per-form traversal is pinned directly by
+ * {@code WorkflowValidatorTest} in {@code agentforge4j-config-loader}, while this class exercises
+ * the blueprint and sub-workflow forms end to end — as well as every workflow registered in the repository (including one
  * reachable only via another workflow's {@code WorkflowBehaviour} reference) — but {@code build()}
  * only ever sees a snapshot taken at construction time, so it is not the actual enforcement point.
  * A dynamic or hot-reloadable {@link com.agentforge4j.core.workflow.repository.WorkflowRepository}
@@ -153,7 +158,7 @@ class WorkflowRuntimeCollectionGateTest {
     InMemoryWorkflowRepository repository =
         new InMemoryWorkflowRepository(Map.of(clean.id(), clean));
     InMemoryWorkflowStateRepository stateRepository = new InMemoryWorkflowStateRepository();
-    InMemoryWorkflowEventLog eventLog = new InMemoryWorkflowEventLog();
+    CapturingEventLog eventLog = new CapturingEventLog();
     WorkflowRuntime runtime = new WorkflowRuntimeBuilder()
         .workflowRepository(repository)
         .workflowStateRepository(stateRepository)
@@ -175,9 +180,11 @@ class WorkflowRuntimeCollectionGateTest {
         .hasMessageContaining("collect1")
         .hasMessageContaining("CollectionBehaviour");
 
-    // Fails before any run state or RUN_STARTED event exists.
+    // Fails before any run state exists and before any event — RUN_STARTED included — is appended
+    // for any run id (the log is runId-keyed and start()'s run id is minted internally, so only a
+    // capture of every append can prove this).
     assertThat(stateRepository.findAll()).isEmpty();
-    assertThat(eventLog.getEvents(broken.id())).isEmpty();
+    assertThat(eventLog.appended()).isEmpty();
   }
 
   @Test
@@ -194,7 +201,7 @@ class WorkflowRuntimeCollectionGateTest {
     InMemoryWorkflowRepository repository = new InMemoryWorkflowRepository(
         Map.of(root.id(), root, cleanSub.id(), cleanSub));
     InMemoryWorkflowStateRepository stateRepository = new InMemoryWorkflowStateRepository();
-    InMemoryWorkflowEventLog eventLog = new InMemoryWorkflowEventLog();
+    CapturingEventLog eventLog = new CapturingEventLog();
     WorkflowRuntime runtime = new WorkflowRuntimeBuilder()
         .workflowRepository(repository)
         .workflowStateRepository(stateRepository)
@@ -217,7 +224,7 @@ class WorkflowRuntimeCollectionGateTest {
         .hasMessageContaining("wf-dynamic-sub");
 
     assertThat(stateRepository.findAll()).isEmpty();
-    assertThat(eventLog.getEvents(root.id())).isEmpty();
+    assertThat(eventLog.appended()).isEmpty();
   }
 
   @Test
@@ -297,7 +304,7 @@ class WorkflowRuntimeCollectionGateTest {
       }
     };
     InMemoryWorkflowStateRepository stateRepository = new InMemoryWorkflowStateRepository();
-    InMemoryWorkflowEventLog eventLog = new InMemoryWorkflowEventLog();
+    CapturingEventLog eventLog = new CapturingEventLog();
     EventRecorder eventRecorder = new EventRecorder(eventLog, CLOCK);
     DefaultWorkflowRuntime runtime = new DefaultWorkflowRuntime(
         divergent,
@@ -320,7 +327,7 @@ class WorkflowRuntimeCollectionGateTest {
         .hasMessageContaining("CollectionBehaviour");
 
     assertThat(stateRepository.findAll()).isEmpty();
-    assertThat(eventLog.getEvents("wf-divergent")).isEmpty();
+    assertThat(eventLog.appended()).isEmpty();
   }
 
   @Test
@@ -412,5 +419,29 @@ class WorkflowRuntimeCollectionGateTest {
         .llmCallObserver(new LlmCallObserver(eventRecorder, mapper))
         .modelTierResolver((provider, tier) -> null)
         .build();
+  }
+
+  /**
+   * Event log that captures every appended event regardless of run id. The production log is keyed
+   * by runId — which {@code start()} mints internally and never exposes on the rejection path — so
+   * proving "no event was recorded" requires capturing all appends, not querying by a guessed key.
+   */
+  private static final class CapturingEventLog implements WorkflowEventLog {
+
+    private final List<WorkflowEvent> appended = new ArrayList<>();
+
+    @Override
+    public void append(WorkflowEvent event) {
+      appended.add(event);
+    }
+
+    @Override
+    public List<WorkflowEvent> getEvents(String runId) {
+      return appended.stream().filter(event -> runId.equals(event.runId())).toList();
+    }
+
+    List<WorkflowEvent> appended() {
+      return List.copyOf(appended);
+    }
   }
 }

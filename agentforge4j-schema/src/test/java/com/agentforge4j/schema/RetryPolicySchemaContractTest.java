@@ -54,8 +54,14 @@ class RetryPolicySchemaContractTest {
         }
         """);
 
-    assertThat(violations).isNotEmpty();
-    assertThat(violations.toString()).contains("allowAgentSwap");
+    // The violation must be the additionalProperties rejection on the retryPolicy node itself —
+    // pinned by instance location, not a loose string probe over the whole violation list.
+    assertThat(violations)
+        .isNotEmpty()
+        .anyMatch(v -> v.getInstanceLocation() != null
+            && v.getInstanceLocation().toString().contains("behaviour/retryPolicy")
+            && v.getMessage() != null
+            && v.getMessage().contains("allowAgentSwap"));
   }
 
   @Test
@@ -69,8 +75,12 @@ class RetryPolicySchemaContractTest {
         }
         """);
 
-    assertThat(violations).isNotEmpty();
-    assertThat(violations.toString()).contains("allowPromptOverride");
+    assertThat(violations)
+        .isNotEmpty()
+        .anyMatch(v -> v.getInstanceLocation() != null
+            && v.getInstanceLocation().toString().contains("behaviour/retryPolicy")
+            && v.getMessage() != null
+            && v.getMessage().contains("allowPromptOverride"));
   }
 
   private static List<Error> validateWorkflowWithRetryPolicy(String retryPolicyJson)

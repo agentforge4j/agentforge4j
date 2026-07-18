@@ -35,6 +35,9 @@ import com.agentforge4j.core.workflow.step.StepTransition;
 import com.agentforge4j.core.workflow.step.behaviour.AgentBehaviour;
 import com.agentforge4j.core.workflow.step.behaviour.FailBehaviour;
 import com.agentforge4j.core.workflow.step.behaviour.InputBehaviour;
+import com.agentforge4j.core.workflow.step.blueprint.BlueprintBehaviour;
+import com.agentforge4j.core.workflow.step.blueprint.BlueprintDefinition;
+import com.agentforge4j.core.workflow.step.blueprint.BlueprintRef;
 import com.agentforge4j.core.workflow.step.behaviour.ResourceBehaviour;
 import com.agentforge4j.core.workflow.step.behaviour.RetryMode;
 import com.agentforge4j.core.workflow.step.behaviour.RetryPreviousBehaviour;
@@ -480,6 +483,95 @@ class RetryPreviousBehaviourRuntimeTest {
     assertThat(countEvents(fixture, runId, "fb", WorkflowEventType.AWAITING_INPUT)).isEqualTo(1);
     assertThat(countEvents(fixture, runId, "r", WorkflowEventType.STEP_RETRIED)).isEqualTo(2);
     assertThat(countEvents(fixture, runId, "a", WorkflowEventType.STEP_STARTED)).isEqualTo(3);
+    assertThat(countEvents(fixture, runId, "b", WorkflowEventType.AWAITING_INPUT)).isEqualTo(2);
+    assertThat(resumed.getStepOutputs()).containsKey("r");
+    assertThat(resumed.getContext().get("__retry_previous_fallback_inflight:r")).isNull();
+    assertThat(((StringContextValue) resumed.getContext().get("__retry_previous_attempts:a")).value())
+        .isEqualTo("1");
+    // Drive-1 dispatch reserved 1, the external retry() reserved 1 — the fallback resume none.
+    assertThat(((StringContextValue) resumed.getContext().get("__retry_policy_attempts:a")).value())
+        .isEqualTo("2");
+    assertThat(((StringContextValue) resumed.getContext().get("form-fb.answer")).value())
+        .isEqualTo("human says go");
+  }
+
+  /**
+   * L4-05 coverage (composite fallback, end to end): a {@code RETRY_PREVIOUS} fallback that is a
+   * {@code BlueprintRef} — not a plain step — must dispatch on exhaustion, write the fallback
+   * in-flight marker when its body pauses, and on re-entry be honoured as-is (a composite carries
+   * no single anchor uid): the blueprint is re-executed as the continuation of the same dispatch,
+   * whose resume-safe body skips the already-answered INPUT step instead of re-prompting, records
+   * no further exhaustion event, and touches neither budget.
+   */
+  @Test
+  void paused_composite_fallback_resumes_the_same_dispatch_through_the_blueprint() {
+    StepDefinition a = StepDefinition.builder()
+        .withStepId("a")
+        .withName("a")
+        .withBehaviour(new AgentBehaviour("a-agent", StepTransition.AUTO,
+            new RetryPolicy(true, true, 5)))
+        .withContextMapping(ContextMapping.none())
+        .build();
+    ArtifactDefinition fallbackForm = new ArtifactDefinition("form-fb",
+        List.of(new TextArtifactItem("answer", "Answer", true, null)));
+    StepDefinition fallbackInner = StepDefinition.builder()
+        .withStepId("fb")
+        .withName("fb")
+        .withBehaviour(new InputBehaviour("form-fb", StepTransition.AUTO))
+        .build();
+    BlueprintDefinition fallbackBlueprint = new BlueprintDefinition(
+        "fb-bp", "fb-bp", new BlueprintBehaviour(null, StepTransition.AUTO),
+        List.of(fallbackInner));
+    StepDefinition r = StepDefinition.builder()
+        .withStepId("r")
+        .withName("r")
+        .withBehaviour(new RetryPreviousBehaviour("a", RetryMode.SINGLE_STEP, 1,
+            new BlueprintRef("fb-bp")))
+        .build();
+    ArtifactDefinition bForm = new ArtifactDefinition("form-b",
+        List.of(new TextArtifactItem("field1", "Field", true, null)));
+    StepDefinition b = StepDefinition.builder()
+        .withStepId("b")
+        .withName("b")
+        .withBehaviour(new InputBehaviour("form-b", StepTransition.AUTO))
+        .build();
+    StepDefinition fail = StepDefinition.builder()
+        .withStepId("fail")
+        .withName("fail")
+        .withBehaviour(new FailBehaviour("expected"))
+        .build();
+    WorkflowDefinition workflow = new WorkflowDefinition(
+        "wf-retry-previous-composite-fallback", "wf-retry-previous-composite-fallback", null, null,
+        null, null, null, WorkflowSource.CUSTOM, WorkflowLifecycle.ACTIVE,
+        Map.of("form-fb", fallbackForm, "form-b", bForm), Map.of("fb-bp", fallbackBlueprint),
+        List.of(a, r, b, fail), List.of());
+
+    Fixture fixture = fixture(workflow, continuingAgentInvoker());
+    String runId = fixture.runtime().start(workflow.id());
+
+    // Drive 1: a executes, r fires attempt 1 (replays a), b pauses; answering b fails the run at
+    // the terminal FAIL step.
+    assertThat(fixture.runtime().getState(runId).getStatus()).isEqualTo(WorkflowStatus.AWAITING_INPUT);
+    fixture.runtime().submitInput(runId, Map.of("field1", "b answer"), "user");
+    assertThat(fixture.runtime().getState(runId).getStatus()).isEqualTo(WorkflowStatus.FAILED);
+
+    // External rewind targeting "a": the surviving local counter exhausts the re-entered r
+    // (cap 1), so the composite fallback dispatches — the blueprint body's INPUT step pauses.
+    fixture.runtime().retry(runId, "a", "operator");
+    WorkflowState fallbackPaused = fixture.runtime().getState(runId);
+    assertThat(fallbackPaused.getStatus()).isEqualTo(WorkflowStatus.AWAITING_INPUT);
+    assertThat(countEvents(fixture, runId, "fb", WorkflowEventType.AWAITING_INPUT)).isEqualTo(1);
+    assertThat(countEvents(fixture, runId, "r", WorkflowEventType.STEP_RETRIED)).isEqualTo(2);
+    assertThat(fallbackPaused.getContext().get("__retry_previous_fallback_inflight:r")).isNotNull();
+
+    // Answering the blueprint's INPUT step resumes the SAME dispatch: the composite marker is
+    // honoured as-is, the blueprint re-executes resume-safe (fb bears its output, no re-prompt),
+    // r completes, no further exhaustion event, neither budget touched.
+    fixture.runtime().submitInput(runId, Map.of("answer", "human says go"), "user");
+    WorkflowState resumed = fixture.runtime().getState(runId);
+    assertThat(resumed.getStatus()).isEqualTo(WorkflowStatus.AWAITING_INPUT);
+    assertThat(countEvents(fixture, runId, "fb", WorkflowEventType.AWAITING_INPUT)).isEqualTo(1);
+    assertThat(countEvents(fixture, runId, "r", WorkflowEventType.STEP_RETRIED)).isEqualTo(2);
     assertThat(countEvents(fixture, runId, "b", WorkflowEventType.AWAITING_INPUT)).isEqualTo(2);
     assertThat(resumed.getStepOutputs()).containsKey("r");
     assertThat(resumed.getContext().get("__retry_previous_fallback_inflight:r")).isNull();
