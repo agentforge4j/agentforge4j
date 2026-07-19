@@ -16,7 +16,12 @@
           "maxRounds": 1,
           "resolutionPrompt": "Make a final decision."
         },
-        "transition": "AUTO"
+        "transition": "AUTO",
+        "retryPolicy": {
+          "allowRetry": false,
+          "allowRetryFromPrevious": true,
+          "maxAttempts": 1
+        }
       }
     },
     {

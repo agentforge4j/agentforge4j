@@ -575,6 +575,23 @@
       <id>release</id>
       <build>
         <plugins>
+          <!-- The base cyclonedx-maven-plugin declaration (main build, above) defaults
+               skipNotDeployed=true. That default is a no-op for an ordinary build (the goal
+               still runs and emits target/bom.json+bom.xml normally), but under this profile it
+               skips the aggregate goal entirely, logging "Skipping CycloneDX goal, because
+               module skips deploy" for the root aggregator project — most likely because
+               central-publishing-maven-plugin's extensions=true (below) changes how this
+               pom-packaged root project's deploy-skip status resolves. The release workflow
+               needs the aggregate SBOM to exist so it can upload it, so override
+               skipNotDeployed here — scoped to -Prelease only, verified to leave ordinary
+               (non-release) builds unaffected. -->
+          <plugin>
+            <groupId>org.cyclonedx</groupId>
+            <artifactId>cyclonedx-maven-plugin</artifactId>
+            <configuration>
+              <skipNotDeployed>false</skipNotDeployed>
+            </configuration>
+          </plugin>
           <plugin>
             <groupId>org.apache.maven.plugins</groupId>
             <artifactId>maven-source-plugin</artifactId>
