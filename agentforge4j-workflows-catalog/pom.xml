@@ -11,10 +11,11 @@
 
   <artifactId>agentforge4j-workflows-catalog</artifactId>
   <!-- Independently versioned: the shipped-workflow catalog releases on its own cadence, decoupled
-       from the framework's 0.0.1-SNAPSHOT reactor version. Pre-release SNAPSHOT on its own 0.1.x
-       line; ships 1.0.0 at the framework's first public release — the catalog, framework, and UI
-       packages each version and release independently under their own tag prefixes. -->
-  <version>0.1.0-SNAPSHOT</version>
+       from the framework's reactor version — the catalog, framework, and UI packages each version
+       and release independently under their own tag prefixes (catalog-v*). Pinned to exactly one
+       framework version per release (ADR-0032; see the manifest's minimumAgentForge4jVersion /
+       maximumAgentForge4jVersion). -->
+  <version>0.1.0</version>
   <packaging>jar</packaging>
   <name>AgentForge4J Workflows Catalog</name>
   <description>The shipped workflow and agent catalog as classpath resources under /shipped-workflows/

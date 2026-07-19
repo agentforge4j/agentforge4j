@@ -7,10 +7,10 @@ compatibility gate; this module owns only content.
 
 ## Independently versioned
 
-This module carries its **own `<version>`** (`0.1.0-SNAPSHOT`), decoupled from the framework's
-reactor version, so the catalog can be released on its own cadence — a shipped-workflow change does
-not force a framework version bump. The version graduates to `1.0.0` when the redesigned catalog
-becomes the intended public release.
+This module carries its **own `<version>`** (`0.1.0`), decoupled from the framework's reactor
+version, so the catalog can be released on its own cadence — a shipped-workflow change does not
+force a framework version bump. Each catalog release pins to exactly one framework version via
+its compatibility manifest (see below); catalog 0.1.0 requires framework 0.1.0.
 
 Consumers pin the catalog version explicitly (it is not `${project.version}`):
 
@@ -18,7 +18,7 @@ Consumers pin the catalog version explicitly (it is not `${project.version}`):
 <dependency>
   <groupId>org.agentforge4j</groupId>
   <artifactId>agentforge4j-workflows-catalog</artifactId>
-  <version>0.1.0-SNAPSHOT</version>
+  <version>0.1.0</version>
 </dependency>
 ```
 
