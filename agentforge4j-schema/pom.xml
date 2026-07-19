@@ -10,6 +10,7 @@
   </parent>
 
   <artifactId>agentforge4j-schema</artifactId>
+  <name>AgentForge4J Schema</name>
   <packaging>jar</packaging>
 
   <licenses>
