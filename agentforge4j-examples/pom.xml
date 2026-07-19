@@ -28,10 +28,14 @@
     <maven.compiler.source>${java.version}</maven.compiler.source>
     <maven.compiler.target>${java.version}</maven.compiler.target>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-    <!-- Single retarget point for the whole examples tree. Pre-0.1.0 the examples resolve the
-         SNAPSHOT from the local .m2 (run `./mvnw install -DskipTests` on the OSS reactor first);
-         bump to 0.1.0 once published to Central. -->
-    <agentforge4j.version>0.0.1-SNAPSHOT</agentforge4j.version>
+    <!-- Single retarget point for the whole examples tree. The examples resolve this from the
+         local .m2 (run `./mvnw install -DskipTests` on the OSS reactor first), so it must track
+         the reactor's current version at all times, including the release-prep window where the
+         reactor sits at a non-SNAPSHOT release version before that version is actually published
+         to Central. The README's "install into local repository" instructions still describe
+         build-from-source only; they gain the Central alternative once 0.1.0 is actually
+         published, independent of this property. -->
+    <agentforge4j.version>0.1.0</agentforge4j.version>
     <license-maven-plugin.version>5.0.0</license-maven-plugin.version>
     <!-- Spring Boot — managed via its BOM so the spring-boot example declares starters versionless. -->
     <spring-boot.version>3.5.16</spring-boot.version>
