@@ -1,11 +1,13 @@
 import type { CanvasModel } from '../src/model/canvasModel';
 import {
   canvasToWorkflow,
+  exportStepJson,
   newStepId,
   workflowDetailToCanvas,
   workflowToCanvas,
 } from '../src/model/mapper';
 import type { WorkflowDetailDto } from '../src/model/mapper';
+import type { EditableStep, WorkflowDefinition } from '../src/api/types';
 import { validateWorkflowEditor } from '../src/validation/validateWorkflow';
 import { describe, expect, it } from 'vitest';
 
@@ -76,6 +78,74 @@ describe('canvasToWorkflow', () => {
     const back = workflowToCanvas(wf);
     expect(back.nodes).toHaveLength(wf.steps.length);
     expect(back.workflowId).toBe('rt');
+  });
+});
+
+describe('exportStepJson retryPolicy shape', () => {
+  // The runtime RetryPolicy record shrank from five fields to three (allowRetry,
+  // allowRetryFromPrevious, maxAttempts); allowAgentSwap/allowPromptOverride were removed as
+  // unsupported, decorative promises with no backing runtime operation, and the exporting
+  // workflow.schema.json $def now declares additionalProperties: false — an exported step still
+  // carrying either removed field fails schema validation for every consumer of the exported
+  // bundle. Pins the exact key set for both branches AI_STEP can export (maxRetries 0 → the
+  // disabled/"none" policy, maxRetries > 0 → the enabled/"simple" policy) and for AI_DEBATE
+  // (SPAR), which always exports the disabled policy.
+  const emptyWorkflow: WorkflowDefinition = { id: 'wf', name: 'W', description: '', steps: [], artifacts: {} };
+
+  function agentStep(maxRetries: number): EditableStep {
+    return {
+      stepId: 'ai-step-1',
+      name: 'Think',
+      behaviourType: 'AGENT',
+      config: { agentRef: 'agent-a', transition: 'AUTO', maxRetries },
+      contextMapping: { inputKeys: [], outputKeys: [] },
+    };
+  }
+
+  function sparStep(): EditableStep {
+    return {
+      stepId: 'ai-debate-1',
+      name: 'Debate',
+      behaviourType: 'SPAR',
+      config: {
+        agentRef: 'agent-a',
+        challengerAgentId: 'agent-b',
+        maxRounds: 2,
+        resolutionPrompt: 'Resolve',
+        transition: 'AUTO',
+      },
+      contextMapping: { inputKeys: [], outputKeys: [] },
+    };
+  }
+
+  it('exports exactly the three-field disabled policy when maxRetries is 0', () => {
+    const json = exportStepJson(emptyWorkflow, agentStep(0));
+    const behaviour = json.behaviour as Record<string, unknown>;
+    expect(behaviour.retryPolicy).toEqual({
+      allowRetry: false,
+      allowRetryFromPrevious: false,
+      maxAttempts: 0,
+    });
+  });
+
+  it('exports exactly the three-field enabled policy when maxRetries is greater than 0', () => {
+    const json = exportStepJson(emptyWorkflow, agentStep(3));
+    const behaviour = json.behaviour as Record<string, unknown>;
+    expect(behaviour.retryPolicy).toEqual({
+      allowRetry: true,
+      allowRetryFromPrevious: false,
+      maxAttempts: 3,
+    });
+  });
+
+  it('SPAR steps export the same three-field disabled policy', () => {
+    const json = exportStepJson(emptyWorkflow, sparStep());
+    const behaviour = json.behaviour as Record<string, unknown>;
+    expect(behaviour.retryPolicy).toEqual({
+      allowRetry: false,
+      allowRetryFromPrevious: false,
+      maxAttempts: 0,
+    });
   });
 });
 
