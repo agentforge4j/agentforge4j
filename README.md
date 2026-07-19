@@ -204,7 +204,7 @@ top of bootstrap. Nothing below the starter knows Spring exists.
 | **Testing** | `agentforge4j-llm-fake`, `agentforge4j-testkit` | A fake LLM client plus a dedicated test kit (harness, run assertions, scripted gate responses) for deterministic, repeatable workflow tests. |
 | **Workflow catalog** | `agentforge4j-workflows-catalog` | The shipped workflow catalog (see [Included workflows](#included-workflows)). |
 
-> The visual Workflow Builder is published separately as version **v0.6.0**. Its public documentation describes the currently released capabilities.
+> The visual Workflow Builder is published separately as version **v0.6.1**. Its public documentation describes the currently released capabilities.
 
 Most framework-neutral modules carry a JPMS `module-info.java`. The Spring Boot starter is consumed on the classpath by design, and MCP currently depends on SDK module-name constraints.
 
@@ -286,7 +286,7 @@ workflows and an AI Agent Adoption demo application.
 - **Not yet on Maven Central.** Build from source until the 0.1.0 artifacts are published.
 - **APIs and workflow contracts may change** before 1.0.
 - The core, runtime, bootstrap, provider modules, test kit, workflow catalog, runnable examples,
-  MCP integration, and published Workflow Builder v0.6.0 are in place.
+  MCP integration, and published Workflow Builder v0.6.1 are in place.
 
 Treat it as a capable pre-1.0 framework that is approaching public release, not yet as a frozen or production-certified platform.
 
