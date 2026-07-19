@@ -73,7 +73,7 @@ public final class HttpToolProvider implements ToolProvider {
    * Creates a provider over a fixed set of endpoint definitions, validating them up front.
    *
    * @param configuredName          non-blank name; {@link #providerId()} is {@code "http:" + name}
-   * @param definitions             endpoint definitions; non-null, each validated (§2.8)
+   * @param definitions             endpoint definitions; non-null, each validated up front
    * @param secretResolver          secret-reference key to value resolver, used at invoke time
    * @param httpClient              the JDK HTTP client used for all calls
    * @param egressGuard             SSRF egress guard consulted against each mapped URL before the call

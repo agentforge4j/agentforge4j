@@ -22,17 +22,6 @@ export const BLOCKED = [
   'agentforge4j-entitlement',
   'agentforge4j-persistence-jpa',
   'agentforge4j-admin-api',
-  'billing-api',
-  'billing-stripe',
-  'cloud-enforcement',
-  'cloud-entitlement',
-  'cloud-persistence-jpa',
-  'cloud-sql-schema',
-  'platform-engine',
-  'platform-auth',
-  'platform-admin',
-  'platform-sql-schema',
-  'entitlement-default',
   // Hosted product names.
   'AgentForge4j Platform',
   'AgentForge4j Cloud',
@@ -46,11 +35,46 @@ export const BLOCKED = [
   'paywall',
 ];
 
-// NOTE: the block list stays to PRECISE product/artifact/vendor identifiers. Bare concept
-// words — "billing", "subscription", "metering", "tenant"/"tenancy", "multi-tenant" — are deliberately
-// NOT blocked: they occur legitimately in third-party technical text surfaced by the generated
-// reference (e.g. an LLM provider's "multi-tenant host"), so blocking them produces false positives.
-// A genuine commercial leak virtually always carries one of the precise identifiers above alongside it.
+// General structural guard, not a maintained module roster: the private Platform/Cloud reactor
+// names its modules `<layer>-<capability>` (e.g. `platform-<capability>`, `cloud-<capability>`).
+// Matching that naming convention catches a bare short-form module name without the OSS repo
+// carrying a literal, update-on-every-rename inventory of the private reactor's current module
+// list as shipped source. A handful of legitimate generic-English compounds share a layer word
+// (platform-agnostic, cloud-native); those are exempted individually below rather than narrowing
+// the pattern, so a genuinely new compound just needs one reviewed addition, not a redesign.
+//
+// Each exemption below is an EXACT token, reviewed individually — this set never gains a prefix
+// or wildcard entry ("cloud", "cloud-*", ...), which would blind the guard to real private-module
+// names sharing that prefix. `cloud-metadata` specifically is the standard security term for a
+// cloud provider's instance-metadata service (e.g. `169.254.169.254`) that egress/SSRF-guard code
+// and copy must legitimately name — see `agentforge4j-util/.../HttpEgressGuard.java`,
+// `ToolProperties.Egress`'s Javadoc (reaches the generated Spring config reference page), and
+// `agentforge4j-web-ui/src/copy/security.ts` — not a Platform/Cloud product reference.
+const STRUCTURAL_LAYER_PREFIXES = ['platform', 'cloud', 'billing', 'entitlement'];
+const STRUCTURAL_GENERIC_COMPOUNDS = new Set([
+  'platform-agnostic',
+  'platform-independent',
+  'platform-specific',
+  'cloud-native',
+  'cloud-hosted',
+  'cloud-agnostic',
+  'cloud-provider',
+  'cloud-providers',
+  'cloud-metadata',
+]);
+
+function structuralLayerPattern() {
+  const alternation = STRUCTURAL_LAYER_PREFIXES.join('|');
+  return new RegExp(`(?<![\\w-])(${alternation})-[a-z][a-z-]*(?![\\w])`, 'gi');
+}
+
+// NOTE: the block list and structural guard both stay to PRECISE product/artifact/vendor
+// identifiers or the private layer's own naming convention. Bare concept words — "billing",
+// "subscription", "metering", "tenant"/"tenancy", "multi-tenant" — are deliberately NOT blocked: they
+// occur legitimately in third-party technical text surfaced by the generated reference (e.g. an LLM
+// provider's "multi-tenant host"), so blocking them produces false positives. A genuine commercial
+// leak virtually always carries one of the precise identifiers above, or the layer-prefixed
+// module-naming shape, alongside it.
 
 // Reviewed exemptions: exact source substrings that legitimately contain a blocked token. Empty today
 // (the docs are clean); an entry here documents why a specific occurrence is allowed.
@@ -67,6 +91,7 @@ function tokenPattern(token) {
 }
 
 const MATCHERS = BLOCKED.map((token) => ({token, re: tokenPattern(token)}));
+const STRUCTURAL_RE = structuralLayerPattern();
 
 /**
  * Scan text for blocked product-name identifiers, ignoring allowlisted occurrences.
@@ -85,6 +110,14 @@ export function findProductNameLeaks(text) {
       re.lastIndex = 0;
       if (re.test(line)) {
         findings.push({token, line: i + 1, excerpt: line.trim()});
+      }
+    }
+    STRUCTURAL_RE.lastIndex = 0;
+    let match;
+    while ((match = STRUCTURAL_RE.exec(line)) !== null) {
+      const candidate = match[0].toLowerCase();
+      if (!STRUCTURAL_GENERIC_COMPOUNDS.has(candidate)) {
+        findings.push({token: match[0], line: i + 1, excerpt: line.trim()});
       }
     }
   });

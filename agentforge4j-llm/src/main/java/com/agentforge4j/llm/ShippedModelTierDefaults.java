@@ -8,7 +8,7 @@ import java.util.Map;
 
 /**
  * The shipped OSS default mapping of {@link ModelTier} to a concrete, versioned model string for
- * each of the nine built-in providers (design §6). These are the out-of-the-box defaults; operators
+ * each of the nine built-in providers. These are the out-of-the-box defaults; operators
  * may override any provider/tier entry, and an embedding application may further override them.
  *
  * <p>Local providers ({@code ollama}, {@code vllm}) default to Qwen models; {@code azure-openai}
