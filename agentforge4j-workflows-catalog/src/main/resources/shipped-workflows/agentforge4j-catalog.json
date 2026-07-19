@@ -1,6 +1,6 @@
 {
-  "catalogVersion": "0.1.0-SNAPSHOT",
-  "minimumAgentForge4jVersion": "0.0.1",
-  "maximumAgentForge4jVersion": null,
+  "catalogVersion": "0.1.0",
+  "minimumAgentForge4jVersion": "0.1.0",
+  "maximumAgentForge4jVersion": "0.1.0",
   "workflowSchemaVersion": 1
 }
