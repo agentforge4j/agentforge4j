@@ -1,5 +1,11 @@
+# Repo-wide default owner. Branch protection requires code-owner review on every pull request;
+# this catch-all is what makes that apply to the whole repository, not just the paths named below.
+* @angroene
+
 # Code ownership for the documentation system. Changes under these paths request a review from the
-# documentation maintainer. Other areas of the repository are intentionally not claimed here.
+# documentation maintainer. Listed for clarity even though it currently names the same owner as
+# the catch-all above -- CODEOWNERS uses last-match-wins, so a future change to this section could
+# name a different documentation maintainer without touching the repo-wide default.
 
 # The documentation site and its build tooling.
 /agentforge4j-docs/            @angroene
