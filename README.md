@@ -3,10 +3,11 @@
 [![CI](https://github.com/agentforge4j/agentforge4j/actions/workflows/ci.yml/badge.svg)](https://github.com/agentforge4j/agentforge4j/actions/workflows/ci.yml)
 [![CodeQL](https://github.com/agentforge4j/agentforge4j/actions/workflows/codeql.yml/badge.svg)](https://github.com/agentforge4j/agentforge4j/actions/workflows/codeql.yml)
 [![Quality Gate](https://sonarcloud.io/api/project_badges/measure?project=agentforge4j&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=agentforge4j)
+[![Maven Central](https://img.shields.io/maven-central/v/org.agentforge4j/agentforge4j-bootstrap.svg?label=Maven%20Central)](https://central.sonatype.com/artifact/org.agentforge4j/agentforge4j-bootstrap)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 [![Java 17](https://img.shields.io/badge/Java-17-orange.svg)](https://adoptium.net/)
 
-> **Pre-1.0.** AgentForge4j is preparing for its first public open-source release. APIs and workflow contracts may still change before 1.0. It is not yet published to Maven Central and should not yet be treated as production-certified. See [Project status](#project-status).
+> **Pre-1.0.** AgentForge4j 0.1.0 is the first public open-source release, published to Maven Central. APIs and workflow contracts may still change before 1.0 and it should not yet be treated as production-certified. See [Project status](#project-status).
 
 ---
 
@@ -101,7 +102,8 @@ into a controlled side effect.
 
 ## Quickstart
 
-> Not yet on Maven Central. For now, build from source and use the SNAPSHOT locally.
+> Published to Maven Central as `0.1.0`. Building from source also works if you want the latest
+> `main`.
 
 ### Prerequisites
 
@@ -152,14 +154,13 @@ files it loads — see
 ### Use it from Spring Boot
 
 Depend on `agentforge4j-spring-boot-starter`. Its `BootstrapAutoConfiguration` delegates to
-bootstrap and exposes a single `AgentForge4j` bean you can inject. The Maven coordinates
-(once published) are:
+bootstrap and exposes a single `AgentForge4j` bean you can inject. The Maven coordinates are:
 
 ```xml
 <dependency>
   <groupId>org.agentforge4j</groupId>
   <artifactId>agentforge4j-spring-boot-starter</artifactId>
-  <version>${agentforge4j.version}</version>
+  <version>0.1.0</version>
 </dependency>
 ```
 
@@ -282,13 +283,12 @@ workflows and an AI Agent Adoption demo application.
 
 ## Project status
 
-- **Version:** `0.1.0-SNAPSHOT` — release candidate for the first public OSS release.
-- **Not yet on Maven Central.** Build from source until the 0.1.0 artifacts are published.
+- **Version:** `0.1.0` — the first public OSS release, published to Maven Central.
 - **APIs and workflow contracts may change** before 1.0.
 - The core, runtime, bootstrap, provider modules, test kit, workflow catalog, runnable examples,
   MCP integration, and published Workflow Builder v0.6.1 are in place.
 
-Treat it as a capable pre-1.0 framework that is approaching public release, not yet as a frozen or production-certified platform.
+Treat it as a capable pre-1.0 framework — publicly released, but not yet a frozen or production-certified platform.
 
 ---
 

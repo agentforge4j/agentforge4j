@@ -12,7 +12,11 @@ export default function UsePage() {
       <p className="mt-2 max-w-2xl text-sm text-fg-muted">
         Group ID: <code className="rounded bg-bg-elevated px-1.5 py-0.5">{USE_COPY.groupId}</code>
       </p>
-      <p className="mt-2 max-w-2xl text-sm text-fg-muted">{USE_COPY.notPublished}</p>
+      <p className="mt-2 max-w-2xl text-sm text-fg-muted">
+        Version: <code className="rounded bg-bg-elevated px-1.5 py-0.5">{USE_COPY.version}</code>,
+        published to Maven Central — for example{' '}
+        <code className="rounded bg-bg-elevated px-1.5 py-0.5">{USE_COPY.primaryArtifactId}</code>.
+      </p>
       <p className="mt-2 max-w-2xl text-sm text-fg-muted">
         See the{' '}
         <Link to="/releases" className="text-brand underline">
