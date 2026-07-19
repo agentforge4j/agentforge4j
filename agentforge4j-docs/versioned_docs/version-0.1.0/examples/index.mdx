@@ -1,0 +1,393 @@
+---
+title: Examples
+description: Runnable, source-backed AgentForge4j examples.
+kind: gallery
+sidebar_position: 1
+---
+
+# Examples
+
+Every example is a real, runnable module under `agentforge4j-examples/`. The workflow definition
+shown for each is **included from source** and validated against the published schema at build time —
+never copy-pasted — so an example that drifts from its schema or stops compiling fails the build. Each
+example runs deterministically offline against the test provider (no network, no API key).
+
+## Framework examples
+
+End-to-end programs that embed the framework. Best read in the [integrating](../get-started/integrating.mdx)
+order.
+
+### Quick start
+
+The shortest path from nothing to a running workflow.
+
+```json title="workflow.json"
+{
+  "kind": "WORKFLOW",
+  "schemaVersion": 1,
+  "id": "quick-start",
+  "name": "Quick Start",
+  "description": "A single agent step that completes immediately — the shortest runnable workflow.",
+  "steps": [
+    {
+      "kind": "STEP",
+      "stepId": "greet",
+      "name": "Greet",
+      "behaviour": {
+        "type": "AGENT",
+        "agentRef": "quick-start-agent",
+        "transition": "AUTO"
+      }
+    }
+  ]
+}
+```
+
+[Full source](https://github.com/agentforge4j/agentforge4j/tree/main/agentforge4j-examples/framework-examples/quick-start)
+
+### Human approval
+
+A workflow that pauses for human approval before continuing.
+
+```json title="workflow.json"
+{
+  "kind": "WORKFLOW",
+  "schemaVersion": 1,
+  "id": "human-approval",
+  "name": "Human Approval",
+  "description": "A single agent step gated by HUMAN_APPROVAL — the run suspends until a person approves or rejects it.",
+  "steps": [
+    {
+      "kind": "STEP",
+      "stepId": "propose",
+      "name": "Propose",
+      "behaviour": {
+        "type": "AGENT",
+        "agentRef": "human-approval-agent",
+        "transition": "HUMAN_APPROVAL"
+      }
+    }
+  ]
+}
+```
+
+[Full source](https://github.com/agentforge4j/agentforge4j/tree/main/agentforge4j-examples/framework-examples/human-approval)
+
+### MCP tools
+
+An agent that calls tools exposed over the Model Context Protocol.
+
+```json title="workflow.json"
+{
+  "kind": "WORKFLOW",
+  "schemaVersion": 1,
+  "id": "mcp-demo",
+  "name": "MCP Demo",
+  "description": "A single agent step that calls an MCP tool and then completes.",
+  "steps": [
+    {
+      "kind": "STEP",
+      "stepId": "call-tool",
+      "name": "Call the MCP tool",
+      "behaviour": {
+        "type": "AGENT",
+        "agentRef": "mcp-agent",
+        "transition": "AUTO"
+      }
+    }
+  ]
+}
+```
+
+[Full source](https://github.com/agentforge4j/agentforge4j/tree/main/agentforge4j-examples/framework-examples/mcp)
+
+### Spring Boot
+
+The same workflow wired through the Spring Boot starter.
+
+```json title="workflow.json"
+{
+  "kind": "WORKFLOW",
+  "schemaVersion": 1,
+  "id": "spring-boot-demo",
+  "name": "Spring Boot Demo",
+  "description": "A single agent step that completes immediately, run from a Spring Boot application.",
+  "steps": [
+    {
+      "kind": "STEP",
+      "stepId": "greet",
+      "name": "Greet",
+      "behaviour": {
+        "type": "AGENT",
+        "agentRef": "spring-boot-agent",
+        "transition": "AUTO"
+      }
+    }
+  ]
+}
+```
+
+[Full source](https://github.com/agentforge4j/agentforge4j/tree/main/agentforge4j-examples/framework-examples/spring-boot)
+
+### HTTP tools
+
+An agent that invokes an HTTP tool.
+
+```json title="workflow.json"
+{
+  "kind": "WORKFLOW",
+  "schemaVersion": 1,
+  "id": "tools-http-demo",
+  "name": "HTTP Tool Demo",
+  "description": "A single agent step that calls an HTTP tool and then completes.",
+  "steps": [
+    {
+      "kind": "STEP",
+      "stepId": "lookup",
+      "name": "Look up the weather",
+      "behaviour": {
+        "type": "AGENT",
+        "agentRef": "tools-http-agent",
+        "transition": "AUTO"
+      }
+    }
+  ]
+}
+```
+
+[Full source](https://github.com/agentforge4j/agentforge4j/tree/main/agentforge4j-examples/framework-examples/tools-http)
+
+## Workflow-language examples
+
+Focused examples of the workflow language — one per behaviour or authoring construct. Best read
+alongside the [authoring](../get-started/authoring.mdx) and [behaviours](../reference/behaviours.mdx)
+reference.
+
+### Branch
+
+Conditional routing with the `BRANCH` behaviour.
+
+```json title="workflow.json"
+{
+  "kind": "WORKFLOW",
+  "schemaVersion": 1,
+  "id": "wl-branch",
+  "name": "Branch Routing",
+  "description": "An agent step writes a decision into the context; a BRANCH step routes on it — 'approve' runs an agent step to completion, 'reject' ends the run with FAIL.",
+  "steps": [
+    {
+      "kind": "STEP",
+      "stepId": "decide",
+      "name": "Decide",
+      "behaviour": {
+        "type": "AGENT",
+        "agentRef": "branch-agent",
+        "transition": "AUTO"
+      }
+    },
+    {
+      "kind": "STEP",
+      "stepId": "route",
+      "name": "Route",
+      "behaviour": {
+        "type": "BRANCH",
+        "contextKey": "decision",
+        "branches": {
+          "approve": {
+            "kind": "STEP",
+            "stepId": "approved",
+            "name": "Approved",
+            "behaviour": {
+              "type": "AGENT",
+              "agentRef": "approve-agent",
+              "transition": "AUTO"
+            }
+          },
+          "reject": {
+            "kind": "STEP",
+            "stepId": "rejected",
+            "name": "Rejected",
+            "behaviour": {
+              "type": "FAIL",
+              "reason": "Routing rejected the request."
+            }
+          }
+        }
+      }
+    }
+  ]
+}
+```
+
+[Full source](https://github.com/agentforge4j/agentforge4j/tree/main/agentforge4j-examples/workflow-language-examples/wl-branch)
+
+### Human in the loop
+
+A pause for input with a schema-validated artifact form.
+
+```json title="workflow.json"
+{
+  "kind": "WORKFLOW",
+  "schemaVersion": 1,
+  "id": "wl-human-in-the-loop",
+  "name": "Human in the Loop",
+  "description": "An INPUT step suspends to collect a request from a person; an agent then reviews it under a HUMAN_APPROVAL gate that suspends for an approve/reject decision. Approving completes the run; rejecting fails it.",
+  "steps": [
+    {
+      "kind": "STEP",
+      "stepId": "collect",
+      "name": "Collect Request",
+      "behaviour": {
+        "type": "INPUT",
+        "artifactId": "request-form",
+        "transition": "AUTO"
+      }
+    },
+    {
+      "kind": "STEP",
+      "stepId": "review",
+      "name": "Review",
+      "behaviour": {
+        "type": "AGENT",
+        "agentRef": "reviewer-agent",
+        "transition": "HUMAN_APPROVAL"
+      }
+    }
+  ]
+}
+```
+
+[Full source](https://github.com/agentforge4j/agentforge4j/tree/main/agentforge4j-examples/workflow-language-examples/wl-human-in-the-loop)
+
+### Loop
+
+A bounded loop over a fixed blueprint body.
+
+```json title="workflow.json"
+{
+  "kind": "WORKFLOW",
+  "schemaVersion": 1,
+  "id": "wl-loop-fixed",
+  "name": "Fixed Count Loop",
+  "description": "A looped blueprint that runs its body a fixed number of times (FIXED_COUNT), then completes. Agent completion signals are ignored — the loop runs exactly maxIterations times.",
+  "steps": [
+    {
+      "kind": "BLUEPRINT_REF",
+      "blueprintId": "fixed-body"
+    }
+  ]
+}
+```
+
+[Full source](https://github.com/agentforge4j/agentforge4j/tree/main/agentforge4j-examples/workflow-language-examples/wl-loop)
+
+### Resource
+
+A `RESOURCE` step that loads context without an LLM call.
+
+```json title="workflow.json"
+{
+  "kind": "WORKFLOW",
+  "schemaVersion": 1,
+  "id": "wl-resource",
+  "name": "Resource Loading",
+  "description": "A single RESOURCE step loads a bundled classpath resource into the workflow context under a chosen key, then the run completes — no agent, no LLM call.",
+  "steps": [
+    {
+      "kind": "STEP",
+      "stepId": "load",
+      "name": "Load Resource",
+      "behaviour": {
+        "type": "RESOURCE",
+        "resourcePath": "/workflow-resources/welcome.txt",
+        "contextKey": "welcome",
+        "transition": "AUTO"
+      }
+    }
+  ]
+}
+```
+
+[Full source](https://github.com/agentforge4j/agentforge4j/tree/main/agentforge4j-examples/workflow-language-examples/wl-resource)
+
+### Retry
+
+Re-running a previous step with the `RETRY_PREVIOUS` behaviour.
+
+```json title="workflow.json"
+{
+  "kind": "WORKFLOW",
+  "schemaVersion": 1,
+  "id": "wl-retry",
+  "name": "Retry Previous Step",
+  "description": "An INPUT step collects a note; a RETRY_PREVIOUS step then rewinds to it (FROM_STEP, maxAttempts 1), so the input is requested a second time. Once the single retry attempt is exhausted, the run falls through to the fallback agent step and completes.",
+  "steps": [
+    {
+      "kind": "STEP",
+      "stepId": "request",
+      "name": "Request Note",
+      "behaviour": {
+        "type": "INPUT",
+        "artifactId": "retry-form",
+        "transition": "AUTO"
+      }
+    },
+    {
+      "kind": "STEP",
+      "stepId": "retry",
+      "name": "Retry Request",
+      "behaviour": {
+        "type": "RETRY_PREVIOUS",
+        "retryStepId": "request",
+        "retryMode": "FROM_STEP",
+        "maxAttempts": 1,
+        "fallback": {
+          "kind": "STEP",
+          "stepId": "finalize",
+          "name": "Finalize",
+          "behaviour": {
+            "type": "AGENT",
+            "agentRef": "finalize-agent",
+            "transition": "AUTO"
+          }
+        }
+      }
+    }
+  ]
+}
+```
+
+[Full source](https://github.com/agentforge4j/agentforge4j/tree/main/agentforge4j-examples/workflow-language-examples/wl-retry)
+
+### SPAR
+
+A solve-plan-act-review loop with the `SPAR` behaviour.
+
+```json title="workflow.json"
+{
+  "kind": "WORKFLOW",
+  "schemaVersion": 1,
+  "id": "wl-spar",
+  "name": "SPAR Review",
+  "description": "A SPAR step pits a primary agent against a challenger over bounded rounds: each round both speak, and the exchange continues while a side asks for another round with a concrete reason. After the rounds, the primary produces the resolution.",
+  "steps": [
+    {
+      "kind": "STEP",
+      "stepId": "review",
+      "name": "Adversarial Review",
+      "behaviour": {
+        "type": "SPAR",
+        "agentRef": "architect",
+        "sparConfig": {
+          "challengerAgentId": "developer",
+          "maxRounds": 2,
+          "resolutionPrompt": "Weigh both sides and make the final decision."
+        },
+        "transition": "AUTO"
+      }
+    }
+  ]
+}
+```
+
+[Full source](https://github.com/agentforge4j/agentforge4j/tree/main/agentforge4j-examples/workflow-language-examples/wl-spar)

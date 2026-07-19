@@ -20,8 +20,8 @@ import {
   releaseTag,
 } from './build-javadoc-versions.mjs';
 
-test('release tags are v-prefixed versions', () => {
-  assert.equal(releaseTag('1.2.0'), 'v1.2.0');
+test('release tags use the framework track prefix', () => {
+  assert.equal(releaseTag('1.2.0'), 'framework-v1.2.0');
 });
 
 test('builds one surface per released version, newest first, into the output root', () => {

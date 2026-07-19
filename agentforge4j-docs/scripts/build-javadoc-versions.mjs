@@ -43,10 +43,10 @@ import {ARCHIVE_ROOT} from './archive-transition.mjs';
 const REPO_ROOT = join(MODULE_ROOT, '..');
 /** Where the per-version surfaces land for assemble-site.mjs. */
 export const JAVADOC_VERSIONS_OUT = join(STAGING_ROOT, 'javadoc-versions');
-// Release-tag naming: version `1.2.0` is tagged `v1.2.0`. (No tag exists pre-0.1.0; the first
-// release fixes this convention — adjust here if the runbook chooses differently.)
+// Release-tag naming: the framework track tags releases as `framework-v<version>` (see
+// release-framework.yml / tag-guard.yml), e.g. version `1.2.0` is tagged `framework-v1.2.0`.
 export function releaseTag(version) {
-  return `v${version}`;
+  return `framework-v${version}`;
 }
 
 const SRC_ROOT = join(STAGING_ROOT, 'javadoc-src');
