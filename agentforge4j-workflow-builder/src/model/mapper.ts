@@ -43,8 +43,6 @@ function retryPolicyNone(): Record<string, unknown> {
   return {
     allowRetry: false,
     allowRetryFromPrevious: false,
-    allowAgentSwap: false,
-    allowPromptOverride: false,
     maxAttempts: 0,
   };
 }
@@ -53,8 +51,6 @@ function retryPolicySimple(maxAttempts: number): Record<string, unknown> {
   return {
     allowRetry: true,
     allowRetryFromPrevious: false,
-    allowAgentSwap: false,
-    allowPromptOverride: false,
     maxAttempts,
   };
 }
