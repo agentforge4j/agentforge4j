@@ -42,6 +42,14 @@ export const BLOCKED = [
 // list as shipped source. A handful of legitimate generic-English compounds share a layer word
 // (platform-agnostic, cloud-native); those are exempted individually below rather than narrowing
 // the pattern, so a genuinely new compound just needs one reviewed addition, not a redesign.
+//
+// Each exemption below is an EXACT token, reviewed individually — this set never gains a prefix
+// or wildcard entry ("cloud", "cloud-*", ...), which would blind the guard to real private-module
+// names sharing that prefix. `cloud-metadata` specifically is the standard security term for a
+// cloud provider's instance-metadata service (e.g. `169.254.169.254`) that egress/SSRF-guard code
+// and copy must legitimately name — see `agentforge4j-util/.../HttpEgressGuard.java`,
+// `ToolProperties.Egress`'s Javadoc (reaches the generated Spring config reference page), and
+// `agentforge4j-web-ui/src/copy/security.ts` — not a Platform/Cloud product reference.
 const STRUCTURAL_LAYER_PREFIXES = ['platform', 'cloud', 'billing', 'entitlement'];
 const STRUCTURAL_GENERIC_COMPOUNDS = new Set([
   'platform-agnostic',
@@ -52,6 +60,7 @@ const STRUCTURAL_GENERIC_COMPOUNDS = new Set([
   'cloud-agnostic',
   'cloud-provider',
   'cloud-providers',
+  'cloud-metadata',
 ]);
 
 function structuralLayerPattern() {

@@ -41,6 +41,40 @@ test('the structural guard exempts reviewed generic-English compounds sharing a 
   assert.deepEqual(findProductNameLeaks('Run it cloud-native or on-prem.'), []);
 });
 
+test('the structural guard exempts the exact term cloud-metadata (SSRF/IMDS security vocabulary)', () => {
+  assert.deepEqual(
+    findProductNameLeaks(
+      'Outbound tool HTTP is screened against private, loopback, link-local, and cloud-metadata address ranges.',
+    ),
+    [],
+  );
+  assert.deepEqual(
+    findProductNameLeaks('lifting the private/loopback/link-local/cloud-metadata egress blocks'),
+    [],
+  );
+});
+
+test('the cloud-metadata exemption is exact and narrow — it does not widen to cloud or other cloud-* names', () => {
+  // The bare word "cloud" alone must still pass (unchanged generic-word behaviour)...
+  assert.deepEqual(findProductNameLeaks('Run it in your own cloud or on-prem.'), []);
+  // ...but any OTHER cloud-<capability> shaped token, including ones that share a prefix with a
+  // real private module family, must still be flagged — the exemption is one exact token, not a
+  // relaxation of the structural pattern or a "cloud" prefix carve-out.
+  assert.ok(findProductNameLeaks('See `cloud-enforcement`.').some((h) => h.token === 'cloud-enforcement'));
+  assert.ok(findProductNameLeaks('Uses `cloud-entitlement`.').some((h) => h.token === 'cloud-entitlement'));
+  assert.ok(findProductNameLeaks('Add `cloud-metadataservice`.').some((h) => h.token === 'cloud-metadataservice'));
+});
+
+test('representative private product/module naming remains rejected after the cloud-metadata exemption', () => {
+  // A cross-section spanning the literal BLOCKED entries, the structural guard, and the hosted
+  // product names — none of these must be affected by adding one narrow allowlist entry.
+  assert.ok(findProductNameLeaks('Add `agentforge4j-platform-admin`.').some((h) => h.token === 'agentforge4j-platform'));
+  assert.ok(findProductNameLeaks('Add `agentforge4j-cloud-enforcement`.').some((h) => h.token === 'agentforge4j-cloud'));
+  assert.ok(findProductNameLeaks('See `platform-sql-schema`.').some((h) => h.token === 'platform-sql-schema'));
+  assert.ok(findProductNameLeaks('See `billing-api`.').some((h) => h.token === 'billing-api'));
+  assert.ok(findProductNameLeaks('Try AgentForge4j Platform today.').some((h) => h.token === 'AgentForge4j Platform'));
+});
+
 test('does NOT flag bare concept words (avoids third-party false positives)', () => {
   // These occur in generated reference text describing third-party providers (e.g. Gemini's
   // "multi-tenant host") and must not block the build.
