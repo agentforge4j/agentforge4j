@@ -5,10 +5,8 @@ export const USE_COPY = {
     'AgentForge4j is a set of Java libraries you embed in your own application — there is no ' +
     'server to install and no account to create.',
   groupId: 'org.agentforge4j',
-  notPublished:
-    'The framework is not yet published to Maven Central. There is no version to depend on ' +
-    'yet, so no coordinates are shown here until that changes — check the releases page or the ' +
-    'repository for progress.',
+  version: '0.1.0',
+  primaryArtifactId: 'agentforge4j-bootstrap',
   requirements: [
     'Java 17 or later to embed the framework.',
     'Your own LLM provider credentials — AgentForge4j calls the provider you configure; it does ' +
@@ -19,7 +17,7 @@ export const USE_COPY = {
   embedSteps: [
     {
       heading: 'Add the framework',
-      body: 'Depend on agentforge4j-core and agentforge4j-runtime once a version is published.',
+      body: 'Depend on agentforge4j-core and agentforge4j-runtime.',
     },
     {
       heading: 'Bring your own LLM provider',

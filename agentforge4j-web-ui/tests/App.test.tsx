@@ -300,15 +300,16 @@ describe('content-track pages', () => {
     );
   });
 
-  test('releases page is honest that nothing is published to Maven Central yet', () => {
+  test('releases page reports the 0.1.0 framework release as published to Maven Central', () => {
     renderAt('/releases');
-    expect(screen.getByText(/has not published a 0\.1\.0 release to Maven Central yet/)).toBeInTheDocument();
+    expect(screen.getByText(/0\.1\.0, the first public framework release, is published to Maven Central/)).toBeInTheDocument();
   });
 
-  test('use page does not print copy-pasteable Maven coordinates before anything is published', () => {
+  test('use page prints the published Maven coordinates', () => {
     renderAt('/use');
-    expect(screen.getByText(/not yet published to Maven Central/)).toBeInTheDocument();
-    expect(screen.queryByText(/<dependency>/)).not.toBeInTheDocument();
+    expect(screen.getByText('org.agentforge4j')).toBeInTheDocument();
+    expect(screen.getByText('0.1.0')).toBeInTheDocument();
+    expect(screen.getByText('agentforge4j-bootstrap')).toBeInTheDocument();
   });
 
   test('legal page links the Apache-2.0 licence', () => {
