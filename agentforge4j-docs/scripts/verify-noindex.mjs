@@ -7,94 +7,130 @@
 // own verifyComposedArtifact checks its real composed output, and is wired to run right after
 // `docusaurus build` in package.json's `build`/`check` scripts.
 //
-// Every /next/** page (the unreleased, constantly-changing docs version) and the local-search
-// results page must carry <meta name="robots" content="noindex,follow">; every real released
-// version (e.g. /0.1.0/**) must not — and neither /next/** nor /search may appear in this
-// module's own generated sitemap.xml (docusaurus.config.ts's sitemap.ignorePatterns).
+// Inventory-driven, not hardcoded to today's page/version names: every generated HTML page under
+// build/next/** (discovered by recursively walking the real output, whatever pages happen to
+// exist) must carry <meta name="robots" content="noindex,follow">, and so must build/search/. The
+// set of "active released version" directories to check for the opposite (must NOT be noindex) is
+// derived from versions.json — the same single source of truth docusaurus.config.ts itself reads
+// to decide which versions get their own path — not a literal "0.1.0" written here. A future
+// release, archive, or page rename changes versions.json / the real page tree, and this check
+// follows along with no edit required.
 
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const MODULE_ROOT = join(here, '..');
 
+/** The same file docusaurus.config.ts itself reads to decide which versions get their own
+ * `/<version>/` path — the one authoritative list of "active released versions." */
+function readActiveVersions(moduleRoot) {
+  const versionsPath = join(moduleRoot, 'versions.json');
+  if (!existsSync(versionsPath)) {
+    return [];
+  }
+  return JSON.parse(readFileSync(versionsPath, 'utf8'));
+}
+
+/** Recursively collects every generated `*.html` file under `dir`, in no particular order. */
+function findHtmlFiles(dir) {
+  const results = [];
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const full = join(dir, entry.name);
+    if (entry.isDirectory()) {
+      results.push(...findHtmlFiles(full));
+    } else if (entry.name.endsWith('.html')) {
+      results.push(full);
+    }
+  }
+  return results;
+}
+
 // Docusaurus's own head-tag renderer (react-helmet-based) does not necessarily quote attribute
 // values with no whitespace, and stamps every tag it dedupes with a `data-rh` marker attribute —
 // a real generated tag looks like `<meta data-rh=true name=robots content=noindex,follow />`, not
 // the literal quoted JSX text `<meta name="robots" content="noindex,follow" />` this repo's
 // swizzle source writes. Match on the presence of a `<meta ...>` tag naming `robots` whose
-// `content` value is `noindex,follow` (or `nofollow`, for assertNotNoindex's purposes),
+// `content` value is `noindex,follow` (or contains `noindex` at all, for the negative check),
 // independent of quoting, attribute order, or extra attributes.
 function findRobotsMetaTags(html) {
   return html.match(/<meta\b[^>]*\bname=["']?robots["']?[^>]*>/gi) ?? [];
 }
 
-function readHtml(buildDir, relativePath) {
-  const path = join(buildDir, ...relativePath.split('/'));
-  if (!existsSync(path)) {
-    throw new Error(`verify-noindex: expected generated file does not exist: ${path}`);
-  }
-  return readFileSync(path, 'utf8');
+function hasNoindexFollow(html) {
+  return findRobotsMetaTags(html).some((tag) => /\bcontent=["']?noindex,\s*follow["']?/i.test(tag));
 }
 
-function assertNoindexFollow(buildDir, relativePath) {
-  const html = readHtml(buildDir, relativePath);
-  const hasNoindexFollow = findRobotsMetaTags(html).some((tag) =>
-    /\bcontent=["']?noindex,\s*follow["']?/i.test(tag),
-  );
-  if (!hasNoindexFollow) {
-    throw new Error(
-      `verify-noindex: expected ${relativePath} to contain a robots meta tag with content="noindex,follow", but it did not`,
-    );
-  }
+function hasAnyNoindex(html) {
+  return findRobotsMetaTags(html).some((tag) => /\bcontent=["']?noindex/i.test(tag));
 }
 
-function assertNotNoindex(buildDir, relativePath) {
-  const html = readHtml(buildDir, relativePath);
-  const hasNoindex = findRobotsMetaTags(html).some((tag) => /\bcontent=["']?noindex/i.test(tag));
-  if (hasNoindex) {
-    throw new Error(`verify-noindex: expected ${relativePath} to NOT be noindex, but it is`);
+/** Every `*.html` page recursively found under `dir` must satisfy `predicate`; throws a specific,
+ * per-file error on the first violation. Also throws if `dir` is missing or contains no HTML
+ * pages at all — a directory that fails silently to produce any page would otherwise make this
+ * check vacuously pass. */
+function assertEveryPage(dir, predicate, failureVerb) {
+  if (!existsSync(dir)) {
+    throw new Error(`verify-noindex: expected directory does not exist: ${dir}`);
+  }
+  const files = findHtmlFiles(dir);
+  if (files.length === 0) {
+    throw new Error(`verify-noindex: no generated HTML pages found under ${dir}`);
+  }
+  for (const file of files) {
+    const html = readFileSync(file, 'utf8');
+    if (!predicate(html)) {
+      throw new Error(`verify-noindex: expected ${file} to ${failureVerb}, but it did not`);
+    }
   }
 }
 
 /**
- * @param {{buildDir?: string, archiveVersion?: string|null}} [options]
+ * @param {{buildDir?: string, archiveVersion?: string|null, moduleRoot?: string, activeVersions?: string[]}} [options]
  */
 export function verifyNoindex({
   buildDir = join(MODULE_ROOT, 'build'),
   archiveVersion = process.env.AF4J_ARCHIVE_VERSION || null,
+  moduleRoot = MODULE_ROOT,
+  activeVersions,
 } = {}) {
+  const versions = activeVersions ?? readActiveVersions(moduleRoot);
   if (!existsSync(buildDir)) {
     throw new Error(`verify-noindex: ${buildDir} does not exist — run "docusaurus build" first`);
   }
 
   // An archive-mode build (AF4J_ARCHIVE_VERSION set) contains only the one frozen archived
-  // version at the artifact root — there is no /next or /0.1.0 in that output at all, so the
-  // assertions below do not apply; archive artifacts are verified by their own separate process.
+  // version at the artifact root — there is no /next or any active-version directory in that
+  // output at all, so the assertions below do not apply; archive artifacts are verified by their
+  // own separate process.
   if (archiveVersion) {
     console.log(`[verify-noindex] archive-mode build (${archiveVersion}) — noindex checks not applicable, skipped`);
     return;
   }
 
-  // Every /next/** page must be noindex,follow — the version landing page and at least one
-  // real nested page.
-  assertNoindexFollow(buildDir, 'next/index.html');
-  assertNoindexFollow(buildDir, 'next/concepts/workflows/index.html');
+  // Every page under /next/**, whatever pages happen to exist, must be noindex,follow.
+  assertEveryPage(join(buildDir, 'next'), hasNoindexFollow, 'contain a robots meta tag with content="noindex,follow"');
 
   // The local-search results page must be noindex,follow.
-  assertNoindexFollow(buildDir, 'search/index.html');
+  assertEveryPage(join(buildDir, 'search'), hasNoindexFollow, 'contain a robots meta tag with content="noindex,follow"');
 
-  // Stable released docs (0.1.0) must never be noindex — the version landing page and the same
-  // real nested page (mirrored 1:1 in versioned_docs/version-0.1.0/), so this is a genuine
-  // apples-to-apples comparison against the /next/** assertions above.
-  assertNotNoindex(buildDir, '0.1.0/index.html');
-  assertNotNoindex(buildDir, '0.1.0/concepts/workflows/index.html');
+  // Every active released version (from versions.json) must never be noindex, on every page it
+  // actually has today — not a hardcoded "0.1.0" or a hardcoded nested page name. A version listed
+  // in versions.json with no matching build output directory is a build integrity failure, not a
+  // silent no-op.
+  for (const version of versions) {
+    assertEveryPage(join(buildDir, version), (html) => !hasAnyNoindex(html), 'NOT be noindex');
+  }
 
   // /next/** and /search must remain absent from this module's own generated sitemap.xml
   // (docusaurus.config.ts's sitemap.ignorePatterns) — the sitemap plugin records baseUrl-inclusive
   // URLs, so these are logical `/docs/...` paths regardless of the on-disk directory names above.
-  const sitemap = readHtml(buildDir, 'sitemap.xml');
+  const sitemapPath = join(buildDir, 'sitemap.xml');
+  if (!existsSync(sitemapPath)) {
+    throw new Error(`verify-noindex: expected generated file does not exist: ${sitemapPath}`);
+  }
+  const sitemap = readFileSync(sitemapPath, 'utf8');
   if (sitemap.includes('/docs/next/') || sitemap.includes('/docs/search')) {
     throw new Error(
       'verify-noindex: /docs/next/** or /docs/search unexpectedly present in the generated sitemap.xml',

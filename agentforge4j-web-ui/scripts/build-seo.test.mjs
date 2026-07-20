@@ -255,6 +255,29 @@ test('fails closed on a catalogue workflow id outside the required slug contract
   }
 });
 
+test('fails closed on a non-string catalogue workflow id, even when RegExp.test\'s implicit String() coercion would otherwise accept it', () => {
+  // RegExp.prototype.test coerces its argument via String(...): String(123) === "123" and
+  // String(null) === "null" both satisfy the slug pattern's character class on their own, so the
+  // typeof guard — not the pattern alone — is what must reject these.
+  const malformedWorkflows = [
+    { name: 'Missing Id', description: 'x' }, // `id` key omitted entirely -> workflow.id is undefined
+    { id: null, name: 'Null Id', description: 'x' },
+    { id: 123, name: 'Number Id', description: 'x' },
+    { id: true, name: 'Boolean Id', description: 'x' },
+    { id: ['a', 'b'], name: 'Array Id', description: 'x' },
+    { id: {}, name: 'Object Id', description: 'x' },
+    { id: '', name: 'Empty String Id', description: 'x' },
+  ];
+  for (const workflow of malformedWorkflows) {
+    const { distDir, seoRoutesPath, catalogueDataPath } = fixture({ workflows: [workflow] });
+    assert.throws(
+      () => buildSeo({ distDir, seoRoutesPath, catalogueDataPath }),
+      /unsafe catalogue workflow id/,
+      `expected workflow ${JSON.stringify(workflow)} to be rejected`,
+    );
+  }
+});
+
 test('a "." workflow id is rejected rather than silently overwriting the catalogue index shell', () => {
   // Unchecked, path.join collapses a "." segment away: join(distDir, 'catalogue', '.') ===
   // join(distDir, 'catalogue') — a "." id would write its shell over /catalogue's own index.html

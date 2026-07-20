@@ -47,9 +47,16 @@ export function escapeHtml(value) {
  * generator, so this file cannot simply trust its input unconditionally). A valid id needs no
  * encoding to serve as a route segment, a filesystem directory segment, a canonical URL segment,
  * and a sitemap URL segment all at once — there is exactly one representation of it, used
- * unchanged in every one of those contexts. */
+ * unchanged in every one of those contexts.
+ *
+ * `RegExp.prototype.test` coerces a non-string argument via `String(...)` before matching, so
+ * `undefined`, `null`, a number, or a boolean could otherwise pass by coincidentally stringifying
+ * into something the pattern accepts (e.g. `String(123)` === "123", `String(null)` === "null",
+ * both of which match the slug pattern's character class). The explicit `typeof` check closes
+ * that gap: only a real string is ever accepted, regardless of what the pattern alone would say
+ * about its coerced form. */
 function assertValidWorkflowId(id) {
-  if (!WORKFLOW_ID_PATTERN.test(id)) {
+  if (typeof id !== 'string' || !WORKFLOW_ID_PATTERN.test(id)) {
     throw new Error(`build-seo: refusing an unsafe catalogue workflow id: ${id}`);
   }
 }
