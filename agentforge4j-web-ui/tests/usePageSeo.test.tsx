@@ -56,4 +56,34 @@ describe('usePageSeo', () => {
     expect(document.title).toBe('AgentForge4j — Governed AI Workflows for Java');
     expect(canonicalHref()).toBe('https://agentforge4j.org/');
   });
+
+  // React Router's own default matching is case-insensitive and tolerates an optional trailing
+  // slash — every case below is a URL the app itself renders the *correct* page for. The SEO
+  // metadata must agree with what actually rendered rather than falling back to Home, and the
+  // canonical emitted must always be the one clean, normalized address regardless of which variant
+  // was visited (never a duplicate, trailing-slash/case-preserving echo of the input).
+
+  test('a trailing slash on a real static route still resolves to that route, not Home', () => {
+    renderAt('/community/');
+    expect(document.title).toBe('Community & Contributing — AgentForge4j');
+    expect(canonicalHref()).toBe('https://agentforge4j.org/community');
+  });
+
+  test('a differently-cased real static route still resolves to that route, not Home', () => {
+    renderAt('/Community');
+    expect(document.title).toBe('Community & Contributing — AgentForge4j');
+    expect(canonicalHref()).toBe('https://agentforge4j.org/community');
+  });
+
+  test('a trailing slash on a real catalogue detail route still resolves to that workflow, not Home', () => {
+    renderAt('/catalogue/workflow-execution-estimator/');
+    expect(document.title).toBe('Workflow Execution Estimator — AgentForge4j Catalogue');
+    expect(canonicalHref()).toBe('https://agentforge4j.org/catalogue/workflow-execution-estimator');
+  });
+
+  test('an unknown route with a trailing slash still falls back to Home, not a stale value', () => {
+    renderAt('/this-route-does-not-exist/');
+    expect(document.title).toBe('AgentForge4j — Governed AI Workflows for Java');
+    expect(canonicalHref()).toBe('https://agentforge4j.org/');
+  });
 });

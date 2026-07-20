@@ -7,8 +7,7 @@
 //     <title>/<meta description>/<link canonical> (and matching OG/Twitter tags) baked in as
 //     real static text. This is a pure client-rendered SPA with no SSR/prerendering — page
 //     *content* stays entirely client-rendered once the bundle loads; only the <head> metadata
-//     in the initial static response differs per route. See the SEO grounding doc
-//     (designs/In progress/seo-sitemap-canonicals/) for why this is the chosen approach.
+//     in the initial static response differs per route.
 //  2. This module's own sitemap.xml fragment: real absolute HTTPS agentforge4j.org URLs for
 //     every route in seo-routes.json marked `sitemap: true` (the default), plus one per real
 //     shipped catalogue workflow (src/generated/catalogue-data.json). assemble-site.mjs
@@ -33,8 +32,22 @@ const CATALOGUE_DATA_PATH = join(MODULE_ROOT, 'src', 'generated', 'catalogue-dat
 
 const MAX_DESCRIPTION_LENGTH = 157; // mirrors src/lib/catalogueSeo.ts
 
-function escapeHtml(value) {
+// Shared HTML-attribute escaping — every value interpolated into an HTML attribute in this file
+// (title, description, and canonical alike) must pass through this one function. There is no
+// second, ad hoc escaping path: a value that reaches an attribute unescaped is a bug in the
+// caller, not an intentionally-exempted case.
+export function escapeHtml(value) {
   return value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+// Percent-encodes a single route-derived path SEGMENT (e.g. a shipped workflow id) before it
+// becomes part of a URL — applied only to the dynamic segment, never to the static, `/`-joined
+// path structure declared in seo-routes.json, which is committed, human-reviewed config and
+// already URL-safe by construction. This keeps the emitted canonical/sitemap URL itself a
+// well-formed URL (no literal `"`/`<`/`>`/`&`/space) independent of escapeHtml, which still runs
+// on top of it at the HTML-attribute-serialization step as defense in depth.
+export function encodeRoutePathSegment(segment) {
+  return encodeURIComponent(segment);
 }
 
 function catalogueWorkflowTitle(workflow) {
@@ -55,19 +68,20 @@ function catalogueWorkflowDescription(workflow) {
 /** Replaces the title/description/canonical/OG/Twitter tags already present in the built
  * index.html shell — never adds new tags, so a template drift (a tag renamed/removed from
  * index.html) fails loudly here instead of silently no-op'ing. */
-function injectHead(html, { title, description, canonical }) {
+export function injectHead(html, { title, description, canonical }) {
   const safeTitle = escapeHtml(title);
   const safeDescription = escapeHtml(description);
+  const safeCanonical = escapeHtml(canonical);
   const replacements = [
     [/<title>[\s\S]*?<\/title>/, `<title>${safeTitle}</title>`],
     [/<meta\s+name="description"[\s\S]*?\/>/, `<meta name="description" content="${safeDescription}" />`],
-    [/<link\s+rel="canonical"[\s\S]*?\/>/, `<link rel="canonical" href="${canonical}" />`],
+    [/<link\s+rel="canonical"[\s\S]*?\/>/, `<link rel="canonical" href="${safeCanonical}" />`],
     [/<meta\s+property="og:title"[\s\S]*?\/>/, `<meta property="og:title" content="${safeTitle}" />`],
     [
       /<meta\s+property="og:description"[\s\S]*?\/>/,
       `<meta property="og:description" content="${safeDescription}" />`,
     ],
-    [/<meta\s+property="og:url"[\s\S]*?\/>/, `<meta property="og:url" content="${canonical}" />`],
+    [/<meta\s+property="og:url"[\s\S]*?\/>/, `<meta property="og:url" content="${safeCanonical}" />`],
     [/<meta\s+name="twitter:title"[\s\S]*?\/>/, `<meta name="twitter:title" content="${safeTitle}" />`],
     [
       /<meta\s+name="twitter:description"[\s\S]*?\/>/,
@@ -152,14 +166,19 @@ export function buildSeo({
   }
 
   for (const workflow of catalogueData.workflows ?? []) {
-    const routePath = `/catalogue/${workflow.id}`;
-    const canonical = `${siteUrl}${routePath}`;
+    // Two distinct representations of the same id, deliberately: `rawRoutePath` (unencoded) is
+    // the *decoded* form a static host resolves an incoming request to on disk, so the shell must
+    // be written there; `canonical` is the *URL* form, so its id segment is percent-encoded —
+    // otherwise an id carrying an HTML/URL-unsafe character would still corrupt the emitted
+    // <link>/<meta> attribute or the sitemap <loc>, even with escapeHtml applied on top.
+    const rawRoutePath = `/catalogue/${workflow.id}`;
+    const canonical = `${siteUrl}/catalogue/${encodeRoutePathSegment(workflow.id)}`;
     const html = injectHead(baseHtml, {
       title: catalogueWorkflowTitle(workflow),
       description: catalogueWorkflowDescription(workflow),
       canonical,
     });
-    writeShell(distDir, routePath, html);
+    writeShell(distDir, rawRoutePath, html);
     shellsWritten += 1;
     sitemapUrls.push(canonical);
   }

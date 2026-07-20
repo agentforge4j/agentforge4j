@@ -5,7 +5,12 @@ import { canonicalUrl, findSeoRoute } from '@/config/seo';
 import { catalogueData } from '@/lib/catalogueData';
 import { catalogueWorkflowDescription, catalogueWorkflowTitle } from '@/lib/catalogueSeo';
 
-const CATALOGUE_DETAIL_PATH = /^\/catalogue\/([^/]+)$/;
+// `i` (case-insensitive) and an optional trailing slash before `$`, matching React Router's own
+// default matching for the literal `/catalogue/` segment. The captured id itself is matched
+// case-SENSITIVELY against real workflow data below (`entry.id === id`) — CatalogueDetailPage.tsx
+// does the same exact-match lookup, so a wrong-case id renders that page's own NotFoundPage even
+// though the *route* matched; this hook must agree with what actually rendered, not diverge from it.
+const CATALOGUE_DETAIL_PATH = /^\/catalogue\/([^/]+?)\/?$/i;
 
 function setMetaDescription(content: string): void {
   let tag = document.querySelector('meta[name="description"]');
@@ -54,7 +59,10 @@ export function usePageSeo(): void {
     if (workflow) {
       document.title = catalogueWorkflowTitle(workflow);
       setMetaDescription(catalogueWorkflowDescription(workflow));
-      setCanonical(canonicalUrl(path));
+      // Built from the real, matched `workflow.id` — never from the visited `path` — so a
+      // trailing-slash or differently-cased "catalogue" segment on the visited URL can never leak
+      // into the emitted canonical; the canonical is always the one clean, normalized address.
+      setCanonical(canonicalUrl(`/catalogue/${workflow.id}`));
       return;
     }
 

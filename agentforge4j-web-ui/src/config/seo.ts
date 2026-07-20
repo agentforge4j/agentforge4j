@@ -25,11 +25,24 @@ export interface SeoRouteEntry {
 export const SITE_URL: string = seoData.siteUrl;
 export const SEO_ROUTES: readonly SeoRouteEntry[] = seoData.routes;
 
-const BY_PATH = new Map<string, SeoRouteEntry>(SEO_ROUTES.map((entry) => [entry.path, entry]));
+/** Normalizes a path for *route-matching purposes only* — lowercased, with any trailing slash
+ * (other than the root `/` itself) stripped. React Router's own default matching is
+ * case-insensitive and tolerates an optional trailing slash, so a lookup here must recognize the
+ * same URL variants the router already renders successfully, or a real, correctly-rendered page
+ * would silently report the wrong SEO metadata. This only affects which entry is *found* — the
+ * value returned is always that entry's own declared, already-clean `path`/`canonicalPath`, never
+ * a transformation of the input, so the emitted canonical is unaffected by which variant matched. */
+function normalizeForMatch(path: string): string {
+  const lower = path.toLowerCase();
+  return lower.length > 1 && lower.endsWith('/') ? lower.slice(0, -1) : lower;
+}
 
-/** The static SEO entry for an exact route path, or `undefined` for dynamic/unknown routes. */
+const BY_PATH = new Map<string, SeoRouteEntry>(SEO_ROUTES.map((entry) => [normalizeForMatch(entry.path), entry]));
+
+/** The static SEO entry for a route path — tolerant of a trailing slash and letter case, matching
+ * React Router's own default matching — or `undefined` for dynamic/unknown routes. */
 export function findSeoRoute(path: string): SeoRouteEntry | undefined {
-  return BY_PATH.get(path);
+  return BY_PATH.get(normalizeForMatch(path));
 }
 
 /** The absolute HTTPS canonical URL for a site-relative path (`/`, `/api`, ...). */
