@@ -6,11 +6,12 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { buildSeo, encodeRoutePathSegment, escapeHtml, injectHead } from './build-seo.mjs';
+import { buildSeo, escapeHtml, injectHead } from './build-seo.mjs';
+import { WORKFLOW_ID_PATTERN } from './workflow-id-contract.mjs';
 
 const REAL_MODULE_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -211,13 +212,6 @@ test('fails closed on a route path containing a ".." traversal segment', () => {
   assert.throws(() => buildSeo({ distDir, seoRoutesPath, catalogueDataPath }), /unsafe route path/);
 });
 
-test('encodeRoutePathSegment percent-encodes every HTML/URL-unsafe character', () => {
-  const raw = 'evil"><script>alert(1)</script>&x="';
-  const encoded = encodeRoutePathSegment(raw);
-  assert.doesNotMatch(encoded, /["<>&]/, 'the encoded segment must contain no raw HTML/URL-unsafe character');
-  assert.equal(decodeURIComponent(encoded), raw, 'encoding must be losslessly reversible');
-});
-
 test('injectHead cannot be broken out of the href/content attribute by an unescaped canonical value (adversarial: quotes, angle brackets, ampersand, script-like content)', () => {
   const maliciousCanonical = 'https://agentforge4j.org/catalogue/evil"><script>alert(1)</script>&x="';
   const html = injectHead(BASE_INDEX_HTML, {
@@ -235,25 +229,53 @@ test('injectHead cannot be broken out of the href/content attribute by an unesca
   assert.match(html, new RegExp(`<meta property="og:url" content="${escaped.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}" />`));
 });
 
-test('a catalogue workflow id with HTML/URL-unsafe characters produces a percent-encoded canonical and sitemap URL end to end', () => {
-  // "&" is deliberately the character exercised through the real filesystem-writing pipeline: it
-  // is HTML/URL-unsafe (proving the encoding/escaping fix is live end to end) while remaining a
-  // legal filename character on every OS this suite runs on — `"`/`<`/`>` are covered directly
-  // against injectHead above instead, since those are illegal in a literal Windows directory name.
+test('fails closed on a catalogue workflow id outside the required slug contract', () => {
+  const invalidIds = [
+    '',
+    '.',
+    '..',
+    '/etc/passwd',
+    'catalogue\\evil',
+    'Agent-Creator', // uppercase
+    '-agent-creator', // leading hyphen
+    'agent-creator-', // trailing hyphen
+    'agent--creator', // duplicate hyphen
+    'tom & jerry', // space, ampersand
+    'evil"><script>', // HTML metacharacters
+  ];
+  for (const id of invalidIds) {
+    const { distDir, seoRoutesPath, catalogueDataPath } = fixture({
+      workflows: [{ id, name: 'Bad Workflow', description: 'x' }],
+    });
+    assert.throws(
+      () => buildSeo({ distDir, seoRoutesPath, catalogueDataPath }),
+      /unsafe catalogue workflow id/,
+      `expected id ${JSON.stringify(id)} to be rejected`,
+    );
+  }
+});
+
+test('a "." workflow id is rejected rather than silently overwriting the catalogue index shell', () => {
+  // Unchecked, path.join collapses a "." segment away: join(distDir, 'catalogue', '.') ===
+  // join(distDir, 'catalogue') — a "." id would write its shell over /catalogue's own index.html
+  // instead of getting a distinct page. Both defenses (the id contract and assertSafeRoutePath's
+  // own "." rejection) must independently refuse this before any write happens.
   const { distDir, seoRoutesPath, catalogueDataPath } = fixture({
-    workflows: [{ id: 'tom & jerry', name: 'Tom & Jerry Workflow', description: 'x' }],
+    workflows: [{ id: '.', name: 'Dot Workflow', description: 'x' }],
   });
-  const { sitemapUrls } = buildSeo({ distDir, seoRoutesPath, catalogueDataPath });
-  const expectedUrl = `https://agentforge4j.org/catalogue/${encodeRoutePathSegment('tom & jerry')}`;
-  assert.ok(!expectedUrl.includes('&'), 'the computed canonical must not contain a raw "&"');
-  assert.ok(sitemapUrls.includes(expectedUrl));
+  assert.throws(() => buildSeo({ distDir, seoRoutesPath, catalogueDataPath }));
+  assert.ok(
+    !existsSync(join(distDir, 'catalogue', 'index.html')),
+    'the catalogue list page shell must not exist yet — buildSeo must fail before writing anything for the bad id',
+  );
+});
 
-  const html = readFileSync(join(distDir, 'catalogue', 'tom & jerry', 'index.html'), 'utf8');
-  assert.match(html, new RegExp(`href="${expectedUrl.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}"`));
-
-  const xml = readFileSync(join(distDir, 'sitemap.xml'), 'utf8');
-  assert.ok(xml.includes(`<loc>${expectedUrl}</loc>`));
-  assert.ok(!xml.includes('tom & jerry'), 'the raw, unencoded id must never reach the sitemap');
+test('every currently shipped real catalogue workflow id satisfies the slug contract', () => {
+  const { workflows } = JSON.parse(readFileSync(join(REAL_MODULE_ROOT, 'src/generated/catalogue-data.json'), 'utf8'));
+  assert.ok(workflows.length > 0, 'expected at least one real shipped workflow to check');
+  for (const workflow of workflows) {
+    assert.match(workflow.id, WORKFLOW_ID_PATTERN, `real shipped id ${JSON.stringify(workflow.id)} must satisfy the contract`);
+  }
 });
 
 test('the committed index.html home meta matches seo-routes.json\'s "/" entry (build-seo overwrites it at build time; this guards against the two silently drifting for local dev/preview)', () => {

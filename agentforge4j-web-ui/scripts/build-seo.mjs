@@ -22,6 +22,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { WORKFLOW_ID_PATTERN } from './workflow-id-contract.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const MODULE_ROOT = join(here, '..');
@@ -40,14 +41,17 @@ export function escapeHtml(value) {
   return value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
-// Percent-encodes a single route-derived path SEGMENT (e.g. a shipped workflow id) before it
-// becomes part of a URL — applied only to the dynamic segment, never to the static, `/`-joined
-// path structure declared in seo-routes.json, which is committed, human-reviewed config and
-// already URL-safe by construction. This keeps the emitted canonical/sitemap URL itself a
-// well-formed URL (no literal `"`/`<`/`>`/`&`/space) independent of escapeHtml, which still runs
-// on top of it at the HTML-attribute-serialization step as defense in depth.
-export function encodeRoutePathSegment(segment) {
-  return encodeURIComponent(segment);
+/** Defense-in-depth re-check of the one workflow-id contract (build-catalogue-data.mjs is the
+ * real enforcement point — every id it writes to catalogue-data.json already satisfies this — but
+ * this function's own unit tests exercise fixture catalogue data directly, bypassing that
+ * generator, so this file cannot simply trust its input unconditionally). A valid id needs no
+ * encoding to serve as a route segment, a filesystem directory segment, a canonical URL segment,
+ * and a sitemap URL segment all at once — there is exactly one representation of it, used
+ * unchanged in every one of those contexts. */
+function assertValidWorkflowId(id) {
+  if (!WORKFLOW_ID_PATTERN.test(id)) {
+    throw new Error(`build-seo: refusing an unsafe catalogue workflow id: ${id}`);
+  }
 }
 
 function catalogueWorkflowTitle(workflow) {
@@ -102,10 +106,14 @@ export function injectHead(html, { title, description, canonical }) {
 // Route paths are trusted, committed build-time data (seo-routes.json, catalogue workflow ids)
 // rather than runtime input — but defense-in-depth is cheap, matches this repo's own
 // isSafeManifestPath guard in assemble-site.mjs, and closes the gap for good rather than relying
-// on every future caller staying well-behaved.
+// on every future caller staying well-behaved. A bare `.` segment is rejected alongside `..`: left
+// unchecked, `path.join` collapses it away (`join(distDir, 'catalogue', '.')` === `join(distDir,
+// 'catalogue')`), so a `.` id would silently overwrite `/catalogue`'s own shell instead of getting
+// its own — the workflow-id contract (workflow-id-contract.mjs) already excludes `.` from every
+// real catalogue id, but this check stands on its own for any other route path too.
 function assertSafeRoutePath(routePath) {
   const segments = routePath.split('/').filter(Boolean);
-  if (segments.some((segment) => segment === '..' || segment.includes('\\'))) {
+  if (segments.some((segment) => segment === '..' || segment === '.' || segment.includes('\\'))) {
     throw new Error(`build-seo: refusing an unsafe route path: ${routePath}`);
   }
   return segments;
@@ -166,19 +174,18 @@ export function buildSeo({
   }
 
   for (const workflow of catalogueData.workflows ?? []) {
-    // Two distinct representations of the same id, deliberately: `rawRoutePath` (unencoded) is
-    // the *decoded* form a static host resolves an incoming request to on disk, so the shell must
-    // be written there; `canonical` is the *URL* form, so its id segment is percent-encoded —
-    // otherwise an id carrying an HTML/URL-unsafe character would still corrupt the emitted
-    // <link>/<meta> attribute or the sitemap <loc>, even with escapeHtml applied on top.
-    const rawRoutePath = `/catalogue/${workflow.id}`;
-    const canonical = `${siteUrl}/catalogue/${encodeRoutePathSegment(workflow.id)}`;
+    // One id, one representation, used unchanged everywhere: the route segment, the filesystem
+    // directory segment, and the canonical/sitemap URL segment are all this exact string —
+    // assertValidWorkflowId guarantees it is safe as all four before any of them are built.
+    assertValidWorkflowId(workflow.id);
+    const routePath = `/catalogue/${workflow.id}`;
+    const canonical = `${siteUrl}${routePath}`;
     const html = injectHead(baseHtml, {
       title: catalogueWorkflowTitle(workflow),
       description: catalogueWorkflowDescription(workflow),
       canonical,
     });
-    writeShell(distDir, rawRoutePath, html);
+    writeShell(distDir, routePath, html);
     shellsWritten += 1;
     sitemapUrls.push(canonical);
   }

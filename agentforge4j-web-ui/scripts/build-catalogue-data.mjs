@@ -6,7 +6,7 @@
 // external consumers to pin a versioned artifact instead) and writes one consolidated
 // src/generated/catalogue-data.json for the site build to import statically.
 //
-// Fails closed (non-zero exit, explicit stderr message) on any of six violations, each mirroring
+// Fails closed (non-zero exit, explicit stderr message) on any of seven violations, each mirroring
 // a real Java-side failure mode (see agentforge4j-config-loader's ClasspathWorkflowLoader and
 // CatalogManifest, and agentforge4j-schema's WorkflowSchemaVersion):
 //   1. missing bundle    - an id listed in `index` with no matching <id>.workflow/workflow.json
@@ -17,6 +17,13 @@
 //   5. duplicate id      - the same id listed more than once in `index`
 //   6. identity mismatch - workflow.json's own `id` does not match the index/bundle id it is
 //                          filed under
+//   7. unsafe id         - an id outside the required lowercase-ASCII slug contract (see
+//                          WORKFLOW_ID_PATTERN below) — this is the single point where the id's
+//                          safety as a route segment, a filesystem directory segment, a canonical
+//                          URL segment, and a sitemap URL segment is established; every downstream
+//                          consumer (build-seo.mjs, usePageSeo.ts) trusts this and uses the id
+//                          exactly as validated here, with no separate encoded representation of
+//                          its own that could disagree.
 //
 // Never emits a partial/empty catalogue silently — a zero-workflow `index` is the one legitimate
 // "valid, deliberate empty default" (the catalogue module's own documented contract); every other
@@ -27,6 +34,7 @@ import addFormats from 'ajv-formats';
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { WORKFLOW_ID_PATTERN } from './workflow-id-contract.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const MODULE_ROOT = join(here, '..');
@@ -128,6 +136,25 @@ export function checkNoDuplicateIds(indexIds) {
       throw new Error(`duplicate index entry: '${id}' is listed more than once in the index`);
     }
     seen.add(id);
+  }
+}
+
+/** Fail-closed rule 7: unsafe id — an id outside the required slug contract (WORKFLOW_ID_PATTERN).
+ * Runs before the bundle cross-check so a malformed id fails with this specific, actionable
+ * message rather than an incidental "missing bundle" (an id containing '/', for example, would
+ * otherwise resolve to a nonexistent nested path and fail there instead, with a confusing error
+ * that doesn't name the real problem). */
+export function checkIdFormat(indexIds) {
+  for (const id of indexIds) {
+    if (!WORKFLOW_ID_PATTERN.test(id)) {
+      throw new Error(
+        `unsafe id: '${id}' does not match the required workflow-id format ` +
+          '(lowercase ASCII letters, digits, and single hyphens; no leading/trailing or ' +
+          'duplicate hyphens) — this id becomes a catalogue route segment, a filesystem ' +
+          'directory segment, a canonical URL segment, and a sitemap URL segment, all using ' +
+          'this exact value',
+      );
+    }
   }
 }
 
@@ -238,6 +265,7 @@ export function buildCatalogueData({ shippedWorkflowsDir, schemaPath, javaSchema
   const manifest = readManifest(shippedWorkflowsDir);
   const indexIds = readIndexIds(shippedWorkflowsDir);
   checkNoDuplicateIds(indexIds);
+  checkIdFormat(indexIds);
   crossCheckBundles(shippedWorkflowsDir, indexIds);
 
   const supportedVersion = readSupportedWorkflowSchemaVersion(javaSchemaVersionSourcePath);

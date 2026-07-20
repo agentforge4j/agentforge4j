@@ -8,7 +8,14 @@
 import { describe, expect, test } from 'vitest';
 import { render } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import App from '@/App';
+import { buildSeo } from '../scripts/build-seo.mjs';
+
+const MODULE_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 
 function renderAt(path: string) {
   return render(
@@ -85,5 +92,35 @@ describe('usePageSeo', () => {
     renderAt('/this-route-does-not-exist/');
     expect(document.title).toBe('AgentForge4j — Governed AI Workflows for Java');
     expect(canonicalHref()).toBe('https://agentforge4j.org/');
+  });
+
+  test('an unknown catalogue workflow id uses NotFound (= Home) metadata, not stale or fabricated metadata', () => {
+    // /catalogue/:id matches the route shape (CatalogueDetailPage renders), but no real workflow
+    // has this id, so CatalogueDetailPage itself renders NotFoundPage — this app has no metadata
+    // distinct from Home for "not found" (404.html is byte-identical to the home shell by design),
+    // so falling back to Home's title/canonical here is the correct "NotFound metadata", not a bug.
+    renderAt('/catalogue/this-workflow-id-does-not-exist');
+    expect(document.title).toBe('AgentForge4j — Governed AI Workflows for Java');
+    expect(canonicalHref()).toBe('https://agentforge4j.org/');
+  });
+
+  test('build-time canonical (build-seo.mjs) and client-side canonical (usePageSeo) agree for a real shipped catalogue workflow id', () => {
+    const root = mkdtempSync(join(tmpdir(), 'canon-consistency-'));
+    const distDir = join(root, 'dist');
+    mkdirSync(distDir, { recursive: true });
+    writeFileSync(join(distDir, 'index.html'), readFileSync(join(MODULE_ROOT, 'index.html'), 'utf8'), 'utf8');
+
+    const { sitemapUrls } = buildSeo({
+      distDir,
+      seoRoutesPath: join(MODULE_ROOT, 'src/config/seo-routes.json'),
+      catalogueDataPath: join(MODULE_ROOT, 'src/generated/catalogue-data.json'),
+    });
+
+    const realId = 'agent-creator';
+    const buildTimeCanonical = sitemapUrls.find((url) => url.endsWith(`/catalogue/${realId}`));
+    expect(buildTimeCanonical).toBe(`https://agentforge4j.org/catalogue/${realId}`);
+
+    renderAt(`/catalogue/${realId}`);
+    expect(canonicalHref()).toBe(buildTimeCanonical);
   });
 });
