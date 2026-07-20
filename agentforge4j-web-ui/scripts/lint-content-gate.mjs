@@ -35,7 +35,14 @@ const here = dirname(fileURLToPath(import.meta.url));
 const MODULE_ROOT = join(here, '..');
 const SRC_DIR = join(MODULE_ROOT, 'src');
 const SOURCE_EXTENSIONS = ['.ts', '.tsx'];
-const EXTRA_FILES = ['README.md', 'index.html', 'nginx.conf', 'Dockerfile.local', 'public/robots.txt'];
+const EXTRA_FILES = [
+  'README.md',
+  'index.html',
+  'nginx.conf',
+  'Dockerfile.local',
+  'public/robots.txt',
+  'src/config/seo-routes.json',
+];
 const GENERATED_FILES = ['generated/catalogue-data.json'];
 
 function collectSources(dir) {

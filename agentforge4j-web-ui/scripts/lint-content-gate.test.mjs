@@ -17,7 +17,14 @@ import {findProductNameLeaks} from '../../agentforge4j-docs/scripts/product-name
 import {findAttributionLeaks} from '../../agentforge4j-docs/scripts/attribution-terms.mjs';
 
 const MODULE_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
-const EXTRA_FILES = ['README.md', 'index.html', 'nginx.conf', 'Dockerfile.local', 'public/robots.txt'];
+const EXTRA_FILES = [
+  'README.md',
+  'index.html',
+  'nginx.conf',
+  'Dockerfile.local',
+  'public/robots.txt',
+  'src/config/seo-routes.json',
+];
 
 test('resolves the shared product-name matcher from agentforge4j-docs', () => {
   assert.ok(findProductNameLeaks('Uses `agentforge4j-platform-engine`.').length > 0);
