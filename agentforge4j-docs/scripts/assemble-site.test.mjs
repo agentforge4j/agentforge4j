@@ -6,10 +6,19 @@
 
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync} from 'node:fs';
+import {existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {assembleSite} from './assemble-site.mjs';
+
+function sitemapXmlFixture(urls) {
+  const body = urls.map((url) => `  <url>\n    <loc>${url}</loc>\n  </url>`).join('\n');
+  return (
+    '<?xml version="1.0" encoding="UTF-8"?>\n' +
+    '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n' +
+    `${body}\n</urlset>\n`
+  );
+}
 
 function fixture() {
   const root = mkdtempSync(join(tmpdir(), 'assemble-'));
@@ -20,8 +29,14 @@ function fixture() {
   writeFileSync(join(spaDir, 'index.html'), '<html>spa</html>');
   // The real SPA build ships dist/404.html byte-identical to dist/index.html (copy-404.mjs).
   writeFileSync(join(spaDir, '404.html'), '<html>spa</html>');
+  // The real SPA build also ships its own robots.txt and sitemap.xml fragment (build-seo.mjs) —
+  // both real static files assemble-site.mjs's own contract now requires.
+  writeFileSync(join(spaDir, 'robots.txt'), 'User-agent: *\nAllow: /\n\nSitemap: https://agentforge4j.org/sitemap.xml\n');
+  writeFileSync(join(spaDir, 'sitemap.xml'), sitemapXmlFixture(['https://agentforge4j.org/']));
   mkdirSync(buildDir, {recursive: true});
   writeFileSync(join(buildDir, 'index.html'), '<html>docs</html>');
+  // The real Docusaurus build ships its own sitemap.xml (the sitemap plugin's postBuild output).
+  writeFileSync(join(buildDir, 'sitemap.xml'), sitemapXmlFixture(['https://agentforge4j.org/docs/0.1.0/']));
   mkdirSync(javadocDir, {recursive: true});
   writeFileSync(join(javadocDir, 'index.html'), '<html>javadoc</html>');
   return {root, spaDir, buildDir, javadocDir, archiveDir: join(root, 'archive-absent'), siteDir: join(root, '_site')};
@@ -378,6 +393,106 @@ test('verifyComposedArtifact fails closed when an expected entry file exists but
         customDomain: null,
         exit: fakeExit,
       }),
+    /exit\(1\)/,
+  );
+  assert.deepEqual(exitCodes, [1]);
+});
+
+test('merges the SPA and docs sitemap fragments into one final sitemap.xml at the site root', () => {
+  const {spaDir, buildDir, javadocDir, archiveDir, siteDir} = fixture();
+  assembleSite({spaDir, buildDir, javadocDir, archiveDir, siteDir, customDomain: null});
+  const xml = readFileSync(join(siteDir, 'sitemap.xml'), 'utf8');
+  const locs = [...xml.matchAll(/<loc>([^<]+)<\/loc>/g)].map((m) => m[1]);
+  assert.deepEqual(locs, ['https://agentforge4j.org/', 'https://agentforge4j.org/docs/0.1.0/']);
+});
+
+test('the merged sitemap.xml is not just a copy of the SPA fragment — it includes docs URLs too', () => {
+  const {spaDir, buildDir, javadocDir, archiveDir, siteDir} = fixture();
+  assembleSite({spaDir, buildDir, javadocDir, archiveDir, siteDir, customDomain: null});
+  const merged = readFileSync(join(siteDir, 'sitemap.xml'), 'utf8');
+  const spaOnly = readFileSync(join(spaDir, 'sitemap.xml'), 'utf8');
+  assert.notEqual(merged, spaOnly);
+  assert.match(merged, /https:\/\/agentforge4j\.org\/docs\/0\.1\.0\//);
+});
+
+test('robots.txt is copied through to the site root from the SPA build', () => {
+  const {spaDir, buildDir, javadocDir, archiveDir, siteDir} = fixture();
+  assembleSite({spaDir, buildDir, javadocDir, archiveDir, siteDir, customDomain: null});
+  assert.match(
+    readFileSync(join(siteDir, 'robots.txt'), 'utf8'),
+    /Sitemap: https:\/\/agentforge4j\.org\/sitemap\.xml/,
+  );
+});
+
+test('fails closed when the SPA sitemap fragment is missing', () => {
+  const {spaDir, buildDir, javadocDir, archiveDir, siteDir} = fixture();
+  rmSync(join(spaDir, 'sitemap.xml'));
+
+  const exitCodes = [];
+  const originalExit = process.exit;
+  process.exit = (code) => {
+    exitCodes.push(code);
+    throw new Error(`exit(${code})`);
+  };
+  try {
+    assert.throws(
+      () => assembleSite({spaDir, buildDir, javadocDir, archiveDir, siteDir, customDomain: null}),
+      /exit\(1\)/,
+    );
+  } finally {
+    process.exit = originalExit;
+  }
+  assert.deepEqual(exitCodes, [1]);
+});
+
+test('fails closed when the docs sitemap fragment is missing', () => {
+  const {spaDir, buildDir, javadocDir, archiveDir, siteDir} = fixture();
+  rmSync(join(buildDir, 'sitemap.xml'));
+
+  const exitCodes = [];
+  const originalExit = process.exit;
+  process.exit = (code) => {
+    exitCodes.push(code);
+    throw new Error(`exit(${code})`);
+  };
+  try {
+    assert.throws(
+      () => assembleSite({spaDir, buildDir, javadocDir, archiveDir, siteDir, customDomain: null}),
+      /exit\(1\)/,
+    );
+  } finally {
+    process.exit = originalExit;
+  }
+  assert.deepEqual(exitCodes, [1]);
+});
+
+test('fails closed on a duplicate URL across the SPA and docs sitemap fragments', () => {
+  const {spaDir, buildDir, javadocDir, archiveDir, siteDir} = fixture();
+  writeFileSync(join(buildDir, 'sitemap.xml'), sitemapXmlFixture(['https://agentforge4j.org/']));
+
+  const exitCodes = [];
+  const fakeExit = (code) => {
+    exitCodes.push(code);
+    throw new Error(`exit(${code})`);
+  };
+  assert.throws(
+    () => assembleSite({spaDir, buildDir, javadocDir, archiveDir, siteDir, customDomain: null, exit: fakeExit}),
+    /exit\(1\)/,
+  );
+  assert.deepEqual(exitCodes, [1]);
+});
+
+test('fails closed on a sitemap URL outside https://agentforge4j.org/', () => {
+  const {spaDir, buildDir, javadocDir, archiveDir, siteDir} = fixture();
+  writeFileSync(join(buildDir, 'sitemap.xml'), sitemapXmlFixture(['https://evil.example/docs/0.1.0/']));
+
+  const exitCodes = [];
+  const fakeExit = (code) => {
+    exitCodes.push(code);
+    throw new Error(`exit(${code})`);
+  };
+  assert.throws(
+    () => assembleSite({spaDir, buildDir, javadocDir, archiveDir, siteDir, customDomain: null, exit: fakeExit}),
     /exit\(1\)/,
   );
   assert.deepEqual(exitCodes, [1]);

@@ -16,6 +16,7 @@ import LegalPage from '@/pages/LegalPage';
 import ContactPage from '@/pages/ContactPage';
 import NotFoundPage from '@/pages/NotFoundPage';
 import { BUILDER_COPY } from '@/copy/builder';
+import { usePageSeo } from '@/lib/usePageSeo';
 
 // The builder embed pulls in the workflow-builder package + its own graph/zip dependencies —
 // by far the heaviest route in the bundle. Loaded on demand so every other route (the vast
@@ -31,6 +32,7 @@ export default function App() {
   // useMatch (not a pathname string compare) shares the <Route path="/builder"> matcher's
   // semantics, so trailing-slash and case variants that render the builder get its shell too.
   const isBuilderRoute = useMatch('/builder') !== null;
+  usePageSeo();
   return (
     <div className={['flex flex-col bg-bg text-fg', isBuilderRoute ? 'h-dvh' : 'min-h-dvh'].join(' ')}>
       <a href="#main-content" className="skip-link">Skip to content</a>

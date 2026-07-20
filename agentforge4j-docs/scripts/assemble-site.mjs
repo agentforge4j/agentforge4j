@@ -84,6 +84,8 @@ function verifyComposedArtifact(siteDir, exit) {
     join(siteDir, 'index.html'),
     join(siteDir, 'docs', 'index.html'),
     join(siteDir, 'javadoc', 'next', 'index.html'),
+    join(siteDir, 'sitemap.xml'),
+    join(siteDir, 'robots.txt'),
   ]) {
     if (!existsSync(entry)) {
       console.error(`[assemble-site] composed artifact is missing expected entry: ${entry}`);
@@ -95,6 +97,66 @@ function verifyComposedArtifact(siteDir, exit) {
       exit(1);
     }
   }
+}
+
+const SITEMAP_URL_PREFIX = 'https://agentforge4j.org/';
+
+/** Extracts every `<loc>` URL from a sitemap.xml file, in document order. Regex, not a real XML
+ * parser: both fragments this merges (the SPA's own, and Docusaurus's `@docusaurus/plugin-sitemap`
+ * output) are simple, single-namespace, machine-generated `<url><loc>...</loc></url>` documents —
+ * no CDATA, no nested namespaces — so a full parser dependency buys nothing here. */
+function extractSitemapLocs(xmlPath) {
+  const xml = readFileSync(xmlPath, 'utf8');
+  return [...xml.matchAll(/<loc>([^<]+)<\/loc>/g)].map((match) => match[1]);
+}
+
+function sitemapXml(urls) {
+  const body = urls.map((url) => `  <url>\n    <loc>${url}</loc>\n  </url>`).join('\n');
+  return (
+    '<?xml version="1.0" encoding="UTF-8"?>\n' +
+    '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n' +
+    `${body}\n</urlset>\n`
+  );
+}
+
+/**
+ * Merges the SPA's own sitemap.xml fragment (agentforge4j-web-ui/scripts/build-seo.mjs, already
+ * copied to the site root in step 1) with the Docusaurus-generated docs/sitemap.xml (already
+ * copied to `docs/` in step 2) into the one final sitemap.xml the composed artifact serves at
+ * `/sitemap.xml`. Fails closed on a missing fragment, a non-HTTPS/wrong-domain URL (a
+ * misconfigured `siteConfig.url` would otherwise silently publish the wrong host), or a
+ * duplicate URL across the two fragments.
+ */
+function mergeSitemaps(siteDir, exit) {
+  const spaSitemapPath = join(siteDir, 'sitemap.xml');
+  const docsSitemapPath = join(siteDir, 'docs', 'sitemap.xml');
+  requireDir(spaSitemapPath, 'SPA sitemap fragment', 'Run `npm run build` in agentforge4j-web-ui first.');
+  requireDir(
+    docsSitemapPath,
+    'Docusaurus sitemap fragment',
+    'Run `npm run build` in agentforge4j-docs first (the sitemap plugin runs in postBuild).',
+  );
+
+  const urls = [...extractSitemapLocs(spaSitemapPath), ...extractSitemapLocs(docsSitemapPath)];
+
+  for (const url of urls) {
+    if (!url.startsWith(SITEMAP_URL_PREFIX)) {
+      console.error(`[assemble-site] refusing a sitemap URL outside ${SITEMAP_URL_PREFIX}: ${url}`);
+      exit(1);
+    }
+  }
+
+  const seen = new Set();
+  for (const url of urls) {
+    if (seen.has(url)) {
+      console.error(`[assemble-site] duplicate sitemap URL across the SPA and docs fragments: ${url}`);
+      exit(1);
+    }
+    seen.add(url);
+  }
+
+  writeFileSync(join(siteDir, 'sitemap.xml'), sitemapXml(urls), 'utf8');
+  console.log(`[assemble-site] merged sitemap.xml: ${urls.length} URL(s) (SPA + docs)`);
 }
 
 /** A static meta-refresh redirect page. */
@@ -241,6 +303,11 @@ export function assembleSite({
     console.log('[assemble-site] no custom domain configured — CNAME omitted (set DOCS_CUSTOM_DOMAIN to opt in)');
   }
   writeFileSync(join(siteDir, '.nojekyll'), '', 'utf8');
+
+  // 6. Merge the SPA's own sitemap.xml fragment (copied to the site root in step 1) with the
+  //    Docusaurus-generated docs/sitemap.xml (copied in step 2) into the one final sitemap.xml
+  //    the composed artifact serves at /sitemap.xml.
+  mergeSitemaps(siteDir, exit);
 
   verifyComposedArtifact(siteDir, exit);
 

@@ -130,6 +130,23 @@ const config: Config = {
         theme: {
           customCss: './src/css/custom.css',
         },
+        // `changefreq`/`priority` are set to `null` (omitted from the XML) rather than the
+        // plugin's own default uniform `weekly`/`0.5` for every page — real crawlers ignore
+        // both (see the plugin's own type-comments), and inventing the same value for every
+        // page would be exactly the fabricated metadata this pass is meant to avoid.
+        // Sitemap plugin routes are recorded baseUrl-inclusive (confirmed against a real build:
+        // an unqualified `/next/**` pattern matched nothing), so these patterns are rooted at
+        // `/docs/`, not relative to the docs plugin's own routeBasePath.
+        // `/docs/next/**` (the unreleased, constantly-changing development docs) is excluded: it
+        // is publicly reachable but not the intended stable indexable target — the release cut
+        // moves a version out of `next` into its own real `/next`-free path once it ships.
+        // `/docs/search` (the local-search plugin's results page) is excluded: it has no unique
+        // indexable content of its own.
+        sitemap: {
+          changefreq: null,
+          priority: null,
+          ignorePatterns: ['/docs/next/**', '/docs/search'],
+        },
       } satisfies Preset.Options,
     ],
   ],
