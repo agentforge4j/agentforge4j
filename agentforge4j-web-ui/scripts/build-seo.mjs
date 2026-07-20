@@ -85,12 +85,25 @@ function injectHead(html, { title, description, canonical }) {
   return result;
 }
 
+// Route paths are trusted, committed build-time data (seo-routes.json, catalogue workflow ids)
+// rather than runtime input — but defense-in-depth is cheap, matches this repo's own
+// isSafeManifestPath guard in assemble-site.mjs, and closes the gap for good rather than relying
+// on every future caller staying well-behaved.
+function assertSafeRoutePath(routePath) {
+  const segments = routePath.split('/').filter(Boolean);
+  if (segments.some((segment) => segment === '..' || segment.includes('\\'))) {
+    throw new Error(`build-seo: refusing an unsafe route path: ${routePath}`);
+  }
+  return segments;
+}
+
 function writeShell(distDir, routePath, html) {
   if (routePath === '/') {
     writeFileSync(join(distDir, 'index.html'), html, 'utf8');
     return;
   }
-  const dir = join(distDir, ...routePath.split('/').filter(Boolean));
+  const segments = assertSafeRoutePath(routePath);
+  const dir = join(distDir, ...segments);
   mkdirSync(dir, { recursive: true });
   writeFileSync(join(dir, 'index.html'), html, 'utf8');
 }

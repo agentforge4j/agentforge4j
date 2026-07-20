@@ -199,6 +199,18 @@ test('fails closed on a duplicate computed sitemap URL', () => {
   assert.throws(() => buildSeo({ distDir, seoRoutesPath, catalogueDataPath }), /duplicate URL/);
 });
 
+test('fails closed on a route path containing a ".." traversal segment', () => {
+  const traversalRoutes = {
+    siteUrl: 'https://agentforge4j.org',
+    routes: [
+      { path: '/', title: 'Home', description: 'Home.' },
+      { path: '/../../evil', title: 'Evil', description: 'Evil.' },
+    ],
+  };
+  const { distDir, seoRoutesPath, catalogueDataPath } = fixture({ routes: traversalRoutes });
+  assert.throws(() => buildSeo({ distDir, seoRoutesPath, catalogueDataPath }), /unsafe route path/);
+});
+
 test('the committed index.html home meta matches seo-routes.json\'s "/" entry (build-seo overwrites it at build time; this guards against the two silently drifting for local dev/preview)', () => {
   const html = readFileSync(join(REAL_MODULE_ROOT, 'index.html'), 'utf8');
   const { routes } = JSON.parse(readFileSync(join(REAL_MODULE_ROOT, 'src/config/seo-routes.json'), 'utf8'));
