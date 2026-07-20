@@ -15,7 +15,7 @@
        and release independently under their own tag prefixes (catalog-v*). Pinned to exactly one
        framework version per release (ADR-0032; see the manifest's minimumAgentForge4jVersion /
        maximumAgentForge4jVersion). -->
-  <version>0.1.0</version>
+  <version>0.2.0-SNAPSHOT</version>
   <packaging>jar</packaging>
   <name>AgentForge4J Workflows Catalog</name>
   <description>The shipped workflow and agent catalog as classpath resources under /shipped-workflows/
