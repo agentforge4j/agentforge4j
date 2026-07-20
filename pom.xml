@@ -83,6 +83,11 @@
     <json-schema-validator.version>2.0.4</json-schema-validator.version>
     <maven-gpg-plugin.version>3.2.8</maven-gpg-plugin.version>
     <central-publishing-maven-plugin.version>0.11.0</central-publishing-maven-plugin.version>
+    <!-- The release profile's excludeArtifacts (below) uses this as its catalog entry so the
+         framework's aggregate deploy (release-framework.yml, no override) keeps excluding the
+         catalog, while the catalog's own dedicated deploy (release-catalog.yml) overrides it to a
+         value that matches no real artifactId, so its own deploy does not exclude itself. -->
+    <release.excludeCatalogArtifactId>agentforge4j-workflows-catalog</release.excludeCatalogArtifactId>
   </properties>
 
   <modules>
@@ -667,17 +672,24 @@
               <autoPublish>false</autoPublish>
               <waitUntil>validated</waitUntil>
               <!-- Internal verification/fixture modules never publish (they also carry
-                   maven.deploy.skip). The catalog releases on its own catalog-v* track with a
-                   flattened POM through a separate workflow; it is not part of the framework
-                   release. NOTE: exclusion takes effect at deploy time only, so it is
-                   unverifiable until the first publish run — re-check the deployment content on
-                   the Central Portal before the first release click. -->
+                   maven.deploy.skip) — unconditionally excluded regardless of which release track
+                   is running. The catalog releases on its own catalog-v* track with a flattened
+                   POM through a separate workflow (release-catalog.yml); its entry here is the
+                   ${release.excludeCatalogArtifactId} property so the framework's own aggregate
+                   deploy (release-framework.yml, no override) keeps excluding it, while the
+                   catalog's own dedicated deploy overrides that property so it does not exclude
+                   itself (this same plugin config is inherited by every module's own deploy-phase
+                   execution, including a single-module `-pl` invocation). release-framework.yml's
+                   release-guard verifies the default (no-override) resolution still excludes the
+                   catalog; release-catalog.yml's release-publish fails closed if nothing is
+                   actually staged, so a reintroduced exclusion cannot silently report success
+                   again. -->
               <excludeArtifacts>
                 <artifactId>agentforge4j-workflow-fixtures</artifactId>
                 <artifactId>agentforge4j-oss-verification</artifactId>
                 <artifactId>agentforge4j-starter-verification</artifactId>
                 <artifactId>agentforge4j-testkit-consumer-verification</artifactId>
-                <artifactId>agentforge4j-workflows-catalog</artifactId>
+                <artifactId>${release.excludeCatalogArtifactId}</artifactId>
               </excludeArtifacts>
             </configuration>
           </plugin>

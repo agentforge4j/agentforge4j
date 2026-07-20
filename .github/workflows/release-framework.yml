@@ -122,6 +122,18 @@ jobs:
           done
           exit $MISSING
 
+      - name: Guard the release profile still excludes the catalog from this aggregate deploy
+        # The catalog releases on its own track (release-catalog.yml) and must never be published a
+        # second time by the framework's aggregate deploy. Resolves the effective release-profile
+        # POM with no override — the same default the deploy step below (release-publish) uses —
+        # and asserts the catalog artifactId is still inside excludeArtifacts.
+        run: |
+          ./mvnw -q help:effective-pom -Prelease -pl agentforge4j-workflows-catalog -Doutput=/tmp/effective-pom.xml
+          if ! awk '/<excludeArtifacts>/,/<\/excludeArtifacts>/' /tmp/effective-pom.xml | grep -q "agentforge4j-workflows-catalog"; then
+            echo "::error::The default (no-override) release-profile excludeArtifacts no longer excludes agentforge4j-workflows-catalog — the framework's aggregate deploy would publish the catalog a second time." >&2
+            exit 1
+          fi
+
   release-verify:
     name: release-verify (${{ matrix.os }}, JDK ${{ matrix.java }})
     needs: release-guard
