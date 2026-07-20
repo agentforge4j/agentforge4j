@@ -35,12 +35,26 @@ on:
   push:
     tags:
       - "catalog-v*"
+  # Republish an existing catalog-v* tag without moving or recreating it — e.g. after a fix to
+  # this workflow itself lands on main. Dispatch "from main" (or any ref with the fix) so the
+  # corrected workflow definition runs; the `tag` input tells every job which already-tagged
+  # commit to actually check out, verify, and publish. The normal push-triggered path leaves
+  # RELEASE_TAG (below) equal to the pushed tag, so both paths share identical job logic.
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing catalog-v<version> tag to publish"
+        required: true
+        type: string
 
 permissions:
   contents: read
 
+env:
+  RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+
 concurrency:
-  group: release-catalog-${{ github.ref }}
+  group: release-catalog-${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref }}
   cancel-in-progress: false
 
 defaults:
@@ -55,15 +69,20 @@ jobs:
       - name: Checkout
         # Full history and all branches/tags: the branch-ancestry guard needs origin/main and
         # origin/release/catalog-*, and the manifest guard needs every framework-v* tag to exist
-        # locally.
+        # locally. ref: RELEASE_TAG so a workflow_dispatch run (workflow definition from wherever
+        # it was dispatched, e.g. main) still verifies/publishes the tagged commit's content, not
+        # the dispatch ref's tip.
         uses: actions/checkout@v7
         with:
           fetch-depth: 0
+          ref: ${{ env.RELEASE_TAG }}
 
       - name: Guard tag format
+        # An invalid or nonexistent RELEASE_TAG already fails the Checkout step above (bad ref);
+        # this only re-validates the format, same as the push-triggered path.
         run: |
-          if [[ ! "$GITHUB_REF_NAME" =~ ^catalog-v[0-9]+\.[0-9]+\.[0-9]+(-RC[0-9]+)?$ ]]; then
-            echo "Tag '${GITHUB_REF_NAME}' does not match catalog-v<major>.<minor>.<patch>[-RCn]." >&2
+          if [[ ! "$RELEASE_TAG" =~ ^catalog-v[0-9]+\.[0-9]+\.[0-9]+(-RC[0-9]+)?$ ]]; then
+            echo "Tag '${RELEASE_TAG}' does not match catalog-v<major>.<minor>.<patch>[-RCn]." >&2
             exit 1
           fi
 
@@ -76,7 +95,7 @@ jobs:
 
       - name: Guard release tag matches the catalog module's own POM version
         run: |
-          TAG_VERSION="${GITHUB_REF_NAME#catalog-v}"
+          TAG_VERSION="${RELEASE_TAG#catalog-v}"
           POM_VERSION="$(./mvnw -q -pl agentforge4j-workflows-catalog help:evaluate -Dexpression=project.version -DforceStdout)"
           if [ "$TAG_VERSION" != "$POM_VERSION" ]; then
             echo "Tag version (${TAG_VERSION}) does not match catalog module's POM version (${POM_VERSION})." >&2
@@ -90,23 +109,26 @@ jobs:
           esac
 
       - name: Guard tagged commit is on main or a release branch
+        # HEAD is the tagged commit: the Checkout step above already resolved RELEASE_TAG to it,
+        # so this holds for both the push-triggered path and a workflow_dispatch republish.
         run: |
-          if git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+          TAGGED_SHA="$(git rev-parse HEAD)"
+          if git merge-base --is-ancestor "$TAGGED_SHA" origin/main; then
             echo "Tagged commit is on main."
             exit 0
           fi
           for REF in $(git for-each-ref --format='%(refname:short)' 'refs/remotes/origin/release/catalog-*'); do
-            if git merge-base --is-ancestor "$GITHUB_SHA" "$REF"; then
+            if git merge-base --is-ancestor "$TAGGED_SHA" "$REF"; then
               echo "Tagged commit is on ${REF}."
               exit 0
             fi
           done
-          echo "Tagged commit ${GITHUB_SHA} is not on main or any release/catalog-* branch." >&2
+          echo "Tagged commit ${TAGGED_SHA} is not on main or any release/catalog-* branch." >&2
           exit 1
 
       - name: Guard committed release-note source exists with mandatory headings
         run: |
-          VERSION="${GITHUB_REF_NAME#catalog-v}"
+          VERSION="${RELEASE_TAG#catalog-v}"
           NOTES="docs/releases/catalog/${VERSION}.md"
           if [ ! -f "$NOTES" ]; then
             echo "Missing release-note source ${NOTES} in the tagged tree." >&2
@@ -164,6 +186,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v7
+        with:
+          ref: ${{ env.RELEASE_TAG }}
 
       - name: Set up JDK ${{ matrix.java }}
         uses: actions/setup-java@v5
@@ -198,6 +222,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v7
+        with:
+          ref: ${{ env.RELEASE_TAG }}
 
       - name: Set up JDK 17 with Central credentials and GPG key
         uses: actions/setup-java@v5
@@ -219,8 +245,30 @@ jobs:
 
       # No -am: only the catalog module itself is signed and uploaded. Tests already ran in
       # release-verify against this exact tag; this stage repeats packaging, signs, and deploys.
+      #
+      # -Drelease.excludeCatalogArtifactId overrides the release profile's shared excludeArtifacts
+      # entry (pom.xml) to a value that matches no real artifactId, so this module's own
+      # deploy-phase execution does not exclude itself. Without this override the catalog would be
+      # excluded from its own release the same way it is correctly excluded from the framework's
+      # aggregate deploy (release-framework.yml, which passes no override).
+      #
+      # Fails closed: the plugin can exit 0 while staging nothing (it did, once — the deployment
+      # this fixes). Explicitly require positive upload evidence and the absence of the skip
+      # message, rather than trusting the Maven exit code alone.
       - name: Sign and upload the catalog module to the Central Portal
-        run: ./mvnw -B -ntp -Prelease -pl agentforge4j-workflows-catalog deploy -DskipTests
+        run: |
+          set -o pipefail
+          ./mvnw -B -ntp -Prelease -pl agentforge4j-workflows-catalog deploy -DskipTests \
+            -Drelease.excludeCatalogArtifactId=not-a-real-artifact \
+            | tee /tmp/catalog-deploy.log
+          if grep -q "No files to stage for artifact" /tmp/catalog-deploy.log; then
+            echo "::error::Central Portal staged zero files for the catalog module — it is still excluded by the release profile. Refusing to report success." >&2
+            exit 1
+          fi
+          if ! grep -q "Uploaded bundle successfully" /tmp/catalog-deploy.log; then
+            echo "::error::No 'Uploaded bundle successfully' confirmation found in the Central Portal publish output — refusing to report success without positive evidence of an upload." >&2
+            exit 1
+          fi
         env:
           CENTRAL_TOKEN_USERNAME: ${{ secrets.CENTRAL_TOKEN_USERNAME }}
           CENTRAL_TOKEN_PASSWORD: ${{ secrets.CENTRAL_TOKEN_PASSWORD }}
@@ -235,17 +283,19 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v7
+        with:
+          ref: ${{ env.RELEASE_TAG }}
 
       - name: Create GitHub Release from the committed note source
         run: |
-          VERSION="${GITHUB_REF_NAME#catalog-v}"
+          VERSION="${RELEASE_TAG#catalog-v}"
           NOTES="docs/releases/catalog/${VERSION}.md"
           PRERELEASE=""
-          if [[ "$GITHUB_REF_NAME" == *-RC* ]]; then
+          if [[ "$RELEASE_TAG" == *-RC* ]]; then
             PRERELEASE="--prerelease"
           fi
-          gh release create "$GITHUB_REF_NAME" \
-            --title "$GITHUB_REF_NAME" \
+          gh release create "$RELEASE_TAG" \
+            --title "$RELEASE_TAG" \
             --notes-file "$NOTES" \
             --verify-tag \
             $PRERELEASE
