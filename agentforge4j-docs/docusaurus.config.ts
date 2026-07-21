@@ -192,6 +192,10 @@ const config: Config = {
         // Byte-identical copy of the canonical mark at agentforge4j-web-ui/public/brand/logo-horizontal.svg
         // (single source of truth, per the .org site design's brand requirement) — not independently maintained.
         src: 'img/logo-horizontal.svg',
+        // Official dark-background variant (recolored wordmark/tagline only, same artwork) — Docusaurus
+        // swaps to this automatically in dark colour mode; without it the light (dark-text) mark was
+        // unreadable against the dark navbar.
+        srcDark: 'img/logo-horizontal-dark.svg',
         // The brand links to the current effective docs entry (see docsEntry above): `next`
         // pre-release, the newest supported stable version once one exists, or the archived
         // version itself (the artifact root) in archive mode.
