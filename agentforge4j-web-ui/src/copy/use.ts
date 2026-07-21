@@ -9,15 +9,19 @@ export const USE_COPY = {
   primaryArtifactId: 'agentforge4j-bootstrap',
   requirements: [
     'Java 17 or later to embed the framework.',
-    'Your own LLM provider credentials — AgentForge4j calls the provider you configure; it does ' +
-      'not include one.',
+    'A real LLM provider needs its own credentials once you configure one — the bundled fake ' +
+      'provider runs fully offline, with no credentials, for trying the framework out first.',
     'Your own persistence, if you need runs to survive a restart — implement the ' +
       'state-repository contract for whatever storage you use.',
   ],
   embedSteps: [
     {
       heading: 'Add the framework',
-      body: 'Depend on agentforge4j-core and agentforge4j-runtime.',
+      body:
+        'Depend on agentforge4j-bootstrap — it brings the appropriate framework layers (core, ' +
+        'runtime, config loading) in transitively. Depending directly on lower-level modules ' +
+        'such as agentforge4j-core or agentforge4j-runtime is an advanced option, not the ' +
+        'default first step.',
     },
     {
       heading: 'Bring your own LLM provider',

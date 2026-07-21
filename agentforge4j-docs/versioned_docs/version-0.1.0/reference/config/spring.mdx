@@ -18,18 +18,18 @@ the configuration processor emits at build time (16 properties).
 | Property | Type | Description |
 |---|---|---|
 | `agentforge4j.agents-path` | `String` | filesystem directory of agent YAML (or blank to skip filesystem agent loading) |
-| `agentforge4j.integrations.dir` | `String` | filesystem directory of integration definition JSON (&#123;@code agentforge4j.integrations.dir&#125;; or blank to skip integration loading) |
+| `agentforge4j.integrations.dir` | `String` | filesystem directory of integration definition JSON (`agentforge4j.integrations.dir`; or blank to skip integration loading) |
 | `agentforge4j.llm.cache.enabled` | `Boolean` | — |
-| `agentforge4j.llm.fake.enabled` | `Boolean` | opt-in toggle evaluated by &#123;@linkplain FakeProviderAutoConfiguration&#125; |
-| `agentforge4j.llm.fake.max-runs` | `Integer` | optional dev/demo cap on concurrent tracked runs; &#123;@code 0&#125; (the default) disables the cap. Leave off (or high) for verification so an in-flight run is never evicted; when exceeded the least-recently-used run is evicted with a &#123;@code WARN&#125; log |
-| `agentforge4j.llm.fake.ttl` | `java.time.Duration` | stale-run time-to-live for the leak guard; &#123;@code null&#125; disables TTL eviction (the default) — a registered run is held until &#123;@code deregister&#125; |
-| `agentforge4j.llm.model-tiers` | `Map&lt;java.lang.String,java.util.Map&lt;java.lang.String,java.lang.String>>` | provider name to (tier name to model string) overrides; &#123;@code null&#125; or empty leaves the shipped defaults in place. Tier names are case-insensitive. |
-| `agentforge4j.load-shipped-agents` | `Boolean` | when &#123;@code true&#125;, merges agents from the starter's shipped classpath resources |
-| `agentforge4j.load-shipped-workflows` | `Boolean` | when &#123;@code true&#125;, merges workflows from shipped classpath resources |
-| `agentforge4j.max-nesting-depth` | `Integer` | when non-null, forwarded through &#123;@link com.agentforge4j.runtime.WorkflowRuntimeBuilder&#125;; when &#123;@code null&#125; construction keeps framework defaults |
-| `agentforge4j.mcp.servers` | `List&lt;com.agentforge4j.starter.mcp.McpProperties$ServerProperties>` | configured MCP servers; &#123;@code null&#125; or empty disables MCP wiring |
-| `agentforge4j.tools.egress.allow-private-networks` | `Boolean` | development-only escape hatch lifting the private/loopback/link-local/cloud-metadata egress blocks; defaults to &#123;@code false&#125; (fail-closed) when &#123;@code null&#125; |
-| `agentforge4j.tools.max-retries` | `Integer` | maximum retry attempts; defaults to 0 when &#123;@code null&#125; |
-| `agentforge4j.tools.retry-backoff` | `java.time.Duration` | delay between retries; defaults to zero when &#123;@code null&#125; |
-| `agentforge4j.tools.timeout` | `java.time.Duration` | hard per-invocation timeout; defaults to 30s when &#123;@code null&#125; |
+| `agentforge4j.llm.fake.enabled` | `Boolean` | opt-in toggle evaluated by `FakeProviderAutoConfiguration` |
+| `agentforge4j.llm.fake.max-runs` | `Integer` | optional dev/demo cap on concurrent tracked runs; `0` (the default) disables the cap. Leave off (or high) for verification so an in-flight run is never evicted; when exceeded the least-recently-used run is evicted with a `WARN` log |
+| `agentforge4j.llm.fake.ttl` | `java.time.Duration` | stale-run time-to-live for the leak guard; `null` disables TTL eviction (the default) — a registered run is held until `deregister` |
+| `agentforge4j.llm.model-tiers` | `Map&lt;java.lang.String,java.util.Map&lt;java.lang.String,java.lang.String>>` | provider name to (tier name to model string) overrides; `null` or empty leaves the shipped defaults in place. Tier names are case-insensitive. |
+| `agentforge4j.load-shipped-agents` | `Boolean` | when `true`, merges agents from the starter's shipped classpath resources |
+| `agentforge4j.load-shipped-workflows` | `Boolean` | when `true`, merges workflows from shipped classpath resources |
+| `agentforge4j.max-nesting-depth` | `Integer` | when non-null, forwarded through `WorkflowRuntimeBuilder`; when `null` construction keeps framework defaults |
+| `agentforge4j.mcp.servers` | `List&lt;com.agentforge4j.starter.mcp.McpProperties$ServerProperties>` | configured MCP servers; `null` or empty disables MCP wiring |
+| `agentforge4j.tools.egress.allow-private-networks` | `Boolean` | development-only escape hatch lifting the private/loopback/link-local/cloud-metadata egress blocks; defaults to `false` (fail-closed) when `null` |
+| `agentforge4j.tools.max-retries` | `Integer` | maximum retry attempts; defaults to 0 when `null` |
+| `agentforge4j.tools.retry-backoff` | `java.time.Duration` | delay between retries; defaults to zero when `null` |
+| `agentforge4j.tools.timeout` | `java.time.Duration` | hard per-invocation timeout; defaults to 30s when `null` |
 | `agentforge4j.workflows-path` | `String` | filesystem directory of workflow YAML (or blank to skip filesystem workflow loading) |

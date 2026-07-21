@@ -300,9 +300,11 @@ describe('content-track pages', () => {
     );
   });
 
-  test('releases page reports the 0.1.0 framework release as published to Maven Central', () => {
+  test('releases page reports both the framework and the Workflow Catalog as published at 0.1.0', () => {
     renderAt('/releases');
-    expect(screen.getByText(/0\.1\.0, the first public framework release, is published to Maven Central/)).toBeInTheDocument();
+    expect(
+      screen.getByText(/Framework 0\.1\.0 and Workflow Catalog 0\.1\.0 are both published/),
+    ).toBeInTheDocument();
   });
 
   test('use page prints the published Maven coordinates', () => {

@@ -130,7 +130,12 @@ function buildFromTag(version, outDir) {
     // The wrapper script is platform-specific: `mvnw.cmd` on Windows, `./mvnw` elsewhere. Windows
     // batch files cannot be spawned directly and need a shell; POSIX spawns the wrapper directly —
     // no shell, no argument re-interpretation (same convention as build-javadoc.mjs's `run()`).
-    const mvnw = process.platform === 'win32' ? 'mvnw.cmd' : './mvnw';
+    // Explicitly relative-pathed (`.\mvnw.cmd`), not bare (`mvnw.cmd`): cmd.exe (invoked via
+    // `shell: true` below) does not search the current directory for an executable unless the
+    // path is explicitly relative — a bare `mvnw.cmd` silently resolves against PATH only and
+    // fails with "not recognized" even though the wrapper sits right in `srcDir` (same gap already
+    // fixed in build-assembled-site.mjs's own MVNW constant).
+    const mvnw = process.platform === 'win32' ? '.\\mvnw.cmd' : './mvnw';
     execFileSync(mvnw, ['-B', '-q', '-DskipTests', '-Dmaven.test.skip=true', 'install'], {
       cwd: srcDir,
       stdio: 'inherit',

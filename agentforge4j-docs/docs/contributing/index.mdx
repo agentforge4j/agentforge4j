@@ -70,6 +70,15 @@ itself, not hand-written. Regenerating them requires a local framework build (JD
 generator can reflect over the installed artifacts and read the Spring configuration metadata. The
 generated pages are never committed — they are rebuilt from source on every build.
 
+If a generator bug is found and fixed after a version has already been cut, its already-frozen
+`reference/**` pages carry the same bug forever unless refreshed deliberately — a versioned snapshot
+is otherwise immutable by design, and `release:stage`/release-cut never re-touch an existing version.
+`npm run docs:regenerate-versioned-reference -- <version>` closes that gap: it re-runs the same
+de-materialisation release-cut itself uses, scoped to only that version's `reference/**` subtree,
+never its hand-authored pages. Run `npm run generate` first so `docs/reference/` reflects the fix,
+confirm the underlying framework source has not drifted since that version's release tag, then run
+the command for the affected version(s).
+
 ## Running the gates locally
 
 From the `agentforge4j-docs` module:

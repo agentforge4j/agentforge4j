@@ -68,7 +68,13 @@ The `workflow` document type, validated against the published JSON schema.
 
 ### Executable
 
-_No properties._
+_One of the following (oneOf):_
+
+| Alternative |
+|---|
+| [StepDefinition](#stepdefinition) |
+| [BlueprintRef](#blueprintref) |
+| [Workflow](./workflow.mdx) |
 
 ### StepDefinition
 
@@ -221,7 +227,13 @@ _No properties._
 
 ### StepTransition
 
-_No properties._
+_Enum values:_
+
+| Value |
+|---|
+| `AUTO` |
+| `HUMAN_REVIEW` |
+| `HUMAN_APPROVAL` |
 
 ### SparConfig
 
