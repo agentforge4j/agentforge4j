@@ -26,6 +26,7 @@
     "javadoc": "node scripts/build-javadoc.mjs",
     "javadoc:versions": "node scripts/build-javadoc-versions.mjs",
     "release:stage": "node scripts/release-stage.mjs",
+    "docs:regenerate-versioned-reference": "node scripts/regenerate-versioned-reference.mjs",
     "docs:scratch-cut": "node scripts/release-scratch-cut.mjs",
     "docs:archive": "node scripts/archive-transition.mjs",
     "docs:archive-check": "node scripts/archive-drift-check.mjs",
@@ -33,7 +34,7 @@
     "docs:javadoc-versions-scratch": "node scripts/javadoc-versions-scratch.mjs",
     "a11y": "node scripts/a11y.mjs",
     "site:assemble": "node scripts/assemble-site.mjs",
-    "test": "node --test scripts/vocab.test.mjs scripts/generate-references.test.mjs scripts/include.test.mjs scripts/fixtures.test.mjs scripts/javadoc.test.mjs scripts/dematerialize.test.mjs scripts/support-window.test.mjs scripts/product-name.test.mjs scripts/attribution-terms.test.mjs scripts/assemble-site.test.mjs scripts/lint-javadoc-links.test.mjs scripts/archive.test.mjs scripts/javadoc-versions.test.mjs scripts/archive-drift-check.test.mjs scripts/verify-noindex.test.mjs",
+    "test": "node --test scripts/vocab.test.mjs scripts/generate-references.test.mjs scripts/include.test.mjs scripts/fixtures.test.mjs scripts/javadoc.test.mjs scripts/dematerialize.test.mjs scripts/support-window.test.mjs scripts/product-name.test.mjs scripts/attribution-terms.test.mjs scripts/assemble-site.test.mjs scripts/lint-javadoc-links.test.mjs scripts/archive.test.mjs scripts/javadoc-versions.test.mjs scripts/archive-drift-check.test.mjs scripts/verify-noindex.test.mjs scripts/regenerate-versioned-reference.test.mjs",
     "check": "npm run generate && npm run lint && npm run typecheck && npm run test && npm run build"
   },
   "dependencies": {

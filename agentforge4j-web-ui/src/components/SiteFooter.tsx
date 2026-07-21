@@ -8,7 +8,7 @@ export default function SiteFooter() {
       <div className="mx-auto px-6 py-10" style={{ maxWidth: 'var(--max-content-width)' }}>
         <div className="grid grid-cols-2 gap-8 sm:grid-cols-4">
           {FOOTER_COLUMNS.map((column) => (
-            <div key={column.heading}>
+            <div key={column.heading} className="min-w-0">
               <h2 className="text-sm font-semibold text-fg">{column.heading}</h2>
               <ul className="mt-3 space-y-2">
                 {column.links.map((link) => (
@@ -27,7 +27,7 @@ export default function SiteFooter() {
               </ul>
             </div>
           ))}
-          <div>
+          <div className="min-w-0">
             <h2 className="text-sm font-semibold text-fg">GitHub</h2>
             <ul className="mt-3 space-y-2">
               <li>
@@ -35,7 +35,7 @@ export default function SiteFooter() {
                   href={GITHUB_URL}
                   target="_blank"
                   rel="noreferrer"
-                  className="break-words text-sm text-fg-muted hover:text-fg"
+                  className="block break-words text-sm text-fg-muted hover:text-fg"
                 >
                   agentforge4j/agentforge4j
                 </a>

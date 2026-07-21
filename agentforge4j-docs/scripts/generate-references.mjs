@@ -41,15 +41,40 @@ function readJson(path, what) {
 }
 
 /**
- * Escape a cell value for a Markdown table inside MDX. Besides the table pipe and newlines, MDX
- * treats `{` as a JS expression and `<` as a JSX tag, so those (and `}`) are HTML-escaped — source
- * descriptions contain Javadoc `{@code ...}` and angle brackets.
+ * Reduce a Javadoc `{@link[plain] fqcn[#member]}` reference to a short, readable name: the
+ * simple type name (last dot-separated segment), plus `#member` if the reference points at a
+ * member rather than the type itself.
  */
-function cell(value) {
+export function shortJavadocRef(ref) {
+  const [type, member] = ref.split('#');
+  const shortType = type.trim().split('.').pop();
+  return member ? `${shortType}#${member.trim()}` : shortType;
+}
+
+/**
+ * Source Javadoc comments routinely contain `{@code x}`/`{@link x}`/`{@linkplain x}` block tags.
+ * Reflected/emitted descriptions carry that markup verbatim, so normalize it to plain readable
+ * text here, once, at the generator boundary — never by hand-editing generated output.
+ * `{@code x}` becomes inline code; `{@link[plain] x}` becomes the short type name as inline code
+ * (this generator has no Javadoc-surface path-resolution context to build a real hyperlink, unlike
+ * the docs' own `javadoc:<fqcn>` remark role, which prose authors should use directly instead).
+ */
+export function normalizeJavadocTags(text) {
+  return text
+    .replace(/\{@code\s+([^}]+)\}/g, (_, body) => `\`${body.trim()}\``)
+    .replace(/\{@link(?:plain)?\s+([^}]+)\}/g, (_, body) => `\`${shortJavadocRef(body.trim())}\``);
+}
+
+/**
+ * Escape a cell value for a Markdown table inside MDX. Besides the table pipe and newlines, MDX
+ * treats `{` as a JS expression and `<` as a JSX tag, so any left after Javadoc-tag normalization
+ * (and angle brackets) are HTML-escaped.
+ */
+export function cell(value) {
   if (value === null || value === undefined || value === '') {
     return '—';
   }
-  return String(value)
+  return normalizeJavadocTags(String(value))
     .replace(/\n/g, ' ')
     // Wrap bare URLs in inline code so GFM does not autolink them (an adjacent escaped brace
     // would otherwise be swallowed into the URL and fail MDX's URL parsing).
@@ -280,12 +305,29 @@ function generateConfigIndex() {
 
 // --- Schemas ---------------------------------------------------------------------------------
 
-function refName(ref) {
+// A `$ref` can point at: a `$defs` entry in the SAME schema file ("#/$defs/Foo"); a `$defs` entry in
+// ANOTHER schema file ("other.schema.json#/$defs/Foo" — e.g. blueprint.schema.json's Executable
+// referencing workflow.schema.json's StepDefinition); or a whole OTHER document, with no fragment at
+// all ("other.schema.json", or the bare self-reference "#" for the current document). Only the
+// same-file-$defs case is a same-page anchor; the other two must link to a different page (or that
+// page's own root), never `#<name>` on the CURRENT page — a same-page anchor that does not exist
+// there is exactly the "broken anchor" class of defect this generator must never produce silently.
+
+/** The `$defs` member name from a ref fragment, e.g. "#/$defs/Foo" -> "Foo". `null` for a whole-
+ * document reference with no `$defs` fragment (e.g. "#" or "other.schema.json"). */
+function refDefName(ref) {
   const match = /#\/\$defs\/(.+)$/.exec(ref || '');
-  return match ? match[1] : ref;
+  return match ? match[1] : null;
 }
 
-function typeOf(node) {
+/** The target schema's file base name from a ref, e.g. "workflow.schema.json#/..." -> "workflow".
+ * `null` when the ref has no file prefix (same file as the caller, e.g. "#/$defs/Foo" or "#"). */
+function refFile(ref) {
+  const match = /^([\w-]+)\.schema\.json/.exec(ref || '');
+  return match ? match[1] : null;
+}
+
+function typeOf(node, currentSchemaName) {
   if (!node || typeof node !== 'object') {
     return '—';
   }
@@ -293,15 +335,28 @@ function typeOf(node) {
     return `const \`${node.const}\``;
   }
   if (node.$ref) {
-    const name = refName(node.$ref);
-    return `[${name}](#${name.toLowerCase()})`;
+    const file = refFile(node.$ref);
+    const defName = refDefName(node.$ref);
+    if (defName === null) {
+      // A whole-document reference ("#" or "other.schema.json") — link to that schema's own page
+      // root, never a same-page anchor (nothing named "#" or the bare filename exists on any page).
+      const targetFile = file || currentSchemaName;
+      if (!targetFile) {
+        return `\`${node.$ref}\``; // no page context to link into — inert text, not a dead link
+      }
+      const label = targetFile.charAt(0).toUpperCase() + targetFile.slice(1);
+      return `[${label}](./${targetFile}.mdx)`;
+    }
+    return file && file !== currentSchemaName
+      ? `[${defName}](./${file}.mdx#${defName.toLowerCase()})`
+      : `[${defName}](#${defName.toLowerCase()})`;
   }
   if (node.enum) {
     return `enum (${node.enum.map((v) => `\`${v}\``).join(', ')})`;
   }
   if (node.type === 'array') {
     const items = node.items || {};
-    return `array of ${typeOf(items)}`;
+    return `array of ${typeOf(items, currentSchemaName)}`;
   }
   if (Array.isArray(node.type)) {
     return node.type.join(' \\| ');
@@ -310,25 +365,48 @@ function typeOf(node) {
     return node.format ? `${node.type} (${node.format})` : node.type;
   }
   if (node.oneOf || node.anyOf) {
-    const branches = (node.oneOf || node.anyOf).map((b) => typeOf(b));
+    const branches = (node.oneOf || node.anyOf).map((b) => typeOf(b, currentSchemaName));
     return branches.join(' \\| ');
   }
   return 'object';
 }
 
-function propertiesTable(schemaNode) {
+/**
+ * Render a `$defs` entry (or the schema root) as whichever shape it actually is: an object with
+ * `properties`, a `oneOf`/`anyOf` union of alternatives, an `enum` of literal values, a single
+ * `const`, or (falling through) some other scalar `type`. Only a genuinely property-less object
+ * schema renders "No properties." — every other real JSON Schema shape gets its own table/line,
+ * so a union or enum definition is never silently misreported as empty.
+ */
+export function propertiesTable(schemaNode, currentSchemaName) {
   const props = schemaNode.properties || {};
   const required = new Set(schemaNode.required || []);
   const names = Object.keys(props);
-  if (names.length === 0) {
-    return ['_No properties._', ''];
+  if (names.length > 0) {
+    const rows = names.map((name) => {
+      const p = props[name];
+      const req = required.has(name) ? 'yes' : 'no';
+      return `| \`${cell(name)}\` | ${typeOf(p, currentSchemaName)} | ${req} | ${cell(p.description)} |`;
+    });
+    return ['| Property | Type | Required | Description |', '|---|---|---|---|', ...rows, ''];
   }
-  const rows = names.map((name) => {
-    const p = props[name];
-    const req = required.has(name) ? 'yes' : 'no';
-    return `| \`${cell(name)}\` | ${typeOf(p)} | ${req} | ${cell(p.description)} |`;
-  });
-  return ['| Property | Type | Required | Description |', '|---|---|---|---|', ...rows, ''];
+  if (schemaNode.oneOf || schemaNode.anyOf) {
+    const kind = schemaNode.oneOf ? 'oneOf' : 'anyOf';
+    const branches = schemaNode.oneOf || schemaNode.anyOf;
+    const rows = branches.map((b) => `| ${typeOf(b, currentSchemaName)} |`);
+    return [`_One of the following (${kind}):_`, '', '| Alternative |', '|---|', ...rows, ''];
+  }
+  if (schemaNode.enum) {
+    const rows = schemaNode.enum.map((v) => `| \`${cell(v)}\` |`);
+    return ['_Enum values:_', '', '| Value |', '|---|', ...rows, ''];
+  }
+  if (schemaNode.const !== undefined) {
+    return [`_Constant value:_ \`${cell(schemaNode.const)}\``, ''];
+  }
+  if (schemaNode.type && schemaNode.type !== 'object') {
+    return [`_Scalar type:_ ${typeOf(schemaNode, currentSchemaName)}`, ''];
+  }
+  return ['_No properties._', ''];
 }
 
 // A representative, source-backed, schema-valid fixture per schema (paths relative to the repo root;
@@ -366,7 +444,7 @@ function generateSchemaPage(name, schema, sidebarPosition) {
       '',
     );
   }
-  lines.push('## Properties', '', ...propertiesTable(schema));
+  lines.push('## Properties', '', ...propertiesTable(schema, name));
   const defs = schema.$defs || {};
   const defNames = Object.keys(defs);
   if (defNames.length > 0) {
@@ -377,7 +455,7 @@ function generateSchemaPage(name, schema, sidebarPosition) {
       if (def.description) {
         lines.push(def.description, '');
       }
-      lines.push(...propertiesTable(def));
+      lines.push(...propertiesTable(def, name));
     }
   }
   write(join('schemas', `${name}.mdx`), lines.join('\n'));

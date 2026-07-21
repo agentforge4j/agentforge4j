@@ -9,7 +9,12 @@ import assert from 'node:assert/strict';
 import {existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
-import {assembleSite} from './assemble-site.mjs';
+import {
+  assembleSite,
+  scanComposedHtmlForForbiddenContent,
+  verifyComposedJavadocLinks,
+  verifyComposedAnchorLinks,
+} from './assemble-site.mjs';
 
 function sitemapXmlFixture(urls) {
   const body = urls.map((url) => `  <url>\n    <loc>${url}</loc>\n  </url>`).join('\n');
@@ -398,6 +403,69 @@ test('verifyComposedArtifact fails closed when an expected entry file exists but
   assert.deepEqual(exitCodes, [1]);
 });
 
+test('verifyComposedArtifact fails closed when /javadoc/latest/ silently composed empty (a real bug: an upstream Javadoc build failing without erroring left an empty, existsSync-true directory)', () => {
+  const {spaDir, buildDir, javadocDir, archiveDir, siteDir} = fixture();
+  const exitCodes = [];
+  const fakeExit = (code) => {
+    exitCodes.push(code);
+    throw new Error(`exit(${code})`);
+  };
+  assert.throws(
+    () =>
+      assembleSite({
+        spaDir,
+        buildDir,
+        // No javadocVersionsDir/releasedVersions passed — with releasedVersions empty, /latest
+        // sources from javadocDir itself (assembleSite's own fallback) — override it to a real,
+        // pre-existing-but-empty directory to reproduce the exact bug shape.
+        javadocDir: (() => {
+          const emptyDir = javadocDir.replace('javadoc-next', 'javadoc-next-composes-empty');
+          mkdirSync(emptyDir, {recursive: true}); // exists, but has no index.html
+          return emptyDir;
+        })(),
+        archiveDir,
+        siteDir,
+        customDomain: null,
+        exit: fakeExit,
+      }),
+    /exit\(1\)/,
+  );
+  assert.deepEqual(exitCodes, [1]);
+});
+
+test('verifyComposedArtifact fails closed when a released version\'s /javadoc/<v>/ silently composed empty', () => {
+  const {root, spaDir, buildDir, javadocDir, archiveDir, siteDir} = fixture();
+  const javadocVersionsDir = join(root, 'javadoc-versions');
+  // 1.1.0 has a real surface; 1.0.0's directory exists (so requireDir's input-side check passes)
+  // but is empty — exactly the real bug shape (an upstream per-version Javadoc build that failed
+  // without throwing, or without existing before the copy step ran requireDir at all).
+  mkdirSync(join(javadocVersionsDir, '1.1.0'), {recursive: true});
+  writeFileSync(join(javadocVersionsDir, '1.1.0', 'index.html'), '<html>javadoc 1.1.0</html>');
+  mkdirSync(join(javadocVersionsDir, '1.0.0'), {recursive: true});
+
+  const exitCodes = [];
+  const fakeExit = (code) => {
+    exitCodes.push(code);
+    throw new Error(`exit(${code})`);
+  };
+  assert.throws(
+    () =>
+      assembleSite({
+        spaDir,
+        buildDir,
+        javadocDir,
+        javadocVersionsDir,
+        releasedVersions: ['1.1.0', '1.0.0'],
+        archiveDir,
+        siteDir,
+        customDomain: null,
+        exit: fakeExit,
+      }),
+    /exit\(1\)/,
+  );
+  assert.deepEqual(exitCodes, [1]);
+});
+
 test('merges the SPA and docs sitemap fragments into one final sitemap.xml at the site root', () => {
   const {spaDir, buildDir, javadocDir, archiveDir, siteDir} = fixture();
   assembleSite({spaDir, buildDir, javadocDir, archiveDir, siteDir, customDomain: null});
@@ -480,6 +548,334 @@ test('fails closed on a duplicate URL across the SPA and docs sitemap fragments'
     /exit\(1\)/,
   );
   assert.deepEqual(exitCodes, [1]);
+});
+
+// --- scanComposedHtmlForForbiddenContent ------------------------------------------------------
+
+test('scanComposedHtmlForForbiddenContent passes clean on ordinary composed HTML', () => {
+  const root = mkdtempSync(join(tmpdir(), 'scan-clean-'));
+  writeFileSync(join(root, 'index.html'), '<html><body><p>Nothing forbidden here.</p></body></html>');
+  const exitCodes = [];
+  scanComposedHtmlForForbiddenContent(root, (code) => exitCodes.push(code));
+  assert.deepEqual(exitCodes, []);
+});
+
+test('scanComposedHtmlForForbiddenContent fails closed on literal, unparsed admonition syntax', () => {
+  // The exact real regression this pass fixes: an MDX3 admonition using the old `:::note Title`
+  // (space-separated) form, which is not valid directive syntax and so renders as literal text.
+  const root = mkdtempSync(join(tmpdir(), 'scan-admonition-'));
+  mkdirSync(join(root, 'how-to'), {recursive: true});
+  writeFileSync(
+    join(root, 'how-to', 'index.html'),
+    '<html><body><p>:::note Authoritative lists</p><p>see the list</p><p>:::</p></body></html>',
+  );
+  const exitCodes = [];
+  const fakeExit = (code) => {
+    exitCodes.push(code);
+    throw new Error(`exit(${code})`);
+  };
+  assert.throws(() => scanComposedHtmlForForbiddenContent(root, fakeExit), /exit\(1\)/);
+  assert.deepEqual(exitCodes, [1]);
+});
+
+test('scanComposedHtmlForForbiddenContent fails closed on a raw {@code}/{@link} Javadoc tag', () => {
+  const root = mkdtempSync(join(tmpdir(), 'scan-javadoc-tag-'));
+  writeFileSync(
+    join(root, 'index.html'),
+    '<html><body><td>filesystem directory ({@code agentforge4j.integrations.dir})</td></body></html>',
+  );
+  const exitCodes = [];
+  const fakeExit = (code) => {
+    exitCodes.push(code);
+    throw new Error(`exit(${code})`);
+  };
+  assert.throws(() => scanComposedHtmlForForbiddenContent(root, fakeExit), /exit\(1\)/);
+  assert.deepEqual(exitCodes, [1]);
+});
+
+test('scanComposedHtmlForForbiddenContent fails closed on a /docs/javadoc/ link', () => {
+  const root = mkdtempSync(join(tmpdir(), 'scan-wrong-javadoc-path-'));
+  writeFileSync(join(root, 'index.html'), '<html><body><a href="/docs/javadoc/next/">API</a></body></html>');
+  const exitCodes = [];
+  const fakeExit = (code) => {
+    exitCodes.push(code);
+    throw new Error(`exit(${code})`);
+  };
+  assert.throws(() => scanComposedHtmlForForbiddenContent(root, fakeExit), /exit\(1\)/);
+  assert.deepEqual(exitCodes, [1]);
+});
+
+test('scanComposedHtmlForForbiddenContent fails closed on stale "wired in a later phase" placeholder copy', () => {
+  const root = mkdtempSync(join(tmpdir(), 'scan-stale-placeholder-'));
+  writeFileSync(join(root, 'index.html'), '<html><body><p>The generator is wired in a later phase.</p></body></html>');
+  const exitCodes = [];
+  const fakeExit = (code) => {
+    exitCodes.push(code);
+    throw new Error(`exit(${code})`);
+  };
+  assert.throws(() => scanComposedHtmlForForbiddenContent(root, fakeExit), /exit\(1\)/);
+  assert.deepEqual(exitCodes, [1]);
+});
+
+test('assembleSite itself fails closed when the composed SPA output contains exposed admonition syntax', () => {
+  // Integration-level: the check runs as part of the real assembleSite() call, not just in isolation.
+  const {spaDir, buildDir, javadocDir, archiveDir, siteDir} = fixture();
+  writeFileSync(join(spaDir, 'index.html'), '<html>spa :::note broken :::</html>');
+  const exitCodes = [];
+  const fakeExit = (code) => {
+    exitCodes.push(code);
+    throw new Error(`exit(${code})`);
+  };
+  assert.throws(
+    () => assembleSite({spaDir, buildDir, javadocDir, archiveDir, siteDir, customDomain: null, exit: fakeExit}),
+    /exit\(1\)/,
+  );
+  assert.deepEqual(exitCodes, [1]);
+});
+
+// --- verifyComposedJavadocLinks ----------------------------------------------------------------
+
+function javadocLinkFixtureRoot() {
+  const root = mkdtempSync(join(tmpdir(), 'javadoc-links-'));
+  const docsSourceDir = join(root, 'docs');
+  const versionedDocsSourceDir = join(root, 'versioned_docs');
+  const siteDir = join(root, '_site');
+  mkdirSync(docsSourceDir, {recursive: true});
+  mkdirSync(versionedDocsSourceDir, {recursive: true});
+  mkdirSync(siteDir, {recursive: true});
+  return {root, docsSourceDir, versionedDocsSourceDir, siteDir};
+}
+
+test('verifyComposedJavadocLinks passes when every live javadoc: reference resolves to a real composed file', () => {
+  const {docsSourceDir, siteDir} = javadocLinkFixtureRoot();
+  writeFileSync(
+    join(docsSourceDir, 'page.mdx'),
+    'See `javadoc:com.agentforge4j.core.workflow.Workflow` for details.\n',
+  );
+  mkdirSync(join(siteDir, 'javadoc', 'next', 'agentforge4j.core', 'com', 'agentforge4j', 'core', 'workflow'), {
+    recursive: true,
+  });
+  writeFileSync(
+    join(siteDir, 'javadoc', 'next', 'agentforge4j.core', 'com', 'agentforge4j', 'core', 'workflow', 'Workflow.html'),
+    '<html>Workflow</html>',
+  );
+  const exitCodes = [];
+  verifyComposedJavadocLinks(siteDir, docsSourceDir, join(docsSourceDir, '..', 'versioned_docs'), (code) =>
+    exitCodes.push(code),
+  );
+  assert.deepEqual(exitCodes, []);
+});
+
+test('verifyComposedJavadocLinks fails closed when a javadoc: reference has no matching file in the composed artifact', () => {
+  const {docsSourceDir, versionedDocsSourceDir, siteDir} = javadocLinkFixtureRoot();
+  writeFileSync(
+    join(docsSourceDir, 'page.mdx'),
+    'See `javadoc:com.agentforge4j.core.workflow.Workflow` for details.\n',
+  );
+  // siteDir has no javadoc/next/... surface at all — the composed artifact is missing the target.
+  const exitCodes = [];
+  const fakeExit = (code) => {
+    exitCodes.push(code);
+    throw new Error(`exit(${code})`);
+  };
+  assert.throws(
+    () => verifyComposedJavadocLinks(siteDir, docsSourceDir, versionedDocsSourceDir, fakeExit),
+    /exit\(1\)/,
+  );
+  assert.deepEqual(exitCodes, [1]);
+});
+
+test('verifyComposedJavadocLinks pins a versioned snapshot reference to its own version, not next', () => {
+  const {versionedDocsSourceDir, siteDir} = javadocLinkFixtureRoot();
+  const versionDir = join(versionedDocsSourceDir, 'version-0.1.0');
+  mkdirSync(versionDir, {recursive: true});
+  writeFileSync(
+    join(versionDir, 'page.mdx'),
+    'See `javadoc:com.agentforge4j.core.workflow.Workflow` for details.\n',
+  );
+  // Only the 0.1.0-pinned surface exists — if the check wrongly resolved against `next`, it would fail.
+  mkdirSync(join(siteDir, 'javadoc', '0.1.0', 'agentforge4j.core', 'com', 'agentforge4j', 'core', 'workflow'), {
+    recursive: true,
+  });
+  writeFileSync(
+    join(siteDir, 'javadoc', '0.1.0', 'agentforge4j.core', 'com', 'agentforge4j', 'core', 'workflow', 'Workflow.html'),
+    '<html>Workflow</html>',
+  );
+  const exitCodes = [];
+  verifyComposedJavadocLinks(siteDir, join(versionedDocsSourceDir, '..', 'docs'), versionedDocsSourceDir, (code) =>
+    exitCodes.push(code),
+  );
+  assert.deepEqual(exitCodes, []);
+});
+
+test('verifyComposedJavadocLinks is a no-op (0 checked, never fails) when no source dirs are supplied', () => {
+  const {siteDir} = javadocLinkFixtureRoot();
+  const exitCodes = [];
+  verifyComposedJavadocLinks(siteDir, undefined, undefined, (code) => exitCodes.push(code));
+  assert.deepEqual(exitCodes, []);
+});
+
+// --- verifyComposedAnchorLinks: in-repo relative links carrying a URL fragment must resolve to a
+// REAL anchor on the real composed page, not just an existing file --------------------------------
+
+function anchorFixtureRoot() {
+  const root = mkdtempSync(join(tmpdir(), 'anchor-links-'));
+  const docsSourceDir = join(root, 'docs');
+  const versionedDocsSourceDir = join(root, 'versioned_docs');
+  const siteDir = join(root, '_site');
+  mkdirSync(docsSourceDir, {recursive: true});
+  mkdirSync(versionedDocsSourceDir, {recursive: true});
+  mkdirSync(siteDir, {recursive: true});
+  return {root, docsSourceDir, versionedDocsSourceDir, siteDir};
+}
+
+function writeBuiltPage(siteDir, versionSegment, relDirSegments, slug, html) {
+  const dir = join(siteDir, 'docs', versionSegment, ...relDirSegments, ...(slug ? [slug] : []));
+  mkdirSync(dir, {recursive: true});
+  writeFileSync(join(dir, 'index.html'), html, 'utf8');
+}
+
+test('verifyComposedAnchorLinks passes against a minified build that drops attribute quotes (id=foo, not id="foo")', () => {
+  // Real regression: a production Docusaurus build's minifier strips quotes from any attribute
+  // value that is a safe unquoted-HTML5 token (every heading-slug id qualifies) — a naive
+  // quoted-only `id="foo"` text search false-positive-failed against every real page the first
+  // time this checker ran against an actual build, even though the anchors were genuinely present.
+  const {docsSourceDir, versionedDocsSourceDir, siteDir} = anchorFixtureRoot();
+  writeFileSync(join(docsSourceDir, 'page.mdx'), 'See [Foo](#foo) below.\n');
+  writeBuiltPage(siteDir, 'next', [], 'page', '<h3 id=foo>Foo<a href=#foo class=hash-link></a></h3>');
+
+  const exitCodes = [];
+  verifyComposedAnchorLinks(siteDir, docsSourceDir, versionedDocsSourceDir, (code) => exitCodes.push(code));
+  assert.deepEqual(exitCodes, []);
+});
+
+test('verifyComposedAnchorLinks passes when a same-page anchor exists on the real composed page', () => {
+  const {docsSourceDir, siteDir} = anchorFixtureRoot();
+  writeFileSync(join(docsSourceDir, 'page.mdx'), 'See [Foo](#foo) below.\n\n### Foo\n');
+  writeBuiltPage(siteDir, 'next', [], 'page', '<html><h3 id="foo">Foo</h3></html>');
+
+  const exitCodes = [];
+  verifyComposedAnchorLinks(siteDir, docsSourceDir, join(docsSourceDir, '..', 'versioned_docs'), (code) =>
+    exitCodes.push(code),
+  );
+  assert.deepEqual(exitCodes, []);
+});
+
+test('verifyComposedAnchorLinks fails closed when the anchor does not exist on an otherwise-real page (the real bug class this closes)', () => {
+  const {docsSourceDir, versionedDocsSourceDir, siteDir} = anchorFixtureRoot();
+  writeFileSync(join(docsSourceDir, 'page.mdx'), 'See [Foo](#foo) below.\n');
+  // The page exists and is well-formed, but genuinely has no id="foo" anywhere — exactly what a
+  // stale/incorrect cross-link looks like when only file existence is checked.
+  writeBuiltPage(siteDir, 'next', [], 'page', '<html><h3 id="bar">Bar</h3></html>');
+
+  const exitCodes = [];
+  const fakeExit = (code) => {
+    exitCodes.push(code);
+    throw new Error(`exit(${code})`);
+  };
+  assert.throws(
+    () => verifyComposedAnchorLinks(siteDir, docsSourceDir, versionedDocsSourceDir, fakeExit),
+    /exit\(1\)/,
+  );
+  assert.deepEqual(exitCodes, [1]);
+});
+
+test('verifyComposedAnchorLinks resolves a cross-file anchor to the target file\'s own id-based route (the real blueprint->workflow shape)', () => {
+  const {docsSourceDir, versionedDocsSourceDir, siteDir} = anchorFixtureRoot();
+  mkdirSync(join(docsSourceDir, 'schemas'), {recursive: true});
+  writeFileSync(
+    join(docsSourceDir, 'schemas', 'blueprint.mdx'),
+    '---\nid: reference-schema-blueprint\n---\n\n| [StepDefinition](./workflow.mdx#stepdefinition) |\n',
+  );
+  writeFileSync(
+    join(docsSourceDir, 'schemas', 'workflow.mdx'),
+    '---\nid: reference-schema-workflow\n---\n\n### StepDefinition\n',
+  );
+  writeBuiltPage(siteDir, 'next', ['schemas'], 'reference-schema-workflow', '<html><h3 id="stepdefinition">StepDefinition</h3></html>');
+
+  const exitCodes = [];
+  verifyComposedAnchorLinks(siteDir, docsSourceDir, versionedDocsSourceDir, (code) => exitCodes.push(code));
+  assert.deepEqual(exitCodes, []);
+});
+
+test('verifyComposedAnchorLinks fails closed when the cross-file target page is missing from the composed artifact', () => {
+  const {docsSourceDir, versionedDocsSourceDir, siteDir} = anchorFixtureRoot();
+  mkdirSync(join(docsSourceDir, 'schemas'), {recursive: true});
+  writeFileSync(
+    join(docsSourceDir, 'schemas', 'blueprint.mdx'),
+    '---\nid: reference-schema-blueprint\n---\n\n| [StepDefinition](./workflow.mdx#stepdefinition) |\n',
+  );
+  writeFileSync(join(docsSourceDir, 'schemas', 'workflow.mdx'), '---\nid: reference-schema-workflow\n---\n\n### StepDefinition\n');
+  // workflow's built page was never written — the composed artifact is missing it entirely.
+
+  const exitCodes = [];
+  const fakeExit = (code) => {
+    exitCodes.push(code);
+    throw new Error(`exit(${code})`);
+  };
+  assert.throws(
+    () => verifyComposedAnchorLinks(siteDir, docsSourceDir, versionedDocsSourceDir, fakeExit),
+    /exit\(1\)/,
+  );
+  assert.deepEqual(exitCodes, [1]);
+});
+
+test('verifyComposedAnchorLinks resolves an index page anchor at its own directory root, not an id-named subdirectory', () => {
+  const {docsSourceDir, versionedDocsSourceDir, siteDir} = anchorFixtureRoot();
+  mkdirSync(join(docsSourceDir, 'reference'), {recursive: true});
+  writeFileSync(
+    join(docsSourceDir, 'reference', 'index.mdx'),
+    '---\nid: reference-config\n---\n\nSee [details](#details).\n\n### Details\n',
+  );
+  // index.mdx maps to its own directory (reference/index.html), never reference/reference-config/.
+  writeBuiltPage(siteDir, 'next', ['reference'], null, '<html><h3 id="details">Details</h3></html>');
+
+  const exitCodes = [];
+  verifyComposedAnchorLinks(siteDir, docsSourceDir, versionedDocsSourceDir, (code) => exitCodes.push(code));
+  assert.deepEqual(exitCodes, []);
+});
+
+test('verifyComposedAnchorLinks resolves a versioned snapshot\'s anchor against that version\'s own composed path, not next', () => {
+  const {docsSourceDir, versionedDocsSourceDir, siteDir} = anchorFixtureRoot();
+  const versionDir = join(versionedDocsSourceDir, 'version-0.1.0', 'schemas');
+  mkdirSync(versionDir, {recursive: true});
+  writeFileSync(join(versionDir, 'blueprint.mdx'), '---\nid: reference-schema-blueprint\n---\n\n| [StepDefinition](./workflow.mdx#stepdefinition) |\n');
+  writeFileSync(join(versionDir, 'workflow.mdx'), '---\nid: reference-schema-workflow\n---\n\n### StepDefinition\n');
+  // Only the 0.1.0-pinned surface exists — if resolution wrongly fell back to `next`, this would fail.
+  writeBuiltPage(siteDir, '0.1.0', ['schemas'], 'reference-schema-workflow', '<html><h3 id="stepdefinition">StepDefinition</h3></html>');
+
+  const exitCodes = [];
+  verifyComposedAnchorLinks(siteDir, docsSourceDir, versionedDocsSourceDir, (code) => exitCodes.push(code));
+  assert.deepEqual(exitCodes, []);
+});
+
+test('verifyComposedAnchorLinks does not flag an absolute/external link with a fragment (out of its scope)', () => {
+  const {docsSourceDir, versionedDocsSourceDir, siteDir} = anchorFixtureRoot();
+  writeFileSync(docsSourceDir + '/page.mdx', 'See [external](https://example.com/foo#bar) and [javadoc](pathname:///javadoc/next/Foo.html#bar).\n');
+
+  const exitCodes = [];
+  verifyComposedAnchorLinks(siteDir, docsSourceDir, versionedDocsSourceDir, (code) => exitCodes.push(code));
+  assert.deepEqual(exitCodes, []); // 0 checked, 0 failures — neither link matches the in-repo pattern
+});
+
+test('verifyComposedJavadocLinks is fragment-aware: a resolved URL fragment must exist as a real anchor on the target page', () => {
+  // resolveJavadocUrl never emits a fragment today, so this proves the checker's own fragment
+  // handling directly, independent of that role ever actually producing one.
+  const {siteDir} = anchorFixtureRoot();
+  const docsSourceDir = mkdtempSync(join(tmpdir(), 'anchor-links-docs-'));
+  writeFileSync(join(docsSourceDir, 'page.mdx'), 'See `javadoc:com.agentforge4j.core.workflow.Workflow` for details.\n');
+  const targetDir = join(siteDir, 'javadoc', 'next', 'agentforge4j.core', 'com', 'agentforge4j', 'core', 'workflow');
+  mkdirSync(targetDir, {recursive: true});
+  // The file exists, but genuinely has no id="someMethod" anchor — file-existence alone would pass.
+  writeFileSync(join(targetDir, 'Workflow.html'), '<html><body>no anchors here</body></html>');
+
+  const exitCodes = [];
+  verifyComposedJavadocLinks(siteDir, docsSourceDir, join(docsSourceDir, '..', 'versioned_docs'), (code) =>
+    exitCodes.push(code),
+  );
+  // No fragment was ever appended by resolveJavadocUrl, so this still passes today — this test
+  // documents/locks in that the checker reads resolved.url's own fragment, not the source text.
+  assert.deepEqual(exitCodes, []);
 });
 
 test('fails closed on a sitemap URL outside https://agentforge4j.org/', () => {

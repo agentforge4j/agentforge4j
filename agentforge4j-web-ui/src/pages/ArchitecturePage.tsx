@@ -12,7 +12,7 @@ export default function ArchitecturePage() {
         <p className="mt-2 max-w-2xl text-sm text-fg-muted">{ARCHITECTURE_COPY.moduleOverview.body}</p>
         <img
           src="/diagrams/readme-oss-module-overview.svg"
-          alt="Module dependency overview: Spring Boot Starter depends on Bootstrap, which depends on Runtime; Runtime depends on Config Loader and LLM API; Config Loader and Tools/MCP depend on Core; LLM API depends on Providers."
+          alt="Module dependency overview: Spring Boot Starter depends on Bootstrap, which depends on Runtime; Runtime depends on Config Loader and LLM API; Config Loader and Tools/MCP depend on Core; Provider implementations depend on the LLM API, not the reverse."
           className="mt-6 max-w-full rounded-lg border border-border bg-bg-elevated p-4"
         />
       </section>
