@@ -31,13 +31,24 @@
 //     reference/` reflects the right source).
 //
 // Run via `node scripts/regenerate-versioned-reference.mjs <version>` (after `npm run generate`).
+//
+// Replacement, not an in-place file-by-file overwrite: every page is generated into a scratch
+// staging directory first (a sibling of the version's own `reference/` inside its version
+// directory, so the final swap is a same-filesystem rename, not a cross-device copy). Only once
+// EVERY page has been generated and de-materialised without error is the existing `reference/`
+// subtree removed and the staged one renamed into its place. This is what makes the target mirror
+// the current generated inventory exactly (a renamed/deleted generated page cannot leave a stale
+// file or an empty stale directory behind) while also failing closed: any generation error leaves
+// the original `reference/` subtree completely untouched, never partially replaced.
 
-import {mkdirSync, readFileSync, writeFileSync} from 'node:fs';
+import {mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync} from 'node:fs';
 import {dirname, join} from 'node:path';
 import {dematerialize} from './dematerialize.mjs';
 import {loadSets, DEFAULT_VOCAB_DIR} from '../src/remark/vocab.mjs';
 import {includeAllowBases, DEFAULT_REPO_ROOT} from '../src/remark/include.mjs';
 import {DOCS_DIR, VERSIONED_DOCS, listFiles, pathExists, validateVersion} from './release-paths.mjs';
+
+const STAGING_DIR_PREFIX = '.regenerate-versioned-reference-tmp-';
 
 const REFERENCE_DIR = join(DOCS_DIR, 'reference');
 
@@ -73,29 +84,39 @@ export function regenerateVersionedReference(version, options = {}) {
 
   const vocabSets = loadSets(vocabDir);
   const allowBases = includeAllowBases(repoRoot);
+  const sourceRelPaths = listFiles(referenceDir).filter((rel) => rel.endsWith('.mdx') || rel.endsWith('.md'));
 
-  let written = 0;
-  for (const rel of listFiles(referenceDir)) {
-    if (!rel.endsWith('.mdx') && !rel.endsWith('.md')) {
-      continue;
+  const stagingDir = mkdtempSync(join(versionDir, STAGING_DIR_PREFIX));
+  try {
+    for (const rel of sourceRelPaths) {
+      const source = readFileSync(join(referenceDir, rel), 'utf8');
+      const out = dematerialize(source, {
+        version,
+        repoRoot,
+        allowBases,
+        vocabSets,
+        docLabel: rel,
+      });
+      const target = join(stagingDir, rel);
+      mkdirSync(dirname(target), {recursive: true});
+      writeFileSync(target, out, 'utf8');
     }
-    const source = readFileSync(join(referenceDir, rel), 'utf8');
-    const out = dematerialize(source, {
-      version,
-      repoRoot,
-      allowBases,
-      vocabSets,
-      docLabel: rel,
-    });
-    const target = join(targetReferenceDir, rel);
-    mkdirSync(dirname(target), {recursive: true});
-    writeFileSync(target, out, 'utf8');
-    written += 1;
+    // Every page succeeded — only now does the real target subtree get touched. `reference/` is
+    // removed and the fully-regenerated staging directory renamed into its place, so the target
+    // ends up holding EXACTLY the current generated inventory: no stale renamed/deleted page and
+    // no stale now-empty directory can survive, and nothing outside `reference/` in this version
+    // (or any other version) is ever touched.
+    rmSync(targetReferenceDir, {recursive: true, force: true});
+    renameSync(stagingDir, targetReferenceDir);
+  } catch (err) {
+    rmSync(stagingDir, {recursive: true, force: true});
+    throw err;
   }
   console.log(
-    `[regenerate-versioned-reference] regenerated ${written} reference page(s) for version '${version}' at ${targetReferenceDir}`,
+    `[regenerate-versioned-reference] regenerated ${sourceRelPaths.length} reference page(s) for version ` +
+      `'${version}' at ${targetReferenceDir}`,
   );
-  return written;
+  return sourceRelPaths.length;
 }
 
 // CLI entry.
