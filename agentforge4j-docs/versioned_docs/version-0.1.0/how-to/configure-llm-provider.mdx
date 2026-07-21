@@ -67,7 +67,8 @@ across providers and last-write-wins within a provider key.
 Without any code, the framework-agnostic path also reads configuration from environment
 variables and system properties. An environment variable `AGENTFORGE4J_LLM_OPENAI_API_KEY`
 is normalised to the property key `agentforge4j.llm.openai.api.key` (the `AGENTFORGE4J_`
-prefix is stripped, every `_` becomes `.`, and the result is lower-cased); a system property
+prefix is replaced with `agentforge4j.`, and the remainder has every `_` turned into `.` and
+is lower-cased); a system property
 must already be written in that dotted form. System properties win over environment
 variables when both set the same key.
 

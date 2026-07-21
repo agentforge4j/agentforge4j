@@ -13,8 +13,9 @@ sidebar_position: 3
 # Environment & system-property configuration
 
 The framework-agnostic bootstrap reads `agentforge4j.*` system properties and `AGENTFORGE4J_*`
-environment variables. Environment names have their prefix stripped and `_` replaced with `.`,
-lowercased — so an environment variable can only produce a dot-separated lowercase key and **cannot
+environment variables. Environment names have their `AGENTFORGE4J_` prefix replaced with
+`agentforge4j.`, then `_` in the remainder replaced with `.`, lowercased — so an environment
+variable can only produce a dot-separated lowercase key and **cannot
 produce a hyphen**; hyphenated keys are therefore system-property only. System properties win over
 environment variables on collision.
 

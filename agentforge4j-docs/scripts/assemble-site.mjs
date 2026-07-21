@@ -184,7 +184,7 @@ function collectDocFiles(dir) {
 
 /** `versioned_docs/version-0.1.0/...` -> `'0.1.0'`; anything under the live `docs/` tree -> `null`
  * (meaning the moving `next` surface), matching `javadocRemarkPlugin`'s own default. */
-function pinnedVersionOf(docsSourceDir, versionedDocsSourceDir, file) {
+function pinnedVersionOf(versionedDocsSourceDir, file) {
   if (!file.startsWith(versionedDocsSourceDir)) {
     return null;
   }
@@ -217,7 +217,7 @@ export function verifyComposedJavadocLinks(siteDir, docsSourceDir, versionedDocs
   let checked = 0;
   let failures = 0;
   for (const file of files) {
-    const version = pinnedVersionOf(docsSourceDir, versionedDocsSourceDir, file) || 'next';
+    const version = pinnedVersionOf(versionedDocsSourceDir, file) || 'next';
     const source = readFileSync(file, 'utf8');
     for (const {fqcn, line} of liveJavadocRefs(source)) {
       checked += 1;
@@ -302,7 +302,7 @@ export function verifyComposedAnchorLinks(siteDir, docsSourceDir, versionedDocsS
   let checked = 0;
   let failures = 0;
   for (const file of files) {
-    const version = pinnedVersionOf(docsSourceDir, versionedDocsSourceDir, file) || 'next';
+    const version = pinnedVersionOf(versionedDocsSourceDir, file) || 'next';
     const docsRoot = version === 'next' ? docsSourceDir : join(versionedDocsSourceDir, `version-${version}`);
     const source = readFileSync(file, 'utf8');
     for (const match of source.matchAll(ANCHOR_LINK_PATTERN)) {

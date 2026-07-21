@@ -32,7 +32,7 @@
 //
 // Run via `node scripts/regenerate-versioned-reference.mjs <version>` (after `npm run generate`).
 
-import {existsSync, mkdirSync, readFileSync, writeFileSync} from 'node:fs';
+import {mkdirSync, readFileSync, writeFileSync} from 'node:fs';
 import {dirname, join} from 'node:path';
 import {dematerialize} from './dematerialize.mjs';
 import {loadSets, DEFAULT_VOCAB_DIR} from '../src/remark/vocab.mjs';
