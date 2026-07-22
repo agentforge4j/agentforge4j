@@ -346,24 +346,44 @@ function readShippedWorkflowIds(repoRoot) {
  * `/catalogue` entry, flagged `aggregatesCatalogueWorkflows: true`) — everything that can change
  * what it visibly renders: `aggregateCatalogueSourceFiles` (seo-routes.json's top level —
  * build-catalogue-data.mjs's own projection/generation logic, and catalogueData.ts, the typed
- * adapter every render of the list goes through), the index file itself (captures addition,
- * removal, and reordering), and every currently-indexed workflow's own committed workflow.json
- * (captures a name/description edit on any shipped workflow, since the aggregate list renders
- * every one of them). Deliberately excludes the catalogue *manifest*
- * (agentforge4j-catalog.json — catalogVersion/min/maxAgentForge4jVersion/workflowSchemaVersion) and
- * the workflow JSON Schema/its Java version source: traced during this design, both gate what data
- * is *valid*, but neither field is ever rendered by CataloguePage.tsx, so a schema-only or
- * manifest-only change produces byte-identical rendered output and correctly contributes nothing
- * here. Also deliberately excludes `catalogueSourceFiles` (the catalogue-*detail*-page scope:
- * CatalogueDetailPage.tsx, catalogueSeo.ts, renderWorkflowSvg.ts) — CataloguePage.tsx's own real
- * imports are `catalogueData` and `CATALOGUE_COPY` only; none of the detail-page-only files are
- * genuine dependencies of the list page, so that scope is never blindly reused here. */
+ * adapter every render of the list goes through — both are *also* real dependencies of every
+ * catalogue detail page, hence appearing in `catalogueSourceFiles` too; this is a genuine shared
+ * dependency, not a copy-paste), the index file itself (captures addition, removal, and
+ * reordering), and every currently-indexed workflow's own committed workflow.json (captures a
+ * name/description edit on any shipped workflow, since the aggregate list renders every one of
+ * them). Deliberately excludes the catalogue *manifest* (agentforge4j-catalog.json —
+ * catalogVersion/min/maxAgentForge4jVersion/workflowSchemaVersion) and the workflow JSON
+ * Schema/its Java version source: traced during this design, both gate what data is *valid*, but
+ * neither field is ever rendered by CataloguePage.tsx, so a schema-only or manifest-only change
+ * produces byte-identical rendered output and correctly contributes nothing here. Also
+ * deliberately excludes the catalogue-*detail*-page-only files in `catalogueSourceFiles`
+ * (CatalogueDetailPage.tsx, catalogueSeo.ts, renderWorkflowSvg.ts, copy/catalogue.ts) —
+ * CataloguePage.tsx's own real imports are `catalogueData` and `CATALOGUE_COPY` only (the latter
+ * already lives in /catalogue's own `sourceFiles`); none of the remaining detail-page-only files
+ * are genuine dependencies of the list page, so that scope is never blindly reused wholesale. */
 function aggregateCatalogueDependencies(repoRoot, aggregateCatalogueSourceFiles) {
   return [
     ...aggregateCatalogueSourceFiles,
     SHIPPED_WORKFLOWS_INDEX_PATH,
     ...readShippedWorkflowIds(repoRoot).map((id) => workflowSourceFile(id)),
   ];
+}
+
+/** Every entry a route/scope *declares* must actually exist — a typo'd or stale sourceFiles path
+ * must fail the build loudly, not silently degrade to a missing/incomplete `<lastmod>` the way
+ * `gitLastModifiedDate`'s own "never invent" contract otherwise allows. That contract exists for
+ * routes that legitimately declare *no* dependency at all (an empty/absent `sourceFiles`, e.g. a
+ * fixture route with nothing to track) — it was never meant to also swallow a real declared entry
+ * that simply doesn't resolve, which is a configuration bug, not a legitimate "no data" case. */
+function assertDependencyFilesExist(repoRoot, relFiles, context) {
+  for (const relFile of relFiles) {
+    if (!existsSync(join(repoRoot, relFile))) {
+      throw new Error(
+        `build-seo: ${context} declares "${relFile}", which does not exist at ${join(repoRoot, relFile)} — ` +
+          'fix the typo or remove the stale entry',
+      );
+    }
+  }
 }
 
 function sitemapXml(entries) {
@@ -412,6 +432,13 @@ export function buildSeo({
   const catalogueData = existsSync(catalogueDataPath)
     ? JSON.parse(readFileSync(catalogueDataPath, 'utf8'))
     : { workflows: [] };
+
+  assertDependencyFilesExist(repoRoot, globalSourceFiles, 'globalSourceFiles');
+  assertDependencyFilesExist(repoRoot, catalogueSourceFiles, 'catalogueSourceFiles');
+  assertDependencyFilesExist(repoRoot, aggregateCatalogueSourceFiles, 'aggregateCatalogueSourceFiles');
+  for (const route of routes) {
+    assertDependencyFilesExist(repoRoot, route.sourceFiles ?? [], `route "${route.path}"'s sourceFiles`);
+  }
 
   const sitemapEntries = [];
   let shellsWritten = 0;

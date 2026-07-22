@@ -78,6 +78,32 @@ test('composes the _site layout: docs/, javadoc/next, javadoc/latest', () => {
   assert.ok(existsSync(join(siteDir, 'javadoc', 'latest', 'index.html')));
 });
 
+test('the full generated Javadoc tree — not only the overview page — receives javadoc-seo\'s canonical/OG/Twitter policy once composed', () => {
+  const {spaDir, buildDir, javadocDir, archiveDir, siteDir} = fixture();
+  // A real nested class page alongside the fixture's own overview index.html — mirrors a real
+  // `javadoc` (JDK 17) build's shape closely enough for javadoc-seo.mjs to recognise it.
+  mkdirSync(join(javadocDir, 'com', 'example'), {recursive: true});
+  writeFileSync(
+    join(javadocDir, 'com', 'example', 'Foo.html'),
+    '<!DOCTYPE HTML>\n<html lang="en">\n<head>\n<title>Foo</title>\n' +
+      '<meta name="description" content="declaration: package: com.example, class: Foo">\n</head>\n' +
+      '<body><h1 class="title">Class Foo</h1></body>\n</html>\n',
+  );
+  assembleSite({spaDir, buildDir, javadocDir, archiveDir, siteDir, customDomain: null});
+  const nested = readFileSync(join(siteDir, 'javadoc', 'next', 'com', 'example', 'Foo.html'), 'utf8');
+  assert.match(nested, /<link rel="canonical" href="https:\/\/agentforge4j\.org\/javadoc\/next\/com\/example\/Foo\.html">/);
+  assert.match(nested, /<meta property="og:title"/);
+  assert.match(nested, /<meta name="twitter:card" content="summary">/);
+  // Real generated body content must survive.
+  assert.match(nested, /<h1 class="title">Class Foo<\/h1>/);
+
+  // /javadoc/latest/ mirrors /javadoc/next/ when there are no released versions — its own copy of
+  // the same nested page must be processed too, independently (latest is a real, separately
+  // composed copy, not a symlink).
+  const latestNested = readFileSync(join(siteDir, 'javadoc', 'latest', 'com', 'example', 'Foo.html'), 'utf8');
+  assert.match(latestNested, /<link rel="canonical" href="https:\/\/agentforge4j\.org\/javadoc\/latest\/com\/example\/Foo\.html">/);
+});
+
 test('copies the SPA build to the site root, including its own index.html/404.html', () => {
   const {spaDir, buildDir, javadocDir, archiveDir, siteDir} = fixture();
   assembleSite({spaDir, buildDir, javadocDir, archiveDir, siteDir, customDomain: null});

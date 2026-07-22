@@ -7,7 +7,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -161,6 +161,10 @@ function setupCatalogueAggregateRepo(workflowIds, isoDateTime) {
   const routesContent = {
     siteUrl: 'https://agentforge4j.org',
     aggregateCatalogueSourceFiles: [AGGREGATE_GENERATOR_REL_PATH, AGGREGATE_ADAPTER_REL_PATH],
+    // Mirrors the real production seo-routes.json: build-catalogue-data.mjs and catalogueData.ts
+    // are genuine dependencies of every catalogue *detail* page too (they render through the same
+    // generator/adapter), not just the aggregate list.
+    catalogueSourceFiles: [AGGREGATE_GENERATOR_REL_PATH, AGGREGATE_ADAPTER_REL_PATH],
     routes: [
       {
         path: '/catalogue',
@@ -928,26 +932,52 @@ test('removing a shipped workflow updates /catalogue/\'s <lastmod> (deleting its
   );
 });
 
-test('a catalogue projection/generation logic change (build-catalogue-data.mjs) updates /catalogue/\'s <lastmod>', () => {
-  const { repoRoot, seoRoutesPath } = setupCatalogueAggregateRepo(['wf-a'], '2020-01-01T00:00:00');
-  const { distDir, catalogueDataPath } = distFixture();
+/** A catalogueDataPath fixture carrying one real workflow entry per id — for tests that need
+ * real catalogue *detail* pages to actually get generated (setupCatalogueAggregateRepo alone only
+ * wires up the aggregate list; its own catalogueDataPath default is empty). */
+function catalogueDataFixtureFor(workflowIds) {
+  const { distDir } = distFixture();
+  const catalogueDataPath = join(dirname(distDir), 'catalogue-data.json');
+  writeFileSync(
+    catalogueDataPath,
+    JSON.stringify({ workflows: workflowIds.map((id) => ({ id, name: `${id} name v1`, description: `${id} description v1` })) }),
+    'utf8',
+  );
+  return { distDir, catalogueDataPath };
+}
+
+test('a catalogue projection/generation logic change (build-catalogue-data.mjs) updates /catalogue/\'s <lastmod> AND every catalogue detail page\'s <lastmod> (it is a real rendering dependency of both)', () => {
+  const { repoRoot, seoRoutesPath } = setupCatalogueAggregateRepo(['wf-a', 'wf-b'], '2020-01-01T00:00:00');
+  const { distDir, catalogueDataPath } = catalogueDataFixtureFor(['wf-a', 'wf-b']);
   buildSeo({ distDir, seoRoutesPath, catalogueDataPath, repoRoot });
-  assert.equal(lastmodFor(readFileSync(join(distDir, 'sitemap.xml'), 'utf8'), 'https://agentforge4j.org/catalogue/'), '2020-01-01');
+  const before = readFileSync(join(distDir, 'sitemap.xml'), 'utf8');
+  assert.equal(lastmodFor(before, 'https://agentforge4j.org/catalogue/'), '2020-01-01');
+  assert.equal(lastmodFor(before, 'https://agentforge4j.org/catalogue/wf-a/'), '2020-01-01');
+  assert.equal(lastmodFor(before, 'https://agentforge4j.org/catalogue/wf-b/'), '2020-01-01');
 
   writeFilesAndCommit(repoRoot, { [AGGREGATE_GENERATOR_REL_PATH]: '// generator v2 — changed projection logic\n' }, '2020-06-01T00:00:00');
   buildSeo({ distDir, seoRoutesPath, catalogueDataPath, repoRoot });
-  assert.equal(lastmodFor(readFileSync(join(distDir, 'sitemap.xml'), 'utf8'), 'https://agentforge4j.org/catalogue/'), '2020-06-01');
+  const after = readFileSync(join(distDir, 'sitemap.xml'), 'utf8');
+  assert.equal(lastmodFor(after, 'https://agentforge4j.org/catalogue/'), '2020-06-01', 'the aggregate list must bump');
+  assert.equal(lastmodFor(after, 'https://agentforge4j.org/catalogue/wf-a/'), '2020-06-01', 'every detail page rendered through the generator must bump');
+  assert.equal(lastmodFor(after, 'https://agentforge4j.org/catalogue/wf-b/'), '2020-06-01', 'every detail page rendered through the generator must bump');
 });
 
-test('a catalogueData.ts (typed adapter) change updates /catalogue/\'s <lastmod>', () => {
-  const { repoRoot, seoRoutesPath } = setupCatalogueAggregateRepo(['wf-a'], '2020-01-01T00:00:00');
-  const { distDir, catalogueDataPath } = distFixture();
+test('a catalogueData.ts (typed adapter) change updates /catalogue/\'s <lastmod> AND every catalogue detail page\'s <lastmod> (it is a real rendering dependency of both)', () => {
+  const { repoRoot, seoRoutesPath } = setupCatalogueAggregateRepo(['wf-a', 'wf-b'], '2020-01-01T00:00:00');
+  const { distDir, catalogueDataPath } = catalogueDataFixtureFor(['wf-a', 'wf-b']);
   buildSeo({ distDir, seoRoutesPath, catalogueDataPath, repoRoot });
-  assert.equal(lastmodFor(readFileSync(join(distDir, 'sitemap.xml'), 'utf8'), 'https://agentforge4j.org/catalogue/'), '2020-01-01');
+  const before = readFileSync(join(distDir, 'sitemap.xml'), 'utf8');
+  assert.equal(lastmodFor(before, 'https://agentforge4j.org/catalogue/'), '2020-01-01');
+  assert.equal(lastmodFor(before, 'https://agentforge4j.org/catalogue/wf-a/'), '2020-01-01');
+  assert.equal(lastmodFor(before, 'https://agentforge4j.org/catalogue/wf-b/'), '2020-01-01');
 
   writeFilesAndCommit(repoRoot, { [AGGREGATE_ADAPTER_REL_PATH]: '// adapter v2\n' }, '2020-06-01T00:00:00');
   buildSeo({ distDir, seoRoutesPath, catalogueDataPath, repoRoot });
-  assert.equal(lastmodFor(readFileSync(join(distDir, 'sitemap.xml'), 'utf8'), 'https://agentforge4j.org/catalogue/'), '2020-06-01');
+  const after = readFileSync(join(distDir, 'sitemap.xml'), 'utf8');
+  assert.equal(lastmodFor(after, 'https://agentforge4j.org/catalogue/'), '2020-06-01', 'the aggregate list must bump');
+  assert.equal(lastmodFor(after, 'https://agentforge4j.org/catalogue/wf-a/'), '2020-06-01', 'every detail page rendered through the adapter must bump');
+  assert.equal(lastmodFor(after, 'https://agentforge4j.org/catalogue/wf-b/'), '2020-06-01', 'every detail page rendered through the adapter must bump');
 });
 
 test('an aggregate catalogue copy (copy/catalogue.ts, already in /catalogue\'s own sourceFiles) change updates /catalogue/\'s <lastmod>', () => {
@@ -1016,4 +1046,229 @@ test('catalogue-only changes (index, workflow files, aggregate deps) do not upda
     '2020-01-01',
     '/architecture/ shares none of /catalogue/\'s aggregate dependencies and must be completely unaffected',
   );
+});
+
+// --- Per-route copy-module dependencies (round 7 finding: /, /architecture, /api, /use,
+// /releases, /community, /security, /legal, /contact each render visible text from their own
+// copy/*.ts module — previously undeclared) ---------------------------------------------------
+
+// One test repo, nine routes, nine copy files — each round below bumps exactly one route's own
+// copy file and re-verifies EVERY route's current expected date, proving both "this route's copy
+// change updates it" and "no other route is affected" simultaneously, for every route in one
+// pass, rather than nine separate near-identical single-route setups.
+const COPY_ONLY_ROUTES = [
+  { path: '/', copyRelPath: 'agentforge4j-web-ui/src/copy/home.ts' },
+  { path: '/architecture', copyRelPath: 'agentforge4j-web-ui/src/copy/architecture.ts' },
+  { path: '/api', copyRelPath: 'agentforge4j-web-ui/src/copy/api.ts' },
+  { path: '/use', copyRelPath: 'agentforge4j-web-ui/src/copy/use.ts' },
+  { path: '/releases', copyRelPath: 'agentforge4j-web-ui/src/copy/releases.ts' },
+  { path: '/community', copyRelPath: 'agentforge4j-web-ui/src/copy/community.ts' },
+  { path: '/security', copyRelPath: 'agentforge4j-web-ui/src/copy/security.ts' },
+  { path: '/legal', copyRelPath: 'agentforge4j-web-ui/src/copy/legal.ts' },
+  { path: '/contact', copyRelPath: 'agentforge4j-web-ui/src/copy/contact.ts' },
+];
+
+test('copy-only isolation: changing one route\'s own copy module updates only that route\'s <lastmod> — proven for every static route with a copy dependency (/, /architecture, /api, /use, /releases, /community, /security, /legal, /contact), all pairs at once', () => {
+  const repoRoot = initTempGitRepo();
+  const routesContent = {
+    siteUrl: 'https://agentforge4j.org',
+    routes: COPY_ONLY_ROUTES.map(({ path, copyRelPath }) => ({
+      path,
+      title: `Title for ${path}`,
+      description: `Description for ${path}.`,
+      sourceFiles: [copyRelPath],
+    })),
+  };
+  const initialFiles = { [SEO_ROUTES_REL_PATH]: JSON.stringify(routesContent, null, 2) };
+  for (const { copyRelPath } of COPY_ONLY_ROUTES) {
+    initialFiles[copyRelPath] = '// copy v1\n';
+  }
+  writeFilesAndCommit(repoRoot, initialFiles, '2020-01-01T00:00:00');
+  const seoRoutesPath = join(repoRoot, SEO_ROUTES_REL_PATH);
+  const { distDir, catalogueDataPath } = distFixture();
+
+  const expected = Object.fromEntries(COPY_ONLY_ROUTES.map(({ path }) => [path, '2020-01-01']));
+  const assertAllRoutesMatch = () => {
+    buildSeo({ distDir, seoRoutesPath, catalogueDataPath, repoRoot });
+    const xml = readFileSync(join(distDir, 'sitemap.xml'), 'utf8');
+    for (const { path } of COPY_ONLY_ROUTES) {
+      assert.equal(lastmodFor(xml, `https://agentforge4j.org${withTrailingSlash(path)}`), expected[path], `route ${path} <lastmod> mismatch`);
+    }
+  };
+  assertAllRoutesMatch();
+
+  const bumpDates = ['2020-02-01', '2020-03-01', '2020-04-01', '2020-05-01', '2020-06-01', '2020-07-01', '2020-08-01', '2020-09-01', '2020-10-01'];
+  COPY_ONLY_ROUTES.forEach(({ path, copyRelPath }, index) => {
+    writeFilesAndCommit(repoRoot, { [copyRelPath]: `// copy v2 for ${path}\n` }, `${bumpDates[index]}T00:00:00`);
+    expected[path] = bumpDates[index];
+    assertAllRoutesMatch();
+  });
+});
+
+// --- Shared-component dependency (PagePlaceholder — used by /api only today) ------------------
+
+test('a shared component (PagePlaceholder.tsx) change updates every route that actually renders it (today: /api only), and no unrelated route', () => {
+  const repoRoot = initTempGitRepo();
+  const placeholderRelPath = 'agentforge4j-web-ui/src/components/PagePlaceholder.tsx';
+  const routesContent = {
+    siteUrl: 'https://agentforge4j.org',
+    routes: [
+      { path: '/api', title: 'API', description: 'API.', sourceFiles: [placeholderRelPath] },
+      { path: '/architecture', title: 'Architecture', description: 'Architecture.' },
+    ],
+  };
+  writeFilesAndCommit(
+    repoRoot,
+    { [SEO_ROUTES_REL_PATH]: JSON.stringify(routesContent, null, 2), [placeholderRelPath]: '// placeholder v1\n' },
+    '2020-01-01T00:00:00',
+  );
+  const seoRoutesPath = join(repoRoot, SEO_ROUTES_REL_PATH);
+  const { distDir, catalogueDataPath } = distFixture();
+  buildSeo({ distDir, seoRoutesPath, catalogueDataPath, repoRoot });
+  const before = readFileSync(join(distDir, 'sitemap.xml'), 'utf8');
+  assert.equal(lastmodFor(before, 'https://agentforge4j.org/api/'), '2020-01-01');
+  assert.equal(lastmodFor(before, 'https://agentforge4j.org/architecture/'), '2020-01-01');
+
+  writeFilesAndCommit(repoRoot, { [placeholderRelPath]: '// placeholder v2\n' }, '2020-06-01T00:00:00');
+  buildSeo({ distDir, seoRoutesPath, catalogueDataPath, repoRoot });
+  const after = readFileSync(join(distDir, 'sitemap.xml'), 'utf8');
+  assert.equal(lastmodFor(after, 'https://agentforge4j.org/api/'), '2020-06-01', '/api renders PagePlaceholder, so its <lastmod> must bump');
+  assert.equal(
+    lastmodFor(after, 'https://agentforge4j.org/architecture/'),
+    '2020-01-01',
+    '/architecture never renders PagePlaceholder, so it must be unaffected',
+  );
+});
+
+// --- Builder package/lockfile dependency (real repo — the declared range in package.json and the
+// exact resolved version pinned in package-lock.json can both change prerendered /builder/
+// output) -----------------------------------------------------------------------------------
+
+test('/builder\'s <lastmod> reflects package.json and package-lock.json (the workflow-builder package\'s declared range and pinned resolved version), alongside its own page/copy files', () => {
+  const repoRoot = join(REAL_MODULE_ROOT, '..');
+  const ownFiles = [
+    'agentforge4j-web-ui/src/pages/BuilderPage.tsx',
+    'agentforge4j-web-ui/src/copy/builder.ts',
+    'agentforge4j-web-ui/package.json',
+    'agentforge4j-web-ui/package-lock.json',
+  ];
+  const expectedNewest = newestGitLastModifiedDate(repoRoot, ownFiles);
+
+  const routes = {
+    siteUrl: 'https://agentforge4j.org',
+    routes: [{ path: '/builder', title: 'Builder', description: 'Builder.', sourceFiles: ownFiles }],
+  };
+  const { distDir, seoRoutesPath, catalogueDataPath } = fixture({ routes });
+  buildSeo({ distDir, seoRoutesPath, catalogueDataPath, repoRoot });
+  const xml = readFileSync(join(distDir, 'sitemap.xml'), 'utf8');
+  assert.equal(lastmodFor(xml, 'https://agentforge4j.org/builder/'), expectedNewest);
+});
+
+// --- Global shell affects every SPA sitemap route (static and catalogue alike) -----------------
+
+test('a globalSourceFiles change updates every SPA sitemap route — every static route and every catalogue workflow, all at once', () => {
+  const repoRoot = initTempGitRepo();
+  const globalRelPath = 'agentforge4j-web-ui/src/App.tsx';
+  const routesContent = {
+    siteUrl: 'https://agentforge4j.org',
+    globalSourceFiles: [globalRelPath],
+    routes: [
+      { path: '/', title: 'Home', description: 'Home.' },
+      { path: '/architecture', title: 'Architecture', description: 'Architecture.' },
+      { path: '/security', title: 'Security', description: 'Security.' },
+    ],
+  };
+  const files = {
+    [SEO_ROUTES_REL_PATH]: JSON.stringify(routesContent, null, 2),
+    [globalRelPath]: '// shell v1\n',
+    [SHIPPED_WORKFLOWS_INDEX_REL_PATH]: 'wf-a\n',
+    [shippedWorkflowRelPath('wf-a')]: JSON.stringify({ id: 'wf-a', name: 'wf-a', description: 'wf-a' }),
+  };
+  writeFilesAndCommit(repoRoot, files, '2020-01-01T00:00:00');
+  const seoRoutesPath = join(repoRoot, SEO_ROUTES_REL_PATH);
+  const { distDir } = distFixture();
+  const catalogueDataPath = join(dirname(distDir), 'catalogue-data.json');
+  writeFileSync(catalogueDataPath, JSON.stringify({ workflows: [{ id: 'wf-a', name: 'wf-a', description: 'wf-a' }] }), 'utf8');
+
+  const allUrls = [
+    'https://agentforge4j.org/',
+    'https://agentforge4j.org/architecture/',
+    'https://agentforge4j.org/security/',
+    'https://agentforge4j.org/catalogue/wf-a/',
+  ];
+  buildSeo({ distDir, seoRoutesPath, catalogueDataPath, repoRoot });
+  const before = readFileSync(join(distDir, 'sitemap.xml'), 'utf8');
+  for (const url of allUrls) {
+    assert.equal(lastmodFor(before, url), '2020-01-01');
+  }
+
+  writeFilesAndCommit(repoRoot, { [globalRelPath]: '// shell v2\n' }, '2020-06-01T00:00:00');
+  buildSeo({ distDir, seoRoutesPath, catalogueDataPath, repoRoot });
+  const after = readFileSync(join(distDir, 'sitemap.xml'), 'utf8');
+  for (const url of allUrls) {
+    assert.equal(lastmodFor(after, url), '2020-06-01', `${url} must reflect the global shell change`);
+  }
+});
+
+// --- Fail loudly on a declared-but-missing dependency (typo/stale entry) -----------------------
+
+test('fails loudly when a route declares a sourceFiles entry that does not exist (a typo or stale entry), rather than silently degrading its <lastmod>', () => {
+  const routes = {
+    siteUrl: 'https://agentforge4j.org',
+    routes: [{ path: '/', title: 'Home', description: 'Home.', sourceFiles: ['agentforge4j-web-ui/src/copy/this-file-does-not-exist.ts'] }],
+  };
+  const { distDir, seoRoutesPath, catalogueDataPath } = fixture({ routes });
+  assert.throws(
+    () => buildSeo({ distDir, seoRoutesPath, catalogueDataPath, repoRoot: join(REAL_MODULE_ROOT, '..') }),
+    /sourceFiles declares "agentforge4j-web-ui\/src\/copy\/this-file-does-not-exist\.ts", which does not exist/,
+  );
+});
+
+test('fails loudly when globalSourceFiles/catalogueSourceFiles/aggregateCatalogueSourceFiles declares a nonexistent entry', () => {
+  const repoRoot = join(REAL_MODULE_ROOT, '..');
+  for (const [key, badList] of [
+    ['globalSourceFiles', ['agentforge4j-web-ui/src/nope.ts']],
+    ['catalogueSourceFiles', ['agentforge4j-web-ui/src/nope.ts']],
+    ['aggregateCatalogueSourceFiles', ['agentforge4j-web-ui/src/nope.ts']],
+  ]) {
+    const routes = {
+      siteUrl: 'https://agentforge4j.org',
+      [key]: badList,
+      routes: [{ path: '/', title: 'Home', description: 'Home.' }],
+    };
+    const { distDir, seoRoutesPath, catalogueDataPath } = fixture({ routes });
+    assert.throws(
+      () => buildSeo({ distDir, seoRoutesPath, catalogueDataPath, repoRoot }),
+      new RegExp(`${key} declares "agentforge4j-web-ui/src/nope.ts"`.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')),
+      `expected ${key} to fail loudly on a nonexistent entry`,
+    );
+  }
+});
+
+// --- Completeness guard: every real copy module on disk is referenced by something in the real
+// seo-routes.json — catches a future page/copy addition that forgot to wire up its dependency
+// mapping (no AST/import parsing: a plain "is this real file referenced anywhere" check) --------
+
+test('completeness guard: every real file under agentforge4j-web-ui/src/copy/ is referenced by at least one entry in the real committed seo-routes.json (a new copy module with no route/scope wiring it up would fail here)', () => {
+  const copyDir = join(REAL_MODULE_ROOT, 'src', 'copy');
+  const copyFiles = readdirSync(copyDir).map((name) => `agentforge4j-web-ui/src/copy/${name}`);
+  assert.ok(copyFiles.length > 0, 'expected at least one real copy file to check');
+
+  const { globalSourceFiles, catalogueSourceFiles, aggregateCatalogueSourceFiles, routes } = JSON.parse(
+    readFileSync(join(REAL_MODULE_ROOT, 'src/config/seo-routes.json'), 'utf8'),
+  );
+  const declared = new Set([
+    ...globalSourceFiles,
+    ...catalogueSourceFiles,
+    ...aggregateCatalogueSourceFiles,
+    ...routes.flatMap((route) => route.sourceFiles ?? []),
+  ]);
+
+  for (const copyFile of copyFiles) {
+    assert.ok(
+      declared.has(copyFile),
+      `${copyFile} exists on disk but is not referenced anywhere in seo-routes.json — a change to it would silently ` +
+        'never bump any route\'s <lastmod>',
+    );
+  }
 });

@@ -118,13 +118,34 @@ export function startGhPagesEmulatingServer(distDir) {
   });
 }
 
-/** Extracts `{url, lastmod}` per `<url>` block, in document order — same simple regex approach as
+/** Extracts `{url, lastmodTags}` per `<url>` block, in document order — `lastmodTags` is every
+ * `<lastmod>` value found inside that block (0, 1, or more), so the caller can distinguish
+ * "missing" from "duplicate" rather than only ever seeing a single optional value silently
+ * collapse a malformed multi-tag block into "no lastmod at all" (the previous single-capture-group
+ * regex matched the whole `<url>` zero times when a second `<lastmod>` was present, quietly
+ * dropping that URL out of `entries` instead of failing on it). Same simple regex approach as
  * assemble-site.mjs's own extractSitemapLocs (both fragments are machine-generated, no CDATA/nested
  * namespaces, so a full XML parser buys nothing here). */
 function parseSitemap(xml) {
-  return [...xml.matchAll(/<url>\s*<loc>([^<]+)<\/loc>(?:\s*<lastmod>([^<]+)<\/lastmod>)?\s*<\/url>/g)].map(
-    ([, url, lastmod]) => ({ url, lastmod: lastmod ?? null }),
-  );
+  return [...xml.matchAll(/<url>([\s\S]*?)<\/url>/g)].map(([, block]) => {
+    const locMatch = /<loc>([^<]+)<\/loc>/.exec(block);
+    const lastmodTags = [...block.matchAll(/<lastmod>([^<]*)<\/lastmod>/g)].map((match) => match[1]);
+    return { url: locMatch ? locMatch[1] : null, lastmodTags };
+  });
+}
+
+/** A merely regex-shaped `YYYY-MM-DD` string can still name a calendar date that does not exist
+ * (`2026-02-31`, or a non-leap-year `2026-02-29`) — `Date`'s own UTC parsing normalizes overflow
+ * instead of rejecting it (`2026-02-31` silently becomes March 3rd), so the shape check alone is
+ * not enough. Re-serializing the parsed date and comparing it back against the original string
+ * catches exactly this: a real date round-trips unchanged; an overflowed one does not. No date
+ * library needed — `Date`'s own UTC (`Z`) parsing/formatting is unambiguous and TZ-independent. */
+function isRealCalendarDate(value) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    return false;
+  }
+  const date = new Date(`${value}T00:00:00.000Z`);
+  return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value;
 }
 
 function h1Count(html) {
@@ -175,6 +196,11 @@ export async function verifySeo({
   if (entries.length === 0) {
     throw new Error('verify-seo: sitemap.xml parsed to zero <url> entries — check the regex against the real file');
   }
+  for (const entry of entries) {
+    if (entry.url === null) {
+      throw new Error('verify-seo: a <url> block in dist/sitemap.xml has no <loc>');
+    }
+  }
   const urls = entries.map((entry) => entry.url);
   if (new Set(urls).size !== urls.length) {
     throw new Error('verify-seo: duplicate URL(s) found in the real dist/sitemap.xml');
@@ -201,10 +227,29 @@ export async function verifySeo({
       }
     }
 
-    for (const { url, lastmod } of entries) {
+    for (const { url, lastmodTags } of entries) {
       if (!url.startsWith(`${SITE_ORIGIN}/`)) {
         throw new Error(`verify-seo: sitemap URL outside ${SITE_ORIGIN}: ${url}`);
       }
+
+      // Every real SPA route's <lastmod> is now git-derived from at least its always-non-empty
+      // globalSourceFiles (see build-seo.mjs) — a production sitemap where any URL carries none at
+      // all is a genuine regression (e.g. globalSourceFiles emptied by mistake), not a legitimate
+      // state, and must fail the real build gate rather than silently pass through. This check is
+      // deliberately real-build-only: unit-level buildSeo() fixture tests are free to omit
+      // sourceFiles/git history for a synthetic route (see build-seo.test.mjs) — that allowance
+      // stops here, at the production verification gate.
+      if (lastmodTags.length === 0) {
+        throw new Error(`verify-seo: ${url} has no <lastmod> — every SPA sitemap URL must carry exactly one valid <lastmod>`);
+      }
+      if (lastmodTags.length > 1) {
+        throw new Error(`verify-seo: ${url} has ${lastmodTags.length} <lastmod> tags — expected exactly one`);
+      }
+      const [lastmod] = lastmodTags;
+      if (!isRealCalendarDate(lastmod)) {
+        throw new Error(`verify-seo: ${url} — <lastmod>${lastmod}</lastmod> is not a valid real calendar date (YYYY-MM-DD)`);
+      }
+
       const path = url.slice(SITE_ORIGIN.length);
       const response = await fetch(`${origin}${path}`, { redirect: 'manual' });
       if (response.status !== 200) {
@@ -220,10 +265,6 @@ export async function verifySeo({
       const count = h1Count(html);
       if (count !== 1) {
         throw new Error(`verify-seo: ${url} — expected exactly one <h1> in the raw served HTML, found ${count}`);
-      }
-
-      if (lastmod !== null && !/^\d{4}-\d{2}-\d{2}$/.test(lastmod)) {
-        throw new Error(`verify-seo: ${url} — <lastmod>${lastmod}</lastmod> is not a valid W3C date (YYYY-MM-DD)`);
       }
     }
 

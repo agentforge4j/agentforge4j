@@ -10,7 +10,9 @@
     "agentforge4j-web-ui/src/pages/CatalogueDetailPage.tsx",
     "agentforge4j-web-ui/src/lib/catalogueSeo.ts",
     "agentforge4j-web-ui/src/lib/renderWorkflowSvg.ts",
-    "agentforge4j-web-ui/src/copy/catalogue.ts"
+    "agentforge4j-web-ui/src/copy/catalogue.ts",
+    "agentforge4j-web-ui/src/lib/catalogueData.ts",
+    "agentforge4j-web-ui/scripts/build-catalogue-data.mjs"
   ],
   "aggregateCatalogueSourceFiles": [
     "agentforge4j-web-ui/scripts/build-catalogue-data.mjs",
@@ -21,7 +23,7 @@
       "path": "/",
       "title": "AgentForge4j — Governed AI Workflows for Java",
       "description": "AgentForge4j is an open-source Java framework for Java teams building their own governed AI workflows, with approvals, tools, and observability.",
-      "sourceFiles": ["agentforge4j-web-ui/src/pages/HomePage.tsx"],
+      "sourceFiles": ["agentforge4j-web-ui/src/pages/HomePage.tsx", "agentforge4j-web-ui/src/copy/home.ts"],
       "jsonLd": {
         "@context": "https://schema.org",
         "@graph": [
@@ -58,13 +60,17 @@
       "path": "/api",
       "title": "API Reference — AgentForge4j",
       "description": "Generated Javadoc for the AgentForge4j framework. Browse the latest stable or next (development) API reference.",
-      "sourceFiles": ["agentforge4j-web-ui/src/pages/ApiPage.tsx"]
+      "sourceFiles": [
+        "agentforge4j-web-ui/src/pages/ApiPage.tsx",
+        "agentforge4j-web-ui/src/copy/api.ts",
+        "agentforge4j-web-ui/src/components/PagePlaceholder.tsx"
+      ]
     },
     {
       "path": "/use",
       "title": "Get Started — AgentForge4j",
       "description": "Embed AgentForge4j in your own Java application — no server to install, no account to create. The bundled fake provider runs offline, no credentials needed.",
-      "sourceFiles": ["agentforge4j-web-ui/src/pages/UsePage.tsx"]
+      "sourceFiles": ["agentforge4j-web-ui/src/pages/UsePage.tsx", "agentforge4j-web-ui/src/copy/use.ts"]
     },
     {
       "path": "/catalogue",
@@ -80,25 +86,30 @@
       "path": "/builder",
       "title": "Workflow Builder — AgentForge4j",
       "description": "Visually import, edit, and export AgentForge4j workflow definitions in the browser.",
-      "sourceFiles": ["agentforge4j-web-ui/src/pages/BuilderPage.tsx"]
+      "sourceFiles": [
+        "agentforge4j-web-ui/src/pages/BuilderPage.tsx",
+        "agentforge4j-web-ui/src/copy/builder.ts",
+        "agentforge4j-web-ui/package.json",
+        "agentforge4j-web-ui/package-lock.json"
+      ]
     },
     {
       "path": "/architecture",
       "title": "Architecture — AgentForge4j",
       "description": "AgentForge4j is a set of layered Java modules — the core has no dependency on any specific LLM provider, with providers, tools, and configuration loading built as separate layers on top.",
-      "sourceFiles": ["agentforge4j-web-ui/src/pages/ArchitecturePage.tsx"]
+      "sourceFiles": ["agentforge4j-web-ui/src/pages/ArchitecturePage.tsx", "agentforge4j-web-ui/src/copy/architecture.ts"]
     },
     {
       "path": "/releases",
       "title": "Releases — AgentForge4j",
       "description": "AgentForge4j 0.1.0, the first public framework release, is published to Maven Central. Framework, shipped workflow catalog, and workflow builder are versioned independently.",
-      "sourceFiles": ["agentforge4j-web-ui/src/pages/ReleasesPage.tsx"]
+      "sourceFiles": ["agentforge4j-web-ui/src/pages/ReleasesPage.tsx", "agentforge4j-web-ui/src/copy/releases.ts"]
     },
     {
       "path": "/community",
       "title": "Community & Contributing — AgentForge4j",
       "description": "AgentForge4j is open source and welcomes contributions — bug reports, documentation improvements, and code.",
-      "sourceFiles": ["agentforge4j-web-ui/src/pages/CommunityPage.tsx"]
+      "sourceFiles": ["agentforge4j-web-ui/src/pages/CommunityPage.tsx", "agentforge4j-web-ui/src/copy/community.ts"]
     },
     {
       "path": "/contributing",
@@ -106,25 +117,25 @@
       "description": "AgentForge4j is open source and welcomes contributions — bug reports, documentation improvements, and code.",
       "canonicalPath": "/community",
       "sitemap": false,
-      "sourceFiles": ["agentforge4j-web-ui/src/pages/CommunityPage.tsx"]
+      "sourceFiles": ["agentforge4j-web-ui/src/pages/CommunityPage.tsx", "agentforge4j-web-ui/src/copy/community.ts"]
     },
     {
       "path": "/security",
       "title": "Security — AgentForge4j",
       "description": "How to report a security vulnerability in AgentForge4j, and the framework's default tool-policy and outbound-egress protections.",
-      "sourceFiles": ["agentforge4j-web-ui/src/pages/SecurityPage.tsx"]
+      "sourceFiles": ["agentforge4j-web-ui/src/pages/SecurityPage.tsx", "agentforge4j-web-ui/src/copy/security.ts"]
     },
     {
       "path": "/legal",
       "title": "Legal — AgentForge4j",
       "description": "Licence, privacy, accessibility, and trademark information for AgentForge4j and this website.",
-      "sourceFiles": ["agentforge4j-web-ui/src/pages/LegalPage.tsx"]
+      "sourceFiles": ["agentforge4j-web-ui/src/pages/LegalPage.tsx", "agentforge4j-web-ui/src/copy/legal.ts"]
     },
     {
       "path": "/contact",
       "title": "Contact — AgentForge4j",
       "description": "Contact addresses for AgentForge4j security reports, administration, and general enquiries.",
-      "sourceFiles": ["agentforge4j-web-ui/src/pages/ContactPage.tsx"]
+      "sourceFiles": ["agentforge4j-web-ui/src/pages/ContactPage.tsx", "agentforge4j-web-ui/src/copy/contact.ts"]
     }
   ]
 }

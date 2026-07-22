@@ -566,12 +566,13 @@ export function assembleSite({
 
   // 7. Javadoc SEO metadata (design decision, this pass — see javadoc-seo.mjs's own header for the
   //    full duplicate-content policy), applied only once the composed artifact is already verified
-  //    structurally complete: every surface's raw maven-javadoc-plugin overview page ships with no
-  //    canonical/lang/OG/Twitter and a generic description. Applied here against the composed
+  //    structurally complete: every generated page in every surface (overview, package summaries,
+  //    class pages, every generated index/tree/help page) ships with no canonical/consistent
+  //    lang/OG/Twitter and a generic or mechanical description. Applied here against the composed
   //    output (not build-javadoc.mjs itself) so it covers every surface — including already-tagged
   //    historical versions, whose own build-javadoc.mjs predates this fix — on every deploy.
-  const javadocSurfacesUpdated = applyJavadocSeo({siteDir, siteUrl, ogImage, releasedVersions});
-  console.log(`[assemble-site] applied Javadoc SEO metadata to ${javadocSurfacesUpdated} surface(s)`);
+  const javadocPagesUpdated = applyJavadocSeo({siteDir, siteUrl, ogImage, releasedVersions});
+  console.log(`[assemble-site] applied Javadoc SEO metadata to ${javadocPagesUpdated} page(s) across every surface`);
 
   scanComposedHtmlForForbiddenContent(siteDir, exit);
   verifyComposedJavadocLinks(siteDir, docsSourceDir, versionedDocsSourceDir, exit);
