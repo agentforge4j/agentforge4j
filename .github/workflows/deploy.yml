@@ -7,17 +7,16 @@ name: Deploy Docs
 # forward) and deploys it. Never runs on pull requests (previews are the build artifacts uploaded
 # by the Web UI and Docs workflows).
 #
-# MANUAL DISPATCH ONLY — deliberately fail-closed. GitHub Pages serves one site per custom domain,
-# and how this repository's /docs and /javadoc surfaces compose with the project website under
-# `agentforge4j.org` is not settled yet. Until it is, nothing may publish automatically: a deploy
-# happens only when a maintainer dispatches this workflow, and the artifact carries no CNAME unless
-# the repository variable DOCS_CUSTOM_DOMAIN is set (mapped below into the assemble step; see
-# scripts/assemble-site.mjs — an unset/empty variable resolves to no CNAME, the same as today). When
-# automatic publishing is enabled later, prefer an unfiltered `push: main` trigger — the generated
-# reference and the Javadoc surface depend on essentially the whole reactor, so any path filter
-# would let the published site go silently stale.
+# Deploys automatically on every push to `main` (no path filter — the generated reference and the
+# Javadoc surface depend on essentially the whole reactor, so any path filter would let the
+# published site go silently stale), and remains available via manual `workflow_dispatch` for
+# redeploys/recovery. The artifact carries no CNAME unless the repository variable
+# DOCS_CUSTOM_DOMAIN is set (mapped below into the assemble step; see scripts/assemble-site.mjs —
+# an unset/empty variable resolves to no CNAME, the same as today).
 
 on:
+  push:
+    branches: [main]
   workflow_dispatch:
 
 # Allow one concurrent deployment; do not cancel an in-progress deploy (Pages best practice).
