@@ -14,8 +14,9 @@ export default function UsePage() {
       </p>
       <p className="mt-2 max-w-2xl text-sm text-fg-muted">
         Version: <code className="rounded bg-bg-elevated px-1.5 py-0.5">{USE_COPY.version}</code>,
-        published to Maven Central — for example{' '}
-        <code className="rounded bg-bg-elevated px-1.5 py-0.5">{USE_COPY.primaryArtifactId}</code>.
+        published to Maven Central. The normal starting dependency is{' '}
+        <code className="rounded bg-bg-elevated px-1.5 py-0.5">{USE_COPY.primaryArtifactId}</code>,
+        which brings the appropriate framework layers in transitively.
       </p>
       <p className="mt-2 max-w-2xl text-sm text-fg-muted">
         See the{' '}
@@ -24,6 +25,9 @@ export default function UsePage() {
         </Link>{' '}
         page for what's shipped so far.
       </p>
+      <pre className="mt-4 max-w-2xl overflow-x-auto rounded-lg border border-border bg-bg-elevated p-4 text-xs text-fg">
+        <code>{`<dependency>\n  <groupId>${USE_COPY.groupId}</groupId>\n  <artifactId>${USE_COPY.primaryArtifactId}</artifactId>\n  <version>${USE_COPY.version}</version>\n</dependency>`}</code>
+      </pre>
 
       <h2 className="mt-10 text-lg font-semibold text-fg">What you need</h2>
       <ul className="mt-3 list-disc space-y-2 pl-5 text-sm text-fg">

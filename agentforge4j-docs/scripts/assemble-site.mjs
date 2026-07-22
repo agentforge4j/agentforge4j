@@ -29,10 +29,13 @@
 // Run via `node scripts/assemble-site.mjs` (usually from the deploy workflow).
 
 import {cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync} from 'node:fs';
-import {dirname, join, resolve} from 'node:path';
+import {basename, dirname, join, relative, resolve, sep} from 'node:path';
 import {fileURLToPath} from 'node:url';
+import matter from 'gray-matter';
 import {JAVADOC_VERSIONS_OUT, javadocBuildVersions} from './build-javadoc-versions.mjs';
 import {ARCHIVE_ROOT} from './archive-transition.mjs';
+import {resolveJavadocUrl} from '../src/remark/javadoc.mjs';
+import {liveJavadocRefs} from './lint-javadoc-links.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const MODULE_ROOT = resolve(here, '..');
@@ -79,11 +82,18 @@ function requireDir(path, what, hint) {
 // existed and every copy step "succeeded" but the composed result is still wrong for some reason
 // requireDir cannot see (e.g. a future refactor that copies from the wrong source path, or a build
 // step that wrote a truncated/zero-byte file without itself erroring).
-function verifyComposedArtifact(siteDir, exit) {
+function verifyComposedArtifact(siteDir, releasedVersions, exit) {
+  // /javadoc/latest/ and one /javadoc/<v>/ per released version are real, separately-built copy
+  // targets (steps 3 above) — a version whose Javadoc build silently produced an empty directory
+  // (a real defect this exact check caught locally: a Windows-only Maven invocation failure in
+  // `build-javadoc-versions.mjs` left `javadoc/0.1.0/` an empty, `existsSync`-true directory,
+  // which `requireDir` cannot see as wrong) must fail the same way a missing entry does.
   for (const entry of [
     join(siteDir, 'index.html'),
     join(siteDir, 'docs', 'index.html'),
     join(siteDir, 'javadoc', 'next', 'index.html'),
+    join(siteDir, 'javadoc', 'latest', 'index.html'),
+    ...releasedVersions.map((version) => join(siteDir, 'javadoc', version, 'index.html')),
     join(siteDir, 'sitemap.xml'),
     join(siteDir, 'robots.txt'),
   ]) {
@@ -97,6 +107,231 @@ function verifyComposedArtifact(siteDir, exit) {
       exit(1);
     }
   }
+}
+
+// Content defects that must never reach the composed public artifact. Each was a real bug found
+// on the live site: exposed, unparsed admonition directive syntax (a pre-directive-syntax `:::note
+// Title` form MDX3 does not recognise, so it renders as literal text instead of a callout), and raw
+// Javadoc block tags leaking into generated reference prose. Checked against every composed HTML
+// file, not just the authored MDX source, so the gate fails on the actual shipped defect, not a
+// proxy for it.
+const FORBIDDEN_HTML_PATTERNS = [
+  {name: 'exposed admonition directive syntax (:::note/:::tip/:::warning/:::danger/:::info/:::caution)', pattern: /:::(?:note|tip|warning|danger|info|caution)\b/},
+  {name: 'a standalone, unparsed admonition closing marker (:::)', pattern: /(?<![:\w]):::(?![:\w])/},
+  {name: 'a raw Javadoc {@code} tag', pattern: /\{@code\b/},
+  {name: 'a raw Javadoc {@link} tag', pattern: /\{@link\b/},
+  {name: 'a raw Javadoc {@linkplain} tag', pattern: /\{@linkplain\b/},
+  {name: 'a /docs/javadoc/ link (the composed artifact mounts Javadoc at /javadoc/, not /docs/javadoc/)', pattern: /(?:href|src)="\/docs\/javadoc\//},
+  {name: 'stale "generator is wired in a later phase" placeholder copy', pattern: /wired in a later phase/i},
+];
+
+function collectHtmlFiles(dir) {
+  const out = [];
+  for (const entry of readdirSync(dir, {withFileTypes: true})) {
+    const full = join(dir, entry.name);
+    if (entry.isDirectory()) {
+      out.push(...collectHtmlFiles(full));
+    } else if (entry.name.endsWith('.html')) {
+      out.push(full);
+    }
+  }
+  return out;
+}
+
+/**
+ * Scan every HTML file in the composed artifact for the forbidden content patterns above. Runs
+ * against the final composed output, the same defense-in-depth philosophy as
+ * `verifyComposedArtifact`: a page can be individually well-formed in its own module's build and
+ * still ship a real defect once actually composed (as the admonition and Javadoc-tag bugs did).
+ */
+export function scanComposedHtmlForForbiddenContent(siteDir, exit = process.exit) {
+  const files = collectHtmlFiles(siteDir);
+  let violations = 0;
+  for (const file of files) {
+    const html = readFileSync(file, 'utf8');
+    for (const {name, pattern} of FORBIDDEN_HTML_PATTERNS) {
+      if (pattern.test(html)) {
+        console.error(`[assemble-site] composed artifact contains ${name}: ${file}`);
+        violations += 1;
+      }
+    }
+  }
+  if (violations > 0) {
+    console.error(`[assemble-site] ${violations} forbidden-content violation(s) across ${files.length} composed HTML file(s).`);
+    exit(1);
+    return;
+  }
+  console.log(`[assemble-site] scanned ${files.length} composed HTML file(s) for forbidden content — clean.`);
+}
+
+const DOC_EXTENSIONS = ['.md', '.mdx'];
+
+function collectDocFiles(dir) {
+  if (!dir || !existsSync(dir)) {
+    return [];
+  }
+  const out = [];
+  for (const entry of readdirSync(dir, {withFileTypes: true})) {
+    const full = join(dir, entry.name);
+    if (entry.isDirectory()) {
+      out.push(...collectDocFiles(full));
+    } else if (DOC_EXTENSIONS.some((ext) => entry.name.endsWith(ext))) {
+      out.push(full);
+    }
+  }
+  return out;
+}
+
+/** `versioned_docs/version-0.1.0/...` -> `'0.1.0'`; anything under the live `docs/` tree -> `null`
+ * (meaning the moving `next` surface), matching `javadocRemarkPlugin`'s own default. */
+function pinnedVersionOf(versionedDocsSourceDir, file) {
+  if (!file.startsWith(versionedDocsSourceDir)) {
+    return null;
+  }
+  const rel = file.slice(versionedDocsSourceDir.length + 1);
+  const match = /^version-([^/\\]+)[/\\]/.exec(rel.split('\\').join('/'));
+  return match ? match[1] : null;
+}
+
+/**
+ * Re-resolves every live `javadoc:<fqcn>` reference across both the live docs source and every
+ * versioned snapshot, then asserts the target it resolves to actually exists in THIS composed
+ * artifact (not just the raw `agentforge4j-docs-javadoc` build output `lint-javadoc-links.mjs`
+ * checks against, and not just the live `docs/` tree that gate scans — a version-pinned reference
+ * inside `versioned_docs/` resolves to `/javadoc/<version>/...`, which only the composed artifact,
+ * with every version's Javadoc surface actually copied in, can prove exists).
+ */
+/** True if `html` contains a real element with this exact anchor id — used to verify a URL fragment
+ *  resolves to something real on the target page, not just that the page itself exists. Matches
+ *  `id="anchor"`, `id='anchor'`, AND the unquoted `id=anchor` form: confirmed against a real
+ *  production Docusaurus build that its minifier drops attribute quotes whenever the value is a
+ *  safe unquoted-HTML5 token (which every heading-slug id always is) — a naive quoted-only check
+ *  would false-positive-fail on every real page in a minified build. */
+function htmlHasAnchorId(html, anchor) {
+  const escaped = anchor.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp(`id=["']?${escaped}(?=["'\\s/>])`).test(html);
+}
+
+export function verifyComposedJavadocLinks(siteDir, docsSourceDir, versionedDocsSourceDir, exit = process.exit) {
+  const files = [...collectDocFiles(docsSourceDir), ...collectDocFiles(versionedDocsSourceDir)];
+  let checked = 0;
+  let failures = 0;
+  for (const file of files) {
+    const version = pinnedVersionOf(versionedDocsSourceDir, file) || 'next';
+    const source = readFileSync(file, 'utf8');
+    for (const {fqcn, line} of liveJavadocRefs(source)) {
+      checked += 1;
+      let resolved;
+      try {
+        resolved = resolveJavadocUrl(fqcn, version);
+      } catch (err) {
+        console.error(`[assemble-site] ${file}:${line} — ${err.message}`);
+        failures += 1;
+        continue;
+      }
+      // The role never emits a fragment today, but resolve one correctly if it ever does — a
+      // fragment must resolve to a real anchor on the target page, not just an existing file.
+      const [urlNoFragment, fragment] = resolved.url.split('#');
+      const prefix = 'pathname:///';
+      const relTarget = urlNoFragment.startsWith(prefix) ? urlNoFragment.slice(prefix.length) : urlNoFragment;
+      const targetPath = join(siteDir, ...relTarget.split('/'));
+      if (!existsSync(targetPath)) {
+        console.error(
+          `[assemble-site] ${file}:${line} — javadoc:${fqcn} resolves to a target missing from the composed artifact: ${targetPath}`,
+        );
+        failures += 1;
+        continue;
+      }
+      if (fragment && !htmlHasAnchorId(readFileSync(targetPath, 'utf8'), fragment)) {
+        console.error(
+          `[assemble-site] ${file}:${line} — javadoc:${fqcn} resolves to ${targetPath}, but anchor '#${fragment}' does not exist there`,
+        );
+        failures += 1;
+      }
+    }
+  }
+  if (failures > 0) {
+    console.error(`[assemble-site] ${failures} dead javadoc: reference(s) against the composed artifact, out of ${checked} checked.`);
+    exit(1);
+    return;
+  }
+  console.log(`[assemble-site] verified ${checked} javadoc: reference(s) against the composed artifact — all present.`);
+}
+
+/** Reads a doc file's frontmatter `id` (via gray-matter), or `null` if unset. */
+function frontmatterId(filePath) {
+  const {data} = matter(readFileSync(filePath, 'utf8'));
+  return typeof data.id === 'string' ? data.id : null;
+}
+
+/**
+ * The composed HTML page a doc source file builds to, e.g.
+ * `docs/reference/schemas/workflow.mdx` -> `<siteDir>/docs/next/reference/schemas/reference-schema-workflow/index.html`.
+ *
+ * Empirically grounded against a real build of this exact site (not assumed): Docusaurus uses an
+ * explicit frontmatter `id` as the route's LAST segment, replacing the file's own basename, while
+ * the containing directory still follows the file's location on disk; `index.md(x)` maps to its own
+ * directory regardless of `id`; a page with no explicit `id` uses its file path unchanged. This
+ * mirrors every one of `generate-references.mjs`'s own generated pages (each sets an explicit,
+ * globally-unique `id: reference-<kind>-<name>`) and every hand-authored page (none set `id`).
+ */
+function composedHtmlPathFor(fileAbsPath, docsRootAbsPath, siteDir, versionSegment) {
+  const relFromRoot = relative(docsRootAbsPath, fileAbsPath).split(sep).join('/');
+  const relDir = dirname(relFromRoot) === '.' ? '' : dirname(relFromRoot);
+  const base = basename(fileAbsPath).replace(/\.mdx?$/, '');
+  const slugSegments = base === 'index' ? [] : [frontmatterId(fileAbsPath) || base];
+  return join(siteDir, 'docs', versionSegment, ...relDir.split('/').filter(Boolean), ...slugSegments, 'index.html');
+}
+
+// Matches an in-repo relative markdown link carrying a URL fragment: either a same-page anchor
+// `(#anchor)`, or a relative-file-plus-anchor `(./file.mdx#anchor)` / `(../dir/file.mdx#anchor)`.
+// Deliberately excludes absolute/external links (http://, pathname://, mailto:) — those are handled
+// by the javadoc-specific checker above, or are genuinely external and out of scope here.
+const ANCHOR_LINK_PATTERN = /\]\((\.{1,2}\/[.\w/-]+\.mdx)?#([a-zA-Z0-9_-]+)\)/g;
+
+/**
+ * Verifies every in-repo relative markdown link carrying a URL fragment (the schema/config
+ * reference cross-links `generate-references.mjs` emits, e.g. `[StepDefinition](./workflow.mdx#stepdefinition)`)
+ * resolves to a real anchor on the real composed page — not just that the target FILE exists (a
+ * page can exist and still not carry the specific heading id a stale cross-link expects, exactly
+ * the class of defect a same-file-only `refName()` produced before it was fixed to be cross-file-
+ * and self-`$ref`-aware).
+ */
+export function verifyComposedAnchorLinks(siteDir, docsSourceDir, versionedDocsSourceDir, exit = process.exit) {
+  const files = [...collectDocFiles(docsSourceDir), ...collectDocFiles(versionedDocsSourceDir)];
+  let checked = 0;
+  let failures = 0;
+  for (const file of files) {
+    const version = pinnedVersionOf(versionedDocsSourceDir, file) || 'next';
+    const docsRoot = version === 'next' ? docsSourceDir : join(versionedDocsSourceDir, `version-${version}`);
+    const source = readFileSync(file, 'utf8');
+    for (const match of source.matchAll(ANCHOR_LINK_PATTERN)) {
+      const [, relFilePart, anchor] = match;
+      checked += 1;
+      const targetFile = relFilePart ? resolve(dirname(file), relFilePart) : file;
+      if (!existsSync(targetFile)) {
+        console.error(`[assemble-site] ${file} — anchor link to '#${anchor}' targets a source file that does not exist: ${targetFile}`);
+        failures += 1;
+        continue;
+      }
+      const htmlPath = composedHtmlPathFor(targetFile, docsRoot, siteDir, version);
+      if (!existsSync(htmlPath)) {
+        console.error(`[assemble-site] ${file} — anchor link target page missing from the composed artifact: ${htmlPath}`);
+        failures += 1;
+        continue;
+      }
+      if (!htmlHasAnchorId(readFileSync(htmlPath, 'utf8'), anchor)) {
+        console.error(`[assemble-site] ${file} — anchor '#${anchor}' not found on the composed page: ${htmlPath}`);
+        failures += 1;
+      }
+    }
+  }
+  if (failures > 0) {
+    console.error(`[assemble-site] ${failures} broken anchor link(s) against the composed artifact, out of ${checked} checked.`);
+    exit(1);
+    return;
+  }
+  console.log(`[assemble-site] verified ${checked} in-page anchor link(s) against the composed artifact — all present.`);
 }
 
 const SITEMAP_URL_PREFIX = 'https://agentforge4j.org/';
@@ -224,10 +459,13 @@ function writeRedirectStubs(siteDir, manifestPath, exit = process.exit) {
  *
  * @param {{spaDir: string, buildDir: string, javadocDir: string, javadocVersionsDir?: string,
  *          releasedVersions?: string[], archiveDir: string, siteDir: string,
+ *          docsSourceDir?: string, versionedDocsSourceDir?: string,
  *          customDomain: string|null,
  *          exit?: (code: number) => void}} options `exit` is an injectable seam for the
  *        redirect-stub collision guard and the composed-output verification (tests; default
- *        `process.exit`).
+ *        `process.exit`). `docsSourceDir`/`versionedDocsSourceDir` are undefined by default (the
+ *        composed-Javadoc-link check is then a no-op over zero files) — `main()` below passes this
+ *        module's real `docs/`/`versioned_docs/`; fixture-based tests need not supply them.
  */
 export function assembleSite({
   spaDir,
@@ -237,6 +475,8 @@ export function assembleSite({
   releasedVersions = [],
   archiveDir,
   siteDir,
+  docsSourceDir,
+  versionedDocsSourceDir,
   customDomain,
   exit = process.exit,
 }) {
@@ -309,7 +549,10 @@ export function assembleSite({
   //    the composed artifact serves at /sitemap.xml.
   mergeSitemaps(siteDir, exit);
 
-  verifyComposedArtifact(siteDir, exit);
+  verifyComposedArtifact(siteDir, releasedVersions, exit);
+  scanComposedHtmlForForbiddenContent(siteDir, exit);
+  verifyComposedJavadocLinks(siteDir, docsSourceDir, versionedDocsSourceDir, exit);
+  verifyComposedAnchorLinks(siteDir, docsSourceDir, versionedDocsSourceDir, exit);
 
   console.log(`[assemble-site] composed ${siteDir}: SPA root, /docs, /javadoc/{next,latest}`);
 }
@@ -323,6 +566,8 @@ function main() {
     releasedVersions: JAVADOC_VERSIONS_TO_PUBLISH,
     archiveDir: ARCHIVE_ROOT,
     siteDir: SITE_DIR,
+    docsSourceDir: join(MODULE_ROOT, 'docs'),
+    versionedDocsSourceDir: join(MODULE_ROOT, 'versioned_docs'),
     customDomain: CUSTOM_DOMAIN,
   });
 }

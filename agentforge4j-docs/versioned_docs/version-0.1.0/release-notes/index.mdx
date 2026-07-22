@@ -7,7 +7,64 @@ sidebar_position: 1
 
 # Release notes
 
-:::note Generated from the changelog
-Per-version release notes are generated from the project changelog. The generator is wired
-in a later phase; this page is the landing point for that generated content.
-:::
+## Framework 0.1.0 — 2026-07-19
+
+AgentForge4j's first public open-source release: an embeddable Java framework for governed
+AI workflows. Workflows are defined in external configuration (JSON + Markdown), never
+hardcoded, and the runtime executes that definition faithfully.
+
+### Highlights
+
+- **Workflow engine and runtime** — a domain model (`WorkflowDefinition`, `AgentDefinition`,
+  `StepDefinition`) driving explicit step behaviours (AGENT, SPAR, WORKFLOW, INPUT, RESOURCE,
+  BRANCH, FAIL, RETRY_PREVIOUS, VALIDATE, ASSIGN_CONTEXT, AGGREGATE) through a structured,
+  replayable event log.
+- **Provider-independent model abstraction** — a `ModelTier` concept (LITE, STANDARD,
+  POWERFUL) plus ten `ServiceLoader`-discovered LLM providers: OpenAI, Anthropic Claude,
+  Google Gemini, Mistral, Ollama, vLLM, AWS Bedrock, Azure OpenAI, an OpenAI-compatible
+  generic client, and a deterministic fake provider for offline development and testing.
+- **Structured tool execution** — tools are invoked through a typed command and a
+  `ToolProvider` SPI. Ships an HTTP tool provider and Model Context Protocol (MCP) client
+  integration, both governed by the same policy layer.
+- **Human-in-the-loop gates** — first-class approval, review, and input gates pause a run and
+  resume it on a captured decision; no run advances past a gate silently.
+- **Governed by default** — a fail-closed default `ToolPolicy`; an outbound egress guard that
+  rejects private, loopback, link-local, and cloud-metadata targets; a reserved internal
+  context namespace no LLM-emitted command can write; and hard, atomically-enforced step retry
+  ceilings.
+- **A shipped workflow catalog** — the Workflow Execution Estimator and Agent Creator
+  workflows, plus 13 runnable examples across framework assembly, Spring Boot, HTTP/MCP
+  tools, and each workflow-language feature.
+- **Spring Boot integration** and a **companion visual Workflow Builder**
+  (`@agentforge4j/workflow-builder-react`), released and versioned independently on npm.
+
+### Known limitations
+
+- The `COLLECTION` step behaviour is not available in this release — the schema rejects a
+  `COLLECTION` step type and the runtime fails the build closed; the full behaviour is planned
+  for a 0.2.x release.
+- Pre-1.0: breaking changes to APIs, SPIs, and workflow contracts may occur in any 0.x minor
+  release, always listed in that release's own notes.
+
+### Breaking changes
+
+None. This is the first public release.
+
+### Compatibility
+
+Java 17 baseline. Workflow `schemaVersion`: `1`.
+
+### Coordinates
+
+`org.agentforge4j:<artifactId>:0.1.0` on Maven Central — see [Get started](../get-started/quick-start.mdx)
+for how to add a dependency. The shipped workflow catalog and the Workflow Builder release
+independently, on their own tracks.
+
+### Support
+
+Per the pre-1.0 support policy, this is the only supported minor of this track until the next
+minor ships.
+
+Full details: the framework's
+[CHANGELOG.md](https://github.com/agentforge4j/agentforge4j/blob/main/CHANGELOG.md) and the
+[framework-v0.1.0 GitHub release](https://github.com/agentforge4j/agentforge4j/releases/tag/framework-v0.1.0).

@@ -1,7 +1,7 @@
 ---
 id: index
 title: Why AgentForge4j
-description: An embeddable Java framework for building agentic LLM workflows, with pluggable providers, tools, and file sinks.
+description: An embeddable Java framework for governed AI workflows, with explicit lifecycle control, approvals, retries, tools, and observability.
 slug: /
 kind: doc
 audience: evaluating
@@ -11,10 +11,11 @@ sidebar_position: 0
 
 # Why AgentForge4j
 
-AgentForge4j is an embeddable Java framework for building agentic workflows on top of
-large language models. Workflows are declared as data — JSON definitions validated
-against published schemas — and executed by a runtime that coordinates LLM calls,
-tool invocations, human input, and file output.
+AgentForge4j is an embeddable Java framework for Java teams building their own governed
+AI workflows on top of large language models. Workflows are declared as data — JSON
+definitions validated against published schemas — and executed by a runtime that follows
+that definition faithfully: explicit steps, human approval and review gates, retries,
+structured tool invocations, and a replayable event log for observability.
 
 It is a framework, not a product: you embed it in your own application. There is no
 required hosting, account, or service — providers, tools, and file sinks are pluggable
@@ -25,10 +26,14 @@ applications that use Spring.
 
 - **Declarative workflows.** Steps, behaviours, and transitions described in JSON and
   validated against the published schemas before they run.
-- **Pluggable LLM providers.** Multiple providers are discovered at runtime through a
-  `ServiceLoader` SPI; add or swap providers without touching workflow definitions.
-- **Tools and file output.** Workflows can invoke tools and write generated artifacts
-  through configurable sinks.
+- **Explicit lifecycle control.** Human approval, review, and input gates pause a run for
+  a real decision exactly where the workflow author placed one; step-level retries are
+  enforced as hard, atomic ceilings, not best-effort.
+- **Observability.** Every run emits a structured, replayable event log, so what a
+  workflow did — and why — stays inspectable after the fact.
+- **Pluggable LLM providers and integrations.** Multiple providers are discovered at
+  runtime through a `ServiceLoader` SPI; add or swap providers, tools, and integrations
+  without touching workflow definitions.
 - **Two integration styles.** A framework-agnostic bootstrap builder, or a Spring Boot
   starter with configuration properties.
 

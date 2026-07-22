@@ -4,22 +4,22 @@
     {
       "path": "/",
       "title": "AgentForge4j — Governed AI Workflows for Java",
-      "description": "AgentForge4j is an open-source Java framework for building governed AI workflows with approvals, lifecycle control, observability, tools, and provider-independent model integration."
+      "description": "AgentForge4j is an open-source Java framework for Java teams building their own governed AI workflows, with approvals, tools, and observability."
     },
     {
       "path": "/api",
       "title": "API Reference — AgentForge4j",
-      "description": "Generated Javadoc for the AgentForge4j framework, published alongside every build. Browse the latest stable or next (development) API reference."
+      "description": "Generated Javadoc for the AgentForge4j framework. Browse the latest stable or next (development) API reference."
     },
     {
       "path": "/use",
       "title": "Get Started — AgentForge4j",
-      "description": "Embed AgentForge4j in your own Java application — no server to install, no account to create. Requires Java 17 or later and your own LLM provider credentials."
+      "description": "Embed AgentForge4j in your own Java application — no server to install, no account to create. The bundled fake provider runs offline, no credentials needed."
     },
     {
       "path": "/catalogue",
       "title": "Workflow Catalogue — AgentForge4j",
-      "description": "Shipped, ready-to-run AgentForge4j workflows from the agentforge4j-workflows-catalog module."
+      "description": "Browse the shipped, ready-to-run workflows published in the AgentForge4j Workflow Catalog."
     },
     {
       "path": "/builder",

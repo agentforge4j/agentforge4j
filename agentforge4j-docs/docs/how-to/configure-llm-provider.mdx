@@ -12,7 +12,7 @@ sidebar_position: 1
 Goal-oriented guide for wiring up an LLM provider. It assumes you already have
 AgentForge4j on your classpath (see the [Quick start](../get-started/quick-start.mdx)).
 
-:::note Authoritative lists
+:::note[Authoritative lists]
 The configuration keys and provider names are generated from source — see the
 [Configuration reference](../reference/config/index.mdx) and [Provider support](../reference/providers/index.mdx)
 for the authoritative lists.
@@ -24,9 +24,82 @@ Providers are discovered at runtime through a service-provider interface. The se
 supported providers and whether each requires an API key is listed on the
 [Provider support](../reference/providers/index.mdx) page.
 
+:::note[Trying it out first]
+The bundled `fake` provider runs entirely offline and needs no credentials — it is the
+provider the [Quick start](../get-started/quick-start.mdx) example uses. It is not one of
+the selectable providers below: it must be wired programmatically (see
+[Bootstrap builder configuration](#bootstrap-builder-configuration)), or, under Spring Boot,
+enabled explicitly with `agentforge4j.llm.fake.enabled=true`. A real provider normally
+needs its own credentials once you configure one.
+:::
+
 ## Supplying configuration
 
 AgentForge4j accepts configuration through more than one surface — the framework-agnostic
 bootstrap builder, environment variables and system properties, and (when you use the
 Spring Boot starter) Spring configuration properties. All surfaces are documented in the
-[Configuration reference](../reference/config/index.mdx).
+[Configuration reference](../reference/config/index.mdx); this section shows one concrete
+provider (OpenAI) configured through each.
+
+### Bootstrap builder configuration
+
+Framework-agnostic applications configure a provider programmatically through
+`AgentForge4jBootstrap`'s builder:
+
+```java
+AgentForge4j runtime = AgentForge4jBootstrap.defaults()
+    .withLlmProvider(
+        LlmProviderConfig.openai()
+            .defaults()
+            .apiKey("sk-...")
+            .build())
+    .build();
+```
+
+`LlmProviderConfig` ships a static factory with a sensible base URL for each bundled
+provider (`openai()`, `claude()`, `gemini()`, `mistral()`, `ollama()`, `vllm()`), plus three
+deployment-specific factories that need their own base URL supplied
+(`azureOpenAi()`, `openAiCompatible()`, `bedrock()`). `withLlmProvider(...)` is additive
+across providers and last-write-wins within a provider key.
+
+### Environment variables and system properties
+
+Without any code, the framework-agnostic path also reads configuration from environment
+variables and system properties. An environment variable `AGENTFORGE4J_LLM_OPENAI_API_KEY`
+is normalised to the property key `agentforge4j.llm.openai.api.key` (the `AGENTFORGE4J_`
+prefix is replaced with `agentforge4j.`, and the remainder has every `_` turned into `.` and
+is lower-cased); a system property
+must already be written in that dotted form. System properties win over environment
+variables when both set the same key.
+
+This normalisation collapses the separator inside a hyphenated provider id, so the
+`azure-openai` and `openai-compatible` providers cannot be configured via environment
+variables — use a system property for those two, which preserves the hyphen.
+
+### Spring Boot configuration
+
+Under the Spring Boot starter, the same provider is configured as a regular property, in
+kebab-case:
+
+```properties
+agentforge4j.llm.openai.api-key=sk-...
+```
+
+A provider's Spring configuration bean is only registered once its subtree is present —
+there is no separate `agentforge4j.llm.provider=...` switch. The bundled fake provider is
+the one exception: it needs an explicit `agentforge4j.llm.fake.enabled=true` to activate,
+since it has no credential property to key activation off.
+
+Note that the Spring property key for a credential (`api-key`, kebab-case) and the
+framework-agnostic key for the same credential (`api.key`, dot-form) are different strings
+for the same concept — see the [Configuration reference](../reference/config/index.mdx) for
+the full, generated key list on each surface.
+
+### Provider selection and precedence
+
+Within the framework-agnostic path, precedence per provider, highest to lowest, is:
+programmatic `withLlmProvider(...)` &gt; system property &gt; environment variable. A
+programmatic configuration for a given provider id fully replaces, rather than merges with,
+any environment/system-property configuration for that same provider. The Spring Boot
+starter's property binding is a separate code path with no documented precedence against
+the framework-agnostic surfaces above it.

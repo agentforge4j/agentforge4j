@@ -18,6 +18,12 @@ export default function HomePage() {
         </Link>
       </div>
 
+      <section className="mt-16 max-w-3xl">
+        <h2 className="text-lg font-semibold text-fg">{HOME_COPY.whoItsFor.heading}</h2>
+        <p className="mt-2 text-sm text-fg-muted">{HOME_COPY.whoItsFor.body}</p>
+        <p className="mt-2 text-sm text-fg-muted">{HOME_COPY.whoItsFor.example}</p>
+      </section>
+
       <div className="mt-16 grid gap-8 sm:grid-cols-3">
         {HOME_COPY.pillars.map((pillar) => (
           <div key={pillar.heading}>

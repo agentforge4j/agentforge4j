@@ -38,7 +38,7 @@ const entryBase = archiveVersion ? '' : `/${docsEntry}`;
 
 const config: Config = {
   title: 'AgentForge4j',
-  tagline: 'An embeddable Java framework for building agentic LLM workflows',
+  tagline: 'An embeddable Java framework for governed AI workflows',
   favicon: 'img/favicon.svg',
 
   // Improve compatibility with the upcoming Docusaurus v4.
