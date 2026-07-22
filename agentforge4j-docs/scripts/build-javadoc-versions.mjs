@@ -28,7 +28,7 @@
 //
 // Run via `npm run javadoc:versions` (usually from the deploy workflow, before assemble-site).
 
-import {execFileSync} from 'node:child_process';
+import {execFileSync, execSync} from 'node:child_process';
 import {cpSync, mkdirSync, readdirSync, readFileSync, rmSync} from 'node:fs';
 import {join} from 'node:path';
 import {
@@ -128,20 +128,21 @@ function buildFromTag(version, outDir) {
     // only Maven >= 3.9 reads and would silently fall back to the shared repository.
     const env = {...process.env, MAVEN_OPTS: isolatedMavenOpts(process.env.MAVEN_OPTS, ISOLATED_M2)};
     // The wrapper script is platform-specific: `mvnw.cmd` on Windows, `./mvnw` elsewhere. Windows
-    // batch files cannot be spawned directly and need a shell; POSIX spawns the wrapper directly —
-    // no shell, no argument re-interpretation (same convention as build-javadoc.mjs's `run()`).
-    // Explicitly relative-pathed (`.\mvnw.cmd`), not bare (`mvnw.cmd`): cmd.exe (invoked via
-    // `shell: true` below) does not search the current directory for an executable unless the
-    // path is explicitly relative — a bare `mvnw.cmd` silently resolves against PATH only and
-    // fails with "not recognized" even though the wrapper sits right in `srcDir` (same gap already
-    // fixed in build-assembled-site.mjs's own MVNW constant).
-    const mvnw = process.platform === 'win32' ? '.\\mvnw.cmd' : './mvnw';
-    execFileSync(mvnw, ['-B', '-q', '-DskipTests', '-Dmaven.test.skip=true', 'install'], {
-      cwd: srcDir,
-      stdio: 'inherit',
-      shell: process.platform === 'win32',
-      env,
-    });
+    // batch files cannot be spawned directly and need a shell; `execSync` takes the whole command
+    // as one string rather than `execFileSync(..., {shell: true})` with a separate args array,
+    // which Node deprecates (DEP0190) because the array elements are not shell-escaped. POSIX
+    // spawns the wrapper directly — no shell, no argument re-interpretation (same convention as
+    // build-javadoc.mjs's `run()`). Explicitly relative-pathed (`.\mvnw.cmd`), not bare
+    // (`mvnw.cmd`): cmd.exe (invoked via `execSync` below) does not search the current directory
+    // for an executable unless the path is explicitly relative — a bare `mvnw.cmd` silently
+    // resolves against PATH only and fails with "not recognized" even though the wrapper sits
+    // right in `srcDir` (same gap already fixed in build-assembled-site.mjs's own MVNW constant).
+    const mvnwArgs = ['-B', '-q', '-DskipTests', '-Dmaven.test.skip=true', 'install'];
+    if (process.platform === 'win32') {
+      execSync(`.\\mvnw.cmd ${mvnwArgs.join(' ')}`, {cwd: srcDir, stdio: 'inherit', env});
+    } else {
+      execFileSync('./mvnw', mvnwArgs, {cwd: srcDir, stdio: 'inherit', env});
+    }
     // The tag's own surface builder, so the surface matches what that release shipped.
     execFileSync(process.execPath, [join('scripts', 'build-javadoc.mjs')], {
       cwd: join(srcDir, 'agentforge4j-docs'),
