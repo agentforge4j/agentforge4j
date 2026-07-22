@@ -6,6 +6,7 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -14,6 +15,7 @@ import {
   buildSeo,
   escapeHtml,
   gitLastModifiedDate,
+  gitLastModifiedDateForRouteMetadata,
   injectHead,
   injectJsonLd,
   injectRoot,
@@ -82,6 +84,54 @@ function fixture({ routes = SAMPLE_ROUTES, workflows = [] } = {}) {
   writeFileSync(catalogueDataPath, JSON.stringify({ workflows }), 'utf8');
 
   return { root, distDir, seoRoutesPath, catalogueDataPath };
+}
+
+/** A dist/ + empty catalogue-data.json pair with no seo-routes.json of its own — for tests that
+ * need to control exactly where seo-routes.json lives (a real, disposable git repo, so
+ * gitLastModifiedDateForRouteMetadata's `git log -L` history lookup has something real to find). */
+function distFixture() {
+  const root = mkdtempSync(join(tmpdir(), 'build-seo-dist-'));
+  const distDir = join(root, 'dist');
+  mkdirSync(distDir, { recursive: true });
+  writeFileSync(join(distDir, 'index.html'), BASE_INDEX_HTML, 'utf8');
+  const catalogueDataPath = join(root, 'catalogue-data.json');
+  writeFileSync(catalogueDataPath, JSON.stringify({ workflows: [] }), 'utf8');
+  return { distDir, catalogueDataPath };
+}
+
+/** A fresh, disposable, real git repository — genuinely committed history, distinct from this
+ * checkout's own, so per-route metadata-block isolation (gitLastModifiedDateForRouteMetadata) can
+ * be proven with controlled, backdated commits instead of depending on this repo's own ambient
+ * history (which changes over time and would make the test non-deterministic). */
+function initTempGitRepo() {
+  const root = mkdtempSync(join(tmpdir(), 'build-seo-git-'));
+  execFileSync('git', ['init', '-q'], { cwd: root });
+  execFileSync('git', ['config', 'user.email', 'test@example.com'], { cwd: root });
+  execFileSync('git', ['config', 'user.name', 'Test'], { cwd: root });
+  return root;
+}
+
+/** Writes seo-routes.json at `relPath` inside `repoRoot` and commits it with an explicit, fixed
+ * author/committer date (`YYYY-MM-DDTHH:MM:SS`) — controlling exactly what `git log`/`git log -L`
+ * report, rather than relying on "now" (unusable here — same-day commits are indistinguishable at
+ * the `%cs` date-only resolution this codebase deliberately uses for readability). */
+function commitSeoRoutesAt(repoRoot, relPath, content, isoDateTime) {
+  const fullPath = join(repoRoot, relPath);
+  mkdirSync(dirname(fullPath), { recursive: true });
+  writeFileSync(fullPath, JSON.stringify(content, null, 2), 'utf8');
+  const env = { ...process.env, GIT_AUTHOR_DATE: isoDateTime, GIT_COMMITTER_DATE: isoDateTime };
+  execFileSync('git', ['add', '-A'], { cwd: repoRoot, env });
+  execFileSync('git', ['commit', '-q', '-m', 'seo-routes update'], { cwd: repoRoot, env });
+}
+
+/** Extracts the `<lastmod>` (or `null`) for one `<url>` block matching `url` exactly, out of a
+ * generated sitemap.xml. */
+function lastmodFor(xml, url) {
+  const escapedUrl = url.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const blockMatch = new RegExp(`<url>\\s*<loc>${escapedUrl}</loc>[\\s\\S]*?</url>`).exec(xml);
+  assert.ok(blockMatch, `expected a <url> block for ${url} in the generated sitemap.xml`);
+  const lastmodMatch = /<lastmod>([^<]+)<\/lastmod>/.exec(blockMatch[0]);
+  return lastmodMatch ? lastmodMatch[1] : null;
 }
 
 test('throws when dist/index.html does not exist', () => {
@@ -310,9 +360,9 @@ test('every currently shipped real catalogue workflow id satisfies the slug cont
   }
 });
 
-test('every route declared in the real committed seo-routes.json has a sourceFiles entry that resolves to a real file (a silent typo/rename here would quietly drop that route\'s <lastmod> with no build failure)', () => {
+test('every route declared in the real committed seo-routes.json has a sourceFiles entry that resolves to a real file, and every globalSourceFiles/catalogueSourceFiles entry does too (a silent typo/rename here would quietly drop that route\'s <lastmod> with no build failure)', () => {
   const repoRoot = join(REAL_MODULE_ROOT, '..');
-  const { sharedSourceFiles, routes } = JSON.parse(
+  const { globalSourceFiles, catalogueSourceFiles, routes } = JSON.parse(
     readFileSync(join(REAL_MODULE_ROOT, 'src/config/seo-routes.json'), 'utf8'),
   );
   assert.ok(routes.length > 0, 'expected at least one real route to check');
@@ -329,13 +379,15 @@ test('every route declared in the real committed seo-routes.json has a sourceFil
       );
     }
   }
-  assert.ok(Array.isArray(sharedSourceFiles) && sharedSourceFiles.length > 0, 'expected a non-empty sharedSourceFiles list');
-  for (const relFile of sharedSourceFiles) {
-    assert.ok(
-      existsSync(join(repoRoot, relFile)),
-      `sharedSourceFiles entry "${relFile}" does not exist at ${join(repoRoot, relFile)} — every route's <lastmod> ` +
-        'would silently ignore changes to it',
-    );
+  for (const [key, list] of [['globalSourceFiles', globalSourceFiles], ['catalogueSourceFiles', catalogueSourceFiles]]) {
+    assert.ok(Array.isArray(list) && list.length > 0, `expected a non-empty ${key} list`);
+    for (const relFile of list) {
+      assert.ok(
+        existsSync(join(repoRoot, relFile)),
+        `${key} entry "${relFile}" does not exist at ${join(repoRoot, relFile)} — every affected page's <lastmod> ` +
+          'would silently ignore changes to it',
+      );
+    }
   }
 });
 
@@ -435,22 +487,20 @@ test('gitLastModifiedDate returns a real, valid W3C date (YYYY-MM-DD) for a real
   assert.equal(gitLastModifiedDate(repoRoot, undefined), null);
 });
 
-test('a route with a sourceFiles entry gets a real git-derived <lastmod>; a route without one (and no sharedSourceFiles declared) gets none (never an invented date)', () => {
+test('a route with a sourceFiles entry gets a real git-derived <lastmod>; a route with neither sourceFiles nor a matching metadata block gets none (never an invented date)', () => {
   const repoRoot = join(REAL_MODULE_ROOT, '..');
   const routesWithSourceFile = {
     siteUrl: 'https://agentforge4j.org',
     routes: [
-      { path: '/', title: 'Home', description: 'Home.', sourceFiles: ['agentforge4j-web-ui/package.json'] },
-      { path: '/architecture', title: 'Architecture', description: 'Architecture.' },
+      { path: '/test-has-sourcefile', title: 'Has One', description: 'Has one.', sourceFiles: ['agentforge4j-web-ui/package.json'] },
+      { path: '/test-has-nothing', title: 'Has Nothing', description: 'Has nothing.' },
     ],
   };
   const { distDir, seoRoutesPath, catalogueDataPath } = fixture({ routes: routesWithSourceFile });
   buildSeo({ distDir, seoRoutesPath, catalogueDataPath, repoRoot });
   const xml = readFileSync(join(distDir, 'sitemap.xml'), 'utf8');
-  const homeBlock = /<url>\s*<loc>https:\/\/agentforge4j\.org\/<\/loc>[\s\S]*?<\/url>/.exec(xml)[0];
-  const archBlock = /<url>\s*<loc>https:\/\/agentforge4j\.org\/architecture\/<\/loc>[\s\S]*?<\/url>/.exec(xml)[0];
-  assert.match(homeBlock, /<lastmod>\d{4}-\d{2}-\d{2}<\/lastmod>/);
-  assert.doesNotMatch(archBlock, /<lastmod>/);
+  assert.match(lastmodFor(xml, 'https://agentforge4j.org/test-has-sourcefile/'), /^\d{4}-\d{2}-\d{2}$/);
+  assert.equal(lastmodFor(xml, 'https://agentforge4j.org/test-has-nothing/'), null);
 });
 
 test('newestGitLastModifiedDate returns the newest (most recent) real git-derived date across several files, order-independent, and null only when every entry is null', () => {
@@ -477,52 +527,33 @@ test('newest-wins: a route declaring two real sourceFiles gets the newer of the 
   for (const sourceFiles of [[fileA, fileB], [fileB, fileA]]) {
     const routes = {
       siteUrl: 'https://agentforge4j.org',
-      routes: [{ path: '/', title: 'Home', description: 'Home.', sourceFiles }],
+      routes: [{ path: '/test-newest-wins', title: 'T', description: 'T.', sourceFiles }],
     };
     const { distDir, seoRoutesPath, catalogueDataPath } = fixture({ routes });
     buildSeo({ distDir, seoRoutesPath, catalogueDataPath, repoRoot });
     const xml = readFileSync(join(distDir, 'sitemap.xml'), 'utf8');
-    const homeBlock = /<url>\s*<loc>https:\/\/agentforge4j\.org\/<\/loc>[\s\S]*?<\/url>/.exec(xml)[0];
-    assert.match(homeBlock, new RegExp(`<lastmod>${expectedNewest}</lastmod>`));
+    assert.equal(lastmodFor(xml, 'https://agentforge4j.org/test-newest-wins/'), expectedNewest);
   }
 });
 
-test('shared dependency: a top-level sharedSourceFiles entry contributes to every route\'s <lastmod>, even a route whose own sourceFiles alone would resolve to an older date', () => {
+test('global dependency: a top-level globalSourceFiles entry contributes to a static route\'s <lastmod>, even when its own sourceFiles alone would resolve to an older date', () => {
   const repoRoot = join(REAL_MODULE_ROOT, '..');
   const ownFile = 'agentforge4j-web-ui/package.json';
-  const sharedFile = 'agentforge4j-web-ui/src/config/seo-routes.json';
-  const expectedNewest = newestGitLastModifiedDate(repoRoot, [ownFile, sharedFile]);
+  const globalFile = 'agentforge4j-web-ui/src/config/seo-routes.json';
+  const expectedNewest = newestGitLastModifiedDate(repoRoot, [ownFile, globalFile]);
 
   const routes = {
     siteUrl: 'https://agentforge4j.org',
-    sharedSourceFiles: [sharedFile],
-    routes: [{ path: '/', title: 'Home', description: 'Home.', sourceFiles: [ownFile] }],
+    globalSourceFiles: [globalFile],
+    routes: [{ path: '/test-global-dep', title: 'T', description: 'T.', sourceFiles: [ownFile] }],
   };
   const { distDir, seoRoutesPath, catalogueDataPath } = fixture({ routes });
   buildSeo({ distDir, seoRoutesPath, catalogueDataPath, repoRoot });
   const xml = readFileSync(join(distDir, 'sitemap.xml'), 'utf8');
-  const homeBlock = /<url>\s*<loc>https:\/\/agentforge4j\.org\/<\/loc>[\s\S]*?<\/url>/.exec(xml)[0];
-  assert.match(homeBlock, new RegExp(`<lastmod>${expectedNewest}</lastmod>`));
+  assert.equal(lastmodFor(xml, 'https://agentforge4j.org/test-global-dep/'), expectedNewest);
 });
 
-test('metadata-only change: a route with no sourceFiles of its own still gets a real <lastmod> purely from a sharedSourceFiles entry (proves a route-metadata-only edit — e.g. to seo-routes.json itself — is never silently invisible to lastmod)', () => {
-  const repoRoot = join(REAL_MODULE_ROOT, '..');
-  const sharedFile = 'agentforge4j-web-ui/src/config/seo-routes.json';
-  const expectedDate = gitLastModifiedDate(repoRoot, sharedFile);
-
-  const routes = {
-    siteUrl: 'https://agentforge4j.org',
-    sharedSourceFiles: [sharedFile],
-    routes: [{ path: '/', title: 'Home', description: 'Home.' }],
-  };
-  const { distDir, seoRoutesPath, catalogueDataPath } = fixture({ routes });
-  buildSeo({ distDir, seoRoutesPath, catalogueDataPath, repoRoot });
-  const xml = readFileSync(join(distDir, 'sitemap.xml'), 'utf8');
-  const homeBlock = /<url>\s*<loc>https:\/\/agentforge4j\.org\/<\/loc>[\s\S]*?<\/url>/.exec(xml)[0];
-  assert.match(homeBlock, new RegExp(`<lastmod>${expectedDate}</lastmod>`));
-});
-
-test('isolation: sharedSourceFiles/per-route sourceFiles apply only to the declaring seo-routes.json — a route in one fixture is never affected by another fixture\'s (or another route\'s) unrelated sourceFiles', () => {
+test('isolation (own sourceFiles): a static route\'s <lastmod> reflects only its own declared sourceFiles, unaffected by another route\'s unrelated sourceFiles', () => {
   const repoRoot = join(REAL_MODULE_ROOT, '..');
   const fileA = 'agentforge4j-web-ui/package.json';
   const fileB = 'agentforge4j-web-ui/src/config/seo-routes.json';
@@ -531,17 +562,199 @@ test('isolation: sharedSourceFiles/per-route sourceFiles apply only to the decla
   const routes = {
     siteUrl: 'https://agentforge4j.org',
     routes: [
-      { path: '/', title: 'Home', description: 'Home.', sourceFiles: [fileA] },
-      { path: '/architecture', title: 'Architecture', description: 'Architecture.', sourceFiles: [fileB] },
+      { path: '/test-isolation-a', title: 'A', description: 'A.', sourceFiles: [fileA] },
+      { path: '/test-isolation-b', title: 'B', description: 'B.', sourceFiles: [fileB] },
     ],
   };
   const { distDir, seoRoutesPath, catalogueDataPath } = fixture({ routes });
   buildSeo({ distDir, seoRoutesPath, catalogueDataPath, repoRoot });
   const xml = readFileSync(join(distDir, 'sitemap.xml'), 'utf8');
-  const homeBlock = /<url>\s*<loc>https:\/\/agentforge4j\.org\/<\/loc>[\s\S]*?<\/url>/.exec(xml)[0];
-  assert.match(
-    homeBlock,
-    new RegExp(`<lastmod>${dateA}</lastmod>`),
-    '"/" must reflect only its own declared sourceFiles (fileA), unaffected by "/architecture"\'s unrelated fileB',
+  assert.equal(
+    lastmodFor(xml, 'https://agentforge4j.org/test-isolation-a/'),
+    dateA,
+    '"/test-isolation-a" must reflect only its own declared sourceFiles (fileA), unaffected by "/test-isolation-b"\'s unrelated fileB',
   );
+});
+
+test('gitLastModifiedDateForRouteMetadata returns the newest commit that touched a real route\'s own JSON block, and null for a route path not present in the file', () => {
+  const repoRoot = join(REAL_MODULE_ROOT, '..');
+  const seoRoutesPath = join(REAL_MODULE_ROOT, 'src/config/seo-routes.json');
+  const date = gitLastModifiedDateForRouteMetadata(repoRoot, seoRoutesPath, '/architecture');
+  assert.match(date, /^\d{4}-\d{2}-\d{2}$/);
+  assert.equal(gitLastModifiedDateForRouteMetadata(repoRoot, seoRoutesPath, '/this-route-does-not-exist'), null);
+});
+
+test('gitLastModifiedDateForRouteMetadata returns null when seoRoutesPath resolves outside repoRoot (a fixture seo-routes.json unrelated to that repository\'s own git history)', () => {
+  const repoRoot = join(REAL_MODULE_ROOT, '..');
+  const outsidePath = join(tmpdir(), 'unrelated-seo-routes.json');
+  assert.equal(gitLastModifiedDateForRouteMetadata(repoRoot, outsidePath, '/'), null);
+});
+
+test('homepage metadata isolation: changing only "/" own metadata (title/description) bumps only "/" — "/architecture" retains its previous <lastmod>', () => {
+  const repoRoot = initTempGitRepo();
+  const relSeoRoutes = 'seo-routes.json';
+  const seoRoutesPath = join(repoRoot, relSeoRoutes);
+  const { distDir, catalogueDataPath } = distFixture();
+
+  const routesV1 = {
+    siteUrl: 'https://agentforge4j.org',
+    routes: [
+      { path: '/', title: 'Home V1', description: 'Home V1 description.' },
+      { path: '/architecture', title: 'Architecture V1', description: 'Architecture V1 description.' },
+    ],
+  };
+  commitSeoRoutesAt(repoRoot, relSeoRoutes, routesV1, '2020-01-01T00:00:00');
+  buildSeo({ distDir, seoRoutesPath, catalogueDataPath, repoRoot });
+  const xmlBefore = readFileSync(join(distDir, 'sitemap.xml'), 'utf8');
+  assert.equal(lastmodFor(xmlBefore, 'https://agentforge4j.org/'), '2020-01-01');
+  assert.equal(lastmodFor(xmlBefore, 'https://agentforge4j.org/architecture/'), '2020-01-01');
+
+  const routesV2 = {
+    siteUrl: 'https://agentforge4j.org',
+    routes: [
+      { path: '/', title: 'Home V2 — changed', description: 'Home V1 description.' },
+      { path: '/architecture', title: 'Architecture V1', description: 'Architecture V1 description.' },
+    ],
+  };
+  commitSeoRoutesAt(repoRoot, relSeoRoutes, routesV2, '2020-06-01T00:00:00');
+  buildSeo({ distDir, seoRoutesPath, catalogueDataPath, repoRoot });
+  const xmlAfter = readFileSync(join(distDir, 'sitemap.xml'), 'utf8');
+  assert.equal(
+    lastmodFor(xmlAfter, 'https://agentforge4j.org/'),
+    '2020-06-01',
+    '"/" own metadata changed — its <lastmod> must bump to the new commit date',
+  );
+  assert.equal(
+    lastmodFor(xmlAfter, 'https://agentforge4j.org/architecture/'),
+    '2020-01-01',
+    '"/architecture" own metadata was never touched by that commit — its <lastmod> must be unaffected',
+  );
+});
+
+test('static-route isolation: changing metadata for one static page does not update an unrelated static page (distinct from the homepage case above — proves this is a general rule, not special-cased to "/")', () => {
+  const repoRoot = initTempGitRepo();
+  const relSeoRoutes = 'seo-routes.json';
+  const seoRoutesPath = join(repoRoot, relSeoRoutes);
+  const { distDir, catalogueDataPath } = distFixture();
+
+  const routesV1 = {
+    siteUrl: 'https://agentforge4j.org',
+    routes: [
+      { path: '/security', title: 'Security V1', description: 'Security V1 description.' },
+      { path: '/legal', title: 'Legal V1', description: 'Legal V1 description.' },
+    ],
+  };
+  commitSeoRoutesAt(repoRoot, relSeoRoutes, routesV1, '2020-01-01T00:00:00');
+  buildSeo({ distDir, seoRoutesPath, catalogueDataPath, repoRoot });
+
+  const routesV2 = {
+    siteUrl: 'https://agentforge4j.org',
+    routes: [
+      { path: '/security', title: 'Security V2 — changed', description: 'Security V1 description.' },
+      { path: '/legal', title: 'Legal V1', description: 'Legal V1 description.' },
+    ],
+  };
+  commitSeoRoutesAt(repoRoot, relSeoRoutes, routesV2, '2020-06-01T00:00:00');
+  buildSeo({ distDir, seoRoutesPath, catalogueDataPath, repoRoot });
+  const xml = readFileSync(join(distDir, 'sitemap.xml'), 'utf8');
+  assert.equal(lastmodFor(xml, 'https://agentforge4j.org/security/'), '2020-06-01');
+  assert.equal(
+    lastmodFor(xml, 'https://agentforge4j.org/legal/'),
+    '2020-01-01',
+    '"/legal" own metadata was never touched — its <lastmod> must be unaffected by "/security"\'s edit',
+  );
+});
+
+test('catalogue isolation: a static route\'s own sourceFiles/metadata never influence a catalogue workflow\'s <lastmod>', () => {
+  const repoRoot = join(REAL_MODULE_ROOT, '..');
+  const workflows = [{ id: 'agent-creator', name: 'Agent Creator', description: 'Builds agents.' }];
+  const routesA = {
+    siteUrl: 'https://agentforge4j.org',
+    routes: [{ path: '/test-static-a', title: 'A', description: 'A.', sourceFiles: ['agentforge4j-web-ui/package.json'] }],
+  };
+  const routesB = {
+    siteUrl: 'https://agentforge4j.org',
+    routes: [
+      {
+        path: '/test-static-a',
+        title: 'Completely different title',
+        description: 'Completely different description.',
+        sourceFiles: ['agentforge4j-web-ui/src/config/seo-routes.json'],
+      },
+    ],
+  };
+  const fixtureA = fixture({ routes: routesA, workflows });
+  const fixtureB = fixture({ routes: routesB, workflows });
+  buildSeo({ distDir: fixtureA.distDir, seoRoutesPath: fixtureA.seoRoutesPath, catalogueDataPath: fixtureA.catalogueDataPath, repoRoot });
+  buildSeo({ distDir: fixtureB.distDir, seoRoutesPath: fixtureB.seoRoutesPath, catalogueDataPath: fixtureB.catalogueDataPath, repoRoot });
+  const xmlA = readFileSync(join(fixtureA.distDir, 'sitemap.xml'), 'utf8');
+  const xmlB = readFileSync(join(fixtureB.distDir, 'sitemap.xml'), 'utf8');
+  const workflowUrl = 'https://agentforge4j.org/catalogue/agent-creator/';
+  assert.equal(
+    lastmodFor(xmlA, workflowUrl),
+    lastmodFor(xmlB, workflowUrl),
+    'the catalogue workflow\'s <lastmod> must be identical regardless of an unrelated static route\'s sourceFiles/metadata',
+  );
+});
+
+test('catalogue renderer: a real catalogueSourceFiles entry (shared by every catalogue detail page) contributes to every workflow\'s <lastmod>', () => {
+  const repoRoot = join(REAL_MODULE_ROOT, '..');
+  const catalogueSourceFile = 'agentforge4j-web-ui/src/pages/CatalogueDetailPage.tsx';
+  const workflowFile = 'agentforge4j-workflows-catalog/src/main/resources/shipped-workflows/agent-creator.workflow/workflow.json';
+  const expectedNewest = newestGitLastModifiedDate(repoRoot, [catalogueSourceFile, workflowFile]);
+
+  const routes = { siteUrl: 'https://agentforge4j.org', catalogueSourceFiles: [catalogueSourceFile], routes: [] };
+  const { distDir, seoRoutesPath, catalogueDataPath } = fixture({
+    routes,
+    workflows: [{ id: 'agent-creator', name: 'Agent Creator', description: 'Builds agents.' }],
+  });
+  buildSeo({ distDir, seoRoutesPath, catalogueDataPath, repoRoot });
+  const xml = readFileSync(join(distDir, 'sitemap.xml'), 'utf8');
+  assert.equal(lastmodFor(xml, 'https://agentforge4j.org/catalogue/agent-creator/'), expectedNewest);
+});
+
+test('workflow isolation: each catalogue workflow\'s <lastmod> reflects only its own workflow.json, never another workflow\'s file', () => {
+  const repoRoot = join(REAL_MODULE_ROOT, '..');
+  const idA = 'agent-creator';
+  const idB = 'workflow-execution-estimator';
+  const fileA = `agentforge4j-workflows-catalog/src/main/resources/shipped-workflows/${idA}.workflow/workflow.json`;
+  const dateA = gitLastModifiedDate(repoRoot, fileA);
+
+  const { distDir, seoRoutesPath, catalogueDataPath } = fixture({
+    routes: { siteUrl: 'https://agentforge4j.org', routes: [] },
+    workflows: [
+      { id: idA, name: 'Agent Creator', description: 'x' },
+      { id: idB, name: 'Workflow Execution Estimator', description: 'y' },
+    ],
+  });
+  buildSeo({ distDir, seoRoutesPath, catalogueDataPath, repoRoot });
+  const xml = readFileSync(join(distDir, 'sitemap.xml'), 'utf8');
+  assert.equal(
+    lastmodFor(xml, `https://agentforge4j.org/catalogue/${idA}/`),
+    dateA,
+    `workflow "${idA}"'s <lastmod> must equal only its own file's date, unaffected by "${idB}"'s unrelated file`,
+  );
+});
+
+test('shared shell: a real globalSourceFiles entry contributes identically to both a static route and a catalogue workflow\'s <lastmod>', () => {
+  const repoRoot = join(REAL_MODULE_ROOT, '..');
+  const globalFile = 'agentforge4j-web-ui/src/App.tsx';
+  const staticOwnFile = 'agentforge4j-web-ui/package.json';
+  const workflowFile = 'agentforge4j-workflows-catalog/src/main/resources/shipped-workflows/agent-creator.workflow/workflow.json';
+  const expectedStatic = newestGitLastModifiedDate(repoRoot, [globalFile, staticOwnFile]);
+  const expectedWorkflow = newestGitLastModifiedDate(repoRoot, [globalFile, workflowFile]);
+
+  const routes = {
+    siteUrl: 'https://agentforge4j.org',
+    globalSourceFiles: [globalFile],
+    routes: [{ path: '/test-shared-shell', title: 'T', description: 'T.', sourceFiles: [staticOwnFile] }],
+  };
+  const { distDir, seoRoutesPath, catalogueDataPath } = fixture({
+    routes,
+    workflows: [{ id: 'agent-creator', name: 'Agent Creator', description: 'x' }],
+  });
+  buildSeo({ distDir, seoRoutesPath, catalogueDataPath, repoRoot });
+  const xml = readFileSync(join(distDir, 'sitemap.xml'), 'utf8');
+  assert.equal(lastmodFor(xml, 'https://agentforge4j.org/test-shared-shell/'), expectedStatic);
+  assert.equal(lastmodFor(xml, 'https://agentforge4j.org/catalogue/agent-creator/'), expectedWorkflow);
 });

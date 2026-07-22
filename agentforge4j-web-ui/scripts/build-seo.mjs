@@ -13,13 +13,21 @@
 //     trailing-slash form GitHub Pages serves directly, with no redirect — see withTrailingSlash)
 //     for every route in seo-routes.json marked `sitemap: true` (the default), plus one per real
 //     shipped catalogue workflow (src/generated/catalogue-data.json), each with a real git-derived
-//     <lastmod> — the newest commit date across every file that materially contributes to that
-//     route/workflow's generated HTML: its own declared `sourceFiles`, plus seo-routes.json's
-//     top-level `sharedSourceFiles` (the header/footer/nav shell and seo-routes.json itself, common
-//     to every route). `null` only when none of those exist. assemble-site.mjs
-//     (agentforge4j-docs) merges this fragment with the Docusaurus-generated docs/sitemap.xml
-//     into the one final sitemap.xml at the composed site root — this script knows nothing
-//     about docs pages, and assemble-site.mjs knows nothing about SPA routes.
+//     <lastmod> scoped to exactly what materially contributes to *that* page, not the whole site:
+//       - `globalSourceFiles` (seo-routes.json's top level) — the header/footer/nav shell that
+//         wraps every page, static or catalogue.
+//       - a static route's own `sourceFiles` (its page component), plus its own metadata dependency
+//         — the newest commit that touched *that route's own entry* in seo-routes.json, not the
+//         whole file (see gitLastModifiedDateForRouteMetadata) — so one route's metadata edit never
+//         bumps another route's <lastmod>.
+//       - `catalogueSourceFiles` (seo-routes.json's top level) — rendering shared by every catalogue
+//         detail page (CatalogueDetailPage.tsx, catalogueSeo.ts, renderWorkflowSvg.ts,
+//         copy/catalogue.ts) — never applied to static routes.
+//       - a catalogue workflow's own committed workflow.json (workflowSourceFile).
+//     `null` only when none of a page's dependencies resolve to a real, committed file.
+//     assemble-site.mjs (agentforge4j-docs) merges this fragment with the Docusaurus-generated
+//     docs/sitemap.xml into the one final sitemap.xml at the composed site root — this script knows
+//     nothing about docs pages, and assemble-site.mjs knows nothing about SPA routes.
 //
 // Per-workflow title/description formatting mirrors src/lib/catalogueSeo.ts (used by the
 // client-side title/meta sync, usePageSeo) — duplicated deliberately, not imported, because this
@@ -27,7 +35,7 @@
 
 import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { dirname, isAbsolute, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { WORKFLOW_ID_PATTERN } from './workflow-id-contract.mjs';
 import { prerenderRoutes } from './prerender-routes.mjs';
@@ -73,24 +81,72 @@ export function gitLastModifiedDate(repoRoot, relFile) {
   return output;
 }
 
-/** A route's generated HTML is rarely the product of one file: it always carries the shared
- * header/footer/nav shell, and its own text comes from both its page component *and* the title/
- * description/jsonLd declared alongside it in seo-routes.json — a `<lastmod>` derived from only one
- * of these (the historical single-`sourceFile` model) silently understates freshness whenever any
- * of the *other* real dependencies changes. This computes the newest (most recent) git-derived date
- * across every file in `relFiles`, so a `<lastmod>` reflects whichever dependency actually changed
- * last. `YYYY-MM-DD` (zero-padded ISO form) sorts identically whether compared as strings or as
- * dates, so no `Date` parsing is needed to find the max. Returns `null` only when every entry
- * resolves to `null` (no declared/existing dependency at all) — same "never invent a date" contract
- * as `gitLastModifiedDate` itself, extended across a set instead of one file. */
-export function newestGitLastModifiedDate(repoRoot, relFiles) {
-  const dates = (relFiles ?? [])
-    .map((relFile) => gitLastModifiedDate(repoRoot, relFile))
-    .filter((date) => date !== null);
-  if (dates.length === 0) {
+/** `YYYY-MM-DD` (zero-padded ISO form) sorts identically whether compared as strings or as real
+ * dates, so no `Date` parsing is ever needed to find the most recent of several. Returns `null`
+ * only when every entry is `null`/`undefined` — same "never invent a date" contract as
+ * `gitLastModifiedDate` itself, just applied across a set of already-resolved dates instead of one
+ * file. */
+function pickNewestDate(dates) {
+  const real = dates.filter((date) => date !== null && date !== undefined);
+  if (real.length === 0) {
     return null;
   }
-  return dates.reduce((newest, date) => (date > newest ? date : newest));
+  return real.reduce((newest, date) => (date > newest ? date : newest));
+}
+
+/** A page's generated HTML is rarely the product of one file: this computes the newest
+ * git-derived date across every file in `relFiles`, so a `<lastmod>` reflects whichever real
+ * dependency actually changed last, instead of silently understating freshness by looking at only
+ * one of them. */
+export function newestGitLastModifiedDate(repoRoot, relFiles) {
+  return pickNewestDate((relFiles ?? []).map((relFile) => gitLastModifiedDate(repoRoot, relFile)));
+}
+
+// Every route object in seo-routes.json's `routes` array closes with a lone `}` (optionally
+// followed by a comma) at this exact 4-space indentation — the one boundary pattern every route's
+// own JSON block shares, regardless of how much content (a lone title/description, or "/"'s much
+// longer jsonLd graph) sits between its opening `"path"` line and this line. Not per-route
+// special-casing: the same general rule applied identically to every route.
+const ROUTE_METADATA_BLOCK_END_PATTERN = '/^    \\}/';
+
+function escapeGitLineRegex(literal) {
+  return literal.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&');
+}
+
+/** The newest commit that touched *this route's own entry* in seo-routes.json — not the whole
+ * file's history, which would incorrectly bump every other route's `<lastmod>` the moment any one
+ * route's title/description/jsonLd changes (the exact over-inclusion this function exists to
+ * avoid). Uses git's own line-range history (`git log -L`), anchored on the route's unique
+ * `"path": "<routePath>"` line through the next real route-block boundary
+ * (`ROUTE_METADATA_BLOCK_END_PATTERN`) — no JSON parsing of the diff, no AST, just git's built-in
+ * per-line-range primitive, the same tier of tool `gitLastModifiedDate` already uses for whole-file
+ * history.
+ *
+ * `seoRoutesPath` is expressed relative to `repoRoot` for this git invocation; when it resolves
+ * outside `repoRoot` entirely (fixture tests writing seo-routes.json to a temp directory unrelated
+ * to the repository whose history `repoRoot` actually holds) this returns `null` immediately rather
+ * than asking git to search a nonsensical pathspec — fixture routes with no real committed
+ * seo-routes.json backing get no invented metadata date, same "never invent" contract as every
+ * other function here. Also returns `null` (rather than throwing) when the route's `"path"` line
+ * genuinely is not found in that file's current content at all — a best-effort line-history lookup,
+ * not a hard existence guarantee the way `gitLastModifiedDate`'s whole-file check is. */
+export function gitLastModifiedDateForRouteMetadata(repoRoot, seoRoutesPath, routePath) {
+  const relFile = relative(repoRoot, seoRoutesPath);
+  if (relFile.startsWith('..') || isAbsolute(relFile) || !existsSync(join(repoRoot, relFile))) {
+    return null;
+  }
+  const startPattern = `/${escapeGitLineRegex(`"path": "${routePath}"`)}/`;
+  try {
+    const output = execFileSync(
+      'git',
+      ['log', '-1', '--format=%cs', `-L${startPattern},${ROUTE_METADATA_BLOCK_END_PATTERN}:${relFile}`],
+      { cwd: repoRoot, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] },
+    ).trim();
+    const firstLine = output.split('\n', 1)[0];
+    return /^\d{4}-\d{2}-\d{2}$/.test(firstLine) ? firstLine : null;
+  } catch {
+    return null;
+  }
 }
 
 // Shared HTML-attribute escaping — every value interpolated into an HTML attribute in this file
@@ -285,7 +341,12 @@ export function buildSeo({
   }
   const baseHtml = readFileSync(indexPath, 'utf8');
 
-  const { siteUrl, sharedSourceFiles = [], routes } = JSON.parse(readFileSync(seoRoutesPath, 'utf8'));
+  const {
+    siteUrl,
+    globalSourceFiles = [],
+    catalogueSourceFiles = [],
+    routes,
+  } = JSON.parse(readFileSync(seoRoutesPath, 'utf8'));
   const catalogueData = existsSync(catalogueDataPath)
     ? JSON.parse(readFileSync(catalogueDataPath, 'utf8'))
     : { workflows: [] };
@@ -304,7 +365,10 @@ export function buildSeo({
     if (route.sitemap !== false) {
       sitemapEntries.push({
         url: `${siteUrl}${withTrailingSlash(route.path)}`,
-        lastmod: newestGitLastModifiedDate(repoRoot, [...sharedSourceFiles, ...(route.sourceFiles ?? [])]),
+        lastmod: pickNewestDate([
+          newestGitLastModifiedDate(repoRoot, [...globalSourceFiles, ...(route.sourceFiles ?? [])]),
+          gitLastModifiedDateForRouteMetadata(repoRoot, seoRoutesPath, route.path),
+        ]),
       });
     }
   }
@@ -326,7 +390,11 @@ export function buildSeo({
     shellsWritten += 1;
     sitemapEntries.push({
       url: canonical,
-      lastmod: newestGitLastModifiedDate(repoRoot, [...sharedSourceFiles, workflowSourceFile(workflow.id)]),
+      lastmod: newestGitLastModifiedDate(repoRoot, [
+        ...globalSourceFiles,
+        ...catalogueSourceFiles,
+        workflowSourceFile(workflow.id),
+      ]),
     });
   }
 

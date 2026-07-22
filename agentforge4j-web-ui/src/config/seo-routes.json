@@ -1,11 +1,16 @@
 {
   "siteUrl": "https://agentforge4j.org",
-  "sharedSourceFiles": [
-    "agentforge4j-web-ui/src/config/seo-routes.json",
+  "globalSourceFiles": [
     "agentforge4j-web-ui/src/App.tsx",
     "agentforge4j-web-ui/src/components/SiteHeader.tsx",
     "agentforge4j-web-ui/src/components/SiteFooter.tsx",
     "agentforge4j-web-ui/src/config/nav.ts"
+  ],
+  "catalogueSourceFiles": [
+    "agentforge4j-web-ui/src/pages/CatalogueDetailPage.tsx",
+    "agentforge4j-web-ui/src/lib/catalogueSeo.ts",
+    "agentforge4j-web-ui/src/lib/renderWorkflowSvg.ts",
+    "agentforge4j-web-ui/src/copy/catalogue.ts"
   ],
   "routes": [
     {
@@ -61,7 +66,10 @@
       "path": "/catalogue",
       "title": "Workflow Catalogue — AgentForge4j",
       "description": "Browse the shipped, ready-to-run workflows published in the AgentForge4j Workflow Catalog.",
-      "sourceFiles": ["agentforge4j-web-ui/src/pages/CataloguePage.tsx"]
+      "sourceFiles": [
+        "agentforge4j-web-ui/src/pages/CataloguePage.tsx",
+        "agentforge4j-web-ui/src/copy/catalogue.ts"
+      ]
     },
     {
       "path": "/builder",
