@@ -17,6 +17,7 @@ import {
   injectHead,
   injectJsonLd,
   injectRoot,
+  newestGitLastModifiedDate,
   withTrailingSlash,
 } from './build-seo.mjs';
 import { WORKFLOW_ID_PATTERN } from './workflow-id-contract.mjs';
@@ -309,19 +310,31 @@ test('every currently shipped real catalogue workflow id satisfies the slug cont
   }
 });
 
-test('every route declared in the real committed seo-routes.json has a sourceFile that resolves to a real file (a silent typo/rename here would quietly drop that route\'s <lastmod> with no build failure)', () => {
+test('every route declared in the real committed seo-routes.json has a sourceFiles entry that resolves to a real file (a silent typo/rename here would quietly drop that route\'s <lastmod> with no build failure)', () => {
   const repoRoot = join(REAL_MODULE_ROOT, '..');
-  const { routes } = JSON.parse(readFileSync(join(REAL_MODULE_ROOT, 'src/config/seo-routes.json'), 'utf8'));
+  const { sharedSourceFiles, routes } = JSON.parse(
+    readFileSync(join(REAL_MODULE_ROOT, 'src/config/seo-routes.json'), 'utf8'),
+  );
   assert.ok(routes.length > 0, 'expected at least one real route to check');
   for (const route of routes) {
     assert.ok(
-      typeof route.sourceFile === 'string' && route.sourceFile.length > 0,
-      `route "${route.path}" must declare a non-empty sourceFile`,
+      Array.isArray(route.sourceFiles) && route.sourceFiles.length > 0,
+      `route "${route.path}" must declare a non-empty sourceFiles array`,
     );
+    for (const relFile of route.sourceFiles) {
+      assert.ok(
+        existsSync(join(repoRoot, relFile)),
+        `route "${route.path}" declares sourceFiles entry "${relFile}", which does not exist at ` +
+          `${join(repoRoot, relFile)} — this route would silently ship with a stale <lastmod>`,
+      );
+    }
+  }
+  assert.ok(Array.isArray(sharedSourceFiles) && sharedSourceFiles.length > 0, 'expected a non-empty sharedSourceFiles list');
+  for (const relFile of sharedSourceFiles) {
     assert.ok(
-      existsSync(join(repoRoot, route.sourceFile)),
-      `route "${route.path}" declares sourceFile "${route.sourceFile}", which does not exist at ` +
-        `${join(repoRoot, route.sourceFile)} — this route would silently ship with no <lastmod>`,
+      existsSync(join(repoRoot, relFile)),
+      `sharedSourceFiles entry "${relFile}" does not exist at ${join(repoRoot, relFile)} — every route's <lastmod> ` +
+        'would silently ignore changes to it',
     );
   }
 });
@@ -422,12 +435,12 @@ test('gitLastModifiedDate returns a real, valid W3C date (YYYY-MM-DD) for a real
   assert.equal(gitLastModifiedDate(repoRoot, undefined), null);
 });
 
-test('a route with a sourceFile gets a real git-derived <lastmod>; a route without one gets none (never an invented date)', () => {
+test('a route with a sourceFiles entry gets a real git-derived <lastmod>; a route without one (and no sharedSourceFiles declared) gets none (never an invented date)', () => {
   const repoRoot = join(REAL_MODULE_ROOT, '..');
   const routesWithSourceFile = {
     siteUrl: 'https://agentforge4j.org',
     routes: [
-      { path: '/', title: 'Home', description: 'Home.', sourceFile: 'agentforge4j-web-ui/package.json' },
+      { path: '/', title: 'Home', description: 'Home.', sourceFiles: ['agentforge4j-web-ui/package.json'] },
       { path: '/architecture', title: 'Architecture', description: 'Architecture.' },
     ],
   };
@@ -438,4 +451,97 @@ test('a route with a sourceFile gets a real git-derived <lastmod>; a route witho
   const archBlock = /<url>\s*<loc>https:\/\/agentforge4j\.org\/architecture\/<\/loc>[\s\S]*?<\/url>/.exec(xml)[0];
   assert.match(homeBlock, /<lastmod>\d{4}-\d{2}-\d{2}<\/lastmod>/);
   assert.doesNotMatch(archBlock, /<lastmod>/);
+});
+
+test('newestGitLastModifiedDate returns the newest (most recent) real git-derived date across several files, order-independent, and null only when every entry is null', () => {
+  const repoRoot = join(REAL_MODULE_ROOT, '..');
+  const fileA = 'agentforge4j-web-ui/package.json';
+  const fileB = 'agentforge4j-web-ui/src/config/seo-routes.json';
+  const dateA = gitLastModifiedDate(repoRoot, fileA);
+  const dateB = gitLastModifiedDate(repoRoot, fileB);
+  const expectedNewest = dateA > dateB ? dateA : dateB;
+
+  assert.equal(newestGitLastModifiedDate(repoRoot, [fileA, fileB]), expectedNewest);
+  assert.equal(newestGitLastModifiedDate(repoRoot, [fileB, fileA]), expectedNewest, 'must not depend on array order');
+  assert.equal(newestGitLastModifiedDate(repoRoot, [fileA, undefined, null]), dateA, 'null/undefined entries are ignored, not treated as "newest"');
+  assert.equal(newestGitLastModifiedDate(repoRoot, []), null);
+  assert.equal(newestGitLastModifiedDate(repoRoot, undefined), null);
+});
+
+test('newest-wins: a route declaring two real sourceFiles gets the newer of the two as its <lastmod>, regardless of declaration order', () => {
+  const repoRoot = join(REAL_MODULE_ROOT, '..');
+  const fileA = 'agentforge4j-web-ui/package.json';
+  const fileB = 'agentforge4j-web-ui/src/config/seo-routes.json';
+  const expectedNewest = newestGitLastModifiedDate(repoRoot, [fileA, fileB]);
+
+  for (const sourceFiles of [[fileA, fileB], [fileB, fileA]]) {
+    const routes = {
+      siteUrl: 'https://agentforge4j.org',
+      routes: [{ path: '/', title: 'Home', description: 'Home.', sourceFiles }],
+    };
+    const { distDir, seoRoutesPath, catalogueDataPath } = fixture({ routes });
+    buildSeo({ distDir, seoRoutesPath, catalogueDataPath, repoRoot });
+    const xml = readFileSync(join(distDir, 'sitemap.xml'), 'utf8');
+    const homeBlock = /<url>\s*<loc>https:\/\/agentforge4j\.org\/<\/loc>[\s\S]*?<\/url>/.exec(xml)[0];
+    assert.match(homeBlock, new RegExp(`<lastmod>${expectedNewest}</lastmod>`));
+  }
+});
+
+test('shared dependency: a top-level sharedSourceFiles entry contributes to every route\'s <lastmod>, even a route whose own sourceFiles alone would resolve to an older date', () => {
+  const repoRoot = join(REAL_MODULE_ROOT, '..');
+  const ownFile = 'agentforge4j-web-ui/package.json';
+  const sharedFile = 'agentforge4j-web-ui/src/config/seo-routes.json';
+  const expectedNewest = newestGitLastModifiedDate(repoRoot, [ownFile, sharedFile]);
+
+  const routes = {
+    siteUrl: 'https://agentforge4j.org',
+    sharedSourceFiles: [sharedFile],
+    routes: [{ path: '/', title: 'Home', description: 'Home.', sourceFiles: [ownFile] }],
+  };
+  const { distDir, seoRoutesPath, catalogueDataPath } = fixture({ routes });
+  buildSeo({ distDir, seoRoutesPath, catalogueDataPath, repoRoot });
+  const xml = readFileSync(join(distDir, 'sitemap.xml'), 'utf8');
+  const homeBlock = /<url>\s*<loc>https:\/\/agentforge4j\.org\/<\/loc>[\s\S]*?<\/url>/.exec(xml)[0];
+  assert.match(homeBlock, new RegExp(`<lastmod>${expectedNewest}</lastmod>`));
+});
+
+test('metadata-only change: a route with no sourceFiles of its own still gets a real <lastmod> purely from a sharedSourceFiles entry (proves a route-metadata-only edit — e.g. to seo-routes.json itself — is never silently invisible to lastmod)', () => {
+  const repoRoot = join(REAL_MODULE_ROOT, '..');
+  const sharedFile = 'agentforge4j-web-ui/src/config/seo-routes.json';
+  const expectedDate = gitLastModifiedDate(repoRoot, sharedFile);
+
+  const routes = {
+    siteUrl: 'https://agentforge4j.org',
+    sharedSourceFiles: [sharedFile],
+    routes: [{ path: '/', title: 'Home', description: 'Home.' }],
+  };
+  const { distDir, seoRoutesPath, catalogueDataPath } = fixture({ routes });
+  buildSeo({ distDir, seoRoutesPath, catalogueDataPath, repoRoot });
+  const xml = readFileSync(join(distDir, 'sitemap.xml'), 'utf8');
+  const homeBlock = /<url>\s*<loc>https:\/\/agentforge4j\.org\/<\/loc>[\s\S]*?<\/url>/.exec(xml)[0];
+  assert.match(homeBlock, new RegExp(`<lastmod>${expectedDate}</lastmod>`));
+});
+
+test('isolation: sharedSourceFiles/per-route sourceFiles apply only to the declaring seo-routes.json — a route in one fixture is never affected by another fixture\'s (or another route\'s) unrelated sourceFiles', () => {
+  const repoRoot = join(REAL_MODULE_ROOT, '..');
+  const fileA = 'agentforge4j-web-ui/package.json';
+  const fileB = 'agentforge4j-web-ui/src/config/seo-routes.json';
+  const dateA = gitLastModifiedDate(repoRoot, fileA);
+
+  const routes = {
+    siteUrl: 'https://agentforge4j.org',
+    routes: [
+      { path: '/', title: 'Home', description: 'Home.', sourceFiles: [fileA] },
+      { path: '/architecture', title: 'Architecture', description: 'Architecture.', sourceFiles: [fileB] },
+    ],
+  };
+  const { distDir, seoRoutesPath, catalogueDataPath } = fixture({ routes });
+  buildSeo({ distDir, seoRoutesPath, catalogueDataPath, repoRoot });
+  const xml = readFileSync(join(distDir, 'sitemap.xml'), 'utf8');
+  const homeBlock = /<url>\s*<loc>https:\/\/agentforge4j\.org\/<\/loc>[\s\S]*?<\/url>/.exec(xml)[0];
+  assert.match(
+    homeBlock,
+    new RegExp(`<lastmod>${dateA}</lastmod>`),
+    '"/" must reflect only its own declared sourceFiles (fileA), unaffected by "/architecture"\'s unrelated fileB',
+  );
 });

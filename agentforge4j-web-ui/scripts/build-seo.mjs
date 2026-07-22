@@ -13,7 +13,10 @@
 //     trailing-slash form GitHub Pages serves directly, with no redirect — see withTrailingSlash)
 //     for every route in seo-routes.json marked `sitemap: true` (the default), plus one per real
 //     shipped catalogue workflow (src/generated/catalogue-data.json), each with a real git-derived
-//     <lastmod> when the route/workflow declares a source file. assemble-site.mjs
+//     <lastmod> — the newest commit date across every file that materially contributes to that
+//     route/workflow's generated HTML: its own declared `sourceFiles`, plus seo-routes.json's
+//     top-level `sharedSourceFiles` (the header/footer/nav shell and seo-routes.json itself, common
+//     to every route). `null` only when none of those exist. assemble-site.mjs
 //     (agentforge4j-docs) merges this fragment with the Docusaurus-generated docs/sitemap.xml
 //     into the one final sitemap.xml at the composed site root — this script knows nothing
 //     about docs pages, and assemble-site.mjs knows nothing about SPA routes.
@@ -68,6 +71,26 @@ export function gitLastModifiedDate(repoRoot, relFile) {
     throw new Error(`build-seo: ${relFile} exists but has no git history — is it a committed file?`);
   }
   return output;
+}
+
+/** A route's generated HTML is rarely the product of one file: it always carries the shared
+ * header/footer/nav shell, and its own text comes from both its page component *and* the title/
+ * description/jsonLd declared alongside it in seo-routes.json — a `<lastmod>` derived from only one
+ * of these (the historical single-`sourceFile` model) silently understates freshness whenever any
+ * of the *other* real dependencies changes. This computes the newest (most recent) git-derived date
+ * across every file in `relFiles`, so a `<lastmod>` reflects whichever dependency actually changed
+ * last. `YYYY-MM-DD` (zero-padded ISO form) sorts identically whether compared as strings or as
+ * dates, so no `Date` parsing is needed to find the max. Returns `null` only when every entry
+ * resolves to `null` (no declared/existing dependency at all) — same "never invent a date" contract
+ * as `gitLastModifiedDate` itself, extended across a set instead of one file. */
+export function newestGitLastModifiedDate(repoRoot, relFiles) {
+  const dates = (relFiles ?? [])
+    .map((relFile) => gitLastModifiedDate(repoRoot, relFile))
+    .filter((date) => date !== null);
+  if (dates.length === 0) {
+    return null;
+  }
+  return dates.reduce((newest, date) => (date > newest ? date : newest));
 }
 
 // Shared HTML-attribute escaping — every value interpolated into an HTML attribute in this file
@@ -262,7 +285,7 @@ export function buildSeo({
   }
   const baseHtml = readFileSync(indexPath, 'utf8');
 
-  const { siteUrl, routes } = JSON.parse(readFileSync(seoRoutesPath, 'utf8'));
+  const { siteUrl, sharedSourceFiles = [], routes } = JSON.parse(readFileSync(seoRoutesPath, 'utf8'));
   const catalogueData = existsSync(catalogueDataPath)
     ? JSON.parse(readFileSync(catalogueDataPath, 'utf8'))
     : { workflows: [] };
@@ -281,7 +304,7 @@ export function buildSeo({
     if (route.sitemap !== false) {
       sitemapEntries.push({
         url: `${siteUrl}${withTrailingSlash(route.path)}`,
-        lastmod: gitLastModifiedDate(repoRoot, route.sourceFile),
+        lastmod: newestGitLastModifiedDate(repoRoot, [...sharedSourceFiles, ...(route.sourceFiles ?? [])]),
       });
     }
   }
@@ -303,7 +326,7 @@ export function buildSeo({
     shellsWritten += 1;
     sitemapEntries.push({
       url: canonical,
-      lastmod: gitLastModifiedDate(repoRoot, workflowSourceFile(workflow.id)),
+      lastmod: newestGitLastModifiedDate(repoRoot, [...sharedSourceFiles, workflowSourceFile(workflow.id)]),
     });
   }
 
