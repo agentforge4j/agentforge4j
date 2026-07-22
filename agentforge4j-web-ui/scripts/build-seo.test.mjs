@@ -7,7 +7,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -111,17 +111,79 @@ function initTempGitRepo() {
   return root;
 }
 
-/** Writes seo-routes.json at `relPath` inside `repoRoot` and commits it with an explicit, fixed
- * author/committer date (`YYYY-MM-DDTHH:MM:SS`) — controlling exactly what `git log`/`git log -L`
- * report, rather than relying on "now" (unusable here — same-day commits are indistinguishable at
- * the `%cs` date-only resolution this codebase deliberately uses for readability). */
-function commitSeoRoutesAt(repoRoot, relPath, content, isoDateTime) {
-  const fullPath = join(repoRoot, relPath);
-  mkdirSync(dirname(fullPath), { recursive: true });
-  writeFileSync(fullPath, JSON.stringify(content, null, 2), 'utf8');
+/** Writes (or, for a `null` value, deletes) each `relPath -> content` entry inside `repoRoot` and
+ * commits the whole set together with an explicit, fixed author/committer date
+ * (`YYYY-MM-DDTHH:MM:SS`) — controlling exactly what `git log`/`git log -L` report, rather than
+ * relying on "now" (unusable here — same-day commits are indistinguishable at the `%cs` date-only
+ * resolution this codebase deliberately uses for readability). `git add -A` picks up a deletion
+ * the same way it picks up a write, so removing a shipped workflow is exercised the same real way
+ * a genuine removal would happen (delete the file, commit), not simulated any other way. */
+function writeFilesAndCommit(repoRoot, files, isoDateTime) {
+  for (const [relPath, content] of Object.entries(files)) {
+    const fullPath = join(repoRoot, relPath);
+    if (content === null) {
+      rmSync(fullPath, { recursive: true, force: true });
+      continue;
+    }
+    mkdirSync(dirname(fullPath), { recursive: true });
+    writeFileSync(fullPath, content, 'utf8');
+  }
   const env = { ...process.env, GIT_AUTHOR_DATE: isoDateTime, GIT_COMMITTER_DATE: isoDateTime };
-  execFileSync('git', ['add', '-A'], { cwd: repoRoot, env });
-  execFileSync('git', ['commit', '-q', '-m', 'seo-routes update'], { cwd: repoRoot, env });
+  const stdio = ['ignore', 'ignore', 'ignore']; // silence git's autocrlf/LF-will-be-replaced noise
+  execFileSync('git', ['add', '-A'], { cwd: repoRoot, env, stdio });
+  execFileSync('git', ['commit', '-q', '-m', 'update'], { cwd: repoRoot, env, stdio });
+}
+
+/** Writes seo-routes.json at `relPath` inside `repoRoot` and commits it alone — a thin
+ * single-file wrapper over `writeFilesAndCommit` for the route-metadata-isolation tests below. */
+function commitSeoRoutesAt(repoRoot, relPath, content, isoDateTime) {
+  writeFilesAndCommit(repoRoot, { [relPath]: JSON.stringify(content, null, 2) }, isoDateTime);
+}
+
+const SHIPPED_WORKFLOWS_INDEX_REL_PATH = 'agentforge4j-workflows-catalog/src/main/resources/shipped-workflows/index';
+const AGGREGATE_GENERATOR_REL_PATH = 'agentforge4j-web-ui/scripts/build-catalogue-data.mjs';
+const AGGREGATE_ADAPTER_REL_PATH = 'agentforge4j-web-ui/src/lib/catalogueData.ts';
+const AGGREGATE_COPY_REL_PATH = 'agentforge4j-web-ui/src/copy/catalogue.ts';
+const SEO_ROUTES_REL_PATH = 'agentforge4j-web-ui/src/config/seo-routes.json';
+
+function shippedWorkflowRelPath(id) {
+  return `agentforge4j-workflows-catalog/src/main/resources/shipped-workflows/${id}.workflow/workflow.json`;
+}
+
+/** A disposable git repo pre-populated with everything the aggregate `/catalogue/` mechanism
+ * reads: a seo-routes.json declaring `aggregateCatalogueSourceFiles` and a `/catalogue` route
+ * flagged `aggregatesCatalogueWorkflows: true` (plus an unrelated `/architecture` route, for the
+ * "catalogue-only changes don't leak" tests), stand-in generator/adapter/copy files, the shipped-
+ * workflows `index`, and one `<id>.workflow/workflow.json` per id in `workflowIds` — all in one
+ * initial commit at `isoDateTime`. */
+function setupCatalogueAggregateRepo(workflowIds, isoDateTime) {
+  const repoRoot = initTempGitRepo();
+  const routesContent = {
+    siteUrl: 'https://agentforge4j.org',
+    aggregateCatalogueSourceFiles: [AGGREGATE_GENERATOR_REL_PATH, AGGREGATE_ADAPTER_REL_PATH],
+    routes: [
+      {
+        path: '/catalogue',
+        title: 'Catalogue',
+        description: 'Catalogue.',
+        sourceFiles: [AGGREGATE_COPY_REL_PATH],
+        aggregatesCatalogueWorkflows: true,
+      },
+      { path: '/architecture', title: 'Architecture', description: 'Architecture.' },
+    ],
+  };
+  const files = {
+    [SEO_ROUTES_REL_PATH]: JSON.stringify(routesContent, null, 2),
+    [AGGREGATE_GENERATOR_REL_PATH]: '// generator v1\n',
+    [AGGREGATE_ADAPTER_REL_PATH]: '// adapter v1\n',
+    [AGGREGATE_COPY_REL_PATH]: '// copy v1\n',
+    [SHIPPED_WORKFLOWS_INDEX_REL_PATH]: `${workflowIds.join('\n')}\n`,
+  };
+  for (const id of workflowIds) {
+    files[shippedWorkflowRelPath(id)] = JSON.stringify({ id, name: `${id} name v1`, description: `${id} description v1` });
+  }
+  writeFilesAndCommit(repoRoot, files, isoDateTime);
+  return { repoRoot, seoRoutesPath: join(repoRoot, SEO_ROUTES_REL_PATH) };
 }
 
 /** Extracts the `<lastmod>` (or `null`) for one `<url>` block matching `url` exactly, out of a
@@ -360,9 +422,9 @@ test('every currently shipped real catalogue workflow id satisfies the slug cont
   }
 });
 
-test('every route declared in the real committed seo-routes.json has a sourceFiles entry that resolves to a real file, and every globalSourceFiles/catalogueSourceFiles entry does too (a silent typo/rename here would quietly drop that route\'s <lastmod> with no build failure)', () => {
+test('every route declared in the real committed seo-routes.json has a sourceFiles entry that resolves to a real file, and every globalSourceFiles/catalogueSourceFiles/aggregateCatalogueSourceFiles entry does too (a silent typo/rename here would quietly drop that route\'s <lastmod> with no build failure)', () => {
   const repoRoot = join(REAL_MODULE_ROOT, '..');
-  const { globalSourceFiles, catalogueSourceFiles, routes } = JSON.parse(
+  const { globalSourceFiles, catalogueSourceFiles, aggregateCatalogueSourceFiles, routes } = JSON.parse(
     readFileSync(join(REAL_MODULE_ROOT, 'src/config/seo-routes.json'), 'utf8'),
   );
   assert.ok(routes.length > 0, 'expected at least one real route to check');
@@ -379,7 +441,12 @@ test('every route declared in the real committed seo-routes.json has a sourceFil
       );
     }
   }
-  for (const [key, list] of [['globalSourceFiles', globalSourceFiles], ['catalogueSourceFiles', catalogueSourceFiles]]) {
+  const namedLists = [
+    ['globalSourceFiles', globalSourceFiles],
+    ['catalogueSourceFiles', catalogueSourceFiles],
+    ['aggregateCatalogueSourceFiles', aggregateCatalogueSourceFiles],
+  ];
+  for (const [key, list] of namedLists) {
     assert.ok(Array.isArray(list) && list.length > 0, `expected a non-empty ${key} list`);
     for (const relFile of list) {
       assert.ok(
@@ -389,6 +456,13 @@ test('every route declared in the real committed seo-routes.json has a sourceFil
       );
     }
   }
+  const catalogueRoute = routes.find((route) => route.path === '/catalogue');
+  assert.ok(catalogueRoute, 'expected a "/catalogue" route');
+  assert.equal(
+    catalogueRoute.aggregatesCatalogueWorkflows,
+    true,
+    '"/catalogue" must be flagged aggregatesCatalogueWorkflows so its <lastmod> reflects every shipped workflow',
+  );
 });
 
 test('the committed index.html home meta matches seo-routes.json\'s "/" entry (build-seo overwrites it at build time; this guards against the two silently drifting for local dev/preview)', () => {
@@ -757,4 +831,189 @@ test('shared shell: a real globalSourceFiles entry contributes identically to bo
   const xml = readFileSync(join(distDir, 'sitemap.xml'), 'utf8');
   assert.equal(lastmodFor(xml, 'https://agentforge4j.org/test-shared-shell/'), expectedStatic);
   assert.equal(lastmodFor(xml, 'https://agentforge4j.org/catalogue/agent-creator/'), expectedWorkflow);
+});
+
+// --- Aggregate /catalogue/ dependency model ------------------------------------------------
+//
+// /catalogue/ (CataloguePage.tsx) renders the *aggregate* workflow list — every shipped
+// workflow's name/description, in index order — so its own <lastmod> must reflect the newest of:
+// aggregateCatalogueSourceFiles (projection/adapter logic), the shipped-workflows `index` file
+// itself (addition/removal/reordering), and every currently-indexed workflow's own workflow.json
+// (name/description). All tests below use a real, disposable git repo with controlled backdated
+// commits — none of this is achievable against this checkout's own ambient history, since
+// same-day commits are indistinguishable at %cs's date-only resolution.
+
+test('workflow name change updates /catalogue/\'s <lastmod>', () => {
+  const { repoRoot, seoRoutesPath } = setupCatalogueAggregateRepo(['wf-a', 'wf-b'], '2020-01-01T00:00:00');
+  const { distDir, catalogueDataPath } = distFixture();
+  buildSeo({ distDir, seoRoutesPath, catalogueDataPath, repoRoot });
+  assert.equal(lastmodFor(readFileSync(join(distDir, 'sitemap.xml'), 'utf8'), 'https://agentforge4j.org/catalogue/'), '2020-01-01');
+
+  writeFilesAndCommit(
+    repoRoot,
+    { [shippedWorkflowRelPath('wf-a')]: JSON.stringify({ id: 'wf-a', name: 'Renamed Workflow A', description: 'wf-a description v1' }) },
+    '2020-06-01T00:00:00',
+  );
+  buildSeo({ distDir, seoRoutesPath, catalogueDataPath, repoRoot });
+  assert.equal(
+    lastmodFor(readFileSync(join(distDir, 'sitemap.xml'), 'utf8'), 'https://agentforge4j.org/catalogue/'),
+    '2020-06-01',
+    '/catalogue/ renders every workflow\'s name, so a name-only change to one of them must bump its <lastmod>',
+  );
+});
+
+test('workflow description change updates /catalogue/\'s <lastmod>', () => {
+  const { repoRoot, seoRoutesPath } = setupCatalogueAggregateRepo(['wf-a', 'wf-b'], '2020-01-01T00:00:00');
+  const { distDir, catalogueDataPath } = distFixture();
+  buildSeo({ distDir, seoRoutesPath, catalogueDataPath, repoRoot });
+  assert.equal(lastmodFor(readFileSync(join(distDir, 'sitemap.xml'), 'utf8'), 'https://agentforge4j.org/catalogue/'), '2020-01-01');
+
+  writeFilesAndCommit(
+    repoRoot,
+    { [shippedWorkflowRelPath('wf-b')]: JSON.stringify({ id: 'wf-b', name: 'wf-b name v1', description: 'Completely rewritten description' }) },
+    '2020-06-01T00:00:00',
+  );
+  buildSeo({ distDir, seoRoutesPath, catalogueDataPath, repoRoot });
+  assert.equal(
+    lastmodFor(readFileSync(join(distDir, 'sitemap.xml'), 'utf8'), 'https://agentforge4j.org/catalogue/'),
+    '2020-06-01',
+    '/catalogue/ renders every workflow\'s description, so a description-only change must bump its <lastmod>',
+  );
+});
+
+test('adding a shipped workflow updates /catalogue/\'s <lastmod> — and a newly discovered workflow contributes automatically, with no second workflow-id list to maintain', () => {
+  const { repoRoot, seoRoutesPath } = setupCatalogueAggregateRepo(['wf-a'], '2020-01-01T00:00:00');
+  const { distDir, catalogueDataPath } = distFixture();
+  buildSeo({ distDir, seoRoutesPath, catalogueDataPath, repoRoot });
+  assert.equal(lastmodFor(readFileSync(join(distDir, 'sitemap.xml'), 'utf8'), 'https://agentforge4j.org/catalogue/'), '2020-01-01');
+
+  // Only the index and the new workflow's own file are touched — seo-routes.json (and its
+  // aggregateCatalogueSourceFiles list) is never edited, proving the new id participates purely
+  // by virtue of being read fresh from `index` on the next build.
+  writeFilesAndCommit(
+    repoRoot,
+    {
+      [SHIPPED_WORKFLOWS_INDEX_REL_PATH]: 'wf-a\nwf-c\n',
+      [shippedWorkflowRelPath('wf-c')]: JSON.stringify({ id: 'wf-c', name: 'wf-c name v1', description: 'wf-c description v1' }),
+    },
+    '2020-06-01T00:00:00',
+  );
+  buildSeo({ distDir, seoRoutesPath, catalogueDataPath, repoRoot });
+  assert.equal(
+    lastmodFor(readFileSync(join(distDir, 'sitemap.xml'), 'utf8'), 'https://agentforge4j.org/catalogue/'),
+    '2020-06-01',
+    'adding a workflow to the index must bump /catalogue/\'s <lastmod>',
+  );
+});
+
+test('removing a shipped workflow updates /catalogue/\'s <lastmod> (deleting its bundle and editing the index out are themselves real, tracked changes)', () => {
+  const { repoRoot, seoRoutesPath } = setupCatalogueAggregateRepo(['wf-a', 'wf-b'], '2020-01-01T00:00:00');
+  const { distDir, catalogueDataPath } = distFixture();
+  buildSeo({ distDir, seoRoutesPath, catalogueDataPath, repoRoot });
+  assert.equal(lastmodFor(readFileSync(join(distDir, 'sitemap.xml'), 'utf8'), 'https://agentforge4j.org/catalogue/'), '2020-01-01');
+
+  writeFilesAndCommit(
+    repoRoot,
+    {
+      [SHIPPED_WORKFLOWS_INDEX_REL_PATH]: 'wf-a\n',
+      [shippedWorkflowRelPath('wf-b')]: null,
+    },
+    '2020-06-01T00:00:00',
+  );
+  buildSeo({ distDir, seoRoutesPath, catalogueDataPath, repoRoot });
+  assert.equal(
+    lastmodFor(readFileSync(join(distDir, 'sitemap.xml'), 'utf8'), 'https://agentforge4j.org/catalogue/'),
+    '2020-06-01',
+    'removing a workflow from the index must bump /catalogue/\'s <lastmod>',
+  );
+});
+
+test('a catalogue projection/generation logic change (build-catalogue-data.mjs) updates /catalogue/\'s <lastmod>', () => {
+  const { repoRoot, seoRoutesPath } = setupCatalogueAggregateRepo(['wf-a'], '2020-01-01T00:00:00');
+  const { distDir, catalogueDataPath } = distFixture();
+  buildSeo({ distDir, seoRoutesPath, catalogueDataPath, repoRoot });
+  assert.equal(lastmodFor(readFileSync(join(distDir, 'sitemap.xml'), 'utf8'), 'https://agentforge4j.org/catalogue/'), '2020-01-01');
+
+  writeFilesAndCommit(repoRoot, { [AGGREGATE_GENERATOR_REL_PATH]: '// generator v2 — changed projection logic\n' }, '2020-06-01T00:00:00');
+  buildSeo({ distDir, seoRoutesPath, catalogueDataPath, repoRoot });
+  assert.equal(lastmodFor(readFileSync(join(distDir, 'sitemap.xml'), 'utf8'), 'https://agentforge4j.org/catalogue/'), '2020-06-01');
+});
+
+test('a catalogueData.ts (typed adapter) change updates /catalogue/\'s <lastmod>', () => {
+  const { repoRoot, seoRoutesPath } = setupCatalogueAggregateRepo(['wf-a'], '2020-01-01T00:00:00');
+  const { distDir, catalogueDataPath } = distFixture();
+  buildSeo({ distDir, seoRoutesPath, catalogueDataPath, repoRoot });
+  assert.equal(lastmodFor(readFileSync(join(distDir, 'sitemap.xml'), 'utf8'), 'https://agentforge4j.org/catalogue/'), '2020-01-01');
+
+  writeFilesAndCommit(repoRoot, { [AGGREGATE_ADAPTER_REL_PATH]: '// adapter v2\n' }, '2020-06-01T00:00:00');
+  buildSeo({ distDir, seoRoutesPath, catalogueDataPath, repoRoot });
+  assert.equal(lastmodFor(readFileSync(join(distDir, 'sitemap.xml'), 'utf8'), 'https://agentforge4j.org/catalogue/'), '2020-06-01');
+});
+
+test('an aggregate catalogue copy (copy/catalogue.ts, already in /catalogue\'s own sourceFiles) change updates /catalogue/\'s <lastmod>', () => {
+  const { repoRoot, seoRoutesPath } = setupCatalogueAggregateRepo(['wf-a'], '2020-01-01T00:00:00');
+  const { distDir, catalogueDataPath } = distFixture();
+  buildSeo({ distDir, seoRoutesPath, catalogueDataPath, repoRoot });
+  assert.equal(lastmodFor(readFileSync(join(distDir, 'sitemap.xml'), 'utf8'), 'https://agentforge4j.org/catalogue/'), '2020-01-01');
+
+  writeFilesAndCommit(repoRoot, { [AGGREGATE_COPY_REL_PATH]: '// copy v2 — changed list heading/intro copy\n' }, '2020-06-01T00:00:00');
+  buildSeo({ distDir, seoRoutesPath, catalogueDataPath, repoRoot });
+  assert.equal(lastmodFor(readFileSync(join(distDir, 'sitemap.xml'), 'utf8'), 'https://agentforge4j.org/catalogue/'), '2020-06-01');
+});
+
+test('workflow A\'s own change updates /catalogue/ and workflow A\'s own detail page, but not workflow B\'s detail page (aggregate + detail isolation together)', () => {
+  const { repoRoot, seoRoutesPath } = setupCatalogueAggregateRepo(['wf-a', 'wf-b'], '2020-01-01T00:00:00');
+  const { distDir } = distFixture();
+  const catalogueDataPath = join(dirname(distDir), 'catalogue-data.json');
+  writeFileSync(
+    catalogueDataPath,
+    JSON.stringify({
+      workflows: [
+        { id: 'wf-a', name: 'wf-a name v1', description: 'wf-a description v1' },
+        { id: 'wf-b', name: 'wf-b name v1', description: 'wf-b description v1' },
+      ],
+    }),
+    'utf8',
+  );
+
+  buildSeo({ distDir, seoRoutesPath, catalogueDataPath, repoRoot });
+  const xmlBefore = readFileSync(join(distDir, 'sitemap.xml'), 'utf8');
+  assert.equal(lastmodFor(xmlBefore, 'https://agentforge4j.org/catalogue/'), '2020-01-01');
+  assert.equal(lastmodFor(xmlBefore, 'https://agentforge4j.org/catalogue/wf-a/'), '2020-01-01');
+  assert.equal(lastmodFor(xmlBefore, 'https://agentforge4j.org/catalogue/wf-b/'), '2020-01-01');
+
+  writeFilesAndCommit(
+    repoRoot,
+    { [shippedWorkflowRelPath('wf-a')]: JSON.stringify({ id: 'wf-a', name: 'wf-a name v2', description: 'wf-a description v1' }) },
+    '2020-06-01T00:00:00',
+  );
+  buildSeo({ distDir, seoRoutesPath, catalogueDataPath, repoRoot });
+  const xmlAfter = readFileSync(join(distDir, 'sitemap.xml'), 'utf8');
+  assert.equal(lastmodFor(xmlAfter, 'https://agentforge4j.org/catalogue/'), '2020-06-01', 'the aggregate list renders wf-a, so it must bump');
+  assert.equal(lastmodFor(xmlAfter, 'https://agentforge4j.org/catalogue/wf-a/'), '2020-06-01', 'workflow A\'s own detail page must bump');
+  assert.equal(lastmodFor(xmlAfter, 'https://agentforge4j.org/catalogue/wf-b/'), '2020-01-01', 'workflow B\'s detail page must be unaffected by workflow A\'s change');
+});
+
+test('catalogue-only changes (index, workflow files, aggregate deps) do not update unrelated static routes like /architecture/', () => {
+  const { repoRoot, seoRoutesPath } = setupCatalogueAggregateRepo(['wf-a'], '2020-01-01T00:00:00');
+  const { distDir, catalogueDataPath } = distFixture();
+  buildSeo({ distDir, seoRoutesPath, catalogueDataPath, repoRoot });
+  assert.equal(lastmodFor(readFileSync(join(distDir, 'sitemap.xml'), 'utf8'), 'https://agentforge4j.org/architecture/'), '2020-01-01');
+
+  writeFilesAndCommit(
+    repoRoot,
+    {
+      [SHIPPED_WORKFLOWS_INDEX_REL_PATH]: 'wf-a\nwf-c\n',
+      [shippedWorkflowRelPath('wf-c')]: JSON.stringify({ id: 'wf-c', name: 'wf-c', description: 'wf-c' }),
+      [AGGREGATE_GENERATOR_REL_PATH]: '// generator v2\n',
+      [AGGREGATE_ADAPTER_REL_PATH]: '// adapter v2\n',
+    },
+    '2020-06-01T00:00:00',
+  );
+  buildSeo({ distDir, seoRoutesPath, catalogueDataPath, repoRoot });
+  assert.equal(
+    lastmodFor(readFileSync(join(distDir, 'sitemap.xml'), 'utf8'), 'https://agentforge4j.org/architecture/'),
+    '2020-01-01',
+    '/architecture/ shares none of /catalogue/\'s aggregate dependencies and must be completely unaffected',
+  );
 });

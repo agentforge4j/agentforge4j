@@ -12,6 +12,10 @@
     "agentforge4j-web-ui/src/lib/renderWorkflowSvg.ts",
     "agentforge4j-web-ui/src/copy/catalogue.ts"
   ],
+  "aggregateCatalogueSourceFiles": [
+    "agentforge4j-web-ui/scripts/build-catalogue-data.mjs",
+    "agentforge4j-web-ui/src/lib/catalogueData.ts"
+  ],
   "routes": [
     {
       "path": "/",
@@ -69,7 +73,8 @@
       "sourceFiles": [
         "agentforge4j-web-ui/src/pages/CataloguePage.tsx",
         "agentforge4j-web-ui/src/copy/catalogue.ts"
-      ]
+      ],
+      "aggregatesCatalogueWorkflows": true
     },
     {
       "path": "/builder",

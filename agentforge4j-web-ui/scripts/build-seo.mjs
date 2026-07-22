@@ -24,6 +24,11 @@
 //         detail page (CatalogueDetailPage.tsx, catalogueSeo.ts, renderWorkflowSvg.ts,
 //         copy/catalogue.ts) — never applied to static routes.
 //       - a catalogue workflow's own committed workflow.json (workflowSourceFile).
+//       - the one static route flagged `aggregatesCatalogueWorkflows: true` (/catalogue itself)
+//         additionally depends on `aggregateCatalogueSourceFiles` (build-catalogue-data.mjs,
+//         catalogueData.ts), the shipped-workflows `index` file (addition/removal/reordering), and
+//         every currently-indexed workflow's own workflow.json (name/description) — see
+//         aggregateCatalogueDependencies.
 //     `null` only when none of a page's dependencies resolve to a real, committed file.
 //     assemble-site.mjs (agentforge4j-docs) merges this fragment with the Docusaurus-generated
 //     docs/sitemap.xml into the one final sitemap.xml at the composed site root — this script knows
@@ -305,6 +310,62 @@ function workflowSourceFile(id) {
   return `agentforge4j-workflows-catalog/src/main/resources/shipped-workflows/${id}.workflow/workflow.json`;
 }
 
+// The one committed file that decides which shipped workflows are "in" the catalogue at all —
+// the exact same file build-catalogue-data.mjs's own readIndexIds treats as the sole source of
+// membership (never a directory scan: see that script's own listOnDiskWorkflowIds, which only
+// exists there as a *cross-check* against this file, not a primary source). A workflow's
+// addition, removal, or reordering can only ever happen by editing this file — build-catalogue-
+// data.mjs fails the whole build otherwise (its own crossCheckBundles) — so this file's own commit
+// history is exactly the signal /catalogue/'s aggregate <lastmod> needs for those three cases.
+const SHIPPED_WORKFLOWS_INDEX_PATH = 'agentforge4j-workflows-catalog/src/main/resources/shipped-workflows/index';
+
+/** Every shipped workflow id currently listed in `SHIPPED_WORKFLOWS_INDEX_PATH`, read
+ * independently here — not imported from build-catalogue-data.mjs (this file already follows the
+ * house convention of reading shared source-of-truth config independently rather than importing
+ * another script's internals — see this module's own header comment on catalogueSeo.ts), and not
+ * the gitignored, machine-generated catalogue-data.json (which would make /catalogue/'s own
+ * <lastmod> depend on a file with no real git history of its own). A plain per-line list, not a
+ * filesystem scan — mirrors readIndexIds' own parsing exactly. Returns `[]` when the index file
+ * does not exist at this repoRoot at all (a fixture/test repoRoot with no real shipped-workflows
+ * tree), same "gracefully degrade, never invent" contract as every other lastmod input here. This
+ * is also precisely how a newly added workflow automatically participates in /catalogue/'s
+ * dependency set without any second, manually maintained id list: the next build simply re-reads
+ * this file fresh. */
+function readShippedWorkflowIds(repoRoot) {
+  const indexPath = join(repoRoot, SHIPPED_WORKFLOWS_INDEX_PATH);
+  if (!existsSync(indexPath)) {
+    return [];
+  }
+  return readFileSync(indexPath, 'utf8')
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
+}
+
+/** The complete dependency set for the one aggregate catalogue-list route (seo-routes.json's
+ * `/catalogue` entry, flagged `aggregatesCatalogueWorkflows: true`) — everything that can change
+ * what it visibly renders: `aggregateCatalogueSourceFiles` (seo-routes.json's top level —
+ * build-catalogue-data.mjs's own projection/generation logic, and catalogueData.ts, the typed
+ * adapter every render of the list goes through), the index file itself (captures addition,
+ * removal, and reordering), and every currently-indexed workflow's own committed workflow.json
+ * (captures a name/description edit on any shipped workflow, since the aggregate list renders
+ * every one of them). Deliberately excludes the catalogue *manifest*
+ * (agentforge4j-catalog.json — catalogVersion/min/maxAgentForge4jVersion/workflowSchemaVersion) and
+ * the workflow JSON Schema/its Java version source: traced during this design, both gate what data
+ * is *valid*, but neither field is ever rendered by CataloguePage.tsx, so a schema-only or
+ * manifest-only change produces byte-identical rendered output and correctly contributes nothing
+ * here. Also deliberately excludes `catalogueSourceFiles` (the catalogue-*detail*-page scope:
+ * CatalogueDetailPage.tsx, catalogueSeo.ts, renderWorkflowSvg.ts) — CataloguePage.tsx's own real
+ * imports are `catalogueData` and `CATALOGUE_COPY` only; none of the detail-page-only files are
+ * genuine dependencies of the list page, so that scope is never blindly reused here. */
+function aggregateCatalogueDependencies(repoRoot, aggregateCatalogueSourceFiles) {
+  return [
+    ...aggregateCatalogueSourceFiles,
+    SHIPPED_WORKFLOWS_INDEX_PATH,
+    ...readShippedWorkflowIds(repoRoot).map((id) => workflowSourceFile(id)),
+  ];
+}
+
 function sitemapXml(entries) {
   const body = entries
     .map(({ url, lastmod }) => {
@@ -345,6 +406,7 @@ export function buildSeo({
     siteUrl,
     globalSourceFiles = [],
     catalogueSourceFiles = [],
+    aggregateCatalogueSourceFiles = [],
     routes,
   } = JSON.parse(readFileSync(seoRoutesPath, 'utf8'));
   const catalogueData = existsSync(catalogueDataPath)
@@ -363,10 +425,13 @@ export function buildSeo({
     writeShell(distDir, route.path, html);
     shellsWritten += 1;
     if (route.sitemap !== false) {
+      const aggregateDeps = route.aggregatesCatalogueWorkflows
+        ? aggregateCatalogueDependencies(repoRoot, aggregateCatalogueSourceFiles)
+        : [];
       sitemapEntries.push({
         url: `${siteUrl}${withTrailingSlash(route.path)}`,
         lastmod: pickNewestDate([
-          newestGitLastModifiedDate(repoRoot, [...globalSourceFiles, ...(route.sourceFiles ?? [])]),
+          newestGitLastModifiedDate(repoRoot, [...globalSourceFiles, ...(route.sourceFiles ?? []), ...aggregateDeps]),
           gitLastModifiedDateForRouteMetadata(repoRoot, seoRoutesPath, route.path),
         ]),
       });
