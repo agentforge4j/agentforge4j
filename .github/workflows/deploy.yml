@@ -13,6 +13,11 @@ name: Deploy Docs
 # redeploys/recovery. The artifact carries no CNAME unless the repository variable
 # DOCS_CUSTOM_DOMAIN is set (mapped below into the assemble step; see scripts/assemble-site.mjs —
 # an unset/empty variable resolves to no CNAME, the same as today).
+#
+# `workflow_dispatch` lets a maintainer pick an arbitrary ref to run against (via the Actions UI,
+# CLI, or API) — not just `main`. Both jobs below are guarded to `github.ref == 'refs/heads/main'`
+# so a manual run against a feature/PR branch builds nothing and cannot publish to the production
+# `github-pages` environment; only `main` may ever be deployed.
 
 on:
   push:
@@ -32,6 +37,9 @@ permissions:
 jobs:
   build:
     name: build
+    # Restricts production builds/deploys to `main` even when workflow_dispatch is run against
+    # another ref (see the `on:` block comment above).
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -93,6 +101,9 @@ jobs:
   deploy:
     name: deploy
     needs: build
+    # Restricts production builds/deploys to `main` even when workflow_dispatch is run against
+    # another ref (see the `on:` block comment above).
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     environment:
       name: github-pages
