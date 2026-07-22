@@ -89,6 +89,19 @@ export function resolveWithinRoot(root, urlPath) {
   return null;
 }
 
+/** `decodeURIComponent` throws `URIError` on malformed percent-encoding (e.g. a truncated escape
+ * like `%E0%A4%A`) — uncaught, that would escape the request handler and crash the whole process,
+ * taking every other in-flight prerender capture down with it. Returns `null` for anything
+ * malformed; the caller must reject with a controlled 400, never fall through to the SPA shell (a
+ * malformed request is a client error, not simply an unknown route) or attempt path resolution. */
+function safeDecodeURIComponent(value) {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return null;
+  }
+}
+
 /** A minimal static file server with SPA fallback: any request path with no matching real file
  * under `distDir` serves `dist/index.html` instead of 404ing — the standard prerender technique,
  * since real per-route shells (build-seo.mjs's own output) do not exist yet at this build stage.
@@ -98,7 +111,12 @@ export function resolveWithinRoot(root, urlPath) {
 export function startStaticServer(distDir) {
   const indexHtml = readFileSync(join(distDir, 'index.html'));
   const server = createServer((req, res) => {
-    const urlPath = decodeURIComponent((req.url ?? '/').split('?')[0]);
+    const urlPath = safeDecodeURIComponent((req.url ?? '/').split('?')[0]);
+    if (urlPath === null) {
+      res.writeHead(400);
+      res.end('bad request');
+      return;
+    }
     const candidate = resolveWithinRoot(distDir, urlPath);
     const isRealFile = candidate !== null && !urlPath.endsWith('/') && existsSync(candidate);
     if (isRealFile) {

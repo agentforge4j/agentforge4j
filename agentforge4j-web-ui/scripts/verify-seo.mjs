@@ -22,6 +22,7 @@ import { fileURLToPath } from 'node:url';
 const here = dirname(fileURLToPath(import.meta.url));
 const MODULE_ROOT = join(here, '..');
 const DIST_DIR = join(MODULE_ROOT, 'dist');
+const SEO_ROUTES_PATH = join(MODULE_ROOT, 'src', 'config', 'seo-routes.json');
 const SITE_ORIGIN = 'https://agentforge4j.org';
 
 const MIME_TYPES = {
@@ -54,13 +55,31 @@ export function resolveWithinRoot(root, urlPath) {
   return null;
 }
 
+/** `decodeURIComponent` throws `URIError` on malformed percent-encoding (e.g. a truncated escape
+ * like `%E0%A4%A`) — uncaught, that would escape the request handler and crash the whole process,
+ * taking down every other in-flight check with it. Returns `null` for anything malformed; the
+ * caller must reject with a controlled 400, never attempt path resolution or a filesystem call on
+ * an input that couldn't even be decoded. */
+function safeDecodeURIComponent(value) {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return null;
+  }
+}
+
 /** A bare directory path 301s to its trailing-slash form; the slash form serves the directory's
  * index.html directly at 200; a real file serves as itself. No SPA fallback here (unlike
  * prerender-routes.mjs's own static server) — this must reproduce exactly what a real static host
  * serves for the shells build-seo.mjs actually wrote, not fall back to a generic entry document. */
 export function startGhPagesEmulatingServer(distDir) {
   const server = createServer((req, res) => {
-    const urlPath = decodeURIComponent((req.url ?? '/').split('?')[0]);
+    const urlPath = safeDecodeURIComponent((req.url ?? '/').split('?')[0]);
+    if (urlPath === null) {
+      res.writeHead(400);
+      res.end('bad request');
+      return;
+    }
     const candidate = resolveWithinRoot(distDir, urlPath);
     if (candidate === null) {
       res.writeHead(400);
@@ -117,16 +136,37 @@ function extractTag(html, pattern) {
   return match ? match[1] : null;
 }
 
-/** The routes this pass's audit explicitly named for raw-HTML verification, plus the two real
- * shipped catalogue workflows named in the same audit — checked in their correct, final
- * trailing-slash form (the form the sitemap/canonical fix makes them actually served at). */
-const REQUIRED_ROUTES = [
-  '/', '/api/', '/use/', '/catalogue/', '/builder/', '/architecture/', '/releases/',
-  '/community/', '/security/', '/legal/', '/contact/',
-  '/catalogue/agent-creator/', '/catalogue/workflow-execution-estimator/',
-];
+// Mirrors build-seo.mjs's own withTrailingSlash exactly. Duplicated deliberately, not imported:
+// this script independently reads the same committed seo-routes.json build-seo.mjs itself reads,
+// rather than importing internals of one script from the other — the same "read the same
+// source-of-truth config independently" convention prerender-routes.mjs's own header comment
+// documents for the identical situation.
+function withTrailingSlash(routePath) {
+  return routePath === '/' ? '/' : `${routePath.replace(/\/+$/, '')}/`;
+}
 
-export async function verifySeo({ distDir = DIST_DIR, requiredRoutes = REQUIRED_ROUTES } = {}) {
+/** The real static-route verification inventory — every route declared in the committed
+ * seo-routes.json, not a hand-maintained subset. This is the only way a route excluded from the
+ * sitemap (e.g. `/contributing`, `sitemap: false`) still gets its raw-HTML/H1/canonical checked at
+ * all: the sitemap-driven loop below never sees a route that isn't in the sitemap.
+ *
+ * Each entry's `expectedCanonical` is the route's own trailing-slash URL, or its `canonicalPath`
+ * target's trailing-slash URL when the route is a declared alias — normalized the same way
+ * build-seo.mjs itself normalizes them when it writes the real canonical tag, so this check fails
+ * the moment the two ever disagree. */
+export function loadStaticRouteInventory(seoRoutesPath) {
+  const { siteUrl, routes } = JSON.parse(readFileSync(seoRoutesPath, 'utf8'));
+  return routes.map((route) => ({
+    requestPath: withTrailingSlash(route.path),
+    expectedCanonical: `${siteUrl}${withTrailingSlash(route.canonicalPath ?? route.path)}`,
+  }));
+}
+
+export async function verifySeo({
+  distDir = DIST_DIR,
+  seoRoutesPath = SEO_ROUTES_PATH,
+  staticRoutes = loadStaticRouteInventory(seoRoutesPath),
+} = {}) {
   const sitemapPath = join(distDir, 'sitemap.xml');
   if (!existsSync(sitemapPath)) {
     throw new Error(`verify-seo: ${sitemapPath} does not exist — run the full build first`);
@@ -187,19 +227,29 @@ export async function verifySeo({ distDir = DIST_DIR, requiredRoutes = REQUIRED_
       }
     }
 
-    for (const route of requiredRoutes) {
-      const response = await fetch(`${origin}${route}`, { redirect: 'manual' });
+    for (const { requestPath, expectedCanonical } of staticRoutes) {
+      const response = await fetch(`${origin}${requestPath}`, { redirect: 'manual' });
       if (response.status !== 200) {
-        throw new Error(`verify-seo: required route ${route} did not return 200 with no redirect (got ${response.status})`);
+        throw new Error(
+          `verify-seo: configured route ${requestPath} did not return 200 with no redirect (got ${response.status})`,
+        );
       }
       const html = await response.text();
+
+      const canonical = extractTag(html, /<link rel="canonical" href="([^"]+)"/);
+      if (canonical !== expectedCanonical) {
+        throw new Error(
+          `verify-seo: ${requestPath} — expected canonical "${expectedCanonical}", got "${canonical}"`,
+        );
+      }
+
       const count = h1Count(html);
       if (count !== 1) {
-        throw new Error(`verify-seo: required route ${route} — expected exactly one <h1> in the raw served HTML, found ${count}`);
+        throw new Error(`verify-seo: ${requestPath} — expected exactly one <h1> in the raw served HTML, found ${count}`);
       }
       const h1Text = extractTag(html, /<h1[^>]*>([\s\S]*?)<\/h1>/);
       if (!h1Text || !h1Text.replace(/<[^>]+>/g, '').trim()) {
-        throw new Error(`verify-seo: required route ${route} — the raw <h1> has no real visible text content`);
+        throw new Error(`verify-seo: ${requestPath} — the raw <h1> has no real visible text content`);
       }
     }
   } finally {
@@ -208,7 +258,7 @@ export async function verifySeo({ distDir = DIST_DIR, requiredRoutes = REQUIRED_
 
   console.log(
     `[verify-seo] verified ${entries.length} sitemap URL(s) (200, no redirect, self-canonical, exactly one real <h1>) ` +
-      `and ${requiredRoutes.length} required route(s) — all clean`,
+      `and ${staticRoutes.length} configured static route(s) (200, no redirect, exactly one real <h1>, expected canonical) — all clean`,
   );
 }
 

@@ -213,3 +213,24 @@ test('startStaticServer never leaks a file reached via an encoded `../` traversa
     await new Promise((r) => server.close(r));
   }
 });
+
+// --- Malformed percent-encoding: decodeURIComponent throws URIError on a truncated/invalid escape
+// — uncaught, that would crash the whole process, taking every other in-flight prerender capture
+// down with it. ---
+
+test('startStaticServer returns a controlled 400 for malformed percent-encoding, and stays alive to serve a valid request afterward', async () => {
+  const { distDir } = fixtureDistWithSibling();
+  const server = await startStaticServer(distDir);
+  try {
+    const { port } = server.address();
+    const malformed = await rawGet(port, '/%E0%A4%A');
+    assert.equal(malformed.status, 400);
+
+    // The server process must not have crashed: a real, valid request right after must still work.
+    const valid = await rawGet(port, '/assets/app.js');
+    assert.equal(valid.status, 200);
+    assert.equal(valid.body, 'console.log("real asset");');
+  } finally {
+    await new Promise((r) => server.close(r));
+  }
+});
