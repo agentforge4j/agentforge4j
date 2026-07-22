@@ -309,6 +309,23 @@ test('every currently shipped real catalogue workflow id satisfies the slug cont
   }
 });
 
+test('every route declared in the real committed seo-routes.json has a sourceFile that resolves to a real file (a silent typo/rename here would quietly drop that route\'s <lastmod> with no build failure)', () => {
+  const repoRoot = join(REAL_MODULE_ROOT, '..');
+  const { routes } = JSON.parse(readFileSync(join(REAL_MODULE_ROOT, 'src/config/seo-routes.json'), 'utf8'));
+  assert.ok(routes.length > 0, 'expected at least one real route to check');
+  for (const route of routes) {
+    assert.ok(
+      typeof route.sourceFile === 'string' && route.sourceFile.length > 0,
+      `route "${route.path}" must declare a non-empty sourceFile`,
+    );
+    assert.ok(
+      existsSync(join(repoRoot, route.sourceFile)),
+      `route "${route.path}" declares sourceFile "${route.sourceFile}", which does not exist at ` +
+        `${join(repoRoot, route.sourceFile)} — this route would silently ship with no <lastmod>`,
+    );
+  }
+});
+
 test('the committed index.html home meta matches seo-routes.json\'s "/" entry (build-seo overwrites it at build time; this guards against the two silently drifting for local dev/preview)', () => {
   const html = readFileSync(join(REAL_MODULE_ROOT, 'index.html'), 'utf8');
   const { routes } = JSON.parse(readFileSync(join(REAL_MODULE_ROOT, 'src/config/seo-routes.json'), 'utf8'));
@@ -349,6 +366,22 @@ test('injectJsonLd inserts a valid, parseable JSON-LD script before </head> when
 
 test('injectJsonLd is a no-op for routes that declare no jsonLd (every route except "/")', () => {
   assert.equal(injectJsonLd(BASE_INDEX_HTML, undefined), BASE_INDEX_HTML);
+});
+
+test('injectJsonLd cannot be broken out of the <script> body by a value containing a literal </script> sequence', () => {
+  const jsonLd = { '@context': 'https://schema.org', '@type': 'WebSite', description: 'a</script><script>alert(1)</script>' };
+  const html = injectJsonLd(BASE_INDEX_HTML, jsonLd);
+  // The only real <script> tag in the document must be the one this function itself wrote — none
+  // injected via the JSON-LD payload's own string content.
+  const scriptOpenTags = html.match(/<script[ >]/g) ?? [];
+  assert.equal(scriptOpenTags.length, 1, 'expected exactly the one JSON-LD script — no extra <script> from the payload');
+  // The literal, unescaped sequence must never appear in the emitted HTML at all.
+  assert.ok(!html.includes('</script><script>alert(1)</script>'), 'the raw </script> sequence from the JSON-LD value must not reach the HTML unescaped');
+  // Semantics are unchanged: parsing the actual emitted JSON-LD block back out still yields the
+  // exact original string, </script> and all — this is an encoding fix, not a content change.
+  const match = /<script type="application\/ld\+json">([\s\S]*?)<\/script>\s*<\/head>/.exec(html);
+  assert.ok(match, 'expected a JSON-LD script immediately before </head>');
+  assert.deepEqual(JSON.parse(match[1]), jsonLd);
 });
 
 test('buildSeo splices the "/" route\'s jsonLd (seo-routes.json) into the real built index.html shell, and no other route gets one', () => {

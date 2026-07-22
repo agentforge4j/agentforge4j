@@ -16,10 +16,30 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { request } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { collectRoutePaths, prerenderRoutes } from './prerender-routes.mjs';
+import { collectRoutePaths, prerenderRoutes, resolveWithinRoot, startStaticServer } from './prerender-routes.mjs';
+
+/** A raw HTTP GET that sends `rawPath` on the request line completely unnormalized — unlike
+ * `fetch()`/undici, which parses the URL through the WHATWG URL parser and silently collapses `..`
+ * segments (and `%2e%2e` once decoded) BEFORE the request is ever sent, so a `fetch('.../../x')`
+ * traversal test would never actually reach the server with a `..` in `req.url` at all — it would
+ * pass even against the un-fixed, vulnerable code, proving nothing. `http.request`'s `path` option
+ * is sent to the wire exactly as given, so this is the only way to prove the server's own
+ * containment check — not the HTTP client's leniency — is what rejects a traversal attempt. */
+function rawGet(port, rawPath) {
+  return new Promise((resolvePromise, reject) => {
+    const req = request({ host: '127.0.0.1', port, path: rawPath, method: 'GET' }, (res) => {
+      const chunks = [];
+      res.on('data', (chunk) => chunks.push(chunk));
+      res.on('end', () => resolvePromise({ status: res.statusCode, body: Buffer.concat(chunks).toString('utf8') }));
+    });
+    req.on('error', reject);
+    req.end();
+  });
+}
 
 function fixtureDist(bodyScript) {
   const root = mkdtempSync(join(tmpdir(), 'prerender-determinism-'));
@@ -104,4 +124,92 @@ test('fails closed (does not silently ship) when a route is genuinely nondetermi
     () => prerenderRoutes({ distDir, routePaths: ['/'] }),
     /produced different markup across two consecutive captures/,
   );
+});
+
+// --- resolveWithinRoot: path-containment guard for the static server's own request handling ---
+// (a bare `candidate.startsWith(distDir)` check would incorrectly pass a sibling directory sharing
+// the same string prefix, e.g. `dist-evil` next to `dist` — this is what closes that gap).
+
+test('resolveWithinRoot: a normal relative path resolves inside the root', () => {
+  const root = join(tmpdir(), 'containment-root');
+  assert.equal(resolveWithinRoot(root, '/assets/app.js'), join(root, 'assets', 'app.js'));
+  assert.equal(resolveWithinRoot(root, '/'), root);
+});
+
+test('resolveWithinRoot: a `../` traversal segment is rejected (returns null), however deep', () => {
+  const root = join(tmpdir(), 'containment-root');
+  assert.equal(resolveWithinRoot(root, '/../secret.txt'), null);
+  assert.equal(resolveWithinRoot(root, '/../../../../etc/passwd'), null);
+});
+
+test('resolveWithinRoot: an already-decoded traversal segment is rejected identically (the server decodeURIComponents the URL before calling this)', () => {
+  const root = join(tmpdir(), 'containment-root');
+  // %2e%2e%2f decodes to "../" before this function ever sees it — same input, same rejection.
+  assert.equal(resolveWithinRoot(root, decodeURIComponent('/%2e%2e%2fsecret.txt')), null);
+});
+
+test('resolveWithinRoot: a sibling directory sharing the same string prefix is rejected, not treated as a child', () => {
+  const root = join(tmpdir(), 'dist');
+  // "../dist-evil/secret.txt" resolves to a real sibling of `root` that a naive
+  // `candidate.startsWith(root)` bare-prefix check would incorrectly accept.
+  assert.equal(resolveWithinRoot(root, '/../dist-evil/secret.txt'), null);
+});
+
+// --- startStaticServer: the same containment guard, exercised through a real HTTP round-trip ---
+
+function fixtureDistWithSibling() {
+  const root = mkdtempSync(join(tmpdir(), 'prerender-containment-'));
+  const distDir = join(root, 'dist');
+  mkdirSync(join(distDir, 'assets'), { recursive: true });
+  writeFileSync(join(distDir, 'index.html'), '<!doctype html><html><body><div id="root">shell</div></body></html>', 'utf8');
+  writeFileSync(join(distDir, 'assets', 'app.js'), 'console.log("real asset");', 'utf8');
+  const siblingDir = join(root, 'dist-evil');
+  mkdirSync(siblingDir, { recursive: true });
+  writeFileSync(join(siblingDir, 'secret.txt'), 'THIS MUST NEVER BE SERVED', 'utf8');
+  return { distDir, siblingDir };
+}
+
+test('startStaticServer serves a real file inside the root normally', async () => {
+  const { distDir } = fixtureDistWithSibling();
+  const server = await startStaticServer(distDir);
+  try {
+    const { port } = server.address();
+    const { status, body } = await rawGet(port, '/assets/app.js');
+    assert.equal(status, 200);
+    assert.equal(body, 'console.log("real asset");');
+  } finally {
+    await new Promise((r) => server.close(r));
+  }
+});
+
+test('startStaticServer never leaks a file reached via `../` traversal — falls back to the safe SPA shell instead', async () => {
+  const { distDir, siblingDir } = fixtureDistWithSibling();
+  // Sanity check on the fixture itself, not the server: proves the sibling file genuinely exists
+  // on disk (so this test is proving containment, not merely that the path didn't exist).
+  assert.ok(existsSync(join(siblingDir, 'secret.txt')));
+  const server = await startStaticServer(distDir);
+  try {
+    const { port } = server.address();
+    const { body } = await rawGet(port, '/../dist-evil/secret.txt');
+    assert.ok(!body.includes('THIS MUST NEVER BE SERVED'), 'the traversal-reached sibling file must never be served');
+    assert.ok(body.includes('shell'), 'must fall back to the real SPA shell (index.html), not error or leak content');
+  } finally {
+    await new Promise((r) => server.close(r));
+  }
+});
+
+test('startStaticServer never leaks a file reached via an encoded `../` traversal form either', async () => {
+  const { distDir, siblingDir } = fixtureDistWithSibling();
+  assert.ok(existsSync(join(siblingDir, 'secret.txt')));
+  const server = await startStaticServer(distDir);
+  try {
+    const { port } = server.address();
+    // %2e%2e is "%2e%2e" -> ".." URL-encoded — the server decodeURIComponents the raw request path
+    // itself, so this must be rejected exactly like the unencoded form above.
+    const { body } = await rawGet(port, '/%2e%2e/dist-evil/secret.txt');
+    assert.ok(!body.includes('THIS MUST NEVER BE SERVED'), 'the traversal-reached sibling file must never be served');
+    assert.ok(body.includes('shell'), 'must fall back to the real SPA shell (index.html), not error or leak content');
+  } finally {
+    await new Promise((r) => server.close(r));
+  }
 });

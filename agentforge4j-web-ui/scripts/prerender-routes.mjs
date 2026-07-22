@@ -27,7 +27,7 @@
 
 import { createServer } from 'node:http';
 import { createReadStream, existsSync, readFileSync } from 'node:fs';
-import { dirname, extname, join } from 'node:path';
+import { dirname, extname, isAbsolute, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
 
@@ -73,18 +73,34 @@ export function collectRoutePaths({ seoRoutesPath = SEO_ROUTES_PATH, catalogueDa
   return paths;
 }
 
+/** Resolves a request path against `root`, returning the resolved absolute path only if it is
+ * genuinely `root` itself or a real descendant of it — never a bare string-prefix comparison
+ * (which a sibling directory sharing the same prefix, e.g. `dist-evil` next to `dist`, would
+ * incorrectly pass) and never a path a `../` (or an already-decoded `%2e%2e%2f`, since the caller
+ * decodes the URL before this runs) traversal segment could walk outside `root`. Returns `null` for
+ * anything outside `root` — the caller must never treat that as a real file (it already falls back
+ * to the safe SPA shell below for anything that isn't one). */
+export function resolveWithinRoot(root, urlPath) {
+  const candidate = resolve(root, `.${urlPath}`);
+  const rel = relative(root, candidate);
+  if (rel === '' || (!rel.startsWith('..') && !isAbsolute(rel))) {
+    return candidate;
+  }
+  return null;
+}
+
 /** A minimal static file server with SPA fallback: any request path with no matching real file
  * under `distDir` serves `dist/index.html` instead of 404ing — the standard prerender technique,
  * since real per-route shells (build-seo.mjs's own output) do not exist yet at this build stage.
  * React Router reads `window.location.pathname` from the browser itself once the bundle boots, so
  * serving the one generic entry document for every route is sufficient for each route to mount its
  * real page. */
-function startStaticServer(distDir) {
+export function startStaticServer(distDir) {
   const indexHtml = readFileSync(join(distDir, 'index.html'));
   const server = createServer((req, res) => {
     const urlPath = decodeURIComponent((req.url ?? '/').split('?')[0]);
-    const candidate = join(distDir, urlPath);
-    const isRealFile = !urlPath.endsWith('/') && existsSync(candidate) && candidate.startsWith(distDir);
+    const candidate = resolveWithinRoot(distDir, urlPath);
+    const isRealFile = candidate !== null && !urlPath.endsWith('/') && existsSync(candidate);
     if (isRealFile) {
       const ext = extname(candidate);
       res.writeHead(200, { 'content-type': MIME_TYPES[ext] ?? 'application/octet-stream' });

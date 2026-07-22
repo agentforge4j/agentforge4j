@@ -169,12 +169,22 @@ export function injectRoot(html, innerHtml) {
 /** Inserts a route's JSON-LD structured-data block right before `</head>` — an addition, not a
  * replacement (unlike injectHead's tags, no shell starts with one), so only routes that declare a
  * `jsonLd` object in seo-routes.json (today: only "/") get a `<script type="application/ld+json">`
- * at all; every other shell is unaffected. A no-op when `jsonLd` is undefined. */
+ * at all; every other shell is unaffected. A no-op when `jsonLd` is undefined.
+ *
+ * Every `<` in the serialized JSON is escaped to `<` before it reaches the HTML — `<` is the
+ * only character that matters inside a `<script>` body (an HTML parser looks for `</script` byte-
+ * for-byte, case-insensitively, regardless of JSON string-quoting), so an unescaped value
+ * containing a literal `</script>` would close the tag early and let whatever followed run as live
+ * markup/script. `<` is a standard JSON string escape — `JSON.parse` (or any JSON-LD consumer)
+ * reads it back as the exact same `<` character, so this changes zero JSON semantics; it is not a
+ * general HTML-escaping pass (`>`, `&`, quotes, etc. are untouched and do not need to be — none of
+ * them can end a `<script>` body). */
 export function injectJsonLd(html, jsonLd) {
   if (jsonLd === undefined || jsonLd === null) {
     return html;
   }
-  const script = `<script type="application/ld+json">${JSON.stringify(jsonLd)}</script>\n  </head>`;
+  const serialized = JSON.stringify(jsonLd).replace(/</g, '\\u003c');
+  const script = `<script type="application/ld+json">${serialized}</script>\n  </head>`;
   if (!/<\/head>/.test(html)) {
     throw new Error('build-seo: expected a </head> closing tag in dist/index.html');
   }

@@ -16,7 +16,7 @@
 
 import { createServer } from 'node:http';
 import { createReadStream, existsSync, readFileSync, statSync } from 'node:fs';
-import { dirname, extname, join } from 'node:path';
+import { dirname, extname, isAbsolute, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -39,14 +39,34 @@ const MIME_TYPES = {
   '.xml': 'application/xml',
 };
 
+/** Resolves a request path against `root`, returning the resolved absolute path only if it is
+ * genuinely `root` itself or a real descendant of it — never a bare string-prefix comparison
+ * (which a sibling directory sharing the same prefix, e.g. `dist-evil` next to `dist`, would
+ * incorrectly pass) and never a path a `../` (or an already-decoded `%2e%2e%2f`, since the caller
+ * decodes the URL before this runs) traversal segment could walk outside `root`. Returns `null` for
+ * anything outside `root` — the caller must reject, never serve, that case. */
+export function resolveWithinRoot(root, urlPath) {
+  const candidate = resolve(root, `.${urlPath}`);
+  const rel = relative(root, candidate);
+  if (rel === '' || (!rel.startsWith('..') && !isAbsolute(rel))) {
+    return candidate;
+  }
+  return null;
+}
+
 /** A bare directory path 301s to its trailing-slash form; the slash form serves the directory's
  * index.html directly at 200; a real file serves as itself. No SPA fallback here (unlike
  * prerender-routes.mjs's own static server) — this must reproduce exactly what a real static host
  * serves for the shells build-seo.mjs actually wrote, not fall back to a generic entry document. */
-function startGhPagesEmulatingServer(distDir) {
+export function startGhPagesEmulatingServer(distDir) {
   const server = createServer((req, res) => {
     const urlPath = decodeURIComponent((req.url ?? '/').split('?')[0]);
-    const candidate = join(distDir, urlPath);
+    const candidate = resolveWithinRoot(distDir, urlPath);
+    if (candidate === null) {
+      res.writeHead(400);
+      res.end('bad request');
+      return;
+    }
     let stat;
     try {
       stat = statSync(candidate);
