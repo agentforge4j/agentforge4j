@@ -13,7 +13,7 @@
 // absent — the surface is complete by design, not partial. Requires JDK 17 and the OSS artifacts
 // installed (`./mvnw install -Dmaven.test.skip=true`). Run via `npm run javadoc`.
 
-import {execFileSync} from 'node:child_process';
+import {execFileSync, execSync} from 'node:child_process';
 import {cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync} from 'node:fs';
 import {dirname, join, resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
@@ -35,13 +35,16 @@ const UNNAMED_PUBLIC = [
 const MVNW = join(REPO_ROOT, process.platform === 'win32' ? 'mvnw.cmd' : 'mvnw');
 
 // Run the wrapper from `cwd`. On Windows the .cmd wrapper must go through a shell (batch files
-// cannot be spawned directly); the command path is quoted because the checkout path may contain
-// spaces, and every argument is a fixed token without spaces, so plain concatenation is unambiguous.
-// POSIX spawns the wrapper directly — no shell, no argument re-interpretation.
+// cannot be spawned directly); `execSync` takes the whole command as one string rather than
+// `execFileSync(..., {shell: true})` with a separate args array, which Node deprecates (DEP0190)
+// because the array elements are not shell-escaped. The command path is quoted because the
+// checkout path may contain spaces, and every argument is a fixed token without spaces, so plain
+// concatenation into that one string is unambiguous. POSIX spawns the wrapper directly — no
+// shell, no argument re-interpretation.
 function run(args, cwd) {
   console.log(`[build-javadoc] (cwd=${cwd}) mvnw ${args.join(' ')}`);
   if (process.platform === 'win32') {
-    execFileSync(`"${MVNW}"`, args, {cwd, stdio: 'inherit', shell: true});
+    execSync(`"${MVNW}" ${args.join(' ')}`, {cwd, stdio: 'inherit'});
   } else {
     execFileSync(MVNW, args, {cwd, stdio: 'inherit'});
   }
