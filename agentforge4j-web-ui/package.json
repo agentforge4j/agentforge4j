@@ -9,7 +9,8 @@
     "dev:local": "npm run catalogue:build && cross-env AFB_LOCAL_BUILDER=1 vite --force",
     "catalogue:build": "node scripts/build-catalogue-data.mjs",
     "prebuild": "npm run catalogue:build",
-    "build": "tsc -b && vite build && node scripts/build-seo.mjs && node scripts/copy-404.mjs",
+    "build": "tsc -b && vite build && node scripts/build-seo.mjs && node scripts/copy-404.mjs && node scripts/verify-seo.mjs",
+    "playwright:install": "playwright install --with-deps chromium",
     "preview": "vite preview",
     "lint": "eslint src scripts --max-warnings 0",
     "prelint:content-gate": "npm run catalogue:build",
@@ -22,7 +23,7 @@
     "test:content-gate": "node --test scripts/lint-content-gate.test.mjs",
     "test:catalogue-data": "node --test scripts/build-catalogue-data.test.mjs",
     "pretest:seo": "npm run catalogue:build",
-    "test:seo": "node --test scripts/build-seo.test.mjs",
+    "test:seo": "node --test scripts/build-seo.test.mjs scripts/prerender-routes.test.mjs scripts/verify-seo.test.mjs",
     "check": "npm run lint && npm run lint:content-gate && npm run typecheck && npm run test && npm run test:content-gate && npm run test:catalogue-data && npm run test:seo && npm run build"
   },
   "dependencies": {
@@ -51,6 +52,7 @@
     "eslint-plugin-react-hooks": "^7.1.1",
     "eslint-plugin-react-refresh": "^0.5.3",
     "jsdom": "^29.1.1",
+    "playwright": "1.61.1",
     "postcss": "^8.5.19",
     "tailwindcss": "^4.2.4",
     "typescript": "^6.0.3",

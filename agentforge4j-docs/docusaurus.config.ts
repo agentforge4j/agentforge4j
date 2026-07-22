@@ -44,6 +44,17 @@ const config: Config = {
   // Improve compatibility with the upcoming Docusaurus v4.
   future: {
     v4: true,
+    // `v4: true` implies `faster.gitEagerVcs: true`, which switches the site's default VCS
+    // strategy to VcsDefaultV2 (the "eager" bulk git-history reader). Verified against a real
+    // build with real versioned_docs/version-0.1.0 content: that strategy's file-info map is
+    // keyed by ABSOLUTE paths (resolved from `git ls-files`), but @docusaurus/plugin-sitemap
+    // passes each route's `sourceFilePath` as-is — relative to siteDir, never resolved to
+    // absolute — so every eager-strategy lookup silently missed and every /docs/0.1.0/** sitemap
+    // entry shipped with no <lastmod> at all. `git-ad-hoc` (the historical, one-`git log`-call-
+    // per-file strategy, confirmed correct against this same real content) sidesteps the mismatch
+    // entirely — it resolves cwd/paths itself per call rather than pre-building an absolute-keyed
+    // map, so a relative sourceFilePath still works.
+    experimental_vcs: 'git-ad-hoc',
   },
 
   // Production URL and base path. The site is built to mount under `/docs` on the
@@ -55,6 +66,14 @@ const config: Config = {
   // In archive mode the artifact is mounted under its own frozen subpath (design §7), so every
   // generated asset/route reference resolves inside `/docs/archive/<v>/` — self-contained by build.
   baseUrl: archiveVersion ? `/docs/archive/${archiveVersion}/` : '/docs/',
+  // Every generated page is a directory (`.../index.html`), which GitHub Pages (a static host with
+  // no clean-URL rewriting) only serves without a redirect at its trailing-slash address — the
+  // non-slash form 301s there. Left unset, Docusaurus's own canonical/og:url/hreflang generation and
+  // the sitemap plugin (both driven by this one flag, see @docusaurus/utils-common's
+  // applyTrailingSlash) emit the non-slash form, so every doc page's own canonical tag pointed at a
+  // URL that redirected away from itself. `true` makes every self-reference consistently match what
+  // the host actually serves, with no per-page patching.
+  trailingSlash: true,
 
   organizationName: 'agentforge4j',
   projectName: 'agentforge4j',
@@ -146,6 +165,13 @@ const config: Config = {
           changefreq: null,
           priority: null,
           ignorePatterns: ['/docs/next/**', '/docs/search'],
+          // Real, reproducible, per-page git-derived last-modified dates — Docusaurus's own
+          // route metadata carries each page's sourceFilePath, and the default VCS preset
+          // (future.experimental_vcs, unset here) already resolves it via a real `git log` call
+          // in production builds (see @docusaurus/utils/vcs/vcsDefaultV1 -> vcsGitAdHoc), so this
+          // needs no custom git-shelling of its own: the same commit always reproduces the same
+          // value, and a page's lastmod only changes when its source file's history does.
+          lastmod: 'date',
         },
       } satisfies Preset.Options,
     ],
@@ -182,6 +208,13 @@ const config: Config = {
   ],
 
   themeConfig: {
+    // Default social-preview image for every docs page that doesn't set its own (none currently
+    // do). An absolute URL, not a `static/img/...`-relative one: this is the marketing SPA's own
+    // existing brand asset (agentforge4j-web-ui/public/brand/icon-512.png, composed to the site
+    // root alongside /docs/ by assemble-site.mjs), not a file inside this module's own static/ —
+    // useBaseUrl's own addBaseUrl no-ops on any URL that already has a protocol, so Docusaurus
+    // emits this unchanged as both og:image and twitter:image, already production-absolute.
+    image: 'https://agentforge4j.org/brand/icon-512.png',
     colorMode: {
       respectPrefersColorScheme: true,
     },

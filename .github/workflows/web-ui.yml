@@ -45,6 +45,25 @@ jobs:
         working-directory: agentforge4j-web-ui
         run: npm ci
 
+      # The production build now boots the real built bundle in headless Chromium to prerender
+      # every route's body content (scripts/prerender-routes.mjs) — `npm ci` installs the
+      # `playwright` package itself, but never downloads the browser binary; without this step the
+      # build only succeeds on a machine that already happens to have chromium cached, exactly the
+      # failure mode this step exists to prevent. Same cached-install convention as `UI E2E`
+      # (agentforge4j-ui-e2e), keyed by this module's own lockfile so the two never invalidate each
+      # other's cache entry.
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('agentforge4j-web-ui/package-lock.json') }}
+          restore-keys: |
+            playwright-${{ runner.os }}-
+
+      - name: Install Playwright Chromium
+        working-directory: agentforge4j-web-ui
+        run: npx playwright install --with-deps chromium
+
       - name: Lint, content-gate, type-check, test, and build
         working-directory: agentforge4j-web-ui
         run: npm run check

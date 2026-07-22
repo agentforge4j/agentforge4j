@@ -4,64 +4,107 @@
     {
       "path": "/",
       "title": "AgentForge4j — Governed AI Workflows for Java",
-      "description": "AgentForge4j is an open-source Java framework for Java teams building their own governed AI workflows, with approvals, tools, and observability."
+      "description": "AgentForge4j is an open-source Java framework for Java teams building their own governed AI workflows, with approvals, tools, and observability.",
+      "sourceFile": "agentforge4j-web-ui/src/pages/HomePage.tsx",
+      "jsonLd": {
+        "@context": "https://schema.org",
+        "@graph": [
+          {
+            "@type": "WebSite",
+            "@id": "https://agentforge4j.org/#website",
+            "name": "AgentForge4j",
+            "url": "https://agentforge4j.org/",
+            "description": "AgentForge4j is an open-source Java framework for Java teams building their own governed AI workflows, with approvals, tools, and observability.",
+            "publisher": { "@id": "https://agentforge4j.org/#organization" }
+          },
+          {
+            "@type": "Organization",
+            "@id": "https://agentforge4j.org/#organization",
+            "name": "AgentForge4j",
+            "url": "https://agentforge4j.org/",
+            "logo": "https://agentforge4j.org/brand/icon-512.png",
+            "sameAs": ["https://github.com/agentforge4j"]
+          },
+          {
+            "@type": "SoftwareSourceCode",
+            "@id": "https://agentforge4j.org/#software",
+            "name": "AgentForge4j",
+            "url": "https://agentforge4j.org/",
+            "description": "An embeddable Java framework for governed AI workflows.",
+            "codeRepository": "https://github.com/agentforge4j/agentforge4j",
+            "programmingLanguage": "Java",
+            "license": "https://www.apache.org/licenses/LICENSE-2.0"
+          }
+        ]
+      }
     },
     {
       "path": "/api",
       "title": "API Reference — AgentForge4j",
-      "description": "Generated Javadoc for the AgentForge4j framework. Browse the latest stable or next (development) API reference."
+      "description": "Generated Javadoc for the AgentForge4j framework. Browse the latest stable or next (development) API reference.",
+      "sourceFile": "agentforge4j-web-ui/src/pages/ApiPage.tsx"
     },
     {
       "path": "/use",
       "title": "Get Started — AgentForge4j",
-      "description": "Embed AgentForge4j in your own Java application — no server to install, no account to create. The bundled fake provider runs offline, no credentials needed."
+      "description": "Embed AgentForge4j in your own Java application — no server to install, no account to create. The bundled fake provider runs offline, no credentials needed.",
+      "sourceFile": "agentforge4j-web-ui/src/pages/UsePage.tsx"
     },
     {
       "path": "/catalogue",
       "title": "Workflow Catalogue — AgentForge4j",
-      "description": "Browse the shipped, ready-to-run workflows published in the AgentForge4j Workflow Catalog."
+      "description": "Browse the shipped, ready-to-run workflows published in the AgentForge4j Workflow Catalog.",
+      "sourceFile": "agentforge4j-web-ui/src/pages/CataloguePage.tsx"
     },
     {
       "path": "/builder",
       "title": "Workflow Builder — AgentForge4j",
-      "description": "Visually import, edit, and export AgentForge4j workflow definitions in the browser."
+      "description": "Visually import, edit, and export AgentForge4j workflow definitions in the browser.",
+      "sourceFile": "agentforge4j-web-ui/src/pages/BuilderPage.tsx"
     },
     {
       "path": "/architecture",
       "title": "Architecture — AgentForge4j",
-      "description": "AgentForge4j is a set of layered Java modules — the core has no dependency on any specific LLM provider, with providers, tools, and configuration loading built as separate layers on top."
+      "description": "AgentForge4j is a set of layered Java modules — the core has no dependency on any specific LLM provider, with providers, tools, and configuration loading built as separate layers on top.",
+      "sourceFile": "agentforge4j-web-ui/src/pages/ArchitecturePage.tsx"
     },
     {
       "path": "/releases",
       "title": "Releases — AgentForge4j",
-      "description": "AgentForge4j 0.1.0, the first public framework release, is published to Maven Central. Framework, shipped workflow catalog, and workflow builder are versioned independently."
+      "description": "AgentForge4j 0.1.0, the first public framework release, is published to Maven Central. Framework, shipped workflow catalog, and workflow builder are versioned independently.",
+      "sourceFile": "agentforge4j-web-ui/src/pages/ReleasesPage.tsx"
     },
     {
       "path": "/community",
       "title": "Community & Contributing — AgentForge4j",
-      "description": "AgentForge4j is open source and welcomes contributions — bug reports, documentation improvements, and code."
+      "description": "AgentForge4j is open source and welcomes contributions — bug reports, documentation improvements, and code.",
+      "sourceFile": "agentforge4j-web-ui/src/pages/CommunityPage.tsx"
     },
     {
       "path": "/contributing",
       "title": "Contributing — AgentForge4j",
       "description": "AgentForge4j is open source and welcomes contributions — bug reports, documentation improvements, and code.",
       "canonicalPath": "/community",
-      "sitemap": false
+      "sitemap": false,
+      "sourceFile": "agentforge4j-web-ui/src/pages/CommunityPage.tsx"
     },
     {
       "path": "/security",
       "title": "Security — AgentForge4j",
-      "description": "How to report a security vulnerability in AgentForge4j, and the framework's default tool-policy and outbound-egress protections."
+      "description": "How to report a security vulnerability in AgentForge4j, and the framework's default tool-policy and outbound-egress protections.",
+      "sourceFile": "agentforge4j-web-ui/src/pages/SecurityPage.tsx"
     },
     {
       "path": "/legal",
       "title": "Legal — AgentForge4j",
-      "description": "Licence, privacy, accessibility, and trademark information for AgentForge4j and this website."
+      "description": "Licence, privacy, accessibility, and trademark information for AgentForge4j and this website.",
+      "sourceFile": "agentforge4j-web-ui/src/pages/LegalPage.tsx"
     },
     {
       "path": "/contact",
       "title": "Contact — AgentForge4j",
-      "description": "Contact addresses for AgentForge4j security reports, administration, and general enquiries."
+      "description": "Contact addresses for AgentForge4j security reports, administration, and general enquiries.",
+      "sourceFile": "agentforge4j-web-ui/src/pages/ContactPage.tsx"
     }
   ]
 }

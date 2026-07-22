@@ -10,7 +10,15 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { buildSeo, escapeHtml, injectHead } from './build-seo.mjs';
+import {
+  buildSeo,
+  escapeHtml,
+  gitLastModifiedDate,
+  injectHead,
+  injectJsonLd,
+  injectRoot,
+  withTrailingSlash,
+} from './build-seo.mjs';
 import { WORKFLOW_ID_PATTERN } from './workflow-id-contract.mjs';
 
 const REAL_MODULE_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -99,29 +107,29 @@ test('writes a real static shell for every non-root route', () => {
   const html = readFileSync(join(distDir, 'architecture', 'index.html'), 'utf8');
   assert.match(html, /<title>Architecture — AgentForge4j<\/title>/);
   assert.match(html, /content="Architecture description\."/);
-  assert.match(html, /href="https:\/\/agentforge4j\.org\/architecture"/);
+  assert.match(html, /href="https:\/\/agentforge4j\.org\/architecture\/"/);
 });
 
-test('a route with canonicalPath points its canonical/og:url at the target, not itself', () => {
+test('a route with canonicalPath points its canonical/og:url at the target, not itself (trailing-slash form — the target\'s own served address)', () => {
   const { distDir, seoRoutesPath, catalogueDataPath } = fixture();
   buildSeo({ distDir, seoRoutesPath, catalogueDataPath });
   const html = readFileSync(join(distDir, 'contributing', 'index.html'), 'utf8');
-  assert.match(html, /rel="canonical" href="https:\/\/agentforge4j\.org\/community"/);
-  assert.match(html, /property="og:url" content="https:\/\/agentforge4j\.org\/community"/);
+  assert.match(html, /rel="canonical" href="https:\/\/agentforge4j\.org\/community\/"/);
+  assert.match(html, /property="og:url" content="https:\/\/agentforge4j\.org\/community\/"/);
 });
 
 test('a route with sitemap: false is excluded from the sitemap fragment', () => {
   const { distDir, seoRoutesPath, catalogueDataPath } = fixture();
   const { sitemapUrls } = buildSeo({ distDir, seoRoutesPath, catalogueDataPath });
-  assert.ok(!sitemapUrls.includes('https://agentforge4j.org/contributing'));
+  assert.ok(!sitemapUrls.includes('https://agentforge4j.org/contributing/'));
 });
 
-test('every other route is included in the sitemap fragment exactly once', () => {
+test('every other route is included in the sitemap fragment exactly once, in the trailing-slash form GitHub Pages actually serves with no redirect', () => {
   const { distDir, seoRoutesPath, catalogueDataPath } = fixture();
   const { sitemapUrls } = buildSeo({ distDir, seoRoutesPath, catalogueDataPath });
   assert.deepEqual(
     [...sitemapUrls].sort(),
-    ['https://agentforge4j.org/', 'https://agentforge4j.org/architecture'].sort(),
+    ['https://agentforge4j.org/', 'https://agentforge4j.org/architecture/'].sort(),
   );
 });
 
@@ -146,7 +154,7 @@ test('generates a real static page + sitemap entry for every shipped catalogue w
   const html = readFileSync(join(distDir, 'catalogue', 'agent-creator', 'index.html'), 'utf8');
   assert.match(html, /<title>Agent Creator — AgentForge4j Catalogue<\/title>/);
   assert.match(html, /content="Builds agents\."/);
-  assert.ok(sitemapUrls.includes('https://agentforge4j.org/catalogue/agent-creator'));
+  assert.ok(sitemapUrls.includes('https://agentforge4j.org/catalogue/agent-creator/'));
 });
 
 test('falls back to a generic description when a workflow has none', () => {
@@ -308,4 +316,93 @@ test('the committed index.html home meta matches seo-routes.json\'s "/" entry (b
   assert.ok(home, 'seo-routes.json must define a "/" entry');
   assert.match(html, new RegExp(`<title>${home.title.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}</title>`));
   assert.ok(html.includes(home.description), 'index.html description must match the "/" entry verbatim');
+});
+
+test('withTrailingSlash: the root path is unchanged; every other route gains exactly one trailing slash', () => {
+  assert.equal(withTrailingSlash('/'), '/');
+  assert.equal(withTrailingSlash('/api'), '/api/');
+  assert.equal(withTrailingSlash('/catalogue/agent-creator'), '/catalogue/agent-creator/');
+  assert.equal(withTrailingSlash('/already/'), '/already/');
+});
+
+test('injectRoot splices real prerendered markup into the empty mount point', () => {
+  const html = injectRoot(BASE_INDEX_HTML, '<header>Real Nav</header><main><h1>Real Title</h1></main>');
+  assert.match(html, /<div id="root"><header>Real Nav<\/header><main><h1>Real Title<\/h1><\/main><\/div>/);
+});
+
+test('injectRoot is a no-op when no snapshot was captured for a route (fixture tests with no headless browser)', () => {
+  assert.equal(injectRoot(BASE_INDEX_HTML, undefined), BASE_INDEX_HTML);
+});
+
+test('injectRoot fails closed when the shell has no empty mount point to splice into (template drift)', () => {
+  const alreadyFilled = BASE_INDEX_HTML.replace('<div id="root"></div>', '<div id="root">already has content</div>');
+  assert.throws(() => injectRoot(alreadyFilled, '<h1>x</h1>'), /empty <div id="root">/);
+});
+
+test('injectJsonLd inserts a valid, parseable JSON-LD script before </head> when a route declares one', () => {
+  const jsonLd = { '@context': 'https://schema.org', '@type': 'WebSite', name: 'AgentForge4j' };
+  const html = injectJsonLd(BASE_INDEX_HTML, jsonLd);
+  const match = /<script type="application\/ld\+json">([\s\S]*?)<\/script>\s*<\/head>/.exec(html);
+  assert.ok(match, 'expected a JSON-LD script immediately before </head>');
+  assert.deepEqual(JSON.parse(match[1]), jsonLd);
+});
+
+test('injectJsonLd is a no-op for routes that declare no jsonLd (every route except "/")', () => {
+  assert.equal(injectJsonLd(BASE_INDEX_HTML, undefined), BASE_INDEX_HTML);
+});
+
+test('buildSeo splices the "/" route\'s jsonLd (seo-routes.json) into the real built index.html shell, and no other route gets one', () => {
+  const jsonLd = { '@context': 'https://schema.org', '@type': 'WebSite', name: 'Home' };
+  const routesWithJsonLd = {
+    siteUrl: 'https://agentforge4j.org',
+    routes: [
+      { path: '/', title: 'Home', description: 'Home.', jsonLd },
+      { path: '/architecture', title: 'Architecture', description: 'Architecture.' },
+    ],
+  };
+  const { distDir, seoRoutesPath, catalogueDataPath } = fixture({ routes: routesWithJsonLd });
+  buildSeo({ distDir, seoRoutesPath, catalogueDataPath });
+  const homeHtml = readFileSync(join(distDir, 'index.html'), 'utf8');
+  const archHtml = readFileSync(join(distDir, 'architecture', 'index.html'), 'utf8');
+  assert.match(homeHtml, /application\/ld\+json/);
+  assert.doesNotMatch(archHtml, /application\/ld\+json/);
+});
+
+test('buildSeo splices a route\'s prerendered snapshot into its own shell only, leaving routes with no captured snapshot untouched', () => {
+  const { distDir, seoRoutesPath, catalogueDataPath } = fixture();
+  buildSeo({
+    distDir,
+    seoRoutesPath,
+    catalogueDataPath,
+    snapshots: { '/': '<h1>Real Home Content</h1>' },
+  });
+  const homeHtml = readFileSync(join(distDir, 'index.html'), 'utf8');
+  const archHtml = readFileSync(join(distDir, 'architecture', 'index.html'), 'utf8');
+  assert.match(homeHtml, /<div id="root"><h1>Real Home Content<\/h1><\/div>/);
+  assert.match(archHtml, /<div id="root"><\/div>/, 'a route with no captured snapshot keeps its empty mount point, not a stale/wrong one');
+});
+
+test('gitLastModifiedDate returns a real, valid W3C date (YYYY-MM-DD) for a real committed file, and null when no source file is declared', () => {
+  const repoRoot = join(REAL_MODULE_ROOT, '..');
+  const date = gitLastModifiedDate(repoRoot, 'agentforge4j-web-ui/package.json');
+  assert.match(date, /^\d{4}-\d{2}-\d{2}$/);
+  assert.equal(gitLastModifiedDate(repoRoot, undefined), null);
+});
+
+test('a route with a sourceFile gets a real git-derived <lastmod>; a route without one gets none (never an invented date)', () => {
+  const repoRoot = join(REAL_MODULE_ROOT, '..');
+  const routesWithSourceFile = {
+    siteUrl: 'https://agentforge4j.org',
+    routes: [
+      { path: '/', title: 'Home', description: 'Home.', sourceFile: 'agentforge4j-web-ui/package.json' },
+      { path: '/architecture', title: 'Architecture', description: 'Architecture.' },
+    ],
+  };
+  const { distDir, seoRoutesPath, catalogueDataPath } = fixture({ routes: routesWithSourceFile });
+  buildSeo({ distDir, seoRoutesPath, catalogueDataPath, repoRoot });
+  const xml = readFileSync(join(distDir, 'sitemap.xml'), 'utf8');
+  const homeBlock = /<url>\s*<loc>https:\/\/agentforge4j\.org\/<\/loc>[\s\S]*?<\/url>/.exec(xml)[0];
+  const archBlock = /<url>\s*<loc>https:\/\/agentforge4j\.org\/architecture\/<\/loc>[\s\S]*?<\/url>/.exec(xml)[0];
+  assert.match(homeBlock, /<lastmod>\d{4}-\d{2}-\d{2}<\/lastmod>/);
+  assert.doesNotMatch(archBlock, /<lastmod>/);
 });

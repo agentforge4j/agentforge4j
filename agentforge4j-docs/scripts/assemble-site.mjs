@@ -36,6 +36,7 @@ import {JAVADOC_VERSIONS_OUT, javadocBuildVersions} from './build-javadoc-versio
 import {ARCHIVE_ROOT} from './archive-transition.mjs';
 import {resolveJavadocUrl} from '../src/remark/javadoc.mjs';
 import {liveJavadocRefs} from './lint-javadoc-links.mjs';
+import {applyJavadocSeo} from './javadoc-seo.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const MODULE_ROOT = resolve(here, '..');
@@ -336,17 +337,25 @@ export function verifyComposedAnchorLinks(siteDir, docsSourceDir, versionedDocsS
 
 const SITEMAP_URL_PREFIX = 'https://agentforge4j.org/';
 
-/** Extracts every `<loc>` URL from a sitemap.xml file, in document order. Regex, not a real XML
- * parser: both fragments this merges (the SPA's own, and Docusaurus's `@docusaurus/plugin-sitemap`
- * output) are simple, single-namespace, machine-generated `<url><loc>...</loc></url>` documents —
- * no CDATA, no nested namespaces — so a full parser dependency buys nothing here. */
-function extractSitemapLocs(xmlPath) {
+/** Extracts every `{url, lastmod}` pair from a sitemap.xml file, in document order (`lastmod` is
+ * `null` when a `<url>` block has none). Regex, not a real XML parser: both fragments this merges
+ * (the SPA's own build-seo.mjs output, and Docusaurus's `@docusaurus/plugin-sitemap` output) are
+ * simple, single-namespace, machine-generated `<url><loc>...</loc>[<lastmod>...</lastmod>]</url>`
+ * documents — no CDATA, no nested namespaces — so a full parser dependency buys nothing here. */
+function extractSitemapEntries(xmlPath) {
   const xml = readFileSync(xmlPath, 'utf8');
-  return [...xml.matchAll(/<loc>([^<]+)<\/loc>/g)].map((match) => match[1]);
+  return [...xml.matchAll(/<url>\s*<loc>([^<]+)<\/loc>(?:\s*<lastmod>([^<]+)<\/lastmod>)?\s*<\/url>/g)].map(
+    ([, url, lastmod]) => ({ url, lastmod: lastmod ?? null }),
+  );
 }
 
-function sitemapXml(urls) {
-  const body = urls.map((url) => `  <url>\n    <loc>${url}</loc>\n  </url>`).join('\n');
+function sitemapXml(entries) {
+  const body = entries
+    .map(({ url, lastmod }) => {
+      const lastmodTag = lastmod ? `\n    <lastmod>${lastmod}</lastmod>` : '';
+      return `  <url>\n    <loc>${url}</loc>${lastmodTag}\n  </url>`;
+    })
+    .join('\n');
   return (
     '<?xml version="1.0" encoding="UTF-8"?>\n' +
     '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n' +
@@ -372,9 +381,9 @@ function mergeSitemaps(siteDir, exit) {
     'Run `npm run build` in agentforge4j-docs first (the sitemap plugin runs in postBuild).',
   );
 
-  const urls = [...extractSitemapLocs(spaSitemapPath), ...extractSitemapLocs(docsSitemapPath)];
+  const entries = [...extractSitemapEntries(spaSitemapPath), ...extractSitemapEntries(docsSitemapPath)];
 
-  for (const url of urls) {
+  for (const { url } of entries) {
     if (!url.startsWith(SITEMAP_URL_PREFIX)) {
       console.error(`[assemble-site] refusing a sitemap URL outside ${SITEMAP_URL_PREFIX}: ${url}`);
       exit(1);
@@ -382,7 +391,7 @@ function mergeSitemaps(siteDir, exit) {
   }
 
   const seen = new Set();
-  for (const url of urls) {
+  for (const { url } of entries) {
     if (seen.has(url)) {
       console.error(`[assemble-site] duplicate sitemap URL across the SPA and docs fragments: ${url}`);
       exit(1);
@@ -390,8 +399,8 @@ function mergeSitemaps(siteDir, exit) {
     seen.add(url);
   }
 
-  writeFileSync(join(siteDir, 'sitemap.xml'), sitemapXml(urls), 'utf8');
-  console.log(`[assemble-site] merged sitemap.xml: ${urls.length} URL(s) (SPA + docs)`);
+  writeFileSync(join(siteDir, 'sitemap.xml'), sitemapXml(entries), 'utf8');
+  console.log(`[assemble-site] merged sitemap.xml: ${entries.length} URL(s) (SPA + docs)`);
 }
 
 /** A static meta-refresh redirect page. */
@@ -460,12 +469,14 @@ function writeRedirectStubs(siteDir, manifestPath, exit = process.exit) {
  * @param {{spaDir: string, buildDir: string, javadocDir: string, javadocVersionsDir?: string,
  *          releasedVersions?: string[], archiveDir: string, siteDir: string,
  *          docsSourceDir?: string, versionedDocsSourceDir?: string,
- *          customDomain: string|null,
+ *          customDomain: string|null, siteUrl?: string, ogImage?: string,
  *          exit?: (code: number) => void}} options `exit` is an injectable seam for the
  *        redirect-stub collision guard and the composed-output verification (tests; default
  *        `process.exit`). `docsSourceDir`/`versionedDocsSourceDir` are undefined by default (the
  *        composed-Javadoc-link check is then a no-op over zero files) — `main()` below passes this
  *        module's real `docs/`/`versioned_docs/`; fixture-based tests need not supply them.
+ *        `siteUrl`/`ogImage` default to the real production values (javadoc-seo.mjs's canonical
+ *        and social-preview image) — overridable so fixture tests never depend on the real domain.
  */
 export function assembleSite({
   spaDir,
@@ -478,6 +489,8 @@ export function assembleSite({
   docsSourceDir,
   versionedDocsSourceDir,
   customDomain,
+  siteUrl = 'https://agentforge4j.org',
+  ogImage = 'https://agentforge4j.org/brand/icon-512.png',
   exit = process.exit,
 }) {
   requireDir(spaDir, 'SPA build', 'Run `npm run build` in agentforge4j-web-ui first.');
@@ -550,6 +563,16 @@ export function assembleSite({
   mergeSitemaps(siteDir, exit);
 
   verifyComposedArtifact(siteDir, releasedVersions, exit);
+
+  // 7. Javadoc SEO metadata (design decision, this pass — see javadoc-seo.mjs's own header for the
+  //    full duplicate-content policy), applied only once the composed artifact is already verified
+  //    structurally complete: every surface's raw maven-javadoc-plugin overview page ships with no
+  //    canonical/lang/OG/Twitter and a generic description. Applied here against the composed
+  //    output (not build-javadoc.mjs itself) so it covers every surface — including already-tagged
+  //    historical versions, whose own build-javadoc.mjs predates this fix — on every deploy.
+  const javadocSurfacesUpdated = applyJavadocSeo({siteDir, siteUrl, ogImage, releasedVersions});
+  console.log(`[assemble-site] applied Javadoc SEO metadata to ${javadocSurfacesUpdated} surface(s)`);
+
   scanComposedHtmlForForbiddenContent(siteDir, exit);
   verifyComposedJavadocLinks(siteDir, docsSourceDir, versionedDocsSourceDir, exit);
   verifyComposedAnchorLinks(siteDir, docsSourceDir, versionedDocsSourceDir, exit);
