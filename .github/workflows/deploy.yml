@@ -7,17 +7,21 @@ name: Deploy Docs
 # forward) and deploys it. Never runs on pull requests (previews are the build artifacts uploaded
 # by the Web UI and Docs workflows).
 #
-# MANUAL DISPATCH ONLY — deliberately fail-closed. GitHub Pages serves one site per custom domain,
-# and how this repository's /docs and /javadoc surfaces compose with the project website under
-# `agentforge4j.org` is not settled yet. Until it is, nothing may publish automatically: a deploy
-# happens only when a maintainer dispatches this workflow, and the artifact carries no CNAME unless
-# the repository variable DOCS_CUSTOM_DOMAIN is set (mapped below into the assemble step; see
-# scripts/assemble-site.mjs — an unset/empty variable resolves to no CNAME, the same as today). When
-# automatic publishing is enabled later, prefer an unfiltered `push: main` trigger — the generated
-# reference and the Javadoc surface depend on essentially the whole reactor, so any path filter
-# would let the published site go silently stale.
+# Deploys automatically on every push to `main` (no path filter — the generated reference and the
+# Javadoc surface depend on essentially the whole reactor, so any path filter would let the
+# published site go silently stale), and remains available via manual `workflow_dispatch` for
+# redeploys/recovery. The artifact carries no CNAME unless the repository variable
+# DOCS_CUSTOM_DOMAIN is set (mapped below into the assemble step; see scripts/assemble-site.mjs —
+# an unset/empty variable resolves to no CNAME, the same as today).
+#
+# `workflow_dispatch` lets a maintainer pick an arbitrary ref to run against (via the Actions UI,
+# CLI, or API) — not just `main`. Both jobs below are guarded to `github.ref == 'refs/heads/main'`
+# so a manual run against a feature/PR branch builds nothing and cannot publish to the production
+# `github-pages` environment; only `main` may ever be deployed.
 
 on:
+  push:
+    branches: [main]
   workflow_dispatch:
 
 # Allow one concurrent deployment; do not cancel an in-progress deploy (Pages best practice).
@@ -33,6 +37,9 @@ permissions:
 jobs:
   build:
     name: build
+    # Restricts production builds/deploys to `main` even when workflow_dispatch is run against
+    # another ref (see the `on:` block comment above).
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -94,6 +101,9 @@ jobs:
   deploy:
     name: deploy
     needs: build
+    # Restricts production builds/deploys to `main` even when workflow_dispatch is run against
+    # another ref (see the `on:` block comment above).
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     environment:
       name: github-pages
