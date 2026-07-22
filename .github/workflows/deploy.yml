@@ -64,6 +64,21 @@ jobs:
         working-directory: agentforge4j-web-ui
         run: npm ci
 
+      # The build boots the real built bundle in headless Chromium to prerender every route's body
+      # content (scripts/prerender-routes.mjs) — `npm ci` never downloads the browser binary itself.
+      # Same cached-install convention as `UI E2E` and `Web UI` (web-ui.yml).
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('agentforge4j-web-ui/package-lock.json') }}
+          restore-keys: |
+            playwright-${{ runner.os }}-
+
+      - name: Install Playwright Chromium
+        working-directory: agentforge4j-web-ui
+        run: npx playwright install --with-deps chromium
+
       - name: Build the agentforge4j.org SPA
         # Build-only (lint/type-check/test already run on every push/PR via web-ui.yml) — a build
         # failure here still fails this step (tsc/vite/copy-404.mjs all exit non-zero on error), and
