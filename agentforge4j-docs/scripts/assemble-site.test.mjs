@@ -9,6 +9,7 @@ import assert from 'node:assert/strict';
 import {existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
+import sax from 'sax';
 import {
   assembleSite,
   scanComposedHtmlForForbiddenContent,
@@ -756,6 +757,37 @@ test('a <loc> containing an XML-escaped & round-trips through the merge as valid
   const xml = readFileSync(join(siteDir, 'sitemap.xml'), 'utf8');
   assert.match(xml, /<loc>https:\/\/agentforge4j\.org\/docs\/0\.1\.0\/\?a=1&amp;b=2<\/loc>/);
   assert.doesNotMatch(xml, /\?a=1&b=2/, 'the & must be re-escaped, never written back literally');
+});
+
+test('a <loc>/<lastmod> containing an XML-escaped < or > round-trips through the merge as valid XML, not as a literal unescaped < or >', () => {
+  // extractSitemapEntries only constrains <url> entry *structure*, not the characters <loc>/<lastmod>
+  // text may legally decode to — a value that legitimately decoded &lt;/&gt; entities must still
+  // re-escape safely on the way back out, or the composed sitemap.xml itself is no longer well-formed
+  // XML. Proven here by feeding the real, produced output back through a real strict XML parser
+  // (sax), not just by pattern-matching the expected escaped substrings.
+  const {spaDir, buildDir, javadocDir, archiveDir, siteDir} = fixture();
+  writeFileSync(
+    join(buildDir, 'sitemap.xml'),
+    `${SITEMAP_HEADER}  <url>\n    <loc>https://agentforge4j.org/docs/0.1.0/?a=1&lt;2&gt;3</loc>\n` +
+      '    <lastmod>2026&lt;07&gt;23</lastmod>\n  </url>\n' +
+      `${SITEMAP_FOOTER}`,
+  );
+  assembleSite({spaDir, buildDir, javadocDir, archiveDir, siteDir, customDomain: null});
+  const xml = readFileSync(join(siteDir, 'sitemap.xml'), 'utf8');
+  assert.match(xml, /<loc>https:\/\/agentforge4j\.org\/docs\/0\.1\.0\/\?a=1&lt;2&gt;3<\/loc>/);
+  assert.match(xml, /<lastmod>2026&lt;07&gt;23<\/lastmod>/);
+  assert.doesNotMatch(xml, /\?a=1<2>3/, 'the < and > must be re-escaped, never written back literally');
+  assert.doesNotMatch(xml, />2026<07>23</, 'the < and > must be re-escaped, never written back literally');
+  // The definitive proof: the produced file itself must parse as well-formed strict XML. sax stays
+  // silent on error unless onerror is wired to throw (it does not throw by default), so this must
+  // set onerror explicitly rather than relying on write()/close() throwing on its own.
+  assert.doesNotThrow(() => {
+    const parser = sax.parser(true);
+    parser.onerror = (err) => {
+      throw err;
+    };
+    parser.write(xml).close();
+  }, 'the composed sitemap.xml must itself be well-formed XML');
 });
 
 // --- scanComposedHtmlForForbiddenContent ------------------------------------------------------

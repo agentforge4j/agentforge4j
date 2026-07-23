@@ -494,23 +494,25 @@ function extractSitemapEntries(xmlPath, exit) {
   return entries;
 }
 
-// The one round-trip hazard a real XML parser introduces that a raw-regex extractor never had:
-// `sax` correctly decodes standard XML entities in text content (e.g. `&amp;` -> `&`), so a `<loc>`
-// value read back out of `extractSitemapEntries` is the real, decoded URL string, not its escaped
-// XML representation. Serializing it back verbatim would emit a literal, unescaped `&` — invalid
-// XML the moment any merged URL ever contains one (this site's own routes don't today, but nothing
-// about this module's contract limits it to hosts that never will). `&` is the only character that
-// needs escaping here: a real URL cannot contain a literal `<`, `>`, or `"` unencoded (RFC 3986)
-// the way it legitimately can contain `&` in a query string.
-function escapeAmpersand(value) {
-  return value.replace(/&/g, '&amp;');
+// The round-trip hazard a real XML parser introduces that a raw-regex extractor never had: `sax`
+// correctly decodes standard XML entities in text content (e.g. `&amp;` -> `&`, `&lt;` -> `<`), so
+// a `<loc>`/`<lastmod>` value read back out of `extractSitemapEntries` is the real, decoded string,
+// not its escaped XML representation. Serializing it back verbatim would emit a literal, unescaped
+// `&`, `<`, or `>` — invalid XML content the moment any merged entry ever contains one. `extractSitemapEntries`
+// only constrains the *structure* a `<url>` entry may take, not the characters `<loc>`/`<lastmod>`
+// text may decode to, so every character XML text content can express (nothing beyond RFC 3986 for
+// today's own routes, but the contract does not limit it to that) must round-trip safely. `"` is not
+// escaped: these values are serialized as element text content, never as an attribute value, so an
+// unescaped `"` there is well-formed XML.
+function escapeXmlText(value) {
+  return value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
 function sitemapXml(entries) {
   const body = entries
     .map(({ url, lastmod }) => {
-      const lastmodTag = lastmod ? `\n    <lastmod>${escapeAmpersand(lastmod)}</lastmod>` : '';
-      return `  <url>\n    <loc>${escapeAmpersand(url)}</loc>${lastmodTag}\n  </url>`;
+      const lastmodTag = lastmod ? `\n    <lastmod>${escapeXmlText(lastmod)}</lastmod>` : '';
+      return `  <url>\n    <loc>${escapeXmlText(url)}</loc>${lastmodTag}\n  </url>`;
     })
     .join('\n');
   return (
