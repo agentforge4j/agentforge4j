@@ -146,6 +146,75 @@ test('injectJavadocPageSeo leaves an already-correct lang="en" untouched on a ne
   assert.match(html, /public class <span class="element-name">Foo<\/span>/);
 });
 
+// --- C175-002: empty/whitespace-only lang values must be repaired, never accepted as-is ---------
+
+function langAttrCount(html) {
+  return (html.match(/\blang=/g) ?? []).length;
+}
+
+test('C175-002: <html lang> (no = at all) is repaired to lang="en" — the known maven-javadoc-plugin bug shape', () => {
+  const html = injectJavadocPageSeo(RAW_OVERVIEW_HTML, {
+    title: 't',
+    description: 'd',
+    canonical: 'https://agentforge4j.org/javadoc/next/',
+    ogImage: 'https://agentforge4j.org/brand/icon-512.png',
+  });
+  assert.match(html, /<html lang="en">/);
+  assert.equal(langAttrCount(html), 1, 'expected exactly one lang= attribute after repair');
+});
+
+test('C175-002: <html lang=""> (explicit empty value) is repaired to lang="en", not silently accepted as "already valid"', () => {
+  const emptyValue = RAW_OVERVIEW_HTML.replace('<html lang>', '<html lang="">');
+  const html = injectJavadocPageSeo(emptyValue, {
+    title: 't',
+    description: 'd',
+    canonical: 'https://agentforge4j.org/javadoc/next/',
+    ogImage: 'https://agentforge4j.org/brand/icon-512.png',
+  });
+  assert.match(html, /<html lang="en">/);
+  assert.doesNotMatch(html, /<html lang="">/);
+  assert.equal(langAttrCount(html), 1, 'expected exactly one lang= attribute after repair');
+});
+
+test('C175-002: <html lang="   "> (whitespace-only value) is repaired identically to the empty-value case', () => {
+  const whitespaceValue = RAW_OVERVIEW_HTML.replace('<html lang>', '<html lang="   ">');
+  const html = injectJavadocPageSeo(whitespaceValue, {
+    title: 't',
+    description: 'd',
+    canonical: 'https://agentforge4j.org/javadoc/next/',
+    ogImage: 'https://agentforge4j.org/brand/icon-512.png',
+  });
+  assert.match(html, /<html lang="en">/);
+  assert.doesNotMatch(html, /<html lang="   ">/);
+  assert.equal(langAttrCount(html), 1, 'expected exactly one lang= attribute after repair');
+});
+
+test('C175-002: <html lang="   "> repair also applies to a nested-page-shaped fixture (a real class page), not only the overview shape', () => {
+  const whitespaceValue = rawClassPageHtml().replace('<html lang="en">', '<html lang="   ">');
+  const html = injectJavadocPageSeo(whitespaceValue, {
+    title: 'Foo — AgentForge4j API Reference (next)',
+    description: 'Generated Javadoc API reference for the AgentForge4j framework (next) — Foo.',
+    canonical: 'https://agentforge4j.org/javadoc/next/com/example/Foo.html',
+    ogImage: 'https://agentforge4j.org/brand/icon-512.png',
+  });
+  assert.match(html, /<html lang="en">/);
+  assert.equal(langAttrCount(html), 1, 'expected exactly one lang= attribute after repair');
+  // Real generated content must still survive the repair untouched.
+  assert.match(html, /<h1 class="title">Class Foo<\/h1>/);
+});
+
+test('C175-002: a real, non-empty lang value (en-US) is preserved unchanged, not overwritten to "en"', () => {
+  const html = injectJavadocPageSeo(rawClassPageHtml().replace('lang="en"', 'lang="en-US"'), {
+    title: 'Foo — AgentForge4j API Reference (next)',
+    description: 'Generated Javadoc API reference for the AgentForge4j framework (next) — Foo.',
+    canonical: 'https://agentforge4j.org/javadoc/next/com/example/Foo.html',
+    ogImage: 'https://agentforge4j.org/brand/icon-512.png',
+  });
+  assert.match(html, /<html lang="en-US">/);
+  assert.doesNotMatch(html, /<html lang="en">/);
+  assert.equal(langAttrCount(html), 1, 'expected exactly one lang= attribute');
+});
+
 test('injectJavadocPageSeo replaces a nested page\'s own mechanical description ("declaration: package: ...") with a useful one, grounded in the page\'s own <title>', () => {
   const html = injectJavadocPageSeo(rawClassPageHtml(), {
     title: 'Foo — AgentForge4j API Reference (next)',
@@ -418,6 +487,111 @@ test('once a newer version ships, the OLD newest version (no longer a duplicate 
 
   const nowNewest = readFileSync(join(siteDir, 'javadoc', '0.2.0', 'index.html'), 'utf8');
   assert.match(nowNewest, /<meta name="robots" content="noindex,follow">/, '0.2.0 is now the version /latest/ mirrors');
+
+  // /next/ must remain indexable once a stable release exists — not affected by the pre-release
+  // special case, which only applies when releasedVersions is empty.
+  const next = readFileSync(join(siteDir, 'javadoc', 'next', 'index.html'), 'utf8');
+  assert.doesNotMatch(next, /<meta name="robots"/, '/next/ must stay indexable once any release exists');
+});
+
+// --- C175-001: the complete /next vs /latest duplicate-content lifecycle matrix ------------------
+//
+// Counts the exact number of `<meta name="robots"` occurrences rather than a loose substring check
+// — a page with two robots tags (one noindex, one accidentally left indexable, say) must not be
+// mistaken for correctly noindexed just because *a* match was found somewhere in the string.
+function robotsTagCount(html) {
+  return (html.match(/<meta name="robots"/g) ?? []).length;
+}
+
+function assertNoindexFollowExactlyOnce(html, label) {
+  assert.equal(robotsTagCount(html), 1, `${label}: expected exactly one robots tag`);
+  assert.match(html, /<meta name="robots" content="noindex,follow">/, `${label}: expected noindex,follow`);
+}
+
+function assertNoRobotsTag(html, label) {
+  assert.equal(robotsTagCount(html), 0, `${label}: expected no robots tag at all (indexable)`);
+}
+
+test('C175-001 lifecycle matrix — no released versions: /next/** is noindex,follow (exactly one tag, whole tree) and /latest/** is fully indexable (whole tree)', () => {
+  const { siteDir } = fixtureSiteDirWithNestedPages('javadoc/next', []);
+  applyJavadocSeo({
+    siteDir,
+    siteUrl: 'https://agentforge4j.org',
+    ogImage: 'https://agentforge4j.org/brand/icon-512.png',
+    releasedVersions: [],
+  });
+  for (const relPath of ['index.html', 'allclasses-index.html', 'com/example/package-summary.html', 'com/example/Foo.html']) {
+    const nextHtml = readFileSync(join(siteDir, 'javadoc', 'next', ...relPath.split('/')), 'utf8');
+    assertNoindexFollowExactlyOnce(nextHtml, `/next/${relPath} (pre-release — mirrors /latest/ byte-for-byte)`);
+  }
+  // /latest/ in this fixture is a plain overview-only surface (fixtureSiteDirWithNestedPages always
+  // creates one for the surfaces not under test) — still enough to prove it stays indexable.
+  const latestHtml = readFileSync(join(siteDir, 'javadoc', 'latest', 'index.html'), 'utf8');
+  assertNoRobotsTag(latestHtml, '/latest/index.html (pre-release — the evergreen public entry point)');
+});
+
+test('C175-001 lifecycle matrix — no released versions, checked from the /latest/ side too: full nested tree stays indexable while /next/ (built the same way) is suppressed', () => {
+  const { siteDir } = fixtureSiteDirWithNestedPages('javadoc/latest', []);
+  applyJavadocSeo({
+    siteDir,
+    siteUrl: 'https://agentforge4j.org',
+    ogImage: 'https://agentforge4j.org/brand/icon-512.png',
+    releasedVersions: [],
+  });
+  for (const relPath of ['index.html', 'allclasses-index.html', 'com/example/package-summary.html', 'com/example/Foo.html']) {
+    const latestHtml = readFileSync(join(siteDir, 'javadoc', 'latest', ...relPath.split('/')), 'utf8');
+    assertNoRobotsTag(latestHtml, `/latest/${relPath}`);
+  }
+  const nextHtml = readFileSync(join(siteDir, 'javadoc', 'next', 'index.html'), 'utf8');
+  assertNoindexFollowExactlyOnce(nextHtml, '/next/index.html');
+});
+
+test('C175-001 lifecycle matrix — first stable release: /next/** and /latest/** both become/stay indexable, the new release is noindex,follow', () => {
+  const { siteDir } = fixtureSiteDirWithNestedPages('javadoc/0.1.0', ['0.1.0']);
+  applyJavadocSeo({
+    siteDir,
+    siteUrl: 'https://agentforge4j.org',
+    ogImage: 'https://agentforge4j.org/brand/icon-512.png',
+    releasedVersions: ['0.1.0'],
+  });
+  const next = readFileSync(join(siteDir, 'javadoc', 'next', 'index.html'), 'utf8');
+  assertNoRobotsTag(next, '/next/ (a stable release now exists — no longer a duplicate of /latest/)');
+
+  const latest = readFileSync(join(siteDir, 'javadoc', 'latest', 'index.html'), 'utf8');
+  assertNoRobotsTag(latest, '/latest/');
+
+  for (const relPath of ['index.html', 'allclasses-index.html', 'com/example/package-summary.html', 'com/example/Foo.html']) {
+    const pinned = readFileSync(join(siteDir, 'javadoc', '0.1.0', ...relPath.split('/')), 'utf8');
+    assertNoindexFollowExactlyOnce(pinned, `/javadoc/0.1.0/${relPath}`);
+  }
+});
+
+test('C175-001 lifecycle matrix — newer stable release: the new version is noindex,follow, the old one is indexable again, /next/ and /latest/ stay indexable', () => {
+  const { siteDir } = fixtureSiteDirWithNestedPages('javadoc/0.2.0', ['0.2.0', '0.1.0']);
+  // Also give 0.1.0 a real nested tree of its own, so its "becomes indexable again" transition is
+  // proven across the whole surface, not only its overview.
+  mkdirSync(join(siteDir, 'javadoc', '0.1.0', 'com', 'example'), { recursive: true });
+  writeFileSync(join(siteDir, 'javadoc', '0.1.0', 'allclasses-index.html'), rawAllClassesIndexHtml(), 'utf8');
+  writeFileSync(join(siteDir, 'javadoc', '0.1.0', 'com', 'example', 'package-summary.html'), rawPackageSummaryHtml(), 'utf8');
+  writeFileSync(join(siteDir, 'javadoc', '0.1.0', 'com', 'example', 'Foo.html'), rawClassPageHtml(), 'utf8');
+
+  applyJavadocSeo({
+    siteDir,
+    siteUrl: 'https://agentforge4j.org',
+    ogImage: 'https://agentforge4j.org/brand/icon-512.png',
+    releasedVersions: ['0.2.0', '0.1.0'],
+  });
+
+  for (const relPath of ['index.html', 'allclasses-index.html', 'com/example/package-summary.html', 'com/example/Foo.html']) {
+    const newest = readFileSync(join(siteDir, 'javadoc', '0.2.0', ...relPath.split('/')), 'utf8');
+    assertNoindexFollowExactlyOnce(newest, `/javadoc/0.2.0/${relPath}`);
+    const old = readFileSync(join(siteDir, 'javadoc', '0.1.0', ...relPath.split('/')), 'utf8');
+    assertNoRobotsTag(old, `/javadoc/0.1.0/${relPath} (no longer the version /latest/ mirrors)`);
+  }
+  const next = readFileSync(join(siteDir, 'javadoc', 'next', 'index.html'), 'utf8');
+  assertNoRobotsTag(next, '/next/');
+  const latest = readFileSync(join(siteDir, 'javadoc', 'latest', 'index.html'), 'utf8');
+  assertNoRobotsTag(latest, '/latest/');
 });
 
 test('applyJavadocSeo processes the real surfaces.html landing page (build-javadoc.mjs\'s own hand-authored, description-less page) without throwing — this is the exact real-corpus defect a full-tree compose caught: surfaces.html is otherwise indistinguishable from a genuine template-drift page missing its description', () => {

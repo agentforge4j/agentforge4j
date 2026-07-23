@@ -93,6 +93,35 @@ test('the full generated Javadoc tree — not only the overview page — receive
   assert.match(latestNested, /<link rel="canonical" href="https:\/\/agentforge4j\.org\/javadoc\/latest\/com\/example\/Foo\.html">/);
 });
 
+test('C175-001: in the no-released-version composition, /next/ and /latest/ are copied from the exact same source (assembleSite\'s own latestSource fallback) but receive divergent robots policy from applyJavadocSeo() — /latest/ stays indexable, /next/ is suppressed as the duplicate', () => {
+  const {spaDir, buildDir, javadocDir, archiveDir, siteDir} = fixture();
+  mkdirSync(join(javadocDir, 'com', 'example'), {recursive: true});
+  writeFileSync(
+    join(javadocDir, 'com', 'example', 'Foo.html'),
+    '<!DOCTYPE HTML>\n<html lang="en">\n<head>\n<title>Foo</title>\n' +
+      '<meta name="description" content="declaration: package: com.example, class: Foo">\n</head>\n' +
+      '<body><h1 class="title">Class Foo</h1></body>\n</html>\n',
+  );
+  // No releasedVersions/javadocVersionsDir passed — assembleSite's own default (empty array) is
+  // exactly the no-release lifecycle state this test targets.
+  assembleSite({spaDir, buildDir, javadocDir, archiveDir, siteDir, customDomain: null});
+
+  for (const relPath of ['index.html', 'com/example/Foo.html']) {
+    const next = readFileSync(join(siteDir, 'javadoc', 'next', ...relPath.split('/')), 'utf8');
+    assert.match(
+      next,
+      /<meta name="robots" content="noindex,follow">/,
+      `/javadoc/next/${relPath} must be noindex,follow — a byte-for-byte duplicate of /latest/ in the no-release state`,
+    );
+    const latest = readFileSync(join(siteDir, 'javadoc', 'latest', ...relPath.split('/')), 'utf8');
+    assert.doesNotMatch(
+      latest,
+      /<meta name="robots"/,
+      `/javadoc/latest/${relPath} must stay indexable — the evergreen public entry point`,
+    );
+  }
+});
+
 test('copies the SPA build to the site root, including its own index.html/404.html', () => {
   const {spaDir, buildDir, javadocDir, archiveDir, siteDir} = fixture();
   assembleSite({spaDir, buildDir, javadocDir, archiveDir, siteDir, customDomain: null});

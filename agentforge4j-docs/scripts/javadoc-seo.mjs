@@ -18,23 +18,33 @@
 // applies uniformly to every surface on every deploy, regardless of which historical script
 // produced the raw content.
 //
-// Duplicate-content policy (the task's own preferred option, chosen because today there is only one
-// released version and /latest/ mirrors it exactly — see assemble-site.mjs's own `latestSource`),
-// applied to EVERY page in the surface, not only its overview:
-//   - /javadoc/next/**    always self-canonical, indexable (this pass's own audit did not raise
-//                         /next/'s own indexability as a question — left exactly as-is).
-//   - /javadoc/latest/**  always self-canonical, indexable — the evergreen tree meant to be found.
-//   - /javadoc/<v>/**     self-canonical, indexable... EXCEPT the one version /latest/ currently
-//                         mirrors (releasedVersions[0], the same index assembleSite itself already
-//                         treats as "latest's source") — every page under that one specific
-//                         version-pinned surface gets `noindex,follow` instead (same established
-//                         pattern already used for /docs/next/), to avoid duplicate indexable
-//                         copies of the same content. Once a newer version ships,
-//                         `releasedVersions[0]` changes and the OLD newest version (now genuinely
-//                         distinct historical content, no longer a duplicate) automatically becomes
-//                         indexable again on the very next deploy — no manual re-tagging, no
-//                         hardcoded version string.
-// Pinned pages are never canonicalized to /latest/ — each stays self-canonical at its own pinned
+// Duplicate-content policy, applied to EVERY page in a surface, not only its overview. `/latest/`'s
+// own source (see assemble-site.mjs's `latestSource`) is what every other surface's indexability is
+// derived from — never a hardcoded special case, always the same `latestMirroredVersion` value this
+// module itself computes below. Two lifecycle states:
+//
+//   NO released version exists yet (`releasedVersions` is empty — `latestMirroredVersion === null`,
+//   so /latest/ mirrors /next/ byte-for-byte, per assembleSite's own fallback):
+//     - /javadoc/latest/** self-canonical, indexable — the evergreen public entry point.
+//     - /javadoc/next/**   self-canonical, `noindex,follow` — an exact duplicate of /latest/ in this
+//                          state; suppressed so there are not two indexable copies of the same
+//                          in-development content.
+//
+//   ONE OR MORE released versions exist (`latestMirroredVersion` is the newest one, the same value
+//   assembleSite's own `latestSource` picks — /latest/ now mirrors that pinned release, not /next/):
+//     - /javadoc/next/**              self-canonical, indexable — genuinely distinct in-development
+//                                      content once a stable release exists to diverge from.
+//     - /javadoc/latest/**            self-canonical, indexable — the evergreen tree meant to be found.
+//     - /javadoc/<releasedVersions[0]>/** (the version /latest/ currently mirrors) self-canonical,
+//                                      `noindex,follow` — a duplicate of /latest/'s content, same
+//                                      established pattern already used for /docs/next/.
+//     - every OLDER released-version surface: self-canonical, indexable — genuinely distinct
+//                                      historical content, never a duplicate of /latest/.
+//     Once a newer version ships, `releasedVersions[0]` changes and the OLD newest version (now
+//     genuinely distinct historical content, no longer a duplicate) automatically becomes indexable
+//     again on the very next deploy — no manual re-tagging, no hardcoded version string.
+//
+// Pinned pages are never canonicalized to /latest/ or /next/ — each stays self-canonical at its own
 // URL; noindex,follow (not a cross-surface canonical) is this pass's chosen de-duplication
 // mechanism, unchanged from the original design.
 //
@@ -51,8 +61,15 @@ import { isAbsolute, join, relative } from 'node:path';
 // recognized non-plugin page allowed to have no description meta.
 const SURFACES_LANDING_FILENAME = 'surfaces.html';
 
+// The known maven-javadoc-plugin bug shape: a bare `lang` attribute with no `=` at all (invalid
+// HTML — `lang` is not a boolean attribute), distinct from `lang=""` below.
 const EMPTY_LANG_PATTERN = /<html lang>/;
-const LANG_WITH_VALUE_PATTERN = /<html lang="[^"]*">/;
+// Captures the value so it can be checked for real (non-whitespace) content — matching `*` here
+// (permitting an empty capture) is deliberate: an explicit `lang=""` or a whitespace-only value
+// like `lang="   "` must still be recognized and repaired below, not silently accepted just
+// because the regex itself matched. The distinction between "empty/whitespace" and "a real value"
+// is made by inspecting the captured group's trimmed length, never by the regex shape alone.
+const LANG_ATTR_PATTERN = /<html lang="([^"]*)">/;
 const DESCRIPTION_TAG_PATTERN = /<meta name="description" content="[^"]*">/;
 const CANONICAL_TAG_PATTERN = /<link rel="canonical"/;
 const TITLE_TAG_PATTERN = /<title>([^<]*)<\/title>/;
@@ -106,9 +123,22 @@ export function injectJavadocPageSeo(
 
   let result = html;
   if (EMPTY_LANG_PATTERN.test(result)) {
+    // The bare `<html lang>` shape (no `=` at all) — always repaired, never a real value to check.
     result = result.replace(EMPTY_LANG_PATTERN, () => '<html lang="en">');
-  } else if (!LANG_WITH_VALUE_PATTERN.test(result)) {
-    throw new Error('javadoc-seo: expected either `<html lang>` or `<html lang="...">` — template drift?');
+  } else {
+    const langMatch = LANG_ATTR_PATTERN.exec(result);
+    if (!langMatch) {
+      throw new Error('javadoc-seo: expected either `<html lang>` or `<html lang="...">` — template drift?');
+    }
+    // An explicit but empty (`lang=""`) or whitespace-only (`lang="   "`) value is the same known
+    // missing-language condition as the bare `<html lang>` shape above, just spelled differently —
+    // repaired identically, rather than being mistaken for "a real value already present, leave
+    // untouched" merely because the regex itself matched a (vacuous) capture.
+    if (langMatch[1].trim().length === 0) {
+      result = result.replace(LANG_ATTR_PATTERN, () => '<html lang="en">');
+    }
+    // Else: a real, non-empty lang value is already present — left untouched, per this function's
+    // own "never assumed broken" contract for nested pages that already carry a correct lang.
   }
 
   const safeTitle = escapeHtmlAttribute(title);
@@ -287,10 +317,19 @@ export function applyJavadocSeo({ siteDir, siteUrl, ogImage, releasedVersions })
   const latestMirroredVersion = releasedVersions.length > 0 ? releasedVersions[0] : null;
 
   const surfaces = [
-    { mountPath: 'javadoc/next', label: 'next, in-development', noindex: false },
+    {
+      mountPath: 'javadoc/next',
+      label: 'next, in-development',
+      // /next/ mirrors /latest/ byte-for-byte only in the no-release state (assembleSite's own
+      // fallback: releasedVersions.length === 0 => latestSource is javadocDir, the same tree /next/
+      // itself is) — derived from the same latestMirroredVersion value every other surface's
+      // indexability comes from, never a standalone special case.
+      noindex: latestMirroredVersion === null,
+    },
     {
       mountPath: 'javadoc/latest',
       label: latestMirroredVersion ? `latest stable, ${latestMirroredVersion}` : 'latest (pre-release)',
+      // /latest/ is always the evergreen public entry point, indexable in both lifecycle states.
       noindex: false,
     },
     ...releasedVersions.map((version) => ({
