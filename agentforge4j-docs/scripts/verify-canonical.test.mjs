@@ -25,7 +25,7 @@ function fixture() {
   return join(root, 'build');
 }
 
-test('passes clean when every canonical and every sitemap URL ends in a trailing slash', () => {
+test('passes clean when every canonical and every sitemap URL ends in a trailing slash, each with a valid lastmod', () => {
   const buildDir = fixture();
   writePage(buildDir, '0.1.0/index.html', 'https://agentforge4j.org/docs/0.1.0/');
   writePage(buildDir, '0.1.0/get-started/quick-start/index.html', 'https://agentforge4j.org/docs/0.1.0/get-started/quick-start/');
@@ -55,6 +55,16 @@ test('fails closed on a non-trailing-slash sitemap URL', () => {
     '<urlset><url><loc>https://agentforge4j.org/docs/0.1.0</loc><lastmod>2026-07-20</lastmod></url></urlset>',
   );
   assert.throws(() => verifyCanonicalTrailingSlash({ buildDir }), /sitemap URL .* does not end in/);
+});
+
+test('fails closed on a missing or invalid <lastmod>', () => {
+  const buildDir = fixture();
+  writePage(buildDir, '0.1.0/index.html', 'https://agentforge4j.org/docs/0.1.0/');
+  writeFileSync(
+    join(buildDir, 'sitemap.xml'),
+    '<urlset><url><loc>https://agentforge4j.org/docs/0.1.0/</loc></url></urlset>',
+  );
+  assert.throws(() => verifyCanonicalTrailingSlash({ buildDir }), /no valid <lastmod>/);
 });
 
 test('fails closed when a <url> block does not match the expected shape (extra element after <loc>) — must not silently drop that entry from this check', () => {

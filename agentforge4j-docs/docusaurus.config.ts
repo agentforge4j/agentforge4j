@@ -44,6 +44,17 @@ const config: Config = {
   // Improve compatibility with the upcoming Docusaurus v4.
   future: {
     v4: true,
+    // `v4: true` implies `faster.gitEagerVcs: true`, which switches the site's default VCS
+    // strategy to VcsDefaultV2 (the "eager" bulk git-history reader). Verified against a real
+    // build with real versioned_docs/version-0.1.0 content: that strategy's file-info map is
+    // keyed by ABSOLUTE paths (resolved from `git ls-files`), but @docusaurus/plugin-sitemap
+    // passes each route's `sourceFilePath` as-is — relative to siteDir, never resolved to
+    // absolute — so every eager-strategy lookup silently missed and every /docs/0.1.0/** sitemap
+    // entry shipped with no <lastmod> at all. `git-ad-hoc` (the historical, one-`git log`-call-
+    // per-file strategy, confirmed correct against this same real content) sidesteps the mismatch
+    // entirely — it resolves cwd/paths itself per call rather than pre-building an absolute-keyed
+    // map, so a relative sourceFilePath still works.
+    experimental_vcs: 'git-ad-hoc',
   },
 
   // Production URL and base path. The site is built to mount under `/docs` on the
@@ -154,6 +165,15 @@ const config: Config = {
           changefreq: null,
           priority: null,
           ignorePatterns: ['/docs/next/**', '/docs/search'],
+          // Real, reproducible, per-page git-derived last-modified dates — Docusaurus's own
+          // route metadata carries each page's sourceFilePath, and the explicit
+          // `future.experimental_vcs: 'git-ad-hoc'` override above (not the v4-implied eager
+          // default, which silently produced no <lastmod> at all against this site's real
+          // versioned content — see that setting's own comment) resolves it via a real `git log`
+          // call in production builds (see @docusaurus/utils/vcs/vcsGitAdHoc), so this needs no
+          // custom git-shelling of its own: the same commit always reproduces the same value, and
+          // a page's lastmod only changes when its source file's history does.
+          lastmod: 'date',
         },
       } satisfies Preset.Options,
     ],

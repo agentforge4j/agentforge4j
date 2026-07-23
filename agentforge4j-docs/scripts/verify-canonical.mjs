@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 // Post-build production-artifact check (same "check the real build output directly" philosophy as
-// this module's own verify-noindex.mjs, which it deliberately mirrors) for this pass's docs-side
-// fix: `trailingSlash: true` (docusaurus.config.ts). This is framework-native Docusaurus config,
-// not custom code of this repo's own — this check exists to prove it actually took effect against
-// a real build, and to catch a future config change (or a Docusaurus upgrade that alters the
-// default) silently regressing it.
+// this module's own verify-noindex.mjs, which it deliberately mirrors) for this pass's two docs-side
+// fixes: `trailingSlash: true` (docusaurus.config.ts) and the sitemap plugin's `lastmod: 'date'`
+// option. Both are framework-native Docusaurus config, not custom code of this repo's own — this
+// check exists to prove they actually took effect against a real build, and to catch a future config
+// change (or a Docusaurus upgrade that alters the default) silently regressing either one.
 //
 // Driven entirely by sitemap.xml (not a walk of every generated HTML file): every URL the sitemap
 // actually advertises to search engines must resolve to a real generated page with exactly one
@@ -66,7 +66,7 @@ export function verifyCanonicalTrailingSlash({
     throw new Error(`verify-canonical: ${buildDir} does not exist — run "docusaurus build" first`);
   }
   if (archiveVersion) {
-    console.log('[verify-canonical] archive-mode build — trailing-slash checks not applicable, skipped');
+    console.log('[verify-canonical] archive-mode build — trailing-slash/lastmod checks not applicable, skipped');
     return;
   }
 
@@ -97,9 +97,15 @@ export function verifyCanonicalTrailingSlash({
     throw new Error(`verify-canonical: ${sitemapPath} parsed to zero <url> entries`);
   }
 
-  for (const [, url] of entries) {
+  for (const [, url, lastmod] of entries) {
     if (!url.endsWith('/')) {
       throw new Error(`verify-canonical: sitemap URL "${url}" does not end in '/' (trailingSlash: true regression?)`);
+    }
+    if (!lastmod || !/^\d{4}-\d{2}-\d{2}$/.test(lastmod)) {
+      throw new Error(
+        `verify-canonical: sitemap URL "${url}" has no valid <lastmod> (YYYY-MM-DD) — ` +
+          "the sitemap plugin's lastmod: 'date' option regressed, or this page has no git history",
+      );
     }
 
     const pagePath = sitemapUrlToPagePath(buildDir, url);
@@ -136,7 +142,7 @@ export function verifyCanonicalTrailingSlash({
 
   console.log(
     `[verify-canonical] verified ${entries.length} sitemap URL(s): exactly one canonical, matching its own sitemap ` +
-      'URL exactly (trailing-slash form)',
+      'URL exactly (trailing-slash form), each with a valid <lastmod>',
   );
 }
 
