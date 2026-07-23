@@ -628,6 +628,136 @@ test('fails closed when a <url> block has no <loc> at all (e.g. a typo\'d <locat
   assert.deepEqual(missingLocExitCodes, [1]);
 });
 
+// --- Root-cause malformed-sitemap sweep (structural parsing, not regex/count heuristics) --------
+//
+// The two tests above (extra element after <loc>, typo'd <location>) predate this sweep and are
+// retained unmodified. Everything below proves the ROOT CAUSE is fixed — a real structural parser
+// (sax, strict mode) rejects every one of these shapes by construction, not by adding another
+// special-case count. `expectSitemapMergeFailure` writes malformed XML into ONE fragment (SPA or
+// docs, both exercised across this sweep — the same protection must apply to either input) and
+// asserts assembleSite() itself fails closed with exit(1), never silently composing a sitemap that
+// dropped the malformed entry.
+
+function expectSitemapMergeFailure(rawXml, {fragment = 'docs'} = {}) {
+  const {spaDir, buildDir, javadocDir, archiveDir, siteDir} = fixture();
+  writeFileSync(join(fragment === 'spa' ? spaDir : buildDir, 'sitemap.xml'), rawXml);
+  const exitCodes = [];
+  const fakeExit = (code) => {
+    exitCodes.push(code);
+    throw new Error(`exit(${code})`);
+  };
+  assert.throws(
+    () => assembleSite({spaDir, buildDir, javadocDir, archiveDir, siteDir, customDomain: null, exit: fakeExit}),
+    /exit\(1\)/,
+  );
+  assert.deepEqual(exitCodes, [1]);
+}
+
+const SITEMAP_HEADER =
+  '<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n';
+const SITEMAP_FOOTER = '</urlset>\n';
+
+test('fails closed on a self-closing <url/> — the exact root-cause gap: zero matched entries, zero <url> tags, zero <loc> tags all agreed under the old count-heuristic, so this vanished silently instead of failing the build', () => {
+  expectSitemapMergeFailure(`${SITEMAP_HEADER}  <url/>\n${SITEMAP_FOOTER}`);
+});
+
+test('fails closed on an orphan </url> with no matching opening tag', () => {
+  expectSitemapMergeFailure(`${SITEMAP_HEADER}  </url>\n${SITEMAP_FOOTER}`);
+});
+
+test('fails closed on an unclosed <url> (no closing tag before the document ends)', () => {
+  expectSitemapMergeFailure(
+    '<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n' +
+      '  <url>\n    <loc>https://agentforge4j.org/example/</loc>\n</urlset>\n',
+  );
+});
+
+test('fails closed on mismatched closing tags inside a <url> entry', () => {
+  expectSitemapMergeFailure(
+    `${SITEMAP_HEADER}  <url>\n    <loc>https://agentforge4j.org/example/</loc>\n  </loc>\n${SITEMAP_FOOTER}`,
+  );
+});
+
+test('fails closed on a self-closing <loc/> — an empty <loc> is treated the same as a missing one', () => {
+  expectSitemapMergeFailure(`${SITEMAP_HEADER}  <url>\n    <loc/>\n  </url>\n${SITEMAP_FOOTER}`, {fragment: 'spa'});
+});
+
+test('fails closed on multiple <loc> elements inside one <url> entry', () => {
+  expectSitemapMergeFailure(
+    `${SITEMAP_HEADER}  <url>\n    <loc>https://agentforge4j.org/a/</loc>\n    <loc>https://agentforge4j.org/b/</loc>\n  </url>\n${SITEMAP_FOOTER}`,
+  );
+});
+
+test('fails closed on multiple <lastmod> elements inside one <url> entry', () => {
+  expectSitemapMergeFailure(
+    `${SITEMAP_HEADER}  <url>\n    <loc>https://agentforge4j.org/example/</loc>\n    <lastmod>2026-07-23</lastmod>\n    <lastmod>2026-07-24</lastmod>\n  </url>\n${SITEMAP_FOOTER}`,
+    {fragment: 'spa'},
+  );
+});
+
+test('fails closed on a malformed <lastmod> containing a nested element instead of plain text', () => {
+  expectSitemapMergeFailure(
+    `${SITEMAP_HEADER}  <url>\n    <loc>https://agentforge4j.org/example/</loc>\n    <lastmod><bad/></lastmod>\n  </url>\n${SITEMAP_FOOTER}`,
+  );
+});
+
+test('fails closed on a malformed <loc> containing a nested element instead of plain text', () => {
+  expectSitemapMergeFailure(
+    `${SITEMAP_HEADER}  <url>\n    <loc><bad/>https://agentforge4j.org/example/</loc>\n  </url>\n${SITEMAP_FOOTER}`,
+    {fragment: 'spa'},
+  );
+});
+
+test('fails closed on malformed XML appearing after an otherwise-valid <url> entry earlier in the same document — must not silently keep only the entries seen before the corruption', () => {
+  expectSitemapMergeFailure(
+    `${SITEMAP_HEADER}  <url>\n    <loc>https://agentforge4j.org/valid/</loc>\n  </url>\n  <bogus<${SITEMAP_FOOTER}`,
+  );
+});
+
+test('accepts <lastmod> before <loc> inside a <url> entry — child element order is not significant, both are identified by tag name', () => {
+  const {spaDir, buildDir, javadocDir, archiveDir, siteDir} = fixture();
+  writeFileSync(
+    join(buildDir, 'sitemap.xml'),
+    `${SITEMAP_HEADER}  <url>\n    <lastmod>2026-07-23</lastmod>\n    <loc>https://agentforge4j.org/docs/0.1.0/</loc>\n  </url>\n${SITEMAP_FOOTER}`,
+  );
+  assembleSite({spaDir, buildDir, javadocDir, archiveDir, siteDir, customDomain: null});
+  const xml = readFileSync(join(siteDir, 'sitemap.xml'), 'utf8');
+  assert.match(xml, /<loc>https:\/\/agentforge4j\.org\/docs\/0\.1\.0\/<\/loc>\s*<lastmod>2026-07-23<\/lastmod>/);
+});
+
+test('a structurally valid but completely empty <urlset> is valid and contributes zero entries — not itself a malformed-input case', () => {
+  const {spaDir, buildDir, javadocDir, archiveDir, siteDir} = fixture();
+  writeFileSync(join(buildDir, 'sitemap.xml'), `${SITEMAP_HEADER}${SITEMAP_FOOTER}`);
+  assembleSite({spaDir, buildDir, javadocDir, archiveDir, siteDir, customDomain: null});
+  const xml = readFileSync(join(siteDir, 'sitemap.xml'), 'utf8');
+  const locs = [...xml.matchAll(/<loc>([^<]+)<\/loc>/g)].map((m) => m[1]);
+  // Only the SPA fragment's one URL survives — the empty docs <urlset> legitimately contributed
+  // none, and the build did not fail because of it.
+  assert.deepEqual(locs, ['https://agentforge4j.org/']);
+});
+
+test('an unexpected sibling child element inside <url> fails closed even when it is the only content (no <loc> present either)', () => {
+  expectSitemapMergeFailure(
+    `${SITEMAP_HEADER}  <url>\n    <changefreq>daily</changefreq>\n  </url>\n${SITEMAP_FOOTER}`,
+    {fragment: 'spa'},
+  );
+});
+
+test('a <loc> containing an XML-escaped & round-trips through the merge as valid XML, not as a literal unescaped &', () => {
+  // A real structural parser correctly decodes &amp; -> & when reading the value (unlike a raw
+  // regex extractor, which only ever saw the literal escaped text) — the merge must re-escape it
+  // on the way back out, or the composed sitemap.xml itself would no longer be well-formed XML.
+  const {spaDir, buildDir, javadocDir, archiveDir, siteDir} = fixture();
+  writeFileSync(
+    join(buildDir, 'sitemap.xml'),
+    `${SITEMAP_HEADER}  <url>\n    <loc>https://agentforge4j.org/docs/0.1.0/?a=1&amp;b=2</loc>\n  </url>\n${SITEMAP_FOOTER}`,
+  );
+  assembleSite({spaDir, buildDir, javadocDir, archiveDir, siteDir, customDomain: null});
+  const xml = readFileSync(join(siteDir, 'sitemap.xml'), 'utf8');
+  assert.match(xml, /<loc>https:\/\/agentforge4j\.org\/docs\/0\.1\.0\/\?a=1&amp;b=2<\/loc>/);
+  assert.doesNotMatch(xml, /\?a=1&b=2/, 'the & must be re-escaped, never written back literally');
+});
+
 // --- scanComposedHtmlForForbiddenContent ------------------------------------------------------
 
 test('scanComposedHtmlForForbiddenContent passes clean on ordinary composed HTML', () => {

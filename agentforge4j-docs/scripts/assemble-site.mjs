@@ -32,6 +32,7 @@ import {cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSy
 import {basename, dirname, join, relative, resolve, sep} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import matter from 'gray-matter';
+import sax from 'sax';
 import {JAVADOC_VERSIONS_OUT, javadocBuildVersions} from './build-javadoc-versions.mjs';
 import {ARCHIVE_ROOT} from './archive-transition.mjs';
 import {resolveJavadocUrl} from '../src/remark/javadoc.mjs';
@@ -337,43 +338,179 @@ export function verifyComposedAnchorLinks(siteDir, docsSourceDir, versionedDocsS
 const SITEMAP_URL_PREFIX = 'https://agentforge4j.org/';
 
 /** Extracts every `{url, lastmod}` pair from a sitemap.xml file, in document order (`lastmod` is
- * `null` when a `<url>` block has none). Regex, not a real XML parser: both fragments this merges
- * (the SPA's own build-seo.mjs output, and Docusaurus's `@docusaurus/plugin-sitemap` output) are
- * simple, single-namespace, machine-generated `<url><loc>...</loc>[<lastmod>...</lastmod>]</url>`
- * documents — no CDATA, no nested namespaces — so a full parser dependency buys nothing here.
+ * `null` when a `<url>` block has none). Uses `sax` (a real, standards-based streaming XML parser
+ * — already present in this package's own dependency graph via `@docusaurus/plugin-sitemap`'s
+ * `sitemap` package, see package.json for why it is now a direct devDependency here too) in strict
+ * mode, rather than a regex/tag-count heuristic: a prior regex-plus-count-comparison approach could
+ * not distinguish "zero matches because nothing is here" from "zero matches because a `<url>` is
+ * self-closing/empty" — both produced the identical zero-vs-zero-vs-zero count agreement, so a
+ * malformed self-closing `<url/>` (and other unusual-but-technically-well-formed shapes) silently
+ * disappeared from the merged sitemap instead of failing the build. A real parser distinguishes
+ * these unambiguously by construction, rather than by adding another special-case count.
  *
- * Fails closed (via `exit`, not silently) if the strict `<url>` shape above matched fewer blocks
- * than there are `<url>` blocks or `<loc>` tags in the file: a `<url>` block that does not match
- * this exact shape (extra/reordered elements, a renamed/missing `<loc>`, e.g. from a future
- * sitemap-plugin/Docusaurus version bump) would otherwise silently vanish from the merged sitemap
- * instead of surfacing as a defect. Both counts are checked, not just `<loc>`: a block with NO
- * `<loc>` at all (e.g. a typo'd `<location>`) would otherwise agree with a zero-<loc> contribution
- * and slip through a `<loc>`-only comparison undetected. */
+ * Fails closed (via `exit`, not silently) whenever:
+ *  - the XML itself is not well-formed (sax's own strict-mode error reporting: unclosed tags,
+ *    mismatched/orphan closing tags, invalid markup elsewhere in the document — even after an
+ *    earlier, individually well-formed `<url>` entry was already parsed; a document that goes bad
+ *    partway through must still fail the whole file, not silently publish only the entries seen
+ *    before the corruption);
+ *  - the document's outermost element is not `<urlset>`;
+ *  - a `<url>` entry has no `<loc>` at all, or an empty one (this is also what makes a self-closing
+ *    `<url/>` fail: it opens and closes with no children, so it can never have a `<loc>`);
+ *  - a `<url>` entry has more than one `<loc>`, or more than one `<lastmod>`;
+ *  - a `<url>` entry has any child element other than `<loc>`/`<lastmod>` (a sibling to them), or
+ *    `<loc>`/`<lastmod>` themselves contain a nested element (rather than plain text) — either
+ *    shape means the entry is not the narrow, deliberately-accepted structure this function
+ *    contracts to.
+ * The relative order of `<loc>` and `<lastmod>` within a `<url>` entry is NOT significant — both
+ * are identified by tag name, not position, so accepting either order is a deliberate, tested
+ * choice, not an oversight. A structurally valid `<urlset>` with zero `<url>` children is valid and
+ * contributes zero entries — it is not itself a malformed-input case. */
 function extractSitemapEntries(xmlPath, exit) {
   const xml = readFileSync(xmlPath, 'utf8');
-  const entries = [...xml.matchAll(/<url>\s*<loc>([^<]+)<\/loc>(?:\s*<lastmod>([^<]+)<\/lastmod>)?\s*<\/url>/g)].map(
-    ([, url, lastmod]) => ({ url, lastmod: lastmod ?? null }),
-  );
-  const urlBlockCount = (xml.match(/<url>/g) ?? []).length;
-  const locCount = (xml.match(/<loc>/g) ?? []).length;
-  if (entries.length !== urlBlockCount || entries.length !== locCount) {
-    console.error(
-      `[assemble-site] ${xmlPath}: found ${urlBlockCount} <url> block(s) and ${locCount} <loc> tag(s) but only ` +
-        `${entries.length} matched the expected <url><loc>...</loc>[<lastmod>...</lastmod>]</url> shape — at ` +
-        'least one <url> block has an unexpected structure and would otherwise be silently dropped from the ' +
-        'published sitemap.',
-    );
+  const entries = [];
+
+  let failed = false;
+  function fail(message) {
+    if (failed) {
+      return;
+    }
+    failed = true;
+    console.error(`[assemble-site] ${xmlPath}: ${message}`);
     exit(1);
-    return entries;
   }
+
+  const parser = sax.parser(true);
+  let sawRoot = false;
+  let currentEntry = null; // {loc: string|null, lastmod: string|null} while inside a <url> element
+  let currentChildTag = null; // 'loc' | 'lastmod' | null — the currently-open leaf element inside <url>
+  let currentText = '';
+
+  function localName(name) {
+    return name.includes(':') ? name.slice(name.lastIndexOf(':') + 1) : name;
+  }
+
+  parser.onerror = (err) => {
+    fail(`sitemap XML is not well-formed — ${err.message.split('\n')[0]}`);
+  };
+
+  parser.onopentag = (node) => {
+    const name = localName(node.name);
+    if (!sawRoot) {
+      sawRoot = true;
+      if (name !== 'urlset') {
+        fail(`expected <urlset> as the document root, found <${node.name}>`);
+        return;
+      }
+    }
+    if (name === 'urlset') {
+      return;
+    }
+    if (currentChildTag !== null) {
+      // Already inside a <loc>/<lastmod> leaf element — those must contain plain text only.
+      fail(`<${currentChildTag}> contains a nested element (<${node.name}>) instead of plain text`);
+      return;
+    }
+    if (name === 'url') {
+      if (currentEntry !== null) {
+        fail('nested <url> element');
+        return;
+      }
+      currentEntry = {loc: null, lastmod: null};
+      return;
+    }
+    if (currentEntry === null) {
+      // A stray element at the top level, alongside <urlset>'s own children, that is neither
+      // <urlset> nor <url> — not part of the accepted contract either.
+      fail(`unexpected top-level element <${node.name}>`);
+      return;
+    }
+    if (name !== 'loc' && name !== 'lastmod') {
+      fail(`unexpected child element <${node.name}> inside <url>`);
+      return;
+    }
+    if (currentEntry[name] !== null) {
+      fail(`multiple <${name}> elements inside one <url> entry`);
+      return;
+    }
+    currentChildTag = name;
+    currentText = '';
+  };
+
+  parser.ontext = (text) => {
+    if (currentChildTag !== null) {
+      currentText += text;
+    }
+  };
+  parser.oncdata = parser.ontext;
+
+  parser.onclosetag = (rawName) => {
+    const name = localName(rawName);
+    if (name === 'loc' || name === 'lastmod') {
+      if (currentChildTag === name) {
+        currentEntry[name] = currentText;
+        currentChildTag = null;
+        currentText = '';
+      }
+      return;
+    }
+    if (name === 'url') {
+      if (currentEntry === null) {
+        // sax's own strict-mode well-formedness check already reports an orphan/mismatched closing
+        // tag as a parse error before this could be reached in practice; guarded defensively anyway.
+        return;
+      }
+      if (!currentEntry.loc) {
+        fail('a <url> entry has no <loc> (or it is present but empty)');
+        currentEntry = null;
+        return;
+      }
+      entries.push({url: currentEntry.loc, lastmod: currentEntry.lastmod ?? null});
+      currentEntry = null;
+    }
+  };
+
+  try {
+    parser.write(xml).close();
+  } catch (err) {
+    // sax's own strict-mode well-formedness errors (mismatched/orphan/unclosed tags) throw
+    // synchronously from write()/close() in addition to firing onerror first. If onerror (or one of
+    // the semantic checks above, e.g. multiple <loc>) already called fail() — which itself calls
+    // `exit`, and `exit` may itself throw to unwind the stack (every caller in this codebase's own
+    // test suite does exactly that, mirroring process.exit's real termination) — that thrown error
+    // must keep propagating, not be swallowed here: re-throw it. Only genuinely call fail() fresh
+    // in the (believed unreachable, based on direct testing of every malformed shape this function
+    // is contracted to reject) case where something threw before onerror/a semantic check ever ran.
+    if (!failed) {
+      fail('sitemap XML is not well-formed');
+    } else {
+      throw err;
+    }
+  }
+  if (!sawRoot) {
+    fail('missing <urlset> root element — the file is empty or not XML at all');
+  }
+
   return entries;
+}
+
+// The one round-trip hazard a real XML parser introduces that a raw-regex extractor never had:
+// `sax` correctly decodes standard XML entities in text content (e.g. `&amp;` -> `&`), so a `<loc>`
+// value read back out of `extractSitemapEntries` is the real, decoded URL string, not its escaped
+// XML representation. Serializing it back verbatim would emit a literal, unescaped `&` — invalid
+// XML the moment any merged URL ever contains one (this site's own routes don't today, but nothing
+// about this module's contract limits it to hosts that never will). `&` is the only character that
+// needs escaping here: a real URL cannot contain a literal `<`, `>`, or `"` unencoded (RFC 3986)
+// the way it legitimately can contain `&` in a query string.
+function escapeAmpersand(value) {
+  return value.replace(/&/g, '&amp;');
 }
 
 function sitemapXml(entries) {
   const body = entries
     .map(({ url, lastmod }) => {
-      const lastmodTag = lastmod ? `\n    <lastmod>${lastmod}</lastmod>` : '';
-      return `  <url>\n    <loc>${url}</loc>${lastmodTag}\n  </url>`;
+      const lastmodTag = lastmod ? `\n    <lastmod>${escapeAmpersand(lastmod)}</lastmod>` : '';
+      return `  <url>\n    <loc>${escapeAmpersand(url)}</loc>${lastmodTag}\n  </url>`;
     })
     .join('\n');
   return (
