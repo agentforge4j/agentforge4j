@@ -302,15 +302,12 @@ jobs:
         working-directory: agentforge4j-ui-e2e
         run: npm run typecheck
 
-      # Full web-ui verification (lint, content-boundary gate, typecheck, unit tests, production
-      # build) — the same gate a developer runs locally before pushing. Playwright alone does not
-      # catch a lint/content-gate/typecheck regression, so this must run before the Playwright
-      # suite, not be replaced by it.
-      - name: Web UI check
-        if: ${{ needs.changes.outputs.webUi == 'true' }}
-        working-directory: agentforge4j-web-ui
-        run: npm run check
-
+      # Must run BEFORE "Web UI check" below: that step's own `npm run check` ends with
+      # `npm run build`, whose prerender pass (scripts/prerender-routes.mjs) launches Chromium —
+      # `agentforge4j-web-ui`'s own `prebuild` hook (scripts/ensure-chromium.mjs) provisions it
+      # automatically as defense-in-depth, but this explicit step still matters here: it also
+      # installs the Linux OS-level shared libraries Chromium needs at runtime (`--with-deps`),
+      # which the cross-platform `ensure-chromium` hook deliberately does not attempt.
       - name: Cache Playwright browsers
         if: ${{ needs.changes.outputs.webUi == 'true' }}
         uses: actions/cache@v6
@@ -324,6 +321,15 @@ jobs:
         if: ${{ needs.changes.outputs.webUi == 'true' }}
         working-directory: agentforge4j-ui-e2e
         run: npx playwright install --with-deps chromium
+
+      # Full web-ui verification (lint, content-boundary gate, typecheck, unit tests, production
+      # build) — the same gate a developer runs locally before pushing. Playwright alone does not
+      # catch a lint/content-gate/typecheck regression, so this must run before the Playwright
+      # suite, not be replaced by it.
+      - name: Web UI check
+        if: ${{ needs.changes.outputs.webUi == 'true' }}
+        working-directory: agentforge4j-web-ui
+        run: npm run check
 
       # The `web-ui` project's own webServer builds the site (npm run build) then serves it
       # (npm run preview) — a real production-style build, not the dev server. `npm run check`
