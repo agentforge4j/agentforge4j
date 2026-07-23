@@ -21,12 +21,12 @@
 //         PIPELINE itself, not page content: index.html (the one shared shell template every
 //         route's final HTML derives from — vite build product though it is, its own committed
 //         source controls every route's `<head>`/`<body>` structure outside the parts injectHead/
-//         injectRoot explicitly rewrite), main.tsx (the render entrypoint executed INSIDE the
-//         headless browser that produces the prerendered snapshot every shell ships — not merely a
-//         client-side runtime concern), and this file plus prerender-routes.mjs themselves (the
-//         code that decides what "the rendered page" even means). A change to any of these can
-//         alter every published page's actual HTML in ways no per-route `sourceFiles` list could
-//         ever capture, so all are treated as applying to literally every route.
+//         injectRoot/injectJsonLd explicitly rewrite), main.tsx (the render entrypoint executed
+//         INSIDE the headless browser that produces the prerendered snapshot every shell ships —
+//         not merely a client-side runtime concern), and this file plus prerender-routes.mjs
+//         themselves (the code that decides what "the rendered page" even means). A change to any
+//         of these can alter every published page's actual HTML in ways no per-route `sourceFiles`
+//         list could ever capture, so all are treated as applying to literally every route.
 //       - `globalSourceFiles` (seo-routes.json's top level) — the actual React render surface shared
 //         by every page: App.tsx (the root shell + <Routes> composition), appRoutes.ts (the
 //         path -> component REGISTRY App.tsx renders from — swapping which component a path maps to
@@ -283,6 +283,31 @@ export function injectRoot(html, innerHtml) {
   return html.replace(EMPTY_ROOT_PATTERN, `<div id="root">${innerHtml}</div>`);
 }
 
+/** Inserts a route's JSON-LD structured-data block right before `</head>` — an addition, not a
+ * replacement (unlike injectHead's tags, no shell starts with one), so only routes that declare a
+ * `jsonLd` object in seo-routes.json (today: only "/") get a `<script type="application/ld+json">`
+ * at all; every other shell is unaffected. A no-op when `jsonLd` is undefined.
+ *
+ * Every `<` in the serialized JSON is escaped to `<` before it reaches the HTML — `<` is the
+ * only character that matters inside a `<script>` body (an HTML parser looks for `</script` byte-
+ * for-byte, case-insensitively, regardless of JSON string-quoting), so an unescaped value
+ * containing a literal `</script>` would close the tag early and let whatever followed run as live
+ * markup/script. `<` is a standard JSON string escape — `JSON.parse` (or any JSON-LD consumer)
+ * reads it back as the exact same `<` character, so this changes zero JSON semantics; it is not a
+ * general HTML-escaping pass (`>`, `&`, quotes, etc. are untouched and do not need to be — none of
+ * them can end a `<script>` body). */
+export function injectJsonLd(html, jsonLd) {
+  if (jsonLd === undefined || jsonLd === null) {
+    return html;
+  }
+  const serialized = JSON.stringify(jsonLd).replace(/</g, '\\u003c');
+  const script = `<script type="application/ld+json">${serialized}</script>\n  </head>`;
+  if (!/<\/head>/.test(html)) {
+    throw new Error('build-seo: expected a </head> closing tag in dist/index.html');
+  }
+  return html.replace(/<\/head>/, script);
+}
+
 // Route paths are trusted, committed build-time data (seo-routes.json, catalogue workflow ids)
 // rather than runtime input — but defense-in-depth is cheap, matches this repo's own
 // isSafeManifestPath guard in assemble-site.mjs, and closes the gap for good rather than relying
@@ -465,6 +490,7 @@ export function buildSeo({
     const canonical = `${siteUrl}${withTrailingSlash(canonicalPath)}`;
     let html = injectHead(baseHtml, { title: route.title, description: route.description, canonical });
     html = injectRoot(html, snapshots[route.path]);
+    html = injectJsonLd(html, route.jsonLd);
     writeShell(distDir, route.path, html);
     shellsWritten += 1;
     if (route.sitemap !== false) {
