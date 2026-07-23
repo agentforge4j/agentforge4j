@@ -689,6 +689,19 @@ test('fails closed on multiple <loc> elements inside one <url> entry', () => {
   );
 });
 
+test('fails closed on a self-closing <lastmod/> — an empty <lastmod> must fail the build rather than silently vanish from the merged sitemap', () => {
+  expectSitemapMergeFailure(
+    `${SITEMAP_HEADER}  <url>\n    <loc>https://agentforge4j.org/example/</loc>\n    <lastmod/>\n  </url>\n${SITEMAP_FOOTER}`,
+    {fragment: 'spa'},
+  );
+});
+
+test('fails closed on an empty <lastmod></lastmod> (no self-closing tag, but no text content either) — same guard as the self-closing form', () => {
+  expectSitemapMergeFailure(
+    `${SITEMAP_HEADER}  <url>\n    <loc>https://agentforge4j.org/example/</loc>\n    <lastmod></lastmod>\n  </url>\n${SITEMAP_FOOTER}`,
+  );
+});
+
 test('fails closed on multiple <lastmod> elements inside one <url> entry', () => {
   expectSitemapMergeFailure(
     `${SITEMAP_HEADER}  <url>\n    <loc>https://agentforge4j.org/example/</loc>\n    <lastmod>2026-07-23</lastmod>\n    <lastmod>2026-07-24</lastmod>\n  </url>\n${SITEMAP_FOOTER}`,

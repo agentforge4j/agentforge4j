@@ -357,6 +357,10 @@ const SITEMAP_URL_PREFIX = 'https://agentforge4j.org/';
  *  - the document's outermost element is not `<urlset>`;
  *  - a `<url>` entry has no `<loc>` at all, or an empty one (this is also what makes a self-closing
  *    `<url/>` fail: it opens and closes with no children, so it can never have a `<loc>`);
+ *  - a `<url>` entry has a `<lastmod>` that is present but empty (e.g. a self-closing `<lastmod/>`)
+ *    — the same empty-content guard as `<loc>`, applied consistently: an empty `<lastmod>` must fail
+ *    the build rather than silently vanish from the merged sitemap the way it did before this guard
+ *    (`sitemapXml` treats an empty string as "no lastmod" and omits the tag entirely);
  *  - a `<url>` entry has more than one `<loc>`, or more than one `<lastmod>`;
  *  - a `<url>` entry has any child element other than `<loc>`/`<lastmod>` (a sibling to them), or
  *    `<loc>`/`<lastmod>` themselves contain a nested element (rather than plain text) — either
@@ -462,6 +466,11 @@ function extractSitemapEntries(xmlPath, exit) {
       }
       if (!currentEntry.loc) {
         fail('a <url> entry has no <loc> (or it is present but empty)');
+        currentEntry = null;
+        return;
+      }
+      if (currentEntry.lastmod === '') {
+        fail('a <url> entry has a <lastmod> that is present but empty');
         currentEntry = null;
         return;
       }
