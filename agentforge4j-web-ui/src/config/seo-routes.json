@@ -30,7 +30,38 @@
       "path": "/",
       "title": "AgentForge4j — Governed AI Workflows for Java",
       "description": "AgentForge4j is an open-source Java framework for Java teams building their own governed AI workflows, with approvals, tools, and observability.",
-      "sourceFiles": ["agentforge4j-web-ui/src/pages/HomePage.tsx", "agentforge4j-web-ui/src/copy/home.ts"]
+      "sourceFiles": ["agentforge4j-web-ui/src/pages/HomePage.tsx", "agentforge4j-web-ui/src/copy/home.ts"],
+      "jsonLd": {
+        "@context": "https://schema.org",
+        "@graph": [
+          {
+            "@type": "WebSite",
+            "@id": "https://agentforge4j.org/#website",
+            "name": "AgentForge4j",
+            "url": "https://agentforge4j.org/",
+            "description": "AgentForge4j is an open-source Java framework for Java teams building their own governed AI workflows, with approvals, tools, and observability.",
+            "publisher": { "@id": "https://agentforge4j.org/#organization" }
+          },
+          {
+            "@type": "Organization",
+            "@id": "https://agentforge4j.org/#organization",
+            "name": "AgentForge4j",
+            "url": "https://agentforge4j.org/",
+            "logo": "https://agentforge4j.org/brand/icon-512.png",
+            "sameAs": ["https://github.com/agentforge4j"]
+          },
+          {
+            "@type": "SoftwareSourceCode",
+            "@id": "https://agentforge4j.org/#software",
+            "name": "AgentForge4j",
+            "url": "https://agentforge4j.org/",
+            "description": "An embeddable Java framework for governed AI workflows.",
+            "codeRepository": "https://github.com/agentforge4j/agentforge4j",
+            "programmingLanguage": "Java",
+            "license": "https://www.apache.org/licenses/LICENSE-2.0"
+          }
+        ]
+      }
     },
     {
       "path": "/api",

@@ -17,6 +17,7 @@ import {
   gitLastModifiedDate,
   gitLastModifiedDateForRouteMetadata,
   injectHead,
+  injectJsonLd,
   injectRoot,
   newestGitLastModifiedDate,
   withTrailingSlash,
@@ -497,6 +498,51 @@ test('injectRoot is a no-op when no snapshot was captured for a route (fixture t
 test('injectRoot fails closed when the shell has no empty mount point to splice into (template drift)', () => {
   const alreadyFilled = BASE_INDEX_HTML.replace('<div id="root"></div>', '<div id="root">already has content</div>');
   assert.throws(() => injectRoot(alreadyFilled, '<h1>x</h1>'), /empty <div id="root">/);
+});
+
+test('injectJsonLd inserts a valid, parseable JSON-LD script before </head> when a route declares one', () => {
+  const jsonLd = { '@context': 'https://schema.org', '@type': 'WebSite', name: 'AgentForge4j' };
+  const html = injectJsonLd(BASE_INDEX_HTML, jsonLd);
+  const match = /<script type="application\/ld\+json">([\s\S]*?)<\/script>\s*<\/head>/.exec(html);
+  assert.ok(match, 'expected a JSON-LD script immediately before </head>');
+  assert.deepEqual(JSON.parse(match[1]), jsonLd);
+});
+
+test('injectJsonLd is a no-op for routes that declare no jsonLd (every route except "/")', () => {
+  assert.equal(injectJsonLd(BASE_INDEX_HTML, undefined), BASE_INDEX_HTML);
+});
+
+test('injectJsonLd cannot be broken out of the <script> body by a value containing a literal </script> sequence', () => {
+  const jsonLd = { '@context': 'https://schema.org', '@type': 'WebSite', description: 'a</script><script>alert(1)</script>' };
+  const html = injectJsonLd(BASE_INDEX_HTML, jsonLd);
+  // The only real <script> tag in the document must be the one this function itself wrote — none
+  // injected via the JSON-LD payload's own string content.
+  const scriptOpenTags = html.match(/<script[ >]/g) ?? [];
+  assert.equal(scriptOpenTags.length, 1, 'expected exactly the one JSON-LD script — no extra <script> from the payload');
+  // The literal, unescaped sequence must never appear in the emitted HTML at all.
+  assert.ok(!html.includes('</script><script>alert(1)</script>'), 'the raw </script> sequence from the JSON-LD value must not reach the HTML unescaped');
+  // Semantics are unchanged: parsing the actual emitted JSON-LD block back out still yields the
+  // exact original string, </script> and all — this is an encoding fix, not a content change.
+  const match = /<script type="application\/ld\+json">([\s\S]*?)<\/script>\s*<\/head>/.exec(html);
+  assert.ok(match, 'expected a JSON-LD script immediately before </head>');
+  assert.deepEqual(JSON.parse(match[1]), jsonLd);
+});
+
+test('buildSeo splices the "/" route\'s jsonLd (seo-routes.json) into the real built index.html shell, and no other route gets one', () => {
+  const jsonLd = { '@context': 'https://schema.org', '@type': 'WebSite', name: 'Home' };
+  const routesWithJsonLd = {
+    siteUrl: 'https://agentforge4j.org',
+    routes: [
+      { path: '/', title: 'Home', description: 'Home.', jsonLd },
+      { path: '/architecture', title: 'Architecture', description: 'Architecture.' },
+    ],
+  };
+  const { distDir, seoRoutesPath, catalogueDataPath } = fixture({ routes: routesWithJsonLd });
+  buildSeo({ distDir, seoRoutesPath, catalogueDataPath });
+  const homeHtml = readFileSync(join(distDir, 'index.html'), 'utf8');
+  const archHtml = readFileSync(join(distDir, 'architecture', 'index.html'), 'utf8');
+  assert.match(homeHtml, /application\/ld\+json/);
+  assert.doesNotMatch(archHtml, /application\/ld\+json/);
 });
 
 test('buildSeo splices a route\'s prerendered snapshot into its own shell only, leaving routes with no captured snapshot untouched', () => {
