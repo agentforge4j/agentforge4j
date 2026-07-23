@@ -25,6 +25,18 @@ function sitemapXmlFixture(urls) {
   );
 }
 
+// Mirrors the real raw maven-javadoc-plugin overview-page shape closely enough for
+// javadoc-seo.mjs's applyJavadocSeo (run by assembleSite itself, against every composed javadoc/**
+// surface) to recognise and post-process it, the same way it must against a real Javadoc build —
+// `marker` stands in for whatever distinguishes one version's real content from another's.
+function realisticJavadocHtml(marker) {
+  return (
+    '<!DOCTYPE HTML>\n<html lang>\n<head>\n<title>Overview</title>\n' +
+    '<meta name="description" content="module index">\n</head>\n' +
+    `<body>${marker}</body>\n</html>\n`
+  );
+}
+
 function fixture() {
   const root = mkdtempSync(join(tmpdir(), 'assemble-'));
   const spaDir = join(root, 'spa');
@@ -43,7 +55,7 @@ function fixture() {
   // The real Docusaurus build ships its own sitemap.xml (the sitemap plugin's postBuild output).
   writeFileSync(join(buildDir, 'sitemap.xml'), sitemapXmlFixture(['https://agentforge4j.org/docs/0.1.0/']));
   mkdirSync(javadocDir, {recursive: true});
-  writeFileSync(join(javadocDir, 'index.html'), '<html>javadoc</html>');
+  writeFileSync(join(javadocDir, 'index.html'), realisticJavadocHtml('javadoc next'));
   return {root, spaDir, buildDir, javadocDir, archiveDir: join(root, 'archive-absent'), siteDir: join(root, '_site')};
 }
 
@@ -53,6 +65,32 @@ test('composes the _site layout: docs/, javadoc/next, javadoc/latest', () => {
   assert.ok(existsSync(join(siteDir, 'docs', 'index.html')));
   assert.ok(existsSync(join(siteDir, 'javadoc', 'next', 'index.html')));
   assert.ok(existsSync(join(siteDir, 'javadoc', 'latest', 'index.html')));
+});
+
+test('the full generated Javadoc tree — not only the overview page — receives javadoc-seo\'s canonical/OG/Twitter policy once composed', () => {
+  const {spaDir, buildDir, javadocDir, archiveDir, siteDir} = fixture();
+  // A real nested class page alongside the fixture's own overview index.html — mirrors a real
+  // `javadoc` (JDK 17) build's shape closely enough for javadoc-seo.mjs to recognise it.
+  mkdirSync(join(javadocDir, 'com', 'example'), {recursive: true});
+  writeFileSync(
+    join(javadocDir, 'com', 'example', 'Foo.html'),
+    '<!DOCTYPE HTML>\n<html lang="en">\n<head>\n<title>Foo</title>\n' +
+      '<meta name="description" content="declaration: package: com.example, class: Foo">\n</head>\n' +
+      '<body><h1 class="title">Class Foo</h1></body>\n</html>\n',
+  );
+  assembleSite({spaDir, buildDir, javadocDir, archiveDir, siteDir, customDomain: null});
+  const nested = readFileSync(join(siteDir, 'javadoc', 'next', 'com', 'example', 'Foo.html'), 'utf8');
+  assert.match(nested, /<link rel="canonical" href="https:\/\/agentforge4j\.org\/javadoc\/next\/com\/example\/Foo\.html">/);
+  assert.match(nested, /<meta property="og:title"/);
+  assert.match(nested, /<meta name="twitter:card" content="summary">/);
+  // Real generated body content must survive.
+  assert.match(nested, /<h1 class="title">Class Foo<\/h1>/);
+
+  // /javadoc/latest/ mirrors /javadoc/next/ when there are no released versions — its own copy of
+  // the same nested page must be processed too, independently (latest is a real, separately
+  // composed copy, not a symlink).
+  const latestNested = readFileSync(join(siteDir, 'javadoc', 'latest', 'com', 'example', 'Foo.html'), 'utf8');
+  assert.match(latestNested, /<link rel="canonical" href="https:\/\/agentforge4j\.org\/javadoc\/latest\/com\/example\/Foo\.html">/);
 });
 
 test('copies the SPA build to the site root, including its own index.html/404.html', () => {
@@ -145,7 +183,7 @@ test('copies one version-pinned Javadoc surface per released version; /javadoc/l
   const javadocVersionsDir = join(root, 'javadoc-versions');
   for (const version of ['1.1.0', '1.0.0']) {
     mkdirSync(join(javadocVersionsDir, version), {recursive: true});
-    writeFileSync(join(javadocVersionsDir, version, 'index.html'), `<html>javadoc ${version}</html>`);
+    writeFileSync(join(javadocVersionsDir, version, 'index.html'), realisticJavadocHtml(`javadoc ${version}`));
   }
   assembleSite({
     spaDir,
@@ -157,18 +195,18 @@ test('copies one version-pinned Javadoc surface per released version; /javadoc/l
     siteDir,
     customDomain: null,
   });
-  assert.equal(
+  assert.match(
     readFileSync(join(siteDir, 'javadoc', '1.1.0', 'index.html'), 'utf8'),
-    '<html>javadoc 1.1.0</html>',
+    /javadoc 1\.1\.0/,
   );
-  assert.equal(
+  assert.match(
     readFileSync(join(siteDir, 'javadoc', '1.0.0', 'index.html'), 'utf8'),
-    '<html>javadoc 1.0.0</html>',
+    /javadoc 1\.0\.0/,
   );
   // releasedVersions[0] (newest, per versions.json's newest-first convention) is the /latest source.
-  assert.equal(
+  assert.match(
     readFileSync(join(siteDir, 'javadoc', 'latest', 'index.html'), 'utf8'),
-    '<html>javadoc 1.1.0</html>',
+    /javadoc 1\.1\.0/,
   );
 });
 
@@ -244,7 +282,7 @@ test('an archived version carried in releasedVersions still publishes its /javad
   const javadocVersionsDir = join(root, 'javadoc-versions');
   for (const version of ['1.1.0', '1.0.0']) {
     mkdirSync(join(javadocVersionsDir, version), {recursive: true});
-    writeFileSync(join(javadocVersionsDir, version, 'index.html'), `<html>javadoc ${version}</html>`);
+    writeFileSync(join(javadocVersionsDir, version, 'index.html'), realisticJavadocHtml(`javadoc ${version}`));
   }
   const archiveDir = join(root, 'archive');
   mkdirSync(join(archiveDir, '1.0.0'), {recursive: true});
@@ -261,9 +299,9 @@ test('an archived version carried in releasedVersions still publishes its /javad
     customDomain: null,
   });
 
-  assert.equal(
+  assert.match(
     readFileSync(join(siteDir, 'javadoc', '1.0.0', 'index.html'), 'utf8'),
-    '<html>javadoc 1.0.0</html>',
+    /javadoc 1\.0\.0/,
   );
   assert.equal(
     readFileSync(join(siteDir, 'docs', 'archive', '1.0.0', 'index.html'), 'utf8'),
@@ -271,9 +309,9 @@ test('an archived version carried in releasedVersions still publishes its /javad
   );
   // Only releasedVersions[0] (the true newest ACTIVE version) sources /latest — an archived version
   // must never become the alias target.
-  assert.equal(
+  assert.match(
     readFileSync(join(siteDir, 'javadoc', 'latest', 'index.html'), 'utf8'),
-    '<html>javadoc 1.1.0</html>',
+    /javadoc 1\.1\.0/,
   );
 });
 
@@ -440,7 +478,7 @@ test('verifyComposedArtifact fails closed when a released version\'s /javadoc/<v
   // but is empty — exactly the real bug shape (an upstream per-version Javadoc build that failed
   // without throwing, or without existing before the copy step ran requireDir at all).
   mkdirSync(join(javadocVersionsDir, '1.1.0'), {recursive: true});
-  writeFileSync(join(javadocVersionsDir, '1.1.0', 'index.html'), '<html>javadoc 1.1.0</html>');
+  writeFileSync(join(javadocVersionsDir, '1.1.0', 'index.html'), realisticJavadocHtml('javadoc 1.1.0'));
   mkdirSync(join(javadocVersionsDir, '1.0.0'), {recursive: true});
 
   const exitCodes = [];

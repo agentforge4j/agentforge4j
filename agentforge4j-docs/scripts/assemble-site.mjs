@@ -36,6 +36,7 @@ import {JAVADOC_VERSIONS_OUT, javadocBuildVersions} from './build-javadoc-versio
 import {ARCHIVE_ROOT} from './archive-transition.mjs';
 import {resolveJavadocUrl} from '../src/remark/javadoc.mjs';
 import {liveJavadocRefs} from './lint-javadoc-links.mjs';
+import {applyJavadocSeo} from './javadoc-seo.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const MODULE_ROOT = resolve(here, '..');
@@ -460,12 +461,14 @@ function writeRedirectStubs(siteDir, manifestPath, exit = process.exit) {
  * @param {{spaDir: string, buildDir: string, javadocDir: string, javadocVersionsDir?: string,
  *          releasedVersions?: string[], archiveDir: string, siteDir: string,
  *          docsSourceDir?: string, versionedDocsSourceDir?: string,
- *          customDomain: string|null,
+ *          customDomain: string|null, siteUrl?: string, ogImage?: string,
  *          exit?: (code: number) => void}} options `exit` is an injectable seam for the
  *        redirect-stub collision guard and the composed-output verification (tests; default
  *        `process.exit`). `docsSourceDir`/`versionedDocsSourceDir` are undefined by default (the
  *        composed-Javadoc-link check is then a no-op over zero files) — `main()` below passes this
  *        module's real `docs/`/`versioned_docs/`; fixture-based tests need not supply them.
+ *        `siteUrl`/`ogImage` default to the real production values (javadoc-seo.mjs's canonical
+ *        and social-preview image) — overridable so fixture tests never depend on the real domain.
  */
 export function assembleSite({
   spaDir,
@@ -478,6 +481,8 @@ export function assembleSite({
   docsSourceDir,
   versionedDocsSourceDir,
   customDomain,
+  siteUrl = 'https://agentforge4j.org',
+  ogImage = 'https://agentforge4j.org/brand/icon-512.png',
   exit = process.exit,
 }) {
   requireDir(spaDir, 'SPA build', 'Run `npm run build` in agentforge4j-web-ui first.');
@@ -550,6 +555,17 @@ export function assembleSite({
   mergeSitemaps(siteDir, exit);
 
   verifyComposedArtifact(siteDir, releasedVersions, exit);
+
+  // 7. Javadoc SEO metadata (design decision, this pass — see javadoc-seo.mjs's own header for the
+  //    full duplicate-content policy), applied only once the composed artifact is already verified
+  //    structurally complete: every generated page in every surface (overview, package summaries,
+  //    class pages, every generated index/tree/help page) ships with no canonical/consistent
+  //    lang/OG/Twitter and a generic or mechanical description. Applied here against the composed
+  //    output (not build-javadoc.mjs itself) so it covers every surface — including already-tagged
+  //    historical versions, whose own build-javadoc.mjs predates this fix — on every deploy.
+  const javadocPagesUpdated = applyJavadocSeo({siteDir, siteUrl, ogImage, releasedVersions});
+  console.log(`[assemble-site] applied Javadoc SEO metadata to ${javadocPagesUpdated} page(s) across every surface`);
+
   scanComposedHtmlForForbiddenContent(siteDir, exit);
   verifyComposedJavadocLinks(siteDir, docsSourceDir, versionedDocsSourceDir, exit);
   verifyComposedAnchorLinks(siteDir, docsSourceDir, versionedDocsSourceDir, exit);

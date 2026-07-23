@@ -182,6 +182,13 @@ const config: Config = {
   ],
 
   themeConfig: {
+    // Default social-preview image for every docs page that doesn't set its own (none currently
+    // do). An absolute URL, not a `static/img/...`-relative one: this is the marketing SPA's own
+    // existing brand asset (agentforge4j-web-ui/public/brand/icon-512.png, composed to the site
+    // root alongside /docs/ by assemble-site.mjs), not a file inside this module's own static/ —
+    // useBaseUrl's own addBaseUrl no-ops on any URL that already has a protocol, so Docusaurus
+    // emits this unchanged as both og:image and twitter:image, already production-absolute.
+    image: 'https://agentforge4j.org/brand/icon-512.png',
     colorMode: {
       respectPrefersColorScheme: true,
     },
