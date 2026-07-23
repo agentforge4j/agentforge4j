@@ -45,7 +45,12 @@ export function findSeoRoute(path: string): SeoRouteEntry | undefined {
   return BY_PATH.get(normalizeForMatch(path));
 }
 
-/** The absolute HTTPS canonical URL for a site-relative path (`/`, `/api`, ...). */
+/** The absolute HTTPS canonical URL for a site-relative path (`/`, `/api`, ...) — always in the
+ * trailing-slash form, matching scripts/build-seo.mjs's own `withTrailingSlash` exactly: every
+ * generated route shell is a directory (`dist/<path>/index.html`), which GitHub Pages only serves
+ * without a redirect at its trailing-slash address. Client-side navigation (usePageSeo) must keep
+ * emitting the same form the static shell already declared, or a SPA route transition would
+ * silently rewrite `<link rel="canonical">` back to the redirecting non-slash form. */
 export function canonicalUrl(path: string): string {
-  return path === '/' ? `${SITE_URL}/` : `${SITE_URL}${path}`;
+  return path === '/' ? `${SITE_URL}/` : `${SITE_URL}${path.replace(/\/+$/, '')}/`;
 }
