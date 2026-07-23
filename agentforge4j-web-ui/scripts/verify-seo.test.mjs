@@ -63,7 +63,7 @@ function fixtureDir() {
   return mkdtempSync(join(tmpdir(), 'verify-seo-'));
 }
 
-test('passes clean on a well-formed fixture: trailing-slash sitemap URLs, matching self-canonical, one real <h1>', async () => {
+test('passes clean on a well-formed fixture: trailing-slash sitemap URLs, matching self-canonical, one real <h1>, valid lastmod', async () => {
   const distDir = fixtureDir();
   writePage(distDir, '', page({ canonical: 'https://agentforge4j.org/' }));
   writePage(distDir, 'api', page({ canonical: 'https://agentforge4j.org/api/' }));
@@ -112,6 +112,60 @@ test('fails closed on zero <h1> in the raw served HTML (the exact pre-fix Bing "
   writePage(distDir, '', page({ canonical: 'https://agentforge4j.org/', h1: '<div id="root"></div>' }));
   writeFileSync(join(distDir, 'sitemap.xml'), sitemapXml([{ url: 'https://agentforge4j.org/', lastmod: '2026-07-20' }]), 'utf8');
   await assert.rejects(() => verifySeo({ distDir, staticRoutes: [] }), /expected exactly one <h1>/);
+});
+
+test('fails closed on a missing <lastmod> (a production sitemap where every date disappeared must never pass)', async () => {
+  const distDir = fixtureDir();
+  writePage(distDir, '', page({ canonical: 'https://agentforge4j.org/' }));
+  writeFileSync(join(distDir, 'sitemap.xml'), sitemapXml([{ url: 'https://agentforge4j.org/', lastmod: null }]), 'utf8');
+  await assert.rejects(() => verifySeo({ distDir, staticRoutes: [] }), /has no <lastmod>/);
+});
+
+test('fails closed on a duplicate <lastmod> tag inside one <url> block', async () => {
+  const distDir = fixtureDir();
+  writePage(distDir, '', page({ canonical: 'https://agentforge4j.org/' }));
+  writeFileSync(
+    join(distDir, 'sitemap.xml'),
+    '<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">' +
+      '<url><loc>https://agentforge4j.org/</loc><lastmod>2026-07-20</lastmod><lastmod>2026-07-21</lastmod></url>' +
+      '</urlset>',
+    'utf8',
+  );
+  await assert.rejects(() => verifySeo({ distDir, staticRoutes: [] }), /has 2 <lastmod> tags — expected exactly one/);
+});
+
+test('fails closed on an invalid (non-W3C-shaped) <lastmod>', async () => {
+  const distDir = fixtureDir();
+  writePage(distDir, '', page({ canonical: 'https://agentforge4j.org/' }));
+  writeFileSync(
+    join(distDir, 'sitemap.xml'),
+    sitemapXml([{ url: 'https://agentforge4j.org/', lastmod: 'not-a-date' }]),
+    'utf8',
+  );
+  await assert.rejects(() => verifySeo({ distDir, staticRoutes: [] }), /not a valid real calendar date/);
+});
+
+test('fails closed on a regex-shaped but impossible calendar date (2026-02-31)', async () => {
+  const distDir = fixtureDir();
+  writePage(distDir, '', page({ canonical: 'https://agentforge4j.org/' }));
+  writeFileSync(
+    join(distDir, 'sitemap.xml'),
+    sitemapXml([{ url: 'https://agentforge4j.org/', lastmod: '2026-02-31' }]),
+    'utf8',
+  );
+  await assert.rejects(() => verifySeo({ distDir, staticRoutes: [] }), /not a valid real calendar date/);
+});
+
+test('accepts a real leap day (2024-02-29) but rejects the same day in a non-leap year (2026-02-29)', async () => {
+  const leapDistDir = fixtureDir();
+  writePage(leapDistDir, '', page({ canonical: 'https://agentforge4j.org/' }));
+  writeFileSync(join(leapDistDir, 'sitemap.xml'), sitemapXml([{ url: 'https://agentforge4j.org/', lastmod: '2024-02-29' }]), 'utf8');
+  await assert.doesNotReject(() => verifySeo({ distDir: leapDistDir, staticRoutes: [] }));
+
+  const nonLeapDistDir = fixtureDir();
+  writePage(nonLeapDistDir, '', page({ canonical: 'https://agentforge4j.org/' }));
+  writeFileSync(join(nonLeapDistDir, 'sitemap.xml'), sitemapXml([{ url: 'https://agentforge4j.org/', lastmod: '2026-02-29' }]), 'utf8');
+  await assert.rejects(() => verifySeo({ distDir: nonLeapDistDir, staticRoutes: [] }), /not a valid real calendar date/);
 });
 
 test('fails closed on a duplicate URL in the real sitemap.xml', async () => {
