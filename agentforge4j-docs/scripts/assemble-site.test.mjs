@@ -1260,7 +1260,62 @@ test('fails closed on a <url> nested inside another <url>', () => {
   );
 });
 
-// --- PR174-101 root-cause regression: the parser's narrow <url> contract stays compatible with
+// --- <urlset> is only the document root; element names are exact; lastmod may not be blank -----
+//
+// The urlset-acceptance branch originally ran before the inside-<url>/inside-leaf guards, so a
+// <urlset>-named element was silently accepted at ANY depth: a stray <urlset/> inside <url> was
+// ignored, one inside <loc> text spliced the surrounding text into a single corrupted published
+// URL (`.../a<urlset/>b` -> `.../ab`), and a second root-level <urlset> after the real root closed
+// was accepted outright (sax does not reject multi-root documents on its own). These tests pin the
+// root-only rule, the exact-name rule (no namespace-prefix folding), and the whitespace-only
+// <lastmod> guard — all through the real assembleSite()/mergeSitemaps() path.
+
+test('fails closed on a <urlset/> nested inside a <url> entry — <urlset> is only accepted as the document root', () => {
+  expectSitemapMergeFailure(
+    `${SITEMAP_HEADER}  <url>\n    <loc>https://agentforge4j.org/example/</loc>\n    <urlset/>\n  </url>\n${SITEMAP_FOOTER}`,
+  );
+});
+
+test('fails closed on a <urlset/> inside <loc> text — previously the element was silently dropped and the text around it published as one corrupted URL', () => {
+  expectSitemapMergeFailure(
+    `${SITEMAP_HEADER}  <url>\n    <loc>https://agentforge4j.org/a<urlset/>b</loc>\n  </url>\n${SITEMAP_FOOTER}`,
+    {fragment: 'spa'},
+  );
+});
+
+test('fails closed on a second root-level <urlset> after the real root closed — a sitemap document has exactly one root', () => {
+  expectSitemapMergeFailure(
+    `${SITEMAP_HEADER}  <url>\n    <loc>https://agentforge4j.org/example/</loc>\n  </url>\n</urlset>\n<urlset/>\n`,
+  );
+});
+
+test('fails closed on a namespace-prefixed root <sm:urlset> — the root must be exactly <urlset>, not a prefixed spelling of it', () => {
+  expectSitemapMergeFailure(
+    '<?xml version="1.0" encoding="UTF-8"?>\n<sm:urlset xmlns:sm="http://www.sitemaps.org/schemas/sitemap/0.9">\n' +
+      '  <url>\n    <loc>https://agentforge4j.org/example/</loc>\n  </url>\n</sm:urlset>\n',
+  );
+});
+
+test('fails closed on a namespace-prefixed <x:url> under <urlset> — element names are matched exactly, never folded to their bare local name', () => {
+  expectSitemapMergeFailure(
+    `${SITEMAP_HEADER}  <x:url>\n    <loc>https://agentforge4j.org/example/</loc>\n  </x:url>\n${SITEMAP_FOOTER}`,
+    {fragment: 'spa'},
+  );
+});
+
+test('fails closed on a namespace-prefixed <foo:loc> inside <url> — a prefixed spelling is an unexpected child, not a <loc>', () => {
+  expectSitemapMergeFailure(
+    `${SITEMAP_HEADER}  <url>\n    <foo:loc>https://agentforge4j.org/example/</foo:loc>\n  </url>\n${SITEMAP_FOOTER}`,
+  );
+});
+
+test('fails closed on a whitespace-only <lastmod> — treated the same as present-but-empty, never shipped verbatim as an invalid W3C datetime', () => {
+  expectSitemapMergeFailure(
+    `${SITEMAP_HEADER}  <url>\n    <loc>https://agentforge4j.org/example/</loc>\n    <lastmod>   </lastmod>\n  </url>\n${SITEMAP_FOOTER}`,
+  );
+});
+
+// --- Root-cause regression: the parser's narrow <url> contract stays compatible with
 // docusaurus.config.ts's real, live sitemap options --------------------------------------------
 
 test("the real Docusaurus sitemap config stays compatible with the parser's narrow <url> contract", async () => {

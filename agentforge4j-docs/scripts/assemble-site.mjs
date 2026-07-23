@@ -415,13 +415,22 @@ function urlsetAttributesAreValid(node) {
  *    before the corruption);
  *  - the document's outermost element is not `<urlset>`, or `<urlset>` carries an attribute outside
  *    `URLSET_ALLOWED_ATTRIBUTES` (unexpected name, or an allowed name with an unexpected value);
+ *  - `<urlset>` appears anywhere other than as the document root: nested inside a `<url>` entry,
+ *    inside a `<loc>`/`<lastmod>` leaf (where it would otherwise silently splice the text around it
+ *    into one corrupted URL), or as a second root-level element after the real root closed (sax
+ *    itself does not reject a multi-root document);
+ *  - an element's name is not exactly `urlset`/`url`/`loc`/`lastmod` as written — namespace-prefixed
+ *    spellings (`<x:loc>`, `<foo:urlset>`) are rejected outright, never folded into their bare local
+ *    name, matching the exact-value strictness already applied to `<urlset>`'s attributes;
  *  - `<url>`, `<loc>`, or `<lastmod>` carries any attribute at all;
  *  - a `<url>` entry has no `<loc>` at all, or an empty one (this is also what makes a self-closing
  *    `<url/>` fail: it opens and closes with no children, so it can never have a `<loc>`);
- *  - a `<url>` entry has a `<lastmod>` that is present but empty (e.g. a self-closing `<lastmod/>`)
- *    — the same empty-content guard as `<loc>`, applied consistently: an empty `<lastmod>` must fail
- *    the build rather than silently vanish from the merged sitemap the way it did before this guard
- *    (`sitemapXml` treats an empty string as "no lastmod" and omits the tag entirely);
+ *  - a `<url>` entry has a `<lastmod>` that is present but empty or whitespace-only (e.g. a
+ *    self-closing `<lastmod/>`, or `<lastmod>   </lastmod>`) — the same empty-content guard as
+ *    `<loc>`, applied consistently: an effectively-empty `<lastmod>` must fail the build rather
+ *    than either silently vanish from the merged sitemap (`sitemapXml` treats an empty string as
+ *    "no lastmod" and omits the tag entirely) or ship verbatim as whitespace that is not a valid
+ *    W3C datetime;
  *  - a `<url>` entry has more than one `<loc>`, or more than one `<lastmod>`;
  *  - a `<url>` entry has any child element other than `<loc>`/`<lastmod>` (a sibling to them), or
  *    `<loc>`/`<lastmod>` themselves contain a nested element (rather than plain text) — either
@@ -451,27 +460,34 @@ function extractSitemapEntries(xmlPath, exit) {
   let currentChildTag = null; // 'loc' | 'lastmod' | null — the currently-open leaf element inside <url>
   let currentText = '';
 
-  function localName(name) {
-    return name.includes(':') ? name.slice(name.lastIndexOf(':') + 1) : name;
-  }
-
   parser.onerror = (err) => {
     fail(`sitemap XML is not well-formed — ${err.message.split('\n')[0]}`);
   };
 
+  // Element names are compared exactly as written — no namespace-prefix stripping. Both first-party
+  // generators emit only bare `urlset`/`url`/`loc`/`lastmod`, so a prefixed spelling (`<x:loc>`,
+  // `<foo:urlset>`) is outside the contract and must fail like any other unexpected element, not be
+  // silently folded into its bare equivalent (which would be looser than the exact-value strictness
+  // already applied to <urlset>'s attributes).
   parser.onopentag = (node) => {
-    const name = localName(node.name);
+    const name = node.name;
     if (!sawRoot) {
       sawRoot = true;
       if (name !== 'urlset') {
         fail(`expected <urlset> as the document root, found <${node.name}>`);
         return;
       }
-    }
-    if (name === 'urlset') {
       if (!urlsetAttributesAreValid(node)) {
         fail('<urlset> has an unexpected attribute — only the known sitemap namespace declarations are allowed');
       }
+      return;
+    }
+    if (name === 'urlset') {
+      // <urlset> is valid ONLY as the document root. Anywhere deeper — nested inside <url>, inside
+      // a <loc>/<lastmod> leaf (where it would silently splice the surrounding text into one
+      // corrupted URL), or as a second root-level element after the real root closed (sax does not
+      // reject multiple roots on its own) — it is outside the contract and must fail closed.
+      fail('<urlset> is only accepted as the document root, not nested or repeated');
       return;
     }
     if (currentChildTag !== null) {
@@ -520,8 +536,7 @@ function extractSitemapEntries(xmlPath, exit) {
   };
   parser.oncdata = parser.ontext;
 
-  parser.onclosetag = (rawName) => {
-    const name = localName(rawName);
+  parser.onclosetag = (name) => {
     if (name === 'loc' || name === 'lastmod') {
       if (currentChildTag === name) {
         currentEntry[name] = currentText;
@@ -541,8 +556,8 @@ function extractSitemapEntries(xmlPath, exit) {
         currentEntry = null;
         return;
       }
-      if (currentEntry.lastmod === '') {
-        fail('a <url> entry has a <lastmod> that is present but empty');
+      if (currentEntry.lastmod !== null && currentEntry.lastmod.trim() === '') {
+        fail('a <url> entry has a <lastmod> that is present but empty (or whitespace-only)');
         currentEntry = null;
         return;
       }
