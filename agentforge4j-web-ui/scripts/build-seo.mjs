@@ -4,10 +4,11 @@
 // copy-404.mjs so 404.html stays byte-identical to the *final* index.html):
 //
 //  1. A per-route static HTML shell for every real SPA route (dist/<route>/index.html) with
-//     <title>/<meta description>/<link canonical> (and matching OG/Twitter tags) baked in as
-//     real static text. This is a pure client-rendered SPA with no SSR/prerendering — page
-//     *content* stays entirely client-rendered once the bundle loads; only the <head> metadata
-//     in the initial static response differs per route.
+//     <title>/<meta description>/<link canonical> (and matching OG/Twitter tags), and now also the
+//     route's real prerendered body content (see prerender-routes.mjs), baked in as real static
+//     text/markup. There is still no SSR/hydration — main.tsx's `createRoot(...).render()` simply
+//     replaces this markup with a fresh, visually-identical client render once the bundle loads —
+//     but the *initial* static response is no longer a bare, contentless mount point.
 //  2. This module's own sitemap.xml fragment: real absolute HTTPS agentforge4j.org URLs for
 //     every route in seo-routes.json marked `sitemap: true` (the default), plus one per real
 //     shipped catalogue workflow (src/generated/catalogue-data.json). assemble-site.mjs
@@ -23,6 +24,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { WORKFLOW_ID_PATTERN } from './workflow-id-contract.mjs';
+import { prerenderRoutes } from './prerender-routes.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const MODULE_ROOT = join(here, '..');
@@ -117,6 +119,25 @@ export function injectHead(html, { title, description, canonical }) {
   return result;
 }
 
+const EMPTY_ROOT_PATTERN = /<div id="root"><\/div>/;
+
+/** Splices a route's real prerendered content (prerender-routes.mjs's captured `#root` innerHTML)
+ * into the empty mount point every shell starts with. `innerHtml` is already-serialized real DOM
+ * markup — not user input, not re-escaped. A no-op when `innerHtml` is undefined (no snapshot was
+ * captured for this route, e.g. a fixture test that never runs the browser-based prerenderer),
+ * preserving today's contentless shell rather than failing — only the real CLI build path is
+ * expected to supply a snapshot for every route (enforced separately, by the post-build
+ * verify-seo.mjs check against real dist/ output, not by this pure function). */
+export function injectRoot(html, innerHtml) {
+  if (innerHtml === undefined || innerHtml === null) {
+    return html;
+  }
+  if (!EMPTY_ROOT_PATTERN.test(html)) {
+    throw new Error('build-seo: expected an empty <div id="root"></div> mount point in dist/index.html');
+  }
+  return html.replace(EMPTY_ROOT_PATTERN, `<div id="root">${innerHtml}</div>`);
+}
+
 // Route paths are trusted, committed build-time data (seo-routes.json, catalogue workflow ids)
 // rather than runtime input — but defense-in-depth is cheap, matches this repo's own
 // isSafeManifestPath guard in assemble-site.mjs, and closes the gap for good rather than relying
@@ -154,13 +175,19 @@ function sitemapXml(urls) {
 }
 
 /**
- * @param {{distDir?: string, seoRoutesPath?: string, catalogueDataPath?: string}} [options]
+ * @param {{distDir?: string, seoRoutesPath?: string, catalogueDataPath?: string,
+ *          snapshots?: Record<string, string>}} [options] `snapshots` maps a route path (exactly
+ *        as written in seo-routes.json / `/catalogue/<id>`) to its real prerendered `#root`
+ *        markup (prerender-routes.mjs) — omitted entirely (`{}`, the default) for fixture-based
+ *        unit tests that have no headless browser available; every real CLI build (see `main`
+ *        below) always supplies one entry per route.
  * @returns {{shellsWritten: number, sitemapUrls: string[]}}
  */
 export function buildSeo({
   distDir = DIST_DIR,
   seoRoutesPath = SEO_ROUTES_PATH,
   catalogueDataPath = CATALOGUE_DATA_PATH,
+  snapshots = {},
 } = {}) {
   const indexPath = join(distDir, 'index.html');
   if (!existsSync(indexPath)) {
@@ -179,7 +206,8 @@ export function buildSeo({
   for (const route of routes) {
     const canonicalPath = route.canonicalPath ?? route.path;
     const canonical = `${siteUrl}${withTrailingSlash(canonicalPath)}`;
-    const html = injectHead(baseHtml, { title: route.title, description: route.description, canonical });
+    let html = injectHead(baseHtml, { title: route.title, description: route.description, canonical });
+    html = injectRoot(html, snapshots[route.path]);
     writeShell(distDir, route.path, html);
     shellsWritten += 1;
     if (route.sitemap !== false) {
@@ -194,11 +222,12 @@ export function buildSeo({
     assertValidWorkflowId(workflow.id);
     const routePath = `/catalogue/${workflow.id}`;
     const canonical = `${siteUrl}${withTrailingSlash(routePath)}`;
-    const html = injectHead(baseHtml, {
+    let html = injectHead(baseHtml, {
       title: catalogueWorkflowTitle(workflow),
       description: catalogueWorkflowDescription(workflow),
       canonical,
     });
+    html = injectRoot(html, snapshots[routePath]);
     writeShell(distDir, routePath, html);
     shellsWritten += 1;
     sitemapUrls.push(canonical);
@@ -216,8 +245,9 @@ export function buildSeo({
   return { shellsWritten, sitemapUrls: uniqueUrls };
 }
 
-function main() {
-  const result = buildSeo();
+async function main() {
+  const snapshots = await prerenderRoutes({ distDir: DIST_DIR });
+  const result = buildSeo({ snapshots });
   console.log(
     `[build-seo] wrote ${result.shellsWritten} route shell(s), ${result.sitemapUrls.length} sitemap URL(s)`,
   );

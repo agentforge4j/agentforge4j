@@ -10,7 +10,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { buildSeo, escapeHtml, injectHead, withTrailingSlash } from './build-seo.mjs';
+import { buildSeo, escapeHtml, injectHead, injectRoot, withTrailingSlash } from './build-seo.mjs';
 import { WORKFLOW_ID_PATTERN } from './workflow-id-contract.mjs';
 
 const REAL_MODULE_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -130,6 +130,20 @@ test('withTrailingSlash: the root path is unchanged; every other route gains exa
   assert.equal(withTrailingSlash('/api'), '/api/');
   assert.equal(withTrailingSlash('/catalogue/agent-creator'), '/catalogue/agent-creator/');
   assert.equal(withTrailingSlash('/already/'), '/already/');
+});
+
+test('injectRoot splices real prerendered markup into the empty mount point', () => {
+  const html = injectRoot(BASE_INDEX_HTML, '<header>Real Nav</header><main><h1>Real Title</h1></main>');
+  assert.match(html, /<div id="root"><header>Real Nav<\/header><main><h1>Real Title<\/h1><\/main><\/div>/);
+});
+
+test('injectRoot is a no-op when no snapshot was captured for a route (fixture tests with no headless browser)', () => {
+  assert.equal(injectRoot(BASE_INDEX_HTML, undefined), BASE_INDEX_HTML);
+});
+
+test('injectRoot fails closed when the shell has no empty mount point to splice into (template drift)', () => {
+  const alreadyFilled = BASE_INDEX_HTML.replace('<div id="root"></div>', '<div id="root">already has content</div>');
+  assert.throws(() => injectRoot(alreadyFilled, '<h1>x</h1>'), /empty <div id="root">/);
 });
 
 test('writes a real dist/sitemap.xml with exactly the computed URLs, no duplicates', () => {
