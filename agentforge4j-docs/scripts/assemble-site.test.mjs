@@ -25,6 +25,17 @@ function sitemapXmlFixture(urls) {
   );
 }
 
+function sitemapXmlFixtureWithLastmod(entries) {
+  const body = entries
+    .map(({url, lastmod}) => `  <url>\n    <loc>${url}</loc>\n    <lastmod>${lastmod}</lastmod>\n  </url>`)
+    .join('\n');
+  return (
+    '<?xml version="1.0" encoding="UTF-8"?>\n' +
+    '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n' +
+    `${body}\n</urlset>\n`
+  );
+}
+
 function fixture() {
   const root = mkdtempSync(join(tmpdir(), 'assemble-'));
   const spaDir = join(root, 'spa');
@@ -483,6 +494,23 @@ test('the merged sitemap.xml is not just a copy of the SPA fragment — it inclu
   assert.match(merged, /https:\/\/agentforge4j\.org\/docs\/0\.1\.0\//);
 });
 
+test('preserves each fragment\'s own <lastmod> through the merge, and tolerates a fragment entry with none', () => {
+  const {spaDir, buildDir, javadocDir, archiveDir, siteDir} = fixture();
+  writeFileSync(
+    join(spaDir, 'sitemap.xml'),
+    sitemapXmlFixtureWithLastmod([{url: 'https://agentforge4j.org/', lastmod: '2026-07-20'}]),
+  );
+  writeFileSync(
+    join(buildDir, 'sitemap.xml'),
+    sitemapXmlFixture(['https://agentforge4j.org/docs/0.1.0/']), // no lastmod at all
+  );
+  assembleSite({spaDir, buildDir, javadocDir, archiveDir, siteDir, customDomain: null});
+  const xml = readFileSync(join(siteDir, 'sitemap.xml'), 'utf8');
+  assert.match(xml, /<loc>https:\/\/agentforge4j\.org\/<\/loc>\s*<lastmod>2026-07-20<\/lastmod>/);
+  const docsBlock = /<url>\s*<loc>https:\/\/agentforge4j\.org\/docs\/0\.1\.0\/<\/loc>\s*<\/url>/;
+  assert.match(xml, docsBlock, 'the docs entry (no lastmod in its own fragment) must carry none through the merge either');
+});
+
 test('robots.txt is copied through to the site root from the SPA build', () => {
   const {spaDir, buildDir, javadocDir, archiveDir, siteDir} = fixture();
   assembleSite({spaDir, buildDir, javadocDir, archiveDir, siteDir, customDomain: null});
@@ -548,6 +576,56 @@ test('fails closed on a duplicate URL across the SPA and docs sitemap fragments'
     /exit\(1\)/,
   );
   assert.deepEqual(exitCodes, [1]);
+});
+
+test('fails closed when a <url> block does not match the expected <url><loc>...</loc>[<lastmod>...</lastmod>]</url> shape — must not silently drop that URL from the merged sitemap', () => {
+  const {spaDir, buildDir, javadocDir, archiveDir, siteDir} = fixture();
+  // A <url> block with an extra element after <loc> (e.g. an xhtml:link alternate, the kind of
+  // thing a future sitemap-plugin/Docusaurus bump could add) does not match the strict per-block
+  // regex at all — without the loc-count cross-check, this URL would silently vanish from the
+  // published sitemap instead of failing the build.
+  writeFileSync(
+    join(buildDir, 'sitemap.xml'),
+    '<?xml version="1.0" encoding="UTF-8"?>\n' +
+      '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n' +
+      '  <url>\n    <loc>https://agentforge4j.org/docs/0.1.0/</loc>\n' +
+      '    <xhtml:link rel="alternate" href="https://agentforge4j.org/docs/0.1.0/" />\n' +
+      '  </url>\n</urlset>\n',
+  );
+
+  const exitCodes = [];
+  const fakeExit = (code) => {
+    exitCodes.push(code);
+    throw new Error(`exit(${code})`);
+  };
+  assert.throws(
+    () => assembleSite({spaDir, buildDir, javadocDir, archiveDir, siteDir, customDomain: null, exit: fakeExit}),
+    /exit\(1\)/,
+  );
+  assert.deepEqual(exitCodes, [1]);
+});
+
+test('fails closed when a <url> block has no <loc> at all (e.g. a typo\'d <location>) alongside one valid entry — a <loc>-only count comparison alone would miss this, since both sides would be zero for the malformed block', () => {
+  const {spaDir, buildDir, javadocDir, archiveDir, siteDir} = fixture();
+  writeFileSync(
+    join(buildDir, 'sitemap.xml'),
+    '<?xml version="1.0" encoding="UTF-8"?>\n' +
+      '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n' +
+      '  <url>\n    <loc>https://agentforge4j.org/docs/0.1.0/</loc>\n  </url>\n' +
+      '  <url>\n    <location>https://agentforge4j.org/docs/0.1.0/other/</location>\n  </url>\n' +
+      '</urlset>\n',
+  );
+
+  const missingLocExitCodes = [];
+  const fakeExitMissingLoc = (code) => {
+    missingLocExitCodes.push(code);
+    throw new Error(`exit(${code})`);
+  };
+  assert.throws(
+    () => assembleSite({spaDir, buildDir, javadocDir, archiveDir, siteDir, customDomain: null, exit: fakeExitMissingLoc}),
+    /exit\(1\)/,
+  );
+  assert.deepEqual(missingLocExitCodes, [1]);
 });
 
 // --- scanComposedHtmlForForbiddenContent ------------------------------------------------------
