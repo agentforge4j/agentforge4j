@@ -337,6 +337,34 @@ export function verifyComposedAnchorLinks(siteDir, docsSourceDir, versionedDocsS
 
 const SITEMAP_URL_PREFIX = 'https://agentforge4j.org/';
 
+// The only <urlset> attributes this parser accepts: the base sitemaps.org namespace plus the four
+// extension namespaces the `sitemap` npm package's SitemapStream unconditionally declares by
+// default ({news,xhtml,image,video}: true — see its own sitemap-stream.js getURLSetNs/defaultXMLNS,
+// which @docusaurus/plugin-sitemap's xml.js does not override). Confirmed against a real `npm run
+// build` of THIS module: the composed docs/sitemap.xml's root element is exactly
+// `<urlset xmlns="..." xmlns:news="..." xmlns:xhtml="..." xmlns:image="..." xmlns:video="...">` —
+// all five, every time, because Docusaurus never passes its own `xmlns` stream option. The SPA's
+// own fragment (agentforge4j-web-ui/scripts/build-seo.mjs) hand-writes only the bare `xmlns` (no
+// library involved), which is why this map treats every entry as independently optional. Both the
+// attribute NAME and its exact value are checked — an attribute with an allowed name but a foreign
+// value is still rejected, since accepting it would silently mean "the namespace declaration lied".
+const URLSET_ALLOWED_ATTRIBUTES = {
+  xmlns: 'http://www.sitemaps.org/schemas/sitemap/0.9',
+  'xmlns:news': 'http://www.google.com/schemas/sitemap-news/0.9',
+  'xmlns:xhtml': 'http://www.w3.org/1999/xhtml',
+  'xmlns:image': 'http://www.google.com/schemas/sitemap-image/1.1',
+  'xmlns:video': 'http://www.google.com/schemas/sitemap-video/1.1',
+};
+
+/** True if every attribute on a parsed `<urlset>` node is one of the known, exact-value sitemap
+ * namespace declarations above. sax (strict mode, no `xmlns` option) reports attributes as a plain
+ * `{name: value}` object with prefixes left intact (e.g. `"xmlns:news"`), not namespace-resolved. */
+function urlsetAttributesAreValid(node) {
+  return Object.entries(node.attributes ?? {}).every(
+    ([key, value]) => URLSET_ALLOWED_ATTRIBUTES[key] === value,
+  );
+}
+
 /** Extracts every `{url, lastmod}` pair from a sitemap.xml file, in document order (`lastmod` is
  * `null` when a `<url>` block has none). Uses `sax` (a real, standards-based streaming XML parser
  * — already present in this package's own dependency graph via `@docusaurus/plugin-sitemap`'s
@@ -348,13 +376,46 @@ const SITEMAP_URL_PREFIX = 'https://agentforge4j.org/';
  * disappeared from the merged sitemap instead of failing the build. A real parser distinguishes
  * these unambiguously by construction, rather than by adding another special-case count.
  *
+ * This function's accepted `<url>` shape — exactly one `<loc>` plus an optional `<lastmod>`, no
+ * other sibling element — is deliberately narrower than the full sitemaps.org protocol (no
+ * `changefreq`/`priority`/`image:image`/`video:video`/`xhtml:link`/etc.). That narrow contract is
+ * only safe to enforce because BOTH first-party sitemap generators are configured/written to never
+ * emit anything wider: `docusaurus.config.ts`'s `presets[0][1].sitemap` sets `changefreq: null,
+ * priority: null` specifically so `@docusaurus/plugin-sitemap` never emits those two per-`<url>`
+ * elements (see `sitemap` npm package's `sitemap-item-stream.js`: `<changefreq>`/`<priority>` are
+ * each conditionally pushed only when the corresponding option is truthy/non-null; every other
+ * optional per-item field — img/video/links/news/expires/androidLink/ampLink — is never populated
+ * by Docusaurus's own route-to-item mapping, `createSitemapItem.js`, at all), and the SPA's own
+ * generator (`agentforge4j-web-ui/scripts/build-seo.mjs`) hand-writes only `<loc>`/`<lastmod>` by
+ * construction (a plain template, no sitemap library). THIS IS A DELIBERATE COUPLING, not an
+ * accident: if `docusaurus.config.ts`'s `sitemap.changefreq`/`sitemap.priority` is ever restored to
+ * a non-null value (a completely reasonable, unrelated SEO change), the very next composed-site
+ * build fails inside this unrelated script with "unexpected child element <changefreq>/<priority>
+ * inside <url>" — the regression test below
+ * ("the real Docusaurus sitemap config stays compatible with the parser's narrow <url> contract")
+ * exists specifically to catch that class of change at the config edit, before it ever reaches
+ * deployment composition, by driving the REAL `sitemap` library's item-serialization code with the
+ * REAL `sitemap.changefreq`/`sitemap.priority` values read live from `docusaurus.config.ts` itself
+ * (not a hardcoded copy of "null" in the test). Do not widen this function's accepted shape to
+ * accommodate a future `changefreq`/`priority`/image/video/news config re-enable — narrow the
+ * config back down instead; only extend the parser itself if there is a genuine, current, reviewed
+ * product need for those fields to appear in the published sitemap.
+ *
+ * Attributes: `<urlset>` may carry ONLY the exact namespace declarations in
+ * `URLSET_ALLOWED_ATTRIBUTES` above (each independently optional, since the SPA fragment declares
+ * only the base `xmlns` while the real Docusaurus fragment declares all five); `<url>`, `<loc>`,
+ * and `<lastmod>` may carry NO attributes at all. Every case is enumerated, tested, and enforced —
+ * this is not a partial allowlist that happens to pass today's inputs.
+ *
  * Fails closed (via `exit`, not silently) whenever:
  *  - the XML itself is not well-formed (sax's own strict-mode error reporting: unclosed tags,
  *    mismatched/orphan closing tags, invalid markup elsewhere in the document — even after an
  *    earlier, individually well-formed `<url>` entry was already parsed; a document that goes bad
  *    partway through must still fail the whole file, not silently publish only the entries seen
  *    before the corruption);
- *  - the document's outermost element is not `<urlset>`;
+ *  - the document's outermost element is not `<urlset>`, or `<urlset>` carries an attribute outside
+ *    `URLSET_ALLOWED_ATTRIBUTES` (unexpected name, or an allowed name with an unexpected value);
+ *  - `<url>`, `<loc>`, or `<lastmod>` carries any attribute at all;
  *  - a `<url>` entry has no `<loc>` at all, or an empty one (this is also what makes a self-closing
  *    `<url/>` fail: it opens and closes with no children, so it can never have a `<loc>`);
  *  - a `<url>` entry has a `<lastmod>` that is present but empty (e.g. a self-closing `<lastmod/>`)
@@ -408,6 +469,9 @@ function extractSitemapEntries(xmlPath, exit) {
       }
     }
     if (name === 'urlset') {
+      if (!urlsetAttributesAreValid(node)) {
+        fail('<urlset> has an unexpected attribute — only the known sitemap namespace declarations are allowed');
+      }
       return;
     }
     if (currentChildTag !== null) {
@@ -418,6 +482,10 @@ function extractSitemapEntries(xmlPath, exit) {
     if (name === 'url') {
       if (currentEntry !== null) {
         fail('nested <url> element');
+        return;
+      }
+      if (Object.keys(node.attributes ?? {}).length > 0) {
+        fail('<url> must not carry any attributes');
         return;
       }
       currentEntry = {loc: null, lastmod: null};
@@ -435,6 +503,10 @@ function extractSitemapEntries(xmlPath, exit) {
     }
     if (currentEntry[name] !== null) {
       fail(`multiple <${name}> elements inside one <url> entry`);
+      return;
+    }
+    if (Object.keys(node.attributes ?? {}).length > 0) {
+      fail(`<${name}> must not carry any attributes`);
       return;
     }
     currentChildTag = name;

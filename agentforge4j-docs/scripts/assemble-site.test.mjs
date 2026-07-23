@@ -10,6 +10,7 @@ import {existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync}
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import sax from 'sax';
+import {SitemapStream, streamToPromise} from 'sitemap';
 import {
   assembleSite,
   scanComposedHtmlForForbiddenContent,
@@ -1145,4 +1146,152 @@ test('fails closed on a sitemap URL outside https://agentforge4j.org/', () => {
     /exit\(1\)/,
   );
   assert.deepEqual(exitCodes, [1]);
+});
+
+// --- <urlset>/<url>/<loc>/<lastmod> attribute policy ------------------------------------------
+//
+// The parser's narrow structural contract (exactly one <loc>, optional <lastmod>, no other
+// sibling) was previously silent on attributes: sax parses `<url foo="bar">` successfully, and the
+// serializer only ever reads element text, so any attribute on any of these four elements was
+// accepted and quietly dropped — undermining the doc comment's claim of an exhaustive, narrow
+// contract. `<urlset>` alone may carry attributes, and only the exact sitemap namespace
+// declarations real first-party output actually uses (see URLSET_ALLOWED_ATTRIBUTES); `<url>`,
+// `<loc>`, and `<lastmod>` may carry none.
+
+test('accepts the real Docusaurus <urlset> shape: all five sitemap namespace declarations (xmlns + news/xhtml/image/video)', () => {
+  // Byte-for-byte the root element `npm run build` in this exact module produced (verified against
+  // a real build/sitemap.xml before this test was written) — the `sitemap` npm package's
+  // SitemapStream declares all four extension namespaces unconditionally by default, and
+  // @docusaurus/plugin-sitemap never overrides that default.
+  const {spaDir, buildDir, javadocDir, archiveDir, siteDir} = fixture();
+  writeFileSync(
+    join(buildDir, 'sitemap.xml'),
+    '<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" ' +
+      'xmlns:news="http://www.google.com/schemas/sitemap-news/0.9" xmlns:xhtml="http://www.w3.org/1999/xhtml" ' +
+      'xmlns:image="http://www.google.com/schemas/sitemap-image/1.1" xmlns:video="http://www.google.com/schemas/sitemap-video/1.1">' +
+      '<url><loc>https://agentforge4j.org/docs/0.1.0/</loc></url></urlset>',
+  );
+  assembleSite({spaDir, buildDir, javadocDir, archiveDir, siteDir, customDomain: null});
+  const xml = readFileSync(join(siteDir, 'sitemap.xml'), 'utf8');
+  assert.match(xml, /<loc>https:\/\/agentforge4j\.org\/docs\/0\.1\.0\/<\/loc>/);
+});
+
+test('accepts the real SPA <urlset> shape: only the bare xmlns declaration', () => {
+  // build-seo.mjs hand-writes its own sitemap.xml template with only the base xmlns — proven
+  // compatible in every other test via sitemapXmlFixture(), which uses exactly this shape; this
+  // test names the property explicitly rather than leaving it implicit.
+  const {spaDir, buildDir, javadocDir, archiveDir, siteDir} = fixture();
+  assembleSite({spaDir, buildDir, javadocDir, archiveDir, siteDir, customDomain: null});
+  assert.ok(existsSync(join(siteDir, 'sitemap.xml')));
+});
+
+test('fails closed on an unexpected <urlset> attribute', () => {
+  expectSitemapMergeFailure(
+    '<?xml version="1.0" encoding="UTF-8"?>\n' +
+      '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" foo="bar">\n' +
+      '  <url>\n    <loc>https://agentforge4j.org/example/</loc>\n  </url>\n</urlset>\n',
+  );
+});
+
+test('fails closed on a known <urlset> attribute name with the wrong (foreign) value', () => {
+  // A namespace declaration that lies about its own URI must not be silently trusted — same class
+  // of defect as accepting an unknown attribute name outright.
+  expectSitemapMergeFailure(
+    '<?xml version="1.0" encoding="UTF-8"?>\n' +
+      '<urlset xmlns="https://not-the-real-sitemap-namespace.example/">\n' +
+      '  <url>\n    <loc>https://agentforge4j.org/example/</loc>\n  </url>\n</urlset>\n',
+    {fragment: 'spa'},
+  );
+});
+
+test('fails closed on an attribute on <url>', () => {
+  expectSitemapMergeFailure(`${SITEMAP_HEADER}  <url foo="bar">\n    <loc>https://agentforge4j.org/example/</loc>\n  </url>\n${SITEMAP_FOOTER}`);
+});
+
+test('fails closed on an attribute on <loc>', () => {
+  expectSitemapMergeFailure(
+    `${SITEMAP_HEADER}  <url>\n    <loc foo="bar">https://agentforge4j.org/example/</loc>\n  </url>\n${SITEMAP_FOOTER}`,
+    {fragment: 'spa'},
+  );
+});
+
+test('fails closed on an attribute on <lastmod>', () => {
+  expectSitemapMergeFailure(
+    `${SITEMAP_HEADER}  <url>\n    <loc>https://agentforge4j.org/example/</loc>\n    <lastmod foo="bar">2026-07-23</lastmod>\n  </url>\n${SITEMAP_FOOTER}`,
+  );
+});
+
+// --- Untested fail-closed branches: wrong root, stray top-level sibling, nested <url> ----------
+//
+// These three shapes were already correctly rejected by extractSitemapEntries (confirmed by manual
+// trace of the onopentag handler), but had no direct test proving it. Exercised through the real
+// assembleSite()/mergeSitemaps() path, like every other malformed-fragment test in this suite, so
+// the assertion proves actual deployment behavior rather than a bare unit of the parser.
+
+test('fails closed when the document root is not <urlset>', () => {
+  expectSitemapMergeFailure('<?xml version="1.0" encoding="UTF-8"?>\n<foo>\n  <bar/>\n</foo>\n');
+});
+
+test('fails closed when the document root is a bare <url> with no <urlset> wrapper at all — the specific shape the dedicated root check exists for (confirmed by negative control: with only that check disabled, this exact document is silently accepted and merged)', () => {
+  expectSitemapMergeFailure(
+    '<?xml version="1.0" encoding="UTF-8"?>\n<url>\n  <loc>https://agentforge4j.org/example/</loc>\n</url>\n',
+  );
+});
+
+test('fails closed on a stray top-level sibling element alongside <url> under <urlset>', () => {
+  expectSitemapMergeFailure(
+    `${SITEMAP_HEADER}  <url>\n    <loc>https://agentforge4j.org/example/</loc>\n  </url>\n  <foo/>\n${SITEMAP_FOOTER}`,
+    {fragment: 'spa'},
+  );
+});
+
+test('fails closed on a bare top-level <loc> outside any <url> wrapper — the specific shape the top-level stray-element check exists for (a name that also happens to be a valid <url> child, so only the top-level guard, not the child-name guard, can catch it)', () => {
+  expectSitemapMergeFailure(
+    `${SITEMAP_HEADER}  <loc>https://agentforge4j.org/example/</loc>\n${SITEMAP_FOOTER}`,
+    {fragment: 'spa'},
+  );
+});
+
+test('fails closed on a <url> nested inside another <url>', () => {
+  expectSitemapMergeFailure(
+    `${SITEMAP_HEADER}  <url>\n    <loc>https://agentforge4j.org/outer/</loc>\n` +
+      '    <url>\n      <loc>https://agentforge4j.org/inner/</loc>\n    </url>\n  </url>\n' +
+      `${SITEMAP_FOOTER}`,
+  );
+});
+
+// --- PR174-101 root-cause regression: the parser's narrow <url> contract stays compatible with
+// docusaurus.config.ts's real, live sitemap options --------------------------------------------
+
+test("the real Docusaurus sitemap config stays compatible with the parser's narrow <url> contract", async () => {
+  // Reads docusaurus.config.ts itself (Node's native TS type-stripping imports it directly — no
+  // hardcoded copy of "changefreq: null, priority: null" in this test) and drives the REAL `sitemap`
+  // npm package's item-serialization code (the exact library @docusaurus/plugin-sitemap's own
+  // xml.js uses) with those live values. If a future edit to docusaurus.config.ts ever restores
+  // `changefreq`/`priority` to a non-null value, this test fails at the config change — the real
+  // library will emit a real <changefreq>/<priority> element, and the real parser will reject it —
+  // instead of the failure surfacing later as an opaque, unrelated composed-site build break.
+  const {default: docusaurusConfig} = await import('../docusaurus.config.ts');
+  const [, presetOptions] = docusaurusConfig.presets[0];
+  const {sitemap: sitemapOptions} = presetOptions;
+
+  const stream = new SitemapStream({});
+  stream.write({
+    url: 'https://agentforge4j.org/docs/0.1.0/',
+    changefreq: sitemapOptions.changefreq,
+    priority: sitemapOptions.priority,
+    lastmod: undefined,
+    video: [],
+    img: [],
+    links: [],
+  });
+  stream.end();
+  const realGeneratedXml = (await streamToPromise(stream)).toString();
+
+  const {spaDir, buildDir, javadocDir, archiveDir, siteDir} = fixture();
+  writeFileSync(join(buildDir, 'sitemap.xml'), realGeneratedXml);
+  // Must NOT fail closed — this is the compatibility proof itself.
+  assembleSite({spaDir, buildDir, javadocDir, archiveDir, siteDir, customDomain: null});
+  const merged = readFileSync(join(siteDir, 'sitemap.xml'), 'utf8');
+  assert.match(merged, /<loc>https:\/\/agentforge4j\.org\/docs\/0\.1\.0\/<\/loc>/);
 });
