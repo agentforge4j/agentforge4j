@@ -10,7 +10,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { buildSeo, escapeHtml, injectHead } from './build-seo.mjs';
+import { buildSeo, escapeHtml, injectHead, withTrailingSlash } from './build-seo.mjs';
 import { WORKFLOW_ID_PATTERN } from './workflow-id-contract.mjs';
 
 const REAL_MODULE_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -99,30 +99,37 @@ test('writes a real static shell for every non-root route', () => {
   const html = readFileSync(join(distDir, 'architecture', 'index.html'), 'utf8');
   assert.match(html, /<title>Architecture — AgentForge4j<\/title>/);
   assert.match(html, /content="Architecture description\."/);
-  assert.match(html, /href="https:\/\/agentforge4j\.org\/architecture"/);
+  assert.match(html, /href="https:\/\/agentforge4j\.org\/architecture\/"/);
 });
 
-test('a route with canonicalPath points its canonical/og:url at the target, not itself', () => {
+test('a route with canonicalPath points its canonical/og:url at the target, not itself (trailing-slash form — the target\'s own served address)', () => {
   const { distDir, seoRoutesPath, catalogueDataPath } = fixture();
   buildSeo({ distDir, seoRoutesPath, catalogueDataPath });
   const html = readFileSync(join(distDir, 'contributing', 'index.html'), 'utf8');
-  assert.match(html, /rel="canonical" href="https:\/\/agentforge4j\.org\/community"/);
-  assert.match(html, /property="og:url" content="https:\/\/agentforge4j\.org\/community"/);
+  assert.match(html, /rel="canonical" href="https:\/\/agentforge4j\.org\/community\/"/);
+  assert.match(html, /property="og:url" content="https:\/\/agentforge4j\.org\/community\/"/);
 });
 
 test('a route with sitemap: false is excluded from the sitemap fragment', () => {
   const { distDir, seoRoutesPath, catalogueDataPath } = fixture();
   const { sitemapUrls } = buildSeo({ distDir, seoRoutesPath, catalogueDataPath });
-  assert.ok(!sitemapUrls.includes('https://agentforge4j.org/contributing'));
+  assert.ok(!sitemapUrls.includes('https://agentforge4j.org/contributing/'));
 });
 
-test('every other route is included in the sitemap fragment exactly once', () => {
+test('every other route is included in the sitemap fragment exactly once, in the trailing-slash form GitHub Pages actually serves with no redirect', () => {
   const { distDir, seoRoutesPath, catalogueDataPath } = fixture();
   const { sitemapUrls } = buildSeo({ distDir, seoRoutesPath, catalogueDataPath });
   assert.deepEqual(
     [...sitemapUrls].sort(),
-    ['https://agentforge4j.org/', 'https://agentforge4j.org/architecture'].sort(),
+    ['https://agentforge4j.org/', 'https://agentforge4j.org/architecture/'].sort(),
   );
+});
+
+test('withTrailingSlash: the root path is unchanged; every other route gains exactly one trailing slash', () => {
+  assert.equal(withTrailingSlash('/'), '/');
+  assert.equal(withTrailingSlash('/api'), '/api/');
+  assert.equal(withTrailingSlash('/catalogue/agent-creator'), '/catalogue/agent-creator/');
+  assert.equal(withTrailingSlash('/already/'), '/already/');
 });
 
 test('writes a real dist/sitemap.xml with exactly the computed URLs, no duplicates', () => {
@@ -146,7 +153,7 @@ test('generates a real static page + sitemap entry for every shipped catalogue w
   const html = readFileSync(join(distDir, 'catalogue', 'agent-creator', 'index.html'), 'utf8');
   assert.match(html, /<title>Agent Creator — AgentForge4j Catalogue<\/title>/);
   assert.match(html, /content="Builds agents\."/);
-  assert.ok(sitemapUrls.includes('https://agentforge4j.org/catalogue/agent-creator'));
+  assert.ok(sitemapUrls.includes('https://agentforge4j.org/catalogue/agent-creator/'));
 });
 
 test('falls back to a generic description when a workflow has none', () => {
