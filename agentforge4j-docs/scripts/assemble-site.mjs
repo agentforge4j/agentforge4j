@@ -365,6 +365,28 @@ function urlsetAttributesAreValid(node) {
   );
 }
 
+/** True if `rawTag` — the exact source text of an opening tag, e.g. `<urlset xmlns="..." ...>` —
+ * declares the same attribute name more than once. Duplicate attribute names are an XML
+ * well-formedness violation, but sax (strict mode) does not treat it as one: it silently keeps
+ * only the FIRST occurrence in `node.attributes` and never fires any callback for the dropped
+ * duplicate, so `urlsetAttributesAreValid` alone cannot see a second, differently-valued
+ * declaration a duplicate name hid (e.g. the real namespace declared first, a foreign one silently
+ * shadowed second). Scanning the tag's own raw text — recovered via `parser.startTagPosition`/
+ * `parser.position` — is the only way to detect that a duplicate was present at all. */
+function duplicateAttributeName(rawTag) {
+  const seen = new Set();
+  const pattern = /([A-Za-z_][-A-Za-z0-9_.:]*)\s*=\s*(["'])[\s\S]*?\2/g;
+  let match;
+  while ((match = pattern.exec(rawTag)) !== null) {
+    const name = match[1];
+    if (seen.has(name)) {
+      return name;
+    }
+    seen.add(name);
+  }
+  return null;
+}
+
 /** Extracts every `{url, lastmod}` pair from a sitemap.xml file, in document order (`lastmod` is
  * `null` when a `<url>` block has none). Uses `sax` (a real, standards-based streaming XML parser
  * — already present in this package's own dependency graph via `@docusaurus/plugin-sitemap`'s
@@ -403,18 +425,27 @@ function urlsetAttributesAreValid(node) {
  *
  * Attributes: `<urlset>` may carry ONLY the exact namespace declarations in
  * `URLSET_ALLOWED_ATTRIBUTES` above (each independently optional, since the SPA fragment declares
- * only the base `xmlns` while the real Docusaurus fragment declares all five); `<url>`, `<loc>`,
- * and `<lastmod>` may carry NO attributes at all. Every case is enumerated, tested, and enforced —
- * this is not a partial allowlist that happens to pass today's inputs.
+ * only the base `xmlns` while the real Docusaurus fragment declares all five), and each at most
+ * once — a duplicate attribute name is a well-formedness violation sax's strict mode does not
+ * itself reject (see `duplicateAttributeName`). `<url>`, `<loc>`, and `<lastmod>` may carry NO
+ * attributes at all. Every case is enumerated, tested, and enforced — this is not a partial
+ * allowlist that happens to pass today's inputs.
  *
  * Fails closed (via `exit`, not silently) whenever:
  *  - the XML itself is not well-formed (sax's own strict-mode error reporting: unclosed tags,
  *    mismatched/orphan closing tags, invalid markup elsewhere in the document — even after an
  *    earlier, individually well-formed `<url>` entry was already parsed; a document that goes bad
  *    partway through must still fail the whole file, not silently publish only the entries seen
- *    before the corruption);
+ *    before the corruption), or decodes a character entity outside the five standard XML entities
+ *    (`sax.parser(true, {strictEntities: true})` — without this, sax's non-strict-mode fallback
+ *    accepts ~250 HTML-only entities like `&copy;` from text that is not actually well-formed XML);
+ *  - the document contains a comment, a processing instruction (other than the leading `<?xml ...?>`
+ *    declaration itself), or a DOCTYPE declaration — none are part of the narrow, enumerated
+ *    contract, and a comment or PI inside a `<loc>`/`<lastmod>` leaf would otherwise silently splice
+ *    the text around it into one corrupted published value, exactly like a stray nested element;
  *  - the document's outermost element is not `<urlset>`, or `<urlset>` carries an attribute outside
- *    `URLSET_ALLOWED_ATTRIBUTES` (unexpected name, or an allowed name with an unexpected value);
+ *    `URLSET_ALLOWED_ATTRIBUTES` (unexpected name, an allowed name with an unexpected value, or an
+ *    allowed name declared more than once);
  *  - `<urlset>` appears anywhere other than as the document root: nested inside a `<url>` entry,
  *    inside a `<loc>`/`<lastmod>` leaf (where it would otherwise silently splice the text around it
  *    into one corrupted URL), or as a second root-level element after the real root closed (sax
@@ -423,14 +454,20 @@ function urlsetAttributesAreValid(node) {
  *    spellings (`<x:loc>`, `<foo:urlset>`) are rejected outright, never folded into their bare local
  *    name, matching the exact-value strictness already applied to `<urlset>`'s attributes;
  *  - `<url>`, `<loc>`, or `<lastmod>` carries any attribute at all;
- *  - a `<url>` entry has no `<loc>` at all, or an empty one (this is also what makes a self-closing
- *    `<url/>` fail: it opens and closes with no children, so it can never have a `<loc>`);
- *  - a `<url>` entry has a `<lastmod>` that is present but empty or whitespace-only (e.g. a
- *    self-closing `<lastmod/>`, or `<lastmod>   </lastmod>`) — the same empty-content guard as
- *    `<loc>`, applied consistently: an effectively-empty `<lastmod>` must fail the build rather
+ *  - non-whitespace text appears directly inside `<urlset>` (a sibling to `<url>`) or directly
+ *    inside `<url>` (a sibling to `<loc>`/`<lastmod>`) — outside any leaf, stray text like this was
+ *    previously silently discarded rather than failing the build;
+ *  - a `<url>` entry has no `<loc>` at all, or one that is empty or whitespace-only (this is also
+ *    what makes a self-closing `<url/>` fail: it opens and closes with no children, so it can never
+ *    have a `<loc>`), or a `<loc>` whose value carries leading or trailing whitespace (not a valid
+ *    URL value — shipping it verbatim would publish an invalid sitemap entry);
+ *  - a `<url>` entry has a `<lastmod>` that is present but empty, whitespace-only (e.g. a
+ *    self-closing `<lastmod/>`, or `<lastmod>   </lastmod>`), or carries leading/trailing
+ *    whitespace around otherwise-valid content — the same empty-and-padding guard as `<loc>`,
+ *    applied consistently: an effectively-empty or padded `<lastmod>` must fail the build rather
  *    than either silently vanish from the merged sitemap (`sitemapXml` treats an empty string as
- *    "no lastmod" and omits the tag entirely) or ship verbatim as whitespace that is not a valid
- *    W3C datetime;
+ *    "no lastmod" and omits the tag entirely) or ship verbatim as a value that is not a valid W3C
+ *    datetime;
  *  - a `<url>` entry has more than one `<loc>`, or more than one `<lastmod>`;
  *  - a `<url>` entry has any child element other than `<loc>`/`<lastmod>` (a sibling to them), or
  *    `<loc>`/`<lastmod>` themselves contain a nested element (rather than plain text) — either
@@ -454,7 +491,12 @@ function extractSitemapEntries(xmlPath, exit) {
     exit(1);
   }
 
-  const parser = sax.parser(true);
+  // strictEntities: without it, sax's non-strict-mode entity fallback still applies inside strict
+  // parsing and silently decodes ~250 HTML-only entities (e.g. `&copy;`) that are not valid XML
+  // character entities — accepting text that is not actually well-formed XML, contradicting the
+  // "fails closed on non-well-formed XML" guarantee below. The five standard XML entities
+  // (`&amp;`/`&lt;`/`&gt;`/`&apos;`/`&quot;`) and numeric character references are unaffected.
+  const parser = sax.parser(true, {strictEntities: true});
   let sawRoot = false;
   let currentEntry = null; // {loc: string|null, lastmod: string|null} while inside a <url> element
   let currentChildTag = null; // 'loc' | 'lastmod' | null — the currently-open leaf element inside <url>
@@ -462,6 +504,26 @@ function extractSitemapEntries(xmlPath, exit) {
 
   parser.onerror = (err) => {
     fail(`sitemap XML is not well-formed — ${err.message.split('\n')[0]}`);
+  };
+
+  // None of comments, processing instructions, or a DOCTYPE are part of the narrow, enumerated
+  // contract this function accepts — a comment or PI inside a <loc>/<lastmod> leaf would otherwise
+  // silently splice the surrounding text into one corrupted published value, exactly like a stray
+  // nested element already fails closed for.
+  parser.oncomment = () => {
+    fail('sitemap XML contains a comment, which is outside the accepted contract');
+  };
+  parser.onprocessinginstruction = (node) => {
+    if (node.name.toLowerCase() === 'xml') {
+      // The leading <?xml version="1.0" ...?> declaration itself. "xml" (case-insensitively) is a
+      // reserved processing-instruction target per the XML spec, so no genuine PI can ever use this
+      // name — this branch can only ever be the document's own declaration, never user content.
+      return;
+    }
+    fail(`sitemap XML contains a processing instruction (<?${node.name}?>), which is outside the accepted contract`);
+  };
+  parser.ondoctype = () => {
+    fail('sitemap XML contains a DOCTYPE declaration, which is outside the accepted contract');
   };
 
   // Element names are compared exactly as written — no namespace-prefix stripping. Both first-party
@@ -475,6 +537,15 @@ function extractSitemapEntries(xmlPath, exit) {
       sawRoot = true;
       if (name !== 'urlset') {
         fail(`expected <urlset> as the document root, found <${node.name}>`);
+        return;
+      }
+      const rawTag = xml.slice(parser.startTagPosition - 1, parser.position);
+      const duplicateAttr = duplicateAttributeName(rawTag);
+      if (duplicateAttr !== null) {
+        fail(
+          `<urlset> declares the attribute "${duplicateAttr}" more than once — a duplicate attribute ` +
+            'name is not well-formed XML, and sax silently keeps only the first value',
+        );
         return;
       }
       if (!urlsetAttributesAreValid(node)) {
@@ -532,6 +603,17 @@ function extractSitemapEntries(xmlPath, exit) {
   parser.ontext = (text) => {
     if (currentChildTag !== null) {
       currentText += text;
+      return;
+    }
+    if (text.trim() !== '') {
+      // Non-whitespace text with no enclosing <loc>/<lastmod> leaf: either a stray sibling of
+      // <url> directly inside <urlset>, or a stray sibling of <loc>/<lastmod> directly inside
+      // <url>. Formatting whitespace between elements is expected and stays silently ignored.
+      fail(
+        currentEntry !== null
+          ? 'unexpected text content directly inside <url>, outside <loc>/<lastmod>'
+          : 'unexpected text content directly inside <urlset>, outside <url>',
+      );
     }
   };
   parser.oncdata = parser.ontext;
@@ -551,15 +633,27 @@ function extractSitemapEntries(xmlPath, exit) {
         // tag as a parse error before this could be reached in practice; guarded defensively anyway.
         return;
       }
-      if (!currentEntry.loc) {
-        fail('a <url> entry has no <loc> (or it is present but empty)');
+      if (currentEntry.loc === null || currentEntry.loc.trim() === '') {
+        fail('a <url> entry has no <loc> (or it is present but empty or whitespace-only)');
         currentEntry = null;
         return;
       }
-      if (currentEntry.lastmod !== null && currentEntry.lastmod.trim() === '') {
-        fail('a <url> entry has a <lastmod> that is present but empty (or whitespace-only)');
+      if (currentEntry.loc.trim() !== currentEntry.loc) {
+        fail('a <url> entry has a <loc> with leading or trailing whitespace, which is not a valid URL value');
         currentEntry = null;
         return;
+      }
+      if (currentEntry.lastmod !== null) {
+        if (currentEntry.lastmod.trim() === '') {
+          fail('a <url> entry has a <lastmod> that is present but empty (or whitespace-only)');
+          currentEntry = null;
+          return;
+        }
+        if (currentEntry.lastmod.trim() !== currentEntry.lastmod) {
+          fail('a <url> entry has a <lastmod> with leading or trailing whitespace, which is not a valid W3C datetime value');
+          currentEntry = null;
+          return;
+        }
       }
       entries.push({url: currentEntry.loc, lastmod: currentEntry.lastmod ?? null});
       currentEntry = null;
