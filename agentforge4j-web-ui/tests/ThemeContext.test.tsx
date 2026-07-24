@@ -169,6 +169,35 @@ describe('ThemeProvider: system-preference reactivity', () => {
     act(() => media.simulateChange(false)); // OS flips to light — must have no effect.
     expect(screen.getByTestId('effective')).toHaveTextContent('dark');
   });
+
+  // C176-01: the media-query listener is deliberately detached while an explicit choice is
+  // active, so an OS change during that window is invisible to `systemPrefersDark` until
+  // something resyncs it. Re-entering 'system' must resync from the OS's CURRENT value
+  // immediately — not keep showing the stale value cached from before the explicit choice,
+  // and not require a second, later OS change event to correct itself.
+  test('re-entering "system" after the OS changed while an explicit Light choice was active resyncs immediately, without another OS event or reload', async () => {
+    const media = installMatchMediaMock(false); // OS starts light.
+    const user = userEvent.setup();
+    renderHarness();
+    await user.click(screen.getByRole('button', { name: 'Set light' }));
+    act(() => media.simulateChange(true)); // OS flips to dark while explicit Light is active.
+    expect(screen.getByTestId('effective')).toHaveTextContent('light'); // still light — explicit wins.
+    await user.click(screen.getByRole('button', { name: 'Set system' }));
+    expect(screen.getByTestId('effective')).toHaveTextContent('dark'); // must resync immediately.
+    expect(document.documentElement.getAttribute('data-theme')).toBe('dark');
+  });
+
+  test('re-entering "system" after the OS changed while an explicit Dark choice was active resyncs immediately (inverse direction)', async () => {
+    const media = installMatchMediaMock(true); // OS starts dark.
+    const user = userEvent.setup();
+    renderHarness();
+    await user.click(screen.getByRole('button', { name: 'Set dark' }));
+    act(() => media.simulateChange(false)); // OS flips to light while explicit Dark is active.
+    expect(screen.getByTestId('effective')).toHaveTextContent('dark'); // still dark — explicit wins.
+    await user.click(screen.getByRole('button', { name: 'Set system' }));
+    expect(screen.getByTestId('effective')).toHaveTextContent('light'); // must resync immediately.
+    expect(document.documentElement.getAttribute('data-theme')).toBe('light');
+  });
 });
 
 describe('ThemeProvider: storage and stored-value edge cases', () => {

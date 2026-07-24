@@ -49,10 +49,30 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   const [mode, setModeState] = useState<ThemeMode>(() => currentThemeMode(safeLocalStorage()));
   const [systemPrefersDark, setSystemPrefersDark] = useState<boolean>(() => readSystemPrefersDark());
 
+  // `systemPrefersDark` goes stale while an explicit choice is active — the subscription effect
+  // below is deliberately detached in that state, so an OS change during that window never
+  // reaches it. Re-entering 'system' must resync from the OS's CURRENT value immediately, not
+  // wait for a subsequent 'change' event that may never come (and not a real prop, so this can't
+  // just be derived in the effect's dependency array either). Adjusting state during rendering,
+  // guarded by a same-render comparison against the previous mode, is the documented React
+  // pattern for exactly this ("you might not need an Effect" — resetting/adjusting state when
+  // some other piece of state changes) — it resyncs in the same render mode changes, and (unlike
+  // a synchronous setState call in the effect body below) does not trigger a cascading-render
+  // lint violation.
+  const [prevMode, setPrevMode] = useState(mode);
+  if (mode !== prevMode) {
+    setPrevMode(mode);
+    if (mode === 'system' && typeof window.matchMedia === 'function') {
+      setSystemPrefersDark(window.matchMedia(DARK_MEDIA_QUERY).matches);
+    }
+  }
+
   const effectiveTheme = useMemo(() => resolveEffectiveTheme(mode, systemPrefersDark), [mode, systemPrefersDark]);
 
-  // React to OS-level changes only while in 'system' mode — an explicit light/dark choice must
-  // never silently flip just because the OS preference changed underneath it.
+  // Subscribe to further OS-level changes only while in 'system' mode — an explicit light/dark
+  // choice must never silently flip just because the OS preference changed underneath it. The
+  // initial resync for entering 'system' happens above, during render; this effect only manages
+  // the live subscription for changes that happen WHILE already in 'system'.
   useEffect(() => {
     if (mode !== 'system' || typeof window.matchMedia !== 'function') {
       return;

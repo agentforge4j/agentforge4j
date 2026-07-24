@@ -118,6 +118,53 @@ test.describe('theme control: accessibility and layout', () => {
   });
 });
 
+/**
+ * Finds every element carrying its own direct (non-whitespace) text node, visible in the
+ * viewport/layout, and returns any whose resolved foreground colour is identical to its
+ * EFFECTIVE background — the nearest ancestor (starting at the element itself) with a
+ * non-transparent `background-color`, since most text elements' own `background-color` is
+ * `transparent` and inherit their real background visually from a container further up the
+ * tree. Runs in-page via `page.evaluate` so it sees exactly what a real user would.
+ */
+function findUnreadableTextElements() {
+  function effectiveBackground(el: Element | null): string {
+    let node: Element | null = el;
+    while (node) {
+      const bg = getComputedStyle(node).backgroundColor;
+      if (bg && bg !== 'transparent' && bg !== 'rgba(0, 0, 0, 0)') {
+        return bg;
+      }
+      node = node.parentElement;
+    }
+    return 'rgba(0, 0, 0, 0)';
+  }
+
+  const offenders: string[] = [];
+  const all = document.body.querySelectorAll<HTMLElement>('*');
+  for (const el of all) {
+    const hasOwnText = Array.from(el.childNodes).some(
+      (n) => n.nodeType === Node.TEXT_NODE && (n.textContent ?? '').trim().length > 0,
+    );
+    if (!hasOwnText) {
+      continue;
+    }
+    const rect = el.getBoundingClientRect();
+    if (rect.width === 0 || rect.height === 0) {
+      continue;
+    }
+    const style = getComputedStyle(el);
+    if (style.visibility === 'hidden' || style.display === 'none' || Number(style.opacity) === 0) {
+      continue;
+    }
+    const fg = style.color;
+    const bg = effectiveBackground(el);
+    if (fg === bg) {
+      offenders.push(`${el.tagName.toLowerCase()}${el.id ? `#${el.id}` : ''}: fg=${fg} bg=${bg} text="${(el.textContent ?? '').trim().slice(0, 40)}"`);
+    }
+  }
+  return offenders;
+}
+
 test.describe('theme: representative pages render correctly in both themes', () => {
   const ROUTES = ['/', '/use', '/releases', '/architecture', '/catalogue/agent-creator'];
 
@@ -142,9 +189,43 @@ test.describe('theme: representative pages render correctly in both themes', () 
         return [style.backgroundColor, style.color];
       });
       expect(bg).not.toBe(fg);
+
+      // The claim in this test's own name ("no unreadable text") is about every rendered text
+      // element, not just <body> — a broken NESTED component (its own fg/bg identical, body
+      // still fine) would pass the body-only check above. This walks every element carrying its
+      // own text and checks it against its real, inherited-aware effective background.
+      const offenders = await page.evaluate(findUnreadableTextElements);
+      expect(offenders, `unreadable element(s) found:\n${offenders.join('\n')}`).toEqual([]);
+
       expect(consoleErrors).toEqual([]);
     });
   }
+
+  test('the per-element readability check actually detects a broken nested component (negative control for the check above)', async ({ page }) => {
+    await page.emulateMedia({ colorScheme: 'dark' });
+    await page.goto('/');
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
+
+    const offendersBefore = await page.evaluate(findUnreadableTextElements);
+    expect(offendersBefore).toEqual([]);
+
+    // Inject a real nested element whose own foreground is forced identical to its own
+    // background — the exact defect class a forgotten raw hard-coded colour would produce,
+    // and the exact shape the body-only check cannot see (body's own fg/bg are untouched).
+    await page.evaluate(() => {
+      const broken = document.createElement('p');
+      broken.id = 'e2e-negative-control-unreadable';
+      broken.textContent = 'this text is deliberately unreadable';
+      broken.style.color = 'rgb(10, 10, 10)';
+      broken.style.backgroundColor = 'rgb(10, 10, 10)';
+      document.body.appendChild(broken);
+    });
+
+    const offendersAfter = await page.evaluate(findUnreadableTextElements);
+    expect(offendersAfter.some((o) => o.includes('e2e-negative-control-unreadable'))).toBe(true);
+
+    await page.evaluate(() => document.getElementById('e2e-negative-control-unreadable')?.remove());
+  });
 
   test('the architecture page diagrams keep their light "paper" frame in dark mode (documented exception, not a raw-colour regression)', async ({ page }) => {
     await page.emulateMedia({ colorScheme: 'dark' });

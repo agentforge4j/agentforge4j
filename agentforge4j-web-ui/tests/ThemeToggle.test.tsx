@@ -136,4 +136,36 @@ describe('ThemeToggle: dismissal', () => {
     await user.click(screen.getByRole('button', { name: 'Outside' }));
     expect(screen.queryByRole('menu')).not.toBeInTheDocument();
   });
+
+  // C176-02: roving tabindex means only the checked item is ever Tab-reachable, so a Tab or
+  // Shift+Tab press while a menu item is focused always moves focus outside the menu (there is
+  // no second in-menu stop) — the menu must close behind it rather than remain open as a stale
+  // overlay while the page's normal tab order continues elsewhere.
+  test('pressing Tab while a menu item is focused closes the menu and lets focus advance to the next element', async () => {
+    const user = userEvent.setup();
+    render(
+      <ThemeProvider>
+        <div>
+          <ThemeToggle />
+          <button>After</button>
+        </div>
+      </ThemeProvider>,
+    );
+    await user.click(screen.getByRole('button', { name: /Theme/ }));
+    expect(screen.getByRole('menu', { name: 'Theme' })).toBeInTheDocument();
+    await user.tab();
+    expect(screen.queryByRole('menu', { name: 'Theme' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'After' })).toHaveFocus();
+  });
+
+  test('pressing Shift+Tab while a menu item is focused closes the menu (focus moves back to the trigger)', async () => {
+    const user = userEvent.setup();
+    renderToggle();
+    const trigger = screen.getByRole('button', { name: /Theme/ });
+    await user.click(trigger);
+    expect(screen.getByRole('menu', { name: 'Theme' })).toBeInTheDocument();
+    await user.tab({ shift: true });
+    expect(screen.queryByRole('menu', { name: 'Theme' })).not.toBeInTheDocument();
+    expect(trigger).toHaveFocus();
+  });
 });

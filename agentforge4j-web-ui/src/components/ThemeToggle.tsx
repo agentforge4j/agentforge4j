@@ -30,6 +30,7 @@ export default function ThemeToggle() {
   const { mode, setMode } = useTheme();
   const [open, setOpen] = useState(false);
   const buttonRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
   const itemRefs = useRef<Array<HTMLButtonElement | null>>([]);
 
   const current = THEME_OPTIONS.find((option) => option.mode === mode) ?? THEME_OPTIONS[2];
@@ -55,8 +56,27 @@ export default function ThemeToggle() {
         setOpen(false);
       }
     };
+    // Roving tabindex means only one item is ever Tab-reachable at a time, so any Tab/Shift+Tab
+    // press while an item is focused always moves focus OUTSIDE the menu (there is no second
+    // in-menu stop for the browser's native tab order to land on) — normal keyboard navigation
+    // must close the menu behind it rather than leaving a stale open popup, without trapping
+    // focus or intercepting the Tab key itself. `focusout` (unlike `blur`) bubbles, and its
+    // `relatedTarget` is the element about to receive focus, so listening on the menu element
+    // itself catches every departure — Tab, Shift+Tab (back to the trigger button, a sibling
+    // outside this element), and any programmatic focus change — while a focus transfer that
+    // stays inside the menu (none exist today, but would if this ever grew a second focusable
+    // affordance) is correctly left alone.
+    const onFocusOut = (event: FocusEvent) => {
+      const next = event.relatedTarget as Node | null;
+      if (next && menuRef.current?.contains(next)) {
+        return;
+      }
+      setOpen(false);
+    };
     document.addEventListener('keydown', onKeyDown);
     document.addEventListener('mousedown', onPointerDown);
+    const menuEl = menuRef.current;
+    menuEl?.addEventListener('focusout', onFocusOut);
     // Focus the currently-selected item when the menu opens, matching the roving-focus
     // expectation of a `menuitemradio` group (focus starts on the checked item, not always the
     // first).
@@ -65,6 +85,7 @@ export default function ThemeToggle() {
     return () => {
       document.removeEventListener('keydown', onKeyDown);
       document.removeEventListener('mousedown', onPointerDown);
+      menuEl?.removeEventListener('focusout', onFocusOut);
     };
   }, [open, mode]);
 
@@ -105,6 +126,7 @@ export default function ThemeToggle() {
       </button>
       {open && (
         <div
+          ref={menuRef}
           role="menu"
           aria-label="Theme"
           className="absolute right-0 z-20 mt-2 w-36 rounded-md border border-border bg-bg-elevated py-1 shadow-md"
