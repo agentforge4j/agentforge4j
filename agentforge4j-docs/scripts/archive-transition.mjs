@@ -37,6 +37,7 @@ import {
   validateVersion,
 } from './release-paths.mjs';
 import {supportWindow} from './support-window.mjs';
+import {assertSufficientGitHistoryForLastmod} from './verify-canonical.mjs';
 
 /** The committed archive artifacts (design §7): `archive/<v>/` + `archive/<v>.redirects.json`. */
 export const ARCHIVE_ROOT = join(MODULE_ROOT, 'archive');
@@ -81,10 +82,18 @@ export function redirectManifest(version, routes) {
  * Transition one released version out of the active build into a self-contained static archive.
  *
  * @param {string} version the version to archive (must exist as a versioned snapshot)
+ * @param {string} [repoRoot] git repository root for the shallow-history precondition (tests only;
+ *        defaults to this module's real root)
  * @returns {{artifactDir: string, manifestPath: string, routeCount: number}}
  */
-export function archiveTransition(version) {
+export function archiveTransition(version, repoRoot = MODULE_ROOT) {
   validateVersion(version);
+  // This export bypasses package.json's `build` script (and so `verify-canonical.mjs`'s own
+  // check) entirely — it drives `docusaurus build` directly (below) — but the archive-mode
+  // config derives `<lastmod>` from git history exactly like the live site does, and this
+  // artifact is frozen forever once committed, so a shallow-history run must never even attempt
+  // the build: checked first, before the (expensive) export, so a shallow checkout fails fast.
+  assertSufficientGitHistoryForLastmod(repoRoot);
   if (!pathExists(join(VERSIONED_DOCS, `version-${version}`))) {
     throw new Error(`archive-transition: no versioned snapshot for '${version}' (versioned_docs/version-${version} missing)`);
   }

@@ -8,6 +8,11 @@
 // controlled commit dates: an unrelated later commit must NOT move an untouched file's date, and a
 // real modification must. A hand-rolled reimplementation of this check would only prove the test's
 // own logic, not the actual mechanism the live build depends on — so this calls the real function.
+//
+// `age: 'newest'` (not `'update'` — `getFileCommitDate` supports only `'oldest'`/`'newest'`) matches
+// what production actually passes: `@docusaurus/utils`'s own `getGitLastUpdate` calls
+// `getGitCommitInfo(filePath, 'newest')` verbatim (`node_modules/@docusaurus/utils/lib/vcs/gitUtils.js`),
+// which is what feeds each route's `lastUpdatedAt` and, from there, the sitemap's `<lastmod>`.
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -42,14 +47,14 @@ test('an unrelated later commit does not move an untouched file\'s git-derived d
   writeFileSync(fileA, 'a');
   commit(dir, 'add a.txt', D1);
 
-  const beforeUnrelatedCommit = await getFileCommitDate(fileA, { age: 'update' });
+  const beforeUnrelatedCommit = await getFileCommitDate(fileA, { age: 'newest' });
   assert.equal(beforeUnrelatedCommit.date.toISOString().slice(0, 10), D1.slice(0, 10));
 
   // An unrelated commit, strictly later, touching a different file entirely.
   writeFileSync(join(dir, 'b.txt'), 'b');
   commit(dir, 'add unrelated b.txt', D2);
 
-  const afterUnrelatedCommit = await getFileCommitDate(fileA, { age: 'update' });
+  const afterUnrelatedCommit = await getFileCommitDate(fileA, { age: 'newest' });
   assert.equal(
     afterUnrelatedCommit.date.toISOString().slice(0, 10),
     D1.slice(0, 10),
@@ -66,7 +71,7 @@ test('a real modification to the file itself does move its git-derived date to t
   writeFileSync(fileA, 'a, modified');
   commit(dir, 'modify a.txt', D2);
 
-  const result = await getFileCommitDate(fileA, { age: 'update' });
+  const result = await getFileCommitDate(fileA, { age: 'newest' });
   assert.equal(
     result.date.toISOString().slice(0, 10),
     D2.slice(0, 10),

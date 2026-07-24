@@ -49,6 +49,29 @@ function isShallowRepository(repoRoot) {
   return output === 'true';
 }
 
+/**
+ * The one, coherent enforcement point for "any build that emits git-derived `<lastmod>` values
+ * needs sufficient git history" — `docusaurus.config.ts` sets both `experimental_vcs: 'git-ad-hoc'`
+ * and `sitemap.lastmod: 'date'` unconditionally, not just for the live site, so an archive build
+ * (`AF4J_ARCHIVE_VERSION` set) derives its own pages' `<lastmod>` from git history exactly the same
+ * way the live build does — and, unlike a live build, an archive's output is frozen forever once
+ * committed, so a shallow-history archive would permanently bake in wrong dates. Exported so
+ * `archive-transition.mjs` (which drives the archive export via a direct `docusaurus build` call,
+ * never through this module's own `verifyCanonicalTrailingSlash`) can enforce the same precondition
+ * before it invests in a build whose `<lastmod>` values would be untrustworthy anyway.
+ *
+ * @param {string} repoRoot the git repository root to check
+ */
+export function assertSufficientGitHistoryForLastmod(repoRoot) {
+  if (isShallowRepository(repoRoot)) {
+    throw new Error(
+      `verify-canonical: ${repoRoot} is a shallow git clone (git rev-parse --is-shallow-repository) — ` +
+        "the sitemap plugin's git-ad-hoc lastmod strategy reads real per-file git history and silently " +
+        'produces wrong or missing dates from a shallow clone; fetch full history (e.g. `fetch-depth: 0`) before building',
+    );
+  }
+}
+
 /** Rejects any value that is not a real calendar date — not just YYYY-MM-DD shaped (so
  * `2026-02-31`/`2026-13-01`/`2026-00-10` fail, and leap years are handled correctly: `2024-02-29` is
  * valid, `2026-02-29` is not) — via the same UTC round-trip already used on the SPA side. */
@@ -96,16 +119,13 @@ export function verifyCanonicalTrailingSlash({
   if (!existsSync(buildDir)) {
     throw new Error(`verify-canonical: ${buildDir} does not exist — run "docusaurus build" first`);
   }
+  // Applies regardless of archive mode: both the live site and an archive export derive
+  // `<lastmod>` from git history the same way (see assertSufficientGitHistoryForLastmod's own
+  // comment) — only the trailing-slash/canonical-tag checks below are live-site-specific.
+  assertSufficientGitHistoryForLastmod(repoRoot);
   if (archiveVersion) {
-    console.log('[verify-canonical] archive-mode build — trailing-slash/lastmod checks not applicable, skipped');
+    console.log('[verify-canonical] archive-mode build — trailing-slash/canonical checks not applicable, skipped (git-history/lastmod check above still applies)');
     return;
-  }
-  if (isShallowRepository(repoRoot)) {
-    throw new Error(
-      `verify-canonical: ${repoRoot} is a shallow git clone (git rev-parse --is-shallow-repository) — ` +
-        "the sitemap plugin's git-ad-hoc lastmod strategy reads real per-file git history and silently " +
-        'produces wrong or missing dates from a shallow clone; fetch full history (e.g. `fetch-depth: 0`) before building',
-    );
   }
 
   const sitemapPath = join(buildDir, 'sitemap.xml');
