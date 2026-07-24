@@ -55,6 +55,14 @@ const config: Config = {
   // In archive mode the artifact is mounted under its own frozen subpath (design §7), so every
   // generated asset/route reference resolves inside `/docs/archive/<v>/` — self-contained by build.
   baseUrl: archiveVersion ? `/docs/archive/${archiveVersion}/` : '/docs/',
+  // Every generated page is a directory (`.../index.html`), which GitHub Pages (a static host with
+  // no clean-URL rewriting) only serves without a redirect at its trailing-slash address — the
+  // non-slash form 301s there. Left unset, Docusaurus's own canonical/og:url/hreflang generation and
+  // the sitemap plugin (both driven by this one flag, see @docusaurus/utils-common's
+  // applyTrailingSlash) emit the non-slash form, so every doc page's own canonical tag pointed at a
+  // URL that redirected away from itself. `true` makes every self-reference consistently match what
+  // the host actually serves, with no per-page patching.
+  trailingSlash: true,
 
   organizationName: 'agentforge4j',
   projectName: 'agentforge4j',

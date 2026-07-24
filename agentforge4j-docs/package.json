@@ -7,7 +7,7 @@
   "scripts": {
     "docusaurus": "docusaurus",
     "start": "docusaurus start",
-    "build": "docusaurus build && node scripts/verify-noindex.mjs",
+    "build": "docusaurus build && node scripts/verify-noindex.mjs && node scripts/verify-canonical.mjs",
     "swizzle": "docusaurus swizzle",
     "clear": "docusaurus clear",
     "serve": "docusaurus serve",
@@ -62,6 +62,8 @@
     "remark-frontmatter": "^5.0.0",
     "remark-mdx": "^3.1.1",
     "remark-parse": "^11.0.0",
+    "sax": "^1.6.0",
+    "sitemap": "^7.1.1",
     "typescript": "~6.0.2",
     "unified": "^11.0.5",
     "unist-util-visit": "^5.1.0"
