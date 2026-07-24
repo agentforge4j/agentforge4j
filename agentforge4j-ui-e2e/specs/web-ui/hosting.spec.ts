@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 // Pins how the plain (un-assembled) `agentforge4j-web-ui` SPA build behaves on GitHub-Pages-style
-// static hosting: `dist/404.html` (byte-identical to `dist/index.html`, per
-// `scripts/copy-404.mjs`) is served with a real HTTP 404 status for any path with no matching
-// on-disk file, and that page then boots the SPA client-side to render the correct route.
+// static hosting: `dist/404.html` (the empty pre-prerender SPA shell, per `scripts/copy-404.mjs` —
+// deliberately NOT the final `dist/index.html`, which carries the home page's prerendered body)
+// is served with a real HTTP 404 status for any path with no matching on-disk file, and that page
+// then boots the SPA client-side to render the correct route.
 //
 // HTTP 404 for a known public/catalogue route is an artifact of this hosting shape, NOT the
 // production hosting contract. The deployable production artifact is the composed site produced

@@ -3,6 +3,49 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- theme-bootstrap:start
+         Sets `data-theme` on the html element before the SPA's own bundle loads, so the correct
+         palette is already painted on the first frame — never a light-then-dark (or reverse)
+         flash while React mounts. Must run before any stylesheet or content paints, so it sits
+         immediately after the charset/viewport metas and before everything else. It must NOT
+         come before the charset meta: browsers only honour an in-document charset declaration
+         found within the first 1024 bytes, and this script is large enough to push that meta
+         past the limit — which matters to any host that serves this file without a charset in
+         the Content-Type header (the em dash in the page title would then mojibake). NOTE for
+         editors: keep this comment free of literal angle-bracket tag text — scripts/
+         build-seo.mjs rewrites the built page's head via regexes anchored on the FIRST
+         occurrence of each tag, so tag-like text in an earlier comment would be matched and
+         splice the file apart. Deliberately a hand-written copy of theme.ts's
+         resolveEffectiveTheme/currentThemeMode logic rather than an import: nothing here can
+         import a bundled module, since this script IS what runs before any bundle exists. Kept
+         in sync with theme.ts by tests/themeBootstrapScript.test.ts, which extracts this exact
+         script and asserts it resolves identically to theme.ts for every representative input —
+         change one, update the other, and let that test catch drift. The storage key literal
+         below MUST match THEME_STORAGE_KEY in src/theme/theme.ts exactly. -->
+    <script>
+      (function () {
+        var KEY = 'agentforge4j.theme';
+        var mode = 'system';
+        try {
+          var stored = window.localStorage.getItem(KEY);
+          if (stored === 'light' || stored === 'dark' || stored === 'system') {
+            mode = stored;
+          }
+        } catch (e) {
+          /* localStorage unavailable/throwing — fall back to 'system', same as theme.ts. */
+        }
+        var dark = mode === 'dark';
+        if (mode === 'system') {
+          try {
+            dark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+          } catch (e) {
+            /* matchMedia unavailable — fall back to light, same as theme.ts's default false. */
+          }
+        }
+        document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
+      })();
+    </script>
+    <!-- theme-bootstrap:end -->
     <title>AgentForge4j — Governed AI Workflows for Java</title>
     <meta
       name="description"

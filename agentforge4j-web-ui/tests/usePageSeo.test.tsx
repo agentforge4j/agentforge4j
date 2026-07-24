@@ -13,15 +13,18 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import App from '@/App';
+import { ThemeProvider } from '@/theme/ThemeContext';
 import { buildSeo } from '../scripts/build-seo.mjs';
 
 const MODULE_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 
 function renderAt(path: string) {
   return render(
-    <MemoryRouter initialEntries={[path]}>
-      <App />
-    </MemoryRouter>,
+    <ThemeProvider>
+      <MemoryRouter initialEntries={[path]}>
+        <App />
+      </MemoryRouter>
+    </ThemeProvider>,
   );
 }
 

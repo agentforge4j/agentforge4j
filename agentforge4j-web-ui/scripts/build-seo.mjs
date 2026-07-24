@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 //
-// Generates two things from the already-built dist/index.html (run after `vite build`, before
-// copy-404.mjs so 404.html stays byte-identical to the *final* index.html):
+// Generates two things from the already-built dist/index.html (run after `vite build` and after
+// copy-404.mjs — 404.html must stay the *pre-prerender* empty shell, so an unmatched path served
+// under a real HTTP 404 boots the SPA and renders NotFoundPage, never a static copy of the full
+// prerendered home page body; verify-seo.mjs gates that ordering on every real build):
 //
 //  1. A per-route static HTML shell for every real SPA route (dist/<route>/index.html) with
 //     <title>/<meta description>/<link canonical> (and matching OG/Twitter tags), and now also the
@@ -24,7 +26,6 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { WORKFLOW_ID_PATTERN } from './workflow-id-contract.mjs';
-import { prerenderRoutes } from './prerender-routes.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const MODULE_ROOT = join(here, '..');
@@ -135,7 +136,12 @@ export function injectRoot(html, innerHtml) {
   if (!EMPTY_ROOT_PATTERN.test(html)) {
     throw new Error('build-seo: expected an empty <div id="root"></div> mount point in dist/index.html');
   }
-  return html.replace(EMPTY_ROOT_PATTERN, `<div id="root">${innerHtml}</div>`);
+  // The replacement is supplied via a function, never as a bare replacement string: serialized DOM
+  // markup can legitimately contain `$`-sequences (`$&`, `$'`, "$`", `$$`) that
+  // String.prototype.replace would otherwise interpret as substitution patterns and silently
+  // corrupt the shell with — deterministically, so the prerenderer's double-capture equality check
+  // would never catch it.
+  return html.replace(EMPTY_ROOT_PATTERN, () => `<div id="root">${innerHtml}</div>`);
 }
 
 // Route paths are trusted, committed build-time data (seo-routes.json, catalogue workflow ids)
@@ -246,6 +252,10 @@ export function buildSeo({
 }
 
 async function main() {
+  // Imported lazily, only on the real CLI build path: prerender-routes.mjs pulls in playwright at
+  // module load, and buildSeo/injectRoot/injectHead must stay importable (unit tests, and any
+  // consumer of the pure functions) without loading a headless-browser dependency at all.
+  const { prerenderRoutes } = await import('./prerender-routes.mjs');
   const snapshots = await prerenderRoutes({ distDir: DIST_DIR });
   const result = buildSeo({ snapshots });
   console.log(
@@ -254,5 +264,8 @@ async function main() {
 }
 
 if (process.argv[1]?.endsWith('build-seo.mjs')) {
-  main();
+  main().catch((error) => {
+    console.error(error.message);
+    process.exit(1);
+  });
 }
