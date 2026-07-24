@@ -106,7 +106,7 @@ test('the full generated Javadoc tree — not only the overview page — receive
   assert.match(latestNested, /<link rel="canonical" href="https:\/\/agentforge4j\.org\/javadoc\/latest\/com\/example\/Foo\.html">/);
 });
 
-test('C175-001: in the no-released-version composition, /next/ and /latest/ are copied from the exact same source (assembleSite\'s own latestSource fallback) but receive divergent robots policy from applyJavadocSeo() — /latest/ stays indexable, /next/ is suppressed as the duplicate', () => {
+test('in the no-released-version composition, /next/ and /latest/ are copied from the exact same source (assembleSite\'s own latestSource fallback) but receive divergent robots policy from applyJavadocSeo() — /latest/ stays indexable, /next/ is suppressed as the duplicate', () => {
   const {spaDir, buildDir, javadocDir, archiveDir, siteDir} = fixture();
   mkdirSync(join(javadocDir, 'com', 'example'), {recursive: true});
   writeFileSync(

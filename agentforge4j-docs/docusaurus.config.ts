@@ -36,6 +36,11 @@ const archiveVersion = process.env.AF4J_ARCHIVE_VERSION || null;
 // Route prefix for navbar/footer targets: inside an archive the archived version IS the site root.
 const entryBase = archiveVersion ? '' : `/${docsEntry}`;
 
+// The one place this module's own production origin is spelled out — `url` below and the default
+// social-preview `image` (themeConfig, further down) both derive from it instead of repeating the
+// literal, so a future domain move only requires changing it here.
+const SITE_URL = 'https://agentforge4j.org';
+
 const config: Config = {
   title: 'AgentForge4j',
   tagline: 'An embeddable Java framework for governed AI workflows',
@@ -51,7 +56,7 @@ const config: Config = {
   // `routeBasePath` (below) are independent, so routes resolve as
   // baseUrl + routeBasePath + version-path + slug — yielding `/docs/next/...`
   // with no `/docs/docs/...` duplication.
-  url: 'https://agentforge4j.org',
+  url: SITE_URL,
   // In archive mode the artifact is mounted under its own frozen subpath (design §7), so every
   // generated asset/route reference resolves inside `/docs/archive/<v>/` — self-contained by build.
   baseUrl: archiveVersion ? `/docs/archive/${archiveVersion}/` : '/docs/',
@@ -196,7 +201,7 @@ const config: Config = {
     // root alongside /docs/ by assemble-site.mjs), not a file inside this module's own static/ —
     // useBaseUrl's own addBaseUrl no-ops on any URL that already has a protocol, so Docusaurus
     // emits this unchanged as both og:image and twitter:image, already production-absolute.
-    image: 'https://agentforge4j.org/brand/icon-512.png',
+    image: `${SITE_URL}/brand/icon-512.png`,
     colorMode: {
       respectPrefersColorScheme: true,
     },

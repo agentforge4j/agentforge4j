@@ -53,6 +53,12 @@ const SITE_DIR = join(MODULE_ROOT, '_site');
 // DOCS_CUSTOM_DOMAIN (e.g. `agentforge4j.org`) once the domain/publishing composition is settled.
 const CUSTOM_DOMAIN = process.env.DOCS_CUSTOM_DOMAIN || null;
 
+// Production defaults for assembleSite's siteUrl/ogImage params — this module's own single source
+// for the literal, so a future domain move needs changing in one place here (docusaurus.config.ts
+// holds the same literal for its own, unrelated Docusaurus-config purposes).
+const DEFAULT_SITE_URL = 'https://agentforge4j.org';
+const DEFAULT_OG_IMAGE = `${DEFAULT_SITE_URL}/brand/icon-512.png`;
+
 /** Read a version-list JSON file (versions.json / lts.json), or [] if absent — same as the config. */
 function readVersionList(path) {
   return existsSync(path) ? JSON.parse(readFileSync(path, 'utf8')) : [];
@@ -948,8 +954,8 @@ export function assembleSite({
   docsSourceDir,
   versionedDocsSourceDir,
   customDomain,
-  siteUrl = 'https://agentforge4j.org',
-  ogImage = 'https://agentforge4j.org/brand/icon-512.png',
+  siteUrl = DEFAULT_SITE_URL,
+  ogImage = DEFAULT_OG_IMAGE,
   exit = process.exit,
 }) {
   requireDir(spaDir, 'SPA build', 'Run `npm run build` in agentforge4j-web-ui first.');

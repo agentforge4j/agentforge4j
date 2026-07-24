@@ -146,13 +146,13 @@ test('injectJavadocPageSeo leaves an already-correct lang="en" untouched on a ne
   assert.match(html, /public class <span class="element-name">Foo<\/span>/);
 });
 
-// --- C175-002: empty/whitespace-only lang values must be repaired, never accepted as-is ---------
+// --- empty/whitespace-only lang values must be repaired, never accepted as-is --------------------
 
 function langAttrCount(html) {
   return (html.match(/\blang=/g) ?? []).length;
 }
 
-test('C175-002: <html lang> (no = at all) is repaired to lang="en" — the known maven-javadoc-plugin bug shape', () => {
+test('<html lang> (no = at all) is repaired to lang="en" — the known maven-javadoc-plugin bug shape', () => {
   const html = injectJavadocPageSeo(RAW_OVERVIEW_HTML, {
     title: 't',
     description: 'd',
@@ -163,7 +163,7 @@ test('C175-002: <html lang> (no = at all) is repaired to lang="en" — the known
   assert.equal(langAttrCount(html), 1, 'expected exactly one lang= attribute after repair');
 });
 
-test('C175-002: <html lang=""> (explicit empty value) is repaired to lang="en", not silently accepted as "already valid"', () => {
+test('<html lang=""> (explicit empty value) is repaired to lang="en", not silently accepted as "already valid"', () => {
   const emptyValue = RAW_OVERVIEW_HTML.replace('<html lang>', '<html lang="">');
   const html = injectJavadocPageSeo(emptyValue, {
     title: 't',
@@ -176,7 +176,7 @@ test('C175-002: <html lang=""> (explicit empty value) is repaired to lang="en", 
   assert.equal(langAttrCount(html), 1, 'expected exactly one lang= attribute after repair');
 });
 
-test('C175-002: <html lang="   "> (whitespace-only value) is repaired identically to the empty-value case', () => {
+test('<html lang="   "> (whitespace-only value) is repaired identically to the empty-value case', () => {
   const whitespaceValue = RAW_OVERVIEW_HTML.replace('<html lang>', '<html lang="   ">');
   const html = injectJavadocPageSeo(whitespaceValue, {
     title: 't',
@@ -189,7 +189,7 @@ test('C175-002: <html lang="   "> (whitespace-only value) is repaired identicall
   assert.equal(langAttrCount(html), 1, 'expected exactly one lang= attribute after repair');
 });
 
-test('C175-002: <html lang="   "> repair also applies to a nested-page-shaped fixture (a real class page), not only the overview shape', () => {
+test('<html lang="   "> repair also applies to a nested-page-shaped fixture (a real class page), not only the overview shape', () => {
   const whitespaceValue = rawClassPageHtml().replace('<html lang="en">', '<html lang="   ">');
   const html = injectJavadocPageSeo(whitespaceValue, {
     title: 'Foo — AgentForge4j API Reference (next)',
@@ -203,7 +203,7 @@ test('C175-002: <html lang="   "> repair also applies to a nested-page-shaped fi
   assert.match(html, /<h1 class="title">Class Foo<\/h1>/);
 });
 
-test('C175-002: a real, non-empty lang value (en-US) is preserved unchanged, not overwritten to "en"', () => {
+test('a real, non-empty lang value (en-US) is preserved unchanged, not overwritten to "en"', () => {
   const html = injectJavadocPageSeo(rawClassPageHtml().replace('lang="en"', 'lang="en-US"'), {
     title: 'Foo — AgentForge4j API Reference (next)',
     description: 'Generated Javadoc API reference for the AgentForge4j framework (next) — Foo.',
@@ -494,7 +494,7 @@ test('once a newer version ships, the OLD newest version (no longer a duplicate 
   assert.doesNotMatch(next, /<meta name="robots"/, '/next/ must stay indexable once any release exists');
 });
 
-// --- C175-001: the complete /next vs /latest duplicate-content lifecycle matrix ------------------
+// --- the complete /next vs /latest duplicate-content lifecycle matrix ---------------------------
 //
 // Counts the exact number of `<meta name="robots"` occurrences rather than a loose substring check
 // — a page with two robots tags (one noindex, one accidentally left indexable, say) must not be
@@ -512,7 +512,7 @@ function assertNoRobotsTag(html, label) {
   assert.equal(robotsTagCount(html), 0, `${label}: expected no robots tag at all (indexable)`);
 }
 
-test('C175-001 lifecycle matrix — no released versions: /next/** is noindex,follow (exactly one tag, whole tree) and /latest/** is fully indexable (whole tree)', () => {
+test('lifecycle matrix — no released versions: /next/** is noindex,follow (exactly one tag, whole tree) and /latest/** is fully indexable (whole tree)', () => {
   const { siteDir } = fixtureSiteDirWithNestedPages('javadoc/next', []);
   applyJavadocSeo({
     siteDir,
@@ -530,7 +530,7 @@ test('C175-001 lifecycle matrix — no released versions: /next/** is noindex,fo
   assertNoRobotsTag(latestHtml, '/latest/index.html (pre-release — the evergreen public entry point)');
 });
 
-test('C175-001 lifecycle matrix — no released versions, checked from the /latest/ side too: full nested tree stays indexable while /next/ (built the same way) is suppressed', () => {
+test('lifecycle matrix — no released versions, checked from the /latest/ side too: full nested tree stays indexable while /next/ (built the same way) is suppressed', () => {
   const { siteDir } = fixtureSiteDirWithNestedPages('javadoc/latest', []);
   applyJavadocSeo({
     siteDir,
@@ -546,7 +546,7 @@ test('C175-001 lifecycle matrix — no released versions, checked from the /late
   assertNoindexFollowExactlyOnce(nextHtml, '/next/index.html');
 });
 
-test('C175-001 lifecycle matrix — first stable release: /next/** and /latest/** both become/stay indexable, the new release is noindex,follow', () => {
+test('lifecycle matrix — first stable release: /next/** and /latest/** both become/stay indexable, the new release is noindex,follow', () => {
   const { siteDir } = fixtureSiteDirWithNestedPages('javadoc/0.1.0', ['0.1.0']);
   applyJavadocSeo({
     siteDir,
@@ -566,7 +566,7 @@ test('C175-001 lifecycle matrix — first stable release: /next/** and /latest/*
   }
 });
 
-test('C175-001 lifecycle matrix — newer stable release: the new version is noindex,follow, the old one is indexable again, /next/ and /latest/ stay indexable', () => {
+test('lifecycle matrix — newer stable release: the new version is noindex,follow, the old one is indexable again, /next/ and /latest/ stay indexable', () => {
   const { siteDir } = fixtureSiteDirWithNestedPages('javadoc/0.2.0', ['0.2.0', '0.1.0']);
   // Also give 0.1.0 a real nested tree of its own, so its "becomes indexable again" transition is
   // proven across the whole surface, not only its overview.
@@ -657,6 +657,35 @@ test('a nested page\'s raw <title> containing HTML entities (e.g. a generic clas
   assert.ok(!classPage.includes('&amp;lt;'), 'must never double-escape &lt; into &amp;lt; (renders as literal "&lt;" text)');
   assert.ok(!classPage.includes('&amp;gt;'), 'must never double-escape &gt; into &amp;gt;');
   assert.ok(!classPage.includes('&amp;amp;'), 'must never double-escape &amp; into &amp;amp;');
+});
+
+test('a nested page\'s raw <title> containing numeric character references and &nbsp; (e.g. an annotation type like @Foo, which javadoc emits as &#64;Foo) is decoded to the real character, not left as literal entity text', () => {
+  const { siteDir, surfaceRoot } = fixtureSiteDirWithNestedPages('javadoc/next');
+  writeFileSync(
+    join(surfaceRoot, 'com', 'example', 'Foo.html'),
+    rawClassPageHtml({ title: '&#64;Foo&nbsp;Bar &#x2019;s' }),
+    'utf8',
+  );
+  applyJavadocSeo({
+    siteDir,
+    siteUrl: 'https://agentforge4j.org',
+    ogImage: 'https://agentforge4j.org/brand/icon-512.png',
+    releasedVersions: [],
+  });
+  const classPage = readFileSync(join(surfaceRoot, 'com', 'example', 'Foo.html'), 'utf8');
+  // &nbsp; decodes to the real U+00A0 character (consistent with every other entity here decoding
+  // to its real character), not a plain space — hence the literal U+00A0 between "Foo" and "Bar".
+  const ogTitleLine = classPage.split(/\r?\n/).find((line) => line.includes('property="og:title"'));
+  assert.equal(
+    ogTitleLine.trim(),
+    '<meta property="og:title" content="@Foo Bar ’s — AgentForge4j API Reference (next, in-development)">',
+  );
+  // The original, unmodified <title> element legitimately still carries the raw entities — only the
+  // derived meta tags (og:title checked below; description/twitter share the same decoded pageTitle)
+  // must never carry them.
+  assert.ok(!ogTitleLine.includes('&#64;'), 'must not leave a decimal numeric character reference as literal entity text');
+  assert.ok(!ogTitleLine.includes('&#x2019;'), 'must not leave a hex numeric character reference as literal entity text');
+  assert.ok(!ogTitleLine.includes('&nbsp;'), 'must not leave &nbsp; as literal entity text');
 });
 
 test('fails closed when a declared surface\'s overview page is missing', () => {
@@ -799,10 +828,10 @@ test('a surface root reached only via a symlinked ancestor path still processes 
 
   const siteDir = join(aliasedRoot, '_site');
   // Must NOT throw: every real file under the surface resolves inside the real surface root, and
-  // that root is itself only reachable here via the symlinked `aliased` ancestor path — before the
-  // PR172-006 fix, comparing a realpath'd symlink target against the unresolved `root` would have
-  // spuriously failed the first symlink this walk ever encountered (there are none here — this
-  // proves the ancestor-resolution fix in isolation, with no in-root symlink of its own).
+  // that root is itself only reachable here via the symlinked `aliased` ancestor path — comparing
+  // a realpath'd symlink target against the unresolved `root` would spuriously fail the first
+  // symlink this walk ever encountered (there are none here — this proves ancestor resolution in
+  // isolation, with no in-root symlink of its own).
   const updated = applyJavadocSeo({
     siteDir,
     siteUrl: 'https://agentforge4j.org',
@@ -812,8 +841,8 @@ test('a surface root reached only via a symlinked ancestor path still processes 
   assert.equal(updated, 3, 'next: index + Foo (2), latest: index (1)');
 });
 
-// --- PR172-007: an in-root symlink can create two distinct walked paths that resolve to the SAME
-// underlying real file or directory — walkHtmlFiles must refuse this outright rather than silently
+// --- an in-root symlink can create two distinct walked paths that resolve to the SAME underlying
+// real file or directory — walkHtmlFiles must refuse this outright rather than silently
 // double-processing a page or recursing forever. ---
 
 test('a symlinked HTML file is refused outright — ambiguous which of the two paths is the page\'s one real canonical URL (skipped where symlink creation requires elevated privileges)', () => {
