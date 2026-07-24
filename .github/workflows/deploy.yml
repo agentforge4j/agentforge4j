@@ -64,6 +64,33 @@ jobs:
         working-directory: agentforge4j-web-ui
         run: npm ci
 
+      # The SPA's production build is gaining a prerender pass that boots the real built bundle in
+      # headless Chromium (a `playwright` devDependency of agentforge4j-web-ui) — `npm ci` installs
+      # the playwright package itself but never downloads the browser binary. The two steps below
+      # provision that binary (plus the Linux OS-level shared libraries it needs at runtime, via
+      # `--with-deps`) BEFORE the build runs; they are keyed off whether the module actually
+      # declares playwright, so on a tree without the prerender pass they skip and this workflow
+      # behaves exactly as before. Same cached-install convention as `Web UI` and `UI E2E`.
+      - name: Detect whether the site build needs a browser
+        id: needs-browser
+        working-directory: agentforge4j-web-ui
+        run: |
+          echo "needed=$(node -e "console.log((require('./package.json').devDependencies || {}).playwright ? 'true' : 'false')")" >> "$GITHUB_OUTPUT"
+
+      - name: Cache Playwright browsers
+        if: ${{ steps.needs-browser.outputs.needed == 'true' }}
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('agentforge4j-web-ui/package-lock.json') }}
+          restore-keys: |
+            playwright-${{ runner.os }}-
+
+      - name: Install Playwright Chromium
+        if: ${{ steps.needs-browser.outputs.needed == 'true' }}
+        working-directory: agentforge4j-web-ui
+        run: npx playwright install --with-deps chromium
+
       - name: Build the agentforge4j.org SPA
         # Build-only (lint/type-check/test already run on every push/PR via web-ui.yml) — a build
         # failure here still fails this step (tsc/vite/copy-404.mjs all exit non-zero on error), and
