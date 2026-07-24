@@ -61,6 +61,24 @@ import { isAbsolute, join, relative } from 'node:path';
 // recognized non-plugin page allowed to have no description meta.
 const SURFACES_LANDING_FILENAME = 'surfaces.html';
 
+// The one raw maven-javadoc-plugin page kind that NATIVELY ships a `<link rel="canonical">` tag:
+// the legacy-URL redirect stub (`overview-summary.html`) emitted by `javadoc (17)`'s
+// IndexRedirectWriter at each javadoc root — including one per stitched sub-surface (e.g. `mcp/`,
+// `spring-boot-starter/`). Its plugin-authored canonical (`href="index.html"`) already points at
+// the real overview page, which is exactly the right signal for a pure redirect shell, so these
+// pages are recognized by this generator meta tag and skipped whole: left byte-identical, never
+// run through `injectJavadocPageSeo` (whose already-processed guard would otherwise refuse them —
+// they are the reason that guard cannot be applied sight-unseen to every raw page).
+const REDIRECT_STUB_GENERATOR_TAG = '<meta name="generator" content="javadoc/IndexRedirectWriter">';
+
+/** Whether `html` is maven-javadoc-plugin's own legacy-URL redirect stub (see
+ * `REDIRECT_STUB_GENERATOR_TAG`) — the one plugin-generated page kind `applyJavadocSeo` skips
+ * instead of processing. Exported so the recognition rule itself is directly testable against the
+ * real stub shape. */
+export function isJavadocRedirectStub(html) {
+  return html.includes(REDIRECT_STUB_GENERATOR_TAG);
+}
+
 // The known maven-javadoc-plugin bug shape: a bare `lang` attribute with no `=` at all (invalid
 // HTML — `lang` is not a boolean attribute), distinct from `lang=""` below.
 const EMPTY_LANG_PATTERN = /<html lang>/;
@@ -82,12 +100,13 @@ function escapeHtmlAttribute(value) {
 
 /**
  * Rewrites one raw maven-javadoc-plugin page's `<head>` in place: fixes `lang` only if the raw
- * template left it empty (nested class/package/index pages already carry a correct `lang="en"` —
- * only the overview/module-index page has the known empty-`<html lang>` bug, so a real value already
- * present is left untouched, never assumed broken), replaces whatever generic/mechanical description
- * the plugin generated (or inserts a fresh one when `allowMissingDescription` is set — see below),
- * and adds (never replaces an existing one — see the already-processed check below) canonical, OG,
- * Twitter, and an optional noindex robots tag.
+ * template left it empty (in a real corpus, virtually every plugin-generated page — the overview
+ * AND the nested class/package/index pages — carries the known empty-`<html lang>` bug; the repair
+ * is the same everywhere, and a real value already present, as on the hand-authored
+ * `surfaces.html` landing page, is left untouched, never assumed broken), replaces whatever
+ * generic/mechanical description the plugin generated (or inserts a fresh one when
+ * `allowMissingDescription` is set — see below), and adds (never replaces an existing one — see
+ * the already-processed check below) canonical, OG, Twitter, and an optional noindex robots tag.
  *
  * Fails loudly if neither known `lang` shape is present, if `</head>` is missing, or if there is no
  * `<meta name="description">` tag at all UNLESS `allowMissingDescription` is set — a
@@ -96,9 +115,11 @@ function escapeHtmlAttribute(value) {
  * this repo generates itself (`build-javadoc.mjs`'s `surfaces.html` landing page — see
  * `applyJavadocSeo`), which genuinely ships with no description meta by design. Also fails loudly (a
  * clear "already processed" error, not silent duplicate-tag insertion) if a canonical tag is already
- * present — the one reliable signal every one of this function's own insertions lands together,
- * so re-running this function on already-processed output is refused rather than silently
- * duplicating every tag it adds.
+ * present — a reliable signal every one of this function's own insertions lands together, so
+ * re-running this function on already-processed output is refused rather than silently duplicating
+ * every tag it adds. That signal is only reliable because the caller never sends this function the
+ * one raw page kind that natively carries a canonical of its own: the IndexRedirectWriter redirect
+ * stub, recognized and skipped whole by `applyJavadocSeo` (see `isJavadocRedirectStub`).
  *
  * @param {string} html
  * @param {{title: string, description: string, canonical: string, ogImage: string, noindex?: boolean, allowMissingDescription?: boolean}} options
@@ -254,21 +275,27 @@ function walkHtmlFiles(root) {
 // decoded back to real characters here so `escapeHtmlAttribute` (applied once, downstream, when this
 // text is written into an HTML attribute) is the only encoding pass. Without this, the already-encoded
 // `&lt;` would itself be re-escaped to `&amp;lt;`, and a reader would see the literal text "&lt;"
-// instead of "<". `&amp;` is decoded last so an input like `&amp;lt;` (a literal "&lt;" the source
-// document genuinely intended to display) is not misread as a `<` in disguise.
-function decodeHtmlEntities(value) {
-  return value
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
-    .replace(/&apos;/g, "'")
-    .replace(/&nbsp;/g, ' ')
-    .replace(/&#x([0-9a-fA-F]+);/g, (_match, hex) => String.fromCodePoint(parseInt(hex, 16)))
-    .replace(/&#(\d+);/g, (_match, dec) => String.fromCodePoint(parseInt(dec, 10)))
-    .replace(/&amp;/g, '&');
-}
+// instead of "<". Decoded in a SINGLE left-to-right pass (one regex, one replacer — never a chain
+// of sequential replaces): each source entity decodes exactly once and the replacer's own output is
+// never rescanned, so `&amp;lt;` yields the literal text "&lt;" the source genuinely intended (the
+// leading `&amp;` consumes the ampersand) and `&#38;amp;` yields the literal text "&amp;" — a
+// sequential chain would misread its own first pass's output and double-decode both.
+const NAMED_ENTITY_VALUES = { lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ', amp: '&' };
 
+function decodeHtmlEntities(value) {
+  return value.replace(
+    /&(?:(lt|gt|quot|apos|nbsp|amp)|#x([0-9a-fA-F]+)|#(\d+));/g,
+    (_match, named, hex, dec) => {
+      if (named !== undefined) {
+        return NAMED_ENTITY_VALUES[named];
+      }
+      if (hex !== undefined) {
+        return String.fromCodePoint(parseInt(hex, 16));
+      }
+      return String.fromCodePoint(parseInt(dec, 10));
+    },
+  );
+}
 function surfaceCopy(label) {
   return {
     title: `AgentForge4j API Reference — ${label}`,
@@ -311,7 +338,10 @@ function canonicalFor(siteUrl, mountPath, surfaceRoot, htmlFilePath) {
  * Applies `injectJavadocPageSeo` to every generated `.html` page in the composed artifact's
  * javadoc surfaces: `javadoc/next/`, `javadoc/latest/`, and one per entry in `releasedVersions` —
  * the surface's own overview page and every nested class/package/index/tree/help page beneath it,
- * all under the one indexability policy that surface has (see this module's header comment).
+ * all under the one indexability policy that surface has (see this module's header comment). The
+ * one exception: the plugin's own legacy-URL redirect stubs (see `isJavadocRedirectStub`) are
+ * skipped whole — left byte-identical with their plugin-authored `href="index.html"` canonical
+ * intact, and never counted in the returned total.
  *
  * @param {{siteDir: string, siteUrl: string, ogImage: string, releasedVersions: string[]}} options
  * @returns {number} the number of pages updated, across every surface
@@ -354,6 +384,11 @@ export function applyJavadocSeo({ siteDir, siteUrl, ogImage, releasedVersions })
 
     for (const pageInput of walkHtmlFiles(surfaceRoot)) {
       const html = readFileSync(pageInput, 'utf8');
+      if (isJavadocRedirectStub(html)) {
+        // A pure redirect shell whose plugin-authored canonical already points at the real overview
+        // page — skipped whole, never rewritten (see `isJavadocRedirectStub`).
+        continue;
+      }
       const canonical = canonicalFor(siteUrl, surface.mountPath, surfaceRoot, pageInput);
       const isOverview = pageInput === indexPath;
       const copy = isOverview ? surfaceCopy(surface.label) : nestedPageCopy(html, surface.label);

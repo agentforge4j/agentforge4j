@@ -106,6 +106,29 @@ test('the full generated Javadoc tree — not only the overview page — receive
   assert.match(latestNested, /<link rel="canonical" href="https:\/\/agentforge4j\.org\/javadoc\/latest\/com\/example\/Foo\.html">/);
 });
 
+test('a real Javadoc build\'s own overview-summary.html redirect stub (which natively carries a canonical tag) does not abort site assembly — composed as-is, plugin canonical intact', () => {
+  const {spaDir, buildDir, javadocDir, archiveDir, siteDir} = fixture();
+  // The exact page kind javadoc (17)'s IndexRedirectWriter drops next to every real overview page —
+  // the only raw plugin output that already contains a <link rel="canonical"> of its own. Without
+  // javadoc-seo's redirect-stub carve-out this single file kills the whole assembly ("already has a
+  // <link rel="canonical"> tag") on every deploy.
+  const redirectStub =
+    '<!DOCTYPE HTML>\n<html lang>\n<head>\n<title>Overview</title>\n' +
+    '<meta name="description" content="index redirect">\n' +
+    '<meta name="generator" content="javadoc/IndexRedirectWriter">\n' +
+    '<link rel="canonical" href="index.html">\n</head>\n' +
+    '<body class="index-redirect-page"><p><a href="index.html">index.html</a></p></body>\n</html>\n';
+  writeFileSync(join(javadocDir, 'overview-summary.html'), redirectStub);
+  assembleSite({spaDir, buildDir, javadocDir, archiveDir, siteDir, customDomain: null});
+  for (const mount of ['next', 'latest']) {
+    const composedStub = readFileSync(join(siteDir, 'javadoc', mount, 'overview-summary.html'), 'utf8');
+    assert.equal(composedStub, redirectStub, `/${mount}/ stub must be composed byte-identical, never SEO-rewritten`);
+  }
+  // The real overview page next to the stub is still processed normally.
+  const overview = readFileSync(join(siteDir, 'javadoc', 'next', 'index.html'), 'utf8');
+  assert.match(overview, /<link rel="canonical" href="https:\/\/agentforge4j\.org\/javadoc\/next\/">/);
+});
+
 test('in the no-released-version composition, /next/ and /latest/ are copied from the exact same source (assembleSite\'s own latestSource fallback) but receive divergent robots policy from applyJavadocSeo() — /latest/ stays indexable, /next/ is suppressed as the duplicate', () => {
   const {spaDir, buildDir, javadocDir, archiveDir, siteDir} = fixture();
   mkdirSync(join(javadocDir, 'com', 'example'), {recursive: true});
