@@ -89,6 +89,29 @@ function rawAllClassesIndexHtml() {
 `;
 }
 
+// A trimmed but structurally real sample of build-javadoc.mjs's own `writeSurfacesLanding` output
+// (build-javadoc.mjs:120-161) — the one page in every surface that is NOT maven-javadoc-plugin
+// output at all: hand-authored by this repo's own build script, real `<html lang="en">`, and (unlike
+// every plugin-generated page) NO `<meta name="description">` tag whatsoever by design.
+const RAW_SURFACES_LANDING_HTML = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>AgentForge4j API — surfaces</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 50rem; margin: 2rem auto; padding: 0 1rem; line-height: 1.5; }
+  </style>
+</head>
+<body>
+  <h1>AgentForge4j API (next)</h1>
+  <ul>
+    <li><a href="./index.html">Core API (aggregate)</a></li>
+  </ul>
+</body>
+</html>
+`;
+
 test('injectJavadocPageSeo fixes lang, replaces the generic description, and adds canonical/OG/Twitter (none of which exist in the raw overview output)', () => {
   const html = injectJavadocPageSeo(RAW_OVERVIEW_HTML, {
     title: 'AgentForge4j API Reference — latest stable, 0.1.0',
@@ -175,6 +198,46 @@ test('injectJavadocPageSeo fails closed if there is no <meta name="description">
       }),
     /expected a <meta name="description"/,
   );
+});
+
+test('injectJavadocPageSeo inserts a fresh description tag (rather than failing closed) when allowMissingDescription is set — the one recognized non-plugin page (surfaces.html) genuinely has no description tag to replace', () => {
+  const html = injectJavadocPageSeo(RAW_SURFACES_LANDING_HTML, {
+    title: 'AgentForge4j API — surfaces — AgentForge4j API Reference (next, in-development)',
+    description:
+      'Generated Javadoc API reference for the AgentForge4j framework (next, in-development) — AgentForge4j API — surfaces.',
+    canonical: 'https://agentforge4j.org/javadoc/next/surfaces.html',
+    ogImage: 'https://agentforge4j.org/brand/icon-512.png',
+    allowMissingDescription: true,
+  });
+  assert.match(html, /<meta name="description" content="Generated Javadoc API reference[^"]*">/);
+  assert.equal((html.match(/<meta name="description"/g) ?? []).length, 1, 'exactly one description tag, never a duplicate');
+  assert.match(html, /<link rel="canonical" href="https:\/\/agentforge4j\.org\/javadoc\/next\/surfaces\.html">/);
+  // Real hand-authored content must survive untouched.
+  assert.match(html, /<h1>AgentForge4j API \(next\)<\/h1>/);
+});
+
+test('injectJavadocPageSeo still fails closed on a description-less page when allowMissingDescription is not set (the default) — allowMissingDescription must not weaken the template-drift protection for ordinary pages', () => {
+  assert.throws(
+    () =>
+      injectJavadocPageSeo(RAW_SURFACES_LANDING_HTML, {
+        title: 't',
+        description: 'd',
+        canonical: 'https://agentforge4j.org/javadoc/next/surfaces.html',
+        ogImage: 'https://agentforge4j.org/brand/icon-512.png',
+      }),
+    /expected a <meta name="description"/,
+  );
+});
+
+test('injectJavadocPageSeo safely handles a title/description containing literal replacement-pattern sequences ($&, $`, $\') — proves the function-replacer fix, not accidental String.replace pattern interpolation', () => {
+  const html = injectJavadocPageSeo(RAW_OVERVIEW_HTML, {
+    title: "Weird $& Title $` End $'",
+    description: "desc $& more $` text $'",
+    canonical: 'https://agentforge4j.org/javadoc/next/',
+    ogImage: 'https://agentforge4j.org/brand/icon-512.png',
+  });
+  assert.ok(html.includes('<meta name="description" content="desc $&amp; more $` text $\'">'));
+  assert.ok(html.includes('<meta property="og:title" content="Weird $&amp; Title $` End $\'">'));
 });
 
 test('injectJavadocPageSeo fails closed with a clear "already processed" error rather than silently duplicating tags on a page that already has a canonical', () => {
@@ -357,6 +420,71 @@ test('once a newer version ships, the OLD newest version (no longer a duplicate 
   assert.match(nowNewest, /<meta name="robots" content="noindex,follow">/, '0.2.0 is now the version /latest/ mirrors');
 });
 
+test('applyJavadocSeo processes the real surfaces.html landing page (build-javadoc.mjs\'s own hand-authored, description-less page) without throwing — this is the exact real-corpus defect a full-tree compose caught: surfaces.html is otherwise indistinguishable from a genuine template-drift page missing its description', () => {
+  const { siteDir, surfaceRoot } = fixtureSiteDirWithNestedPages('javadoc/next');
+  writeFileSync(join(surfaceRoot, 'surfaces.html'), RAW_SURFACES_LANDING_HTML, 'utf8');
+  const updated = applyJavadocSeo({
+    siteDir,
+    siteUrl: 'https://agentforge4j.org',
+    ogImage: 'https://agentforge4j.org/brand/icon-512.png',
+    releasedVersions: [],
+  });
+  assert.equal(updated, 6, 'the 5 pages from the base nested fixture plus the new surfaces.html');
+  const surfacesPage = readFileSync(join(surfaceRoot, 'surfaces.html'), 'utf8');
+  assert.match(surfacesPage, /<meta name="description" content="[^"]+">/);
+  assert.match(surfacesPage, /<link rel="canonical" href="https:\/\/agentforge4j\.org\/javadoc\/next\/surfaces\.html">/);
+  // Real hand-authored content must survive.
+  assert.match(surfacesPage, /<h1>AgentForge4j API \(next\)<\/h1>/);
+});
+
+test('applyJavadocSeo names the offending file path when a genuinely description-less page is NOT the recognized surfaces.html landing page (template drift, still fails closed)', () => {
+  const { siteDir, surfaceRoot } = fixtureSiteDirWithNestedPages('javadoc/next');
+  // A description-less page under a different name must still fail loud — the error must name the
+  // offending file, not just report a bare "template drift?" with no way to tell which of hundreds
+  // of pages across three surfaces is the actual problem.
+  writeFileSync(join(surfaceRoot, 'drifted-page.html'), RAW_SURFACES_LANDING_HTML, 'utf8');
+  assert.throws(
+    () =>
+      applyJavadocSeo({
+        siteDir,
+        siteUrl: 'https://agentforge4j.org',
+        ogImage: 'https://agentforge4j.org/brand/icon-512.png',
+        releasedVersions: [],
+      }),
+    /failed processing .*drifted-page\.html.*expected a <meta name="description"/,
+  );
+});
+
+test('a nested page\'s raw <title> containing HTML entities (e.g. a generic class like Foo<T>, which javadoc emits as Foo&lt;T&gt;) is decoded once and escaped exactly once — never double-escaped into literal "&lt;" text', () => {
+  const { siteDir, surfaceRoot } = fixtureSiteDirWithNestedPages('javadoc/next');
+  writeFileSync(
+    join(surfaceRoot, 'com', 'example', 'Foo.html'),
+    rawClassPageHtml({ title: 'Foo&lt;T&gt; &amp; Bar' }),
+    'utf8',
+  );
+  applyJavadocSeo({
+    siteDir,
+    siteUrl: 'https://agentforge4j.org',
+    ogImage: 'https://agentforge4j.org/brand/icon-512.png',
+    releasedVersions: [],
+  });
+  const classPage = readFileSync(join(surfaceRoot, 'com', 'example', 'Foo.html'), 'utf8');
+  // Semantically "Foo<T> & Bar" — escaped exactly once for HTML attribute embedding.
+  assert.ok(
+    classPage.includes(
+      '<meta name="description" content="Generated Javadoc API reference for the AgentForge4j framework (next, in-development) — Foo&lt;T&gt; &amp; Bar.">',
+    ),
+  );
+  assert.ok(
+    classPage.includes(
+      '<meta property="og:title" content="Foo&lt;T&gt; &amp; Bar — AgentForge4j API Reference (next, in-development)">',
+    ),
+  );
+  assert.ok(!classPage.includes('&amp;lt;'), 'must never double-escape &lt; into &amp;lt; (renders as literal "&lt;" text)');
+  assert.ok(!classPage.includes('&amp;gt;'), 'must never double-escape &gt; into &amp;gt;');
+  assert.ok(!classPage.includes('&amp;amp;'), 'must never double-escape &amp; into &amp;amp;');
+});
+
 test('fails closed when a declared surface\'s overview page is missing', () => {
   const siteDir = fixtureSiteDir(['javadoc/next', 'javadoc/latest']); // 0.1.0 missing entirely
   assert.throws(
@@ -437,7 +565,11 @@ test('a symlinked directory pointing outside the surface root is refused, not si
 
   let symlinkCreated = true;
   try {
-    symlinkSync(outsideDir, join(surfaceRoot, 'escape'), 'dir');
+    // 'junction' (not 'dir'): NTFS junctions don't require elevated privileges on Windows the way
+    // true symbolic links do, so this test actually exercises the real containment check locally
+    // instead of silently skipping — Node reports a junction identically to a symlink via
+    // Dirent.isSymbolicLink(), so the code path under test is exactly the same either way.
+    symlinkSync(outsideDir, join(surfaceRoot, 'escape'), 'junction');
   } catch (error) {
     if (error.code === 'EPERM' || error.code === 'EACCES') {
       symlinkCreated = false;
@@ -459,5 +591,142 @@ test('a symlinked directory pointing outside the surface root is refused, not si
         releasedVersions: [],
       }),
     /refusing to follow a symlink that escapes the surface root/,
+  );
+});
+
+test('a surface root reached only via a symlinked ancestor path still processes normally, with no in-root symlink involved (skipped where symlink creation requires elevated privileges, e.g. unconfigured Windows)', () => {
+  const root = mkdtempSync(join(tmpdir(), 'javadoc-symlinked-ancestor-'));
+  const realRoot = join(root, 'real');
+  const siteDirReal = join(realRoot, '_site');
+  for (const mountPath of ['javadoc/next', 'javadoc/latest']) {
+    const dir = join(siteDirReal, ...mountPath.split('/'));
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, 'index.html'), RAW_OVERVIEW_HTML, 'utf8');
+  }
+  const nextSurfaceRoot = join(siteDirReal, 'javadoc', 'next');
+  writeFileSync(join(nextSurfaceRoot, 'Foo.html'), rawClassPageHtml(), 'utf8');
+
+  const aliasedRoot = join(root, 'aliased');
+  let symlinkCreated = true;
+  try {
+    // 'junction': see the note on the escape-root test above.
+    symlinkSync(realRoot, aliasedRoot, 'junction');
+  } catch (error) {
+    if (error.code === 'EPERM' || error.code === 'EACCES') {
+      symlinkCreated = false;
+    } else {
+      throw error;
+    }
+  }
+  if (!symlinkCreated) {
+    console.log('[javadoc-seo.test] symlink creation requires elevated privileges in this environment — skipping the live symlinked-ancestor assertion (isWithinRoot itself is covered by the tests above)');
+    return;
+  }
+
+  const siteDir = join(aliasedRoot, '_site');
+  // Must NOT throw: every real file under the surface resolves inside the real surface root, and
+  // that root is itself only reachable here via the symlinked `aliased` ancestor path — before the
+  // PR172-006 fix, comparing a realpath'd symlink target against the unresolved `root` would have
+  // spuriously failed the first symlink this walk ever encountered (there are none here — this
+  // proves the ancestor-resolution fix in isolation, with no in-root symlink of its own).
+  const updated = applyJavadocSeo({
+    siteDir,
+    siteUrl: 'https://agentforge4j.org',
+    ogImage: 'https://agentforge4j.org/brand/icon-512.png',
+    releasedVersions: [],
+  });
+  assert.equal(updated, 3, 'next: index + Foo (2), latest: index (1)');
+});
+
+// --- PR172-007: an in-root symlink can create two distinct walked paths that resolve to the SAME
+// underlying real file or directory — walkHtmlFiles must refuse this outright rather than silently
+// double-processing a page or recursing forever. ---
+
+test('a symlinked HTML file is refused outright — ambiguous which of the two paths is the page\'s one real canonical URL (skipped where symlink creation requires elevated privileges)', () => {
+  const { siteDir, surfaceRoot } = fixtureSiteDirWithNestedPages('javadoc/next');
+  let symlinkCreated = true;
+  try {
+    symlinkSync(join(surfaceRoot, 'com', 'example', 'Foo.html'), join(surfaceRoot, 'Foo-alias.html'), 'file');
+  } catch (error) {
+    if (error.code === 'EPERM' || error.code === 'EACCES') {
+      symlinkCreated = false;
+    } else {
+      throw error;
+    }
+  }
+  if (!symlinkCreated) {
+    console.log('[javadoc-seo.test] symlink creation requires elevated privileges in this environment — skipping');
+    return;
+  }
+  assert.throws(
+    () =>
+      applyJavadocSeo({
+        siteDir,
+        siteUrl: 'https://agentforge4j.org',
+        ogImage: 'https://agentforge4j.org/brand/icon-512.png',
+        releasedVersions: [],
+      }),
+    /refusing to follow a symlinked HTML file \(ambiguous canonical URL\)/,
+  );
+});
+
+test('a directory symlink pointing back at an ancestor (a cycle) is refused, not walked forever (skipped where symlink creation requires elevated privileges)', () => {
+  const { siteDir, surfaceRoot } = fixtureSiteDirWithNestedPages('javadoc/next');
+  let symlinkCreated = true;
+  try {
+    // com/example/back-to-root -> the surface root itself: walking into it would revisit `com`,
+    // `com/example`, and `com/example/back-to-root` forever without cycle detection. 'junction':
+    // see the note on the escape-root test above — runs for real locally, not just in CI.
+    symlinkSync(surfaceRoot, join(surfaceRoot, 'com', 'example', 'back-to-root'), 'junction');
+  } catch (error) {
+    if (error.code === 'EPERM' || error.code === 'EACCES') {
+      symlinkCreated = false;
+    } else {
+      throw error;
+    }
+  }
+  if (!symlinkCreated) {
+    console.log('[javadoc-seo.test] symlink creation requires elevated privileges in this environment — skipping');
+    return;
+  }
+  assert.throws(
+    () =>
+      applyJavadocSeo({
+        siteDir,
+        siteUrl: 'https://agentforge4j.org',
+        ogImage: 'https://agentforge4j.org/brand/icon-512.png',
+        releasedVersions: [],
+      }),
+    /refusing to walk a directory whose real path was already visited/,
+  );
+});
+
+test('two directory paths resolving to the same real directory (a real subtree plus a symlinked alias of it) are refused, not silently double-processed (skipped where symlink creation requires elevated privileges)', () => {
+  const { siteDir, surfaceRoot } = fixtureSiteDirWithNestedPages('javadoc/next');
+  let symlinkCreated = true;
+  try {
+    // "alias" is a second, independent path to the exact same real directory as com/example.
+    // 'junction': see the note on the escape-root test above.
+    symlinkSync(join(surfaceRoot, 'com', 'example'), join(surfaceRoot, 'alias'), 'junction');
+  } catch (error) {
+    if (error.code === 'EPERM' || error.code === 'EACCES') {
+      symlinkCreated = false;
+    } else {
+      throw error;
+    }
+  }
+  if (!symlinkCreated) {
+    console.log('[javadoc-seo.test] symlink creation requires elevated privileges in this environment — skipping');
+    return;
+  }
+  assert.throws(
+    () =>
+      applyJavadocSeo({
+        siteDir,
+        siteUrl: 'https://agentforge4j.org',
+        ogImage: 'https://agentforge4j.org/brand/icon-512.png',
+        releasedVersions: [],
+      }),
+    /refusing to walk a directory whose real path was already visited/,
   );
 });

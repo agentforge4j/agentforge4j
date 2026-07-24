@@ -26,7 +26,7 @@
 // browser dependency at all.
 
 import { createServer } from 'node:http';
-import { createReadStream, existsSync, readFileSync } from 'node:fs';
+import { createReadStream, existsSync, readFileSync, statSync } from 'node:fs';
 import { dirname, extname, isAbsolute, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
@@ -118,7 +118,13 @@ export function startStaticServer(distDir) {
       return;
     }
     const candidate = resolveWithinRoot(distDir, urlPath);
-    const isRealFile = candidate !== null && !urlPath.endsWith('/') && existsSync(candidate);
+    // `existsSync` alone is true for directories too — an extensionless request path that happens
+    // to exist as a directory under `distDir` would reach `createReadStream(directory)`, which
+    // emits an unhandled async 'error' (EISDIR) and crashes the whole prerender process. `isFile()`
+    // makes only a genuine real file take this branch; a directory falls through to the SPA
+    // fallback below, exactly like any other path with no matching real file.
+    const isRealFile =
+      candidate !== null && !urlPath.endsWith('/') && existsSync(candidate) && statSync(candidate).isFile();
     if (isRealFile) {
       const ext = extname(candidate);
       res.writeHead(200, { 'content-type': MIME_TYPES[ext] ?? 'application/octet-stream' });

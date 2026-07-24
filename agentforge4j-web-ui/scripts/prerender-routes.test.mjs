@@ -218,6 +218,25 @@ test('startStaticServer never leaks a file reached via an encoded `../` traversa
 // — uncaught, that would crash the whole process, taking every other in-flight prerender capture
 // down with it. ---
 
+test('startStaticServer falls back to the SPA shell for a bare path that exists as a directory (not a file) — must not crash on EISDIR', async () => {
+  const { distDir } = fixtureDistWithSibling();
+  // `assets` exists as a real directory under distDir with no trailing slash requested.
+  const server = await startStaticServer(distDir);
+  try {
+    const { port } = server.address();
+    const { status, body } = await rawGet(port, '/assets');
+    assert.equal(status, 200);
+    assert.ok(body.includes('shell'), 'a directory path must fall back to the SPA shell, not crash or 500');
+
+    // The server process must still be alive: a real, valid request right after must still work.
+    const valid = await rawGet(port, '/assets/app.js');
+    assert.equal(valid.status, 200);
+    assert.equal(valid.body, 'console.log("real asset");');
+  } finally {
+    await new Promise((r) => server.close(r));
+  }
+});
+
 test('startStaticServer returns a controlled 400 for malformed percent-encoding, and stays alive to serve a valid request afterward', async () => {
   const { distDir } = fixtureDistWithSibling();
   const server = await startStaticServer(distDir);

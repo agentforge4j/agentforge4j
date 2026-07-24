@@ -166,11 +166,13 @@ const config: Config = {
           priority: null,
           ignorePatterns: ['/docs/next/**', '/docs/search'],
           // Real, reproducible, per-page git-derived last-modified dates — Docusaurus's own
-          // route metadata carries each page's sourceFilePath, and the default VCS preset
-          // (future.experimental_vcs, unset here) already resolves it via a real `git log` call
-          // in production builds (see @docusaurus/utils/vcs/vcsDefaultV1 -> vcsGitAdHoc), so this
-          // needs no custom git-shelling of its own: the same commit always reproduces the same
-          // value, and a page's lastmod only changes when its source file's history does.
+          // route metadata carries each page's sourceFilePath, and the explicit
+          // `future.experimental_vcs: 'git-ad-hoc'` override above (not the v4-implied eager
+          // default, which silently produced no <lastmod> at all against this site's real
+          // versioned content — see that setting's own comment) resolves it via a real `git log`
+          // call in production builds (see @docusaurus/utils/vcs/vcsGitAdHoc), so this needs no
+          // custom git-shelling of its own: the same commit always reproduces the same value, and
+          // a page's lastmod only changes when its source file's history does.
           lastmod: 'date',
         },
       } satisfies Preset.Options,

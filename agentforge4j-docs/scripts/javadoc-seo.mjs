@@ -37,9 +37,19 @@
 // Pinned pages are never canonicalized to /latest/ — each stays self-canonical at its own pinned
 // URL; noindex,follow (not a cross-surface canonical) is this pass's chosen de-duplication
 // mechanism, unchanged from the original design.
+//
+// One page in every surface is NOT maven-javadoc-plugin output at all: `surfaces.html`, hand-authored
+// by `build-javadoc.mjs` itself as the three-surface landing page, ships with no
+// `<meta name="description">` tag by design. Recognized by filename below and passed
+// `allowMissingDescription: true` so it gets a fresh description inserted instead of tripping the
+// template-drift check every other (genuine plugin-generated) page is still held to.
 
 import { existsSync, readdirSync, readFileSync, realpathSync, statSync, writeFileSync } from 'node:fs';
 import { isAbsolute, join, relative } from 'node:path';
+
+// `build-javadoc.mjs`'s own hand-authored landing page (see this module's header comment) — the one
+// recognized non-plugin page allowed to have no description meta.
+const SURFACES_LANDING_FILENAME = 'surfaces.html';
 
 const EMPTY_LANG_PATTERN = /<html lang>/;
 const LANG_WITH_VALUE_PATTERN = /<html lang="[^"]*">/;
@@ -58,21 +68,28 @@ function escapeHtmlAttribute(value) {
  * template left it empty (nested class/package/index pages already carry a correct `lang="en"` —
  * only the overview/module-index page has the known empty-`<html lang>` bug, so a real value already
  * present is left untouched, never assumed broken), replaces whatever generic/mechanical description
- * the plugin generated, and adds (never replaces an existing one — see the already-processed check
- * below) canonical, OG, Twitter, and an optional noindex robots tag.
+ * the plugin generated (or inserts a fresh one when `allowMissingDescription` is set — see below),
+ * and adds (never replaces an existing one — see the already-processed check below) canonical, OG,
+ * Twitter, and an optional noindex robots tag.
  *
- * Fails loudly if neither known `lang` shape is present, if there is no `<meta name="description">`
- * tag at all, or if `</head>` is missing — a maven-javadoc-plugin version bump changing its own
- * template shape should surface here, not silently no-op. Also fails loudly (a clear
- * "already processed" error, not silent duplicate-tag insertion) if a canonical tag is already
+ * Fails loudly if neither known `lang` shape is present, if `</head>` is missing, or if there is no
+ * `<meta name="description">` tag at all UNLESS `allowMissingDescription` is set — a
+ * maven-javadoc-plugin version bump changing its own template shape should still surface here for
+ * every ordinary page; `allowMissingDescription` exists only for the one recognized non-plugin page
+ * this repo generates itself (`build-javadoc.mjs`'s `surfaces.html` landing page — see
+ * `applyJavadocSeo`), which genuinely ships with no description meta by design. Also fails loudly (a
+ * clear "already processed" error, not silent duplicate-tag insertion) if a canonical tag is already
  * present — the one reliable signal every one of this function's own insertions lands together,
  * so re-running this function on already-processed output is refused rather than silently
  * duplicating every tag it adds.
  *
  * @param {string} html
- * @param {{title: string, description: string, canonical: string, ogImage: string, noindex?: boolean}} options
+ * @param {{title: string, description: string, canonical: string, ogImage: string, noindex?: boolean, allowMissingDescription?: boolean}} options
  */
-export function injectJavadocPageSeo(html, { title, description, canonical, ogImage, noindex = false }) {
+export function injectJavadocPageSeo(
+  html,
+  { title, description, canonical, ogImage, noindex = false, allowMissingDescription = false },
+) {
   if (!/<\/head>/.test(html)) {
     throw new Error('javadoc-seo: expected a </head> closing tag');
   }
@@ -82,13 +99,14 @@ export function injectJavadocPageSeo(html, { title, description, canonical, ogIm
         '(has this output already been processed?)',
     );
   }
-  if (!DESCRIPTION_TAG_PATTERN.test(html)) {
+  const hasDescriptionTag = DESCRIPTION_TAG_PATTERN.test(html);
+  if (!hasDescriptionTag && !allowMissingDescription) {
     throw new Error('javadoc-seo: expected a <meta name="description" content="..."> tag — template drift?');
   }
 
   let result = html;
   if (EMPTY_LANG_PATTERN.test(result)) {
-    result = result.replace(EMPTY_LANG_PATTERN, '<html lang="en">');
+    result = result.replace(EMPTY_LANG_PATTERN, () => '<html lang="en">');
   } else if (!LANG_WITH_VALUE_PATTERN.test(result)) {
     throw new Error('javadoc-seo: expected either `<html lang>` or `<html lang="...">` — template drift?');
   }
@@ -98,10 +116,17 @@ export function injectJavadocPageSeo(html, { title, description, canonical, ogIm
   const safeCanonical = escapeHtmlAttribute(canonical);
   const safeOgImage = escapeHtmlAttribute(ogImage);
 
-  result = result.replace(DESCRIPTION_TAG_PATTERN, `<meta name="description" content="${safeDescription}">`);
+  if (hasDescriptionTag) {
+    result = result.replace(DESCRIPTION_TAG_PATTERN, () => `<meta name="description" content="${safeDescription}">`);
+  }
 
+  // Function replacers throughout (never a plain-string second argument to String.replace): a
+  // value containing a literal `$&`/`` $` ``/`$'` sequence would otherwise be interpreted as a
+  // replacement-pattern token instead of literal text, silently corrupting the output.
+  const missingDescriptionTag = hasDescriptionTag ? '' : `<meta name="description" content="${safeDescription}">\n`;
   const robotsTag = noindex ? '<meta name="robots" content="noindex,follow">\n' : '';
   const addedTags =
+    `${missingDescriptionTag}` +
     `${robotsTag}` +
     `<link rel="canonical" href="${safeCanonical}">\n` +
     `<meta property="og:type" content="website">\n` +
@@ -114,7 +139,7 @@ export function injectJavadocPageSeo(html, { title, description, canonical, ogIm
     `<meta name="twitter:description" content="${safeDescription}">\n` +
     `<meta name="twitter:image" content="${safeOgImage}">\n`;
 
-  result = result.replace(/<\/head>/, `${addedTags}</head>`);
+  result = result.replace(/<\/head>/, () => `${addedTags}</head>`);
   return result;
 }
 
@@ -130,25 +155,61 @@ export function isWithinRoot(root, candidate) {
 }
 
 /** Recursively collects every real `*.html` file under `root`, in no particular order — bounded to
- * `root` itself: a symlinked directory or file is only ever followed when it resolves to a real
- * path still inside `root` (a symlink pointing outside the surface is refused, not silently
- * skipped — this walk must never read content the surface itself does not actually contain). */
+ * `root` itself: a symlinked directory is only ever followed when it resolves to a real path still
+ * inside `root` AND that real path has not already been visited via some other route (a symlink
+ * pointing outside the surface is refused, not silently skipped — this walk must never read content
+ * the surface itself does not actually contain; a symlink pointing back at an already-visited real
+ * directory, whether an ancestor — a cycle — or an unrelated alias of the same content, is refused
+ * too, rather than recursing forever or silently double-processing every page beneath it).
+ *
+ * A symlinked HTML *file* is refused outright, unconditionally: `injectJavadocPageSeo` enforces a
+ * single-processing ("already processed") invariant per real file, and two distinct walked paths
+ * that both resolve to the same underlying file would violate it the moment either path is
+ * processed — there is also no principled way to pick which of the two paths is that page's one
+ * real canonical URL, so this never attempts to guess. */
 function walkHtmlFiles(root) {
   const results = [];
+  // Resolved once, up front: a symlink target (always realpath'd below) must be compared against
+  // `root` in the same, also-resolved form — otherwise a `siteDir` that itself sits under a
+  // symlinked/junctioned parent would spuriously fail a legitimate in-root symlink (the resolved
+  // target would no longer string-relate to the unresolved root).
+  const realRoot = realpathSync(root);
+  // Every real directory this walk has already descended into, keyed by its resolved real path.
+  // Closes two distinct failure modes a naive recursive walk would otherwise hit: a directory
+  // symlink pointing back at an ancestor (unbounded recursion), and two different walked paths
+  // (e.g. a real directory and a symlink alias of it) resolving to the same underlying directory,
+  // which would silently double-process every page beneath it exactly like the file-symlink case
+  // above.
+  const visitedRealDirs = new Set([realRoot]);
+
+  function visitDirectory(full, realDir) {
+    if (visitedRealDirs.has(realDir)) {
+      throw new Error(
+        `javadoc-seo: refusing to walk a directory whose real path was already visited via another route ` +
+          `(a symlink cycle, or two paths aliasing the same directory): ${full} -> ${realDir}`,
+      );
+    }
+    visitedRealDirs.add(realDir);
+    walk(full);
+  }
+
   function walk(dir) {
     for (const entry of readdirSync(dir, { withFileTypes: true })) {
       const full = join(dir, entry.name);
-      let isDirectory = entry.isDirectory();
-      let target = full;
       if (entry.isSymbolicLink()) {
-        target = realpathSync(full);
-        if (!isWithinRoot(root, target)) {
+        const target = realpathSync(full);
+        if (!isWithinRoot(realRoot, target)) {
           throw new Error(`javadoc-seo: refusing to follow a symlink that escapes the surface root: ${full} -> ${target}`);
         }
-        isDirectory = statSync(target).isDirectory();
-      }
-      if (isDirectory) {
-        walk(full);
+        if (statSync(target).isDirectory()) {
+          visitDirectory(full, target);
+        } else if (full.endsWith('.html')) {
+          throw new Error(`javadoc-seo: refusing to follow a symlinked HTML file (ambiguous canonical URL): ${full} -> ${target}`);
+        }
+        // A symlinked non-.html file (e.g. a stylesheet asset) is harmlessly ignored, exactly like
+        // a real one — only .html files are ever read or written by this module.
+      } else if (entry.isDirectory()) {
+        visitDirectory(full, realpathSync(full));
       } else if (full.endsWith('.html')) {
         results.push(full);
       }
@@ -156,6 +217,23 @@ function walkHtmlFiles(root) {
   }
   walk(root);
   return results;
+}
+
+// The raw <title> text extracted below is still HTML-entity-encoded exactly as maven-javadoc-plugin
+// wrote it (e.g. a generic class like `List<String>` renders its title as `List&lt;String&gt;`) —
+// decoded back to real characters here so `escapeHtmlAttribute` (applied once, downstream, when this
+// text is written into an HTML attribute) is the only encoding pass. Without this, the already-encoded
+// `&lt;` would itself be re-escaped to `&amp;lt;`, and a reader would see the literal text "&lt;"
+// instead of "<". `&amp;` is decoded last so an input like `&amp;lt;` (a literal "&lt;" the source
+// document genuinely intended to display) is not misread as a `<` in disguise.
+function decodeHtmlEntities(value) {
+  return value
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&apos;/g, "'")
+    .replace(/&amp;/g, '&');
 }
 
 function surfaceCopy(label) {
@@ -172,7 +250,7 @@ function surfaceCopy(label) {
  * surface label alone only in the (unexpected) case a page carries no `<title>` at all. */
 function nestedPageCopy(html, label) {
   const match = TITLE_TAG_PATTERN.exec(html);
-  const pageTitle = match ? match[1].trim() : null;
+  const pageTitle = match ? decodeHtmlEntities(match[1].trim()) : null;
   if (!pageTitle) {
     return surfaceCopy(label);
   }
@@ -237,13 +315,20 @@ export function applyJavadocSeo({ siteDir, siteUrl, ogImage, releasedVersions })
       const canonical = canonicalFor(siteUrl, surface.mountPath, surfaceRoot, pageInput);
       const isOverview = pageInput === indexPath;
       const copy = isOverview ? surfaceCopy(surface.label) : nestedPageCopy(html, surface.label);
-      const updatedHtml = injectJavadocPageSeo(html, {
-        title: copy.title,
-        description: copy.description,
-        canonical,
-        ogImage,
-        noindex: surface.noindex,
-      });
+      const isSurfacesLandingPage = pageInput === join(surfaceRoot, SURFACES_LANDING_FILENAME);
+      let updatedHtml;
+      try {
+        updatedHtml = injectJavadocPageSeo(html, {
+          title: copy.title,
+          description: copy.description,
+          canonical,
+          ogImage,
+          noindex: surface.noindex,
+          allowMissingDescription: isSurfacesLandingPage,
+        });
+      } catch (error) {
+        throw new Error(`javadoc-seo: failed processing ${pageInput}: ${error.message}`);
+      }
       writeFileSync(pageInput, updatedHtml, 'utf8');
       updated += 1;
     }

@@ -76,6 +76,23 @@ export function verifyCanonicalTrailingSlash({
   }
   const sitemap = readFileSync(sitemapPath, 'utf8');
   const entries = [...sitemap.matchAll(/<url>\s*<loc>([^<]+)<\/loc>(?:\s*<lastmod>([^<]+)<\/lastmod>)?\s*<\/url>/g)];
+  // A <url> block that does not match the strict shape above (extra/reordered elements, a
+  // renamed/missing <loc>, e.g. from a future sitemap-plugin/Docusaurus version bump) would
+  // otherwise silently vanish from this check entirely, rather than surfacing as the regression it
+  // is. Both the <url> block count and the <loc> tag count are checked, not just <loc>: a block
+  // with no <loc> at all (a typo'd <location>, say) would agree with a zero-<loc> contribution and
+  // slip through a <loc>-only comparison undetected. Checked before the zero-entries guard below so
+  // a mismatch is reported precisely, even in the all-blocks-malformed case where that guard would
+  // otherwise fire with a less specific message.
+  const urlBlockCount = (sitemap.match(/<url>/g) ?? []).length;
+  const locCount = (sitemap.match(/<loc>/g) ?? []).length;
+  if (entries.length !== urlBlockCount || entries.length !== locCount) {
+    throw new Error(
+      `verify-canonical: ${sitemapPath} has ${urlBlockCount} <url> block(s) and ${locCount} <loc> tag(s) but only ` +
+        `${entries.length} matched the expected <url><loc>...</loc>[<lastmod>...</lastmod>]</url> shape — at ` +
+        'least one <url> block has an unexpected structure and would be silently dropped from this check',
+    );
+  }
   if (entries.length === 0) {
     throw new Error(`verify-canonical: ${sitemapPath} parsed to zero <url> entries`);
   }

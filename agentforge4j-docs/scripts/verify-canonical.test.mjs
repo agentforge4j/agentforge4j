@@ -67,6 +67,34 @@ test('fails closed on a missing or invalid <lastmod>', () => {
   assert.throws(() => verifyCanonicalTrailingSlash({ buildDir }), /no valid <lastmod>/);
 });
 
+test('fails closed when a <url> block does not match the expected shape (extra element after <loc>) — must not silently drop that entry from this check', () => {
+  const buildDir = fixture();
+  writePage(buildDir, '0.1.0/index.html', 'https://agentforge4j.org/docs/0.1.0/');
+  // The <xhtml:link> element makes this block not match the strict per-<url> regex at all, even
+  // though a real <loc> tag is plainly present — without the count cross-check this page would
+  // silently drop out of the check instead of failing the build.
+  writeFileSync(
+    join(buildDir, 'sitemap.xml'),
+    '<urlset><url><loc>https://agentforge4j.org/docs/0.1.0/</loc>' +
+      '<xhtml:link rel="alternate" href="https://agentforge4j.org/docs/0.1.0/" /></url></urlset>',
+  );
+  assert.throws(() => verifyCanonicalTrailingSlash({ buildDir }), /has 1 <url> block\(s\) and 1 <loc> tag\(s\) but only 0 matched/);
+});
+
+test('fails closed when a <url> block has no <loc> at all (e.g. a typo\'d <location>) alongside one valid entry — a <loc>-only count comparison alone would miss this, since both sides would be zero for the malformed block', () => {
+  const buildDir = fixture();
+  writePage(buildDir, '0.1.0/index.html', 'https://agentforge4j.org/docs/0.1.0/');
+  writePage(buildDir, '0.1.0/other/index.html', 'https://agentforge4j.org/docs/0.1.0/other/');
+  writeFileSync(
+    join(buildDir, 'sitemap.xml'),
+    '<urlset>' +
+      '<url><loc>https://agentforge4j.org/docs/0.1.0/</loc><lastmod>2026-07-20</lastmod></url>' +
+      '<url><location>https://agentforge4j.org/docs/0.1.0/other/</location></url>' +
+      '</urlset>',
+  );
+  assert.throws(() => verifyCanonicalTrailingSlash({ buildDir }), /has 2 <url> block\(s\) and 1 <loc> tag\(s\) but only 1 matched/);
+});
+
 test('a page with no canonical tag at all, and no entry in the sitemap either (e.g. the search results page), is not itself a failure — only pages the sitemap actually advertises are checked', () => {
   const buildDir = fixture();
   writePage(buildDir, '0.1.0/index.html', 'https://agentforge4j.org/docs/0.1.0/');

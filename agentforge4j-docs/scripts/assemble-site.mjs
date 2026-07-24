@@ -341,12 +341,33 @@ const SITEMAP_URL_PREFIX = 'https://agentforge4j.org/';
  * `null` when a `<url>` block has none). Regex, not a real XML parser: both fragments this merges
  * (the SPA's own build-seo.mjs output, and Docusaurus's `@docusaurus/plugin-sitemap` output) are
  * simple, single-namespace, machine-generated `<url><loc>...</loc>[<lastmod>...</lastmod>]</url>`
- * documents — no CDATA, no nested namespaces — so a full parser dependency buys nothing here. */
-function extractSitemapEntries(xmlPath) {
+ * documents — no CDATA, no nested namespaces — so a full parser dependency buys nothing here.
+ *
+ * Fails closed (via `exit`, not silently) if the strict `<url>` shape above matched fewer blocks
+ * than there are `<url>` blocks or `<loc>` tags in the file: a `<url>` block that does not match
+ * this exact shape (extra/reordered elements, a renamed/missing `<loc>`, e.g. from a future
+ * sitemap-plugin/Docusaurus version bump) would otherwise silently vanish from the merged sitemap
+ * instead of surfacing as a defect. Both counts are checked, not just `<loc>`: a block with NO
+ * `<loc>` at all (e.g. a typo'd `<location>`) would otherwise agree with a zero-<loc> contribution
+ * and slip through a `<loc>`-only comparison undetected. */
+function extractSitemapEntries(xmlPath, exit) {
   const xml = readFileSync(xmlPath, 'utf8');
-  return [...xml.matchAll(/<url>\s*<loc>([^<]+)<\/loc>(?:\s*<lastmod>([^<]+)<\/lastmod>)?\s*<\/url>/g)].map(
+  const entries = [...xml.matchAll(/<url>\s*<loc>([^<]+)<\/loc>(?:\s*<lastmod>([^<]+)<\/lastmod>)?\s*<\/url>/g)].map(
     ([, url, lastmod]) => ({ url, lastmod: lastmod ?? null }),
   );
+  const urlBlockCount = (xml.match(/<url>/g) ?? []).length;
+  const locCount = (xml.match(/<loc>/g) ?? []).length;
+  if (entries.length !== urlBlockCount || entries.length !== locCount) {
+    console.error(
+      `[assemble-site] ${xmlPath}: found ${urlBlockCount} <url> block(s) and ${locCount} <loc> tag(s) but only ` +
+        `${entries.length} matched the expected <url><loc>...</loc>[<lastmod>...</lastmod>]</url> shape — at ` +
+        'least one <url> block has an unexpected structure and would otherwise be silently dropped from the ' +
+        'published sitemap.',
+    );
+    exit(1);
+    return entries;
+  }
+  return entries;
 }
 
 function sitemapXml(entries) {
@@ -381,7 +402,7 @@ function mergeSitemaps(siteDir, exit) {
     'Run `npm run build` in agentforge4j-docs first (the sitemap plugin runs in postBuild).',
   );
 
-  const entries = [...extractSitemapEntries(spaSitemapPath), ...extractSitemapEntries(docsSitemapPath)];
+  const entries = [...extractSitemapEntries(spaSitemapPath, exit), ...extractSitemapEntries(docsSitemapPath, exit)];
 
   for (const { url } of entries) {
     if (!url.startsWith(SITEMAP_URL_PREFIX)) {
