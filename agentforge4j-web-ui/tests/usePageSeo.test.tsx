@@ -47,18 +47,18 @@ describe('usePageSeo', () => {
   test('sets a distinct title/canonical for a static route', () => {
     renderAt('/architecture');
     expect(document.title).toBe('Architecture — AgentForge4j');
-    expect(canonicalHref()).toBe('https://agentforge4j.org/architecture');
+    expect(canonicalHref()).toBe('https://agentforge4j.org/architecture/');
   });
 
   test('/contributing canonicalizes to /community, not itself', () => {
     renderAt('/contributing');
-    expect(canonicalHref()).toBe('https://agentforge4j.org/community');
+    expect(canonicalHref()).toBe('https://agentforge4j.org/community/');
   });
 
   test('a real catalogue workflow id gets its own title and canonical', () => {
     renderAt('/catalogue/workflow-execution-estimator');
     expect(document.title).toBe('Workflow Execution Estimator — AgentForge4j Catalogue');
-    expect(canonicalHref()).toBe('https://agentforge4j.org/catalogue/workflow-execution-estimator');
+    expect(canonicalHref()).toBe('https://agentforge4j.org/catalogue/workflow-execution-estimator/');
   });
 
   test('an unmatched path falls back to the home title/canonical rather than a stale value', () => {
@@ -76,19 +76,19 @@ describe('usePageSeo', () => {
   test('a trailing slash on a real static route still resolves to that route, not Home', () => {
     renderAt('/community/');
     expect(document.title).toBe('Community & Contributing — AgentForge4j');
-    expect(canonicalHref()).toBe('https://agentforge4j.org/community');
+    expect(canonicalHref()).toBe('https://agentforge4j.org/community/');
   });
 
   test('a differently-cased real static route still resolves to that route, not Home', () => {
     renderAt('/Community');
     expect(document.title).toBe('Community & Contributing — AgentForge4j');
-    expect(canonicalHref()).toBe('https://agentforge4j.org/community');
+    expect(canonicalHref()).toBe('https://agentforge4j.org/community/');
   });
 
   test('a trailing slash on a real catalogue detail route still resolves to that workflow, not Home', () => {
     renderAt('/catalogue/workflow-execution-estimator/');
     expect(document.title).toBe('Workflow Execution Estimator — AgentForge4j Catalogue');
-    expect(canonicalHref()).toBe('https://agentforge4j.org/catalogue/workflow-execution-estimator');
+    expect(canonicalHref()).toBe('https://agentforge4j.org/catalogue/workflow-execution-estimator/');
   });
 
   test('an unknown route with a trailing slash still falls back to Home, not a stale value', () => {
@@ -120,8 +120,8 @@ describe('usePageSeo', () => {
     });
 
     const realId = 'agent-creator';
-    const buildTimeCanonical = sitemapUrls.find((url) => url.endsWith(`/catalogue/${realId}`));
-    expect(buildTimeCanonical).toBe(`https://agentforge4j.org/catalogue/${realId}`);
+    const buildTimeCanonical = sitemapUrls.find((url) => url.endsWith(`/catalogue/${realId}/`));
+    expect(buildTimeCanonical).toBe(`https://agentforge4j.org/catalogue/${realId}/`);
 
     renderAt(`/catalogue/${realId}`);
     expect(canonicalHref()).toBe(buildTimeCanonical);
