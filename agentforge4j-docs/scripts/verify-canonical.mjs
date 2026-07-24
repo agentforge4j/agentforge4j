@@ -20,6 +20,7 @@
 // Wired to run right after `docusaurus build` in package.json's build script, alongside
 // verify-noindex.mjs.
 
+import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -29,6 +30,35 @@ const MODULE_ROOT = join(here, '..');
 
 const SITE_ORIGIN = 'https://agentforge4j.org';
 const DOCS_BASE_PATH = '/docs/';
+
+/**
+ * `docusaurus.config.ts`'s `experimental_vcs: 'git-ad-hoc'` resolves each page's lastmod from a
+ * real per-file `git log` — a shallow clone still has *a* commit to read, so it does not error, it
+ * just silently reports a plausible-looking but wrong date (typically the shallow fetch's own single
+ * commit, for every file). `verify-canonical`'s own YAGNI-free job is to catch exactly this class of
+ * silent regression, so it must fail closed on the precondition itself rather than trust whatever
+ * date comes back.
+ */
+function isShallowRepository(repoRoot) {
+  let output;
+  try {
+    output = execFileSync('git', ['rev-parse', '--is-shallow-repository'], { cwd: repoRoot, encoding: 'utf8' }).trim();
+  } catch (err) {
+    throw new Error(`verify-canonical: could not determine whether ${repoRoot} is a shallow git repository — ${err.message}`);
+  }
+  return output === 'true';
+}
+
+/** Rejects any value that is not a real calendar date — not just YYYY-MM-DD shaped (so
+ * `2026-02-31`/`2026-13-01`/`2026-00-10` fail, and leap years are handled correctly: `2024-02-29` is
+ * valid, `2026-02-29` is not) — via the same UTC round-trip already used on the SPA side. */
+function isRealCalendarDate(value) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    return false;
+  }
+  const date = new Date(`${value}T00:00:00.000Z`);
+  return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value;
+}
 
 // Docusaurus's head-tag renderer does not necessarily quote attribute values with no whitespace and
 // stamps a `data-rh` marker on every tag it dedupes (see verify-noindex.mjs's own note) — matched
@@ -56,11 +86,12 @@ function sitemapUrlToPagePath(buildDir, url) {
 }
 
 /**
- * @param {{buildDir?: string, archiveVersion?: string|null}} [options]
+ * @param {{buildDir?: string, archiveVersion?: string|null, repoRoot?: string}} [options]
  */
 export function verifyCanonicalTrailingSlash({
   buildDir = join(MODULE_ROOT, 'build'),
   archiveVersion = process.env.AF4J_ARCHIVE_VERSION || null,
+  repoRoot = MODULE_ROOT,
 } = {}) {
   if (!existsSync(buildDir)) {
     throw new Error(`verify-canonical: ${buildDir} does not exist — run "docusaurus build" first`);
@@ -68,6 +99,13 @@ export function verifyCanonicalTrailingSlash({
   if (archiveVersion) {
     console.log('[verify-canonical] archive-mode build — trailing-slash/lastmod checks not applicable, skipped');
     return;
+  }
+  if (isShallowRepository(repoRoot)) {
+    throw new Error(
+      `verify-canonical: ${repoRoot} is a shallow git clone (git rev-parse --is-shallow-repository) — ` +
+        "the sitemap plugin's git-ad-hoc lastmod strategy reads real per-file git history and silently " +
+        'produces wrong or missing dates from a shallow clone; fetch full history (e.g. `fetch-depth: 0`) before building',
+    );
   }
 
   const sitemapPath = join(buildDir, 'sitemap.xml');
@@ -101,10 +139,10 @@ export function verifyCanonicalTrailingSlash({
     if (!url.endsWith('/')) {
       throw new Error(`verify-canonical: sitemap URL "${url}" does not end in '/' (trailingSlash: true regression?)`);
     }
-    if (!lastmod || !/^\d{4}-\d{2}-\d{2}$/.test(lastmod)) {
+    if (!lastmod || !isRealCalendarDate(lastmod)) {
       throw new Error(
-        `verify-canonical: sitemap URL "${url}" has no valid <lastmod> (YYYY-MM-DD) — ` +
-          "the sitemap plugin's lastmod: 'date' option regressed, or this page has no git history",
+        `verify-canonical: sitemap URL "${url}" has no valid <lastmod> (a real YYYY-MM-DD calendar date) — ` +
+          "the sitemap plugin's lastmod: 'date' option regressed, this page has no git history, or the date is not a real calendar day",
       );
     }
 
