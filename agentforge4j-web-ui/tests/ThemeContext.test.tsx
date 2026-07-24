@@ -170,7 +170,7 @@ describe('ThemeProvider: system-preference reactivity', () => {
     expect(screen.getByTestId('effective')).toHaveTextContent('dark');
   });
 
-  // C176-01: the media-query listener is deliberately detached while an explicit choice is
+  // The media-query listener is deliberately detached while an explicit choice is
   // active, so an OS change during that window is invisible to `systemPrefersDark` until
   // something resyncs it. Re-entering 'system' must resync from the OS's CURRENT value
   // immediately — not keep showing the stale value cached from before the explicit choice,

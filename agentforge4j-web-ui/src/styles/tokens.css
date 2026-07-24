@@ -10,12 +10,12 @@
  * inline` block) — never a raw hex/rgb value or an unscoped Tailwind palette class (gray-500,
  * etc.) — so switching `data-theme` re-themes the whole site with no per-component changes.
  *
- * The dark values are an explicit, hand-tuned palette (see contrast reasoning in the design
- * report), not a mechanical inversion of the light ones — several relationships intentionally
- * flip direction (e.g. a light-mode "hover = darker" button becomes "hover = lighter" in dark
- * mode, which reads better against a dark page) and the brand blue is deliberately lightened for
- * dark backgrounds, reusing the same hue progression as the existing dark-background logo variant
- * (agentforge4j-docs/static/img/logo-horizontal-dark.svg) for visual consistency.
+ * The dark values are an explicit, hand-tuned palette, not a mechanical inversion of the light
+ * ones — several relationships intentionally flip direction (e.g. a light-mode "hover = darker"
+ * button becomes "hover = lighter" in dark mode, which reads better against a dark page) and the
+ * brand blue is deliberately lightened for dark backgrounds, reusing the same hue progression as
+ * the existing dark-background logo variant (agentforge4j-docs/static/img/logo-horizontal-dark.svg)
+ * for visual consistency.
  */
 :root {
   --color-bg:          #ffffff;

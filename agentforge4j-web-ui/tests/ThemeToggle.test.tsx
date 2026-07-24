@@ -208,7 +208,7 @@ describe('ThemeToggle: dismissal', () => {
     }
   });
 
-  // C176-02: roving tabindex means only the checked item is ever Tab-reachable, so a Tab or
+  // Roving tabindex means only the checked item is ever Tab-reachable, so a Tab or
   // Shift+Tab press while a menu item is focused always moves focus outside the menu (there is
   // no second in-menu stop) — the menu must close behind it rather than remain open as a stale
   // overlay while the page's normal tab order continues elsewhere.
