@@ -166,7 +166,10 @@ function findUnreadableTextElements() {
 }
 
 test.describe('theme: representative pages render correctly in both themes', () => {
-  const ROUTES = ['/', '/use', '/releases', '/architecture', '/catalogue/agent-creator'];
+  // '/builder' is included deliberately: the embedded builder package ships its own fixed
+  // internal palette, and only BuilderPage's --afb-* token mapping makes it theme-reactive —
+  // exactly the surface that regresses silently if that mapping is dropped or renamed.
+  const ROUTES = ['/', '/use', '/releases', '/architecture', '/catalogue/agent-creator', '/builder'];
 
   for (const route of ROUTES) {
     test(`${route} has no unreadable (identical fg/bg) text and no console errors in dark mode`, async ({ page }) => {
@@ -235,6 +238,25 @@ test.describe('theme: representative pages render correctly in both themes', () 
     const bg = await frame.evaluate((el) => getComputedStyle(el).backgroundColor);
     // rgb(248, 249, 251) == #f8f9fb, the documented deliberate light frame colour.
     expect(bg).toBe('rgb(248, 249, 251)');
+  });
+
+  test('the builder canvas is painted with the site theme tokens, not the package\'s fixed internal palette', async ({ page }) => {
+    // The embedded builder consumes the --afb-* token contract directly (its .wf-canvas surface
+    // paints --afb-canvas-bg). BuilderPage maps those tokens onto this site's semantic tokens;
+    // if that mapping is dropped, the canvas silently reverts to the package default
+    // (#0c1322, a fixed dark navy) in BOTH site themes — this pins the mapped value per theme.
+    await page.emulateMedia({ colorScheme: 'dark' });
+    await page.goto('/builder');
+    const canvas = page.locator('.wf-canvas').first();
+    await expect(canvas).toBeVisible();
+    // rgb(13, 17, 23) == #0d1117, the site's dark --color-bg token.
+    await expect(canvas).toHaveCSS('background-color', 'rgb(13, 17, 23)');
+
+    await page.emulateMedia({ colorScheme: 'light' });
+    // rgb(255, 255, 255) == #ffffff, the site's light --color-bg token — and NOT the package
+    // default, proving the repaint is live (same document, no reload; toHaveCSS retries while
+    // the media-change listener propagates through React to data-theme).
+    await expect(canvas).toHaveCSS('background-color', 'rgb(255, 255, 255)');
   });
 
   test('the header logo switches to the dark-background variant in dark mode', async ({ page }) => {

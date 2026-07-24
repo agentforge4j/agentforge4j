@@ -31,10 +31,20 @@
   --color-success-ink: #14532d;
   --color-warning:     #d97706;
   --color-danger:      #dc2626;
-  /* Defined for architectural completeness (every semantic surface/elevation category should
-   * have a token, per the theming design) even though no component currently applies a shadow —
-   * this codebase's existing surfaces (header, footer, code blocks, cards) are flat/bordered, not
-   * shadowed. A future shadowed surface should reach for these rather than a raw box-shadow. */
+  /* Deliberately UNTHEMED (no dark-mode override below): the Architecture page's externally
+   * rendered PlantUML diagrams have a baked-in white background, so their frame keeps a light
+   * "paper" look in both themes — see the .diagram-frame comment in global.css for the full
+   * rationale. Tokenised (rather than raw hex at the use site) so the exception is declared
+   * here, in the palette, not slipped into a component. Values match light-mode
+   * --color-bg-elevated / --color-border on purpose; they must NOT follow them into dark mode,
+   * which is why they are separate names instead of references. */
+  --color-diagram-paper:        #f8f9fb;
+  --color-diagram-paper-border: #e5e7eb;
+  /* Elevation tokens with theme-tuned depths (dark mode needs stronger shadows to register
+   * against a dark page). Current consumers: the ThemeToggle menu popup (shadow-md via the
+   * @theme inline mapping in global.css) and the builder's node cards (BuilderPage maps
+   * --afb-node-shadow onto --shadow-md). Any future shadowed surface should reach for these
+   * rather than a raw box-shadow. */
   --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.06);
   --shadow-md: 0 4px 10px 0 rgb(0 0 0 / 0.10);
   --max-content-width: 1200px;

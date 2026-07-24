@@ -42,9 +42,15 @@ export default function ThemeToggle() {
     }
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
+        // Listener lives on the menu element, not document, so it only ever fires while focus
+        // is inside the open menu (guaranteed: opening focuses an item, and any focus departure
+        // closes the menu via focusout below). stopPropagation gives Escape innermost-popup
+        // semantics: with the mobile nav panel open BEHIND this menu, one press dismisses only
+        // this menu and a second press reaches the header's document-level listener for the nav
+        // — instead of a single press tearing down both at once.
+        event.stopPropagation();
         setOpen(false);
         buttonRef.current?.focus();
-        return;
       }
     };
     const onPointerDown = (event: MouseEvent) => {
@@ -52,7 +58,10 @@ export default function ThemeToggle() {
       if (buttonRef.current?.contains(target)) {
         return;
       }
-      if (!itemRefs.current.some((el) => el?.contains(target))) {
+      // The whole popup surface counts as "inside" — including its own border/padding, which no
+      // item covers. Only a genuinely outside press dismisses (the padding press itself is kept
+      // from stealing focus by the menu's onMouseDown preventDefault, so focusout stays quiet).
+      if (!menuRef.current?.contains(target)) {
         setOpen(false);
       }
     };
@@ -73,9 +82,9 @@ export default function ThemeToggle() {
       }
       setOpen(false);
     };
-    document.addEventListener('keydown', onKeyDown);
     document.addEventListener('mousedown', onPointerDown);
     const menuEl = menuRef.current;
+    menuEl?.addEventListener('keydown', onKeyDown);
     menuEl?.addEventListener('focusout', onFocusOut);
     // Focus the currently-selected item when the menu opens, matching the roving-focus
     // expectation of a `menuitemradio` group (focus starts on the checked item, not always the
@@ -83,11 +92,22 @@ export default function ThemeToggle() {
     const currentIndex = THEME_OPTIONS.findIndex((option) => option.mode === mode);
     itemRefs.current[currentIndex >= 0 ? currentIndex : 0]?.focus();
     return () => {
-      document.removeEventListener('keydown', onKeyDown);
       document.removeEventListener('mousedown', onPointerDown);
+      menuEl?.removeEventListener('keydown', onKeyDown);
       menuEl?.removeEventListener('focusout', onFocusOut);
     };
   }, [open, mode]);
+
+  // APG menu-button pattern: ArrowDown/ArrowUp on the closed trigger open the menu (activation
+  // via Enter/Space already comes free with a native <button>). Focus then lands on the CHECKED
+  // item via the open-effect above — the menuitemradio variant of the pattern, where initial
+  // focus may go to the checked item rather than strictly first/last.
+  const onTriggerKeyDown = (event: React.KeyboardEvent<HTMLButtonElement>) => {
+    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+      event.preventDefault();
+      setOpen(true);
+    }
+  };
 
   const selectAndClose = (next: ThemeMode) => {
     setMode(next);
@@ -119,7 +139,21 @@ export default function ThemeToggle() {
         aria-haspopup="menu"
         aria-expanded={open}
         aria-label={`Theme: ${current.label}. Activate to change.`}
-        onClick={() => setOpen((value) => !value)}
+        // preventDefault keeps a press on the trigger from stealing focus off the focused menu
+        // item BEFORE the click event lands — without it, that focus departure fires focusout
+        // (menu closes mid-press) and the click's toggle then REOPENS it, so a trigger click
+        // could never close the open menu. onClick refocuses the trigger explicitly, restoring
+        // the focus a mouse press would otherwise have set on both the open and close paths.
+        // ORDER MATTERS in onClick: the toggle must be queued before focus() — focus() fires the
+        // menu's focusout synchronously, and its own close-update must land AFTER the toggle in
+        // the same batch (toggle→closed, focusout→closed) rather than before it (focusout→closed,
+        // toggle→REOPENED).
+        onMouseDown={(event) => event.preventDefault()}
+        onClick={() => {
+          setOpen((value) => !value);
+          buttonRef.current?.focus();
+        }}
+        onKeyDown={onTriggerKeyDown}
         className="flex items-center justify-center rounded-md p-2 text-fg hover:bg-bg-elevated"
       >
         <CurrentIcon size={20} aria-hidden="true" />
@@ -129,6 +163,10 @@ export default function ThemeToggle() {
           ref={menuRef}
           role="menu"
           aria-label="Theme"
+          // A press on the popup's own border/padding (not on an item) must not steal focus from
+          // the focused item — focus leaving would fire focusout and dismiss the menu, turning a
+          // slightly-off click INSIDE the open popup into an accidental close.
+          onMouseDown={(event) => event.preventDefault()}
           className="absolute right-0 z-20 mt-2 w-36 rounded-md border border-border bg-bg-elevated py-1 shadow-md"
         >
           {THEME_OPTIONS.map((option, index) => {

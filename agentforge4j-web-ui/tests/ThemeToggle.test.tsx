@@ -108,6 +108,27 @@ describe('ThemeToggle: keyboard operation', () => {
     expect(trigger).toHaveFocus();
   });
 
+  // APG menu-button pattern: the arrow keys open the menu from the closed trigger, not only
+  // Enter/Space. Initial focus goes to the CHECKED item (the menuitemradio variant of the
+  // pattern), same as every other open path in this component.
+  test('ArrowDown on the closed trigger opens the menu with focus on the checked item', async () => {
+    const user = userEvent.setup();
+    renderToggle();
+    await user.tab();
+    expect(screen.getByRole('button', { name: /Theme/ })).toHaveFocus();
+    await user.keyboard('{ArrowDown}');
+    expect(screen.getByRole('menu', { name: 'Theme' })).toBeInTheDocument();
+    expect(screen.getByRole('menuitemradio', { name: 'System' })).toHaveFocus();
+  });
+
+  test('ArrowUp on the closed trigger also opens the menu', async () => {
+    const user = userEvent.setup();
+    renderToggle();
+    await user.tab();
+    await user.keyboard('{ArrowUp}');
+    expect(screen.getByRole('menu', { name: 'Theme' })).toBeInTheDocument();
+  });
+
   test('selecting an option with the keyboard applies it, persists it, and closes the menu', async () => {
     const user = userEvent.setup();
     renderToggle();
@@ -135,6 +156,56 @@ describe('ThemeToggle: dismissal', () => {
     expect(screen.getByRole('menu')).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Outside' }));
     expect(screen.queryByRole('menu')).not.toBeInTheDocument();
+  });
+
+  test('clicking the trigger while the menu is open closes it (no focusout-then-toggle reopen)', async () => {
+    const user = userEvent.setup();
+    renderToggle();
+    const trigger = screen.getByRole('button', { name: /Theme/ });
+    await user.click(trigger);
+    expect(screen.getByRole('menu', { name: 'Theme' })).toBeInTheDocument();
+    // Without the trigger's mousedown preventDefault, this press first moves focus off the menu
+    // item (focusout closes the menu) and the click's toggle then reopens it — the menu would
+    // still be present here.
+    await user.click(trigger);
+    expect(screen.queryByRole('menu', { name: 'Theme' })).not.toBeInTheDocument();
+    expect(trigger).toHaveFocus();
+  });
+
+  test('a press on the menu popup itself (its border/padding, not an item) does not dismiss it', async () => {
+    const user = userEvent.setup();
+    renderToggle();
+    await user.click(screen.getByRole('button', { name: /Theme/ }));
+    const menu = screen.getByRole('menu', { name: 'Theme' });
+    // Target the menu element itself — the surface between/around items. This must count as an
+    // inside press (and must not steal focus from the focused item, which would close the menu
+    // via focusout), not as an outside-dismissal.
+    await user.click(menu);
+    expect(screen.getByRole('menu', { name: 'Theme' })).toBeInTheDocument();
+    expect(screen.getByRole('menuitemradio', { name: 'System' })).toHaveFocus();
+  });
+
+  test('Escape dismisses only this menu: a document-level Escape listener (the mobile nav panel) is not also torn down by the same press', async () => {
+    const user = userEvent.setup();
+    const outerEscapeListener = vi.fn();
+    document.addEventListener('keydown', outerEscapeListener);
+    try {
+      renderToggle();
+      const trigger = screen.getByRole('button', { name: /Theme/ });
+      await user.click(trigger);
+      expect(screen.getByRole('menu', { name: 'Theme' })).toBeInTheDocument();
+      await user.keyboard('{Escape}');
+      expect(screen.queryByRole('menu', { name: 'Theme' })).not.toBeInTheDocument();
+      expect(trigger).toHaveFocus();
+      // Innermost-popup semantics: the press that closed this menu never reached document level.
+      expect(outerEscapeListener).not.toHaveBeenCalled();
+      // Negative control: with the menu closed, the next Escape DOES reach the document level —
+      // proving the silence above came from stopPropagation, not a broken test setup.
+      await user.keyboard('{Escape}');
+      expect(outerEscapeListener).toHaveBeenCalledTimes(1);
+    } finally {
+      document.removeEventListener('keydown', outerEscapeListener);
+    }
   });
 
   // C176-02: roving tabindex means only the checked item is ever Tab-reachable, so a Tab or

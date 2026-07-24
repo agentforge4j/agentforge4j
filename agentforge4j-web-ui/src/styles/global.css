@@ -133,10 +133,11 @@ body { background-color: var(--color-bg); color: var(--color-fg); }
  * out of this theming task's scope). Re-theming their FRAME to the dark palette while the
  * diagram's own content stays hard-coded white would leave an unbordered white rectangle floating
  * on a dark page — worse than today. Deliberately kept as a light "paper" frame in BOTH themes
- * instead: an explicit, documented, single-purpose exception, not a raw color slipped into a
- * component. Revisit once the diagrams have a dark-compatible render.
+ * instead, via the explicitly-unthemed --color-diagram-paper* tokens (declared and documented in
+ * tokens.css) — the exception lives in the palette, not as raw colors slipped into a component.
+ * Revisit once the diagrams have a dark-compatible render.
  */
 .diagram-frame {
-  background-color: #f8f9fb;
-  border-color: #e5e7eb;
+  background-color: var(--color-diagram-paper);
+  border-color: var(--color-diagram-paper-border);
 }

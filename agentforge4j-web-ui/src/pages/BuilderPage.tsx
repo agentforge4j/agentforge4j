@@ -15,14 +15,21 @@ const CAPABILITIES: BuilderCapabilities = {
 
 /**
  * Maps this site's semantic theme tokens (src/styles/tokens.css) onto the builder package's
- * documented consumer-facing CSS variable contract (see @agentforge4j/workflow-builder-react's
- * README "Design tokens" section — BuilderTheme.variables is applied as inline custom properties
- * on the builder's root element, `.workflow-builder`). Without this, the embedded canvas/card
- * surfaces fall back to the package's own fixed internal palette (a dark navy canvas with light
- * node cards) regardless of this site's light/dark/system selection — never literally unreadable,
- * but not theme-reactive either. Values here are `var(...)` REFERENCES, not resolved colors, so
- * the mapping tracks a theme change live: `data-theme` flips the referenced token's value and the
- * builder repaints along with the rest of the page, with no extra re-render wiring needed here.
+ * documented consumer-facing token contract — the `--afb-*` custom properties listed in
+ * @agentforge4j/workflow-builder-react's README "Design tokens" section. Those are the variables
+ * the builder's canvas, node cards, palette, inspector, toolbar, and header selectors consume
+ * directly; BuilderTheme.variables is applied as inline custom properties on the builder's root
+ * element (`.workflow-builder`), so an inline `--afb-*` value overrides the package's stylesheet
+ * default for the whole subtree. Without these, the builder keeps its own fixed internal palette
+ * (dark navy canvas/chrome with light node cards) regardless of this site's light/dark/system
+ * selection. Values here are `var(...)` REFERENCES, not resolved colors, so the mapping tracks a
+ * theme change live: `data-theme` flips the referenced token's value and the builder repaints
+ * along with the rest of the page, with no extra re-render wiring needed here.
+ *
+ * The `--color-*` entries below feed a second, older variable family (`--builder-color-*` in the
+ * package's tokens.css) that only the `.wf-*` control styles (buttons, panels, narrow-viewport
+ * notice) read — kept alongside the `--afb-*` mappings so those controls pick precise values
+ * (e.g. accent-fg from `--color-brand-ink`) instead of their generic fallbacks.
  *
  * `--color-border`, `--color-danger`, `--color-success`, and `--color-warning` are deliberately
  * NOT listed below even though the builder's contract accepts them: this site already declares a
@@ -32,14 +39,33 @@ const CAPABILITIES: BuilderCapabilities = {
  * "the inherited value", which would silently DISABLE the free inheritance and fall the builder
  * back to its own internal default instead. Only list a name here when this site's source token
  * has a genuinely different name (avoiding the cycle) or needs a different value than its
- * same-named site token would supply.
+ * same-named site token would supply. The `--afb-*` names cannot collide this way — this site
+ * declares no `--afb-*` tokens of its own.
  *
- * Canvas-only cosmetics the contract has no name for (dot-grid color, node drop shadow, per-kind
- * accent colors) are intentionally left at the package's own defaults, same treatment as the
- * Architecture page's externally-rendered diagrams in global.css.
+ * Cosmetics with no site-token counterpart (canvas glow, selection ring, per-kind accent colors,
+ * the human-gate amber) are intentionally left at the package's own defaults: they are the
+ * builder's identity colors and read correctly against both mapped canvas values.
  */
 const BUILDER_THEME: BuilderTheme = {
   variables: {
+    // Documented --afb-* contract (README "Design tokens"): canvas, node, and chrome surfaces.
+    '--afb-canvas-bg': 'var(--color-bg)',
+    '--afb-canvas-dot': 'var(--color-border)',
+    '--afb-node-surface': 'var(--color-bg-elevated)',
+    '--afb-node-surface-2': 'var(--color-bg)',
+    '--afb-node-border': 'var(--color-border)',
+    '--afb-node-text': 'var(--color-fg)',
+    '--afb-node-muted': 'var(--color-fg-muted)',
+    '--afb-node-shadow': 'var(--shadow-md)',
+    '--afb-chrome-bg': 'var(--color-bg-elevated)',
+    '--afb-chrome-border': 'var(--color-border)',
+    '--afb-chrome-text': 'var(--color-fg)',
+    '--afb-chrome-muted': 'var(--color-fg-muted)',
+    '--afb-accent': 'var(--color-brand)',
+    '--afb-ok': 'var(--color-success)',
+    '--afb-warn': 'var(--color-warning)',
+    '--afb-err': 'var(--color-danger)',
+    // Legacy .wf-* control aliases (see comment above).
     '--color-surface': 'var(--color-bg-elevated)',
     '--color-text': 'var(--color-fg)',
     '--color-text-muted': 'var(--color-fg-muted)',
