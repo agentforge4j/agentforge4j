@@ -426,9 +426,9 @@ test('every currently shipped real catalogue workflow id satisfies the slug cont
   }
 });
 
-test('every route declared in the real committed seo-routes.json has a sourceFiles entry that resolves to a real file, and every globalSourceFiles/catalogueSourceFiles/aggregateCatalogueSourceFiles entry does too (a silent typo/rename here would quietly drop that route\'s <lastmod> with no build failure)', () => {
+test('every route declared in the real committed seo-routes.json has a sourceFiles entry that resolves to a real file, and every artifactGenerationSourceFiles/globalSourceFiles/catalogueSourceFiles/aggregateCatalogueSourceFiles entry does too (a silent typo/rename here would quietly drop that route\'s <lastmod> with no build failure)', () => {
   const repoRoot = join(REAL_MODULE_ROOT, '..');
-  const { globalSourceFiles, catalogueSourceFiles, aggregateCatalogueSourceFiles, routes } = JSON.parse(
+  const { artifactGenerationSourceFiles, globalSourceFiles, catalogueSourceFiles, aggregateCatalogueSourceFiles, routes } = JSON.parse(
     readFileSync(join(REAL_MODULE_ROOT, 'src/config/seo-routes.json'), 'utf8'),
   );
   assert.ok(routes.length > 0, 'expected at least one real route to check');
@@ -446,6 +446,7 @@ test('every route declared in the real committed seo-routes.json has a sourceFil
     }
   }
   const namedLists = [
+    ['artifactGenerationSourceFiles', artifactGenerationSourceFiles],
     ['globalSourceFiles', globalSourceFiles],
     ['catalogueSourceFiles', catalogueSourceFiles],
     ['aggregateCatalogueSourceFiles', aggregateCatalogueSourceFiles],
@@ -1210,6 +1211,204 @@ test('a globalSourceFiles change updates every SPA sitemap route — every stati
   }
 });
 
+// --- artifactGenerationSourceFiles: the build/prerender pipeline itself (index.html, main.tsx,
+// build-seo.mjs, prerender-routes.mjs) is a global dependency of every SPA sitemap route, exactly
+// like globalSourceFiles — proven with real git commits to stand-in files at each of the real
+// pipeline's own paths, not merely by asserting a filename string appears somewhere in JSON. -------
+
+/** A disposable git repo whose committed seo-routes.json declares one entry per
+ * `artifactGenerationSourceFiles` scope AND one plain `globalSourceFiles` entry (appRoutes.ts) —
+ * shared setup for the per-pipeline-file lastmod tests below, each of which advances exactly one
+ * of these files and proves every route (static and catalogue) picks up the change. */
+function setupArtifactGenerationRepo() {
+  const repoRoot = initTempGitRepo();
+  const indexHtmlRelPath = 'agentforge4j-web-ui/index.html';
+  const mainTsxRelPath = 'agentforge4j-web-ui/src/main.tsx';
+  const buildSeoRelPath = 'agentforge4j-web-ui/scripts/build-seo.mjs';
+  const prerenderRelPath = 'agentforge4j-web-ui/scripts/prerender-routes.mjs';
+  const appRoutesRelPath = 'agentforge4j-web-ui/src/config/appRoutes.ts';
+  const routesContent = {
+    siteUrl: 'https://agentforge4j.org',
+    artifactGenerationSourceFiles: [indexHtmlRelPath, mainTsxRelPath, buildSeoRelPath, prerenderRelPath],
+    globalSourceFiles: [appRoutesRelPath],
+    routes: [
+      { path: '/', title: 'Home', description: 'Home.' },
+      { path: '/architecture', title: 'Architecture', description: 'Architecture.' },
+    ],
+  };
+  const files = {
+    [SEO_ROUTES_REL_PATH]: JSON.stringify(routesContent, null, 2),
+    [indexHtmlRelPath]: '<!doctype html>v1\n',
+    [mainTsxRelPath]: '// main v1\n',
+    [buildSeoRelPath]: '// build-seo v1\n',
+    [prerenderRelPath]: '// prerender v1\n',
+    [appRoutesRelPath]: '// routes v1\n',
+    [SHIPPED_WORKFLOWS_INDEX_REL_PATH]: 'wf-a\n',
+    [shippedWorkflowRelPath('wf-a')]: JSON.stringify({ id: 'wf-a', name: 'wf-a', description: 'wf-a' }),
+  };
+  writeFilesAndCommit(repoRoot, files, '2020-01-01T00:00:00');
+  return {
+    repoRoot,
+    seoRoutesPath: join(repoRoot, SEO_ROUTES_REL_PATH),
+    indexHtmlRelPath,
+    mainTsxRelPath,
+    buildSeoRelPath,
+    prerenderRelPath,
+    appRoutesRelPath,
+  };
+}
+
+/** Asserts that advancing exactly one committed file (`relPathToChange`) inside a repo set up by
+ * `setupArtifactGenerationRepo` bumps every SPA sitemap route's — static AND catalogue — <lastmod>
+ * to the new commit's date. This is the one assertion every pipeline-file test below shares. */
+function assertAdvancesEveryRoute(setup, relPathToChange, label) {
+  const { distDir } = distFixture();
+  const catalogueDataPath = join(dirname(distDir), 'catalogue-data.json');
+  writeFileSync(catalogueDataPath, JSON.stringify({ workflows: [{ id: 'wf-a', name: 'wf-a', description: 'wf-a' }] }), 'utf8');
+  const allUrls = [
+    'https://agentforge4j.org/',
+    'https://agentforge4j.org/architecture/',
+    'https://agentforge4j.org/catalogue/wf-a/',
+  ];
+
+  buildSeo({ distDir, seoRoutesPath: setup.seoRoutesPath, catalogueDataPath, repoRoot: setup.repoRoot });
+  const before = readFileSync(join(distDir, 'sitemap.xml'), 'utf8');
+  for (const url of allUrls) {
+    assert.equal(lastmodFor(before, url), '2020-01-01', `${label}: expected the initial commit date before the change`);
+  }
+
+  writeFilesAndCommit(setup.repoRoot, { [relPathToChange]: `// ${label} v2\n` }, '2020-06-01T00:00:00');
+  buildSeo({ distDir, seoRoutesPath: setup.seoRoutesPath, catalogueDataPath, repoRoot: setup.repoRoot });
+  const after = readFileSync(join(distDir, 'sitemap.xml'), 'utf8');
+  for (const url of allUrls) {
+    assert.equal(lastmodFor(after, url), '2020-06-01', `${label}: ${url} must reflect the change to ${relPathToChange}`);
+  }
+}
+
+test('changing index.html (the shared shell template every route\'s final HTML derives from) advances every SPA sitemap route', () => {
+  const setup = setupArtifactGenerationRepo();
+  assertAdvancesEveryRoute(setup, setup.indexHtmlRelPath, 'index.html');
+});
+
+test('changing main.tsx (the render entrypoint executed inside the headless browser that produces the prerendered snapshot) advances every SPA sitemap route — the explicitly chosen policy: material, not verification-only', () => {
+  const setup = setupArtifactGenerationRepo();
+  assertAdvancesEveryRoute(setup, setup.mainTsxRelPath, 'main.tsx');
+});
+
+test('changing build-seo.mjs (the shell/sitemap generation implementation itself) advances every SPA sitemap route — classified as material: it decides what every published page\'s HTML actually contains', () => {
+  const setup = setupArtifactGenerationRepo();
+  assertAdvancesEveryRoute(setup, setup.buildSeoRelPath, 'build-seo.mjs');
+});
+
+test('changing prerender-routes.mjs (the prerender-capture implementation itself) advances every SPA sitemap route — classified as material: it decides what markup gets captured for every route', () => {
+  const setup = setupArtifactGenerationRepo();
+  assertAdvancesEveryRoute(setup, setup.prerenderRelPath, 'prerender-routes.mjs');
+});
+
+test('changing appRoutes.ts (the path -> component REGISTRY App.tsx renders from) advances every SPA sitemap route — the real semantic dependency, not merely a filename appearing in JSON: appRoutes.ts is what decides which component actually renders at a given path, independent of App.tsx\'s own text', () => {
+  const setup = setupArtifactGenerationRepo();
+  assertAdvancesEveryRoute(setup, setup.appRoutesRelPath, 'appRoutes.ts');
+});
+
+test('a route-registry change cannot leave a changed rendered route with a stale lastmod: swapping which page component a path maps to in appRoutes.ts is exactly the scenario globalSourceFiles tracking this file protects against', () => {
+  // Simulates the real defect this fix closes: before appRoutes.ts was tracked, editing which
+  // Component a path renders (e.g. pointing /architecture at a completely different page) changed
+  // that route's actual published HTML while every one of its declared sourceFiles (the ORIGINAL
+  // page component + copy file) stayed byte-identical — so its <lastmod> would never have moved.
+  const repoRoot = initTempGitRepo();
+  const appRoutesRelPath = 'agentforge4j-web-ui/src/config/appRoutes.ts';
+  const architecturePageRelPath = 'agentforge4j-web-ui/src/pages/ArchitecturePage.tsx';
+  const routesContent = {
+    siteUrl: 'https://agentforge4j.org',
+    globalSourceFiles: [appRoutesRelPath],
+    routes: [{ path: '/architecture', title: 'Architecture', description: 'Architecture.', sourceFiles: [architecturePageRelPath] }],
+  };
+  const files = {
+    [SEO_ROUTES_REL_PATH]: JSON.stringify(routesContent, null, 2),
+    [appRoutesRelPath]: "{ path: '/architecture', Component: ArchitecturePage }\n",
+    [architecturePageRelPath]: '// ArchitecturePage v1 — untouched throughout this test\n',
+  };
+  writeFilesAndCommit(repoRoot, files, '2020-01-01T00:00:00');
+  const seoRoutesPath = join(repoRoot, SEO_ROUTES_REL_PATH);
+  const { distDir, catalogueDataPath } = distFixture();
+
+  buildSeo({ distDir, seoRoutesPath, catalogueDataPath, repoRoot });
+  const before = readFileSync(join(distDir, 'sitemap.xml'), 'utf8');
+  assert.equal(lastmodFor(before, 'https://agentforge4j.org/architecture/'), '2020-01-01');
+
+  // The registry mapping changes (a different component would now render here) — ArchitecturePage.tsx
+  // itself, and every one of /architecture's own declared sourceFiles, remain completely untouched.
+  writeFilesAndCommit(
+    repoRoot,
+    { [appRoutesRelPath]: "{ path: '/architecture', Component: SomeOtherPage }\n" },
+    '2020-06-01T00:00:00',
+  );
+  buildSeo({ distDir, seoRoutesPath, catalogueDataPath, repoRoot });
+  const after = readFileSync(join(distDir, 'sitemap.xml'), 'utf8');
+  assert.equal(
+    lastmodFor(after, 'https://agentforge4j.org/architecture/'),
+    '2020-06-01',
+    'the route-registry change alone must advance /architecture — its own sourceFiles never changed',
+  );
+});
+
+test('a totally unrelated, undeclared file has zero effect on any route\'s <lastmod> — this mechanism only ever reads explicitly declared dependencies, never the whole repository', () => {
+  const repoRoot = initTempGitRepo();
+  const routesContent = {
+    siteUrl: 'https://agentforge4j.org',
+    routes: [{ path: '/', title: 'Home', description: 'Home.', sourceFiles: ['agentforge4j-web-ui/src/pages/HomePage.tsx'] }],
+  };
+  const unrelatedRelPath = 'agentforge4j-docs/docs/some-unrelated-doc.mdx';
+  const files = {
+    [SEO_ROUTES_REL_PATH]: JSON.stringify(routesContent, null, 2),
+    'agentforge4j-web-ui/src/pages/HomePage.tsx': '// HomePage v1\n',
+    [unrelatedRelPath]: '# Unrelated doc v1\n',
+  };
+  writeFilesAndCommit(repoRoot, files, '2020-01-01T00:00:00');
+  const seoRoutesPath = join(repoRoot, SEO_ROUTES_REL_PATH);
+  const { distDir, catalogueDataPath } = distFixture();
+
+  buildSeo({ distDir, seoRoutesPath, catalogueDataPath, repoRoot });
+  const before = readFileSync(join(distDir, 'sitemap.xml'), 'utf8');
+  assert.equal(lastmodFor(before, 'https://agentforge4j.org/'), '2020-01-01');
+
+  writeFilesAndCommit(repoRoot, { [unrelatedRelPath]: '# Unrelated doc v2 — a real, later commit\n' }, '2020-06-01T00:00:00');
+  buildSeo({ distDir, seoRoutesPath, catalogueDataPath, repoRoot });
+  const after = readFileSync(join(distDir, 'sitemap.xml'), 'utf8');
+  assert.equal(
+    lastmodFor(after, 'https://agentforge4j.org/'),
+    '2020-01-01',
+    'an undeclared, unrelated file\'s later commit must never advance an unrelated route\'s <lastmod>',
+  );
+});
+
+test('verification-only code (verify-seo.mjs) is correctly excluded from the dependency model: it is not declared anywhere, and its own changes never advance any route\'s <lastmod> — it checks the built artifact, it does not produce or alter it', () => {
+  const repoRoot = initTempGitRepo();
+  const routesContent = {
+    siteUrl: 'https://agentforge4j.org',
+    routes: [{ path: '/', title: 'Home', description: 'Home.', sourceFiles: ['agentforge4j-web-ui/src/pages/HomePage.tsx'] }],
+  };
+  const verifySeoRelPath = 'agentforge4j-web-ui/scripts/verify-seo.mjs';
+  const files = {
+    [SEO_ROUTES_REL_PATH]: JSON.stringify(routesContent, null, 2),
+    'agentforge4j-web-ui/src/pages/HomePage.tsx': '// HomePage v1\n',
+    [verifySeoRelPath]: '// verify-seo v1\n',
+  };
+  writeFilesAndCommit(repoRoot, files, '2020-01-01T00:00:00');
+  const seoRoutesPath = join(repoRoot, SEO_ROUTES_REL_PATH);
+  const { distDir, catalogueDataPath } = distFixture();
+
+  buildSeo({ distDir, seoRoutesPath, catalogueDataPath, repoRoot });
+  writeFilesAndCommit(repoRoot, { [verifySeoRelPath]: '// verify-seo v2\n' }, '2020-06-01T00:00:00');
+  buildSeo({ distDir, seoRoutesPath, catalogueDataPath, repoRoot });
+  const after = readFileSync(join(distDir, 'sitemap.xml'), 'utf8');
+  assert.equal(
+    lastmodFor(after, 'https://agentforge4j.org/'),
+    '2020-01-01',
+    'verify-seo.mjs is verification-only and must never itself be a lastmod dependency of any route',
+  );
+});
+
 // --- Fail loudly on a declared-but-missing dependency (typo/stale entry) -----------------------
 
 test('fails loudly when a route declares a sourceFiles entry that does not exist (a typo or stale entry), rather than silently degrading its <lastmod>', () => {
@@ -1224,9 +1423,10 @@ test('fails loudly when a route declares a sourceFiles entry that does not exist
   );
 });
 
-test('fails loudly when globalSourceFiles/catalogueSourceFiles/aggregateCatalogueSourceFiles declares a nonexistent entry', () => {
+test('fails loudly when artifactGenerationSourceFiles/globalSourceFiles/catalogueSourceFiles/aggregateCatalogueSourceFiles declares a nonexistent entry', () => {
   const repoRoot = join(REAL_MODULE_ROOT, '..');
   for (const [key, badList] of [
+    ['artifactGenerationSourceFiles', ['agentforge4j-web-ui/src/nope.ts']],
     ['globalSourceFiles', ['agentforge4j-web-ui/src/nope.ts']],
     ['catalogueSourceFiles', ['agentforge4j-web-ui/src/nope.ts']],
     ['aggregateCatalogueSourceFiles', ['agentforge4j-web-ui/src/nope.ts']],
@@ -1254,10 +1454,11 @@ test('completeness guard: every real file under agentforge4j-web-ui/src/copy/ is
   const copyFiles = readdirSync(copyDir).map((name) => `agentforge4j-web-ui/src/copy/${name}`);
   assert.ok(copyFiles.length > 0, 'expected at least one real copy file to check');
 
-  const { globalSourceFiles, catalogueSourceFiles, aggregateCatalogueSourceFiles, routes } = JSON.parse(
+  const { artifactGenerationSourceFiles, globalSourceFiles, catalogueSourceFiles, aggregateCatalogueSourceFiles, routes } = JSON.parse(
     readFileSync(join(REAL_MODULE_ROOT, 'src/config/seo-routes.json'), 'utf8'),
   );
   const declared = new Set([
+    ...artifactGenerationSourceFiles,
     ...globalSourceFiles,
     ...catalogueSourceFiles,
     ...aggregateCatalogueSourceFiles,
@@ -1269,6 +1470,61 @@ test('completeness guard: every real file under agentforge4j-web-ui/src/copy/ is
       declared.has(copyFile),
       `${copyFile} exists on disk but is not referenced anywhere in seo-routes.json — a change to it would silently ` +
         'never bump any route\'s <lastmod>',
+    );
+  }
+});
+
+// --- Global dependency scope contract: every file KNOWN to control every route's rendered output
+// (traced during this design's dependency audit) must appear in artifactGenerationSourceFiles or
+// globalSourceFiles in the real committed seo-routes.json — protects against a future reviewer
+// having to re-discover one of these one file at a time, the exact failure mode that produced this
+// fix in the first place (appRoutes.ts was the first instance; this guard is broader). -----------
+
+test('global dependency scope contract: every file traced as materially affecting every route\'s output is present in artifactGenerationSourceFiles or globalSourceFiles', () => {
+  const { artifactGenerationSourceFiles, globalSourceFiles } = JSON.parse(
+    readFileSync(join(REAL_MODULE_ROOT, 'src/config/seo-routes.json'), 'utf8'),
+  );
+  const declaredGlobally = new Set([...artifactGenerationSourceFiles, ...globalSourceFiles]);
+
+  // Build/prerender pipeline: decides what "the rendered page" even is, for every route at once.
+  const expectedArtifactGeneration = [
+    'agentforge4j-web-ui/index.html',
+    'agentforge4j-web-ui/src/main.tsx',
+    'agentforge4j-web-ui/scripts/build-seo.mjs',
+    'agentforge4j-web-ui/scripts/prerender-routes.mjs',
+  ];
+  // Shared React render surface: the actual component tree and routing registry every page renders
+  // through.
+  const expectedGlobalRender = [
+    'agentforge4j-web-ui/src/App.tsx',
+    'agentforge4j-web-ui/src/config/appRoutes.ts',
+    'agentforge4j-web-ui/src/components/SiteHeader.tsx',
+    'agentforge4j-web-ui/src/components/SiteFooter.tsx',
+    'agentforge4j-web-ui/src/config/nav.ts',
+  ];
+
+  for (const relFile of [...expectedArtifactGeneration, ...expectedGlobalRender]) {
+    assert.ok(
+      existsSync(join(REAL_MODULE_ROOT, '..', relFile)),
+      `${relFile} is expected by this contract test but no longer exists on disk — update this test, not just seo-routes.json`,
+    );
+    assert.ok(
+      declaredGlobally.has(relFile),
+      `${relFile} is known to materially affect every route's rendered output but is missing from both ` +
+        'artifactGenerationSourceFiles and globalSourceFiles in seo-routes.json',
+    );
+  }
+
+  for (const relFile of expectedArtifactGeneration) {
+    assert.ok(
+      artifactGenerationSourceFiles.includes(relFile),
+      `${relFile} belongs in artifactGenerationSourceFiles specifically (the build/prerender pipeline), not just anywhere global`,
+    );
+  }
+  for (const relFile of expectedGlobalRender) {
+    assert.ok(
+      globalSourceFiles.includes(relFile),
+      `${relFile} belongs in globalSourceFiles specifically (the shared render surface), not just anywhere global`,
     );
   }
 });

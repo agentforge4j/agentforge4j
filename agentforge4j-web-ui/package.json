@@ -8,7 +8,8 @@
     "dev": "npm run catalogue:build && vite",
     "dev:local": "npm run catalogue:build && cross-env AFB_LOCAL_BUILDER=1 vite --force",
     "catalogue:build": "node scripts/build-catalogue-data.mjs",
-    "prebuild": "npm run catalogue:build",
+    "ensure-chromium": "node scripts/ensure-chromium.mjs",
+    "prebuild": "npm run catalogue:build && npm run ensure-chromium",
     "build": "tsc -b && vite build && node scripts/build-seo.mjs && node scripts/copy-404.mjs && node scripts/verify-seo.mjs",
     "playwright:install": "playwright install --with-deps chromium",
     "preview": "vite preview",
@@ -22,9 +23,10 @@
     "pretest:content-gate": "npm run catalogue:build",
     "test:content-gate": "node --test scripts/lint-content-gate.test.mjs",
     "test:catalogue-data": "node --test scripts/build-catalogue-data.test.mjs",
-    "pretest:seo": "npm run catalogue:build",
+    "test:ensure-chromium": "node --test scripts/ensure-chromium.test.mjs",
+    "pretest:seo": "npm run catalogue:build && npm run ensure-chromium",
     "test:seo": "node --test scripts/build-seo.test.mjs scripts/prerender-routes.test.mjs scripts/verify-seo.test.mjs",
-    "check": "npm run lint && npm run lint:content-gate && npm run typecheck && npm run test && npm run test:content-gate && npm run test:catalogue-data && npm run test:seo && npm run build"
+    "check": "npm run lint && npm run lint:content-gate && npm run typecheck && npm run test && npm run test:content-gate && npm run test:catalogue-data && npm run test:ensure-chromium && npm run test:seo && npm run build"
   },
   "dependencies": {
     "@agentforge4j/workflow-builder-react": "^0.6.1",

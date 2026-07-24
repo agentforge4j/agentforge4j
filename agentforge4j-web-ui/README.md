@@ -60,16 +60,13 @@ which sets `AFB_LOCAL_BUILDER=1` so Vite resolves the builder from
 ## Build and verify
 
 The production build boots the real built bundle in headless Chromium to prerender every route's
-body content (`scripts/prerender-routes.mjs`) — `npm install`/`npm ci` installs the `playwright`
-package itself but never downloads the browser binary, so run this once first (a no-op if already
-cached, e.g. from `agentforge4j-ui-e2e`'s own Playwright setup — both pin the identical version, so
-the download is shared, not duplicated):
-
-```bash
-npm run playwright:install
-```
-
-Then:
+body content (`scripts/prerender-routes.mjs`). `npm install`/`npm ci` installs the `playwright`
+package itself but never downloads the browser binary — `npm run build` (and `npm run test:seo`,
+which exercises the same prerender code path) provision the pinned Chromium build automatically via
+their own `prebuild`/`pretest:seo` lifecycle hooks (`scripts/ensure-chromium.mjs`), so no separate
+manual step is required on a clean checkout. It is a fast no-op if the browser is already cached
+(e.g. from `agentforge4j-ui-e2e`'s own Playwright setup — both pin the identical version, so the
+download is shared, not duplicated).
 
 ```bash
 npm run check

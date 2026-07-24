@@ -49,6 +49,9 @@ function main() {
   checkJdk17();
 
   run('npm', ['ci'], resolve(REPO_ROOT, 'agentforge4j-web-ui'));
+  // agentforge4j-web-ui's own `build` script prerenders every route in headless Chromium
+  // (scripts/prerender-routes.mjs) and provisions that browser automatically via its own
+  // `prebuild` lifecycle hook (scripts/ensure-chromium.mjs) — no separate install step needed here.
   run('npm', ['run', 'build'], resolve(REPO_ROOT, 'agentforge4j-web-ui'));
 
   run(MVNW, ['-B', '-e', '-q', '-DskipTests', '-Dmaven.test.skip=true', 'install'], REPO_ROOT);

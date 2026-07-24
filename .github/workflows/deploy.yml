@@ -59,7 +59,11 @@ jobs:
 
       # The build boots the real built bundle in headless Chromium to prerender every route's body
       # content (scripts/prerender-routes.mjs) — `npm ci` never downloads the browser binary itself.
-      # Same cached-install convention as `UI E2E` and `Web UI` (web-ui.yml).
+      # `npm run build` below (via its own `prebuild` lifecycle hook, scripts/ensure-chromium.mjs)
+      # now provisions the browser BINARY automatically regardless of caller — this explicit step is
+      # kept because it additionally installs the Linux OS-level shared libraries Chromium needs at
+      # runtime (`--with-deps`), which the cross-platform hook deliberately does not attempt. Same
+      # cached-install convention as `UI E2E` and `Web UI` (web-ui.yml).
       - name: Cache Playwright browsers
         uses: actions/cache@v4
         with:

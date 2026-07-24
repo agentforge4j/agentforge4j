@@ -13,9 +13,25 @@
 //     trailing-slash form GitHub Pages serves directly, with no redirect — see withTrailingSlash)
 //     for every route in seo-routes.json marked `sitemap: true` (the default), plus one per real
 //     shipped catalogue workflow (src/generated/catalogue-data.json), each with a real git-derived
-//     <lastmod> scoped to exactly what materially contributes to *that* page, not the whole site:
-//       - `globalSourceFiles` (seo-routes.json's top level) — the header/footer/nav shell that
-//         wraps every page, static or catalogue.
+//     <lastmod> scoped to a curated, explicitly-declared, and audited set of dependencies for that
+//     page — NOT derived by AST/import-graph inference (a change elsewhere in the source tree that
+//     this declared set does not name is invisible to this mechanism by construction; see the
+//     "Deliberately excluded" note below for what was traced and ruled out, not merely overlooked):
+//       - `artifactGenerationSourceFiles` (seo-routes.json's top level) — the build/prerender
+//         PIPELINE itself, not page content: index.html (the one shared shell template every
+//         route's final HTML derives from — vite build product though it is, its own committed
+//         source controls every route's `<head>`/`<body>` structure outside the parts injectHead/
+//         injectRoot/injectJsonLd explicitly rewrite), main.tsx (the render entrypoint executed
+//         INSIDE the headless browser that produces the prerendered snapshot every shell ships —
+//         not merely a client-side runtime concern), and this file plus prerender-routes.mjs
+//         themselves (the code that decides what "the rendered page" even means). A change to any
+//         of these can alter every published page's actual HTML in ways no per-route `sourceFiles`
+//         list could ever capture, so all are treated as applying to literally every route.
+//       - `globalSourceFiles` (seo-routes.json's top level) — the actual React render surface shared
+//         by every page: App.tsx (the root shell + <Routes> composition), appRoutes.ts (the
+//         path -> component REGISTRY App.tsx renders from — swapping which component a path maps to
+//         changes that route's entire rendered output without touching App.tsx's own text), plus the
+//         header/footer/nav shell every page wraps in.
 //       - a static route's own `sourceFiles` (its page component), plus its own metadata dependency
 //         — the newest commit that touched *that route's own entry* in seo-routes.json, not the
 //         whole file (see gitLastModifiedDateForRouteMetadata) — so one route's metadata edit never
@@ -33,6 +49,23 @@
 //     assemble-site.mjs (agentforge4j-docs) merges this fragment with the Docusaurus-generated
 //     docs/sitemap.xml into the one final sitemap.xml at the composed site root — this script knows
 //     nothing about docs pages, and assemble-site.mjs knows nothing about SPA routes.
+//
+//     Deliberately excluded, traced and ruled out (not merely overlooked):
+//       - verify-seo.mjs, copy-404.mjs — verification/post-processing only; neither one's own logic
+//         changes what any *tracked* route's shell contains (copy-404.mjs's own output, dist/404.html,
+//         is not itself a sitemap-tracked route at all).
+//       - usePageSeo.ts (and the `@/config/seo.ts` it reads) — purely a client-side, post-hydration
+//         concern for in-app SPA navigation (keeping the browser tab's title/meta in sync after the
+//         *first* page load); it only ever mutates `document.head`, never `#root`, so it has zero
+//         effect on the captured prerendered markup or the build-time static shell either script here
+//         produces.
+//       - src/styles/*.css — visual styling only; a class name string inside `#root`'s captured
+//         markup is unaffected by what rules that class resolves to.
+//       - package.json/package-lock.json globally — deliberately scoped to `/builder` alone (that
+//         route embeds a fast-moving third-party UI component with its own visible rendering
+//         surface); treating every dependency bump everywhere (eslint, vitest, a transitive patch
+//         bump with no rendering effect) as globally material would defeat the point of tracking
+//         real per-page dependencies at all.
 //
 // Per-workflow title/description formatting mirrors src/lib/catalogueSeo.ts (used by the
 // client-side title/meta sync, usePageSeo) — duplicated deliberately, not imported, because this
@@ -424,6 +457,7 @@ export function buildSeo({
 
   const {
     siteUrl,
+    artifactGenerationSourceFiles = [],
     globalSourceFiles = [],
     catalogueSourceFiles = [],
     aggregateCatalogueSourceFiles = [],
@@ -433,6 +467,14 @@ export function buildSeo({
     ? JSON.parse(readFileSync(catalogueDataPath, 'utf8'))
     : { workflows: [] };
 
+  // Combined once: `artifactGenerationSourceFiles` (the build/prerender pipeline itself) and
+  // `globalSourceFiles` (the shared React render surface) are declared as two separate, clearly
+  // named scopes in seo-routes.json for readability, but they apply identically everywhere — every
+  // SPA sitemap route, static or catalogue — so every lastmod computation below uses this one
+  // combined list rather than re-deriving it per call site.
+  const everyGlobalSourceFile = [...artifactGenerationSourceFiles, ...globalSourceFiles];
+
+  assertDependencyFilesExist(repoRoot, artifactGenerationSourceFiles, 'artifactGenerationSourceFiles');
   assertDependencyFilesExist(repoRoot, globalSourceFiles, 'globalSourceFiles');
   assertDependencyFilesExist(repoRoot, catalogueSourceFiles, 'catalogueSourceFiles');
   assertDependencyFilesExist(repoRoot, aggregateCatalogueSourceFiles, 'aggregateCatalogueSourceFiles');
@@ -458,7 +500,7 @@ export function buildSeo({
       sitemapEntries.push({
         url: `${siteUrl}${withTrailingSlash(route.path)}`,
         lastmod: pickNewestDate([
-          newestGitLastModifiedDate(repoRoot, [...globalSourceFiles, ...(route.sourceFiles ?? []), ...aggregateDeps]),
+          newestGitLastModifiedDate(repoRoot, [...everyGlobalSourceFile, ...(route.sourceFiles ?? []), ...aggregateDeps]),
           gitLastModifiedDateForRouteMetadata(repoRoot, seoRoutesPath, route.path),
         ]),
       });
@@ -483,7 +525,7 @@ export function buildSeo({
     sitemapEntries.push({
       url: canonical,
       lastmod: newestGitLastModifiedDate(repoRoot, [
-        ...globalSourceFiles,
+        ...everyGlobalSourceFile,
         ...catalogueSourceFiles,
         workflowSourceFile(workflow.id),
       ]),

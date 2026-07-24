@@ -47,11 +47,13 @@ jobs:
 
       # The production build now boots the real built bundle in headless Chromium to prerender
       # every route's body content (scripts/prerender-routes.mjs) — `npm ci` installs the
-      # `playwright` package itself, but never downloads the browser binary; without this step the
-      # build only succeeds on a machine that already happens to have chromium cached, exactly the
-      # failure mode this step exists to prevent. Same cached-install convention as `UI E2E`
-      # (agentforge4j-ui-e2e), keyed by this module's own lockfile so the two never invalidate each
-      # other's cache entry.
+      # `playwright` package itself, but never downloads the browser binary. `npm run check` below
+      # (via its own `prebuild` lifecycle hook, scripts/ensure-chromium.mjs) now provisions the
+      # browser BINARY automatically on any caller, on any OS — this explicit step is kept
+      # regardless because it does something that cross-platform hook deliberately does not: install
+      # the Linux OS-level shared libraries Chromium needs at runtime (`--with-deps`), which requires
+      # root and only applies here. Same cached-install convention as `UI E2E` (agentforge4j-ui-e2e),
+      # keyed by this module's own lockfile so the two never invalidate each other's cache entry.
       - name: Cache Playwright browsers
         uses: actions/cache@v4
         with:

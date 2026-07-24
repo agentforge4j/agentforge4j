@@ -1,7 +1,14 @@
 {
   "siteUrl": "https://agentforge4j.org",
+  "artifactGenerationSourceFiles": [
+    "agentforge4j-web-ui/index.html",
+    "agentforge4j-web-ui/src/main.tsx",
+    "agentforge4j-web-ui/scripts/build-seo.mjs",
+    "agentforge4j-web-ui/scripts/prerender-routes.mjs"
+  ],
   "globalSourceFiles": [
     "agentforge4j-web-ui/src/App.tsx",
+    "agentforge4j-web-ui/src/config/appRoutes.ts",
     "agentforge4j-web-ui/src/components/SiteHeader.tsx",
     "agentforge4j-web-ui/src/components/SiteFooter.tsx",
     "agentforge4j-web-ui/src/config/nav.ts"
