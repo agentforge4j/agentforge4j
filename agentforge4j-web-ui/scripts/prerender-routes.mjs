@@ -5,7 +5,7 @@
 // route was a bare `<div id="root"></div>`, with all real content, including the page's H1,
 // appearing only after the JS bundle executes. Search-engine crawlers that do not (or do not yet)
 // run that render pass see no content at all, which is the confirmed root cause of Bing reporting
-// "H1 tag missing" (see docs-content-checks below and the audit this pass fixes).
+// "H1 tag missing" on these routes.
 //
 // This script boots the real built bundle in a real headless browser, one full navigation per
 // route (matching exactly how a fresh crawler visit — or a real user — arrives at that URL: through

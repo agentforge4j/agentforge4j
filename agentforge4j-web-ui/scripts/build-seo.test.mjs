@@ -137,6 +137,16 @@ test('injectRoot splices real prerendered markup into the empty mount point', ()
   assert.match(html, /<div id="root"><header>Real Nav<\/header><main><h1>Real Title<\/h1><\/main><\/div>/);
 });
 
+test('injectRoot ships `$`-sequences in the captured markup verbatim, never as replacement patterns', () => {
+  // Serialized DOM markup can legitimately contain `$&`, "$`", `$'`, and `$$` (page copy, inline
+  // code samples) — String.prototype.replace treats all four as substitution patterns when the
+  // replacement is a plain string, silently splicing shell fragments into the page. Deterministic
+  // corruption, so the prerenderer's double-capture equality gate would never catch it.
+  const markup = '<main><h1>Regex &amp; refs: $&amp; raw $& backref $\' dollar $$ tick $` end</h1></main>';
+  const html = injectRoot(BASE_INDEX_HTML, markup);
+  assert.ok(html.includes(`<div id="root">${markup}</div>`), 'captured markup must ship byte-for-byte as given');
+});
+
 test('injectRoot is a no-op when no snapshot was captured for a route (fixture tests with no headless browser)', () => {
   assert.equal(injectRoot(BASE_INDEX_HTML, undefined), BASE_INDEX_HTML);
 });

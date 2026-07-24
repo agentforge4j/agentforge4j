@@ -118,19 +118,15 @@ export function startGhPagesEmulatingServer(distDir) {
   });
 }
 
-/** Extracts `{url, lastmodTags}` per `<url>` block, in document order — `lastmodTags` is every
- * `<lastmod>` value found inside that block (0, 1, or more), so a caller can distinguish
- * "missing" from "duplicate" rather than only ever seeing a single optional value silently
- * collapse a malformed multi-tag block into "no lastmod at all" (a single-capture-group regex
- * would match the whole `<url>` zero times when a second `<lastmod>` was present, quietly dropping
- * that URL out of `entries` instead of failing on it). Same simple regex approach as
- * assemble-site.mjs's own extractSitemapLocs (both fragments are machine-generated, no CDATA/nested
- * namespaces, so a full XML parser buys nothing here). */
+/** Extracts one `{url}` per `<url>` block, in document order. Parsing per block (rather than one
+ * global `<loc>` scan) keeps a block with no `<loc>` at all visible as an explicit `url: null`
+ * entry the caller fails on, instead of that block silently vanishing from the inventory. Same
+ * simple regex approach as assemble-site.mjs's own extractSitemapLocs (both fragments are
+ * machine-generated, no CDATA/nested namespaces, so a full XML parser buys nothing here). */
 function parseSitemap(xml) {
   return [...xml.matchAll(/<url>([\s\S]*?)<\/url>/g)].map(([, block]) => {
     const locMatch = /<loc>([^<]+)<\/loc>/.exec(block);
-    const lastmodTags = [...block.matchAll(/<lastmod>([^<]*)<\/lastmod>/g)].map((match) => match[1]);
-    return { url: locMatch ? locMatch[1] : null, lastmodTags };
+    return { url: locMatch ? locMatch[1] : null };
   });
 }
 
@@ -190,6 +186,23 @@ export async function verifySeo({
   const urls = entries.map((entry) => entry.url);
   if (new Set(urls).size !== urls.length) {
     throw new Error('verify-seo: duplicate URL(s) found in the real dist/sitemap.xml');
+  }
+
+  // dist/404.html is GitHub Pages' catch-all for every unmatched path, served under a real HTTP
+  // 404 — it must stay the empty pre-prerender SPA shell (copy-404.mjs runs before build-seo.mjs
+  // for exactly this reason). If it ever carried prerendered body content, every mistyped URL
+  // would statically display the full home page under a 404 status until the JS bundle runs —
+  // and permanently for any client that never runs it.
+  const notFoundPath = join(distDir, '404.html');
+  if (!existsSync(notFoundPath)) {
+    throw new Error(`verify-seo: ${notFoundPath} does not exist — run the full build first`);
+  }
+  if (!/<div id="root"><\/div>/.test(readFileSync(notFoundPath, 'utf8'))) {
+    throw new Error(
+      'verify-seo: dist/404.html no longer contains an empty <div id="root"></div> mount point — ' +
+        'it must stay the pre-prerender SPA shell (copy-404.mjs must run before build-seo.mjs, ' +
+        'never after it)',
+    );
   }
 
   const server = await startGhPagesEmulatingServer(distDir);

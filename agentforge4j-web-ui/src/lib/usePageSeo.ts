@@ -68,7 +68,8 @@ export function usePageSeo(): void {
 
     // Unmatched path (NotFoundPage) or any other route with no SEO entry: fall back to the
     // home entry rather than leaving a stale title/canonical from whatever route preceded it —
-    // matches the static 404.html shell, which is a byte-identical copy of the home shell.
+    // matches the static 404.html shell, whose head carries the same home title/canonical
+    // (copy-404.mjs copies the built index.html shell before any per-route rewriting).
     const home = findSeoRoute('/');
     if (home) {
       document.title = home.title;
