@@ -35,8 +35,16 @@ public interface LlmClientConfiguration {
    */
   Duration getConnectTimeout();
 
-  default Optional<LlmRetryPolicy> getRetryPolicy() {
-    return Optional.empty();
+  /**
+   * The retry policy this configuration requests, or {@code null} when none is configured —
+   * mirroring {@link com.agentforge4j.llm.api.LlmClient#getRetryPolicy()}'s nullable contract so
+   * both retry-policy surfaces represent absence the same way. Callers that need a policy either
+   * way fall back to {@link LlmRetryPolicy#defaults()} on a {@code null} return.
+   *
+   * @return the configured retry policy, or {@code null} when this configuration has none
+   */
+  default LlmRetryPolicy getRetryPolicy() {
+    return null;
   }
 
   /**

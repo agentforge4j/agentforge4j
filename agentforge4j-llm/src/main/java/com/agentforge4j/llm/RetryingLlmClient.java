@@ -35,9 +35,18 @@ public final class RetryingLlmClient implements LlmClient {
     return delegate.getProviderName();
   }
 
+  /**
+   * The effective policy this wrapper actually retries with — the wrapped client's own policy
+   * when it declared one, otherwise the default supplied at construction (see
+   * {@link RetryingLlmClientResolver}). Deliberately not the delegate's raw value: the delegate
+   * may report {@code null} while retries genuinely run with the default, and this wrapper owns
+   * the resolved policy, so it reports what it uses.
+   *
+   * @return the effective retry policy; never {@code null} for this wrapper
+   */
   @Override
   public LlmRetryPolicy getRetryPolicy() {
-    return delegate.getRetryPolicy();
+    return policy;
   }
 
   @Override
