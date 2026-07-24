@@ -4,12 +4,15 @@ import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import App from '@/App';
+import { ThemeProvider } from '@/theme/ThemeContext';
 
 function renderAt(path: string) {
   return render(
-    <MemoryRouter initialEntries={[path]}>
-      <App />
-    </MemoryRouter>,
+    <ThemeProvider>
+      <MemoryRouter initialEntries={[path]}>
+        <App />
+      </MemoryRouter>
+    </ThemeProvider>,
   );
 }
 
@@ -39,11 +42,18 @@ describe('App routing', () => {
     // of depending on being the first test in the file to touch /builder — any other test
     // rendering /builder earlier (e.g. under shuffled test order) must not break this one.
     vi.resetModules();
+    // ThemeProvider must be re-imported fresh alongside App here too: `vi.resetModules()`
+    // invalidates every module, including ThemeContext.tsx — wrapping with the OLD (top-of-file)
+    // ThemeProvider would provide a value on a stale React Context object distinct from the one
+    // FreshApp's freshly re-imported SiteHeader reads via useTheme(), which throws.
     const { default: FreshApp } = await import('@/App');
+    const { ThemeProvider: FreshThemeProvider } = await import('@/theme/ThemeContext');
     render(
-      <MemoryRouter initialEntries={['/builder']}>
-        <FreshApp />
-      </MemoryRouter>,
+      <FreshThemeProvider>
+        <MemoryRouter initialEntries={['/builder']}>
+          <FreshApp />
+        </MemoryRouter>
+      </FreshThemeProvider>,
     );
     expect(screen.getByRole('status')).toHaveTextContent(/loading the workflow builder/i);
     // The default 1000ms findBy timeout is too tight for this route specifically: it can be

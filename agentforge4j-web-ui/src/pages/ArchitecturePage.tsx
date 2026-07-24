@@ -13,7 +13,7 @@ export default function ArchitecturePage() {
         <img
           src="/diagrams/readme-oss-module-overview.svg"
           alt="Module dependency overview: Spring Boot Starter depends on Bootstrap, which depends on Runtime; Runtime depends on Config Loader and LLM API; Config Loader and Tools/MCP depend on Core; Provider implementations depend on the LLM API, not the reverse."
-          className="mt-6 max-w-full rounded-lg border border-border bg-bg-elevated p-4"
+          className="diagram-frame mt-6 max-w-full rounded-lg border p-4"
         />
       </section>
 
@@ -23,7 +23,7 @@ export default function ArchitecturePage() {
         <img
           src="/diagrams/readme-runtime-overview.svg"
           alt="Runtime execution flow: resolve next step, run agent or plain behaviour, optionally invoke a governed tool call, pass a transition gate, persist state and emit events, then loop until a terminal state is reached."
-          className="mt-6 max-w-full rounded-lg border border-border bg-bg-elevated p-4"
+          className="diagram-frame mt-6 max-w-full rounded-lg border p-4"
         />
       </section>
 
