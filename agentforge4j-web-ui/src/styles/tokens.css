@@ -2,6 +2,20 @@
 /*
  * Palette sourced from the canonical mark (agentforge4j-web-ui/public/brand/logo-horizontal.svg)
  * and recorded in the repository's BRAND.md — see that file for provenance.
+ *
+ * Theme selection is a `data-theme` attribute on <html> ("light" or "dark"), set before first
+ * paint by the inline bootstrap script in index.html and kept in sync afterward by
+ * ThemeContext.tsx (see src/theme/). Every color a component uses MUST go through one of the
+ * semantic custom properties below (mapped onto Tailwind utilities by global.css's `@theme
+ * inline` block) — never a raw hex/rgb value or an unscoped Tailwind palette class (gray-500,
+ * etc.) — so switching `data-theme` re-themes the whole site with no per-component changes.
+ *
+ * The dark values are an explicit, hand-tuned palette, not a mechanical inversion of the light
+ * ones — several relationships intentionally flip direction (e.g. a light-mode "hover = darker"
+ * button becomes "hover = lighter" in dark mode, which reads better against a dark page) and the
+ * brand blue is deliberately lightened for dark backgrounds, reusing the same hue progression as
+ * the existing dark-background logo variant (agentforge4j-docs/static/img/logo-horizontal-dark.svg)
+ * for visual consistency.
  */
 :root {
   --color-bg:          #ffffff;
@@ -17,7 +31,53 @@
   --color-success-ink: #14532d;
   --color-warning:     #d97706;
   --color-danger:      #dc2626;
+  /* Deliberately UNTHEMED (no dark-mode override below): the Architecture page's externally
+   * rendered PlantUML diagrams have a baked-in white background, so their frame keeps a light
+   * "paper" look in both themes — see the .diagram-frame comment in global.css for the full
+   * rationale. Tokenised (rather than raw hex at the use site) so the exception is declared
+   * here, in the palette, not slipped into a component. Values match light-mode
+   * --color-bg-elevated / --color-border on purpose; they must NOT follow them into dark mode,
+   * which is why they are separate names instead of references. */
+  --color-diagram-paper:        #f8f9fb;
+  --color-diagram-paper-border: #e5e7eb;
+  /* Elevation tokens with theme-tuned depths (dark mode needs stronger shadows to register
+   * against a dark page). Current consumers: the ThemeToggle menu popup (shadow-md via the
+   * @theme inline mapping in global.css) and the builder's node cards (BuilderPage maps
+   * --afb-node-shadow onto --shadow-md). Any future shadowed surface should reach for these
+   * rather than a raw box-shadow. */
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.06);
+  --shadow-md: 0 4px 10px 0 rgb(0 0 0 / 0.10);
   --max-content-width: 1200px;
   --radius-md:         0.5rem;
   --radius-lg:         0.75rem;
+  /* Tells the browser which native-control appearance (form fields, scrollbars, the default
+   * page-background-behind-content on overscroll) matches the current theme, independent of the
+   * custom properties above — without this, a dark page still gets light-themed native scrollbars
+   * and form controls in a browser that supports both. */
+  color-scheme: light;
+}
+
+:root[data-theme='dark'] {
+  --color-bg:          #0d1117;
+  --color-bg-elevated: #161b22;
+  --color-fg:          #e6edf3;
+  --color-fg-muted:    #8b949e;
+  --color-border:      #363c46;
+  /* Same hue as light mode's brand blue, lightened for legibility against a dark background —
+   * matches the progression already used by the dark-background logo variant (logo-horizontal-
+   * dark.svg: #5a9de6 -> #7eb8f0 -> #c8d6e5), not an independently invented color. */
+  --color-brand:       #5a9de6;
+  /* Hover/active direction intentionally flips vs. light mode: light-mode hover darkens toward
+   * `brand-shade`; dark-mode hover brightens toward it instead, since brightening reads as
+   * "highlighted" against a dark page the way darkening does against a light one. */
+  --color-brand-shade: #7eb8f0;
+  --color-brand-ink:   #0d1117;
+  --color-accent:      #58a6ff;
+  --color-success:     #3fb950;
+  --color-success-ink: #7ee787;
+  --color-warning:     #d29922;
+  --color-danger:      #f85149;
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.40);
+  --shadow-md: 0 4px 12px 0 rgb(0 0 0 / 0.50);
+  color-scheme: dark;
 }

@@ -57,6 +57,22 @@ describe('BuilderPage', () => {
     expect(builderPane).toHaveClass('flex-1', 'min-h-0', 'overflow-y-auto');
   });
 
+  test('themes the builder through the documented --afb-* token contract, not only the legacy .wf-* aliases', () => {
+    // The package's canvas/node/chrome selectors consume --afb-* directly (README "Design
+    // tokens"); the older --color-* names only reach the .wf-* control styles. If the --afb-*
+    // mappings are dropped, the canvas and cards silently revert to the package's fixed internal
+    // palette in both site themes — exactly the defect this guard pins. Values must be var()
+    // references to site tokens (not resolved colors) so a data-theme flip re-themes live.
+    renderPage();
+    const root = screen.getByTestId('workflow-builder');
+    expect(root.style.getPropertyValue('--afb-canvas-bg')).toBe('var(--color-bg)');
+    expect(root.style.getPropertyValue('--afb-node-surface')).toBe('var(--color-bg-elevated)');
+    expect(root.style.getPropertyValue('--afb-node-text')).toBe('var(--color-fg)');
+    expect(root.style.getPropertyValue('--afb-chrome-bg')).toBe('var(--color-bg-elevated)');
+    expect(root.style.getPropertyValue('--afb-chrome-text')).toBe('var(--color-fg)');
+    expect(root.style.getPropertyValue('--afb-accent')).toBe('var(--color-brand)');
+  });
+
   test('structural guard: does not pass a custom adapters prop to WorkflowBuilder', () => {
     // Regression guard against reintroducing a site-side adapters override, which would
     // bypass the package's built-in import/export trust-model enforcement (size cap, step
