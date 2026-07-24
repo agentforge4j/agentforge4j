@@ -64,13 +64,16 @@ jobs:
         working-directory: agentforge4j-web-ui
         run: npm ci
 
-      # The SPA's production build is gaining a prerender pass that boots the real built bundle in
-      # headless Chromium (a `playwright` devDependency of agentforge4j-web-ui) — `npm ci` installs
-      # the playwright package itself but never downloads the browser binary. The two steps below
-      # provision that binary (plus the Linux OS-level shared libraries it needs at runtime, via
-      # `--with-deps`) BEFORE the build runs; they are keyed off whether the module actually
-      # declares playwright, so on a tree without the prerender pass they skip and this workflow
-      # behaves exactly as before. Same cached-install convention as `Web UI` and `UI E2E`.
+      # The SPA's production build boots the real built bundle in headless Chromium to prerender
+      # every route's body content (scripts/prerender-routes.mjs) — `npm ci` installs the
+      # `playwright` package itself but never downloads the browser binary. `npm run build` below
+      # (via its own `prebuild` lifecycle hook, scripts/ensure-chromium.mjs) now provisions the
+      # browser BINARY automatically regardless of caller — the explicit steps below are kept
+      # because they additionally install the Linux OS-level shared libraries Chromium needs at
+      # runtime (`--with-deps`), which the cross-platform hook deliberately does not attempt. They
+      # stay keyed off whether the module actually declares playwright, so on a tree without the
+      # prerender pass they skip and this workflow behaves exactly as before. Same cached-install
+      # convention as `Web UI` and `UI E2E`.
       - name: Detect whether the site build needs a browser
         id: needs-browser
         working-directory: agentforge4j-web-ui

@@ -59,6 +59,18 @@ which sets `AFB_LOCAL_BUILDER=1` so Vite resolves the builder from
 
 ## Build and verify
 
+`npm install`/`npm ci` installs the `playwright` package itself but never downloads the browser
+binary — `npm run build` and `npm run test:seo` provision the pinned Chromium build automatically
+via their own `prebuild`/`pretest:seo` lifecycle hooks (`scripts/ensure-chromium.mjs`), so no
+separate manual step is required on a clean checkout. It is a fast no-op if the browser is already
+cached (e.g. from `agentforge4j-ui-e2e`'s own Playwright setup — both pin the identical version, so
+the download is shared, not duplicated).
+
+On Linux, `npm run playwright:install` is available as an optional one-off if you also want the
+OS-level shared libraries Chromium needs at runtime (`--with-deps`, requires root) — the automatic
+hook above deliberately does not attempt that, the same way CI's own explicit install step doesn't
+either.
+
 ```bash
 npm run check
 ```
