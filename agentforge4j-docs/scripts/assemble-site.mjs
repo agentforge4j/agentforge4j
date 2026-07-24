@@ -515,7 +515,7 @@ function containsInvalidXmlChar(text) {
  * choice, not an oversight. A structurally valid `<urlset>` with zero `<url>` children is valid and
  * contributes zero entries — it is not itself a malformed-input case.
  *
- * KNOWN ACCEPTED LIMITATION (round-006 review finding PR174-501): a literal, unescaped `]]>` inside
+ * KNOWN ACCEPTED LIMITATION: a literal, unescaped `]]>` inside
  * `<loc>`/`<lastmod>` text content is forbidden CharData per XML 1.0 §2.4 (the sequence is reserved
  * for terminating a CDATA section), but sax reports it to `ontext` as ordinary text — it is never
  * distinguished from any other three-character run — so this is the one well-formedness class this
@@ -561,18 +561,22 @@ function extractSitemapEntries(xmlPath, exit) {
   // leaf, repeated as a `<url>` sibling, mixed case) is not well-formed XML and must fail like any
   // other PI, not be silently exempted by name alone.
   //
-  // KNOWN ACCEPTED LIMITATION (round-006 review finding PR174-502): "the very first parser event"
-  // is not exactly the same thing as "the very first byte of the document" — sax fires no event at
-  // all for prolog whitespace before the first tag/PI, so a file beginning with e.g. a single
-  // newline before `<?xml ...?>` still has `firstEventPending === true` when the declaration PI
-  // arrives, and is exempted exactly like a genuine byte-zero declaration, even though leading
-  // whitespace before the XML declaration makes a document not well-formed per the XML 1.0 spec.
-  // This is deliberately left unenforced rather than fixed: neither first-party generator ever
-  // emits leading whitespace before the declaration, so the gap is unreachable from any real input
-  // this script processes, and every malicious shape this exemption exists to guard against (a
-  // same-named PI spliced into a `<loc>` leaf, repeated as a `<url>` sibling, mixed case, or
-  // appearing after real content) is still rejected — accepting a whitespace-prefixed declaration
-  // cannot itself splice or corrupt a published value.
+  // KNOWN ACCEPTED LIMITATION: "the very first parser event" is not exactly the same thing as "a
+  // well-formed XML declaration at the very first byte of the document", in two ways. First, sax
+  // fires no event at all for prolog whitespace before the first tag/PI, so a file beginning with
+  // e.g. a single newline before `<?xml ...?>` still has `firstEventPending === true` when the
+  // declaration PI arrives, and is exempted exactly like a genuine byte-zero declaration, even
+  // though leading whitespace before the XML declaration makes a document not well-formed per the
+  // XML 1.0 spec. Second, the exemption matches the reserved target case-insensitively, so a
+  // document whose very first event is `<?XML ...?>` (any case variant) is exempted too — even
+  // though only the exact lowercase `<?xml` spelling is ever a well-formed declaration, so such a
+  // document is likewise not well-formed. Both gaps are deliberately left unenforced rather than
+  // fixed: neither first-party generator ever emits leading whitespace before the declaration or a
+  // non-lowercase declaration, so they are unreachable from any real input this script processes,
+  // and every malicious shape this exemption exists to guard against (a same-named PI spliced into
+  // a `<loc>` leaf, repeated as a `<url>` sibling, mixed case mid-document, or appearing after
+  // real content) is still rejected — an exempted prolog-position declaration cannot itself splice
+  // or corrupt a published value.
   let firstEventPending = true;
 
   parser.onerror = (err) => {
@@ -598,9 +602,9 @@ function extractSitemapEntries(xmlPath, exit) {
       // The document's own leading <?xml version="1.0" ...?> declaration — the only position at
       // which it is well-formed XML, so it is exempted only when it is genuinely the very first
       // event this parser has seen, never merely by matching the reserved "xml" target name. "The
-      // very first event this parser has seen" is not always literally the first byte of the file
-      // — see the `firstEventPending` comment above for the one known, deliberately-accepted gap
-      // (whitespace-prefixed declarations) this leaves.
+      // very first event this parser has seen" is not always literally a well-formed byte-zero
+      // declaration — see the `firstEventPending` comment above for the two known,
+      // deliberately-accepted gaps (whitespace-prefixed and case-variant declarations) this leaves.
       return;
     }
     fail(`sitemap XML contains a processing instruction (<?${node.name}?>), which is outside the accepted contract`);
@@ -790,6 +794,15 @@ function extractSitemapEntries(xmlPath, exit) {
 // today's own routes, but the contract does not limit it to that) must round-trip safely. `"` is not
 // escaped: these values are serialized as element text content, never as an attribute value, so an
 // unescaped `"` there is well-formed XML.
+//
+// KNOWN ACCEPTED LIMITATION: a carriage return is the one exception to that round trip. U+000D is
+// a legal XML Char (`containsInvalidXmlChar` accepts it, e.g. decoded from a `&#xD;` character
+// reference), but this serializer writes it back as a literal CR byte, and XML 1.0 §2.11 obliges
+// every conforming parser to normalize a literal CR in a parsed document to LF — so a
+// spec-compliant consumer of the published sitemap reads LF where the source fragment declared CR.
+// The published document stays well-formed either way (only the value's fidelity changes, for that
+// one character), and neither first-party generator can emit a CR inside a `<loc>`/`<lastmod>`
+// value. Escape CR as `&#xD;` here if that fidelity is ever genuinely needed.
 function escapeXmlText(value) {
   return value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
