@@ -161,11 +161,36 @@ test('archive-mode builds still fail closed on a shallow git clone — archive-m
   );
 });
 
-test('archive-mode builds skip only the trailing-slash/canonical-tag checks (live-site-specific) once git history is sufficient', () => {
+test('archive-mode builds still validate lastmod against the real generated sitemap.xml — passes when every entry has a valid lastmod', () => {
+  const repoRoot = gitRepo();
+  // No writePage()/canonical HTML at all: proves the canonical-tag/page-existence checks are
+  // genuinely skipped for archive mode (this fixture has no pages, only a sitemap.xml) — the
+  // *lastmod* check below still ran, since that's exactly what must not be skipped.
+  const buildDir = sitemapFixtureWithLastmod('2026-07-20');
+  assert.doesNotThrow(() => verifyCanonicalTrailingSlash({ buildDir, archiveVersion: '1.0.0', repoRoot }));
+});
+
+test('archive-mode builds fail closed on a missing <lastmod> in the real generated sitemap.xml, even with full git history (a shallow-history precondition alone is not sufficient — Docusaurus can still legitimately omit lastmod for one untracked file)', () => {
   const repoRoot = gitRepo();
   const buildDir = fixture();
   mkdirSync(buildDir, { recursive: true });
-  assert.doesNotThrow(() => verifyCanonicalTrailingSlash({ buildDir, archiveVersion: '1.0.0', repoRoot }));
+  writeFileSync(
+    join(buildDir, 'sitemap.xml'),
+    '<urlset><url><loc>https://agentforge4j.org/docs/archive/1.0.0/</loc></url></urlset>',
+  );
+  assert.throws(
+    () => verifyCanonicalTrailingSlash({ buildDir, archiveVersion: '1.0.0', repoRoot }),
+    /no valid <lastmod>/,
+  );
+});
+
+test('archive-mode builds fail closed on an impossible calendar date in the real generated sitemap.xml, even with full git history', () => {
+  const repoRoot = gitRepo();
+  const buildDir = sitemapFixtureWithLastmod('2026-02-31');
+  assert.throws(
+    () => verifyCanonicalTrailingSlash({ buildDir, archiveVersion: '1.0.0', repoRoot }),
+    /no valid <lastmod>/,
+  );
 });
 
 test('fails closed when a <url> block does not match the expected shape (extra element after <loc>) — must not silently drop that entry from this check', () => {
@@ -259,8 +284,7 @@ test('fails closed when a sitemap URL has no generated page at all (a build inte
   assert.throws(() => verifyCanonicalTrailingSlash({ buildDir }), /has no generated page at/);
 });
 
-test('archive-mode builds skip the trailing-slash/canonical-tag checks (no moving alias / canonical policy of their own) when run against this real, non-shallow repo', () => {
-  const buildDir = fixture();
-  mkdirSync(buildDir, { recursive: true });
+test('archive-mode builds skip the trailing-slash/canonical-tag checks (no moving alias / canonical policy of their own) when run against this real, non-shallow repo, with a valid generated sitemap.xml', () => {
+  const buildDir = sitemapFixtureWithLastmod('2026-07-20');
   assert.doesNotThrow(() => verifyCanonicalTrailingSlash({ buildDir, archiveVersion: '1.0.0' }));
 });

@@ -37,7 +37,7 @@ import {
   validateVersion,
 } from './release-paths.mjs';
 import {supportWindow} from './support-window.mjs';
-import {assertSufficientGitHistoryForLastmod} from './verify-canonical.mjs';
+import {assertSufficientGitHistoryForLastmod, verifyCanonicalTrailingSlash} from './verify-canonical.mjs';
 
 /** The committed archive artifacts (design §7): `archive/<v>/` + `archive/<v>.redirects.json`. */
 export const ARCHIVE_ROOT = join(MODULE_ROOT, 'archive');
@@ -127,6 +127,14 @@ export function archiveTransition(version, repoRoot = MODULE_ROOT) {
   });
 
   try {
+    // A passing shallow-history check (above) is necessary but not sufficient: Docusaurus can
+    // still legitimately emit a null/missing lastmod for a specific file even with full repo
+    // history (e.g. a versioned-doc source that was never actually committed/tracked) — only
+    // reading the export's own generated sitemap.xml catches that. Checked on the real export
+    // output, before it is frozen: an archive is never rebuilt once committed, so this is the
+    // only point an untrustworthy lastmod can still be caught.
+    verifyCanonicalTrailingSlash({buildDir: EXPORT_BUILD, archiveVersion: version, repoRoot});
+
     // 2. Freeze the artifact.
     mkdirSync(ARCHIVE_ROOT, {recursive: true});
     cpSync(EXPORT_BUILD, artifactDir, {recursive: true});

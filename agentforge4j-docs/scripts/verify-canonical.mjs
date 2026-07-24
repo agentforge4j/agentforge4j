@@ -119,14 +119,11 @@ export function verifyCanonicalTrailingSlash({
   if (!existsSync(buildDir)) {
     throw new Error(`verify-canonical: ${buildDir} does not exist — run "docusaurus build" first`);
   }
-  // Applies regardless of archive mode: both the live site and an archive export derive
-  // `<lastmod>` from git history the same way (see assertSufficientGitHistoryForLastmod's own
-  // comment) — only the trailing-slash/canonical-tag checks below are live-site-specific.
+  // Necessary but not sufficient: a full-history repo can still legitimately produce a null/missing
+  // lastmod for one specific file (e.g. a versioned-doc source that was never actually committed),
+  // so this precondition alone must never be mistaken for "the generated sitemap is trustworthy" —
+  // the per-URL lastmod check below still runs for archive mode too, on the real generated output.
   assertSufficientGitHistoryForLastmod(repoRoot);
-  if (archiveVersion) {
-    console.log('[verify-canonical] archive-mode build — trailing-slash/canonical checks not applicable, skipped (git-history/lastmod check above still applies)');
-    return;
-  }
 
   const sitemapPath = join(buildDir, 'sitemap.xml');
   if (!existsSync(sitemapPath)) {
@@ -165,6 +162,14 @@ export function verifyCanonicalTrailingSlash({
           "the sitemap plugin's lastmod: 'date' option regressed, this page has no git history, or the date is not a real calendar day",
       );
     }
+    // The remaining checks resolve the sitemap URL back to a local file path assuming buildDir is
+    // rooted at the live site's baseUrl (`/docs/`) — an archive export's local output is NOT
+    // nested under its own `/docs/archive/<v>/` baseUrl (baseUrl affects only generated
+    // URLs/links, never the local build directory layout), so that resolution would be wrong for
+    // archive mode; skipped here, not skipped above, so the lastmod check just above still runs.
+    if (archiveVersion) {
+      continue;
+    }
 
     const pagePath = sitemapUrlToPagePath(buildDir, url);
     if (pagePath === null) {
@@ -199,8 +204,11 @@ export function verifyCanonicalTrailingSlash({
   }
 
   console.log(
-    `[verify-canonical] verified ${entries.length} sitemap URL(s): exactly one canonical, matching its own sitemap ` +
-      'URL exactly (trailing-slash form), each with a valid <lastmod>',
+    archiveVersion
+      ? `[verify-canonical] archive-mode build: verified ${entries.length} sitemap URL(s), each with a valid <lastmod> ` +
+          '(trailing-slash form) — canonical-tag matching is skipped (archive-mode-incompatible local path layout)'
+      : `[verify-canonical] verified ${entries.length} sitemap URL(s): exactly one canonical, matching its own sitemap ` +
+          'URL exactly (trailing-slash form), each with a valid <lastmod>',
   );
 }
 

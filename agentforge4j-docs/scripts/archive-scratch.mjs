@@ -106,6 +106,9 @@ function main() {
   const preArchiveExisted = pathExists(ARCHIVE_ROOT);
   const sidebarFile = join(VERSIONED_SIDEBARS, `version-${SCRATCH_VERSION}-sidebars.json`);
 
+  const preCommitSha = execFileSync('git', ['rev-parse', 'HEAD'], {cwd: REPO_ROOT, encoding: 'utf8'}).trim();
+  let committed = false;
+
   try {
     // 2. Manufacture the scratch version (materialised, exactly like a real cut).
     stage(SCRATCH_VERSION);
@@ -117,6 +120,16 @@ function main() {
       'utf8',
     );
 
+    // `git-ad-hoc` (docusaurus.config.ts) resolves lastmod from real per-file git history — the
+    // scratch version's files exist only on disk at this point, so a real archiveTransition() run
+    // would find no history for them and (correctly) refuse to freeze
+    // an archive with missing lastmod. A temporary commit gives them real, if throwaway, history to
+    // read. Staged by exact path (not `-A`): this worktree may carry unrelated in-progress,
+    // uncommitted changes of its own that must never be swept into a throwaway commit.
+    execFileSync('git', ['add', VERSIONS_JSON, VERSIONED_DOCS, VERSIONED_SIDEBARS], {cwd: REPO_ROOT});
+    execFileSync('git', ['commit', '--quiet', '-m', 'archive-scratch: temporary commit (reverted immediately)'], {cwd: REPO_ROOT});
+    committed = true;
+
     // 3. The real transition.
     archiveTransition(SCRATCH_VERSION);
 
@@ -124,7 +137,13 @@ function main() {
     assertArchived(SCRATCH_VERSION);
     console.log('[archive-scratch] mechanism proven.');
   } finally {
-    // 5. Full revert to the recorded pre-state.
+    // 5. Full revert to the recorded pre-state. A mixed reset (not --soft) undoes both the commit
+    // AND the staging while leaving the working tree exactly as it was right before the commit —
+    // i.e. the same "modified/untracked, nothing staged" shape the manual revert below already
+    // expects, so it proceeds exactly as if the temporary commit had never happened.
+    if (committed) {
+      execFileSync('git', ['reset', preCommitSha], {cwd: REPO_ROOT});
+    }
     rmSync(join(ARCHIVE_ROOT, SCRATCH_VERSION), {recursive: true, force: true});
     rmSync(join(ARCHIVE_ROOT, `${SCRATCH_VERSION}.redirects.json`), {force: true});
     if (!preArchiveExisted) {

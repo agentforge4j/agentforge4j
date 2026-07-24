@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 //
-// Regression assertion owned by the docs-lastmod feature (AF4J-178-01): a docs page's <lastmod>,
+// Regression assertion owned by the docs-lastmod feature: a docs page's <lastmod>,
 // once present in `agentforge4j-docs/build/sitemap.xml` (this feature's own git-derived-date fix),
 // must survive verbatim through `assemble-site.mjs`'s composition into the public, root
 // `_site/sitemap.xml` — a lastmod that only ever exists in the intermediate docs build and vanishes
