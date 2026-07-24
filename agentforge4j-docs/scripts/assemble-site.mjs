@@ -6,7 +6,7 @@
 //
 //   _site/
 //     index.html     <- the agentforge4j.org SPA's own root (agentforge4j-web-ui/dist)
-//     404.html        <- the SPA's own branded 404 (byte-identical to index.html, see copy-404.mjs)
+//     404.html        <- the SPA's own branded 404 (the empty pre-prerender shell, see copy-404.mjs)
 //     assets/, brand/, robots.txt, favicon.ico, ... <- the rest of the SPA build, at the site root
 //     docs/          <- the Docusaurus build (baseUrl /docs/, so build/* maps under /docs/)
 //     javadoc/next/  <- the aggregate Javadoc surface (build-javadoc output)

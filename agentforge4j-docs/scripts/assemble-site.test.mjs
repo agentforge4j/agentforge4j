@@ -45,7 +45,7 @@ function fixture() {
   const javadocDir = join(root, 'javadoc-next');
   mkdirSync(spaDir, {recursive: true});
   writeFileSync(join(spaDir, 'index.html'), '<html>spa</html>');
-  // The real SPA build ships dist/404.html byte-identical to dist/index.html (copy-404.mjs).
+  // The real SPA build ships dist/404.html as the empty pre-prerender SPA shell (copy-404.mjs).
   writeFileSync(join(spaDir, '404.html'), '<html>spa</html>');
   // The real SPA build also ships its own robots.txt and sitemap.xml fragment (build-seo.mjs) —
   // both real static files assemble-site.mjs's own contract now requires.
