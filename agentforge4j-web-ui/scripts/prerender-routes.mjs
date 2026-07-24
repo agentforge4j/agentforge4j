@@ -206,9 +206,15 @@ export async function prerenderRoutes({ distDir = DIST_DIR, routePaths } = {}) {
   const { port } = server.address();
   const origin = `http://127.0.0.1:${port}`;
 
-  const browser = await chromium.launch();
+  // The launch must happen INSIDE the try so a launch failure (browser binary not installed) still
+  // closes the already-listening server. Leaked, that listener keeps the event loop alive — fatal
+  // under `node --test`, which waits for the loop to drain instead of forcing an exit, so the
+  // test:seo process (and any CI job running it) hangs indefinitely instead of surfacing
+  // Playwright's actionable "Executable doesn't exist" error.
+  let browser;
   const snapshots = {};
   try {
+    browser = await chromium.launch();
     const page = await browser.newPage();
     await page.addInitScript(DETERMINISTIC_RNG_INIT_SCRIPT);
     for (const routePath of paths) {
@@ -234,8 +240,15 @@ export async function prerenderRoutes({ distDir = DIST_DIR, routePaths } = {}) {
       snapshots[routePath] = first;
     }
   } finally {
-    await browser.close();
-    await new Promise((resolvePromise) => server.close(resolvePromise));
+    try {
+      if (browser) {
+        await browser.close();
+      }
+    } finally {
+      // Nested so the server is closed even if closing the browser itself throws — either handle
+      // left open reintroduces the hang described above.
+      await new Promise((resolvePromise) => server.close(resolvePromise));
+    }
   }
   return snapshots;
 }
