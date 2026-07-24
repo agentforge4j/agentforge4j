@@ -31,8 +31,10 @@ test.describe('keyboard navigation', () => {
     await page.goto('/');
     // Matches agentforge4j-web-ui/src/config/nav.ts PRIMARY_NAV order — 'API' was added between
     // 'Docs' and 'Catalogue' by the Assembler track (PR #126, the /api reference page), and this
-    // list was never updated to match; a stale expectation, not a real regression.
-    const expectedOrder = ['Skip to content', 'AgentForge4j', 'Docs', 'API', 'Catalogue', 'Builder', 'Architecture', 'Community', 'GitHub', 'Use'];
+    // list was never updated to match; a stale expectation, not a real regression. 'Theme' (the
+    // light/dark/system control, SiteHeader.tsx) sits right after the CTA, before the
+    // (desktop-hidden) hamburger button.
+    const expectedOrder = ['Skip to content', 'AgentForge4j', 'Docs', 'API', 'Catalogue', 'Builder', 'Architecture', 'Community', 'GitHub', 'Use', 'Theme'];
 
     for (const name of expectedOrder) {
       await page.keyboard.press('Tab');
