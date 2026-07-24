@@ -33,6 +33,13 @@ const CATALOGUE_DATA_PATH = join(MODULE_ROOT, 'src', 'generated', 'catalogue-dat
 
 const MAX_DESCRIPTION_LENGTH = 157; // mirrors src/lib/catalogueSeo.ts
 
+// Every generated route shell is a directory (dist/<path>/index.html), which GitHub Pages only
+// serves without a redirect at its trailing-slash address — the non-slash form 301s there. The
+// root path is already its own trailing slash and needs no change.
+export function withTrailingSlash(routePath) {
+  return routePath === '/' ? '/' : `${routePath.replace(/\/+$/, '')}/`;
+}
+
 // Shared HTML-attribute escaping — every value interpolated into an HTML attribute in this file
 // (title, description, and canonical alike) must pass through this one function. There is no
 // second, ad hoc escaping path: a value that reaches an attribute unescaped is a bug in the
@@ -171,12 +178,12 @@ export function buildSeo({
 
   for (const route of routes) {
     const canonicalPath = route.canonicalPath ?? route.path;
-    const canonical = canonicalPath === '/' ? `${siteUrl}/` : `${siteUrl}${canonicalPath}`;
+    const canonical = `${siteUrl}${withTrailingSlash(canonicalPath)}`;
     const html = injectHead(baseHtml, { title: route.title, description: route.description, canonical });
     writeShell(distDir, route.path, html);
     shellsWritten += 1;
     if (route.sitemap !== false) {
-      sitemapUrls.push(route.path === '/' ? `${siteUrl}/` : `${siteUrl}${route.path}`);
+      sitemapUrls.push(`${siteUrl}${withTrailingSlash(route.path)}`);
     }
   }
 
@@ -186,7 +193,7 @@ export function buildSeo({
     // assertValidWorkflowId guarantees it is safe as all four before any of them are built.
     assertValidWorkflowId(workflow.id);
     const routePath = `/catalogue/${workflow.id}`;
-    const canonical = `${siteUrl}${routePath}`;
+    const canonical = `${siteUrl}${withTrailingSlash(routePath)}`;
     const html = injectHead(baseHtml, {
       title: catalogueWorkflowTitle(workflow),
       description: catalogueWorkflowDescription(workflow),
