@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 // Post-build production-artifact check (same "check the real build output directly" philosophy as
-// this module's own verify-noindex.mjs, which it deliberately mirrors) for this pass's docs-side
-// fix: `trailingSlash: true` (docusaurus.config.ts). This is framework-native Docusaurus config,
-// not custom code of this repo's own — this check exists to prove it actually took effect against
-// a real build, and to catch a future config change (or a Docusaurus upgrade that alters the
-// default) silently regressing it.
+// this module's own verify-noindex.mjs, which it deliberately mirrors) for this pass's two docs-side
+// fixes: `trailingSlash: true` (docusaurus.config.ts) and the sitemap plugin's `lastmod: 'date'`
+// option. Both are framework-native Docusaurus config, not custom code of this repo's own — this
+// check exists to prove they actually took effect against a real build, and to catch a future config
+// change (or a Docusaurus upgrade that alters the default) silently regressing either one.
 //
 // Driven entirely by sitemap.xml (not a walk of every generated HTML file): every URL the sitemap
 // actually advertises to search engines must resolve to a real generated page with exactly one
@@ -20,6 +20,7 @@
 // Wired to run right after `docusaurus build` in package.json's build script, alongside
 // verify-noindex.mjs.
 
+import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -29,6 +30,58 @@ const MODULE_ROOT = join(here, '..');
 
 const SITE_ORIGIN = 'https://agentforge4j.org';
 const DOCS_BASE_PATH = '/docs/';
+
+/**
+ * `docusaurus.config.ts`'s `experimental_vcs: 'git-ad-hoc'` resolves each page's lastmod from a
+ * real per-file `git log` — a shallow clone still has *a* commit to read, so it does not error, it
+ * just silently reports a plausible-looking but wrong date (typically the shallow fetch's own single
+ * commit, for every file). `verify-canonical`'s own YAGNI-free job is to catch exactly this class of
+ * silent regression, so it must fail closed on the precondition itself rather than trust whatever
+ * date comes back.
+ */
+function isShallowRepository(repoRoot) {
+  let output;
+  try {
+    output = execFileSync('git', ['rev-parse', '--is-shallow-repository'], { cwd: repoRoot, encoding: 'utf8' }).trim();
+  } catch (err) {
+    throw new Error(`verify-canonical: could not determine whether ${repoRoot} is a shallow git repository — ${err.message}`);
+  }
+  return output === 'true';
+}
+
+/**
+ * The one, coherent enforcement point for "any build that emits git-derived `<lastmod>` values
+ * needs sufficient git history" — `docusaurus.config.ts` sets both `experimental_vcs: 'git-ad-hoc'`
+ * and `sitemap.lastmod: 'date'` unconditionally, not just for the live site, so an archive build
+ * (`AF4J_ARCHIVE_VERSION` set) derives its own pages' `<lastmod>` from git history exactly the same
+ * way the live build does — and, unlike a live build, an archive's output is frozen forever once
+ * committed, so a shallow-history archive would permanently bake in wrong dates. Exported so
+ * `archive-transition.mjs` (which drives the archive export via a direct `docusaurus build` call,
+ * never through this module's own `verifyCanonicalTrailingSlash`) can enforce the same precondition
+ * before it invests in a build whose `<lastmod>` values would be untrustworthy anyway.
+ *
+ * @param {string} repoRoot the git repository root to check
+ */
+export function assertSufficientGitHistoryForLastmod(repoRoot) {
+  if (isShallowRepository(repoRoot)) {
+    throw new Error(
+      `verify-canonical: ${repoRoot} is a shallow git clone (git rev-parse --is-shallow-repository) — ` +
+        "the sitemap plugin's git-ad-hoc lastmod strategy reads real per-file git history and silently " +
+        'produces wrong or missing dates from a shallow clone; fetch full history (e.g. `fetch-depth: 0`) before building',
+    );
+  }
+}
+
+/** Rejects any value that is not a real calendar date — not just YYYY-MM-DD shaped (so
+ * `2026-02-31`/`2026-13-01`/`2026-00-10` fail, and leap years are handled correctly: `2024-02-29` is
+ * valid, `2026-02-29` is not) — via the same UTC round-trip already used on the SPA side. */
+function isRealCalendarDate(value) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    return false;
+  }
+  const date = new Date(`${value}T00:00:00.000Z`);
+  return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value;
+}
 
 // Docusaurus's head-tag renderer does not necessarily quote attribute values with no whitespace and
 // stamps a `data-rh` marker on every tag it dedupes (see verify-noindex.mjs's own note) — matched
@@ -56,17 +109,22 @@ function sitemapUrlToPagePath(buildDir, url) {
 }
 
 /**
- * @param {{buildDir?: string, archiveVersion?: string|null}} [options]
+ * @param {{buildDir?: string, archiveVersion?: string|null, repoRoot?: string}} [options]
  */
 export function verifyCanonicalTrailingSlash({
   buildDir = join(MODULE_ROOT, 'build'),
   archiveVersion = process.env.AF4J_ARCHIVE_VERSION || null,
+  repoRoot = MODULE_ROOT,
 } = {}) {
   if (!existsSync(buildDir)) {
     throw new Error(`verify-canonical: ${buildDir} does not exist — run "docusaurus build" first`);
   }
+  // Applies regardless of archive mode: both the live site and an archive export derive
+  // `<lastmod>` from git history the same way (see assertSufficientGitHistoryForLastmod's own
+  // comment) — only the trailing-slash/canonical-tag checks below are live-site-specific.
+  assertSufficientGitHistoryForLastmod(repoRoot);
   if (archiveVersion) {
-    console.log('[verify-canonical] archive-mode build — trailing-slash checks not applicable, skipped');
+    console.log('[verify-canonical] archive-mode build — trailing-slash/canonical checks not applicable, skipped (git-history/lastmod check above still applies)');
     return;
   }
 
@@ -97,9 +155,15 @@ export function verifyCanonicalTrailingSlash({
     throw new Error(`verify-canonical: ${sitemapPath} parsed to zero <url> entries`);
   }
 
-  for (const [, url] of entries) {
+  for (const [, url, lastmod] of entries) {
     if (!url.endsWith('/')) {
       throw new Error(`verify-canonical: sitemap URL "${url}" does not end in '/' (trailingSlash: true regression?)`);
+    }
+    if (!lastmod || !isRealCalendarDate(lastmod)) {
+      throw new Error(
+        `verify-canonical: sitemap URL "${url}" has no valid <lastmod> (a real YYYY-MM-DD calendar date) — ` +
+          "the sitemap plugin's lastmod: 'date' option regressed, this page has no git history, or the date is not a real calendar day",
+      );
     }
 
     const pagePath = sitemapUrlToPagePath(buildDir, url);
@@ -136,7 +200,7 @@ export function verifyCanonicalTrailingSlash({
 
   console.log(
     `[verify-canonical] verified ${entries.length} sitemap URL(s): exactly one canonical, matching its own sitemap ` +
-      'URL exactly (trailing-slash form)',
+      'URL exactly (trailing-slash form), each with a valid <lastmod>',
   );
 }
 

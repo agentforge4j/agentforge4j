@@ -5,10 +5,36 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { verifyCanonicalTrailingSlash } from './verify-canonical.mjs';
+
+/** A single-commit throwaway git repo, standing in for a real checkout's repo root — only the
+ * repository's own shallow/full-ness matters to `verifyCanonicalTrailingSlash`'s `repoRoot` check,
+ * never its content, so one commit is enough. */
+function gitRepo() {
+  const dir = mkdtempSync(join(tmpdir(), 'verify-canonical-git-'));
+  execFileSync('git', ['init', '--quiet'], { cwd: dir });
+  execFileSync('git', ['config', 'user.email', 'test@example.invalid'], { cwd: dir });
+  execFileSync('git', ['config', 'user.name', 'Test'], { cwd: dir });
+  writeFileSync(join(dir, 'a.txt'), 'a');
+  execFileSync('git', ['add', '.'], { cwd: dir });
+  execFileSync('git', ['commit', '--quiet', '-m', 'first'], { cwd: dir });
+  return dir;
+}
+
+function sitemapFixtureWithLastmod(lastmod) {
+  const buildDir = fixture();
+  writePage(buildDir, '0.1.0/index.html', 'https://agentforge4j.org/docs/0.1.0/');
+  writeFileSync(
+    join(buildDir, 'sitemap.xml'),
+    `<urlset><url><loc>https://agentforge4j.org/docs/0.1.0/</loc><lastmod>${lastmod}</lastmod></url></urlset>`,
+  );
+  return buildDir;
+}
 
 function pageWithCanonical(canonical) {
   return `<!doctype html><html><head><title>x</title><link data-rh=true rel=canonical href=${canonical} /></head><body></body></html>`;
@@ -25,7 +51,7 @@ function fixture() {
   return join(root, 'build');
 }
 
-test('passes clean when every canonical and every sitemap URL ends in a trailing slash', () => {
+test('passes clean when every canonical and every sitemap URL ends in a trailing slash, each with a valid lastmod', () => {
   const buildDir = fixture();
   writePage(buildDir, '0.1.0/index.html', 'https://agentforge4j.org/docs/0.1.0/');
   writePage(buildDir, '0.1.0/get-started/quick-start/index.html', 'https://agentforge4j.org/docs/0.1.0/get-started/quick-start/');
@@ -55,6 +81,91 @@ test('fails closed on a non-trailing-slash sitemap URL', () => {
     '<urlset><url><loc>https://agentforge4j.org/docs/0.1.0</loc><lastmod>2026-07-20</lastmod></url></urlset>',
   );
   assert.throws(() => verifyCanonicalTrailingSlash({ buildDir }), /sitemap URL .* does not end in/);
+});
+
+test('fails closed on a missing <lastmod> (the malformed/impossible-date variants are covered separately below)', () => {
+  const buildDir = fixture();
+  writePage(buildDir, '0.1.0/index.html', 'https://agentforge4j.org/docs/0.1.0/');
+  writeFileSync(
+    join(buildDir, 'sitemap.xml'),
+    '<urlset><url><loc>https://agentforge4j.org/docs/0.1.0/</loc></url></urlset>',
+  );
+  assert.throws(() => verifyCanonicalTrailingSlash({ buildDir }), /no valid <lastmod>/);
+});
+
+test('fails closed on an impossible calendar date — day out of range for the month (2026-02-31)', () => {
+  const buildDir = sitemapFixtureWithLastmod('2026-02-31');
+  assert.throws(() => verifyCanonicalTrailingSlash({ buildDir }), /no valid <lastmod>/);
+});
+
+test('fails closed on an impossible calendar date — month out of range (2026-13-01)', () => {
+  const buildDir = sitemapFixtureWithLastmod('2026-13-01');
+  assert.throws(() => verifyCanonicalTrailingSlash({ buildDir }), /no valid <lastmod>/);
+});
+
+test('fails closed on an impossible calendar date — month zero (2026-00-10)', () => {
+  const buildDir = sitemapFixtureWithLastmod('2026-00-10');
+  assert.throws(() => verifyCanonicalTrailingSlash({ buildDir }), /no valid <lastmod>/);
+});
+
+test('accepts a valid leap day (2024-02-29 — 2024 is a leap year)', () => {
+  const buildDir = sitemapFixtureWithLastmod('2024-02-29');
+  assert.doesNotThrow(() => verifyCanonicalTrailingSlash({ buildDir }));
+});
+
+test('fails closed on an invalid leap day in a non-leap year (2026-02-29)', () => {
+  const buildDir = sitemapFixtureWithLastmod('2026-02-29');
+  assert.throws(() => verifyCanonicalTrailingSlash({ buildDir }), /no valid <lastmod>/);
+});
+
+test('fails closed with a clear diagnostic when repoRoot is a shallow git clone', () => {
+  const origin = gitRepo();
+  writeFileSync(join(origin, 'b.txt'), 'b');
+  execFileSync('git', ['add', '.'], { cwd: origin });
+  execFileSync('git', ['commit', '--quiet', '-m', 'second'], { cwd: origin });
+
+  const shallowParent = mkdtempSync(join(tmpdir(), 'verify-canonical-shallow-'));
+  const shallowDir = join(shallowParent, 'clone');
+  // A plain local-path clone silently ignores --depth ("local clones" are hardlinked, not
+  // transport-fetched) — a file:// URL forces the real, transport-based (and thus genuinely
+  // shallow) clone path, exercising the same code path a real CI/network clone would.
+  execFileSync('git', ['clone', '--quiet', '--depth', '1', pathToFileURL(origin).href, shallowDir]);
+
+  const buildDir = sitemapFixtureWithLastmod('2026-07-20');
+  assert.throws(
+    () => verifyCanonicalTrailingSlash({ buildDir, repoRoot: shallowDir }),
+    /is a shallow git clone/,
+  );
+});
+
+test('does not fail closed on a full (non-shallow) git clone', () => {
+  const repoRoot = gitRepo();
+  const buildDir = sitemapFixtureWithLastmod('2026-07-20');
+  assert.doesNotThrow(() => verifyCanonicalTrailingSlash({ buildDir, repoRoot }));
+});
+
+test('archive-mode builds still fail closed on a shallow git clone — archive-mode config derives <lastmod> from git history exactly like the live site does, and the archive is frozen forever once committed', () => {
+  const shallowParent = mkdtempSync(join(tmpdir(), 'verify-canonical-archive-shallow-'));
+  const origin = gitRepo();
+  const shallowDir = join(shallowParent, 'clone');
+  // A plain local-path clone silently ignores --depth ("local clones" are hardlinked, not
+  // transport-fetched) — a file:// URL forces the real, transport-based (and thus genuinely
+  // shallow) clone path, exercising the same code path a real CI/network clone would.
+  execFileSync('git', ['clone', '--quiet', '--depth', '1', pathToFileURL(origin).href, shallowDir]);
+
+  const buildDir = fixture();
+  mkdirSync(buildDir, { recursive: true });
+  assert.throws(
+    () => verifyCanonicalTrailingSlash({ buildDir, archiveVersion: '1.0.0', repoRoot: shallowDir }),
+    /is a shallow git clone/,
+  );
+});
+
+test('archive-mode builds skip only the trailing-slash/canonical-tag checks (live-site-specific) once git history is sufficient', () => {
+  const repoRoot = gitRepo();
+  const buildDir = fixture();
+  mkdirSync(buildDir, { recursive: true });
+  assert.doesNotThrow(() => verifyCanonicalTrailingSlash({ buildDir, archiveVersion: '1.0.0', repoRoot }));
 });
 
 test('fails closed when a <url> block does not match the expected shape (extra element after <loc>) — must not silently drop that entry from this check', () => {
@@ -148,7 +259,7 @@ test('fails closed when a sitemap URL has no generated page at all (a build inte
   assert.throws(() => verifyCanonicalTrailingSlash({ buildDir }), /has no generated page at/);
 });
 
-test('archive-mode builds are skipped entirely (no moving alias / canonical policy of their own)', () => {
+test('archive-mode builds skip the trailing-slash/canonical-tag checks (no moving alias / canonical policy of their own) when run against this real, non-shallow repo', () => {
   const buildDir = fixture();
   mkdirSync(buildDir, { recursive: true });
   assert.doesNotThrow(() => verifyCanonicalTrailingSlash({ buildDir, archiveVersion: '1.0.0' }));

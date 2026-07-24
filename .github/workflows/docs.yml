@@ -35,6 +35,13 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v7
+        with:
+          # Full history: `docusaurus.config.ts`'s `experimental_vcs: 'git-ad-hoc'` derives each
+          # page's sitemap <lastmod> from a real per-file `git log`, which a shallow, tagless
+          # default checkout cannot see (and would not error on — it would silently produce a
+          # wrong date). `verify-canonical.mjs` also fails closed on a shallow checkout directly,
+          # but this avoids tripping that gate on every gate run in the first place.
+          fetch-depth: 0
 
       - name: Build the documentation site
         uses: ./.github/actions/build-docs-site
