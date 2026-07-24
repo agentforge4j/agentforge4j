@@ -1419,6 +1419,86 @@ test('fails closed on a <lastmod> with trailing whitespace around otherwise-vali
   );
 });
 
+// --- The leading <?xml ...?> declaration is exempted only by POSITION, never by name alone -----
+//
+// The declaration is well-formed XML only as the very first thing in the document. A same-named
+// PI anywhere else is not the declaration and must fail like any other PI — previously the PI
+// handler exempted any PI named "xml" (case-insensitively) no matter where it appeared, so one
+// spliced into a <loc>/<lastmod> leaf silently corrupted the published value instead of failing.
+
+test('fails closed on a same-named "xml" processing instruction spliced into <loc> text — the leading-declaration exemption must not apply mid-document', () => {
+  expectSitemapMergeFailure(
+    `${SITEMAP_HEADER}  <url>\n    <loc>https://agentforge4j.org/a<?xml version="1.0"?>b/</loc>\n  </url>\n${SITEMAP_FOOTER}`,
+    {fragment: 'spa'},
+  );
+});
+
+test('fails closed on an uppercase "XML" processing instruction spliced into <loc> text — the exemption is not merely case-sensitive, it is position-sensitive', () => {
+  expectSitemapMergeFailure(
+    `${SITEMAP_HEADER}  <url>\n    <loc>https://agentforge4j.org/a<?XML foo?>b/</loc>\n  </url>\n${SITEMAP_FOOTER}`,
+  );
+});
+
+test('fails closed on a repeated <?xml ...?> declaration appearing as a <url> sibling after the real root opened', () => {
+  expectSitemapMergeFailure(
+    `${SITEMAP_HEADER}  <?xml version="1.0"?>\n  <url>\n    <loc>https://agentforge4j.org/example/</loc>\n  </url>\n${SITEMAP_FOOTER}`,
+    {fragment: 'spa'},
+  );
+});
+
+// --- Characters outside the XML 1.0 Char production must fail closed, even when the numeric ----
+// character reference or raw byte that produces them is itself syntactically well-formed --------
+//
+// sax validates a numeric character reference's syntax (`&#x1;`) and a raw literal byte's tag/
+// entity structure, but never whether the resulting codepoint is an XML 1.0 Char at all. Both
+// decode straight into <loc>/<lastmod> text like any other character, so previously they shipped
+// straight into the composed sitemap.xml — making the published artifact itself not well-formed
+// XML, undetectable by the suite's own reparse-with-sax round-trip proof (sax skips this exact
+// check on the way back in too).
+
+test('fails closed on a numeric character reference to a codepoint the XML 1.0 Char production forbids (&#x1;) inside <loc>', () => {
+  expectSitemapMergeFailure(
+    `${SITEMAP_HEADER}  <url>\n    <loc>https://agentforge4j.org/a&#x1;b/</loc>\n  </url>\n${SITEMAP_FOOTER}`,
+    {fragment: 'spa'},
+  );
+});
+
+test('fails closed on a raw literal control byte (U+000B) inside <lastmod> — not caught by the stray-whitespace allowance, since JS treats U+000B as whitespace', () => {
+  expectSitemapMergeFailure(
+    `${SITEMAP_HEADER}  <url>\n    <loc>https://agentforge4j.org/example/</loc>\n    <lastmod>2026-0724</lastmod>\n  </url>\n${SITEMAP_FOOTER}`,
+  );
+});
+
+test('accepts the three whitespace XML 1.0 Chars (tab, LF, CR) embedded in <loc> text — the invalid-character guard narrows only genuinely illegal codepoints, not legal control chars', () => {
+  const {spaDir, buildDir, javadocDir, archiveDir, siteDir} = fixture();
+  writeFileSync(
+    join(buildDir, 'sitemap.xml'),
+    `${SITEMAP_HEADER}  <url>\n    <loc>https://agentforge4j.org/a&#x9;b&#xA;c&#xD;d/</loc>\n  </url>\n${SITEMAP_FOOTER}`,
+  );
+  assembleSite({spaDir, buildDir, javadocDir, archiveDir, siteDir, customDomain: null});
+  const xml = readFileSync(join(siteDir, 'sitemap.xml'), 'utf8');
+  assert.match(xml, /<loc>https:\/\/agentforge4j\.org\/a\tb\nc\rd\/<\/loc>/);
+});
+
+// --- CDATA sections are outside the narrow, enumerated contract, symmetric with comments/PIs ----
+//
+// Previously a CDATA section was silently folded into leaf text (`oncdata = ontext`), round-
+// tripping correctly but newly asymmetric with the comment/PI/DOCTYPE rejections added alongside
+// it, and never mentioned by the "every case is enumerated" contract.
+
+test('fails closed on a CDATA section spliced into <loc> text', () => {
+  expectSitemapMergeFailure(
+    `${SITEMAP_HEADER}  <url>\n    <loc>https://agentforge4j.org/a<![CDATA[b]]>c/</loc>\n  </url>\n${SITEMAP_FOOTER}`,
+    {fragment: 'spa'},
+  );
+});
+
+test('fails closed on a CDATA section as a sibling inside <url>, outside any leaf', () => {
+  expectSitemapMergeFailure(
+    `${SITEMAP_HEADER}  <url>\n    <loc>https://agentforge4j.org/example/</loc>\n    <![CDATA[stray]]>\n  </url>\n${SITEMAP_FOOTER}`,
+  );
+});
+
 // --- Root-cause regression: the parser's narrow <url> contract stays compatible with
 // docusaurus.config.ts's real, live sitemap options --------------------------------------------
 

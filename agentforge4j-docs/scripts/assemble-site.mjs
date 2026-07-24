@@ -387,11 +387,40 @@ function duplicateAttributeName(rawTag) {
   return null;
 }
 
+// The XML 1.0 Char production (https://www.w3.org/TR/xml/#charsets): #x9 | #xA | #xD |
+// [#x20-#xD7FF] | [#xE000-#xFFFD] | [#x10000-#x10FFFF]. sax validates numeric character
+// references only for well-formed *syntax* (`&#x1;` is syntactically a valid charref), never for
+// whether the referenced codepoint is actually a legal XML Char — and a raw literal control
+// character (e.g. a literal U+000B) is likewise never range-checked, only tag/entity structure is.
+// Both classes decode straight into `ontext`'s `text` argument identically to any other character,
+// so this is the one place that can still catch them before they reach a published `<loc>`/
+// `<lastmod>` value or get folded into the "just formatting whitespace" stray-text allowance.
+// Iterated by code point (`for...of` over a string), not by UTF-16 code unit, so a valid surrogate
+// pair is checked as its one astral codepoint while a lone, unpaired surrogate (outside every
+// allowed range) is correctly rejected too.
+function containsInvalidXmlChar(text) {
+  for (const ch of text) {
+    const codePoint = ch.codePointAt(0);
+    const isValidXmlChar =
+      codePoint === 0x9 ||
+      codePoint === 0xa ||
+      codePoint === 0xd ||
+      (codePoint >= 0x20 && codePoint <= 0xd7ff) ||
+      (codePoint >= 0xe000 && codePoint <= 0xfffd) ||
+      (codePoint >= 0x10000 && codePoint <= 0x10ffff);
+    if (!isValidXmlChar) {
+      return true;
+    }
+  }
+  return false;
+}
+
 /** Extracts every `{url, lastmod}` pair from a sitemap.xml file, in document order (`lastmod` is
  * `null` when a `<url>` block has none). Uses `sax` (a real, standards-based streaming XML parser
- * — already present in this package's own dependency graph via `@docusaurus/plugin-sitemap`'s
- * `sitemap` package, see package.json for why it is now a direct devDependency here too) in strict
- * mode, rather than a regex/tag-count heuristic: a prior regex-plus-count-comparison approach could
+ * — already present in this package's own dependency graph transitively via
+ * `@docusaurus/plugin-sitemap`'s `sitemap` package, promoted here to a direct devDependency so this
+ * script can import it itself) in strict mode, rather than a regex/tag-count heuristic: a prior
+ * regex-plus-count-comparison approach could
  * not distinguish "zero matches because nothing is here" from "zero matches because a `<url>` is
  * self-closing/empty" — both produced the identical zero-vs-zero-vs-zero count agreement, so a
  * malformed self-closing `<url/>` (and other unusual-but-technically-well-formed shapes) silently
@@ -436,13 +465,21 @@ function duplicateAttributeName(rawTag) {
  *    mismatched/orphan closing tags, invalid markup elsewhere in the document — even after an
  *    earlier, individually well-formed `<url>` entry was already parsed; a document that goes bad
  *    partway through must still fail the whole file, not silently publish only the entries seen
- *    before the corruption), or decodes a character entity outside the five standard XML entities
+ *    before the corruption), decodes a character entity outside the five standard XML entities
  *    (`sax.parser(true, {strictEntities: true})` — without this, sax's non-strict-mode fallback
- *    accepts ~250 HTML-only entities like `&copy;` from text that is not actually well-formed XML);
- *  - the document contains a comment, a processing instruction (other than the leading `<?xml ...?>`
- *    declaration itself), or a DOCTYPE declaration — none are part of the narrow, enumerated
- *    contract, and a comment or PI inside a `<loc>`/`<lastmod>` leaf would otherwise silently splice
- *    the text around it into one corrupted published value, exactly like a stray nested element;
+ *    accepts ~250 HTML-only entities like `&copy;` from text that is not actually well-formed XML),
+ *    or produces text containing a character outside the XML 1.0 Char production (`containsInvalidXmlChar`
+ *    — sax validates numeric character references and raw literal bytes only for well-formed syntax,
+ *    never for whether the resulting codepoint is a legal XML Char, so e.g. `&#x1;` or a raw control
+ *    byte would otherwise decode straight into a published value and make the composed sitemap.xml
+ *    itself not well-formed XML);
+ *  - the document contains a comment, a CDATA section, a processing instruction (other than the
+ *    document's own leading `<?xml ...?>` declaration, recognized ONLY as the very first thing the
+ *    parser sees — a later processing instruction using the same reserved "xml" target, anywhere
+ *    else in the document, is not the declaration and is rejected like any other PI), or a DOCTYPE
+ *    declaration — none are part of the narrow, enumerated contract, and a comment, CDATA section,
+ *    or PI inside a `<loc>`/`<lastmod>` leaf would otherwise silently splice the text around it into
+ *    one corrupted published value, exactly like a stray nested element;
  *  - the document's outermost element is not `<urlset>`, or `<urlset>` carries an attribute outside
  *    `URLSET_ALLOWED_ATTRIBUTES` (unexpected name, an allowed name with an unexpected value, or an
  *    allowed name declared more than once);
@@ -501,28 +538,44 @@ function extractSitemapEntries(xmlPath, exit) {
   let currentEntry = null; // {loc: string|null, lastmod: string|null} while inside a <url> element
   let currentChildTag = null; // 'loc' | 'lastmod' | null — the currently-open leaf element inside <url>
   let currentText = '';
+  // True only until the very first parser event of any kind fires. "xml" (case-insensitively) is a
+  // reserved processing-instruction target per the XML spec, so no genuine PI can ever use this
+  // name for itself — but that alone does not prove a given `<?xml ...?>` IS the document's own
+  // declaration, only that it isn't ordinary user content. The declaration is well-formed ONLY as
+  // the very first thing in the document; a same-named PI anywhere else (spliced into a `<loc>`
+  // leaf, repeated as a `<url>` sibling, mixed case) is not well-formed XML and must fail like any
+  // other PI, not be silently exempted by name alone.
+  let firstEventPending = true;
 
   parser.onerror = (err) => {
     fail(`sitemap XML is not well-formed — ${err.message.split('\n')[0]}`);
   };
 
-  // None of comments, processing instructions, or a DOCTYPE are part of the narrow, enumerated
-  // contract this function accepts — a comment or PI inside a <loc>/<lastmod> leaf would otherwise
-  // silently splice the surrounding text into one corrupted published value, exactly like a stray
-  // nested element already fails closed for.
+  // None of comments, CDATA sections, processing instructions, or a DOCTYPE are part of the narrow,
+  // enumerated contract this function accepts — a comment, CDATA section, or PI inside a
+  // <loc>/<lastmod> leaf would otherwise silently splice the surrounding text into one corrupted
+  // published value, exactly like a stray nested element already fails closed for.
   parser.oncomment = () => {
+    firstEventPending = false;
     fail('sitemap XML contains a comment, which is outside the accepted contract');
   };
+  parser.onopencdata = () => {
+    firstEventPending = false;
+    fail('sitemap XML contains a CDATA section, which is outside the accepted contract');
+  };
   parser.onprocessinginstruction = (node) => {
-    if (node.name.toLowerCase() === 'xml') {
-      // The leading <?xml version="1.0" ...?> declaration itself. "xml" (case-insensitively) is a
-      // reserved processing-instruction target per the XML spec, so no genuine PI can ever use this
-      // name — this branch can only ever be the document's own declaration, never user content.
+    const isLeadingDeclaration = firstEventPending && node.name.toLowerCase() === 'xml';
+    firstEventPending = false;
+    if (isLeadingDeclaration) {
+      // The document's own leading <?xml version="1.0" ...?> declaration — the only position at
+      // which it is well-formed XML, so it is exempted only when it is genuinely the very first
+      // event this parser has seen, never merely by matching the reserved "xml" target name.
       return;
     }
     fail(`sitemap XML contains a processing instruction (<?${node.name}?>), which is outside the accepted contract`);
   };
   parser.ondoctype = () => {
+    firstEventPending = false;
     fail('sitemap XML contains a DOCTYPE declaration, which is outside the accepted contract');
   };
 
@@ -532,6 +585,7 @@ function extractSitemapEntries(xmlPath, exit) {
   // silently folded into its bare equivalent (which would be looser than the exact-value strictness
   // already applied to <urlset>'s attributes).
   parser.onopentag = (node) => {
+    firstEventPending = false;
     const name = node.name;
     if (!sawRoot) {
       sawRoot = true;
@@ -601,6 +655,18 @@ function extractSitemapEntries(xmlPath, exit) {
   };
 
   parser.ontext = (text) => {
+    firstEventPending = false;
+    if (containsInvalidXmlChar(text)) {
+      // Both a numeric character reference to an invalid codepoint (e.g. `&#x1;` — sax validates
+      // charref syntax only, never the XML Char range) and a raw literal control byte decode
+      // straight into this same `text` argument like any other character; neither is caught by any
+      // other check here, so an unnoticed one would otherwise ship straight into a published
+      // <loc>/<lastmod> value (or be folded into the "just formatting whitespace" allowance below,
+      // since e.g. a lone U+000B is whitespace by JS's own definition) and leave the composed
+      // sitemap.xml itself not well-formed XML.
+      fail('sitemap XML contains a character that is not valid in XML 1.0 text content');
+      return;
+    }
     if (currentChildTag !== null) {
       currentText += text;
       return;
@@ -616,7 +682,6 @@ function extractSitemapEntries(xmlPath, exit) {
       );
     }
   };
-  parser.oncdata = parser.ontext;
 
   parser.onclosetag = (name) => {
     if (name === 'loc' || name === 'lastmod') {
