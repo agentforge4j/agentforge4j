@@ -513,7 +513,22 @@ function containsInvalidXmlChar(text) {
  * The relative order of `<loc>` and `<lastmod>` within a `<url>` entry is NOT significant — both
  * are identified by tag name, not position, so accepting either order is a deliberate, tested
  * choice, not an oversight. A structurally valid `<urlset>` with zero `<url>` children is valid and
- * contributes zero entries — it is not itself a malformed-input case. */
+ * contributes zero entries — it is not itself a malformed-input case.
+ *
+ * KNOWN ACCEPTED LIMITATION (round-006 review finding PR174-501): a literal, unescaped `]]>` inside
+ * `<loc>`/`<lastmod>` text content is forbidden CharData per XML 1.0 §2.4 (the sequence is reserved
+ * for terminating a CDATA section), but sax reports it to `ontext` as ordinary text — it is never
+ * distinguished from any other three-character run — so this is the one well-formedness class this
+ * parser lets through unexamined that neither `containsInvalidXmlChar` nor any other check here
+ * independently catches. This is deliberately left unenforced rather than fixed: neither first-party
+ * generator (Docusaurus's `sitemap` package, nor the SPA's own hand-written `<loc>`/`<lastmod>`
+ * template) can ever produce a URL or lastmod value containing `]]>`, so the gap is unreachable from
+ * any real input this script processes; and the merged `sitemap.xml` this script publishes stays
+ * well-formed regardless, because `sitemapXml`/`escapeXmlText` (below) re-escape every value they
+ * write rather than concatenating raw source text — a `>` inside `]]>` becomes `&gt;` in the
+ * published output, so it can never resurface there as an illegitimate CDATA terminator. Widen
+ * `containsInvalidXmlChar` (or add a sibling check in `ontext`) if this class ever needs to be
+ * rejected at the source instead of merely neutralized at the sink. */
 function extractSitemapEntries(xmlPath, exit) {
   const xml = readFileSync(xmlPath, 'utf8');
   const entries = [];
@@ -545,6 +560,19 @@ function extractSitemapEntries(xmlPath, exit) {
   // the very first thing in the document; a same-named PI anywhere else (spliced into a `<loc>`
   // leaf, repeated as a `<url>` sibling, mixed case) is not well-formed XML and must fail like any
   // other PI, not be silently exempted by name alone.
+  //
+  // KNOWN ACCEPTED LIMITATION (round-006 review finding PR174-502): "the very first parser event"
+  // is not exactly the same thing as "the very first byte of the document" — sax fires no event at
+  // all for prolog whitespace before the first tag/PI, so a file beginning with e.g. a single
+  // newline before `<?xml ...?>` still has `firstEventPending === true` when the declaration PI
+  // arrives, and is exempted exactly like a genuine byte-zero declaration, even though leading
+  // whitespace before the XML declaration makes a document not well-formed per the XML 1.0 spec.
+  // This is deliberately left unenforced rather than fixed: neither first-party generator ever
+  // emits leading whitespace before the declaration, so the gap is unreachable from any real input
+  // this script processes, and every malicious shape this exemption exists to guard against (a
+  // same-named PI spliced into a `<loc>` leaf, repeated as a `<url>` sibling, mixed case, or
+  // appearing after real content) is still rejected — accepting a whitespace-prefixed declaration
+  // cannot itself splice or corrupt a published value.
   let firstEventPending = true;
 
   parser.onerror = (err) => {
@@ -569,7 +597,10 @@ function extractSitemapEntries(xmlPath, exit) {
     if (isLeadingDeclaration) {
       // The document's own leading <?xml version="1.0" ...?> declaration — the only position at
       // which it is well-formed XML, so it is exempted only when it is genuinely the very first
-      // event this parser has seen, never merely by matching the reserved "xml" target name.
+      // event this parser has seen, never merely by matching the reserved "xml" target name. "The
+      // very first event this parser has seen" is not always literally the first byte of the file
+      // — see the `firstEventPending` comment above for the one known, deliberately-accepted gap
+      // (whitespace-prefixed declarations) this leaves.
       return;
     }
     fail(`sitemap XML contains a processing instruction (<?${node.name}?>), which is outside the accepted contract`);
