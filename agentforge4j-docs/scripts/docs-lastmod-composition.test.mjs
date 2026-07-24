@@ -23,6 +23,18 @@ import { assembleSite } from './assemble-site.mjs';
 const DOCS_LASTMOD = '2026-07-15';
 const DOCS_URL = 'https://agentforge4j.org/docs/0.1.0/';
 
+// Minimal shape `javadoc-seo.mjs`'s `injectJavadocPageSeo` requires of every raw javadoc page it
+// processes (real `<head>`/`</head>`, an `<html lang>` attribute, and a description meta tag) —
+// matches `assemble-site.test.mjs`'s own `realisticJavadocHtml` fixture shape, since this file's
+// javadoc fixture is now run through that same real post-processing step during `assembleSite`.
+function realisticJavadocHtml(marker) {
+  return (
+    '<!DOCTYPE HTML>\n<html lang>\n<head>\n<title>Overview</title>\n' +
+    '<meta name="description" content="module index">\n</head>\n' +
+    `<body>${marker}</body>\n</html>\n`
+  );
+}
+
 function sitemapXmlFixture(entries) {
   const body = entries
     .map(
@@ -53,7 +65,7 @@ function fixture() {
   // sufficient git history to have produced a real per-page date (this feature's own concern).
   writeFileSync(join(buildDir, 'sitemap.xml'), sitemapXmlFixture([{ url: DOCS_URL, lastmod: DOCS_LASTMOD }]));
   mkdirSync(javadocDir, { recursive: true });
-  writeFileSync(join(javadocDir, 'index.html'), '<html>javadoc</html>');
+  writeFileSync(join(javadocDir, 'index.html'), realisticJavadocHtml('javadoc'));
   return { spaDir, buildDir, javadocDir, archiveDir: join(root, 'archive-absent'), siteDir: join(root, '_site') };
 }
 
