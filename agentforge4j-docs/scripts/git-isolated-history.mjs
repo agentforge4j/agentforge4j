@@ -30,6 +30,14 @@
 // and records what a run intends to restore, so if a run's process is no longer alive when the next
 // call starts, that next call replays the stranded run's restore step before doing anything else —
 // self-healing across even an unrecoverable kill, not merely a caught signal.
+//
+// That record is only useful if it OUTLIVES a failure to restore. The lock is therefore removed only
+// once HEAD is provably back where it started: a run whose own `restoreHead` fails (a concurrent git
+// process holding `HEAD.lock`, a read-only git dir, a full disk) deliberately leaves the lock behind
+// and fails loudly, so the next call recovers it exactly as it would after a kill. Removing it
+// unconditionally would delete the only recovery payload at precisely the moment it is needed, and
+// the next run would then read the throwaway commit as its own "original" HEAD — cementing the
+// detached HEAD instead of healing it.
 
 import {execFileSync} from 'node:child_process';
 import {mkdtempSync, readFileSync, rmSync, writeFileSync} from 'node:fs';
@@ -39,9 +47,12 @@ import {isAbsolute, join} from 'node:path';
 const LOCK_FILENAME = 'git-isolated-history.lock';
 
 // `commit-tree` cannot create a commit object without SOME author/committer identity; this module's
-// commits are throwaway (never merged, never pushed, discarded the moment HEAD is restored), so a
-// fixed synthetic identity — never depending on `user.name`/`user.email` being configured anywhere —
-// is exactly right, and keeps this module usable on a machine with no git identity set up at all.
+// commits are throwaway (never merged, never pushed, and unreferenced by any branch or tag once HEAD
+// is restored — they do stay reachable through HEAD's own reflog until normal git housekeeping
+// expires it, which is why both HEAD moves below carry an explicit reflog message rather than a
+// blank one), so a fixed synthetic identity — never depending on `user.name`/`user.email` being
+// configured anywhere — is exactly right, and keeps this module usable on a machine with no git
+// identity set up at all.
 const SYNTHETIC_IDENTITY_ENV = {
   GIT_AUTHOR_NAME: 'git-isolated-history',
   GIT_AUTHOR_EMAIL: 'git-isolated-history@localhost',
@@ -67,11 +78,14 @@ function isProcessAlive(pid) {
   }
 }
 
+const DETACH_REFLOG_MESSAGE = 'git-isolated-history: detach onto throwaway commit';
+const RESTORE_REFLOG_MESSAGE = 'git-isolated-history: restore original HEAD';
+
 function restoreHead(repoRoot, originalRef, parentSha) {
   if (originalRef) {
-    execFileSync('git', ['symbolic-ref', 'HEAD', originalRef], {cwd: repoRoot});
+    execFileSync('git', ['symbolic-ref', '-m', RESTORE_REFLOG_MESSAGE, 'HEAD', originalRef], {cwd: repoRoot});
   } else {
-    execFileSync('git', ['update-ref', '--no-deref', 'HEAD', parentSha], {cwd: repoRoot});
+    execFileSync('git', ['update-ref', '-m', RESTORE_REFLOG_MESSAGE, '--no-deref', 'HEAD', parentSha], {cwd: repoRoot});
   }
 }
 
@@ -110,9 +124,15 @@ function claimLock(repoRoot) {
         );
       }
       if (isProcessAlive(stale.pid)) {
+        // A pid is not a durable identity: once the recorded process exits, the operating system is
+        // free to hand that same number to something entirely unrelated, and this probe would then
+        // report the lock as live forever. So this branch says exactly where the lock is and how to
+        // clear it, rather than leaving the caller to discover a file inside the git dir on their own.
         throw new Error(
-          `git-isolated-history: another run (pid ${stale.pid}) is already using ${repoRoot} — refusing to run ` +
-            'concurrently against the same repository',
+          `git-isolated-history: ${lockPath} says a run (pid ${stale.pid}) is still using ${repoRoot}, so this ` +
+            'call refuses to run concurrently against the same repository. If no such run is actually in ' +
+            `progress, that pid has been reused by an unrelated process: confirm nothing is using ${repoRoot}, ` +
+            'then delete that lock file and retry.',
         );
       }
       // That run's process is gone without releasing the lock (killed, crashed, or the machine
@@ -186,6 +206,12 @@ export function buildIsolatedCommit(repoRoot, parentSha, paths, message) {
  * lock left by a run whose process has since died recovers that run's HEAD first, so a kill between
  * detach and restore heals itself on the next call rather than staying stranded forever.
  *
+ * The lock is released only once HEAD is provably back where it started. If `restoreHead` itself
+ * fails, the lock — which carries this run's own restore step — is deliberately left in place and
+ * this function throws with the manual recovery command, so the stranded HEAD is recoverable by the
+ * next call exactly as it would be after a kill. Releasing the lock in that case would destroy the
+ * only recovery payload at the one moment it matters.
+ *
  * @param {string} repoRoot
  * @param {string[]} paths see {@link buildIsolatedCommit}
  * @param {string} message
@@ -197,6 +223,9 @@ export function withIsolatedTemporaryHistory(repoRoot, paths, message, fn) {
   // run's own idea of "current HEAD" below must be read only after any such recovery has already
   // happened, never before it.
   const lockPath = claimLock(repoRoot);
+  // Nothing has been moved yet, so at this point "restored" is vacuously true: the lock may be
+  // released on any failure before HEAD is actually detached below.
+  let headRestored = true;
   try {
     const parentSha = execFileSync('git', ['rev-parse', 'HEAD'], {cwd: repoRoot, encoding: 'utf8'}).trim();
     let originalRef = null;
@@ -208,13 +237,30 @@ export function withIsolatedTemporaryHistory(repoRoot, paths, message, fn) {
     recordRestoreStep(lockPath, originalRef, parentSha);
 
     const commitSha = buildIsolatedCommit(repoRoot, parentSha, paths, message);
-    execFileSync('git', ['update-ref', '--no-deref', 'HEAD', commitSha], {cwd: repoRoot});
+    execFileSync('git', ['update-ref', '-m', DETACH_REFLOG_MESSAGE, '--no-deref', 'HEAD', commitSha], {cwd: repoRoot});
+    headRestored = false;
     try {
       return fn();
     } finally {
-      restoreHead(repoRoot, originalRef, parentSha);
+      try {
+        restoreHead(repoRoot, originalRef, parentSha);
+        headRestored = true;
+      } catch (err) {
+        // Reported instead of `fn`'s own error if both failed: a stranded HEAD is the more urgent of
+        // the two, and unlike `fn`'s failure it needs the caller to act on the repository itself.
+        throw new Error(
+          `git-isolated-history: FAILED to restore HEAD in ${repoRoot} — it is still detached onto the ` +
+            `throwaway commit ${commitSha}. ${lockPath} has deliberately been left in place: it records this ` +
+            'run\'s restore step, so the next call to this module replays it automatically. To recover by ' +
+            `hand instead, run ${originalRef ? `\`git symbolic-ref HEAD ${originalRef}\`` : `\`git update-ref --no-deref HEAD ${parentSha}\``}` +
+            ` in ${repoRoot} and then delete that lock file. Cause: ${err.message}`,
+          {cause: err},
+        );
+      }
     }
   } finally {
-    rmSync(lockPath, {force: true});
+    if (headRestored) {
+      rmSync(lockPath, {force: true});
+    }
   }
 }

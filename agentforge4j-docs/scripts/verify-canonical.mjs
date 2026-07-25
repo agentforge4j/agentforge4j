@@ -158,8 +158,15 @@ export function verifyCanonicalTrailingSlash({
     }
     if (!lastmod || !isRealCalendarDate(lastmod)) {
       throw new Error(
-        `verify-canonical: sitemap URL "${url}" has no valid <lastmod> (a real YYYY-MM-DD calendar date) — ` +
-          "the sitemap plugin's lastmod: 'date' option regressed, this page has no git history, or the date is not a real calendar day",
+        `verify-canonical: sitemap URL "${url}" has no valid <lastmod> (a real YYYY-MM-DD calendar date). ` +
+          'Causes, in the order worth checking: (1) the route has no source file of its own — Docusaurus ' +
+          'attaches sourceFilePath only to real doc routes, so a category `link: {type: "generated-index"}` ' +
+          'page or a tag page can never carry a git-derived date; give that category a real index doc, or ' +
+          "add the route to the sitemap plugin's ignorePatterns in docusaurus.config.ts. (2) The source " +
+          'file exists but is not committed yet — a freshly cut versioned_docs/version-<v>/ snapshot is ' +
+          'already listed in versions.json (so it is built and advertised) while its own files are still ' +
+          "untracked; commit the cut before building. (3) The sitemap plugin's lastmod: 'date' option " +
+          'regressed. (4) The value is not a real calendar day.',
       );
     }
     // The remaining checks resolve the sitemap URL back to a local file path assuming buildDir is

@@ -9,10 +9,14 @@
 // real modification must. A hand-rolled reimplementation of this check would only prove the test's
 // own logic, not the actual mechanism the live build depends on — so this calls the real function.
 //
-// `age: 'newest'` (not `'update'` — `getFileCommitDate` supports only `'oldest'`/`'newest'`) matches
-// what production actually passes: `@docusaurus/utils`'s own `getGitLastUpdate` calls
-// `getGitCommitInfo(filePath, 'newest')` verbatim (`node_modules/@docusaurus/utils/lib/vcs/gitUtils.js`),
-// which is what feeds each route's `lastUpdatedAt` and, from there, the sitemap's `<lastmod>`.
+// The options below are exactly what production passes, not a simplified subset. `@docusaurus/utils`'s
+// own `getGitLastUpdate` calls `getGitCommitInfo(filePath, 'newest')`, which in turn calls
+// `getFileCommitDate(filePath, {age: 'newest', includeAuthor: true})`
+// (`node_modules/@docusaurus/utils/lib/vcs/gitUtils.js`) — and `includeAuthor` is not cosmetic: it
+// selects a different git `--format` (`RESULT:%ct,%an` rather than `RESULT:%ct`) and a different
+// parsing regex, so omitting it here would leave the live build's actual format/parse path untested.
+// `age` is `'newest'` (not `'update'` — `getFileCommitDate` supports only `'oldest'`/`'newest'`).
+// This is what feeds each route's `lastUpdatedAt` and, from there, the sitemap's `<lastmod>`.
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -21,6 +25,9 @@ import { getFileCommitDate } from '@docusaurus/utils';
 import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+
+/** Byte-for-byte the options `getGitCommitInfo` passes in production — see this file's header. */
+const PRODUCTION_OPTIONS = { age: 'newest', includeAuthor: true };
 
 const D1 = '2026-01-05T00:00:00Z';
 const D2 = '2026-01-10T00:00:00Z';
@@ -47,19 +54,23 @@ test('an unrelated later commit does not move an untouched file\'s git-derived d
   writeFileSync(fileA, 'a');
   commit(dir, 'add a.txt', D1);
 
-  const beforeUnrelatedCommit = await getFileCommitDate(fileA, { age: 'newest' });
+  const beforeUnrelatedCommit = await getFileCommitDate(fileA, PRODUCTION_OPTIONS);
   assert.equal(beforeUnrelatedCommit.date.toISOString().slice(0, 10), D1.slice(0, 10));
 
   // An unrelated commit, strictly later, touching a different file entirely.
   writeFileSync(join(dir, 'b.txt'), 'b');
   commit(dir, 'add unrelated b.txt', D2);
 
-  const afterUnrelatedCommit = await getFileCommitDate(fileA, { age: 'newest' });
+  const afterUnrelatedCommit = await getFileCommitDate(fileA, PRODUCTION_OPTIONS);
   assert.equal(
     afterUnrelatedCommit.date.toISOString().slice(0, 10),
     D1.slice(0, 10),
     'a.txt was not touched by the second commit — its date must still be D1, not D2',
   );
+  // Proves the `includeAuthor: true` branch actually parsed: production takes the `RESULT:%ct,%an`
+  // format and its own regex, so a break in that path would surface here rather than silently
+  // passing through the simpler date-only branch this test used to exercise.
+  assert.equal(afterUnrelatedCommit.author, 'Test');
 });
 
 test('a real modification to the file itself does move its git-derived date to the new commit', async () => {
@@ -71,7 +82,7 @@ test('a real modification to the file itself does move its git-derived date to t
   writeFileSync(fileA, 'a, modified');
   commit(dir, 'modify a.txt', D2);
 
-  const result = await getFileCommitDate(fileA, { age: 'newest' });
+  const result = await getFileCommitDate(fileA, PRODUCTION_OPTIONS);
   assert.equal(
     result.date.toISOString().slice(0, 10),
     D2.slice(0, 10),

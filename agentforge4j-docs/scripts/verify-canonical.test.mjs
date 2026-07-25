@@ -93,6 +93,23 @@ test('fails closed on a missing <lastmod> (the malformed/impossible-date variant
   assert.throws(() => verifyCanonicalTrailingSlash({ buildDir }), /no valid <lastmod>/);
 });
 
+test("the missing-<lastmod> diagnostic names the two causes that are NOT a plugin regression: a route with no source file of its own (a category generated-index or tag page, which can never have a git-derived date), and a source file that exists but is not committed yet (a freshly cut versioned_docs snapshot)", () => {
+  const buildDir = fixture();
+  writePage(buildDir, '0.1.0/index.html', 'https://agentforge4j.org/docs/0.1.0/');
+  writeFileSync(
+    join(buildDir, 'sitemap.xml'),
+    '<urlset><url><loc>https://agentforge4j.org/docs/0.1.0/</loc></url></urlset>',
+  );
+  // Docusaurus attaches `sourceFilePath` only to real doc routes (plugin-content-docs' own
+  // createDocRouteMetadata), so these two route kinds legitimately produce no <lastmod> at all —
+  // an author hitting this must be pointed at the route, not sent hunting through git history.
+  assert.throws(() => verifyCanonicalTrailingSlash({ buildDir }), /generated-index/);
+  assert.throws(() => verifyCanonicalTrailingSlash({ buildDir }), /tag page/);
+  assert.throws(() => verifyCanonicalTrailingSlash({ buildDir }), /ignorePatterns/);
+  assert.throws(() => verifyCanonicalTrailingSlash({ buildDir }), /not committed yet/);
+  assert.throws(() => verifyCanonicalTrailingSlash({ buildDir }), /commit the cut before building/);
+});
+
 test('fails closed on an impossible calendar date — day out of range for the month (2026-02-31)', () => {
   const buildDir = sitemapFixtureWithLastmod('2026-02-31');
   assert.throws(() => verifyCanonicalTrailingSlash({ buildDir }), /no valid <lastmod>/);
@@ -284,7 +301,20 @@ test('fails closed when a sitemap URL has no generated page at all (a build inte
   assert.throws(() => verifyCanonicalTrailingSlash({ buildDir }), /has no generated page at/);
 });
 
-test('archive-mode builds skip the trailing-slash/canonical-tag checks (no moving alias / canonical policy of their own) when run against this real, non-shallow repo, with a valid generated sitemap.xml', () => {
+test('archive-mode builds skip the CANONICAL-TAG/page-existence checks (an archive owns no moving alias or canonical policy of its own) when run against this real, non-shallow repo, with a valid generated sitemap.xml', () => {
   const buildDir = sitemapFixtureWithLastmod('2026-07-20');
   assert.doesNotThrow(() => verifyCanonicalTrailingSlash({ buildDir, archiveVersion: '1.0.0' }));
+});
+
+test("archive-mode builds do NOT skip the sitemap-URL trailing-slash check — that check runs before the archive-mode short-circuit, so `trailingSlash: true` is enforced on an archive's own sitemap exactly as on the live site's", () => {
+  const buildDir = fixture();
+  mkdirSync(buildDir, { recursive: true });
+  writeFileSync(
+    join(buildDir, 'sitemap.xml'),
+    '<urlset><url><loc>https://agentforge4j.org/docs/archive/1.0.0/get-started</loc><lastmod>2026-07-20</lastmod></url></urlset>',
+  );
+  assert.throws(
+    () => verifyCanonicalTrailingSlash({ buildDir, archiveVersion: '1.0.0' }),
+    /does not end in '\/'/,
+  );
 });

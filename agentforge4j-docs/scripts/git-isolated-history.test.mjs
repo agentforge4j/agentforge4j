@@ -10,7 +10,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { buildIsolatedCommit, withIsolatedTemporaryHistory } from './git-isolated-history.mjs';
@@ -251,10 +251,27 @@ test('11. a second, overlapping call against the same repository refuses cleanly
     () => withIsolatedTemporaryHistory(dir, [join(dir, 'outer.txt')], 'outer commit', () => {
       withIsolatedTemporaryHistory(dir, [join(dir, 'inner.txt')], 'inner commit', () => {});
     }),
-    /already using/,
+    /refuses to run concurrently against the same repository/,
   );
 
   assertSameSnapshot(before, snapshot(dir), 'overlapping executions');
+});
+
+test('11b. the refusal names the lock file and how to clear it — a pid is not a durable identity, so a recycled pid must not leave the caller hunting for a file inside the git dir', () => {
+  const dir = gitRepo();
+  writeFileSync(join(dir, 'outer.txt'), 'outer scratch content');
+  writeFileSync(join(dir, 'inner.txt'), 'inner scratch content');
+  const lockPath = lockPathOf(dir);
+
+  assert.throws(
+    () => withIsolatedTemporaryHistory(dir, [join(dir, 'outer.txt')], 'outer commit', () => {
+      withIsolatedTemporaryHistory(dir, [join(dir, 'inner.txt')], 'inner commit', () => {});
+    }),
+    (err) =>
+      err.message.includes(lockPath) &&
+      /pid has been reused/.test(err.message) &&
+      /delete that lock file/.test(err.message),
+  );
 });
 
 test('12. a lock file stranded by a run whose process has since died is recovered automatically on the next call', () => {
@@ -346,4 +363,74 @@ test('13. builds a commit with no Git identity configured anywhere — does not 
       process.env.GIT_CONFIG_SYSTEM = savedSystem;
     }
   }
+});
+
+// A pid that cannot belong to a live process on any supported platform — the same sentinel test 12
+// uses to stand in for "the run that wrote this lock is gone".
+const DEFINITELY_DEAD_PID = 999999999;
+
+function lockPathOf(dir) {
+  const gitDir = execFileSync('git', ['rev-parse', '--git-dir'], { cwd: dir, encoding: 'utf8' }).trim();
+  return join(dir, gitDir, 'git-isolated-history.lock');
+}
+
+test('14. a FAILED HEAD restore keeps the lock file — the recovery record must outlive the one failure it exists for, and the next call replays it', () => {
+  const dir = gitRepo();
+  writeFileSync(join(dir, 'scratch.txt'), 'scratch content');
+  const originalRef = execFileSync('git', ['symbolic-ref', '-q', 'HEAD'], { cwd: dir, encoding: 'utf8' }).trim();
+  const parentSha = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: dir, encoding: 'utf8' }).trim();
+  const lockPath = lockPathOf(dir);
+  const headLockPath = join(dir, execFileSync('git', ['rev-parse', '--git-dir'], { cwd: dir, encoding: 'utf8' }).trim(), 'HEAD.lock');
+
+  // A real, deterministic restore failure with nothing mocked: git refuses to move any ref whose
+  // `.lock` file already exists, so creating `HEAD.lock` from inside fn() makes the restore step —
+  // and ONLY the restore step — fail, exactly as a concurrent git process or a read-only git dir
+  // would. Everything before it (lock claim, temporary commit, HEAD detach) has already succeeded.
+  assert.throws(
+    () => withIsolatedTemporaryHistory(dir, [join(dir, 'scratch.txt')], 'scratch commit', () => {
+      writeFileSync(headLockPath, '');
+    }),
+    /FAILED to restore HEAD/,
+  );
+
+  // The two things that must both be true after a failed restore: HEAD really is still stranded,
+  // and the record needed to un-strand it was NOT deleted along the way.
+  assert.ok(
+    existsSync(lockPath),
+    'the lock file was removed despite the restore failing — the next call now has nothing to replay, ' +
+      'and would adopt the throwaway commit as its own "original" HEAD',
+  );
+  assert.notEqual(
+    execFileSync('git', ['rev-parse', 'HEAD'], { cwd: dir, encoding: 'utf8' }).trim(),
+    parentSha,
+    'test setup did not actually leave HEAD stranded',
+  );
+  const recorded = JSON.parse(readFileSync(lockPath, 'utf8'));
+  assert.equal(recorded.originalRef, originalRef);
+  assert.equal(recorded.parentSha, parentSha);
+
+  // Clear the induced failure, and mark the stranded run's process as gone (same simulation as test
+  // 12 — within one test process the recorded pid is our own, which is legitimately still alive).
+  rmSync(headLockPath, { force: true });
+  writeFileSync(lockPath, JSON.stringify({ ...recorded, pid: DEFINITELY_DEAD_PID }));
+
+  const result = withIsolatedTemporaryHistory(dir, [join(dir, 'scratch.txt')], 'recovery run', () => 'recovered-ok');
+
+  assert.equal(result, 'recovered-ok');
+  assert.equal(execFileSync('git', ['rev-parse', 'HEAD'], { cwd: dir, encoding: 'utf8' }).trim(), parentSha);
+  assert.equal(execFileSync('git', ['symbolic-ref', '-q', 'HEAD'], { cwd: dir, encoding: 'utf8' }).trim(), originalRef);
+  assert.ok(!existsSync(lockPath), 'a successful run must release the lock');
+});
+
+test('15. both HEAD moves carry an explicit reflog message, so the throwaway commit a run leaves in the reflog is identifiable rather than a blank entry', () => {
+  const dir = gitRepo();
+  writeFileSync(join(dir, 'scratch.txt'), 'scratch content');
+
+  withIsolatedTemporaryHistory(dir, [join(dir, 'scratch.txt')], 'scratch commit', () => {});
+
+  // `git reflog` for HEAD, most recent first: the restore, then the detach.
+  const reflog = execFileSync('git', ['reflog', 'show', 'HEAD', '--format=%gs'], { cwd: dir, encoding: 'utf8' });
+  const [restoreEntry, detachEntry] = reflog.split('\n');
+  assert.equal(restoreEntry, 'git-isolated-history: restore original HEAD');
+  assert.equal(detachEntry, 'git-isolated-history: detach onto throwaway commit');
 });

@@ -55,10 +55,18 @@ const config: Config = {
     // keyed by ABSOLUTE paths (resolved from `git ls-files`), but @docusaurus/plugin-sitemap
     // passes each route's `sourceFilePath` as-is — relative to siteDir, never resolved to
     // absolute — so every eager-strategy lookup silently missed and every /docs/0.1.0/** sitemap
-    // entry shipped with no <lastmod> at all. `git-ad-hoc` (the historical, one-`git log`-call-
-    // per-file strategy, confirmed correct against this same real content) sidesteps the mismatch
-    // entirely — it resolves cwd/paths itself per call rather than pre-building an absolute-keyed
-    // map, so a relative sourceFilePath still works.
+    // entry shipped with no <lastmod> at all. `git-ad-hoc` (the one-`git log`-call-per-file
+    // strategy, confirmed correct against this same real content) sidesteps the mismatch entirely —
+    // it resolves cwd/paths itself per call rather than pre-building an absolute-keyed map, so a
+    // relative sourceFilePath still works.
+    //
+    // Deliberately the RAW `git-ad-hoc` strategy, not the `default-v1` preset that wraps it: both
+    // `default-v1` and `default-v2` substitute VcsHardcoded whenever NODE_ENV is `development` or
+    // `test` (see @docusaurus/utils/vcs/vcsDefaultV1), which would hand this site fabricated dates
+    // that verify-canonical.mjs would then wave through — the exact "invented metadata" this whole
+    // pass exists to prevent. The cost is that a dev-server rebuild would shell out to real `git log`
+    // too if a VCS consumer is ever enabled in dev (nothing reads the VCS in dev today: the sitemap
+    // plugin runs only in postBuild, and the docs plugin's showLastUpdateTime/Author are both off).
     experimental_vcs: 'git-ad-hoc',
   },
 
