@@ -6,12 +6,10 @@
 // `_site/sitemap.xml` — a lastmod that only ever exists in the intermediate docs build and vanishes
 // at composition never reaches a search engine, which makes this feature pointless without this
 // check. Deliberately reuses the real `assembleSite` rather than an independent sitemap parser of
-// this feature's own — sitemap composition/preservation itself is owned by the sitemap-hardening
-// track, not this one; this file only asserts the observable end-to-end guarantee.
-//
-// `assemble-site.mjs`'s sitemap merge (`mergeSitemaps`) now preserves `<lastmod>` — that fix
-// landed via the separate sitemap-hardening branch (main, then rebased onto here) — so this test
-// exercises the real, current composition path end to end.
+// this feature's own: `assemble-site.mjs`'s sitemap merge (`mergeSitemaps`) is what preserves
+// `<lastmod>`, and it is owned elsewhere — this file asserts only the observable end-to-end
+// guarantee against the real, current composition path, so that a change on either side of the
+// boundary is caught here rather than shipping a sitemap the dates never reached.
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';

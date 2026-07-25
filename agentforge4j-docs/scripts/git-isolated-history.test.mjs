@@ -7,7 +7,9 @@
 // `child_process`), and compares mechanically-captured git state (status/staged-diff/unstaged-diff/
 // HEAD) before and after, not just file contents.
 
-import { test } from 'node:test';
+// `after` is aliased: `assertSameSnapshot` below already takes a parameter called `after`, and one
+// name meaning two things in one file is exactly the sort of thing that reads fine and edits badly.
+import { after as afterAllTests, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
@@ -15,8 +17,29 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { buildIsolatedCommit, withIsolatedTemporaryHistory } from './git-isolated-history.mjs';
 
+// Every fixture directory this file creates, removed once the whole file has run. These are real
+// git repositories, and without this each run deposited ~17 of them permanently in the OS temp
+// root. A cleanup failure never fails the suite: a file still locked by a just-exited git process
+// on Windows says nothing about the code under test.
+const fixtureDirs = [];
+
+function disposable(dir) {
+  fixtureDirs.push(dir);
+  return dir;
+}
+
+afterAllTests(() => {
+  for (const dir of fixtureDirs) {
+    try {
+      rmSync(dir, { recursive: true, force: true, maxRetries: 3 });
+    } catch {
+      // Best effort only.
+    }
+  }
+});
+
 function gitRepo() {
-  const dir = mkdtempSync(join(tmpdir(), 'git-isolated-history-test-'));
+  const dir = disposable(mkdtempSync(join(tmpdir(), 'git-isolated-history-test-')));
   execFileSync('git', ['init', '--quiet'], { cwd: dir });
   execFileSync('git', ['config', 'user.email', 'test@example.invalid'], { cwd: dir });
   execFileSync('git', ['config', 'user.name', 'Test'], { cwd: dir });
@@ -51,8 +74,13 @@ function assertSameSnapshot(before, after, label) {
   assert.equal(after.unstaged, before.unstaged, `${label}: unstaged (git diff) content changed`);
 }
 
+// Matches the module's temporary-index prefix EXACTLY, not the family prefix: this file's own
+// fixtures are `git-isolated-history-test-…`, which a broader match would count too, making the
+// leak assertion below sound only for as long as these tests never run concurrently with one
+// another. The module deliberately names its index dirs `git-isolated-history-index-…` so this
+// question has one unambiguous answer.
 function tempIndexDirCount() {
-  return readdirSync(tmpdir()).filter((name) => name.startsWith('git-isolated-history-')).length;
+  return readdirSync(tmpdir()).filter((name) => name.startsWith('git-isolated-history-index-')).length;
 }
 
 test('1. clean repository: fn runs, its return value is passed through, and repo state is unchanged', () => {
@@ -288,7 +316,7 @@ test('12. a lock file stranded by a run whose process has since died is recovere
   const gitDir = execFileSync('git', ['rev-parse', '--git-dir'], { cwd: dir, encoding: 'utf8' }).trim();
   const lockPath = join(dir, gitDir, 'git-isolated-history.lock');
   const DEFINITELY_DEAD_PID = 999999999;
-  writeFileSync(lockPath, JSON.stringify({ pid: DEFINITELY_DEAD_PID, originalRef, parentSha }));
+  writeFileSync(lockPath, JSON.stringify({ pid: DEFINITELY_DEAD_PID, originalRef, parentSha, temporaryCommitSha: strandedSha }));
   assert.notEqual(
     execFileSync('git', ['rev-parse', 'HEAD'], { cwd: dir, encoding: 'utf8' }).trim(),
     parentSha,
@@ -303,7 +331,7 @@ test('12. a lock file stranded by a run whose process has since died is recovere
 });
 
 function gitRepoWithoutIdentity() {
-  const dir = mkdtempSync(join(tmpdir(), 'git-isolated-history-test-noidentity-'));
+  const dir = disposable(mkdtempSync(join(tmpdir(), 'git-isolated-history-test-noidentity-')));
   execFileSync('git', ['init', '--quiet'], { cwd: dir });
   writeFileSync(join(dir, 'seed.txt'), 'seed');
   execFileSync('git', ['add', '.'], { cwd: dir });
@@ -330,7 +358,7 @@ test('13. builds a commit with no Git identity configured anywhere — does not 
     savedEnv[key] = process.env[key];
     delete process.env[key];
   }
-  const emptyConfigDir = mkdtempSync(join(tmpdir(), 'git-isolated-history-test-noconfig-'));
+  const emptyConfigDir = disposable(mkdtempSync(join(tmpdir(), 'git-isolated-history-test-noconfig-')));
   const savedGlobal = process.env.GIT_CONFIG_GLOBAL;
   const savedSystem = process.env.GIT_CONFIG_SYSTEM;
   process.env.GIT_CONFIG_GLOBAL = join(emptyConfigDir, 'no-such-gitconfig');
@@ -433,4 +461,75 @@ test('15. both HEAD moves carry an explicit reflog message, so the throwaway com
   const [restoreEntry, detachEntry] = reflog.split('\n');
   assert.equal(restoreEntry, 'git-isolated-history: restore original HEAD');
   assert.equal(detachEntry, 'git-isolated-history: detach onto throwaway commit');
+});
+
+test('16. a repository whose HEAD was ALREADY DETACHED before the call is restored to that same detached commit, not silently reattached to a branch', () => {
+  // The other HEAD shape. Every fixture above starts on a branch, so `restoreHead`'s
+  // `update-ref --no-deref` arm — the one that runs when there is no original symbolic ref to go
+  // back to — was previously only reached through the stale-recovery path, never through a normal
+  // call. A detached HEAD is the everyday state of a review/maintenance worktree, which is exactly
+  // where `docs:archive-scratch` gets run.
+  const dir = gitRepo();
+  const branchSha = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: dir, encoding: 'utf8' }).trim();
+  execFileSync('git', ['checkout', '--quiet', '--detach', branchSha], { cwd: dir });
+  writeFileSync(join(dir, 'scratch.txt'), 'scratch content');
+  const before = snapshot(dir);
+  assert.equal(before.ref, null, 'test setup did not actually leave HEAD detached');
+
+  const result = withIsolatedTemporaryHistory(dir, [join(dir, 'scratch.txt')], 'scratch commit', () => 'fn-return-value');
+
+  assert.equal(result, 'fn-return-value');
+  assertSameSnapshot(before, snapshot(dir), 'HEAD detached before the call');
+});
+
+test('17. a stale lock is NOT replayed once HEAD has moved on — a recovery record proves HEAD WAS stranded, never that it still is', () => {
+  // The realistic way this arises: a run's restore fails, the operator follows the thrown
+  // instructions far enough to fix HEAD by hand but leaves the lock file behind, and then carries
+  // on working. Replaying the record at that point would drag HEAD off the branch they are now on,
+  // while the index and working tree (which this module never touches) stayed put.
+  const dir = gitRepo();
+  writeFileSync(join(dir, 'scratch.txt'), 'scratch content');
+  const originalRef = execFileSync('git', ['symbolic-ref', '-q', 'HEAD'], { cwd: dir, encoding: 'utf8' }).trim();
+  const parentSha = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: dir, encoding: 'utf8' }).trim();
+  const strandedSha = buildIsolatedCommit(dir, parentSha, [join(dir, 'scratch.txt')], 'stranded commit');
+
+  // The operator has since moved to a different branch entirely — HEAD is no longer stranded.
+  execFileSync('git', ['checkout', '--quiet', '-b', 'operator-moved-here'], { cwd: dir });
+  const movedOnRef = execFileSync('git', ['symbolic-ref', '-q', 'HEAD'], { cwd: dir, encoding: 'utf8' }).trim();
+  assert.notEqual(movedOnRef, originalRef);
+
+  // ...but the lock, with its full recovery payload, was never cleaned up.
+  writeFileSync(
+    lockPathOf(dir),
+    JSON.stringify({ pid: DEFINITELY_DEAD_PID, originalRef, parentSha, temporaryCommitSha: strandedSha }),
+  );
+
+  const result = withIsolatedTemporaryHistory(dir, [join(dir, 'scratch.txt')], 'later run', () => 'ok');
+
+  assert.equal(result, 'ok');
+  assert.equal(
+    execFileSync('git', ['symbolic-ref', '-q', 'HEAD'], { cwd: dir, encoding: 'utf8' }).trim(),
+    movedOnRef,
+    'the stale lock was replayed against a HEAD that was no longer stranded, moving the operator off the branch they had checked out',
+  );
+  assert.ok(!existsSync(lockPathOf(dir)), 'the stale lock must still be reclaimed and released, even when nothing needed restoring');
+});
+
+test('18. a path beginning with "-" is staged as a path, not parsed as a git option', () => {
+  // `buildIsolatedCommit` is exported and passes `paths` straight to `git add`. Deliberately a
+  // REPOSITORY-RELATIVE path here: an absolute path can never begin with `-`, so it cannot exercise
+  // the `--` separator at all, and a test written that way would pass just as happily without it.
+  // Relative paths resolve against `cwd: repoRoot` and work exactly the same, which makes this the
+  // one input shape that can actually carry a leading dash into the command line.
+  const dir = gitRepo();
+  const awkwardName = '-leading-dash.txt';
+  writeFileSync(join(dir, awkwardName), 'staged by path, not by option');
+  const parentSha = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: dir, encoding: 'utf8' }).trim();
+
+  const commitSha = buildIsolatedCommit(dir, parentSha, [awkwardName], 'awkwardly named path');
+
+  assert.equal(
+    execFileSync('git', ['show', `${commitSha}:${awkwardName}`], { cwd: dir, encoding: 'utf8' }),
+    'staged by path, not by option',
+  );
 });

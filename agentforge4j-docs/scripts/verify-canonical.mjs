@@ -5,7 +5,19 @@
 // fixes: `trailingSlash: true` (docusaurus.config.ts) and the sitemap plugin's `lastmod: 'date'`
 // option. Both are framework-native Docusaurus config, not custom code of this repo's own — this
 // check exists to prove they actually took effect against a real build, and to catch a future config
-// change (or a Docusaurus upgrade that alters the default) silently regressing either one.
+// change (or a Docusaurus upgrade that alters the default) that stops them producing output.
+//
+// What that covers and what it does not, stated precisely because the difference is load-bearing:
+// this checks the VALUES in the generated sitemap — present, trailing-slash form, a real calendar
+// day, not dated in the future — never their PROVENANCE. Every regression that stops a date being
+// DERIVED does surface here as a missing <lastmod>: the `lastmod` option dropped, `experimental_vcs`
+// back to the v4-implied eager default (whose absolute-keyed file map misses the sitemap plugin's
+// siteDir-relative sourceFilePath), or the strategy set to `disabled`. A strategy that FABRICATES
+// dates does not surface here at all: `VcsHardcoded` returns 2018-10-14 for every file, which is
+// present, well-formed, and a real calendar day. No inspection of a build artifact can tell an
+// invented date from a real one, so that single risk is carried by the config token instead —
+// `future.experimental_vcs: 'git-ad-hoc'` is deliberately the raw strategy rather than a
+// `default-v*` preset for exactly this reason (see its own comment in docusaurus.config.ts).
 //
 // Driven entirely by sitemap.xml (not a walk of every generated HTML file): every URL the sitemap
 // actually advertises to search engines must resolve to a real generated page with exactly one
@@ -38,12 +50,31 @@ const DOCS_BASE_PATH = '/docs/';
  * commit, for every file). `verify-canonical`'s own YAGNI-free job is to catch exactly this class of
  * silent regression, so it must fail closed on the precondition itself rather than trust whatever
  * date comes back.
+ *
+ * The probe failing at all is itself a finding, and the two ways it realistically fails are separate
+ * preconditions the build now has rather than one diagnostic mystery: `git` is not on PATH, or the
+ * tree is not a git checkout (a source tarball, a release archive, a container context that excludes
+ * `.git`). Both are reported as what they are — naming the probe instead would send the reader
+ * hunting for a shallow-clone problem they do not have.
  */
 function isShallowRepository(repoRoot) {
   let output;
   try {
     output = execFileSync('git', ['rev-parse', '--is-shallow-repository'], { cwd: repoRoot, encoding: 'utf8' }).trim();
   } catch (err) {
+    if (err.code === 'ENOENT') {
+      throw new Error(
+        "verify-canonical: 'git' was not found on PATH, but this build derives every page's sitemap " +
+          '<lastmod> from real per-file git history — install git, or build from an environment that has it',
+      );
+    }
+    if (/not a git repository/i.test(`${err.stderr ?? ''}\n${err.message ?? ''}`)) {
+      throw new Error(
+        `verify-canonical: ${repoRoot} is not inside a git repository, but this build derives every page's ` +
+          'sitemap <lastmod> from real per-file git history — build from a real git checkout (an extracted ' +
+          'source tarball, or a container context that excludes .git, cannot produce these dates)',
+      );
+    }
     throw new Error(`verify-canonical: could not determine whether ${repoRoot} is a shallow git repository — ${err.message}`);
   }
   return output === 'true';
@@ -74,13 +105,24 @@ export function assertSufficientGitHistoryForLastmod(repoRoot) {
 
 /** Rejects any value that is not a real calendar date — not just YYYY-MM-DD shaped (so
  * `2026-02-31`/`2026-13-01`/`2026-00-10` fail, and leap years are handled correctly: `2024-02-29` is
- * valid, `2026-02-29` is not) — via the same UTC round-trip already used on the SPA side. */
-function isRealCalendarDate(value) {
+ * valid, `2026-02-29` is not) — via the same UTC round-trip already used on the SPA side.
+ *
+ * Also rejects a date in the FUTURE. A `<lastmod>` is derived from a commit timestamp and formatted
+ * as a UTC day (`new Date(timestamp).toISOString().split('T')[0]`, see the sitemap plugin's own
+ * `LastmodFormatters`), so it can never legitimately be later than the day the build runs — a future
+ * value means a skewed clock or an overridden `GIT_COMMITTER_DATE` reached the history the dates are
+ * read from. Search engines discount future `<lastmod>` values, which makes this exactly the kind of
+ * plausible-looking-but-wrong metadata this gate exists to keep out. Compared as strings: both sides
+ * are zero-padded UTC `YYYY-MM-DD`, for which lexicographic and chronological order agree. */
+function isTrustworthyLastmodDate(value) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
     return false;
   }
   const date = new Date(`${value}T00:00:00.000Z`);
-  return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value;
+  if (Number.isNaN(date.getTime()) || date.toISOString().slice(0, 10) !== value) {
+    return false;
+  }
+  return value <= new Date().toISOString().slice(0, 10);
 }
 
 // Docusaurus's head-tag renderer does not necessarily quote attribute values with no whitespace and
@@ -156,9 +198,10 @@ export function verifyCanonicalTrailingSlash({
     if (!url.endsWith('/')) {
       throw new Error(`verify-canonical: sitemap URL "${url}" does not end in '/' (trailingSlash: true regression?)`);
     }
-    if (!lastmod || !isRealCalendarDate(lastmod)) {
+    if (!lastmod || !isTrustworthyLastmodDate(lastmod)) {
       throw new Error(
-        `verify-canonical: sitemap URL "${url}" has no valid <lastmod> (a real YYYY-MM-DD calendar date). ` +
+        `verify-canonical: sitemap URL "${url}" has no valid <lastmod> (a real YYYY-MM-DD calendar date, ` +
+          `not in the future; this one is ${lastmod ? `"${lastmod}"` : 'absent'}). ` +
           'Causes, in the order worth checking: (1) the route has no source file of its own — Docusaurus ' +
           'attaches sourceFilePath only to real doc routes, so a category `link: {type: "generated-index"}` ' +
           'page or a tag page can never carry a git-derived date; give that category a real index doc, or ' +
@@ -166,7 +209,9 @@ export function verifyCanonicalTrailingSlash({
           'file exists but is not committed yet — a freshly cut versioned_docs/version-<v>/ snapshot is ' +
           'already listed in versions.json (so it is built and advertised) while its own files are still ' +
           "untracked; commit the cut before building. (3) The sitemap plugin's lastmod: 'date' option " +
-          'regressed. (4) The value is not a real calendar day.',
+          'regressed. (4) The value is not a real calendar day. (5) The value is a real day but lies in ' +
+          "the future — a skewed clock, or an overridden GIT_COMMITTER_DATE, reached the history the " +
+          'dates are read from; a commit cannot legitimately be newer than the build reading it.',
       );
     }
     // The remaining checks resolve the sitemap URL back to a local file path assuming buildDir is

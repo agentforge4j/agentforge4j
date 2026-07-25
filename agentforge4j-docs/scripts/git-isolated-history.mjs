@@ -38,6 +38,14 @@
 // unconditionally would delete the only recovery payload at precisely the moment it is needed, and
 // the next run would then read the throwaway commit as its own "original" HEAD — cementing the
 // detached HEAD instead of healing it.
+//
+// Replaying that record is guarded on HEAD still BEING stranded, never on the record merely existing.
+// The failed-restore path above tells the operator to fix HEAD by hand and then delete the lock; if
+// they do the first and forget the second (or the kill happened after the restore but before the lock
+// was removed), an unconditional replay would move a HEAD that had already moved on — silently
+// putting HEAD back on the recorded branch while the working tree stayed where the operator had since
+// taken it. So the lock also records the throwaway commit's own sha, written before HEAD is touched,
+// and recovery restores only while HEAD is still detached onto exactly that commit.
 
 import {execFileSync} from 'node:child_process';
 import {mkdtempSync, readFileSync, rmSync, writeFileSync} from 'node:fs';
@@ -90,6 +98,22 @@ function restoreHead(repoRoot, originalRef, parentSha) {
 }
 
 /**
+ * True only if HEAD is currently detached AND sitting on exactly `sha`. Both halves matter: a
+ * symbolic HEAD that happens to resolve to the same commit (someone branched onto the throwaway
+ * commit) is not a stranded HEAD, and forcing `symbolic-ref` back on it would move a branch the
+ * operator deliberately checked out.
+ */
+function isHeadDetachedAt(repoRoot, sha) {
+  try {
+    execFileSync('git', ['symbolic-ref', '-q', 'HEAD'], {cwd: repoRoot, encoding: 'utf8'});
+    return false; // HEAD is a symbolic ref — not detached, so not stranded by this module.
+  } catch {
+    // Expected: `symbolic-ref -q` exits non-zero precisely when HEAD is detached.
+  }
+  return execFileSync('git', ['rev-parse', 'HEAD'], {cwd: repoRoot, encoding: 'utf8'}).trim() === sha;
+}
+
+/**
  * Claims the per-repository lock with a bare placeholder (just this process's pid — the actual
  * restore payload is filled in by {@link recordRestoreStep} once it is known), recovering a
  * previous run's stranded HEAD first if that run's process is no longer alive. Throws if a
@@ -137,9 +161,19 @@ function claimLock(repoRoot) {
       }
       // That run's process is gone without releasing the lock (killed, crashed, or the machine
       // lost power). If it never got as far as recording a restore step, it also never touched
-      // HEAD — nothing to recover, just reclaim. Otherwise replay its recorded restore step first,
-      // so HEAD never stays stranded past the very next call.
-      if (stale.originalRef !== undefined && stale.parentSha !== undefined) {
+      // HEAD — nothing to recover, just reclaim. Otherwise replay its recorded restore step, but
+      // ONLY while HEAD is still detached onto exactly the throwaway commit that run left it on:
+      // a record is evidence that HEAD *was* stranded, never that it still is. A hand-recovered
+      // repository whose operator forgot to delete the lock, or a kill in the sliver between a
+      // successful restore and the lock's removal, must be left exactly as it is — moving HEAD
+      // then would drag it off wherever the operator has since taken it, while the index and
+      // working tree (which this module never touches) stayed behind.
+      if (
+        stale.originalRef !== undefined &&
+        stale.parentSha !== undefined &&
+        stale.temporaryCommitSha !== undefined &&
+        isHeadDetachedAt(repoRoot, stale.temporaryCommitSha)
+      ) {
         restoreHead(repoRoot, stale.originalRef, stale.parentSha);
       }
       rmSync(lockPath, {force: true});
@@ -149,10 +183,13 @@ function claimLock(repoRoot) {
 }
 
 /** Records this run's own restore step into its already-claimed lock file, once HEAD has been read
- * (safely, after any prior stale lock was already recovered by {@link claimLock}) — so if THIS run
- * is itself killed after this point, the next call can recover it in turn. */
-function recordRestoreStep(lockPath, originalRef, parentSha) {
-  writeFileSync(lockPath, JSON.stringify({pid: process.pid, originalRef, parentSha}));
+ * (safely, after any prior stale lock was already recovered by {@link claimLock}) and the throwaway
+ * commit exists but BEFORE HEAD is moved onto it — so if THIS run is itself killed after this point,
+ * the next call can recover it in turn, and can tell whether it still needs to: `temporaryCommitSha`
+ * is what {@link isHeadDetachedAt} matches HEAD against. Written before the move, never after, so
+ * there is no window in which HEAD is detached and the sha to recognise it by is unrecorded. */
+function recordRestoreStep(lockPath, originalRef, parentSha, temporaryCommitSha) {
+  writeFileSync(lockPath, JSON.stringify({pid: process.pid, originalRef, parentSha, temporaryCommitSha}));
 }
 
 /**
@@ -171,13 +208,19 @@ function recordRestoreStep(lockPath, originalRef, parentSha) {
  * @returns {string} the new commit's sha
  */
 export function buildIsolatedCommit(repoRoot, parentSha, paths, message) {
-  const tempDir = mkdtempSync(join(tmpdir(), 'git-isolated-history-'));
+  // Prefix deliberately distinct from anything a caller or a test would name its own fixtures, so
+  // "did this module leak a temporary index directory?" stays an unambiguous question to ask of the
+  // OS temp root (see this module's own test file, which creates repositories there too).
+  const tempDir = mkdtempSync(join(tmpdir(), 'git-isolated-history-index-'));
   const tempIndex = join(tempDir, 'index');
   const env = {...process.env, GIT_INDEX_FILE: tempIndex};
   try {
     execFileSync('git', ['read-tree', parentSha], {cwd: repoRoot, env});
     if (paths.length > 0) {
-      execFileSync('git', ['add', ...paths], {cwd: repoRoot, env});
+      // `--` so a path is always taken as a path: this function is exported, and without the
+      // separator any entry that happens to start with `-` would be parsed as a git option and
+      // silently change what the throwaway commit contains rather than failing.
+      execFileSync('git', ['add', '--', ...paths], {cwd: repoRoot, env});
     }
     const treeSha = execFileSync('git', ['write-tree'], {cwd: repoRoot, env, encoding: 'utf8'}).trim();
     return execFileSync(
@@ -204,7 +247,10 @@ export function buildIsolatedCommit(repoRoot, parentSha, paths, message) {
  * Serialized per-repository by a lock file (see {@link claimLock}): a second, still-live call
  * against the same repo fails fast instead of racing with this one over HEAD; a call that finds a
  * lock left by a run whose process has since died recovers that run's HEAD first, so a kill between
- * detach and restore heals itself on the next call rather than staying stranded forever.
+ * detach and restore heals itself on the next call rather than staying stranded forever — but only
+ * while HEAD is still detached onto that run's own throwaway commit (see {@link isHeadDetachedAt}),
+ * so a repository whose HEAD has already been recovered by hand, or moved on deliberately, is left
+ * exactly where its operator put it.
  *
  * The lock is released only once HEAD is provably back where it started. If `restoreHead` itself
  * fails, the lock — which carries this run's own restore step — is deliberately left in place and
@@ -234,9 +280,13 @@ export function withIsolatedTemporaryHistory(repoRoot, paths, message, fn) {
     } catch {
       originalRef = null; // HEAD was already detached before this call — restored back to parentSha below.
     }
-    recordRestoreStep(lockPath, originalRef, parentSha);
-
+    // Recorded between building the throwaway commit and moving HEAD onto it — the only ordering
+    // that leaves no gap in either direction. Before the build there would be no `commitSha` to
+    // recognise a stranded HEAD by; after the move there would be an instant in which HEAD is
+    // detached and the record still says otherwise. Building the commit touches no ref, so a kill
+    // between the build and this line leaves nothing to recover.
     const commitSha = buildIsolatedCommit(repoRoot, parentSha, paths, message);
+    recordRestoreStep(lockPath, originalRef, parentSha, commitSha);
     execFileSync('git', ['update-ref', '-m', DETACH_REFLOG_MESSAGE, '--no-deref', 'HEAD', commitSha], {cwd: repoRoot});
     headRestored = false;
     try {

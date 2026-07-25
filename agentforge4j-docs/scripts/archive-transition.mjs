@@ -126,6 +126,11 @@ export function archiveTransition(version, repoRoot = MODULE_ROOT) {
     env: {...process.env, AF4J_ARCHIVE_VERSION: version},
   });
 
+  // The export is normally scrubbed on the way out (see the `finally` below). The one exception is
+  // an export that FAILED verification: it is then the only evidence of why, and re-deriving it
+  // costs another full `docusaurus build`. Keeping it cannot block anything — step 1 above starts
+  // by removing EXPORT_BUILD unconditionally, so the next run overwrites it either way.
+  let keepFailedExportForDiagnosis = false;
   try {
     // A passing shallow-history check (above) is necessary but not sufficient: Docusaurus can
     // still legitimately emit a null/missing lastmod for a specific file even with full repo
@@ -133,7 +138,16 @@ export function archiveTransition(version, repoRoot = MODULE_ROOT) {
     // reading the export's own generated sitemap.xml catches that. Checked on the real export
     // output, before it is frozen: an archive is never rebuilt once committed, so this is the
     // only point an untrustworthy lastmod can still be caught.
-    verifyCanonicalTrailingSlash({buildDir: EXPORT_BUILD, archiveVersion: version, repoRoot});
+    try {
+      verifyCanonicalTrailingSlash({buildDir: EXPORT_BUILD, archiveVersion: version, repoRoot});
+    } catch (err) {
+      keepFailedExportForDiagnosis = true;
+      console.error(
+        `[archive-transition] the ${version} export failed verification — it has been kept at ${EXPORT_BUILD} ` +
+          'so its generated sitemap.xml can be inspected (the next run replaces it automatically)',
+      );
+      throw err;
+    }
 
     // 2. Freeze the artifact.
     mkdirSync(ARCHIVE_ROOT, {recursive: true});
@@ -167,7 +181,9 @@ export function archiveTransition(version, repoRoot = MODULE_ROOT) {
     rmSync(manifestPath, {force: true});
     throw err;
   } finally {
-    rmSync(EXPORT_BUILD, {recursive: true, force: true});
+    if (!keepFailedExportForDiagnosis) {
+      rmSync(EXPORT_BUILD, {recursive: true, force: true});
+    }
   }
 }
 

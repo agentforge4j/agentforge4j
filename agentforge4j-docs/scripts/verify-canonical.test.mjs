@@ -125,6 +125,20 @@ test('fails closed on an impossible calendar date — month zero (2026-00-10)', 
   assert.throws(() => verifyCanonicalTrailingSlash({ buildDir }), /no valid <lastmod>/);
 });
 
+test('fails closed on a real calendar day that lies in the FUTURE — a commit cannot be newer than the build reading it, so this is a skewed clock or an overridden commit date, not a lastmod', () => {
+  const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  const buildDir = sitemapFixtureWithLastmod(tomorrow);
+  assert.throws(() => verifyCanonicalTrailingSlash({ buildDir }), /no valid <lastmod>/);
+  // Computed rather than hardcoded: a fixed far-future date would stop testing anything the day it
+  // arrives, and one day out is the smallest violation the check must still catch.
+  assert.throws(() => verifyCanonicalTrailingSlash({ buildDir }), /lies in the future/);
+});
+
+test("accepts today's own date — the boundary is 'not in the future', not 'strictly in the past': a page whose source was committed earlier today is entirely normal", () => {
+  const buildDir = sitemapFixtureWithLastmod(new Date().toISOString().slice(0, 10));
+  assert.doesNotThrow(() => verifyCanonicalTrailingSlash({ buildDir }));
+});
+
 test('accepts a valid leap day (2024-02-29 — 2024 is a leap year)', () => {
   const buildDir = sitemapFixtureWithLastmod('2024-02-29');
   assert.doesNotThrow(() => verifyCanonicalTrailingSlash({ buildDir }));
@@ -159,6 +173,22 @@ test('does not fail closed on a full (non-shallow) git clone', () => {
   const repoRoot = gitRepo();
   const buildDir = sitemapFixtureWithLastmod('2026-07-20');
   assert.doesNotThrow(() => verifyCanonicalTrailingSlash({ buildDir, repoRoot }));
+});
+
+test('fails closed naming the actual precondition when the tree is not a git checkout at all (an extracted tarball, a .git-less container context) — not with a shallow-clone diagnostic the reader cannot act on', () => {
+  // A bare temp directory: real, and genuinely outside any repository, so `git rev-parse` fails for
+  // a reason that has nothing to do with clone depth. The build has no fallback for this — every
+  // <lastmod> comes from git history — so it must say so in its own terms.
+  const notARepo = mkdtempSync(join(tmpdir(), 'verify-canonical-not-a-repo-'));
+  const buildDir = sitemapFixtureWithLastmod('2026-07-20');
+  assert.throws(
+    () => verifyCanonicalTrailingSlash({ buildDir, repoRoot: notARepo }),
+    /is not inside a git repository/,
+  );
+  assert.throws(
+    () => verifyCanonicalTrailingSlash({ buildDir, repoRoot: notARepo }),
+    /real git checkout/,
+  );
 });
 
 test('archive-mode builds still fail closed on a shallow git clone — archive-mode config derives <lastmod> from git history exactly like the live site does, and the archive is frozen forever once committed', () => {

@@ -32,9 +32,12 @@ See [Contributing](docs/contributing/index.mdx) for the full authoring and gate-
 ### The build reads real Git history
 
 Every page's sitemap `<lastmod>` is derived from its own source file's `git log`, and the build
-fails rather than publish a page with a missing or invented date. Two consequences worth knowing
+fails rather than publish a page with a missing or invented date. Three consequences worth knowing
 before you hit them:
 
+- **Build from a real Git checkout, with `git` on `PATH`.** There is no fallback: an extracted
+  source tarball, a release archive, or a container build context that leaves out `.git` cannot
+  produce these dates, and the build says so rather than publishing pages with none.
 - **Build from a full clone.** A shallow clone (`--depth`, or a CI checkout without
   `fetch-depth: 0`) has no per-file history to read; the build refuses to run against one rather
   than bake in wrong dates.
