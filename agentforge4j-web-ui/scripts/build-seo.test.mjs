@@ -19,6 +19,7 @@ import {
   injectHead,
   injectJsonLd,
   injectRoot,
+  JSON_LD_SCRIPT_ID,
   newestGitLastModifiedDate,
   withTrailingSlash,
 } from './build-seo.mjs';
@@ -513,9 +514,17 @@ test('injectRoot fails closed when the shell has no empty mount point to splice 
 test('injectJsonLd inserts a valid, parseable JSON-LD script before </head> when a route declares one', () => {
   const jsonLd = { '@context': 'https://schema.org', '@type': 'WebSite', name: 'AgentForge4j' };
   const html = injectJsonLd(BASE_INDEX_HTML, jsonLd);
-  const match = /<script type="application\/ld\+json">([\s\S]*?)<\/script>\s*<\/head>/.exec(html);
+  const match = /<script id="([^"]*)" type="application\/ld\+json">([\s\S]*?)<\/script>\s*<\/head>/.exec(html);
   assert.ok(match, 'expected a JSON-LD script immediately before </head>');
-  assert.deepEqual(JSON.parse(match[1]), jsonLd);
+  assert.deepEqual(JSON.parse(match[2]), jsonLd);
+});
+
+test('injectJsonLd\'s script carries the exact id usePageSeo.ts\'s client-side setJsonLd looks for, so hydration adopts it instead of creating a duplicate', () => {
+  const jsonLd = { '@context': 'https://schema.org', '@type': 'WebSite', name: 'AgentForge4j' };
+  const html = injectJsonLd(BASE_INDEX_HTML, jsonLd);
+  const match = /<script id="([^"]*)" type="application\/ld\+json">/.exec(html);
+  assert.ok(match, 'expected a JSON-LD script tag');
+  assert.equal(match[1], JSON_LD_SCRIPT_ID);
 });
 
 test('injectJsonLd is a no-op for routes that declare no jsonLd (every route except "/")', () => {
@@ -533,9 +542,9 @@ test('injectJsonLd cannot be broken out of the <script> body by a value containi
   assert.ok(!html.includes('</script><script>alert(1)</script>'), 'the raw </script> sequence from the JSON-LD value must not reach the HTML unescaped');
   // Semantics are unchanged: parsing the actual emitted JSON-LD block back out still yields the
   // exact original string, </script> and all — this is an encoding fix, not a content change.
-  const match = /<script type="application\/ld\+json">([\s\S]*?)<\/script>\s*<\/head>/.exec(html);
+  const match = /<script id="([^"]*)" type="application\/ld\+json">([\s\S]*?)<\/script>\s*<\/head>/.exec(html);
   assert.ok(match, 'expected a JSON-LD script immediately before </head>');
-  assert.deepEqual(JSON.parse(match[1]), jsonLd);
+  assert.deepEqual(JSON.parse(match[2]), jsonLd);
 });
 
 test('buildSeo splices the "/" route\'s jsonLd (seo-routes.json) into the produced index.html shell (BASE_INDEX_HTML fixture), and no other route gets one — see verify-seo.test.mjs for the real dist/ output check', () => {
@@ -1509,8 +1518,67 @@ test('fails loudly when a route\'s jsonLd @graph entry itself has no real @type'
   const { distDir, seoRoutesPath, catalogueDataPath } = fixture({ routes });
   assert.throws(
     () => buildSeo({ distDir, seoRoutesPath, catalogueDataPath }),
-    /must declare a non-empty "@type" string, or a non-empty "@graph"/,
+    /declares "@graph" but it is not a non-empty array whose every entry itself declares a non-empty "@type"/,
   );
+});
+
+// --- @type and @graph are each validated independently when the key is present — a valid one must
+// never let an invalid other one through just because the OR as a whole would otherwise be
+// satisfied (a plain `hasType || hasValidGraph` check would let either key's own garbage value
+// through undetected as long as the other key looked fine) -----------------------------------------
+
+test('fails loudly when jsonLd has a real, valid @type but an invalid @graph present alongside it (a valid @type must not hide a malformed @graph)', () => {
+  const routes = {
+    siteUrl: 'https://agentforge4j.org',
+    routes: [
+      {
+        path: '/',
+        title: 'Home',
+        description: 'Home.',
+        jsonLd: { '@context': 'https://schema.org', '@type': 'WebSite', '@graph': [{ name: 'no type here' }] },
+      },
+    ],
+  };
+  const { distDir, seoRoutesPath, catalogueDataPath } = fixture({ routes });
+  assert.throws(
+    () => buildSeo({ distDir, seoRoutesPath, catalogueDataPath }),
+    /declares "@graph" but it is not a non-empty array whose every entry itself declares a non-empty "@type"/,
+  );
+});
+
+test('fails loudly when jsonLd has a real, valid @graph but an invalid (non-string) @type present alongside it (a valid @graph must not hide a malformed @type)', () => {
+  const routes = {
+    siteUrl: 'https://agentforge4j.org',
+    routes: [
+      {
+        path: '/',
+        title: 'Home',
+        description: 'Home.',
+        jsonLd: { '@context': 'https://schema.org', '@type': 123, '@graph': [{ '@type': 'WebPage' }] },
+      },
+    ],
+  };
+  const { distDir, seoRoutesPath, catalogueDataPath } = fixture({ routes });
+  assert.throws(
+    () => buildSeo({ distDir, seoRoutesPath, catalogueDataPath }),
+    /declares "@type" but it is not a non-empty string/,
+  );
+});
+
+test('accepts a real jsonLd with both a valid @type and a valid @graph present together', () => {
+  const routes = {
+    siteUrl: 'https://agentforge4j.org',
+    routes: [
+      {
+        path: '/',
+        title: 'Home',
+        description: 'Home.',
+        jsonLd: { '@context': 'https://schema.org', '@type': 'WebSite', '@graph': [{ '@type': 'WebPage' }] },
+      },
+    ],
+  };
+  const { distDir, seoRoutesPath, catalogueDataPath } = fixture({ routes });
+  assert.doesNotThrow(() => buildSeo({ distDir, seoRoutesPath, catalogueDataPath }));
 });
 
 test('accepts a real single-node jsonLd (an @type, no @graph)', () => {

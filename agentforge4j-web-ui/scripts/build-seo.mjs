@@ -295,10 +295,24 @@ export function injectRoot(html, innerHtml) {
   return html.replace(EMPTY_ROOT_PATTERN, () => `<div id="root">${innerHtml}</div>`);
 }
 
+// The identical id usePageSeo.ts's client-side `setJsonLd` looks for via `document.getElementById`.
+// The two must never drift apart: if this static shell's script carried a different id (or none),
+// a fresh load's hydration would find no existing match, create a *second* JSON-LD script of its
+// own, and then only ever remove that second one on navigation — permanently stranding this static
+// one on every subsequent route. Sharing the id makes hydration adopt and update this exact node
+// instead of duplicating it.
+export const JSON_LD_SCRIPT_ID = 'seo-json-ld';
+
 /** Inserts a route's JSON-LD structured-data block right before `</head>` — an addition, not a
  * replacement (unlike injectHead's tags, no shell starts with one), so only routes that declare a
  * `jsonLd` object in seo-routes.json (today: only "/") get a `<script type="application/ld+json">`
- * at all; every other shell is unaffected. A no-op when `jsonLd` is undefined.
+ * at all; every other *static* shell is unaffected (see usePageSeo.ts for the client-side runtime
+ * behaviour, which also covers unmatched/404 routes — a materially wider scope than this function's
+ * own). A no-op when `jsonLd` is undefined.
+ *
+ * Carries `id="${JSON_LD_SCRIPT_ID}"` so the client-side hook (usePageSeo.ts's `setJsonLd`) adopts
+ * and updates this exact node on hydration rather than creating a duplicate — see the constant's
+ * own doc comment above.
  *
  * Every `<` in the serialized JSON is escaped to `<` before it reaches the HTML — `<` is the
  * only character that matters inside a `<script>` body (an HTML parser looks for `</script` byte-
@@ -313,7 +327,7 @@ export function injectJsonLd(html, jsonLd) {
     return html;
   }
   const serialized = JSON.stringify(jsonLd).replace(/</g, '\\u003c');
-  const script = `<script type="application/ld+json">${serialized}</script>\n  </head>`;
+  const script = `<script id="${JSON_LD_SCRIPT_ID}" type="application/ld+json">${serialized}</script>\n  </head>`;
   if (!/<\/head>/.test(html)) {
     throw new Error('build-seo: expected a </head> closing tag in dist/index.html');
   }
@@ -433,10 +447,17 @@ function assertDependencyFilesExist(repoRoot, relFiles, context) {
 
 /** A route's `jsonLd` (seo-routes.json) is either absent, or a genuine schema.org structured-data
  * object — never a typo'd non-object value, and never an empty placeholder that would silently
- * ship as valid-looking-but-useless structured data. Requires a non-empty `@context` string and
- * either a non-empty `@type` string or a non-empty `@graph` array whose every node itself declares
- * a non-empty `@type` — the two shapes `injectJsonLd` actually ever needs to serialize. Called at
- * build time so a malformed config fails the build loudly, the same guarantee
+ * ship as valid-looking-but-useless structured data. Requires a non-empty `@context` string and at
+ * least one of a non-empty `@type` string or a non-empty `@graph` array whose every node itself
+ * declares a non-empty `@type` — the two shapes `injectJsonLd` actually ever needs to serialize.
+ *
+ * `@type` and `@graph` are each validated independently whenever the *key* is present, rather than
+ * one validated shape being allowed to paper over the other: an object with both a valid `@type`
+ * and a malformed `@graph` (or vice versa) is still rejected, not silently accepted because *some*
+ * shape happened to be valid — a plain `hasType || hasValidGraph` check would let either key's own
+ * garbage value through undetected as long as the other key looked fine.
+ *
+ * Called at build time so a malformed config fails the build loudly, the same guarantee
  * `assertDependencyFilesExist` gives a typo'd `sourceFiles` entry. */
 function assertValidJsonLd(jsonLd, routePath) {
   if (jsonLd === undefined) {
@@ -448,13 +469,25 @@ function assertValidJsonLd(jsonLd, routePath) {
   if (typeof jsonLd['@context'] !== 'string' || jsonLd['@context'].length === 0) {
     throw new Error(`build-seo: route "${routePath}"'s jsonLd is missing a non-empty "@context" string`);
   }
-  const hasType = typeof jsonLd['@type'] === 'string' && jsonLd['@type'].length > 0;
+  const hasTypeKey = Object.hasOwn(jsonLd, '@type');
+  if (hasTypeKey && !(typeof jsonLd['@type'] === 'string' && jsonLd['@type'].length > 0)) {
+    throw new Error(`build-seo: route "${routePath}"'s jsonLd declares "@type" but it is not a non-empty string — got ${JSON.stringify(jsonLd['@type'])}`);
+  }
+  const hasGraphKey = Object.hasOwn(jsonLd, '@graph');
   const graph = jsonLd['@graph'];
-  const hasValidGraph =
+  const isValidGraph =
     Array.isArray(graph) &&
     graph.length > 0 &&
     graph.every((node) => node !== null && typeof node === 'object' && !Array.isArray(node) && typeof node['@type'] === 'string' && node['@type'].length > 0);
-  if (!hasType && !hasValidGraph) {
+  if (hasGraphKey && !isValidGraph) {
+    throw new Error(
+      `build-seo: route "${routePath}"'s jsonLd declares "@graph" but it is not a non-empty array whose every entry ` +
+        'itself declares a non-empty "@type"',
+    );
+  }
+  // Every key that IS present has already been proven valid above (each throws on its own if not) —
+  // the only remaining failure is neither key being declared at all.
+  if (!hasTypeKey && !hasGraphKey) {
     throw new Error(
       `build-seo: route "${routePath}"'s jsonLd must declare a non-empty "@type" string, or a non-empty "@graph" ` +
         'array whose every entry itself declares a non-empty "@type" — got neither',

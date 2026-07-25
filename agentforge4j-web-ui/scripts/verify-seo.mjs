@@ -18,6 +18,7 @@ import { createServer } from 'node:http';
 import { createReadStream, existsSync, readFileSync, statSync } from 'node:fs';
 import { dirname, extname, isAbsolute, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { JSON_LD_SCRIPT_ID } from './build-seo.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const MODULE_ROOT = join(here, '..');
@@ -187,13 +188,18 @@ export function loadStaticRouteInventory(seoRoutesPath) {
   }));
 }
 
-/** Every `<script type="application/ld+json">...</script>` block's raw text, in document order.
- * build-seo.mjs's own `assertValidJsonLd` already rejects a malformed config at build time — by
- * the time this runs against real `dist/` output, a config bad enough to reach here at all would
- * mean that gate itself regressed, which this catches too (a script whose content fails to parse
- * as JSON, below). */
+/** Every `<script>` block whose `type` attribute is `application/ld+json`, in document order —
+ * `{ id, content }` pairs. Matches regardless of attribute order (`id` may come before or after
+ * `type`) since build-seo.mjs's `injectJsonLd` writes `id` first: a regex anchored to a fixed
+ * `<script type="application/ld+json">` prefix would silently stop matching the real build output
+ * the moment that ordering changed. build-seo.mjs's own `assertValidJsonLd` already rejects a
+ * malformed config at build time — by the time this runs against real `dist/` output, a config bad
+ * enough to reach here at all would mean that gate itself regressed, which this catches too (a
+ * script whose content fails to parse as JSON, below). */
 function extractJsonLdScripts(html) {
-  return [...html.matchAll(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/g)].map((match) => match[1]);
+  return [...html.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script>/g)]
+    .filter((match) => /\btype="application\/ld\+json"/.test(match[1]))
+    .map((match) => ({ id: /\bid="([^"]*)"/.exec(match[1])?.[1] ?? null, content: match[2] }));
 }
 
 export async function verifySeo({
@@ -323,9 +329,19 @@ export async function verifySeo({
         if (jsonLdScripts.length !== 1) {
           throw new Error(`verify-seo: ${requestPath} has ${jsonLdScripts.length} JSON-LD script(s) — expected exactly 1`);
         }
+        // Must carry the exact id usePageSeo.ts's client-side setJsonLd looks for — a served script
+        // with no id (or the wrong one) would pass the content check below yet still leave the
+        // client-side hook unable to find it, creating a second, duplicate JSON-LD block on
+        // hydration and permanently stranding this one after the first client-side navigation.
+        if (jsonLdScripts[0].id !== JSON_LD_SCRIPT_ID) {
+          throw new Error(
+            `verify-seo: ${requestPath}'s JSON-LD script has id ${JSON.stringify(jsonLdScripts[0].id)} — expected ` +
+              `${JSON.stringify(JSON_LD_SCRIPT_ID)} so client-side hydration (usePageSeo.ts) adopts it instead of duplicating it`,
+          );
+        }
         let servedJsonLd;
         try {
-          servedJsonLd = JSON.parse(jsonLdScripts[0]);
+          servedJsonLd = JSON.parse(jsonLdScripts[0].content);
         } catch (err) {
           throw new Error(`verify-seo: ${requestPath}'s JSON-LD script does not parse as valid JSON — ${err.message}`, { cause: err });
         }

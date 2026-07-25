@@ -200,4 +200,41 @@ describe('usePageSeo', () => {
 
     expect(jsonLdScript()).toBeNull();
   });
+
+  // --- Reproduces the real browser boot sequence: the static shell (scripts/build-seo.mjs's
+  // injectJsonLd) already has a JSON-LD <script id="seo-json-ld"> in <head> BEFORE React ever
+  // mounts — unlike every test above, which starts from an empty document.head and lets the hook
+  // create the script itself. A regression that gave the static shell a different id (or none) would
+  // make the hook fail to find it here, create a *second* script instead of adopting this one, and
+  // then only ever remove that second one on navigation — permanently stranding this one. ---
+
+  test('adopts and updates a pre-existing static-shell JSON-LD script (same shared id) on mount, rather than creating a duplicate', () => {
+    document.querySelectorAll('script[type="application/ld+json"]').forEach((el) => el.remove());
+    const staticScript = document.createElement('script');
+    staticScript.id = 'seo-json-ld';
+    staticScript.setAttribute('type', 'application/ld+json');
+    staticScript.textContent = JSON.stringify(findSeoRoute('/')?.jsonLd);
+    document.head.appendChild(staticScript);
+
+    renderAt('/');
+
+    const scripts = document.head.querySelectorAll('script[type="application/ld+json"]');
+    expect(scripts.length).toBe(1);
+    expect(scripts[0]).toBe(staticScript);
+    expect(jsonLdContent()).toEqual(findSeoRoute('/')?.jsonLd);
+  });
+
+  test('a pre-existing static-shell JSON-LD script is fully removed (not stranded) after a client-side navigation away from "/"', () => {
+    document.querySelectorAll('script[type="application/ld+json"]').forEach((el) => el.remove());
+    const staticScript = document.createElement('script');
+    staticScript.id = 'seo-json-ld';
+    staticScript.setAttribute('type', 'application/ld+json');
+    staticScript.textContent = JSON.stringify(findSeoRoute('/')?.jsonLd);
+    document.head.appendChild(staticScript);
+
+    const { navigate } = renderWithNavigation('/', '/architecture');
+    navigate();
+
+    expect(document.head.querySelectorAll('script[type="application/ld+json"]').length).toBe(0);
+  });
 });

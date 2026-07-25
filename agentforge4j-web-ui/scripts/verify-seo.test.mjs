@@ -16,6 +16,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loadStaticRouteInventory, resolveWithinRoot, startGhPagesEmulatingServer, verifySeo } from './verify-seo.mjs';
+import { JSON_LD_SCRIPT_ID } from './build-seo.mjs';
 
 const REAL_MODULE_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -236,7 +237,57 @@ test('a configured route whose real served HTML carries a JSON-LD script matchin
   writePage(
     distDir,
     '',
+    page({
+      canonical: 'https://agentforge4j.org/',
+      extraHead: `<script id="${JSON_LD_SCRIPT_ID}" type="application/ld+json">${JSON.stringify(jsonLd)}</script>`,
+    }),
+  );
+  writeFileSync(join(distDir, 'sitemap.xml'), sitemapXml([{ url: 'https://agentforge4j.org/', lastmod: '2026-07-20' }]), 'utf8');
+  await assert.doesNotReject(() =>
+    verifySeo({ distDir, staticRoutes: [{ requestPath: '/', expectedCanonical: 'https://agentforge4j.org/', jsonLd }] }),
+  );
+});
+
+test('fails closed when a route\'s served JSON-LD script has no id at all — it would hydrate into a duplicate, not an update, on the client', async () => {
+  const distDir = fixtureDir();
+  const jsonLd = { '@context': 'https://schema.org', '@type': 'WebSite', name: 'AgentForge4j' };
+  writePage(
+    distDir,
+    '',
     page({ canonical: 'https://agentforge4j.org/', extraHead: `<script type="application/ld+json">${JSON.stringify(jsonLd)}</script>` }),
+  );
+  writeFileSync(join(distDir, 'sitemap.xml'), sitemapXml([{ url: 'https://agentforge4j.org/', lastmod: '2026-07-20' }]), 'utf8');
+  await assert.rejects(
+    () => verifySeo({ distDir, staticRoutes: [{ requestPath: '/', expectedCanonical: 'https://agentforge4j.org/', jsonLd }] }),
+    /has id null — expected/,
+  );
+});
+
+test('fails closed when a route\'s served JSON-LD script has the wrong id — the client-side hook would never find it', async () => {
+  const distDir = fixtureDir();
+  const jsonLd = { '@context': 'https://schema.org', '@type': 'WebSite', name: 'AgentForge4j' };
+  writePage(
+    distDir,
+    '',
+    page({ canonical: 'https://agentforge4j.org/', extraHead: `<script id="wrong-id" type="application/ld+json">${JSON.stringify(jsonLd)}</script>` }),
+  );
+  writeFileSync(join(distDir, 'sitemap.xml'), sitemapXml([{ url: 'https://agentforge4j.org/', lastmod: '2026-07-20' }]), 'utf8');
+  await assert.rejects(
+    () => verifySeo({ distDir, staticRoutes: [{ requestPath: '/', expectedCanonical: 'https://agentforge4j.org/', jsonLd }] }),
+    /has id "wrong-id" — expected/,
+  );
+});
+
+test('the id-attribute check tolerates attribute order — id before or after the type attribute both match', async () => {
+  const distDir = fixtureDir();
+  const jsonLd = { '@context': 'https://schema.org', '@type': 'WebSite', name: 'AgentForge4j' };
+  writePage(
+    distDir,
+    '',
+    page({
+      canonical: 'https://agentforge4j.org/',
+      extraHead: `<script type="application/ld+json" id="${JSON_LD_SCRIPT_ID}">${JSON.stringify(jsonLd)}</script>`,
+    }),
   );
   writeFileSync(join(distDir, 'sitemap.xml'), sitemapXml([{ url: 'https://agentforge4j.org/', lastmod: '2026-07-20' }]), 'utf8');
   await assert.doesNotReject(() =>
@@ -264,7 +315,10 @@ test('fails closed when a route\'s served JSON-LD does not match its declared se
   writePage(
     distDir,
     '',
-    page({ canonical: 'https://agentforge4j.org/', extraHead: `<script type="application/ld+json">${JSON.stringify(served)}</script>` }),
+    page({
+      canonical: 'https://agentforge4j.org/',
+      extraHead: `<script id="${JSON_LD_SCRIPT_ID}" type="application/ld+json">${JSON.stringify(served)}</script>`,
+    }),
   );
   writeFileSync(join(distDir, 'sitemap.xml'), sitemapXml([{ url: 'https://agentforge4j.org/', lastmod: '2026-07-20' }]), 'utf8');
   const declared = { '@context': 'https://schema.org', '@type': 'WebSite', name: 'AgentForge4j' };
