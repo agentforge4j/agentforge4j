@@ -44,7 +44,9 @@
 //         bumps another route's <lastmod>.
 //       - `catalogueSourceFiles` (seo-routes.json's top level) — rendering shared by every catalogue
 //         detail page (CatalogueDetailPage.tsx, catalogueSeo.ts, renderWorkflowSvg.ts,
-//         copy/catalogue.ts) — never applied to static routes.
+//         copy/catalogue.ts, plus catalogueData.ts and scripts/build-catalogue-data.mjs — the loader
+//         and generator shaping the catalogue data every detail page renders from) — never applied
+//         to static routes.
 //       - a catalogue workflow's own committed workflow.json (workflowSourceFile).
 //       - the one static route flagged `aggregatesCatalogueWorkflows: true` (/catalogue itself)
 //         additionally depends on `aggregateCatalogueSourceFiles` (build-catalogue-data.mjs,
