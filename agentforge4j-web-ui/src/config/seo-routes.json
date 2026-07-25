@@ -3,6 +3,7 @@
   "artifactGenerationSourceFiles": [
     "agentforge4j-web-ui/index.html",
     "agentforge4j-web-ui/src/main.tsx",
+    "agentforge4j-web-ui/vite.config.ts",
     "agentforge4j-web-ui/scripts/build-seo.mjs",
     "agentforge4j-web-ui/scripts/prerender-routes.mjs"
   ],
@@ -11,7 +12,10 @@
     "agentforge4j-web-ui/src/config/appRoutes.ts",
     "agentforge4j-web-ui/src/components/SiteHeader.tsx",
     "agentforge4j-web-ui/src/components/SiteFooter.tsx",
-    "agentforge4j-web-ui/src/config/nav.ts"
+    "agentforge4j-web-ui/src/config/nav.ts",
+    "agentforge4j-web-ui/src/components/ThemeToggle.tsx",
+    "agentforge4j-web-ui/src/theme/ThemeContext.tsx",
+    "agentforge4j-web-ui/src/theme/theme.ts"
   ],
   "catalogueSourceFiles": [
     "agentforge4j-web-ui/src/pages/CatalogueDetailPage.tsx",

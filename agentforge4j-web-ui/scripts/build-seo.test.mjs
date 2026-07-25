@@ -1013,9 +1013,9 @@ test('catalogue-only changes (index, workflow files, aggregate deps) do not upda
   );
 });
 
-// --- Per-route copy-module dependencies (round 7 finding: /, /architecture, /api, /use,
+// --- Per-route copy-module dependencies (/, /architecture, /api, /use,
 // /releases, /community, /security, /legal, /contact each render visible text from their own
-// copy/*.ts module — previously undeclared) ---------------------------------------------------
+// copy/*.ts module) ----------------------------------------------------------------------------
 
 // One test repo, nine routes, nine copy files — each round below bumps exactly one route's own
 // copy file and re-verifies EVERY route's current expected date, proving both "this route's copy
@@ -1439,10 +1439,9 @@ test('completeness guard: every real file under agentforge4j-web-ui/src/copy/ is
 });
 
 // --- Global dependency scope contract: every file KNOWN to control every route's rendered output
-// (traced during this design's dependency audit) must appear in artifactGenerationSourceFiles or
-// globalSourceFiles in the real committed seo-routes.json — protects against a future reviewer
-// having to re-discover one of these one file at a time, the exact failure mode that produced this
-// fix in the first place (appRoutes.ts was the first instance; this guard is broader). -----------
+// must appear in artifactGenerationSourceFiles or globalSourceFiles in the real committed
+// seo-routes.json — protects against anyone having to re-discover one of these one file at a time
+// (appRoutes.ts was the first instance; this guard is broader). ----------------------------------
 
 test('global dependency scope contract: every file traced as materially affecting every route\'s output is present in artifactGenerationSourceFiles or globalSourceFiles', () => {
   const { artifactGenerationSourceFiles, globalSourceFiles } = JSON.parse(
@@ -1454,17 +1453,22 @@ test('global dependency scope contract: every file traced as materially affectin
   const expectedArtifactGeneration = [
     'agentforge4j-web-ui/index.html',
     'agentforge4j-web-ui/src/main.tsx',
+    'agentforge4j-web-ui/vite.config.ts',
     'agentforge4j-web-ui/scripts/build-seo.mjs',
     'agentforge4j-web-ui/scripts/prerender-routes.mjs',
   ];
   // Shared React render surface: the actual component tree and routing registry every page renders
-  // through.
+  // through — including the theme machinery SiteHeader renders on every page (the toggle button
+  // and its initial icon/aria state are part of every page's captured header markup).
   const expectedGlobalRender = [
     'agentforge4j-web-ui/src/App.tsx',
     'agentforge4j-web-ui/src/config/appRoutes.ts',
     'agentforge4j-web-ui/src/components/SiteHeader.tsx',
     'agentforge4j-web-ui/src/components/SiteFooter.tsx',
     'agentforge4j-web-ui/src/config/nav.ts',
+    'agentforge4j-web-ui/src/components/ThemeToggle.tsx',
+    'agentforge4j-web-ui/src/theme/ThemeContext.tsx',
+    'agentforge4j-web-ui/src/theme/theme.ts',
   ];
 
   for (const relFile of [...expectedArtifactGeneration, ...expectedGlobalRender]) {

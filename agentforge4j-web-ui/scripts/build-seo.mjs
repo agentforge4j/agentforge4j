@@ -25,7 +25,9 @@
 //         source controls every route's `<head>`/`<body>` structure outside the parts injectHead/
 //         injectRoot explicitly rewrite), main.tsx (the render entrypoint executed INSIDE the
 //         headless browser that produces the prerendered snapshot every shell ships — not merely a
-//         client-side runtime concern), and this file plus prerender-routes.mjs themselves (the
+//         client-side runtime concern), vite.config.ts (the bundler configuration that shapes the
+//         built index.html and every emitted asset the prerender then executes), and this file
+//         plus prerender-routes.mjs themselves (the
 //         code that decides what "the rendered page" even means). A change to any of these can
 //         alter every published page's actual HTML in ways no per-route `sourceFiles` list could
 //         ever capture, so all are treated as applying to literally every route.
@@ -33,7 +35,9 @@
 //         by every page: App.tsx (the root shell + <Routes> composition), appRoutes.ts (the
 //         path -> component REGISTRY App.tsx renders from — swapping which component a path maps to
 //         changes that route's entire rendered output without touching App.tsx's own text), plus the
-//         header/footer/nav shell every page wraps in.
+//         header/footer/nav shell every page wraps in and the theme machinery rendered inside that
+//         shell on every page (ThemeToggle.tsx, theme/ThemeContext.tsx, theme/theme.ts — the toggle
+//         button and its initial icon/aria state are part of every page's captured header markup).
 //       - a static route's own `sourceFiles` (its page component), plus its own metadata dependency
 //         — the newest commit that touched *that route's own entry* in seo-routes.json, not the
 //         whole file (see gitLastModifiedDateForRouteMetadata) — so one route's metadata edit never
@@ -367,7 +371,7 @@ function readShippedWorkflowIds(repoRoot) {
  * name/description edit on any shipped workflow, since the aggregate list renders every one of
  * them). Deliberately excludes the catalogue *manifest* (agentforge4j-catalog.json —
  * catalogVersion/min/maxAgentForge4jVersion/workflowSchemaVersion) and the workflow JSON
- * Schema/its Java version source: traced during this design, both gate what data is *valid*, but
+ * Schema/its Java version source: traced and ruled out deliberately — both gate what data is *valid*, but
  * neither field is ever rendered by CataloguePage.tsx, so a schema-only or manifest-only change
  * produces byte-identical rendered output and correctly contributes nothing here. Also
  * deliberately excludes the catalogue-*detail*-page-only files in `catalogueSourceFiles`
@@ -455,6 +459,23 @@ export function buildSeo({
   // combined list rather than re-deriving it per call site.
   const everyGlobalSourceFile = [...artifactGenerationSourceFiles, ...globalSourceFiles];
 
+  // One whole-file git date per (file, invocation): the two global scopes alone are dependencies
+  // of every sitemap URL, so resolving them per route would spawn O(routes × files) sequential
+  // git subprocesses for identical answers — slow enough on a real checkout (whole seconds per
+  // buildSeo call) to time out consumers that call this synchronously. Deliberately scoped to
+  // this invocation rather than the module: callers (tests especially) legitimately commit to the
+  // same repository between buildSeo() calls and must observe the new dates on the next call.
+  const dateByRelFile = new Map();
+  const newestDeclaredDate = (relFiles) =>
+    pickNewestDate(
+      relFiles.map((relFile) => {
+        if (!dateByRelFile.has(relFile)) {
+          dateByRelFile.set(relFile, gitLastModifiedDate(repoRoot, relFile));
+        }
+        return dateByRelFile.get(relFile);
+      }),
+    );
+
   assertDependencyFilesExist(repoRoot, artifactGenerationSourceFiles, 'artifactGenerationSourceFiles');
   assertDependencyFilesExist(repoRoot, globalSourceFiles, 'globalSourceFiles');
   assertDependencyFilesExist(repoRoot, catalogueSourceFiles, 'catalogueSourceFiles');
@@ -480,7 +501,7 @@ export function buildSeo({
       sitemapEntries.push({
         url: `${siteUrl}${withTrailingSlash(route.path)}`,
         lastmod: pickNewestDate([
-          newestGitLastModifiedDate(repoRoot, [...everyGlobalSourceFile, ...(route.sourceFiles ?? []), ...aggregateDeps]),
+          newestDeclaredDate([...everyGlobalSourceFile, ...(route.sourceFiles ?? []), ...aggregateDeps]),
           gitLastModifiedDateForRouteMetadata(repoRoot, seoRoutesPath, route.path),
         ]),
       });
@@ -504,7 +525,7 @@ export function buildSeo({
     shellsWritten += 1;
     sitemapEntries.push({
       url: canonical,
-      lastmod: newestGitLastModifiedDate(repoRoot, [
+      lastmod: newestDeclaredDate([
         ...everyGlobalSourceFile,
         ...catalogueSourceFiles,
         workflowSourceFile(workflow.id),
