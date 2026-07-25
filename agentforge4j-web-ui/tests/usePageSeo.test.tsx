@@ -6,14 +6,15 @@
 // document's <head> honest after that.
 
 import { describe, expect, test } from 'vitest';
-import { render } from '@testing-library/react';
-import { MemoryRouter } from 'react-router-dom';
+import { fireEvent, render, screen } from '@testing-library/react';
+import { MemoryRouter, useNavigate } from 'react-router-dom';
 import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import App from '@/App';
 import { ThemeProvider } from '@/theme/ThemeContext';
+import { findSeoRoute } from '@/config/seo';
 import { buildSeo } from '../scripts/build-seo.mjs';
 
 const MODULE_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -34,6 +35,36 @@ function canonicalHref(): string | null {
 
 function metaDescription(): string | null {
   return document.querySelector('meta[name="description"]')?.getAttribute('content') ?? null;
+}
+
+function jsonLdScript(): HTMLScriptElement | null {
+  return document.querySelector('script[type="application/ld+json"]');
+}
+
+function jsonLdContent(): unknown {
+  const script = jsonLdScript();
+  return script?.textContent ? JSON.parse(script.textContent) : null;
+}
+
+/** Renders `<App>` at `initialPath`, exposing a "navigate" button that performs a REAL client-side
+ * navigation (React Router's own `useNavigate`, no remount) to `targetPath` — the only way to
+ * actually reproduce a client-side-navigation-only bug: a fresh `renderAt(path)` per test mounts
+ * `usePageSeo`'s effect fresh every time, which would mask a bug that only shows up when the SAME
+ * mounted app instance reacts to a route change instead of being (re)constructed at the new one. */
+function renderWithNavigation(initialPath: string, targetPath: string) {
+  function NavigateButton() {
+    const navigate = useNavigate();
+    return <button onClick={() => navigate(targetPath)}>navigate</button>;
+  }
+  const utils = render(
+    <ThemeProvider>
+      <MemoryRouter initialEntries={[initialPath]}>
+        <NavigateButton />
+        <App />
+      </MemoryRouter>
+    </ThemeProvider>,
+  );
+  return { ...utils, navigate: () => fireEvent.click(screen.getByText('navigate')) };
 }
 
 describe('usePageSeo', () => {
@@ -125,5 +156,48 @@ describe('usePageSeo', () => {
 
     renderAt(`/catalogue/${realId}`);
     expect(canonicalHref()).toBe(buildTimeCanonical);
+  });
+
+  // --- JSON-LD: kept in sync with the current route, including across a client-side navigation
+  // that never re-fetches the build-time static shell (scripts/build-seo.mjs's `injectJsonLd`
+  // only ever covers the first request to a route). ---
+
+  test('sets the home jsonLd (matching the real seo-routes.json config) on a fresh load of "/"', () => {
+    renderAt('/');
+    expect(jsonLdScript()?.getAttribute('type')).toBe('application/ld+json');
+    expect(jsonLdContent()).toEqual(findSeoRoute('/')?.jsonLd);
+  });
+
+  test('a static route that declares no jsonLd has no JSON-LD script at all', () => {
+    renderAt('/architecture');
+    expect(jsonLdScript()).toBeNull();
+  });
+
+  test('a real catalogue workflow detail page has no JSON-LD script (no workflow declares one today)', () => {
+    renderAt('/catalogue/workflow-execution-estimator');
+    expect(jsonLdScript()).toBeNull();
+  });
+
+  test('an unmatched path falls back to home\'s jsonLd too, matching the byte-identical 404.html shell', () => {
+    renderAt('/this-route-does-not-exist');
+    expect(jsonLdContent()).toEqual(findSeoRoute('/')?.jsonLd);
+  });
+
+  test('a client-side navigation from a route with no jsonLd to "/" adds it, without a fresh page load', () => {
+    const { navigate } = renderWithNavigation('/architecture', '/');
+    expect(jsonLdScript()).toBeNull();
+
+    navigate();
+
+    expect(jsonLdContent()).toEqual(findSeoRoute('/')?.jsonLd);
+  });
+
+  test('a client-side navigation away from "/" removes its jsonLd, rather than leaving it stale on the new route', () => {
+    const { navigate } = renderWithNavigation('/', '/architecture');
+    expect(jsonLdContent()).toEqual(findSeoRoute('/')?.jsonLd);
+
+    navigate();
+
+    expect(jsonLdScript()).toBeNull();
   });
 });

@@ -431,6 +431,37 @@ function assertDependencyFilesExist(repoRoot, relFiles, context) {
   }
 }
 
+/** A route's `jsonLd` (seo-routes.json) is either absent, or a genuine schema.org structured-data
+ * object — never a typo'd non-object value, and never an empty placeholder that would silently
+ * ship as valid-looking-but-useless structured data. Requires a non-empty `@context` string and
+ * either a non-empty `@type` string or a non-empty `@graph` array whose every node itself declares
+ * a non-empty `@type` — the two shapes `injectJsonLd` actually ever needs to serialize. Called at
+ * build time so a malformed config fails the build loudly, the same guarantee
+ * `assertDependencyFilesExist` gives a typo'd `sourceFiles` entry. */
+function assertValidJsonLd(jsonLd, routePath) {
+  if (jsonLd === undefined) {
+    return;
+  }
+  if (jsonLd === null || typeof jsonLd !== 'object' || Array.isArray(jsonLd)) {
+    throw new Error(`build-seo: route "${routePath}"'s jsonLd must be a plain object (or omitted) — got ${JSON.stringify(jsonLd)}`);
+  }
+  if (typeof jsonLd['@context'] !== 'string' || jsonLd['@context'].length === 0) {
+    throw new Error(`build-seo: route "${routePath}"'s jsonLd is missing a non-empty "@context" string`);
+  }
+  const hasType = typeof jsonLd['@type'] === 'string' && jsonLd['@type'].length > 0;
+  const graph = jsonLd['@graph'];
+  const hasValidGraph =
+    Array.isArray(graph) &&
+    graph.length > 0 &&
+    graph.every((node) => node !== null && typeof node === 'object' && !Array.isArray(node) && typeof node['@type'] === 'string' && node['@type'].length > 0);
+  if (!hasType && !hasValidGraph) {
+    throw new Error(
+      `build-seo: route "${routePath}"'s jsonLd must declare a non-empty "@type" string, or a non-empty "@graph" ` +
+        'array whose every entry itself declares a non-empty "@type" — got neither',
+    );
+  }
+}
+
 function sitemapXml(entries) {
   const body = entries
     .map(({ url, lastmod }) => {
@@ -509,6 +540,7 @@ export function buildSeo({
   assertDependencyFilesExist(repoRoot, aggregateCatalogueSourceFiles, 'aggregateCatalogueSourceFiles');
   for (const route of routes) {
     assertDependencyFilesExist(repoRoot, route.sourceFiles ?? [], `route "${route.path}"'s sourceFiles`);
+    assertValidJsonLd(route.jsonLd, route.path);
   }
 
   const sitemapEntries = [];

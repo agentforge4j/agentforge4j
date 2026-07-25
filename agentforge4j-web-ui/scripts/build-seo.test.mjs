@@ -538,7 +538,7 @@ test('injectJsonLd cannot be broken out of the <script> body by a value containi
   assert.deepEqual(JSON.parse(match[1]), jsonLd);
 });
 
-test('buildSeo splices the "/" route\'s jsonLd (seo-routes.json) into the real built index.html shell, and no other route gets one', () => {
+test('buildSeo splices the "/" route\'s jsonLd (seo-routes.json) into the produced index.html shell (BASE_INDEX_HTML fixture), and no other route gets one — see verify-seo.test.mjs for the real dist/ output check', () => {
   const jsonLd = { '@context': 'https://schema.org', '@type': 'WebSite', name: 'Home' };
   const routesWithJsonLd = {
     siteUrl: 'https://agentforge4j.org',
@@ -1453,6 +1453,75 @@ test('fails loudly when artifactGenerationSourceFiles/globalSourceFiles/catalogu
       `expected ${key} to fail loudly on a nonexistent entry`,
     );
   }
+});
+
+// --- Fail loudly on a malformed jsonLd config, rather than silently shipping unusable structured
+// data (a typo'd config surface must fail the build, exactly like a stale sourceFiles entry) -----
+
+test('fails loudly when a route\'s jsonLd is not an object at all (e.g. a stray string where an object was meant)', () => {
+  const routes = {
+    siteUrl: 'https://agentforge4j.org',
+    routes: [{ path: '/', title: 'Home', description: 'Home.', jsonLd: 'not-a-structured-data-object' }],
+  };
+  const { distDir, seoRoutesPath, catalogueDataPath } = fixture({ routes });
+  assert.throws(
+    () => buildSeo({ distDir, seoRoutesPath, catalogueDataPath }),
+    /route "\/"'s jsonLd must be a plain object/,
+  );
+});
+
+test('fails loudly when a route\'s jsonLd is an empty object (no real structured data at all)', () => {
+  const routes = {
+    siteUrl: 'https://agentforge4j.org',
+    routes: [{ path: '/', title: 'Home', description: 'Home.', jsonLd: {} }],
+  };
+  const { distDir, seoRoutesPath, catalogueDataPath } = fixture({ routes });
+  assert.throws(
+    () => buildSeo({ distDir, seoRoutesPath, catalogueDataPath }),
+    /missing a non-empty "@context" string/,
+  );
+});
+
+test('fails loudly when a route\'s jsonLd has a @context but neither a real @type nor a real @graph', () => {
+  const routes = {
+    siteUrl: 'https://agentforge4j.org',
+    routes: [{ path: '/', title: 'Home', description: 'Home.', jsonLd: { '@context': 'https://schema.org' } }],
+  };
+  const { distDir, seoRoutesPath, catalogueDataPath } = fixture({ routes });
+  assert.throws(
+    () => buildSeo({ distDir, seoRoutesPath, catalogueDataPath }),
+    /must declare a non-empty "@type" string, or a non-empty "@graph"/,
+  );
+});
+
+test('fails loudly when a route\'s jsonLd @graph entry itself has no real @type', () => {
+  const routes = {
+    siteUrl: 'https://agentforge4j.org',
+    routes: [
+      {
+        path: '/',
+        title: 'Home',
+        description: 'Home.',
+        jsonLd: { '@context': 'https://schema.org', '@graph': [{ name: 'no type here' }] },
+      },
+    ],
+  };
+  const { distDir, seoRoutesPath, catalogueDataPath } = fixture({ routes });
+  assert.throws(
+    () => buildSeo({ distDir, seoRoutesPath, catalogueDataPath }),
+    /must declare a non-empty "@type" string, or a non-empty "@graph"/,
+  );
+});
+
+test('accepts a real single-node jsonLd (an @type, no @graph)', () => {
+  const routes = {
+    siteUrl: 'https://agentforge4j.org',
+    routes: [
+      { path: '/', title: 'Home', description: 'Home.', jsonLd: { '@context': 'https://schema.org', '@type': 'WebSite', name: 'AgentForge4j' } },
+    ],
+  };
+  const { distDir, seoRoutesPath, catalogueDataPath } = fixture({ routes });
+  assert.doesNotThrow(() => buildSeo({ distDir, seoRoutesPath, catalogueDataPath }));
 });
 
 // --- Completeness guard: every real copy module on disk is referenced by something in the real

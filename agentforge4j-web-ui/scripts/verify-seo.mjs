@@ -180,7 +180,20 @@ export function loadStaticRouteInventory(seoRoutesPath) {
   return routes.map((route) => ({
     requestPath: withTrailingSlash(route.path),
     expectedCanonical: `${siteUrl}${withTrailingSlash(route.canonicalPath ?? route.path)}`,
+    // Present only when the route actually declares one, so an entry with no jsonLd deep-equals
+    // exactly what every existing hand-built inventory fixture (and the tests asserting against
+    // one) already expects — no `jsonLd: undefined` key showing up where none existed before.
+    ...(route.jsonLd !== undefined ? { jsonLd: route.jsonLd } : {}),
   }));
+}
+
+/** Every `<script type="application/ld+json">...</script>` block's raw text, in document order.
+ * build-seo.mjs's own `assertValidJsonLd` already rejects a malformed config at build time — by
+ * the time this runs against real `dist/` output, a config bad enough to reach here at all would
+ * mean that gate itself regressed, which this catches too (a script whose content fails to parse
+ * as JSON, below). */
+function extractJsonLdScripts(html) {
+  return [...html.matchAll(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/g)].map((match) => match[1]);
 }
 
 export async function verifySeo({
@@ -285,7 +298,7 @@ export async function verifySeo({
       }
     }
 
-    for (const { requestPath, expectedCanonical } of staticRoutes) {
+    for (const { requestPath, expectedCanonical, jsonLd } of staticRoutes) {
       const response = await fetch(`${origin}${requestPath}`, { redirect: 'manual' });
       if (response.status !== 200) {
         throw new Error(
@@ -293,6 +306,33 @@ export async function verifySeo({
         );
       }
       const html = await response.text();
+
+      // Proven against the real dist/ output this build actually produced, not just a fixture:
+      // a route that declares jsonLd must carry exactly one JSON-LD script whose content parses as
+      // JSON and matches the declared config exactly; a route that declares none must carry none —
+      // catches both a build regression that silently drops it and one that leaks a previous/
+      // unrelated route's structured data onto this one.
+      const jsonLdScripts = extractJsonLdScripts(html);
+      if (jsonLd === undefined) {
+        if (jsonLdScripts.length > 0) {
+          throw new Error(
+            `verify-seo: ${requestPath} has ${jsonLdScripts.length} JSON-LD script(s) but declares no jsonLd in seo-routes.json`,
+          );
+        }
+      } else {
+        if (jsonLdScripts.length !== 1) {
+          throw new Error(`verify-seo: ${requestPath} has ${jsonLdScripts.length} JSON-LD script(s) — expected exactly 1`);
+        }
+        let servedJsonLd;
+        try {
+          servedJsonLd = JSON.parse(jsonLdScripts[0]);
+        } catch (err) {
+          throw new Error(`verify-seo: ${requestPath}'s JSON-LD script does not parse as valid JSON — ${err.message}`, { cause: err });
+        }
+        if (JSON.stringify(servedJsonLd) !== JSON.stringify(jsonLd)) {
+          throw new Error(`verify-seo: ${requestPath}'s served JSON-LD does not match its declared seo-routes.json config`);
+        }
+      }
 
       const canonical = extractTag(html, /<link rel="canonical" href="([^"]+)"/);
       if (canonical !== expectedCanonical) {

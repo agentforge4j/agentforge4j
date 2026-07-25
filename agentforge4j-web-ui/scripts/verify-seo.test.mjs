@@ -226,6 +226,69 @@ test('fails closed when dist/404.html is missing entirely (the 404 catch-all is 
   await assert.rejects(() => verifySeo({ distDir, staticRoutes: [] }), /404\.html does not exist/);
 });
 
+// --- JSON-LD: verified against the real, actually-served dist/ output (not a fixture standing in
+// for it — see build-seo.test.mjs's own note pointing here), the same "check the real build output
+// directly" philosophy every other check in this file already follows. ---
+
+test('a configured route whose real served HTML carries a JSON-LD script matching its declared config passes clean', async () => {
+  const distDir = fixtureDir();
+  const jsonLd = { '@context': 'https://schema.org', '@type': 'WebSite', name: 'AgentForge4j' };
+  writePage(
+    distDir,
+    '',
+    page({ canonical: 'https://agentforge4j.org/', extraHead: `<script type="application/ld+json">${JSON.stringify(jsonLd)}</script>` }),
+  );
+  writeFileSync(join(distDir, 'sitemap.xml'), sitemapXml([{ url: 'https://agentforge4j.org/', lastmod: '2026-07-20' }]), 'utf8');
+  await assert.doesNotReject(() =>
+    verifySeo({ distDir, staticRoutes: [{ requestPath: '/', expectedCanonical: 'https://agentforge4j.org/', jsonLd }] }),
+  );
+});
+
+test('fails closed when a route declares jsonLd but its real served HTML has none at all', async () => {
+  const distDir = fixtureDir();
+  writePage(distDir, '', page({ canonical: 'https://agentforge4j.org/' }));
+  writeFileSync(join(distDir, 'sitemap.xml'), sitemapXml([{ url: 'https://agentforge4j.org/', lastmod: '2026-07-20' }]), 'utf8');
+  await assert.rejects(
+    () =>
+      verifySeo({
+        distDir,
+        staticRoutes: [{ requestPath: '/', expectedCanonical: 'https://agentforge4j.org/', jsonLd: { '@context': 'https://schema.org', '@type': 'WebSite' } }],
+      }),
+    /has 0 JSON-LD script\(s\) — expected exactly 1/,
+  );
+});
+
+test('fails closed when a route\'s served JSON-LD does not match its declared seo-routes.json config (a stale/mismatched build)', async () => {
+  const distDir = fixtureDir();
+  const served = { '@context': 'https://schema.org', '@type': 'WebSite', name: 'Wrong Name' };
+  writePage(
+    distDir,
+    '',
+    page({ canonical: 'https://agentforge4j.org/', extraHead: `<script type="application/ld+json">${JSON.stringify(served)}</script>` }),
+  );
+  writeFileSync(join(distDir, 'sitemap.xml'), sitemapXml([{ url: 'https://agentforge4j.org/', lastmod: '2026-07-20' }]), 'utf8');
+  const declared = { '@context': 'https://schema.org', '@type': 'WebSite', name: 'AgentForge4j' };
+  await assert.rejects(
+    () => verifySeo({ distDir, staticRoutes: [{ requestPath: '/', expectedCanonical: 'https://agentforge4j.org/', jsonLd: declared }] }),
+    /does not match its declared seo-routes\.json config/,
+  );
+});
+
+test('fails closed when a route declares no jsonLd but its real served HTML unexpectedly carries one (leaked from another route)', async () => {
+  const distDir = fixtureDir();
+  const leaked = { '@context': 'https://schema.org', '@type': 'WebSite', name: 'AgentForge4j' };
+  writePage(
+    distDir,
+    'architecture',
+    page({ canonical: 'https://agentforge4j.org/architecture/', extraHead: `<script type="application/ld+json">${JSON.stringify(leaked)}</script>` }),
+  );
+  writeFileSync(join(distDir, 'sitemap.xml'), sitemapXml([{ url: 'https://agentforge4j.org/architecture/', lastmod: '2026-07-20' }]), 'utf8');
+  await assert.rejects(
+    () => verifySeo({ distDir, staticRoutes: [{ requestPath: '/architecture/', expectedCanonical: 'https://agentforge4j.org/architecture/' }] }),
+    /has 1 JSON-LD script\(s\) but declares no jsonLd/,
+  );
+});
+
 // --- loadStaticRouteInventory: the real per-route verification list, derived from the committed
 // seo-routes.json rather than a hand-maintained subset — this is what makes a sitemap: false alias
 // route like /contributing actually get checked at all, since the sitemap-driven loop above never
@@ -268,6 +331,31 @@ test('loadStaticRouteInventory normalizes every requestPath to its trailing-slas
     { requestPath: '/api/', expectedCanonical: 'https://agentforge4j.org/api/' },
     { requestPath: '/contributing/', expectedCanonical: 'https://agentforge4j.org/community/' },
   ]);
+});
+
+test('loadStaticRouteInventory carries jsonLd for a route that declares one, and omits the key entirely for a route that does not', () => {
+  const root = mkdtempSync(join(tmpdir(), 'seo-routes-fixture-jsonld-'));
+  const seoRoutesPath = join(root, 'seo-routes.json');
+  const jsonLd = { '@context': 'https://schema.org', '@type': 'WebSite', name: 'AgentForge4j' };
+  writeFileSync(
+    seoRoutesPath,
+    JSON.stringify({
+      siteUrl: 'https://agentforge4j.org',
+      routes: [{ path: '/', jsonLd }, { path: '/api' }],
+    }),
+    'utf8',
+  );
+  const inventory = loadStaticRouteInventory(seoRoutesPath);
+  assert.deepEqual(inventory[0].jsonLd, jsonLd);
+  assert.ok(!('jsonLd' in inventory[1]), '/api declares no jsonLd — the key must be entirely absent, not present as undefined');
+});
+
+test('loadStaticRouteInventory reflects the real committed seo-routes.json: only "/" declares jsonLd today', () => {
+  const inventory = loadStaticRouteInventory(join(REAL_MODULE_ROOT, 'src/config/seo-routes.json'));
+  const home = inventory.find((entry) => entry.requestPath === '/');
+  assert.ok(home?.jsonLd, 'expected the real "/" route to declare a jsonLd config');
+  const architecture = inventory.find((entry) => entry.requestPath === '/architecture/');
+  assert.ok(!('jsonLd' in architecture), '/architecture declares no jsonLd in the real config');
 });
 
 // --- End-to-end: a sitemap: false alias route (modelled on the real /contributing) is verified by
