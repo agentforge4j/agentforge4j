@@ -206,6 +206,23 @@ export async function verifySeo({
     throw new Error('verify-seo: duplicate URL(s) found in the real dist/sitemap.xml');
   }
 
+  // dist/404.html is GitHub Pages' catch-all for every unmatched path, served under a real HTTP
+  // 404 — it must stay the empty pre-prerender SPA shell (copy-404.mjs runs before build-seo.mjs
+  // for exactly this reason). If it ever carried prerendered body content, every mistyped URL
+  // would statically display the full home page under a 404 status until the JS bundle runs —
+  // and permanently for any client that never runs it.
+  const notFoundPath = join(distDir, '404.html');
+  if (!existsSync(notFoundPath)) {
+    throw new Error(`verify-seo: ${notFoundPath} does not exist — run the full build first`);
+  }
+  if (!/<div id="root"><\/div>/.test(readFileSync(notFoundPath, 'utf8'))) {
+    throw new Error(
+      'verify-seo: dist/404.html no longer contains an empty <div id="root"></div> mount point — ' +
+        'it must stay the pre-prerender SPA shell (copy-404.mjs must run before build-seo.mjs, ' +
+        'never after it)',
+    );
+  }
+
   const server = await startGhPagesEmulatingServer(distDir);
   const { port } = server.address();
   const origin = `http://127.0.0.1:${port}`;
