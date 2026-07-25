@@ -16,10 +16,13 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { spawn } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { request } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { clearTimeout, setTimeout } from 'node:timers';
+import { URL } from 'node:url';
 import { collectRoutePaths, prerenderRoutes, resolveWithinRoot, startStaticServer } from './prerender-routes.mjs';
 
 /** A raw HTTP GET that sends `rawPath` on the request line completely unnormalized — unlike
@@ -124,6 +127,48 @@ test('fails closed (does not silently ship) when a route is genuinely nondetermi
     () => prerenderRoutes({ distDir, routePaths: ['/'] }),
     /produced different markup across two consecutive captures/,
   );
+});
+
+test('a failed browser launch rejects AND the process can still exit — the static server must not leak', async () => {
+  // The static server is listening before chromium.launch() runs; if a launch failure (browser
+  // binary not installed) leaked it, the child process below would never exit: its rejection
+  // handler deliberately sets process.exitCode instead of calling process.exit, so — exactly like
+  // `node --test` running this very file — it only terminates once the event loop drains. Run in a
+  // child (not in-process) because a leaked listener in THIS process would hang the whole test run,
+  // turning the defect into an unattributable timeout instead of this test's clear failure message.
+  const distDir = fixtureDist('document.getElementById("root").innerHTML = "<h1>Never rendered</h1>";');
+  // An empty browsers dir makes chromium.launch() fail deterministically, even on machines (and CI
+  // runners, once provisioned) that do have the real browser installed.
+  const emptyBrowsersDir = mkdtempSync(join(tmpdir(), 'pw-no-browsers-'));
+  const moduleUrl = new URL('./prerender-routes.mjs', import.meta.url).href;
+  const childScript =
+    `import(${JSON.stringify(moduleUrl)})` +
+    `.then((m) => m.prerenderRoutes({ distDir: ${JSON.stringify(distDir)}, routePaths: ['/'] }))` +
+    `.then(() => { process.exitCode = 0; }, () => { process.exitCode = 1; });`;
+  const child = spawn(process.execPath, ['-e', childScript], {
+    env: { ...process.env, PLAYWRIGHT_BROWSERS_PATH: emptyBrowsersDir },
+    stdio: 'ignore',
+  });
+  const exitCode = await new Promise((resolvePromise, reject) => {
+    const timer = setTimeout(() => {
+      child.kill('SIGKILL');
+      reject(
+        new Error(
+          'child never exited: the launch-failure path leaked a live handle (the listening static ' +
+            'server) that keeps the event loop alive — the exact hang this test exists to prevent',
+        ),
+      );
+    }, 30000);
+    child.on('error', (error) => {
+      clearTimeout(timer);
+      reject(error);
+    });
+    child.on('exit', (code) => {
+      clearTimeout(timer);
+      resolvePromise(code);
+    });
+  });
+  assert.equal(exitCode, 1, 'the failed launch must surface as a rejection (exit 1), not success');
 });
 
 // --- resolveWithinRoot: path-containment guard for the static server's own request handling ---

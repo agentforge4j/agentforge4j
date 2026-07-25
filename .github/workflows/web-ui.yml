@@ -45,17 +45,26 @@ jobs:
         working-directory: agentforge4j-web-ui
         run: npm ci
 
-      # The production build now boots the real built bundle in headless Chromium to prerender
-      # every route's body content (scripts/prerender-routes.mjs) — `npm ci` installs the
-      # `playwright` package itself, but never downloads the browser binary. `npm run check` below
-      # (via its own `prebuild` lifecycle hook, scripts/ensure-chromium.mjs) now provisions the
-      # browser BINARY automatically on any caller, on any OS — this explicit step is kept
-      # regardless because it does something that cross-platform hook deliberately does not: install
-      # the Linux OS-level shared libraries Chromium needs at runtime (`--with-deps`), which requires
-      # root and only applies here. Same cached-install convention as `UI E2E` (agentforge4j-ui-e2e),
-      # keyed by this module's own lockfile so the two never invalidate each other's cache entry.
+      # The production build boots the real built bundle in headless Chromium to prerender every
+      # route's body content (scripts/prerender-routes.mjs) — `npm ci` installs the `playwright`
+      # package itself, but never downloads the browser binary. `npm run check` below (via its own
+      # `prebuild` lifecycle hook, scripts/ensure-chromium.mjs) now provisions the browser BINARY
+      # automatically on any caller, on any OS — the explicit steps below are kept regardless
+      # because they do something that cross-platform hook deliberately does not: install the Linux
+      # OS-level shared libraries Chromium needs at runtime (`--with-deps`), which requires root
+      # and only applies here. They stay keyed off whether the module actually declares playwright,
+      # so on a tree without the prerender pass they skip and this workflow behaves exactly as
+      # before. Same cached-install convention as `UI E2E` (agentforge4j-ui-e2e), keyed by this
+      # module's own lockfile so the two never invalidate each other's cache entry.
+      - name: Detect whether the site build needs a browser
+        id: needs-browser
+        working-directory: agentforge4j-web-ui
+        run: |
+          echo "needed=$(node -e "console.log((require('./package.json').devDependencies || {}).playwright ? 'true' : 'false')")" >> "$GITHUB_OUTPUT"
+
       - name: Cache Playwright browsers
-        uses: actions/cache@v4
+        if: ${{ steps.needs-browser.outputs.needed == 'true' }}
+        uses: actions/cache@v6
         with:
           path: ~/.cache/ms-playwright
           key: playwright-${{ runner.os }}-${{ hashFiles('agentforge4j-web-ui/package-lock.json') }}
@@ -63,6 +72,7 @@ jobs:
             playwright-${{ runner.os }}-
 
       - name: Install Playwright Chromium
+        if: ${{ steps.needs-browser.outputs.needed == 'true' }}
         working-directory: agentforge4j-web-ui
         run: npx playwright install --with-deps chromium
 

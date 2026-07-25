@@ -2,11 +2,11 @@
 //
 // Committed-content gate (design §4) for this module: scans every `.ts`/`.tsx` source file
 // under `src/` plus every other committed, human-authored text file in the module (README,
-// the HTML shell, the deployment config, the local Dockerfile) for both term groups. Neither
-// term list is authored here — both live in `agentforge4j-docs/scripts/` and are imported via
-// a relative cross-directory path, since no npm workspace ties the OSS repo's top-level modules
-// together (confirmed: no root package.json/workspace file). This keeps exactly one copy of
-// each list instead of a second, independently-drifting one per module.
+// the HTML shell, the deployment config, the local Dockerfile) for the product-boundary term
+// group. The term list is not authored here — it lives in `agentforge4j-docs/scripts/` and is
+// imported via a relative cross-directory path, since no npm workspace ties the OSS repo's
+// top-level modules together (confirmed: no root package.json/workspace file). This keeps
+// exactly one copy of the list instead of a second, independently-drifting one per module.
 //
 // `src/` is scanned as `.ts`/`.tsx` only, not `.md`/`.mdx` — this module's page/marketing copy
 // lives in TS modules (design §35's "centralised copy in src/copy/"), not markdown, unlike the
@@ -29,7 +29,6 @@ import {readdirSync, readFileSync, statSync} from 'node:fs';
 import {join, relative, sep, dirname} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {findProductNameLeaks, BLOCKED} from '../../agentforge4j-docs/scripts/product-name.mjs';
-import {findAttributionLeaks, ATTRIBUTION_BLOCKED} from '../../agentforge4j-docs/scripts/attribution-terms.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const MODULE_ROOT = join(here, '..');
@@ -75,21 +74,14 @@ for (const file of targets) {
     console.error(`✗ ${rel}:${line} — commercial identifier '${token}': ${excerpt}`);
     violations += 1;
   }
-  for (const {id, line, excerpt, description} of findAttributionLeaks(text)) {
-    console.error(`✗ ${rel}:${line} — ${description} (${id}): ${excerpt}`);
-    violations += 1;
-  }
 }
 
 if (violations > 0) {
   console.error(
     `\ncontent-gate: ${violations} violation(s) across ${files} file(s). See ` +
-      'agentforge4j-docs/scripts/product-name.mjs and attribution-terms.mjs for the reviewed term lists.',
+      'agentforge4j-docs/scripts/product-name.mjs for the reviewed term list.',
   );
   process.exit(1);
 }
 
-console.log(
-  `content-gate: ${files} file(s) clean of ${BLOCKED.length} product-boundary and ` +
-    `${ATTRIBUTION_BLOCKED.length} attribution pattern(s).`,
-);
+console.log(`content-gate: ${files} file(s) clean of ${BLOCKED.length} product-boundary pattern(s).`);

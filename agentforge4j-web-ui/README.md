@@ -30,10 +30,10 @@ application (not published to npm) and is independent of the Maven reactor.
   generated derivatives of it.
 - **Committed-content gate**: `scripts/lint-content-gate.mjs` scans this module's own `.ts`/`.tsx`
   sources under `src/`, plus its other committed prose surfaces (`README.md`, `index.html`,
-  `nginx.conf`, `Dockerfile.local`, `public/robots.txt`) against both term groups defined in
-  `agentforge4j-docs/scripts/` (product-boundary + attribution), imported via a relative path —
-  not a duplicated copy. Generated/build output (`dist/`, `node_modules/`, `.tsbuildinfo` caches)
-  is never in scope.
+  `nginx.conf`, `Dockerfile.local`, `public/robots.txt`) against the product-boundary term group
+  defined in `agentforge4j-docs/scripts/product-name.mjs`, imported via a relative path — not a
+  duplicated copy. Generated/build output (`dist/`, `node_modules/`, `.tsbuildinfo` caches) is
+  never in scope.
 - **404**: `scripts/copy-404.mjs` ships `dist/404.html` as a byte-identical copy of `dist/index.html`
   after every build, so GitHub Pages serves a real HTTP 404 with the site's own branded not-found
   page.
@@ -59,22 +59,24 @@ which sets `AFB_LOCAL_BUILDER=1` so Vite resolves the builder from
 
 ## Build and verify
 
-The production build boots the real built bundle in headless Chromium to prerender every route's
-body content (`scripts/prerender-routes.mjs`). `npm install`/`npm ci` installs the `playwright`
-package itself but never downloads the browser binary — `npm run build` (and `npm run test:seo`,
-which exercises the same prerender code path) provision the pinned Chromium build automatically via
-their own `prebuild`/`pretest:seo` lifecycle hooks (`scripts/ensure-chromium.mjs`), so no separate
-manual step is required on a clean checkout. It is a fast no-op if the browser is already cached
-(e.g. from `agentforge4j-ui-e2e`'s own Playwright setup — both pin the identical version, so the
-download is shared, not duplicated).
+`npm install`/`npm ci` installs the `playwright` package itself but never downloads the browser
+binary — `npm run build` and `npm run test:seo` provision the pinned Chromium build automatically
+via their own `prebuild`/`pretest:seo` lifecycle hooks (`scripts/ensure-chromium.mjs`), so no
+separate manual step is required on a clean checkout. It is a fast no-op if the browser is already
+cached (e.g. from `agentforge4j-ui-e2e`'s own Playwright setup — both pin the identical version, so
+the download is shared, not duplicated).
+
+On Linux, `npm run playwright:install` is available as an optional one-off if you also want the
+OS-level shared libraries Chromium needs at runtime (`--with-deps`, requires root) — the automatic
+hook above deliberately does not attempt that, the same way CI's own explicit install step doesn't
+either.
 
 ```bash
 npm run check
 ```
 
 Runs lint, the committed-content gate, typecheck, the Vitest component/route/a11y suite, the
-content-gate integration test, and the production build (including the prerender pass, the 404
-mechanism, and the post-build `verify-seo.mjs` gate) end to end.
+content-gate integration test, and the production build (including the 404 mechanism) end to end.
 
 ## License
 

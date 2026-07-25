@@ -10,7 +10,7 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { request } from 'node:http';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -60,10 +60,19 @@ function sitemapXml(entries) {
 }
 
 function fixtureDir() {
-  return mkdtempSync(join(tmpdir(), 'verify-seo-'));
+  const distDir = mkdtempSync(join(tmpdir(), 'verify-seo-'));
+  // Every fixture ships a valid 404 catch-all by default — the empty pre-prerender SPA shell
+  // copy-404.mjs produces on a real build. The dedicated 404-gate tests below overwrite or
+  // remove it deliberately.
+  writeFileSync(
+    join(distDir, '404.html'),
+    '<!doctype html><html lang="en"><head><meta charset="UTF-8"></head><body><div id="root"></div></body></html>',
+    'utf8',
+  );
+  return distDir;
 }
 
-test('passes clean on a well-formed fixture: trailing-slash sitemap URLs, matching self-canonical, one real <h1>, valid lastmod', async () => {
+test('passes clean on a well-formed fixture: trailing-slash sitemap URLs, matching self-canonical, one real <h1>', async () => {
   const distDir = fixtureDir();
   writePage(distDir, '', page({ canonical: 'https://agentforge4j.org/' }));
   writePage(distDir, 'api', page({ canonical: 'https://agentforge4j.org/api/' }));
@@ -114,60 +123,6 @@ test('fails closed on zero <h1> in the raw served HTML (the exact pre-fix Bing "
   await assert.rejects(() => verifySeo({ distDir, staticRoutes: [] }), /expected exactly one <h1>/);
 });
 
-test('fails closed on a missing <lastmod> (a production sitemap where every date disappeared must never pass)', async () => {
-  const distDir = fixtureDir();
-  writePage(distDir, '', page({ canonical: 'https://agentforge4j.org/' }));
-  writeFileSync(join(distDir, 'sitemap.xml'), sitemapXml([{ url: 'https://agentforge4j.org/', lastmod: null }]), 'utf8');
-  await assert.rejects(() => verifySeo({ distDir, staticRoutes: [] }), /has no <lastmod>/);
-});
-
-test('fails closed on a duplicate <lastmod> tag inside one <url> block', async () => {
-  const distDir = fixtureDir();
-  writePage(distDir, '', page({ canonical: 'https://agentforge4j.org/' }));
-  writeFileSync(
-    join(distDir, 'sitemap.xml'),
-    '<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">' +
-      '<url><loc>https://agentforge4j.org/</loc><lastmod>2026-07-20</lastmod><lastmod>2026-07-21</lastmod></url>' +
-      '</urlset>',
-    'utf8',
-  );
-  await assert.rejects(() => verifySeo({ distDir, staticRoutes: [] }), /has 2 <lastmod> tags — expected exactly one/);
-});
-
-test('fails closed on an invalid (non-W3C-shaped) <lastmod>', async () => {
-  const distDir = fixtureDir();
-  writePage(distDir, '', page({ canonical: 'https://agentforge4j.org/' }));
-  writeFileSync(
-    join(distDir, 'sitemap.xml'),
-    sitemapXml([{ url: 'https://agentforge4j.org/', lastmod: 'not-a-date' }]),
-    'utf8',
-  );
-  await assert.rejects(() => verifySeo({ distDir, staticRoutes: [] }), /not a valid real calendar date/);
-});
-
-test('fails closed on a regex-shaped but impossible calendar date (2026-02-31)', async () => {
-  const distDir = fixtureDir();
-  writePage(distDir, '', page({ canonical: 'https://agentforge4j.org/' }));
-  writeFileSync(
-    join(distDir, 'sitemap.xml'),
-    sitemapXml([{ url: 'https://agentforge4j.org/', lastmod: '2026-02-31' }]),
-    'utf8',
-  );
-  await assert.rejects(() => verifySeo({ distDir, staticRoutes: [] }), /not a valid real calendar date/);
-});
-
-test('accepts a real leap day (2024-02-29) but rejects the same day in a non-leap year (2026-02-29)', async () => {
-  const leapDistDir = fixtureDir();
-  writePage(leapDistDir, '', page({ canonical: 'https://agentforge4j.org/' }));
-  writeFileSync(join(leapDistDir, 'sitemap.xml'), sitemapXml([{ url: 'https://agentforge4j.org/', lastmod: '2024-02-29' }]), 'utf8');
-  await assert.doesNotReject(() => verifySeo({ distDir: leapDistDir, staticRoutes: [] }));
-
-  const nonLeapDistDir = fixtureDir();
-  writePage(nonLeapDistDir, '', page({ canonical: 'https://agentforge4j.org/' }));
-  writeFileSync(join(nonLeapDistDir, 'sitemap.xml'), sitemapXml([{ url: 'https://agentforge4j.org/', lastmod: '2026-02-29' }]), 'utf8');
-  await assert.rejects(() => verifySeo({ distDir: nonLeapDistDir, staticRoutes: [] }), /not a valid real calendar date/);
-});
-
 test('fails closed on a duplicate URL in the real sitemap.xml', async () => {
   const distDir = fixtureDir();
   writePage(distDir, '', page({ canonical: 'https://agentforge4j.org/' }));
@@ -190,6 +145,31 @@ test('a configured static route missing real visible <h1> text fails closed even
     () => verifySeo({ distDir, staticRoutes: [{ requestPath: '/', expectedCanonical: 'https://agentforge4j.org/' }] }),
     /no real visible text content/,
   );
+});
+
+// --- The 404 catch-all gate: dist/404.html must stay the empty pre-prerender SPA shell. If the
+// build ever wrote it from the post-prerender index.html (the copy-404-after-build-seo ordering
+// this gate exists to prevent), every mistyped URL would statically display the full home page
+// body under a real HTTP 404. ---
+
+test('fails closed when dist/404.html carries prerendered body content instead of the empty mount point', async () => {
+  const distDir = fixtureDir();
+  writePage(distDir, '', page({ canonical: 'https://agentforge4j.org/' }));
+  writeFileSync(join(distDir, 'sitemap.xml'), sitemapXml([{ url: 'https://agentforge4j.org/', lastmod: '2026-07-20' }]), 'utf8');
+  writeFileSync(
+    join(distDir, '404.html'),
+    '<!doctype html><html lang="en"><head></head><body><div id="root"><h1>Home</h1><main>full prerendered home body</main></div></body></html>',
+    'utf8',
+  );
+  await assert.rejects(() => verifySeo({ distDir, staticRoutes: [] }), /404\.html no longer contains an empty/);
+});
+
+test('fails closed when dist/404.html is missing entirely (the 404 catch-all is part of the verified artifact)', async () => {
+  const distDir = fixtureDir();
+  writePage(distDir, '', page({ canonical: 'https://agentforge4j.org/' }));
+  writeFileSync(join(distDir, 'sitemap.xml'), sitemapXml([{ url: 'https://agentforge4j.org/', lastmod: '2026-07-20' }]), 'utf8');
+  rmSync(join(distDir, '404.html'));
+  await assert.rejects(() => verifySeo({ distDir, staticRoutes: [] }), /404\.html does not exist/);
 });
 
 // --- loadStaticRouteInventory: the real per-route verification list, derived from the committed

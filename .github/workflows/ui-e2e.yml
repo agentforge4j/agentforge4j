@@ -302,12 +302,15 @@ jobs:
         working-directory: agentforge4j-ui-e2e
         run: npm run typecheck
 
-      # Must run BEFORE "Web UI check" below: that step's own `npm run check` ends with
-      # `npm run build`, whose prerender pass (scripts/prerender-routes.mjs) launches Chromium —
-      # `agentforge4j-web-ui`'s own `prebuild` hook (scripts/ensure-chromium.mjs) provisions it
-      # automatically as defense-in-depth, but this explicit step still matters here: it also
-      # installs the Linux OS-level shared libraries Chromium needs at runtime (`--with-deps`),
-      # which the cross-platform `ensure-chromium` hook deliberately does not attempt.
+      # These two steps run BEFORE "Web UI check" below: that step's own `npm run check` ends with
+      # `npm run build`, whose prerender pass (scripts/prerender-routes.mjs) launches Chromium via
+      # agentforge4j-web-ui's own `playwright` devDependency (pinned to the same version as
+      # agentforge4j-ui-e2e's `@playwright/test`, so this one install provides the browser build
+      # both modules resolve to). `agentforge4j-web-ui`'s own `prebuild` hook
+      # (scripts/ensure-chromium.mjs) provisions the binary automatically as defense-in-depth, but
+      # this explicit step still matters here: it also installs the Linux OS-level shared libraries
+      # Chromium needs at runtime (`--with-deps`), which the cross-platform `ensure-chromium` hook
+      # deliberately does not attempt.
       - name: Cache Playwright browsers
         if: ${{ needs.changes.outputs.webUi == 'true' }}
         uses: actions/cache@v6
