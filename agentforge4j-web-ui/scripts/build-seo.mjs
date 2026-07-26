@@ -314,14 +314,22 @@ export const JSON_LD_SCRIPT_ID = 'seo-json-ld';
  * and updates this exact node on hydration rather than creating a duplicate — see the constant's
  * own doc comment above.
  *
- * Every `<` in the serialized JSON is escaped to `<` before it reaches the HTML — `<` is the
+ * Every `<` in the serialized JSON is escaped to `\u003c` before it reaches the HTML — `<` is the
  * only character that matters inside a `<script>` body (an HTML parser looks for `</script` byte-
  * for-byte, case-insensitively, regardless of JSON string-quoting), so an unescaped value
  * containing a literal `</script>` would close the tag early and let whatever followed run as live
- * markup/script. `<` is a standard JSON string escape — `JSON.parse` (or any JSON-LD consumer)
+ * markup/script. `\u003c` is a standard JSON string escape — `JSON.parse` (or any JSON-LD consumer)
  * reads it back as the exact same `<` character, so this changes zero JSON semantics; it is not a
  * general HTML-escaping pass (`>`, `&`, quotes, etc. are untouched and do not need to be — none of
- * them can end a `<script>` body). */
+ * them can end a `<script>` body).
+ *
+ * That escaping only holds because the replacement is supplied via a function, never as a bare
+ * replacement string — the same guard injectRoot already documents above, and load-bearing here
+ * for the same reason: `String.prototype.replace` expands `$&`, "$`", `$'` and `$$` inside a
+ * replacement STRING *after* any escaping has already run, so a `$'` anywhere in a config value
+ * would splice the rest of the document — the body's own `</script>` included — straight into this
+ * script's body, defeating the escaping above entirely. A replacer function is never scanned for
+ * those tokens, so the escaped text reaches the HTML exactly as written. */
 export function injectJsonLd(html, jsonLd) {
   if (jsonLd === undefined || jsonLd === null) {
     return html;
@@ -331,7 +339,7 @@ export function injectJsonLd(html, jsonLd) {
   if (!/<\/head>/.test(html)) {
     throw new Error('build-seo: expected a </head> closing tag in dist/index.html');
   }
-  return html.replace(/<\/head>/, script);
+  return html.replace(/<\/head>/, () => script);
 }
 
 // Route paths are trusted, committed build-time data (seo-routes.json, catalogue workflow ids)

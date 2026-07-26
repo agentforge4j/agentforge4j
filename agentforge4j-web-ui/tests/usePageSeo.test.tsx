@@ -15,7 +15,14 @@ import { fileURLToPath } from 'node:url';
 import App from '@/App';
 import { ThemeProvider } from '@/theme/ThemeContext';
 import { findSeoRoute } from '@/config/seo';
-import { buildSeo } from '../scripts/build-seo.mjs';
+// JSON_LD_SCRIPT_ID comes from build-seo.mjs deliberately, never re-typed as a literal here: the
+// static shell's script id and the one usePageSeo.ts's `setJsonLd` looks for MUST be the same
+// string, and this import is the only thing in the suite that can fail when they drift. A
+// hardcoded 'seo-json-ld' in these tests would keep matching usePageSeo.ts's own hardcoded copy
+// long after build-seo.mjs had been renamed — leaving the shell shipping one id, the hook hunting
+// for another, and every gate still green. (usePageSeo.ts itself cannot import this module —
+// build-seo.mjs pulls in node:child_process — so the binding has to live here.)
+import { buildSeo, JSON_LD_SCRIPT_ID } from '../scripts/build-seo.mjs';
 
 const MODULE_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -168,6 +175,18 @@ describe('usePageSeo', () => {
     expect(jsonLdContent()).toEqual(findSeoRoute('/')?.jsonLd);
   });
 
+  test('the script the hook CREATES carries the exact id build-seo.mjs stamps on the static shell, so the two can never drift apart silently', () => {
+    // The one assertion that actually binds usePageSeo.ts's own id to build-seo.mjs's exported
+    // constant. Every other guard on this invariant lives on the build side (build-seo.test.mjs,
+    // verify-seo.mjs) and compares the shell against that same constant — so all of them stay
+    // green if the constant is renamed, while production ships a shell the hook can no longer
+    // find, appends a SECOND JSON-LD block on `/`, and then strands the shell's block on every
+    // later route. This test is what fails first in that scenario.
+    document.querySelectorAll('script[type="application/ld+json"]').forEach((el) => el.remove());
+    renderAt('/');
+    expect(jsonLdScript()?.id).toBe(JSON_LD_SCRIPT_ID);
+  });
+
   test('a static route that declares no jsonLd has no JSON-LD script at all', () => {
     renderAt('/architecture');
     expect(jsonLdScript()).toBeNull();
@@ -202,16 +221,18 @@ describe('usePageSeo', () => {
   });
 
   // --- Reproduces the real browser boot sequence: the static shell (scripts/build-seo.mjs's
-  // injectJsonLd) already has a JSON-LD <script id="seo-json-ld"> in <head> BEFORE React ever
+  // injectJsonLd) already has a JSON-LD <script id={JSON_LD_SCRIPT_ID}> in <head> BEFORE React ever
   // mounts — unlike every test above, which starts from an empty document.head and lets the hook
-  // create the script itself. A regression that gave the static shell a different id (or none) would
+  // create the script itself. Both fixtures below stamp build-seo.mjs's own exported constant
+  // rather than a re-typed literal, so they model the real shell rather than a hand-copied
+  // approximation of it. A regression that gave the static shell a different id (or none) would
   // make the hook fail to find it here, create a *second* script instead of adopting this one, and
   // then only ever remove that second one on navigation — permanently stranding this one. ---
 
   test('adopts and updates a pre-existing static-shell JSON-LD script (same shared id) on mount, rather than creating a duplicate', () => {
     document.querySelectorAll('script[type="application/ld+json"]').forEach((el) => el.remove());
     const staticScript = document.createElement('script');
-    staticScript.id = 'seo-json-ld';
+    staticScript.id = JSON_LD_SCRIPT_ID;
     staticScript.setAttribute('type', 'application/ld+json');
     staticScript.textContent = JSON.stringify(findSeoRoute('/')?.jsonLd);
     document.head.appendChild(staticScript);
@@ -227,7 +248,7 @@ describe('usePageSeo', () => {
   test('a pre-existing static-shell JSON-LD script is fully removed (not stranded) after a client-side navigation away from "/"', () => {
     document.querySelectorAll('script[type="application/ld+json"]').forEach((el) => el.remove());
     const staticScript = document.createElement('script');
-    staticScript.id = 'seo-json-ld';
+    staticScript.id = JSON_LD_SCRIPT_ID;
     staticScript.setAttribute('type', 'application/ld+json');
     staticScript.textContent = JSON.stringify(findSeoRoute('/')?.jsonLd);
     document.head.appendChild(staticScript);

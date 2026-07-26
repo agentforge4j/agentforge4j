@@ -44,7 +44,7 @@ const JSON_LD_SCRIPT_ID = 'seo-json-ld';
  * Sets `.textContent` rather than splicing a serialized string into `innerHTML` — this writes the
  * script node's text data directly, never engaging the HTML parser's "look for a literal `</script`"
  * scan the way string-based HTML assembly would, so unlike the build-time `injectJsonLd` (which
- * must escape `<` to `<` defensively for exactly that reason) there is no `</script>`-breakout
+ * must escape `<` to `\u003c` defensively for exactly that reason) there is no `</script>`-breakout
  * risk here and no escaping is needed. */
 function setJsonLd(jsonLd: JsonLd | undefined): void {
   const existing = document.getElementById(JSON_LD_SCRIPT_ID);

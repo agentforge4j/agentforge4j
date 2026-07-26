@@ -372,7 +372,8 @@ export async function verifySeo({
 
   console.log(
     `[verify-seo] verified ${entries.length} sitemap URL(s) (200, no redirect, self-canonical, exactly one real <h1>) ` +
-      `and ${staticRoutes.length} configured static route(s) (200, no redirect, exactly one real <h1>, expected canonical) — all clean`,
+      `and ${staticRoutes.length} configured static route(s) (200, no redirect, exactly one real <h1>, expected canonical, ` +
+      `declared JSON-LD present with the shared script id and matching content — and none where none is declared) — all clean`,
   );
 }
 

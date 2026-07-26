@@ -531,13 +531,25 @@ test('injectJsonLd is a no-op for routes that declare no jsonLd (every route exc
   assert.equal(injectJsonLd(BASE_INDEX_HTML, undefined), BASE_INDEX_HTML);
 });
 
+/** `<script` open tags in a document. The assertions below compare this as a DELTA against the
+ * base shell rather than against an absolute number: BASE_INDEX_HTML happens to carry none, but
+ * the real built index.html carries two (the theme-bootstrap inline script and the module
+ * entrypoint), so an absolute "exactly 1" would only ever have been a statement about this
+ * fixture's shape, not about what injectJsonLd does to a real shell. */
+function countScriptOpenTags(html) {
+  return (html.match(/<script[ >]/g) ?? []).length;
+}
+
 test('injectJsonLd cannot be broken out of the <script> body by a value containing a literal </script> sequence', () => {
   const jsonLd = { '@context': 'https://schema.org', '@type': 'WebSite', description: 'a</script><script>alert(1)</script>' };
   const html = injectJsonLd(BASE_INDEX_HTML, jsonLd);
-  // The only real <script> tag in the document must be the one this function itself wrote — none
+  // Exactly one <script> more than the shell already had: the one this function wrote, and none
   // injected via the JSON-LD payload's own string content.
-  const scriptOpenTags = html.match(/<script[ >]/g) ?? [];
-  assert.equal(scriptOpenTags.length, 1, 'expected exactly the one JSON-LD script — no extra <script> from the payload');
+  assert.equal(
+    countScriptOpenTags(html) - countScriptOpenTags(BASE_INDEX_HTML),
+    1,
+    'expected exactly one added <script> — the JSON-LD one — and none from the payload',
+  );
   // The literal, unescaped sequence must never appear in the emitted HTML at all.
   assert.ok(!html.includes('</script><script>alert(1)</script>'), 'the raw </script> sequence from the JSON-LD value must not reach the HTML unescaped');
   // Semantics are unchanged: parsing the actual emitted JSON-LD block back out still yields the
@@ -545,6 +557,40 @@ test('injectJsonLd cannot be broken out of the <script> body by a value containi
   const match = /<script id="([^"]*)" type="application\/ld\+json">([\s\S]*?)<\/script>\s*<\/head>/.exec(html);
   assert.ok(match, 'expected a JSON-LD script immediately before </head>');
   assert.deepEqual(JSON.parse(match[2]), jsonLd);
+});
+
+// The escaping above is only worth anything if the escaped text actually reaches the HTML
+// unchanged. `String.prototype.replace` expands `$&`, "$`", `$'` and `$$` in a replacement STRING
+// *after* any escaping has already run, so passing the serialized JSON as one would re-inject raw
+// document text — the body's own `</script>` included — straight past the escaper, deterministically
+// and with no error. injectRoot carries the identical guard, for the identical reason; this test is
+// the injectJsonLd half of it.
+test('injectJsonLd preserves $-substitution tokens verbatim rather than letting String.replace expand them into document text', () => {
+  const jsonLd = {
+    '@context': 'https://schema.org',
+    '@type': 'WebSite',
+    name: 'A$&B',
+    alternateName: 'C$`D',
+    description: "E$'F",
+    slogan: 'G$$H',
+  };
+  const html = injectJsonLd(BASE_INDEX_HTML, jsonLd);
+  const match = /<script id="([^"]*)" type="application\/ld\+json">([\s\S]*?)<\/script>\s*<\/head>/.exec(html);
+  assert.ok(match, 'expected a JSON-LD script immediately before </head>');
+  // Every token survives as itself: `$&` did not become the matched `</head>`, "$`" did not become
+  // the whole preceding document, `$'` did not become the whole following one, and `$$` did not
+  // collapse to a single `$`.
+  assert.deepEqual(JSON.parse(match[2]), jsonLd);
+  // Each expansion has its own unmistakable footprint in the document structure, so assert on all
+  // three rather than trusting the round-trip alone to have covered them.
+  assert.equal((html.match(/<\/head>/g) ?? []).length, 1, '`$&` must not have spliced a second </head> into the document');
+  assert.equal((html.match(/<head>/g) ?? []).length, 1, '"$`" must not have spliced a copy of the preceding document into the head');
+  assert.equal((html.match(/<body>/g) ?? []).length, 1, "`$'` must not have spliced a copy of the following document into the head");
+  assert.equal(
+    countScriptOpenTags(html) - countScriptOpenTags(BASE_INDEX_HTML),
+    1,
+    'expected exactly one added <script> — no document markup smuggled in by token expansion',
+  );
 });
 
 test('buildSeo splices the "/" route\'s jsonLd (seo-routes.json) into the produced index.html shell (BASE_INDEX_HTML fixture), and no other route gets one — see verify-seo.test.mjs for the real dist/ output check', () => {
@@ -1590,6 +1636,52 @@ test('accepts a real single-node jsonLd (an @type, no @graph)', () => {
   };
   const { distDir, seoRoutesPath, catalogueDataPath } = fixture({ routes });
   assert.doesNotThrow(() => buildSeo({ distDir, seoRoutesPath, catalogueDataPath }));
+});
+
+// --- Self-referencing JSON-LD URLs stay bound to the same siteUrl every canonical/OG/sitemap URL
+// is derived from. injectJsonLd ships a route's jsonLd verbatim and verify-seo compares served
+// against declared — both sides being the same config block, neither can notice that the block's
+// own hardcoded origin has drifted away from siteUrl. Keyed on the three self-referential
+// properties (`@id`, `url`, `logo`) rather than on every URL-shaped string, because `sameAs`,
+// `codeRepository` and `license` are deliberately EXTERNAL (github.com, apache.org) and must stay
+// that way. ----------------------------------------------------------------------------------
+
+test('every self-referencing URL (@id/url/logo) in the real committed seo-routes.json jsonLd sits under siteUrl, so a siteUrl change can never leave structured data pointing at the old origin while the canonical follows the new one', () => {
+  const { siteUrl, routes } = JSON.parse(readFileSync(join(REAL_MODULE_ROOT, 'src/config/seo-routes.json'), 'utf8'));
+  const SELF_REFERENTIAL_KEYS = new Set(['@id', 'url', 'logo']);
+
+  const offenders = [];
+  const walk = (node, routePath, trail) => {
+    if (Array.isArray(node)) {
+      node.forEach((item, index) => walk(item, routePath, `${trail}[${index}]`));
+      return;
+    }
+    if (node === null || typeof node !== 'object') {
+      return;
+    }
+    for (const [key, value] of Object.entries(node)) {
+      const here = trail ? `${trail}.${key}` : key;
+      if (SELF_REFERENTIAL_KEYS.has(key) && typeof value === 'string' && !value.startsWith(siteUrl)) {
+        offenders.push(`route "${routePath}": ${here} = ${JSON.stringify(value)}`);
+      }
+      walk(value, routePath, here);
+    }
+  };
+  for (const route of routes) {
+    walk(route.jsonLd, route.path, '');
+  }
+
+  assert.deepEqual(
+    offenders,
+    [],
+    `every @id/url/logo in a route's jsonLd must start with siteUrl (${siteUrl}) — offenders:\n${offenders.join('\n')}`,
+  );
+  // Not vacuous: the real config must actually declare some of these, or this guard would pass on
+  // an empty walk and quietly stop protecting anything.
+  const selfReferentialCount = routes
+    .filter((route) => route.jsonLd)
+    .flatMap((route) => JSON.stringify(route.jsonLd).match(/"(@id|url|logo)":/g) ?? []).length;
+  assert.ok(selfReferentialCount > 0, 'expected the real seo-routes.json to declare at least one @id/url/logo in a jsonLd block');
 });
 
 // --- Completeness guard: every real copy module on disk is referenced by something in the real
