@@ -343,6 +343,112 @@ test('fails closed when a route declares no jsonLd but its real served HTML unex
   );
 });
 
+// --- The stray-JSON-LD check recognises every spelling a browser honours, not only the exact one
+// build-seo.mjs emits. Its whole job is catching structured data from a producer OTHER than
+// injectJsonLd, so a matcher anchored to injectJsonLd's own output would be blind to precisely the
+// cases it exists for. ---
+
+test('fails closed when a leaked JSON-LD script uses single quotes around its type attribute', async () => {
+  const distDir = fixtureDir();
+  const leaked = { '@context': 'https://schema.org', '@type': 'WebSite', name: 'AgentForge4j' };
+  writePage(
+    distDir,
+    'architecture',
+    page({
+      canonical: 'https://agentforge4j.org/architecture/',
+      extraHead: `<script type='application/ld+json'>${JSON.stringify(leaked)}</script>`,
+    }),
+  );
+  writeFileSync(join(distDir, 'sitemap.xml'), sitemapXml([{ url: 'https://agentforge4j.org/architecture/', lastmod: '2026-07-20' }]), 'utf8');
+  await assert.rejects(
+    () => verifySeo({ distDir, staticRoutes: [{ requestPath: '/architecture/', expectedCanonical: 'https://agentforge4j.org/architecture/' }] }),
+    /has 1 JSON-LD script\(s\) but declares no jsonLd/,
+  );
+});
+
+test('fails closed when a leaked JSON-LD script spells its media type in a different case (media types are case-insensitive)', async () => {
+  const distDir = fixtureDir();
+  const leaked = { '@context': 'https://schema.org', '@type': 'WebSite', name: 'AgentForge4j' };
+  writePage(
+    distDir,
+    'architecture',
+    page({
+      canonical: 'https://agentforge4j.org/architecture/',
+      extraHead: `<script type="application/LD+JSON">${JSON.stringify(leaked)}</script>`,
+    }),
+  );
+  writeFileSync(join(distDir, 'sitemap.xml'), sitemapXml([{ url: 'https://agentforge4j.org/architecture/', lastmod: '2026-07-20' }]), 'utf8');
+  await assert.rejects(
+    () => verifySeo({ distDir, staticRoutes: [{ requestPath: '/architecture/', expectedCanonical: 'https://agentforge4j.org/architecture/' }] }),
+    /has 1 JSON-LD script\(s\) but declares no jsonLd/,
+  );
+});
+
+test('the shared-id check reads a single-quoted id attribute too, rather than reporting it as absent', async () => {
+  const distDir = fixtureDir();
+  const jsonLd = { '@context': 'https://schema.org', '@type': 'WebSite', name: 'AgentForge4j' };
+  writePage(
+    distDir,
+    '',
+    page({
+      canonical: 'https://agentforge4j.org/',
+      extraHead: `<script id='${JSON_LD_SCRIPT_ID}' type='application/ld+json'>${JSON.stringify(jsonLd)}</script>`,
+    }),
+  );
+  writeFileSync(join(distDir, 'sitemap.xml'), sitemapXml([{ url: 'https://agentforge4j.org/', lastmod: '2026-07-20' }]), 'utf8');
+  await assert.doesNotReject(() =>
+    verifySeo({ distDir, staticRoutes: [{ requestPath: '/', expectedCanonical: 'https://agentforge4j.org/', jsonLd }] }),
+  );
+});
+
+// --- A sitemap URL that is not a configured static route — every /catalogue/<id>/ detail shell —
+// can only ever legitimately carry zero structured data. Nothing but this check would notice if one
+// started carrying some, since the per-route loop below only ever sees seo-routes.json's own
+// routes. ---
+
+test('fails closed when a sitemap URL that is not a configured static route (e.g. a catalogue detail shell) carries structured data', async () => {
+  const distDir = fixtureDir();
+  const stray = { '@context': 'https://schema.org', '@type': 'WebSite', name: 'AgentForge4j' };
+  writePage(distDir, '', page({ canonical: 'https://agentforge4j.org/' }));
+  writePage(
+    distDir,
+    'catalogue/agent-creator',
+    page({
+      canonical: 'https://agentforge4j.org/catalogue/agent-creator/',
+      extraHead: `<script id="${JSON_LD_SCRIPT_ID}" type="application/ld+json">${JSON.stringify(stray)}</script>`,
+    }),
+  );
+  writeFileSync(
+    join(distDir, 'sitemap.xml'),
+    sitemapXml([
+      { url: 'https://agentforge4j.org/', lastmod: '2026-07-20' },
+      { url: 'https://agentforge4j.org/catalogue/agent-creator/', lastmod: '2026-07-20' },
+    ]),
+    'utf8',
+  );
+  await assert.rejects(
+    () => verifySeo({ distDir, staticRoutes: [{ requestPath: '/', expectedCanonical: 'https://agentforge4j.org/' }] }),
+    /catalogue\/agent-creator\/ has 1 JSON-LD script\(s\) but declares no jsonLd[\s\S]*only a configured static route may carry structured data/,
+  );
+});
+
+test('a catalogue-shaped sitemap URL with no structured data passes clean — the stray check is not a blanket rejection', async () => {
+  const distDir = fixtureDir();
+  writePage(distDir, '', page({ canonical: 'https://agentforge4j.org/' }));
+  writePage(distDir, 'catalogue/agent-creator', page({ canonical: 'https://agentforge4j.org/catalogue/agent-creator/' }));
+  writeFileSync(
+    join(distDir, 'sitemap.xml'),
+    sitemapXml([
+      { url: 'https://agentforge4j.org/', lastmod: '2026-07-20' },
+      { url: 'https://agentforge4j.org/catalogue/agent-creator/', lastmod: '2026-07-20' },
+    ]),
+    'utf8',
+  );
+  await assert.doesNotReject(() =>
+    verifySeo({ distDir, staticRoutes: [{ requestPath: '/', expectedCanonical: 'https://agentforge4j.org/' }] }),
+  );
+});
+
 // --- loadStaticRouteInventory: the real per-route verification list, derived from the committed
 // seo-routes.json rather than a hand-maintained subset — this is what makes a sitemap: false alias
 // route like /contributing actually get checked at all, since the sitemap-driven loop above never

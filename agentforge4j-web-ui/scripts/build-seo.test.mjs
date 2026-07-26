@@ -10,7 +10,10 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+// `URL` is imported explicitly rather than leaned on as an ambient global — the same thing
+// prerender-routes.test.mjs already does, and what this repo's lint block for `scripts/**/*.mjs`
+// requires (it declares only console/process/Buffer/fetch as globals).
+import { fileURLToPath, URL } from 'node:url';
 import {
   buildSeo,
   escapeHtml,
@@ -1646,10 +1649,30 @@ test('accepts a real single-node jsonLd (an @type, no @graph)', () => {
 // `codeRepository` and `license` are deliberately EXTERNAL (github.com, apache.org) and must stay
 // that way. ----------------------------------------------------------------------------------
 
-test('every self-referencing URL (@id/url/logo) in the real committed seo-routes.json jsonLd sits under siteUrl, so a siteUrl change can never leave structured data pointing at the old origin while the canonical follows the new one', () => {
-  const { siteUrl, routes } = JSON.parse(readFileSync(join(REAL_MODULE_ROOT, 'src/config/seo-routes.json'), 'utf8'));
-  const SELF_REFERENTIAL_KEYS = new Set(['@id', 'url', 'logo']);
+const SELF_REFERENTIAL_KEYS = new Set(['@id', 'url', 'logo']);
 
+/** Compares ORIGINS, never string prefixes. `"https://agentforge4j.org.example.com/".startsWith(
+ * "https://agentforge4j.org")` is `true`, so a prefix test would wave through a value on a
+ * different host that merely begins with the site's own — the same trap verify-seo.mjs's
+ * `resolveWithinRoot` documents rejecting for filesystem paths (`dist-evil` next to `dist`), for
+ * the same reason: the boundary between "inside" and "outside" is a structural one, and a prefix
+ * test does not know where it falls. A value that is not an absolute URL at all is not an
+ * offender — a relative IRI carries no origin of its own, so it cannot drift away from siteUrl. */
+function isOffSite(value, siteOrigin) {
+  let parsed;
+  try {
+    parsed = new URL(value);
+  } catch {
+    return false;
+  }
+  return parsed.origin !== siteOrigin;
+}
+
+/** Every `@id`/`url`/`logo` anywhere in any route's `jsonLd` whose origin is not `siteUrl`'s,
+ * as human-readable `route "<path>": <trail> = <value>` strings. Shared by the real-config guard
+ * and its own negative test below, so the two can never check different things. */
+function offSiteSelfReferencingUrls(routes, siteUrl) {
+  const siteOrigin = new URL(siteUrl).origin;
   const offenders = [];
   const walk = (node, routePath, trail) => {
     if (Array.isArray(node)) {
@@ -1661,7 +1684,7 @@ test('every self-referencing URL (@id/url/logo) in the real committed seo-routes
     }
     for (const [key, value] of Object.entries(node)) {
       const here = trail ? `${trail}.${key}` : key;
-      if (SELF_REFERENTIAL_KEYS.has(key) && typeof value === 'string' && !value.startsWith(siteUrl)) {
+      if (SELF_REFERENTIAL_KEYS.has(key) && typeof value === 'string' && isOffSite(value, siteOrigin)) {
         offenders.push(`route "${routePath}": ${here} = ${JSON.stringify(value)}`);
       }
       walk(value, routePath, here);
@@ -1670,11 +1693,17 @@ test('every self-referencing URL (@id/url/logo) in the real committed seo-routes
   for (const route of routes) {
     walk(route.jsonLd, route.path, '');
   }
+  return offenders;
+}
+
+test('every self-referencing URL (@id/url/logo) in the real committed seo-routes.json jsonLd sits on siteUrl\'s own origin, so a siteUrl change can never leave structured data pointing at the old origin while the canonical follows the new one', () => {
+  const { siteUrl, routes } = JSON.parse(readFileSync(join(REAL_MODULE_ROOT, 'src/config/seo-routes.json'), 'utf8'));
+  const offenders = offSiteSelfReferencingUrls(routes, siteUrl);
 
   assert.deepEqual(
     offenders,
     [],
-    `every @id/url/logo in a route's jsonLd must start with siteUrl (${siteUrl}) — offenders:\n${offenders.join('\n')}`,
+    `every @id/url/logo in a route's jsonLd must sit on siteUrl's origin (${siteUrl}) — offenders:\n${offenders.join('\n')}`,
   );
   // Not vacuous: the real config must actually declare some of these, or this guard would pass on
   // an empty walk and quietly stop protecting anything.
@@ -1682,6 +1711,56 @@ test('every self-referencing URL (@id/url/logo) in the real committed seo-routes
     .filter((route) => route.jsonLd)
     .flatMap((route) => JSON.stringify(route.jsonLd).match(/"(@id|url|logo)":/g) ?? []).length;
   assert.ok(selfReferentialCount > 0, 'expected the real seo-routes.json to declare at least one @id/url/logo in a jsonLd block');
+});
+
+test('the self-referencing-URL guard rejects a different host that merely starts with siteUrl\'s string — an origin check, not a prefix check', () => {
+  const siteUrl = 'https://agentforge4j.org';
+  const routes = [
+    {
+      path: '/',
+      jsonLd: {
+        '@context': 'https://schema.org',
+        '@graph': [
+          // Genuinely on-site: bare origin, a real path, and a fragment id.
+          { '@type': 'WebSite', '@id': `${siteUrl}/#website`, url: `${siteUrl}/` },
+          { '@type': 'Organization', logo: `${siteUrl}/brand/icon-512.png` },
+          // A DIFFERENT host whose name merely begins with the site's own. `startsWith` says yes.
+          { '@type': 'Organization', '@id': 'https://agentforge4j.org.example.com/#organization' },
+        ],
+      },
+    },
+  ];
+
+  assert.deepEqual(offSiteSelfReferencingUrls(routes, siteUrl), [
+    'route "/": @graph[2].@id = "https://agentforge4j.org.example.com/#organization"',
+  ]);
+  // The trap this exists to close: the rejected value passes a bare prefix comparison outright.
+  assert.ok('https://agentforge4j.org.example.com/#organization'.startsWith(siteUrl));
+});
+
+test('the self-referencing-URL guard leaves deliberately external properties (sameAs/codeRepository/license) alone, and does not flag a relative IRI', () => {
+  const siteUrl = 'https://agentforge4j.org';
+  const routes = [
+    {
+      path: '/',
+      jsonLd: {
+        '@context': 'https://schema.org',
+        '@graph': [
+          {
+            '@type': 'SoftwareSourceCode',
+            sameAs: ['https://github.com/agentforge4j'],
+            codeRepository: 'https://github.com/agentforge4j/agentforge4j',
+            license: 'https://www.apache.org/licenses/LICENSE-2.0',
+            // A relative IRI resolves against the document's own base, so it cannot name a
+            // different origin and must not be reported.
+            '@id': '#software',
+          },
+        ],
+      },
+    },
+  ];
+
+  assert.deepEqual(offSiteSelfReferencingUrls(routes, siteUrl), []);
 });
 
 // --- Completeness guard: every real copy module on disk is referenced by something in the real

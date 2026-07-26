@@ -197,7 +197,12 @@ describe('usePageSeo', () => {
     expect(jsonLdScript()).toBeNull();
   });
 
-  test('an unmatched path falls back to home\'s jsonLd too, matching the byte-identical 404.html shell', () => {
+  // The static 404.html shell carries NO JSON-LD of its own: copy-404.mjs takes it from the built
+  // index.html *before* build-seo.mjs injects anything, so unlike title/canonical — which that
+  // pre-injection shell already happens to carry in their home form — structured data on an
+  // unmatched path exists only because this hook adds it. Do not read this fallback as redundant
+  // with the shell; removing it would leave every unmatched path with no structured data at all.
+  test('an unmatched path gets home\'s jsonLd added client-side — the static 404.html shell ships with none of its own', () => {
     renderAt('/this-route-does-not-exist');
     expect(jsonLdContent()).toEqual(findSeoRoute('/')?.jsonLd);
   });

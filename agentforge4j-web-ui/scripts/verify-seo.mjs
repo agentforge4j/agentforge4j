@@ -189,17 +189,26 @@ export function loadStaticRouteInventory(seoRoutesPath) {
 }
 
 /** Every `<script>` block whose `type` attribute is `application/ld+json`, in document order —
- * `{ id, content }` pairs. Matches regardless of attribute order (`id` may come before or after
- * `type`) since build-seo.mjs's `injectJsonLd` writes `id` first: a regex anchored to a fixed
- * `<script type="application/ld+json">` prefix would silently stop matching the real build output
- * the moment that ordering changed. build-seo.mjs's own `assertValidJsonLd` already rejects a
- * malformed config at build time — by the time this runs against real `dist/` output, a config bad
- * enough to reach here at all would mean that gate itself regressed, which this catches too (a
- * script whose content fails to parse as JSON, below). */
+ * `{ id, content }` pairs. build-seo.mjs's own `assertValidJsonLd` already rejects a malformed
+ * config at build time — by the time this runs against real `dist/` output, a config bad enough to
+ * reach here at all would mean that gate itself regressed, which this catches too (a script whose
+ * content fails to parse as JSON, below).
+ *
+ * Deliberately tolerant of every *spelling* a browser or crawler honours, not just the one
+ * `injectJsonLd` happens to emit. Anchoring on `injectJsonLd`'s exact output would make this a
+ * statement about that one producer rather than about the served page, and this function's most
+ * important caller is the opposite check — proving a route that declares no structured data is
+ * carrying none, from ANY producer (a third-party component, a hand-edited shell, a future
+ * generator). So:
+ *   - attribute order is free (`id` may precede or follow `type`; `injectJsonLd` writes `id` first);
+ *   - either quote character is accepted, since HTML permits both;
+ *   - the `type` match is case-insensitive, since media types are.
+ * Each of those is a form that would render as real structured data in production while a stricter
+ * regex reported the page as clean. */
 function extractJsonLdScripts(html) {
   return [...html.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script>/g)]
-    .filter((match) => /\btype="application\/ld\+json"/.test(match[1]))
-    .map((match) => ({ id: /\bid="([^"]*)"/.exec(match[1])?.[1] ?? null, content: match[2] }));
+    .filter((match) => /\btype=["']application\/ld\+json["']/i.test(match[1]))
+    .map((match) => ({ id: /\bid=(["'])([^"']*)\1/.exec(match[1])?.[2] ?? null, content: match[2] }));
 }
 
 export async function verifySeo({
@@ -241,6 +250,11 @@ export async function verifySeo({
         'never after it)',
     );
   }
+
+  // Which served paths have a declaration of their own to be checked against, below. Every other
+  // sitemap URL is a route that can only legitimately carry zero structured data — see the sitemap
+  // loop's own stray-JSON-LD check.
+  const staticRequestPaths = new Set(staticRoutes.map((route) => route.requestPath));
 
   const server = await startGhPagesEmulatingServer(distDir);
   const { port } = server.address();
@@ -292,6 +306,22 @@ export async function verifySeo({
         throw new Error(`verify-seo: sitemap URL ${url} did not return 200 with no redirect (got ${response.status})`);
       }
       const html = await response.text();
+
+      // Only `seo-routes.json` routes can declare `jsonLd`, and the loop below checks every one of
+      // them against its own declaration. A sitemap URL that is NOT one of those routes — every
+      // /catalogue/<id>/ detail shell — can therefore only ever legitimately carry zero structured
+      // data, and nothing else in this file would notice if it started carrying some. Checking it
+      // here is what makes "no JSON-LD anywhere it was never declared" a statement about the whole
+      // published site rather than only about the configured static routes.
+      if (!staticRequestPaths.has(path)) {
+        const strayJsonLd = extractJsonLdScripts(html);
+        if (strayJsonLd.length > 0) {
+          throw new Error(
+            `verify-seo: ${url} has ${strayJsonLd.length} JSON-LD script(s) but declares no jsonLd in seo-routes.json ` +
+              '— only a configured static route may carry structured data',
+          );
+        }
+      }
 
       const canonical = extractTag(html, /<link rel="canonical" href="([^"]+)"/);
       if (canonical !== url) {
@@ -370,10 +400,16 @@ export async function verifySeo({
     await new Promise((resolvePromise) => server.close(resolvePromise));
   }
 
+  // Scoped to exactly what was checked. The JSON-LD absence claim covers every sitemap URL and
+  // every configured static route — between them, every shell build-seo.mjs writes — but NOT
+  // dist/404.html, which is neither, and is gated separately above (empty pre-prerender shell).
+  // Keep this sentence and the checks above in step: a claim of absence is only worth as much as
+  // the set it was actually evaluated over.
   console.log(
     `[verify-seo] verified ${entries.length} sitemap URL(s) (200, no redirect, self-canonical, exactly one real <h1>) ` +
       `and ${staticRoutes.length} configured static route(s) (200, no redirect, exactly one real <h1>, expected canonical, ` +
-      `declared JSON-LD present with the shared script id and matching content — and none where none is declared) — all clean`,
+      `declared JSON-LD present with the shared script id and matching content) — with no JSON-LD on any sitemap URL or ` +
+      `configured route that declares none — all clean`,
   );
 }
 
