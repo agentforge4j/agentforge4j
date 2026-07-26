@@ -10,6 +10,24 @@
 
 import seoData from './seo-routes.json';
 
+/** One node of a schema.org JSON-LD graph — every node needs its own `@type`; everything else is
+ * type-specific and left open. */
+export interface JsonLdGraphNode {
+  readonly '@type': string;
+  readonly [key: string]: unknown;
+}
+
+/** A route's structured-data block (scripts/build-seo.mjs's `injectJsonLd` / this module's own
+ * `usePageSeo`), either a single typed node (`@type`) or a `@graph` of several related nodes
+ * (today's home-page config: WebSite + Organization + SoftwareSourceCode) — never an empty or
+ * untyped object, which build-seo.mjs's own `assertValidJsonLd` rejects at build time. */
+export interface JsonLd {
+  readonly '@context': string;
+  readonly '@type'?: string;
+  readonly '@graph'?: readonly JsonLdGraphNode[];
+  readonly [key: string]: unknown;
+}
+
 export interface SeoRouteEntry {
   readonly path: string;
   readonly title: string;
@@ -20,6 +38,9 @@ export interface SeoRouteEntry {
   /** `false` excludes this route from the sitemap (e.g. a non-canonical alias). Defaults to
    * included. */
   readonly sitemap?: boolean;
+  /** Structured data for this route (today: only "/"). Absent for every other route — never an
+   * empty placeholder. */
+  readonly jsonLd?: JsonLd;
 }
 
 export const SITE_URL: string = seoData.siteUrl;

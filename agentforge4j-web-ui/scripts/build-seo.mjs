@@ -23,14 +23,14 @@
 //         PIPELINE itself, not page content: index.html (the one shared shell template every
 //         route's final HTML derives from — vite build product though it is, its own committed
 //         source controls every route's `<head>`/`<body>` structure outside the parts injectHead/
-//         injectRoot explicitly rewrite), main.tsx (the render entrypoint executed INSIDE the
-//         headless browser that produces the prerendered snapshot every shell ships — not merely a
-//         client-side runtime concern), vite.config.ts (the bundler configuration that shapes the
-//         built index.html and every emitted asset the prerender then executes), and this file
-//         plus prerender-routes.mjs themselves (the
-//         code that decides what "the rendered page" even means). A change to any of these can
-//         alter every published page's actual HTML in ways no per-route `sourceFiles` list could
-//         ever capture, so all are treated as applying to literally every route.
+//         injectRoot/injectJsonLd explicitly rewrite), main.tsx (the render entrypoint executed
+//         INSIDE the headless browser that produces the prerendered snapshot every shell ships —
+//         not merely a client-side runtime concern), vite.config.ts (the bundler configuration that
+//         shapes the built index.html and every emitted asset the prerender then executes), and
+//         this file plus prerender-routes.mjs themselves (the code that decides what "the rendered
+//         page" even means). A change to any of these can alter every published page's actual HTML
+//         in ways no per-route `sourceFiles` list could ever capture, so all are treated as applying
+//         to literally every route.
 //       - `globalSourceFiles` (seo-routes.json's top level) — the actual React render surface shared
 //         by every page: App.tsx (the root shell + <Routes> composition), appRoutes.ts (the
 //         path -> component REGISTRY App.tsx renders from — swapping which component a path maps to
@@ -295,6 +295,64 @@ export function injectRoot(html, innerHtml) {
   return html.replace(EMPTY_ROOT_PATTERN, () => `<div id="root">${innerHtml}</div>`);
 }
 
+// The identical id usePageSeo.ts's client-side `setJsonLd` looks for via `document.getElementById`.
+// The two must never drift apart: if this static shell's script carried a different id (or none),
+// a fresh load's hydration would find no existing match, create a *second* JSON-LD script of its
+// own, and then only ever remove that second one on navigation — permanently stranding this static
+// one on every subsequent route. Sharing the id makes hydration adopt and update this exact node
+// instead of duplicating it.
+//
+// Exported, and imported by verify-seo.mjs rather than re-typed there — a deliberate exception to
+// the "read the same source-of-truth config independently, never import the other script's
+// internals" convention verify-seo.mjs's own withTrailingSlash comment documents. The convention
+// governs DERIVATIONS: two scripts computing the same answer from the same committed config should
+// compute it separately, so a bug in one cannot make the other agree with it. This is the opposite
+// case — an opaque literal with no config to re-derive from, whose entire contract is "these bytes
+// are identical everywhere". Duplicating it would not create an independent check; it would create
+// a third place to drift. usePageSeo.ts holds the one unavoidable copy (it cannot import this
+// module — build-seo.mjs pulls in node:child_process), and tests/usePageSeo.test.tsx imports this
+// constant to bind that copy to this one.
+export const JSON_LD_SCRIPT_ID = 'seo-json-ld';
+
+/** Inserts a route's JSON-LD structured-data block right before `</head>` — an addition, not a
+ * replacement (unlike injectHead's tags, no shell starts with one), so only routes that declare a
+ * `jsonLd` object in seo-routes.json (today: only "/") get a `<script type="application/ld+json">`
+ * at all; every other *static* shell is unaffected (see usePageSeo.ts for the client-side runtime
+ * behaviour, which also covers unmatched/404 routes — a materially wider scope than this function's
+ * own). A no-op when `jsonLd` is undefined.
+ *
+ * Carries `id="${JSON_LD_SCRIPT_ID}"` so the client-side hook (usePageSeo.ts's `setJsonLd`) adopts
+ * and updates this exact node on hydration rather than creating a duplicate — see the constant's
+ * own doc comment above.
+ *
+ * Every `<` in the serialized JSON is escaped to `\u003c` before it reaches the HTML — `<` is the
+ * only character that matters inside a `<script>` body (an HTML parser looks for `</script` byte-
+ * for-byte, case-insensitively, regardless of JSON string-quoting), so an unescaped value
+ * containing a literal `</script>` would close the tag early and let whatever followed run as live
+ * markup/script. `\u003c` is a standard JSON string escape — `JSON.parse` (or any JSON-LD consumer)
+ * reads it back as the exact same `<` character, so this changes zero JSON semantics; it is not a
+ * general HTML-escaping pass (`>`, `&`, quotes, etc. are untouched and do not need to be — none of
+ * them can end a `<script>` body).
+ *
+ * That escaping only holds because the replacement is supplied via a function, never as a bare
+ * replacement string — the same guard injectRoot already documents above, and load-bearing here
+ * for the same reason: `String.prototype.replace` expands `$&`, "$`", `$'` and `$$` inside a
+ * replacement STRING *after* any escaping has already run, so a `$'` anywhere in a config value
+ * would splice the rest of the document — the body's own `</script>` included — straight into this
+ * script's body, defeating the escaping above entirely. A replacer function is never scanned for
+ * those tokens, so the escaped text reaches the HTML exactly as written. */
+export function injectJsonLd(html, jsonLd) {
+  if (jsonLd === undefined || jsonLd === null) {
+    return html;
+  }
+  const serialized = JSON.stringify(jsonLd).replace(/</g, '\\u003c');
+  const script = `<script id="${JSON_LD_SCRIPT_ID}" type="application/ld+json">${serialized}</script>\n  </head>`;
+  if (!/<\/head>/.test(html)) {
+    throw new Error('build-seo: expected a </head> closing tag in dist/index.html');
+  }
+  return html.replace(/<\/head>/, () => script);
+}
+
 // Route paths are trusted, committed build-time data (seo-routes.json, catalogue workflow ids)
 // rather than runtime input — but defense-in-depth is cheap, matches this repo's own
 // isSafeManifestPath guard in assemble-site.mjs, and closes the gap for good rather than relying
@@ -406,6 +464,56 @@ function assertDependencyFilesExist(repoRoot, relFiles, context) {
   }
 }
 
+/** A route's `jsonLd` (seo-routes.json) is either absent, or a genuine schema.org structured-data
+ * object — never a typo'd non-object value, and never an empty placeholder that would silently
+ * ship as valid-looking-but-useless structured data. Requires a non-empty `@context` string and at
+ * least one of a non-empty `@type` string or a non-empty `@graph` array whose every node itself
+ * declares a non-empty `@type` — the two shapes `injectJsonLd` actually ever needs to serialize.
+ *
+ * `@type` and `@graph` are each validated independently whenever the *key* is present, rather than
+ * one validated shape being allowed to paper over the other: an object with both a valid `@type`
+ * and a malformed `@graph` (or vice versa) is still rejected, not silently accepted because *some*
+ * shape happened to be valid — a plain `hasType || hasValidGraph` check would let either key's own
+ * garbage value through undetected as long as the other key looked fine.
+ *
+ * Called at build time so a malformed config fails the build loudly, the same guarantee
+ * `assertDependencyFilesExist` gives a typo'd `sourceFiles` entry. */
+function assertValidJsonLd(jsonLd, routePath) {
+  if (jsonLd === undefined) {
+    return;
+  }
+  if (jsonLd === null || typeof jsonLd !== 'object' || Array.isArray(jsonLd)) {
+    throw new Error(`build-seo: route "${routePath}"'s jsonLd must be a plain object (or omitted) — got ${JSON.stringify(jsonLd)}`);
+  }
+  if (typeof jsonLd['@context'] !== 'string' || jsonLd['@context'].length === 0) {
+    throw new Error(`build-seo: route "${routePath}"'s jsonLd is missing a non-empty "@context" string`);
+  }
+  const hasTypeKey = Object.hasOwn(jsonLd, '@type');
+  if (hasTypeKey && !(typeof jsonLd['@type'] === 'string' && jsonLd['@type'].length > 0)) {
+    throw new Error(`build-seo: route "${routePath}"'s jsonLd declares "@type" but it is not a non-empty string — got ${JSON.stringify(jsonLd['@type'])}`);
+  }
+  const hasGraphKey = Object.hasOwn(jsonLd, '@graph');
+  const graph = jsonLd['@graph'];
+  const isValidGraph =
+    Array.isArray(graph) &&
+    graph.length > 0 &&
+    graph.every((node) => node !== null && typeof node === 'object' && !Array.isArray(node) && typeof node['@type'] === 'string' && node['@type'].length > 0);
+  if (hasGraphKey && !isValidGraph) {
+    throw new Error(
+      `build-seo: route "${routePath}"'s jsonLd declares "@graph" but it is not a non-empty array whose every entry ` +
+        'itself declares a non-empty "@type"',
+    );
+  }
+  // Every key that IS present has already been proven valid above (each throws on its own if not) —
+  // the only remaining failure is neither key being declared at all.
+  if (!hasTypeKey && !hasGraphKey) {
+    throw new Error(
+      `build-seo: route "${routePath}"'s jsonLd must declare a non-empty "@type" string, or a non-empty "@graph" ` +
+        'array whose every entry itself declares a non-empty "@type" — got neither',
+    );
+  }
+}
+
 function sitemapXml(entries) {
   const body = entries
     .map(({ url, lastmod }) => {
@@ -484,6 +592,7 @@ export function buildSeo({
   assertDependencyFilesExist(repoRoot, aggregateCatalogueSourceFiles, 'aggregateCatalogueSourceFiles');
   for (const route of routes) {
     assertDependencyFilesExist(repoRoot, route.sourceFiles ?? [], `route "${route.path}"'s sourceFiles`);
+    assertValidJsonLd(route.jsonLd, route.path);
   }
 
   const sitemapEntries = [];
@@ -494,6 +603,7 @@ export function buildSeo({
     const canonical = `${siteUrl}${withTrailingSlash(canonicalPath)}`;
     let html = injectHead(baseHtml, { title: route.title, description: route.description, canonical });
     html = injectRoot(html, snapshots[route.path]);
+    html = injectJsonLd(html, route.jsonLd);
     writeShell(distDir, route.path, html);
     shellsWritten += 1;
     if (route.sitemap !== false) {

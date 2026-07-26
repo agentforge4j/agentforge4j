@@ -17,7 +17,18 @@
 import { createServer } from 'node:http';
 import { createReadStream, existsSync, readFileSync, statSync } from 'node:fs';
 import { dirname, extname, isAbsolute, join, relative, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+// `URL` is imported explicitly rather than leaned on as an ambient global — the same thing
+// build-seo.test.mjs and prerender-routes.test.mjs already do, and what this repo's lint block for
+// `scripts/**/*.mjs` requires (it declares only console/process/Buffer/fetch as globals).
+import { fileURLToPath, URL } from 'node:url';
+// The one import of another script's internals in this file, and a deliberate exception to the
+// convention withTrailingSlash's own comment below documents ("duplicated deliberately, not
+// imported"). That convention governs DERIVATIONS — two scripts computing the same answer from the
+// same committed config compute it separately, so a bug in one cannot make the other agree with it.
+// JSON_LD_SCRIPT_ID is not a derivation: it is an opaque literal whose entire contract is "these
+// bytes are identical everywhere", with no config to re-derive it from. Re-typing it here would not
+// buy independence, only a third place to drift. See build-seo.mjs's own comment on the constant.
+import { JSON_LD_SCRIPT_ID } from './build-seo.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const MODULE_ROOT = join(here, '..');
@@ -180,7 +191,132 @@ export function loadStaticRouteInventory(seoRoutesPath) {
   return routes.map((route) => ({
     requestPath: withTrailingSlash(route.path),
     expectedCanonical: `${siteUrl}${withTrailingSlash(route.canonicalPath ?? route.path)}`,
+    // Present only when the route actually declares one, so an entry with no jsonLd deep-equals
+    // exactly what every existing hand-built inventory fixture (and the tests asserting against
+    // one) already expects — no `jsonLd: undefined` key showing up where none existed before.
+    ...(route.jsonLd !== undefined ? { jsonLd: route.jsonLd } : {}),
   }));
+}
+
+/** Matches `name="v"`, `name='v'` and bare `name=v` in a raw attribute list, with optional
+ * whitespace either side of the `=` — every form the HTML tokenizer accepts for an attribute value.
+ * The name must be preceded by the start of the list or a separator, so `data-id=` can never be
+ * read as `id=` (a plain `\bid=` matches inside `data-id`, since `-` is a word boundary).
+ *
+ * Built once per attribute rather than inline at each call site: one reader, so the `type` and `id`
+ * matchers below cannot drift into recognising different subsets of legal HTML — which is exactly
+ * how the earlier quoted-only pair came to disagree with the browser. */
+function attributePattern(name) {
+  return new RegExp(`(?:^|[\\s/])${name}\\s*=\\s*(?:"([^"]*)"|'([^']*)'|([^\\s"'\`=<>]+))`, 'i');
+}
+
+const TYPE_ATTR_PATTERN = attributePattern('type');
+const ID_ATTR_PATTERN = attributePattern('id');
+
+/** The raw, untrimmed value of an attribute in `attrs`, or `null` when it is absent. Whichever of
+ * the three quoting forms matched, exactly one of the three groups is set. */
+function attributeValue(attrs, pattern) {
+  const match = pattern.exec(attrs);
+  return match ? (match[1] ?? match[2] ?? match[3]) : null;
+}
+
+/** Every `<script>` block whose `type` attribute is `application/ld+json`, in document order —
+ * `{ id, content }` pairs. build-seo.mjs's own `assertValidJsonLd` already rejects a malformed
+ * config at build time — by the time this runs against real `dist/` output, a config bad enough to
+ * reach here at all would mean that gate itself regressed, which this catches too (a script whose
+ * content fails to parse as JSON, below).
+ *
+ * Deliberately tolerant of how the attributes are *written*, not just of the one form
+ * `injectJsonLd` happens to emit. Anchoring on `injectJsonLd`'s exact output would make this a
+ * statement about that one producer rather than about the served page, and this function's most
+ * important caller is the opposite check — proving a route that declares no structured data is
+ * carrying none, from ANY producer (a third-party component, a hand-edited shell, a future
+ * generator). So attribute order is free, all three quoting forms are read, whitespace may sit
+ * either side of the `=`, and the `type` comparison is case-insensitive and whitespace-stripped —
+ * each of those being a form that renders as real structured data in production while a stricter
+ * regex reports the page as clean.
+ *
+ * The `type` value is stripped before comparison because the HTML spec strips it before
+ * classifying a script block; the `id` value deliberately is NOT. An `id=" seo-json-ld "` really is
+ * an id with spaces in it, which `document.getElementById('seo-json-ld')` does not find — trimming
+ * it here would wave through precisely the shell the id check exists to reject.
+ *
+ * Not handled, and not claimed to be: an attribute value containing a literal `>`, which the outer
+ * tag regex ends the tag on. No producer here emits one, and the failure direction is over- rather
+ * than under-detection. */
+function extractJsonLdScripts(html) {
+  return [...html.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script>/g)]
+    .filter((match) => attributeValue(match[1], TYPE_ATTR_PATTERN)?.trim().toLowerCase() === 'application/ld+json')
+    .map((match) => ({ id: attributeValue(match[1], ID_ATTR_PATTERN), content: match[2] }));
+}
+
+/** The asset-valued keys in a JSON-LD block whose target this build is supposed to have produced —
+ * an `Organization`'s `logo` and any node's `image`. Not `@id`/`url`: those are identifiers and page
+ * addresses, already covered by the sitemap/canonical checks and by build-seo.test.mjs's own
+ * origin guard, and an `@id` is frequently a bare fragment that names no retrievable resource at
+ * all. */
+const ASSET_KEYS = new Set(['logo', 'image']);
+
+/** The URL strings an asset-valued key can carry, covering every shape schema.org permits for
+ * `logo`/`image`: a bare URL string, an array of either form, or a full `ImageObject`-style node
+ * whose own `url` names the file. Reading only the bare string would silently skip the
+ * `ImageObject` form rather than verify it — and that form is the more idiomatic schema.org
+ * spelling, so it is the likeliest next edit to this config, not an exotic one.
+ *
+ * Mirrored by build-seo.test.mjs's `selfReferentialUrls`, which does the same shape flattening for
+ * `@id`/`url`/`logo`. The two walk the same tree and must not cover different shapes. */
+function assetUrlStrings(value) {
+  if (typeof value === 'string') {
+    return [value];
+  }
+  if (Array.isArray(value)) {
+    return value.flatMap(assetUrlStrings);
+  }
+  if (value !== null && typeof value === 'object' && typeof value.url === 'string') {
+    return [value.url];
+  }
+  return [];
+}
+
+/** Every same-origin asset path (`logo`/`image`) declared anywhere in `jsonLd`, as request paths
+ * this server can serve, deduplicated and in document order.
+ *
+ * Off-origin values are deliberately skipped rather than fetched: this gate verifies what THIS
+ * build produced, and reaching out to a third-party host would make a local build gate depend on
+ * someone else's uptime. (`logo` on another origin is separately rejected at build time by
+ * build-seo.test.mjs's self-referencing-URL guard; `image` is not, so it is skipped here rather
+ * than assumed on-site.) A value that is not a URL reference at all is skipped for the same
+ * reason — there is nothing to fetch. */
+function sameOriginAssetPaths(jsonLd) {
+  const paths = new Set();
+  const consider = (value) => {
+    let resolved;
+    try {
+      resolved = new URL(value, `${SITE_ORIGIN}/`);
+    } catch {
+      return;
+    }
+    if (resolved.origin === SITE_ORIGIN) {
+      paths.add(`${resolved.pathname}${resolved.search}`);
+    }
+  };
+  const walk = (node) => {
+    if (Array.isArray(node)) {
+      node.forEach(walk);
+      return;
+    }
+    if (node === null || typeof node !== 'object') {
+      return;
+    }
+    for (const [key, value] of Object.entries(node)) {
+      if (ASSET_KEYS.has(key)) {
+        assetUrlStrings(value).forEach(consider);
+      }
+      walk(value);
+    }
+  };
+  walk(jsonLd);
+  return [...paths];
 }
 
 export async function verifySeo({
@@ -222,6 +358,11 @@ export async function verifySeo({
         'never after it)',
     );
   }
+
+  // Which served paths have a declaration of their own to be checked against, below. Every other
+  // sitemap URL is a route that can only legitimately carry zero structured data — see the sitemap
+  // loop's own stray-JSON-LD check.
+  const staticRequestPaths = new Set(staticRoutes.map((route) => route.requestPath));
 
   const server = await startGhPagesEmulatingServer(distDir);
   const { port } = server.address();
@@ -274,6 +415,22 @@ export async function verifySeo({
       }
       const html = await response.text();
 
+      // Only `seo-routes.json` routes can declare `jsonLd`, and the loop below checks every one of
+      // them against its own declaration. A sitemap URL that is NOT one of those routes — every
+      // /catalogue/<id>/ detail shell — can therefore only ever legitimately carry zero structured
+      // data, and nothing else in this file would notice if it started carrying some. Checking it
+      // here is what makes "no JSON-LD anywhere it was never declared" a statement about the whole
+      // published site rather than only about the configured static routes.
+      if (!staticRequestPaths.has(path)) {
+        const strayJsonLd = extractJsonLdScripts(html);
+        if (strayJsonLd.length > 0) {
+          throw new Error(
+            `verify-seo: ${url} has ${strayJsonLd.length} JSON-LD script(s) but declares no jsonLd in seo-routes.json ` +
+              '— only a configured static route may carry structured data',
+          );
+        }
+      }
+
       const canonical = extractTag(html, /<link rel="canonical" href="([^"]+)"/);
       if (canonical !== url) {
         throw new Error(`verify-seo: ${url} — canonical tag ("${canonical}") does not match its own sitemap URL exactly`);
@@ -285,7 +442,7 @@ export async function verifySeo({
       }
     }
 
-    for (const { requestPath, expectedCanonical } of staticRoutes) {
+    for (const { requestPath, expectedCanonical, jsonLd } of staticRoutes) {
       const response = await fetch(`${origin}${requestPath}`, { redirect: 'manual' });
       if (response.status !== 200) {
         throw new Error(
@@ -293,6 +450,69 @@ export async function verifySeo({
         );
       }
       const html = await response.text();
+
+      // Proven against the real dist/ output this build actually produced, not just a fixture:
+      // a route that declares jsonLd must carry exactly one JSON-LD script whose content parses as
+      // JSON and matches the declared config exactly; a route that declares none must carry none —
+      // catches both a build regression that silently drops it and one that leaks a previous/
+      // unrelated route's structured data onto this one.
+      const jsonLdScripts = extractJsonLdScripts(html);
+      if (jsonLd === undefined) {
+        if (jsonLdScripts.length > 0) {
+          throw new Error(
+            `verify-seo: ${requestPath} has ${jsonLdScripts.length} JSON-LD script(s) but declares no jsonLd in seo-routes.json`,
+          );
+        }
+      } else {
+        if (jsonLdScripts.length !== 1) {
+          throw new Error(`verify-seo: ${requestPath} has ${jsonLdScripts.length} JSON-LD script(s) — expected exactly 1`);
+        }
+        // Must carry the shared script id — a served script with no id (or a different one) would
+        // pass the content check below yet still leave the client-side hook unable to find it,
+        // creating a second, duplicate JSON-LD block on hydration and permanently stranding this
+        // one after the first client-side navigation.
+        //
+        // Scoped honestly: this compares the SERVED page against the same constant injectJsonLd
+        // writes, so what it catches is a shell whose script lost or changed its id by some route
+        // other than that constant — a hand-edited shell, a third-party or future generator, a
+        // post-processing step. It cannot catch a rename of the constant itself, since producer and
+        // verifier would move together. The binding that does catch that is
+        // tests/usePageSeo.test.tsx's assertion on the id the HOOK creates, which is the only place
+        // usePageSeo.ts's own copy of the literal is compared against this one.
+        if (jsonLdScripts[0].id !== JSON_LD_SCRIPT_ID) {
+          throw new Error(
+            `verify-seo: ${requestPath}'s JSON-LD script has id ${JSON.stringify(jsonLdScripts[0].id)} — expected ` +
+              `${JSON.stringify(JSON_LD_SCRIPT_ID)} so client-side hydration (usePageSeo.ts) adopts it instead of duplicating it`,
+          );
+        }
+        let servedJsonLd;
+        try {
+          servedJsonLd = JSON.parse(jsonLdScripts[0].content);
+        } catch (err) {
+          throw new Error(`verify-seo: ${requestPath}'s JSON-LD script does not parse as valid JSON — ${err.message}`, { cause: err });
+        }
+        if (JSON.stringify(servedJsonLd) !== JSON.stringify(jsonLd)) {
+          throw new Error(`verify-seo: ${requestPath}'s served JSON-LD does not match its declared seo-routes.json config`);
+        }
+
+        // Every same-origin asset the structured data points at must actually be in this build.
+        // A renamed or removed `logo`/`image` target is otherwise invisible to every gate: the
+        // origin guard only asks whose host it is, assertValidJsonLd never looks at it, and the
+        // served-vs-declared comparison above is satisfied by two copies of the same dead URL. The
+        // failure it prevents is a real one — an `Organization` whose logo 404s is a Search Console
+        // structured-data error that no build ever complains about. Fetched through the same
+        // dist/-backed server every other check here uses, so this asks the one question that
+        // matters: would a crawler hitting the published site get this file?
+        for (const assetPath of sameOriginAssetPaths(jsonLd)) {
+          const assetResponse = await fetch(`${origin}${assetPath}`, { redirect: 'manual' });
+          if (assetResponse.status !== 200) {
+            throw new Error(
+              `verify-seo: ${requestPath}'s JSON-LD points at ${assetPath}, which this build does not serve ` +
+                `(got ${assetResponse.status}) — structured data must not name an asset that is not published`,
+            );
+          }
+        }
+      }
 
       const canonical = extractTag(html, /<link rel="canonical" href="([^"]+)"/);
       if (canonical !== expectedCanonical) {
@@ -314,9 +534,16 @@ export async function verifySeo({
     await new Promise((resolvePromise) => server.close(resolvePromise));
   }
 
+  // Scoped to exactly what was checked. The JSON-LD absence claim covers every sitemap URL and
+  // every configured static route — between them, every shell build-seo.mjs writes — but NOT
+  // dist/404.html, which is neither, and is gated separately above (empty pre-prerender shell).
+  // Keep this sentence and the checks above in step: a claim of absence is only worth as much as
+  // the set it was actually evaluated over.
   console.log(
     `[verify-seo] verified ${entries.length} sitemap URL(s) (200, no redirect, self-canonical, exactly one real <h1>) ` +
-      `and ${staticRoutes.length} configured static route(s) (200, no redirect, exactly one real <h1>, expected canonical) — all clean`,
+      `and ${staticRoutes.length} configured static route(s) (200, no redirect, exactly one real <h1>, expected canonical, ` +
+      `declared JSON-LD present with the shared script id and matching content, every same-origin asset it names served ` +
+      `200) — with no JSON-LD on any sitemap URL or configured route that declares none — all clean`,
   );
 }
 
