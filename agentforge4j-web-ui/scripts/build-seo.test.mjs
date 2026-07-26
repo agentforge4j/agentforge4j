@@ -1731,6 +1731,27 @@ function isOffSite(value, siteUrl, siteOrigin) {
   return parsed.origin !== siteOrigin;
 }
 
+/** The URL strings a self-referential key can carry, as `{ url, trail }` pairs: a bare string, or
+ * the string members of an array (schema.org permits either — an array-valued `url`/`logo` is
+ * ordinary). Reading only the bare string would leave an off-origin value inside an array
+ * completely unchecked, which is the whole failure this guard exists to catch.
+ *
+ * Mirrors verify-seo.mjs's `assetUrlStrings`, which does the same shape flattening for
+ * `logo`/`image`: the two walk the same tree and must not cover different shapes. The one case
+ * that file needs and this one does not is the `ImageObject` form — such a node's own `url` is
+ * itself a self-referential key, so the walk below already reaches it by recursion. */
+function selfReferentialUrls(value, trail) {
+  if (typeof value === 'string') {
+    return [{ url: value, trail }];
+  }
+  if (Array.isArray(value)) {
+    return value.flatMap((item, index) =>
+      typeof item === 'string' ? [{ url: item, trail: `${trail}[${index}]` }] : [],
+    );
+  }
+  return [];
+}
+
 /** Every `@id`/`url`/`logo` anywhere in any route's `jsonLd` whose origin is not `siteUrl`'s,
  * as human-readable `route "<path>": <trail> = <value>` strings. Shared by the real-config guard
  * and its own negative test below, so the two can never check different things. */
@@ -1747,8 +1768,12 @@ function offSiteSelfReferencingUrls(routes, siteUrl) {
     }
     for (const [key, value] of Object.entries(node)) {
       const here = trail ? `${trail}.${key}` : key;
-      if (SELF_REFERENTIAL_KEYS.has(key) && typeof value === 'string' && isOffSite(value, siteUrl, siteOrigin)) {
-        offenders.push(`route "${routePath}": ${here} = ${JSON.stringify(value)}`);
+      if (SELF_REFERENTIAL_KEYS.has(key)) {
+        for (const candidate of selfReferentialUrls(value, here)) {
+          if (isOffSite(candidate.url, siteUrl, siteOrigin)) {
+            offenders.push(`route "${routePath}": ${candidate.trail} = ${JSON.stringify(candidate.url)}`);
+          }
+        }
       }
       walk(value, routePath, here);
     }
@@ -1825,6 +1850,60 @@ test('the self-referencing-URL guard rejects a network-path (protocol-relative) 
   // at all, yet resolved against the real document base it lands on someone else's host.
   assert.throws(() => new URL('//cdn.example.com/brand/icon-512.png'));
   assert.equal(new URL('//cdn.example.com/brand/icon-512.png', siteUrl).origin, 'https://cdn.example.com');
+});
+
+test('the self-referencing-URL guard reads an ARRAY-valued @id/url/logo, not only a bare string — an off-origin member inside an array is still an offender', () => {
+  // schema.org permits an array wherever it permits a single value, so `logo: [a, b]` is ordinary
+  // rather than exotic. A guard that tested `typeof value === 'string'` and stopped saw none of
+  // these: the array is not a string, and the members are strings whose own recursion never
+  // re-examines the key they arrived under. verify-seo.mjs's sibling asset walk reads the array
+  // form, so leaving it out here would have meant the two guards over the same tree disagreeing
+  // about which shapes exist.
+  const siteUrl = 'https://agentforge4j.org';
+  const routes = [
+    {
+      path: '/',
+      jsonLd: {
+        '@context': 'https://schema.org',
+        '@graph': [
+          {
+            '@type': 'Organization',
+            logo: [`${siteUrl}/brand/icon-512.png`, 'https://cdn.example.com/brand/other.png'],
+            url: ['//cdn.example.com/', `${siteUrl}/`],
+          },
+        ],
+      },
+    },
+  ];
+
+  // Reported per offending member, with its own index — not as one opaque "the array is wrong".
+  assert.deepEqual(offSiteSelfReferencingUrls(routes, siteUrl), [
+    'route "/": @graph[0].logo[1] = "https://cdn.example.com/brand/other.png"',
+    'route "/": @graph[0].url[0] = "//cdn.example.com/"',
+  ]);
+});
+
+test('the self-referencing-URL guard accepts an array whose every member is on-site, and ignores non-string members', () => {
+  const siteUrl = 'https://agentforge4j.org';
+  const routes = [
+    {
+      path: '/',
+      jsonLd: {
+        '@context': 'https://schema.org',
+        '@graph': [
+          {
+            '@type': 'Organization',
+            logo: [`${siteUrl}/brand/icon-512.png`, '/brand/logo-light.png'],
+            // A nested node is not a URL string; the walk reaches its own `url` by recursion
+            // instead, so it must not be reported twice or mis-indexed here.
+            image: [{ '@type': 'ImageObject', url: `${siteUrl}/brand/social.png` }],
+          },
+        ],
+      },
+    },
+  ];
+
+  assert.deepEqual(offSiteSelfReferencingUrls(routes, siteUrl), []);
 });
 
 test('the self-referencing-URL guard leaves deliberately external properties (sameAs/codeRepository/license) alone, and does not flag a relative IRI', () => {

@@ -198,27 +198,56 @@ export function loadStaticRouteInventory(seoRoutesPath) {
   }));
 }
 
+/** Matches `name="v"`, `name='v'` and bare `name=v` in a raw attribute list, with optional
+ * whitespace either side of the `=` — every form the HTML tokenizer accepts for an attribute value.
+ * The name must be preceded by the start of the list or a separator, so `data-id=` can never be
+ * read as `id=` (a plain `\bid=` matches inside `data-id`, since `-` is a word boundary).
+ *
+ * Built once per attribute rather than inline at each call site: one reader, so the `type` and `id`
+ * matchers below cannot drift into recognising different subsets of legal HTML — which is exactly
+ * how the earlier quoted-only pair came to disagree with the browser. */
+function attributePattern(name) {
+  return new RegExp(`(?:^|[\\s/])${name}\\s*=\\s*(?:"([^"]*)"|'([^']*)'|([^\\s"'\`=<>]+))`, 'i');
+}
+
+const TYPE_ATTR_PATTERN = attributePattern('type');
+const ID_ATTR_PATTERN = attributePattern('id');
+
+/** The raw, untrimmed value of an attribute in `attrs`, or `null` when it is absent. Whichever of
+ * the three quoting forms matched, exactly one of the three groups is set. */
+function attributeValue(attrs, pattern) {
+  const match = pattern.exec(attrs);
+  return match ? (match[1] ?? match[2] ?? match[3]) : null;
+}
+
 /** Every `<script>` block whose `type` attribute is `application/ld+json`, in document order —
  * `{ id, content }` pairs. build-seo.mjs's own `assertValidJsonLd` already rejects a malformed
  * config at build time — by the time this runs against real `dist/` output, a config bad enough to
  * reach here at all would mean that gate itself regressed, which this catches too (a script whose
  * content fails to parse as JSON, below).
  *
- * Deliberately tolerant of every *spelling* a browser or crawler honours, not just the one
+ * Deliberately tolerant of how the attributes are *written*, not just of the one form
  * `injectJsonLd` happens to emit. Anchoring on `injectJsonLd`'s exact output would make this a
  * statement about that one producer rather than about the served page, and this function's most
  * important caller is the opposite check — proving a route that declares no structured data is
  * carrying none, from ANY producer (a third-party component, a hand-edited shell, a future
- * generator). So:
- *   - attribute order is free (`id` may precede or follow `type`; `injectJsonLd` writes `id` first);
- *   - either quote character is accepted, since HTML permits both;
- *   - the `type` match is case-insensitive, since media types are.
- * Each of those is a form that would render as real structured data in production while a stricter
- * regex reported the page as clean. */
+ * generator). So attribute order is free, all three quoting forms are read, whitespace may sit
+ * either side of the `=`, and the `type` comparison is case-insensitive and whitespace-stripped —
+ * each of those being a form that renders as real structured data in production while a stricter
+ * regex reports the page as clean.
+ *
+ * The `type` value is stripped before comparison because the HTML spec strips it before
+ * classifying a script block; the `id` value deliberately is NOT. An `id=" seo-json-ld "` really is
+ * an id with spaces in it, which `document.getElementById('seo-json-ld')` does not find — trimming
+ * it here would wave through precisely the shell the id check exists to reject.
+ *
+ * Not handled, and not claimed to be: an attribute value containing a literal `>`, which the outer
+ * tag regex ends the tag on. No producer here emits one, and the failure direction is over- rather
+ * than under-detection. */
 function extractJsonLdScripts(html) {
   return [...html.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script>/g)]
-    .filter((match) => /\btype=["']application\/ld\+json["']/i.test(match[1]))
-    .map((match) => ({ id: /\bid=(["'])([^"']*)\1/.exec(match[1])?.[2] ?? null, content: match[2] }));
+    .filter((match) => attributeValue(match[1], TYPE_ATTR_PATTERN)?.trim().toLowerCase() === 'application/ld+json')
+    .map((match) => ({ id: attributeValue(match[1], ID_ATTR_PATTERN), content: match[2] }));
 }
 
 /** The asset-valued keys in a JSON-LD block whose target this build is supposed to have produced —
@@ -227,6 +256,27 @@ function extractJsonLdScripts(html) {
  * origin guard, and an `@id` is frequently a bare fragment that names no retrievable resource at
  * all. */
 const ASSET_KEYS = new Set(['logo', 'image']);
+
+/** The URL strings an asset-valued key can carry, covering every shape schema.org permits for
+ * `logo`/`image`: a bare URL string, an array of either form, or a full `ImageObject`-style node
+ * whose own `url` names the file. Reading only the bare string would silently skip the
+ * `ImageObject` form rather than verify it — and that form is the more idiomatic schema.org
+ * spelling, so it is the likeliest next edit to this config, not an exotic one.
+ *
+ * Mirrored by build-seo.test.mjs's `selfReferentialUrls`, which does the same shape flattening for
+ * `@id`/`url`/`logo`. The two walk the same tree and must not cover different shapes. */
+function assetUrlStrings(value) {
+  if (typeof value === 'string') {
+    return [value];
+  }
+  if (Array.isArray(value)) {
+    return value.flatMap(assetUrlStrings);
+  }
+  if (value !== null && typeof value === 'object' && typeof value.url === 'string') {
+    return [value.url];
+  }
+  return [];
+}
 
 /** Every same-origin asset path (`logo`/`image`) declared anywhere in `jsonLd`, as request paths
  * this server can serve, deduplicated and in document order.
@@ -240,9 +290,6 @@ const ASSET_KEYS = new Set(['logo', 'image']);
 function sameOriginAssetPaths(jsonLd) {
   const paths = new Set();
   const consider = (value) => {
-    if (typeof value !== 'string') {
-      return;
-    }
     let resolved;
     try {
       resolved = new URL(value, `${SITE_ORIGIN}/`);
@@ -263,11 +310,7 @@ function sameOriginAssetPaths(jsonLd) {
     }
     for (const [key, value] of Object.entries(node)) {
       if (ASSET_KEYS.has(key)) {
-        if (Array.isArray(value)) {
-          value.forEach(consider);
-        } else {
-          consider(value);
-        }
+        assetUrlStrings(value).forEach(consider);
       }
       walk(value);
     }
