@@ -534,6 +534,17 @@ test('injectJsonLd is a no-op for routes that declare no jsonLd (every route exc
   assert.equal(injectJsonLd(BASE_INDEX_HTML, undefined), BASE_INDEX_HTML);
 });
 
+test('injectJsonLd fails closed when the shell has no </head> to insert before (template drift)', () => {
+  // The sibling of injectRoot's own fail-closed test above, for the same reason: this throw is the
+  // only thing standing between an index.html whose structure has drifted and a homepage shell that
+  // silently ships no structured data at all. A regression turning it into a quiet `return html`
+  // would otherwise surface only indirectly, at verify-seo's real-dist check, rather than in the
+  // unit that owns the guard.
+  const noHead = BASE_INDEX_HTML.replace('</head>', '');
+  const jsonLd = { '@context': 'https://schema.org', '@type': 'WebSite', name: 'AgentForge4j' };
+  assert.throws(() => injectJsonLd(noHead, jsonLd), /expected a <\/head> closing tag/);
+});
+
 /** `<script` open tags in a document. The assertions below compare this as a DELTA against the
  * base shell rather than against an absolute number: BASE_INDEX_HTML happens to carry none, but
  * the real built index.html carries two (the theme-bootstrap inline script and the module
@@ -1571,6 +1582,48 @@ test('fails loudly when a route\'s jsonLd @graph entry itself has no real @type'
   );
 });
 
+// --- Every remaining rejection branch, table-driven. The four hand-written cases above cover the
+// shapes a real typo most often takes; these cover the rest of the predicate, so a future refactor
+// cannot quietly drop a branch while the suite stays green. assertValidJsonLd is the build's ONLY
+// structured-data validity gate — nothing downstream re-checks the config's shape. ---------------
+
+const MALFORMED_JSON_LD_CASES = [
+  // Not a plain object: the array and null forms the string case above does not reach.
+  { label: 'an array', jsonLd: [], expected: /jsonLd must be a plain object/ },
+  { label: 'null', jsonLd: null, expected: /jsonLd must be a plain object/ },
+  // @context present but not a usable string.
+  { label: 'an empty-string @context', jsonLd: { '@context': '', '@type': 'WebSite' }, expected: /missing a non-empty "@context" string/ },
+  { label: 'a non-string @context', jsonLd: { '@context': 123, '@type': 'WebSite' }, expected: /missing a non-empty "@context" string/ },
+  // @type present but not a usable string (the non-string form is covered above, alongside a valid
+  // @graph; this is the empty-string form, and standalone).
+  {
+    label: 'an empty-string @type',
+    jsonLd: { '@context': 'https://schema.org', '@type': '' },
+    expected: /declares "@type" but it is not a non-empty string/,
+  },
+  // @graph present but not a non-empty array of typed nodes — every sub-condition of the predicate.
+  { label: 'an empty @graph array', jsonLd: { '@context': 'https://schema.org', '@graph': [] }, expected: /declares "@graph" but it is not a non-empty array/ },
+  { label: 'a non-array @graph', jsonLd: { '@context': 'https://schema.org', '@graph': 'not-an-array' }, expected: /declares "@graph" but it is not a non-empty array/ },
+  { label: 'a null @graph entry', jsonLd: { '@context': 'https://schema.org', '@graph': [null] }, expected: /declares "@graph" but it is not a non-empty array/ },
+  { label: 'an array @graph entry', jsonLd: { '@context': 'https://schema.org', '@graph': [[]] }, expected: /declares "@graph" but it is not a non-empty array/ },
+  {
+    label: 'a @graph entry whose @type is an empty string',
+    jsonLd: { '@context': 'https://schema.org', '@graph': [{ '@type': '' }] },
+    expected: /declares "@graph" but it is not a non-empty array/,
+  },
+];
+
+for (const { label, jsonLd, expected } of MALFORMED_JSON_LD_CASES) {
+  test(`fails loudly when a route's jsonLd is ${label}`, () => {
+    const routes = {
+      siteUrl: 'https://agentforge4j.org',
+      routes: [{ path: '/', title: 'Home', description: 'Home.', jsonLd }],
+    };
+    const { distDir, seoRoutesPath, catalogueDataPath } = fixture({ routes });
+    assert.throws(() => buildSeo({ distDir, seoRoutesPath, catalogueDataPath }), expected);
+  });
+}
+
 // --- @type and @graph are each validated independently when the key is present — a valid one must
 // never let an invalid other one through just because the OR as a whole would otherwise be
 // satisfied (a plain `hasType || hasValidGraph` check would let either key's own garbage value
@@ -1656,12 +1709,22 @@ const SELF_REFERENTIAL_KEYS = new Set(['@id', 'url', 'logo']);
  * different host that merely begins with the site's own — the same trap verify-seo.mjs's
  * `resolveWithinRoot` documents rejecting for filesystem paths (`dist-evil` next to `dist`), for
  * the same reason: the boundary between "inside" and "outside" is a structural one, and a prefix
- * test does not know where it falls. A value that is not an absolute URL at all is not an
- * offender — a relative IRI carries no origin of its own, so it cannot drift away from siteUrl. */
-function isOffSite(value, siteOrigin) {
+ * test does not know where it falls.
+ *
+ * Every reference is RESOLVED against `siteUrl` before its origin is read, rather than parsed
+ * standalone. Parsing standalone would mean asking "is this an absolute URL?" and treating every
+ * answer of "no" as on-site — which is true of a relative-path (`/brand/icon-512.png`) or fragment
+ * (`#software`) reference, but flatly false of a NETWORK-PATH one: `//cdn.example.com/logo.png` is
+ * a relative reference that inherits only the scheme, so it names a different host while failing a
+ * standalone `new URL()` outright. Resolving first collapses all three forms onto the one question
+ * that actually matters — what origin does a consumer end up at — so the genuinely origin-less
+ * forms resolve to `siteOrigin` and stay non-offenders, while the network-path form is caught. The
+ * `catch` then narrows to what it should always have meant: a value that is not a URL reference at
+ * all. */
+function isOffSite(value, siteUrl, siteOrigin) {
   let parsed;
   try {
-    parsed = new URL(value);
+    parsed = new URL(value, siteUrl);
   } catch {
     return false;
   }
@@ -1684,7 +1747,7 @@ function offSiteSelfReferencingUrls(routes, siteUrl) {
     }
     for (const [key, value] of Object.entries(node)) {
       const here = trail ? `${trail}.${key}` : key;
-      if (SELF_REFERENTIAL_KEYS.has(key) && typeof value === 'string' && isOffSite(value, siteOrigin)) {
+      if (SELF_REFERENTIAL_KEYS.has(key) && typeof value === 'string' && isOffSite(value, siteUrl, siteOrigin)) {
         offenders.push(`route "${routePath}": ${here} = ${JSON.stringify(value)}`);
       }
       walk(value, routePath, here);
@@ -1738,6 +1801,32 @@ test('the self-referencing-URL guard rejects a different host that merely starts
   assert.ok('https://agentforge4j.org.example.com/#organization'.startsWith(siteUrl));
 });
 
+test('the self-referencing-URL guard rejects a network-path (protocol-relative) reference, which names a different host while failing a standalone URL parse', () => {
+  const siteUrl = 'https://agentforge4j.org';
+  const routes = [
+    {
+      path: '/',
+      jsonLd: {
+        '@context': 'https://schema.org',
+        '@graph': [
+          // `//host/path` inherits only the scheme, so it resolves to a DIFFERENT origin — but
+          // `new URL('//cdn.example.com/logo.png')` with no base throws, so a standalone parse
+          // would classify it as "not an absolute URL" and wave it through as on-site.
+          { '@type': 'Organization', logo: '//cdn.example.com/brand/icon-512.png' },
+        ],
+      },
+    },
+  ];
+
+  assert.deepEqual(offSiteSelfReferencingUrls(routes, siteUrl), [
+    'route "/": @graph[0].logo = "//cdn.example.com/brand/icon-512.png"',
+  ]);
+  // The trap this exists to close, stated mechanically: parsed standalone the value is not a URL
+  // at all, yet resolved against the real document base it lands on someone else's host.
+  assert.throws(() => new URL('//cdn.example.com/brand/icon-512.png'));
+  assert.equal(new URL('//cdn.example.com/brand/icon-512.png', siteUrl).origin, 'https://cdn.example.com');
+});
+
 test('the self-referencing-URL guard leaves deliberately external properties (sameAs/codeRepository/license) alone, and does not flag a relative IRI', () => {
   const siteUrl = 'https://agentforge4j.org';
   const routes = [
@@ -1761,6 +1850,104 @@ test('the self-referencing-URL guard leaves deliberately external properties (sa
   ];
 
   assert.deepEqual(offSiteSelfReferencingUrls(routes, siteUrl), []);
+});
+
+// --- A route's structured data restates the route's own `description` verbatim. That one sentence
+// is the page's canonical summary — injectHead writes it into `<meta name="description">`,
+// `og:description` and `twitter:description` — and a route's `jsonLd` declares it a SECOND time, by
+// hand. Nothing else can notice when the two drift: assertValidJsonLd never inspects prose,
+// verify-seo compares served against declared (the same block on both sides), and the
+// self-referencing-URL guard above covers only `@id`/`url`/`logo`. So a routine copy reword would
+// leave the structured data describing the page differently from the page's own meta description,
+// with every gate green. Deliberately "appears SOMEWHERE in the block", not "every description in
+// the block equals it": a graph legitimately describes several entities, and today's
+// SoftwareSourceCode node carries its own distinct description of the framework rather than of the
+// page. ----------------------------------------------------------------------------------------
+
+/** Every `description` string anywhere in `jsonLd`, in document order. */
+function collectDescriptions(node, out = []) {
+  if (Array.isArray(node)) {
+    node.forEach((item) => collectDescriptions(item, out));
+    return out;
+  }
+  if (node === null || typeof node !== 'object') {
+    return out;
+  }
+  for (const [key, value] of Object.entries(node)) {
+    if (key === 'description' && typeof value === 'string') {
+      out.push(value);
+    }
+    collectDescriptions(value, out);
+  }
+  return out;
+}
+
+/** Every route declaring a `jsonLd` whose structured data does not restate that route's own
+ * `description` verbatim, as human-readable strings. Shared by the real-config guard and its own
+ * negative test below, so the two can never check different things. */
+function routesWhoseJsonLdOmitsTheirOwnDescription(routes) {
+  return routes
+    .filter((route) => route.jsonLd !== undefined)
+    .filter((route) => !collectDescriptions(route.jsonLd).includes(route.description))
+    .map(
+      (route) =>
+        `route "${route.path}": description ${JSON.stringify(route.description)} appears in no jsonLd node ` +
+        `(found: ${JSON.stringify(collectDescriptions(route.jsonLd))})`,
+    );
+}
+
+test('every route\'s jsonLd restates that route\'s own description verbatim, so a reworded page description can never leave the structured data describing the page differently from its own meta description', () => {
+  const { routes } = JSON.parse(readFileSync(join(REAL_MODULE_ROOT, 'src/config/seo-routes.json'), 'utf8'));
+  const offenders = routesWhoseJsonLdOmitsTheirOwnDescription(routes);
+
+  assert.deepEqual(offenders, [], `structured data must restate the route's own description:\n${offenders.join('\n')}`);
+  // Not vacuous: at least one real route must actually declare a jsonLd, or this guard would pass
+  // on an empty filter and quietly stop protecting anything.
+  assert.ok(
+    routes.some((route) => route.jsonLd !== undefined),
+    'expected the real seo-routes.json to declare at least one jsonLd block',
+  );
+});
+
+test('the description-binding guard fires when a route\'s description is reworded but its jsonLd copy is not', () => {
+  const drifted = [
+    {
+      path: '/',
+      description: 'The reworded page description.',
+      jsonLd: {
+        '@context': 'https://schema.org',
+        '@graph': [
+          { '@type': 'WebSite', description: 'The ORIGINAL page description.' },
+          { '@type': 'SoftwareSourceCode', description: 'A deliberately different one, about the framework.' },
+        ],
+      },
+    },
+  ];
+
+  assert.deepEqual(routesWhoseJsonLdOmitsTheirOwnDescription(drifted), [
+    'route "/": description "The reworded page description." appears in no jsonLd node ' +
+      '(found: ["The ORIGINAL page description.","A deliberately different one, about the framework."])',
+  ]);
+});
+
+test('the description-binding guard accepts a graph whose other nodes carry their own distinct descriptions, as long as one restates the route\'s', () => {
+  const inSync = [
+    {
+      path: '/',
+      description: 'The page description.',
+      jsonLd: {
+        '@context': 'https://schema.org',
+        '@graph': [
+          { '@type': 'WebSite', description: 'The page description.' },
+          { '@type': 'SoftwareSourceCode', description: 'A deliberately different one, about the framework.' },
+        ],
+      },
+    },
+    // A route with no jsonLd at all is not subject to the guard.
+    { path: '/architecture', description: 'Architecture.' },
+  ];
+
+  assert.deepEqual(routesWhoseJsonLdOmitsTheirOwnDescription(inSync), []);
 });
 
 // --- Completeness guard: every real copy module on disk is referenced by something in the real

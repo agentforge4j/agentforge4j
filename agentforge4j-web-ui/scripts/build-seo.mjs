@@ -301,6 +301,17 @@ export function injectRoot(html, innerHtml) {
 // own, and then only ever remove that second one on navigation — permanently stranding this static
 // one on every subsequent route. Sharing the id makes hydration adopt and update this exact node
 // instead of duplicating it.
+//
+// Exported, and imported by verify-seo.mjs rather than re-typed there — a deliberate exception to
+// the "read the same source-of-truth config independently, never import the other script's
+// internals" convention verify-seo.mjs's own withTrailingSlash comment documents. The convention
+// governs DERIVATIONS: two scripts computing the same answer from the same committed config should
+// compute it separately, so a bug in one cannot make the other agree with it. This is the opposite
+// case — an opaque literal with no config to re-derive from, whose entire contract is "these bytes
+// are identical everywhere". Duplicating it would not create an independent check; it would create
+// a third place to drift. usePageSeo.ts holds the one unavoidable copy (it cannot import this
+// module — build-seo.mjs pulls in node:child_process), and tests/usePageSeo.test.tsx imports this
+// constant to bind that copy to this one.
 export const JSON_LD_SCRIPT_ID = 'seo-json-ld';
 
 /** Inserts a route's JSON-LD structured-data block right before `</head>` — an addition, not a

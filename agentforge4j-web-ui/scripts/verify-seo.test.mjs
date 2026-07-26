@@ -401,6 +401,84 @@ test('the shared-id check reads a single-quoted id attribute too, rather than re
   );
 });
 
+// --- Same-origin assets a route's structured data names (logo/image) must actually be in the
+// build. Nothing else notices a renamed or removed target: the build-time origin guard only asks
+// whose host it is, assertValidJsonLd never inspects it, and the served-vs-declared comparison is
+// satisfied by two copies of the same dead URL. ---
+
+test('fails closed when a route\'s JSON-LD names a same-origin logo this build does not serve', async () => {
+  const distDir = fixtureDir();
+  const jsonLd = {
+    '@context': 'https://schema.org',
+    '@type': 'Organization',
+    logo: 'https://agentforge4j.org/brand/icon-512.png',
+  };
+  writePage(
+    distDir,
+    '',
+    page({
+      canonical: 'https://agentforge4j.org/',
+      extraHead: `<script id="${JSON_LD_SCRIPT_ID}" type="application/ld+json">${JSON.stringify(jsonLd)}</script>`,
+    }),
+  );
+  writeFileSync(join(distDir, 'sitemap.xml'), sitemapXml([{ url: 'https://agentforge4j.org/', lastmod: '2026-07-20' }]), 'utf8');
+  // No brand/icon-512.png written at all.
+  await assert.rejects(
+    () => verifySeo({ distDir, staticRoutes: [{ requestPath: '/', expectedCanonical: 'https://agentforge4j.org/', jsonLd }] }),
+    /points at \/brand\/icon-512\.png, which this build does not serve \(got 404\)/,
+  );
+});
+
+test('passes clean when the named same-origin asset is really in the build, and reads a root-relative value too', async () => {
+  const distDir = fixtureDir();
+  const jsonLd = {
+    '@context': 'https://schema.org',
+    '@graph': [
+      { '@type': 'Organization', logo: 'https://agentforge4j.org/brand/icon-512.png' },
+      // A root-relative reference resolves to the same origin and must be checked identically.
+      { '@type': 'WebPage', image: '/brand/social.png' },
+    ],
+  };
+  writePage(
+    distDir,
+    '',
+    page({
+      canonical: 'https://agentforge4j.org/',
+      extraHead: `<script id="${JSON_LD_SCRIPT_ID}" type="application/ld+json">${JSON.stringify(jsonLd)}</script>`,
+    }),
+  );
+  mkdirSync(join(distDir, 'brand'), { recursive: true });
+  writeFileSync(join(distDir, 'brand', 'icon-512.png'), 'not-really-a-png', 'utf8');
+  writeFileSync(join(distDir, 'brand', 'social.png'), 'not-really-a-png', 'utf8');
+  writeFileSync(join(distDir, 'sitemap.xml'), sitemapXml([{ url: 'https://agentforge4j.org/', lastmod: '2026-07-20' }]), 'utf8');
+  await assert.doesNotReject(() =>
+    verifySeo({ distDir, staticRoutes: [{ requestPath: '/', expectedCanonical: 'https://agentforge4j.org/', jsonLd }] }),
+  );
+});
+
+test('an off-origin asset is skipped rather than fetched — a local build gate must not depend on a third party\'s uptime', async () => {
+  const distDir = fixtureDir();
+  // A deliberately external image on a host this test could never reach. If the check fetched it
+  // instead of skipping it, this test would fail (or hang) rather than pass.
+  const jsonLd = {
+    '@context': 'https://schema.org',
+    '@type': 'WebPage',
+    image: 'https://images.invalid.example/never-resolvable.png',
+  };
+  writePage(
+    distDir,
+    '',
+    page({
+      canonical: 'https://agentforge4j.org/',
+      extraHead: `<script id="${JSON_LD_SCRIPT_ID}" type="application/ld+json">${JSON.stringify(jsonLd)}</script>`,
+    }),
+  );
+  writeFileSync(join(distDir, 'sitemap.xml'), sitemapXml([{ url: 'https://agentforge4j.org/', lastmod: '2026-07-20' }]), 'utf8');
+  await assert.doesNotReject(() =>
+    verifySeo({ distDir, staticRoutes: [{ requestPath: '/', expectedCanonical: 'https://agentforge4j.org/', jsonLd }] }),
+  );
+});
+
 // --- A sitemap URL that is not a configured static route — every /catalogue/<id>/ detail shell —
 // can only ever legitimately carry zero structured data. Nothing but this check would notice if one
 // started carrying some, since the per-route loop below only ever sees seo-routes.json's own

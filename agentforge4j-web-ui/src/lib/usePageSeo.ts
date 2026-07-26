@@ -32,6 +32,14 @@ function setCanonical(href: string): void {
   link.setAttribute('href', href);
 }
 
+// Must stay byte-identical to build-seo.mjs's exported JSON_LD_SCRIPT_ID — the id the build-time
+// static shell stamps on its own JSON-LD script, and the one `setJsonLd` below looks for so a fresh
+// load adopts that node instead of creating a duplicate beside it. Re-declared rather than imported
+// only because this module cannot import build-seo.mjs at all (it pulls in node:child_process).
+// tests/usePageSeo.test.tsx imports that constant and asserts on the id the hook CREATES, which is
+// the single assertion in the suite that fails if these two ever drift apart — every other guard on
+// this invariant lives on the build side and compares the shell against build-seo.mjs's own copy,
+// so all of them stay green while production ships a shell this hook can no longer find.
 const JSON_LD_SCRIPT_ID = 'seo-json-ld';
 
 /** Adds, updates, or removes the page's `<script type="application/ld+json">` block to match

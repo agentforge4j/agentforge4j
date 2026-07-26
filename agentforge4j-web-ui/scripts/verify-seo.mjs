@@ -17,7 +17,17 @@
 import { createServer } from 'node:http';
 import { createReadStream, existsSync, readFileSync, statSync } from 'node:fs';
 import { dirname, extname, isAbsolute, join, relative, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+// `URL` is imported explicitly rather than leaned on as an ambient global — the same thing
+// build-seo.test.mjs and prerender-routes.test.mjs already do, and what this repo's lint block for
+// `scripts/**/*.mjs` requires (it declares only console/process/Buffer/fetch as globals).
+import { fileURLToPath, URL } from 'node:url';
+// The one import of another script's internals in this file, and a deliberate exception to the
+// convention withTrailingSlash's own comment below documents ("duplicated deliberately, not
+// imported"). That convention governs DERIVATIONS — two scripts computing the same answer from the
+// same committed config compute it separately, so a bug in one cannot make the other agree with it.
+// JSON_LD_SCRIPT_ID is not a derivation: it is an opaque literal whose entire contract is "these
+// bytes are identical everywhere", with no config to re-derive it from. Re-typing it here would not
+// buy independence, only a third place to drift. See build-seo.mjs's own comment on the constant.
 import { JSON_LD_SCRIPT_ID } from './build-seo.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -211,6 +221,61 @@ function extractJsonLdScripts(html) {
     .map((match) => ({ id: /\bid=(["'])([^"']*)\1/.exec(match[1])?.[2] ?? null, content: match[2] }));
 }
 
+/** The asset-valued keys in a JSON-LD block whose target this build is supposed to have produced —
+ * an `Organization`'s `logo` and any node's `image`. Not `@id`/`url`: those are identifiers and page
+ * addresses, already covered by the sitemap/canonical checks and by build-seo.test.mjs's own
+ * origin guard, and an `@id` is frequently a bare fragment that names no retrievable resource at
+ * all. */
+const ASSET_KEYS = new Set(['logo', 'image']);
+
+/** Every same-origin asset path (`logo`/`image`) declared anywhere in `jsonLd`, as request paths
+ * this server can serve, deduplicated and in document order.
+ *
+ * Off-origin values are deliberately skipped rather than fetched: this gate verifies what THIS
+ * build produced, and reaching out to a third-party host would make a local build gate depend on
+ * someone else's uptime. (`logo` on another origin is separately rejected at build time by
+ * build-seo.test.mjs's self-referencing-URL guard; `image` is not, so it is skipped here rather
+ * than assumed on-site.) A value that is not a URL reference at all is skipped for the same
+ * reason — there is nothing to fetch. */
+function sameOriginAssetPaths(jsonLd) {
+  const paths = new Set();
+  const consider = (value) => {
+    if (typeof value !== 'string') {
+      return;
+    }
+    let resolved;
+    try {
+      resolved = new URL(value, `${SITE_ORIGIN}/`);
+    } catch {
+      return;
+    }
+    if (resolved.origin === SITE_ORIGIN) {
+      paths.add(`${resolved.pathname}${resolved.search}`);
+    }
+  };
+  const walk = (node) => {
+    if (Array.isArray(node)) {
+      node.forEach(walk);
+      return;
+    }
+    if (node === null || typeof node !== 'object') {
+      return;
+    }
+    for (const [key, value] of Object.entries(node)) {
+      if (ASSET_KEYS.has(key)) {
+        if (Array.isArray(value)) {
+          value.forEach(consider);
+        } else {
+          consider(value);
+        }
+      }
+      walk(value);
+    }
+  };
+  walk(jsonLd);
+  return [...paths];
+}
+
 export async function verifySeo({
   distDir = DIST_DIR,
   seoRoutesPath = SEO_ROUTES_PATH,
@@ -359,10 +424,18 @@ export async function verifySeo({
         if (jsonLdScripts.length !== 1) {
           throw new Error(`verify-seo: ${requestPath} has ${jsonLdScripts.length} JSON-LD script(s) — expected exactly 1`);
         }
-        // Must carry the exact id usePageSeo.ts's client-side setJsonLd looks for — a served script
-        // with no id (or the wrong one) would pass the content check below yet still leave the
-        // client-side hook unable to find it, creating a second, duplicate JSON-LD block on
-        // hydration and permanently stranding this one after the first client-side navigation.
+        // Must carry the shared script id — a served script with no id (or a different one) would
+        // pass the content check below yet still leave the client-side hook unable to find it,
+        // creating a second, duplicate JSON-LD block on hydration and permanently stranding this
+        // one after the first client-side navigation.
+        //
+        // Scoped honestly: this compares the SERVED page against the same constant injectJsonLd
+        // writes, so what it catches is a shell whose script lost or changed its id by some route
+        // other than that constant — a hand-edited shell, a third-party or future generator, a
+        // post-processing step. It cannot catch a rename of the constant itself, since producer and
+        // verifier would move together. The binding that does catch that is
+        // tests/usePageSeo.test.tsx's assertion on the id the HOOK creates, which is the only place
+        // usePageSeo.ts's own copy of the literal is compared against this one.
         if (jsonLdScripts[0].id !== JSON_LD_SCRIPT_ID) {
           throw new Error(
             `verify-seo: ${requestPath}'s JSON-LD script has id ${JSON.stringify(jsonLdScripts[0].id)} — expected ` +
@@ -377,6 +450,24 @@ export async function verifySeo({
         }
         if (JSON.stringify(servedJsonLd) !== JSON.stringify(jsonLd)) {
           throw new Error(`verify-seo: ${requestPath}'s served JSON-LD does not match its declared seo-routes.json config`);
+        }
+
+        // Every same-origin asset the structured data points at must actually be in this build.
+        // A renamed or removed `logo`/`image` target is otherwise invisible to every gate: the
+        // origin guard only asks whose host it is, assertValidJsonLd never looks at it, and the
+        // served-vs-declared comparison above is satisfied by two copies of the same dead URL. The
+        // failure it prevents is a real one — an `Organization` whose logo 404s is a Search Console
+        // structured-data error that no build ever complains about. Fetched through the same
+        // dist/-backed server every other check here uses, so this asks the one question that
+        // matters: would a crawler hitting the published site get this file?
+        for (const assetPath of sameOriginAssetPaths(jsonLd)) {
+          const assetResponse = await fetch(`${origin}${assetPath}`, { redirect: 'manual' });
+          if (assetResponse.status !== 200) {
+            throw new Error(
+              `verify-seo: ${requestPath}'s JSON-LD points at ${assetPath}, which this build does not serve ` +
+                `(got ${assetResponse.status}) — structured data must not name an asset that is not published`,
+            );
+          }
         }
       }
 
@@ -408,8 +499,8 @@ export async function verifySeo({
   console.log(
     `[verify-seo] verified ${entries.length} sitemap URL(s) (200, no redirect, self-canonical, exactly one real <h1>) ` +
       `and ${staticRoutes.length} configured static route(s) (200, no redirect, exactly one real <h1>, expected canonical, ` +
-      `declared JSON-LD present with the shared script id and matching content) — with no JSON-LD on any sitemap URL or ` +
-      `configured route that declares none — all clean`,
+      `declared JSON-LD present with the shared script id and matching content, every same-origin asset it names served ` +
+      `200) — with no JSON-LD on any sitemap URL or configured route that declares none — all clean`,
   );
 }
 
