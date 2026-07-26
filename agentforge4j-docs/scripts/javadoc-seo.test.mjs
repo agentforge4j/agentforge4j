@@ -10,7 +10,14 @@ import assert from 'node:assert/strict';
 import { mkdirSync, mkdtempSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { applyJavadocSeo, injectJavadocPageSeo, isJavadocRedirectStub, isWithinRoot } from './javadoc-seo.mjs';
+import {
+  addRobotsNoindexTag,
+  applyJavadocSeo,
+  injectJavadocPageSeo,
+  isJavadocRedirectStub,
+  isWithinRoot,
+  stripJavadocWindowTitle,
+} from './javadoc-seo.mjs';
 
 // A trimmed but structurally real sample — confirmed against a live-built /javadoc/0.1.0/ overview
 // page: the exact `<html lang>` (no value) and `content="module index"` shapes maven-javadoc-plugin
@@ -33,12 +40,25 @@ const RAW_OVERVIEW_HTML = `<!DOCTYPE HTML>
 </html>
 `;
 
+// maven-javadoc-plugin appends the configured `-windowtitle` in parentheses to EVERY generated
+// page's `<title>` — `Foo` is emitted as `Foo (AgentForge4j API (next))`, and so on for every page
+// kind. The nested fixtures below previously omitted that suffix, which is precisely why no test
+// could observe it being propagated into /latest/ and version-pinned titles/descriptions/og:titles:
+// the fixtures were more "correct" than the generator. `WINDOW_TITLE` reproduces the real
+// agentforge4j-docs-javadoc/pom.xml value so the corpus these tests run against is the one the
+// build actually produces.
+const WINDOW_TITLE = 'AgentForge4j API (next)';
+const withWindowTitle = (pageTitle) => `${pageTitle} (${WINDOW_TITLE})`;
+
 // A trimmed but structurally real sample of a class page. In a real full corpus, nested pages
 // carry the same bare-`<html lang>` bug as the overview above (repaired identically — the
 // bare-lang repair tests below cover that shape directly); this fixture deliberately carries a
 // real `<html lang="en">` instead, to exercise the OTHER contract: a real lang value already
 // present is left untouched, never assumed broken.
-function rawClassPageHtml({ title = 'Foo', description = 'declaration: package: com.example, class: Foo' } = {}) {
+function rawClassPageHtml({
+  title = withWindowTitle('Foo'),
+  description = 'declaration: package: com.example, class: Foo',
+} = {}) {
   return `<!DOCTYPE HTML>
 <html lang="en">
 <head>
@@ -62,7 +82,7 @@ function rawPackageSummaryHtml() {
   return `<!DOCTYPE HTML>
 <html lang="en">
 <head>
-<title>com.example</title>
+<title>com.example (AgentForge4j API (next))</title>
 <meta name="description" content="declaration: package: com.example">
 <meta name="generator" content="javadoc/PackageWriterImpl">
 <link rel="stylesheet" type="text/css" href="../../stylesheet.css" title="Style">
@@ -78,7 +98,7 @@ function rawAllClassesIndexHtml() {
   return `<!DOCTYPE HTML>
 <html lang="en">
 <head>
-<title>All Classes and Interfaces</title>
+<title>All Classes and Interfaces (AgentForge4j API (next))</title>
 <meta name="description" content="class index">
 <meta name="generator" content="javadoc/AllClassesIndexWriter">
 <link rel="stylesheet" type="text/css" href="stylesheet.css" title="Style">
@@ -164,8 +184,9 @@ test('injectJavadocPageSeo fixes lang, replaces the generic description, and add
   assert.match(html, /<meta property="og:image" content="https:\/\/agentforge4j\.org\/brand\/icon-512\.png">/);
   assert.match(html, /<meta name="twitter:card" content="summary">/);
   assert.doesNotMatch(html, /<meta name="robots"/);
-  // Real Javadoc functionality (navigation, generated body) must survive untouched.
-  assert.match(html, /<h1 class="title">AgentForge4j API \(next\)<\/h1>/);
+  // The overview <h1> is maven-javadoc-plugin's rendering of the generated doc title, so it is
+  // corrected to the same lifecycle-correct text as the <title> — see the doc-title heading tests.
+  assert.match(html, /<h1 class="title">AgentForge4j API Reference — latest stable, 0\.1\.0<\/h1>/);
 });
 
 test('injectJavadocPageSeo leaves an already-correct lang="en" untouched (a real lang value is never assumed broken, whichever page carries it)', () => {
@@ -316,8 +337,10 @@ test('injectJavadocPageSeo inserts a fresh description tag (rather than failing 
   assert.match(html, /<meta name="description" content="Generated Javadoc API reference[^"]*">/);
   assert.equal((html.match(/<meta name="description"/g) ?? []).length, 1, 'exactly one description tag, never a duplicate');
   assert.match(html, /<link rel="canonical" href="https:\/\/agentforge4j\.org\/javadoc\/next\/surfaces\.html">/);
-  // Real hand-authored content must survive untouched.
-  assert.match(html, /<h1>AgentForge4j API \(next\)<\/h1>/);
+  // The landing page's own <h1> is the same generated doc title text, corrected identically; its
+  // real hand-authored body content (the surface list) survives untouched.
+  assert.match(html, /<h1>AgentForge4j API — surfaces — AgentForge4j API Reference \(next, in-development\)<\/h1>/);
+  assert.match(html, /<li><a href="\.\/index\.html">Core API \(aggregate\)<\/a><\/li>/);
 });
 
 test('injectJavadocPageSeo still fails closed on a description-less page when allowMissingDescription is not set (the default) — allowMissingDescription must not weaken the template-drift protection for ordinary pages', () => {
@@ -419,7 +442,7 @@ function fixtureSiteDirWithNestedPages(targetMountPath, releasedVersions = ['0.1
   return { siteDir, surfaceRoot };
 }
 
-test('applyJavadocSeo updates next, latest, and every released version\'s overview page — self-canonical, indexable', () => {
+test('applyJavadocSeo updates next, latest, and every released version\'s overview page — each self-canonical at its own URL', () => {
   const siteDir = fixtureSiteDir(['javadoc/next', 'javadoc/latest', 'javadoc/0.1.0']);
   const updated = applyJavadocSeo({
     siteDir,
@@ -429,9 +452,11 @@ test('applyJavadocSeo updates next, latest, and every released version\'s overvi
   });
   assert.equal(updated, 3);
 
+  // /next/ is self-canonical but noindex in EVERY lifecycle state — it tracks main and is a
+  // duplicate of /latest/ whenever main has not diverged from the newest release tag.
   const next = readFileSync(join(siteDir, 'javadoc', 'next', 'index.html'), 'utf8');
   assert.match(next, /<link rel="canonical" href="https:\/\/agentforge4j\.org\/javadoc\/next\/">/);
-  assert.doesNotMatch(next, /<meta name="robots"/);
+  assert.match(next, /<meta name="robots" content="noindex,follow">/);
 
   const latest = readFileSync(join(siteDir, 'javadoc', 'latest', 'index.html'), 'utf8');
   assert.match(latest, /<link rel="canonical" href="https:\/\/agentforge4j\.org\/javadoc\/latest\/">/);
@@ -487,7 +512,14 @@ function addRedirectStubs(surfaceRoot) {
   writeFileSync(join(surfaceRoot, 'mcp', 'index.html'), RAW_OVERVIEW_HTML, 'utf8');
 }
 
-test('applyJavadocSeo skips javadoc\'s own redirect stubs (root and nested) without throwing, leaving them byte-identical — pre-release state', () => {
+/** The stub with the robots tag added and NOTHING else changed — the exact expected output on a
+ * noindex surface. Built from the raw stub itself so the assertion cannot drift from the fixture. */
+const REDIRECT_STUB_WITH_ROBOTS = RAW_REDIRECT_STUB_HTML.replace(
+  '</head>',
+  '<meta name="robots" content="noindex,follow">\n</head>',
+);
+
+test('a redirect stub on a NOINDEX surface gains the robots tag and nothing else — the indexability policy cannot be escaped through a redirect shell', () => {
   const { siteDir, surfaceRoot } = fixtureSiteDirWithNestedPages('javadoc/next', []);
   addRedirectStubs(surfaceRoot);
   const updated = applyJavadocSeo({
@@ -497,19 +529,27 @@ test('applyJavadocSeo skips javadoc\'s own redirect stubs (root and nested) with
     releasedVersions: [],
   });
   // 4 real pages under javadoc/next + the added mcp/index.html + 1 under javadoc/latest = 6;
-  // the 2 redirect stubs are skipped, never counted.
+  // the 2 redirect stubs are never counted, even though they are now minimally edited.
   assert.equal(updated, 6, 'redirect stubs must not be counted as updated pages');
 
   for (const relPath of ['overview-summary.html', 'mcp/overview-summary.html']) {
     const stub = readFileSync(join(surfaceRoot, ...relPath.split('/')), 'utf8');
-    assert.equal(stub, RAW_REDIRECT_STUB_HTML, `${relPath} must remain byte-identical (plugin-authored canonical intact)`);
+    assert.equal(
+      stub,
+      REDIRECT_STUB_WITH_ROBOTS,
+      `${relPath} must gain exactly the robots tag — plugin-authored canonical, title, refresh and body untouched`,
+    );
+    // Spelled out explicitly: the redirect behaviour this stub exists for must survive verbatim.
+    assert.match(stub, /<link rel="canonical" href="index\.html">/);
+    assert.match(stub, /window\.location\.replace\('index\.html'\)/);
+    assert.match(stub, /<meta http-equiv="Refresh" content="0;index\.html">/);
   }
   // The nested sub-surface's REAL overview page (not the stub next to it) is still processed.
   const mcpIndex = readFileSync(join(surfaceRoot, 'mcp', 'index.html'), 'utf8');
   assert.match(mcpIndex, /<link rel="canonical" href="https:\/\/agentforge4j\.org\/javadoc\/next\/mcp\/index\.html">/);
 });
 
-test('applyJavadocSeo skips redirect stubs in the released state too — including under the noindexed mirrored version, which must not gain a robots tag on its stubs', () => {
+test('a redirect stub under the noindexed mirrored version gains the robots tag too — the hole this closes was in the pinned tree, whose every other page is already noindexed', () => {
   const { siteDir, surfaceRoot } = fixtureSiteDirWithNestedPages('javadoc/0.1.0', ['0.1.0']);
   addRedirectStubs(surfaceRoot);
   const updated = applyJavadocSeo({
@@ -522,8 +562,31 @@ test('applyJavadocSeo skips redirect stubs in the released state too — includi
   assert.equal(updated, 7, 'redirect stubs must not be counted as updated pages');
   for (const relPath of ['overview-summary.html', 'mcp/overview-summary.html']) {
     const stub = readFileSync(join(surfaceRoot, ...relPath.split('/')), 'utf8');
-    assert.equal(stub, RAW_REDIRECT_STUB_HTML, `${relPath} must remain byte-identical even in a noindexed surface`);
+    assert.equal(stub, REDIRECT_STUB_WITH_ROBOTS, `${relPath} must gain exactly the robots tag in a noindexed surface`);
   }
+});
+
+test('a redirect stub on an INDEXABLE surface (/latest/) is still left byte-identical — the robots injection is scoped to noindex surfaces, never applied blanket', () => {
+  const { siteDir } = fixtureSiteDirWithNestedPages('javadoc/latest', ['0.1.0']);
+  const latestRoot = join(siteDir, 'javadoc', 'latest');
+  addRedirectStubs(latestRoot);
+  applyJavadocSeo({
+    siteDir,
+    siteUrl: 'https://agentforge4j.org',
+    ogImage: 'https://agentforge4j.org/brand/icon-512.png',
+    releasedVersions: ['0.1.0'],
+  });
+  for (const relPath of ['overview-summary.html', 'mcp/overview-summary.html']) {
+    const stub = readFileSync(join(latestRoot, ...relPath.split('/')), 'utf8');
+    assert.equal(stub, RAW_REDIRECT_STUB_HTML, `${relPath} under indexable /latest/ must remain byte-identical`);
+  }
+});
+
+test('addRobotsNoindexTag is idempotent by refusal — a stub processed twice never gains a second, potentially contradictory robots tag', () => {
+  const once = addRobotsNoindexTag(RAW_REDIRECT_STUB_HTML);
+  const twice = addRobotsNoindexTag(once);
+  assert.equal(twice, once, 'a second pass must be a no-op');
+  assert.equal((twice.match(/<meta name="robots"/g) ?? []).length, 1, 'exactly one robots tag');
 });
 
 test('page-relative canonical generation: a nested page canonicalizes to its own full relative path within the surface, never to the surface root or another surface', () => {
@@ -582,10 +645,10 @@ test('once a newer version ships, the OLD newest version (no longer a duplicate 
   const nowNewest = readFileSync(join(siteDir, 'javadoc', '0.2.0', 'index.html'), 'utf8');
   assert.match(nowNewest, /<meta name="robots" content="noindex,follow">/, '0.2.0 is now the version /latest/ mirrors');
 
-  // /next/ must remain indexable once a stable release exists — not affected by the pre-release
-  // special case, which only applies when releasedVersions is empty.
+  // /next/ stays noindex no matter how many releases exist — the suppression is unconditional, not
+  // a pre-release special case.
   const next = readFileSync(join(siteDir, 'javadoc', 'next', 'index.html'), 'utf8');
-  assert.doesNotMatch(next, /<meta name="robots"/, '/next/ must stay indexable once any release exists');
+  assert.match(next, /<meta name="robots" content="noindex,follow">/, '/next/ is noindex in every lifecycle state');
 });
 
 // --- the complete /next vs /latest duplicate-content lifecycle matrix ---------------------------
@@ -640,7 +703,7 @@ test('lifecycle matrix — no released versions, checked from the /latest/ side 
   assertNoindexFollowExactlyOnce(nextHtml, '/next/index.html');
 });
 
-test('lifecycle matrix — first stable release: /next/** and /latest/** both become/stay indexable, the new release is noindex,follow', () => {
+test('lifecycle matrix — first stable release: /latest/** stays indexable, /next/** stays noindex, the new release is noindex,follow', () => {
   const { siteDir } = fixtureSiteDirWithNestedPages('javadoc/0.1.0', ['0.1.0']);
   applyJavadocSeo({
     siteDir,
@@ -648,8 +711,11 @@ test('lifecycle matrix — first stable release: /next/** and /latest/** both be
     ogImage: 'https://agentforge4j.org/brand/icon-512.png',
     releasedVersions: ['0.1.0'],
   });
+  // This is the exact state production runs in (versions.json === ["0.1.0"]). /next/ is built from
+  // main and /latest/ from the 0.1.0 tag, so the two trees are byte-identical until main's public
+  // API diverges — /next/ must not be a second indexable copy of /latest/ in this state.
   const next = readFileSync(join(siteDir, 'javadoc', 'next', 'index.html'), 'utf8');
-  assertNoRobotsTag(next, '/next/ (a stable release now exists — no longer a duplicate of /latest/)');
+  assertNoindexFollowExactlyOnce(next, '/next/ (byte-identical to /latest/ until main diverges)');
 
   const latest = readFileSync(join(siteDir, 'javadoc', 'latest', 'index.html'), 'utf8');
   assertNoRobotsTag(latest, '/latest/');
@@ -660,7 +726,7 @@ test('lifecycle matrix — first stable release: /next/** and /latest/** both be
   }
 });
 
-test('lifecycle matrix — newer stable release: the new version is noindex,follow, the old one is indexable again, /next/ and /latest/ stay indexable', () => {
+test('lifecycle matrix — newer stable release: the new version is noindex,follow, the old one is indexable again, /latest/ stays indexable and /next/ stays noindex', () => {
   const { siteDir } = fixtureSiteDirWithNestedPages('javadoc/0.2.0', ['0.2.0', '0.1.0']);
   // Also give 0.1.0 a real nested tree of its own, so its "becomes indexable again" transition is
   // proven across the whole surface, not only its overview.
@@ -683,7 +749,7 @@ test('lifecycle matrix — newer stable release: the new version is noindex,foll
     assertNoRobotsTag(old, `/javadoc/0.1.0/${relPath} (no longer the version /latest/ mirrors)`);
   }
   const next = readFileSync(join(siteDir, 'javadoc', 'next', 'index.html'), 'utf8');
-  assertNoRobotsTag(next, '/next/');
+  assertNoindexFollowExactlyOnce(next, '/next/ (noindex in every lifecycle state)');
   const latest = readFileSync(join(siteDir, 'javadoc', 'latest', 'index.html'), 'utf8');
   assertNoRobotsTag(latest, '/latest/');
 });
@@ -701,8 +767,10 @@ test('applyJavadocSeo processes the real surfaces.html landing page (build-javad
   const surfacesPage = readFileSync(join(surfaceRoot, 'surfaces.html'), 'utf8');
   assert.match(surfacesPage, /<meta name="description" content="[^"]+">/);
   assert.match(surfacesPage, /<link rel="canonical" href="https:\/\/agentforge4j\.org\/javadoc\/next\/surfaces\.html">/);
-  // Real hand-authored content must survive.
-  assert.match(surfacesPage, /<h1>AgentForge4j API \(next\)<\/h1>/);
+  // Same doc-title heading correction through the full applyJavadocSeo path; the hand-authored
+  // body content survives.
+  assert.match(surfacesPage, /<h1>AgentForge4j API — surfaces — AgentForge4j API Reference \(next, in-development\)<\/h1>/);
+  assert.match(surfacesPage, /<li><a href="\.\/index\.html">Core API \(aggregate\)<\/a><\/li>/);
 });
 
 test('applyJavadocSeo names the offending file path when a genuinely description-less page is NOT the recognized surfaces.html landing page (template drift, still fails closed)', () => {
@@ -727,7 +795,7 @@ test('a nested page\'s raw <title> containing HTML entities (e.g. a generic clas
   const { siteDir, surfaceRoot } = fixtureSiteDirWithNestedPages('javadoc/next');
   writeFileSync(
     join(surfaceRoot, 'com', 'example', 'Foo.html'),
-    rawClassPageHtml({ title: 'Foo&lt;T&gt; &amp; Bar' }),
+    rawClassPageHtml({ title: withWindowTitle('Foo&lt;T&gt; &amp; Bar') }),
     'utf8',
   );
   applyJavadocSeo({
@@ -757,7 +825,7 @@ test('a nested page\'s raw <title> containing numeric character references and &
   const { siteDir, surfaceRoot } = fixtureSiteDirWithNestedPages('javadoc/next');
   writeFileSync(
     join(surfaceRoot, 'com', 'example', 'Foo.html'),
-    rawClassPageHtml({ title: '&#64;Foo&nbsp;Bar &#x2019;s' }),
+    rawClassPageHtml({ title: withWindowTitle('&#64;Foo&nbsp;Bar &#x2019;s') }),
     'utf8',
   );
   applyJavadocSeo({
@@ -789,7 +857,7 @@ test('entity decoding is a single pass — a raw title spelling out a literal "&
     // Source intent: the displayed title text is `A &amp; B` — the leading &#38; IS the ampersand,
     // and the `amp;` after it is plain text. One decode pass yields exactly that; a sequential
     // decode chain would rescan its own output and collapse the whole thing to `A & B`.
-    rawClassPageHtml({ title: 'A &#38;amp; B' }),
+    rawClassPageHtml({ title: withWindowTitle('A &#38;amp; B') }),
     'utf8',
   );
   applyJavadocSeo({
@@ -1052,4 +1120,159 @@ test('two directory paths resolving to the same real directory (a real subtree p
       }),
     /refusing to walk a directory whose real path was already visited/,
   );
+});
+
+// --- generated window-title correction ----------------------------------------------------------
+//
+// maven-javadoc-plugin bakes the configured `-windowtitle` into every page's `<title>` at GENERATION
+// time. That value is a single fixed string (`AgentForge4j API (next)` — agentforge4j-docs-javadoc/
+// pom.xml), and /latest/ and every version-pinned tree are copies of a surface built from a release
+// tag by that tag's own build, so without correction every page of every surface is titled `next` —
+// including the stable API reference that is the one tree meant to be found in search.
+
+test('stripJavadocWindowTitle removes the generated window-title suffix from every real page-kind title shape', () => {
+  assert.equal(stripJavadocWindowTitle('Overview (AgentForge4j API (next))'), 'Overview');
+  assert.equal(stripJavadocWindowTitle('agentforge4j.core (AgentForge4j API (next))'), 'agentforge4j.core');
+  assert.equal(stripJavadocWindowTitle('com.agentforge4j.util (AgentForge4j API (next))'), 'com.agentforge4j.util');
+  assert.equal(stripJavadocWindowTitle('Index (AgentForge4j API (next))'), 'Index');
+  assert.equal(stripJavadocWindowTitle('Class Hierarchy (AgentForge4j API (next))'), 'Class Hierarchy');
+  assert.equal(stripJavadocWindowTitle('All Classes and Interfaces (AgentForge4j API (next))'), 'All Classes and Interfaces');
+});
+
+test('stripJavadocWindowTitle keeps working if the pom drops the (next) suffix from the window title', () => {
+  assert.equal(stripJavadocWindowTitle('Overview (AgentForge4j API)'), 'Overview');
+  assert.equal(stripJavadocWindowTitle('Foo (AgentForge4j API 1.0)'), 'Foo (AgentForge4j API 1.0)');
+});
+
+test('stripJavadocWindowTitle is conservative — a page title that legitimately ends in parentheses is never eaten', () => {
+  assert.equal(stripJavadocWindowTitle('Foo'), 'Foo');
+  assert.equal(stripJavadocWindowTitle('Foo (deprecated)'), 'Foo (deprecated)');
+  assert.equal(stripJavadocWindowTitle('SomeClass (Some Other Library)'), 'SomeClass (Some Other Library)');
+  // The stub's title IS the bare window title — nothing page-specific to keep, so it is left alone
+  // rather than being reduced to an empty string.
+  assert.equal(stripJavadocWindowTitle('AgentForge4j API (next)'), 'AgentForge4j API (next)');
+});
+
+test('the rendered <title> is rewritten to the lifecycle-correct text, never left as maven-javadoc-plugin generated it', () => {
+  const html = injectJavadocPageSeo(RAW_OVERVIEW_HTML, {
+    title: 'AgentForge4j API Reference — latest stable, 0.1.0',
+    description: 'Generated Javadoc API reference for the AgentForge4j framework (latest stable, 0.1.0).',
+    canonical: 'https://agentforge4j.org/javadoc/latest/',
+    ogImage: 'https://agentforge4j.org/brand/icon-512.png',
+  });
+  assert.match(html, /<title>AgentForge4j API Reference — latest stable, 0\.1\.0<\/title>/);
+  assert.doesNotMatch(html, /<title>Overview \(AgentForge4j API \(next\)\)<\/title>/);
+});
+
+test('injectJavadocPageSeo fails closed on a page with no <title> at all (template drift)', () => {
+  assert.throws(
+    () =>
+      injectJavadocPageSeo('<!DOCTYPE HTML>\n<html lang="en">\n<head>\n<meta name="description" content="x">\n</head>\n<body></body>\n</html>', {
+        title: 'T',
+        description: 'D',
+        canonical: 'https://agentforge4j.org/javadoc/latest/',
+        ogImage: 'https://agentforge4j.org/brand/icon-512.png',
+      }),
+    /expected a <title> tag/,
+  );
+});
+
+test('no page of ANY lifecycle tree is labelled "(next)" unless it really is /next/ — title, description and og:title together, across the whole nested corpus', () => {
+  const { siteDir } = fixtureSiteDirWithNestedPages('javadoc/0.1.0', ['0.1.0']);
+  applyJavadocSeo({
+    siteDir,
+    siteUrl: 'https://agentforge4j.org',
+    ogImage: 'https://agentforge4j.org/brand/icon-512.png',
+    releasedVersions: ['0.1.0'],
+  });
+
+  const pages = ['index.html', 'allclasses-index.html', 'com/example/package-summary.html', 'com/example/Foo.html'];
+
+  // The pinned tree carries its own version label and must never mention the generator's `next`.
+  for (const relPath of pages) {
+    const html = readFileSync(join(siteDir, 'javadoc', '0.1.0', ...relPath.split('/')), 'utf8');
+    assert.doesNotMatch(
+      html,
+      /AgentForge4j API \(next\)/,
+      `/javadoc/0.1.0/${relPath}: the generated window title must not survive anywhere in the head`,
+    );
+    assert.match(
+      html,
+      /<title>[^<]*(?:\(0\.1\.0\)|— 0\.1\.0)<\/title>/,
+      `/javadoc/0.1.0/${relPath}: <title> must carry its own version label`,
+    );
+    assert.match(
+      html,
+      /<meta property="og:title" content="[^"]*(?:\(0\.1\.0\)|— 0\.1\.0)">/,
+      `/javadoc/0.1.0/${relPath}: og:title must carry its own version label`,
+    );
+    assert.match(
+      html,
+      /<meta name="description" content="[^"]*\(0\.1\.0\)[^"]*">/,
+      `/javadoc/0.1.0/${relPath}: description must carry its own version label`,
+    );
+  }
+
+  // /latest/ — the one indexable tree, and the one the mislabelling hurt most.
+  const latest = readFileSync(join(siteDir, 'javadoc', 'latest', 'index.html'), 'utf8');
+  assert.doesNotMatch(latest, /AgentForge4j API \(next\)/, '/latest/ must never be labelled next');
+  assert.match(latest, /<title>AgentForge4j API Reference — latest stable, 0\.1\.0<\/title>/);
+
+  // /next/ genuinely IS next — it keeps its own honest label, which is not the generator's suffix.
+  const next = readFileSync(join(siteDir, 'javadoc', 'next', 'index.html'), 'utf8');
+  assert.match(next, /<title>AgentForge4j API Reference — next, in-development<\/title>/);
+  assert.doesNotMatch(next, /AgentForge4j API \(next\)/, 'even /next/ must not carry the raw generated window title');
+});
+
+test('a nested page keeps its own page-specific title text after the window-title suffix is stripped — the label is added, the identity is not lost', () => {
+  const { siteDir } = fixtureSiteDirWithNestedPages('javadoc/latest', ['0.1.0']);
+  applyJavadocSeo({
+    siteDir,
+    siteUrl: 'https://agentforge4j.org',
+    ogImage: 'https://agentforge4j.org/brand/icon-512.png',
+    releasedVersions: ['0.1.0'],
+  });
+  const classPage = readFileSync(join(siteDir, 'javadoc', 'latest', 'com', 'example', 'Foo.html'), 'utf8');
+  assert.match(classPage, /<title>Foo — AgentForge4j API Reference \(latest stable, 0\.1\.0\)<\/title>/);
+  const packageSummary = readFileSync(join(siteDir, 'javadoc', 'latest', 'com', 'example', 'package-summary.html'), 'utf8');
+  assert.match(packageSummary, /<title>com\.example — AgentForge4j API Reference \(latest stable, 0\.1\.0\)<\/title>/);
+});
+
+test('the visible overview <h1> (maven-javadoc-plugin renders the doc title there) is corrected too — the rendered heading and the metadata agree', () => {
+  const html = injectJavadocPageSeo(RAW_OVERVIEW_HTML, {
+    title: 'AgentForge4j API Reference — latest stable, 0.1.0',
+    description: 'd',
+    canonical: 'https://agentforge4j.org/javadoc/latest/',
+    ogImage: 'https://agentforge4j.org/brand/icon-512.png',
+  });
+  assert.match(html, /<h1 class="title">AgentForge4j API Reference — latest stable, 0\.1\.0<\/h1>/);
+  assert.doesNotMatch(html, /AgentForge4j API \(next\)/, 'the raw doc title must not survive anywhere on the page');
+});
+
+test('the hand-authored surfaces.html landing page\'s own <h1> is corrected on the same rule', () => {
+  const html = injectJavadocPageSeo(RAW_SURFACES_LANDING_HTML, {
+    title: 'AgentForge4j API Reference — latest stable, 0.1.0',
+    description: 'd',
+    canonical: 'https://agentforge4j.org/javadoc/latest/surfaces.html',
+    ogImage: 'https://agentforge4j.org/brand/icon-512.png',
+    allowMissingDescription: true,
+  });
+  assert.match(html, /<h1>AgentForge4j API Reference — latest stable, 0\.1\.0<\/h1>/);
+});
+
+test('a real page heading is never rewritten by the doc-title heading correction — only a heading that IS the brand doc title', () => {
+  const classPage = injectJavadocPageSeo(rawClassPageHtml(), {
+    title: 'Foo — AgentForge4j API Reference (latest stable, 0.1.0)',
+    description: 'd',
+    canonical: 'https://agentforge4j.org/javadoc/latest/com/example/Foo.html',
+    ogImage: 'https://agentforge4j.org/brand/icon-512.png',
+  });
+  assert.match(classPage, /<h1 class="title">Class Foo<\/h1>/, 'a real class heading must survive untouched');
+  const allClasses = injectJavadocPageSeo(rawAllClassesIndexHtml(), {
+    title: 'All Classes and Interfaces — AgentForge4j API Reference (latest stable, 0.1.0)',
+    description: 'd',
+    canonical: 'https://agentforge4j.org/javadoc/latest/allclasses-index.html',
+    ogImage: 'https://agentforge4j.org/brand/icon-512.png',
+  });
+  assert.match(allClasses, /<h1 class="title">All Classes and Interfaces<\/h1>/);
 });
