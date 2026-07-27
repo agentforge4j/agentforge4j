@@ -1139,9 +1139,11 @@ test('stripJavadocWindowTitle removes the generated window-title suffix from eve
   assert.equal(stripJavadocWindowTitle('All Classes and Interfaces (AgentForge4j API (next))'), 'All Classes and Interfaces');
 });
 
-test('stripJavadocWindowTitle keeps working if the pom drops the (next) suffix from the window title', () => {
+test('stripJavadocWindowTitle keeps working if the pom drops the (next) suffix, or carries a version, in the window title', () => {
   assert.equal(stripJavadocWindowTitle('Overview (AgentForge4j API)'), 'Overview');
-  assert.equal(stripJavadocWindowTitle('Foo (AgentForge4j API 1.0)'), 'Foo (AgentForge4j API 1.0)');
+  // A brand-prefixed window title carrying a version is the plugin-default shape and IS stripped —
+  // matching only the literal `AgentForge4j API` was the defect, not the intent.
+  assert.equal(stripJavadocWindowTitle('Foo (AgentForge4j API 1.0)'), 'Foo');
 });
 
 test('stripJavadocWindowTitle is conservative — a page title that legitimately ends in parentheses is never eaten', () => {
@@ -1275,4 +1277,118 @@ test('a real page heading is never rewritten by the doc-title heading correction
     ogImage: 'https://agentforge4j.org/brand/icon-512.png',
   });
   assert.match(allClasses, /<h1 class="title">All Classes and Interfaces<\/h1>/);
+});
+
+// --- generator-variant coverage -----------------------------------------------------------------
+//
+// build-javadoc.mjs stitches THREE surfaces produced by TWO different Maven configurations: the
+// aggregate (javadoc:aggregate, explicit pom <windowtitle> "AgentForge4j API (next)") and the two
+// intentionally-unnamed modules (javadoc:javadoc with NO windowtitle, so maven-javadoc-plugin's own
+// `${project.name} ${project.version} API` default applies — note the capital J in the project
+// name). Modelling only the aggregate left ~95 pages per tree carrying a stale window title.
+const MCP_WINDOW_TITLE = 'AgentForge4J MCP 0.1.0 API';
+const STARTER_WINDOW_TITLE = 'AgentForge4J Spring Boot Starter 0.1.0 API';
+
+test('stripJavadocWindowTitle handles the plugin-default window title of BOTH standalone sub-surfaces, not only the aggregate', () => {
+  assert.equal(stripJavadocWindowTitle(`Overview (${MCP_WINDOW_TITLE})`), 'Overview');
+  assert.equal(stripJavadocWindowTitle(`All Classes and Interfaces (${MCP_WINDOW_TITLE})`), 'All Classes and Interfaces');
+  assert.equal(
+    stripJavadocWindowTitle(`Uses of Class com.agentforge4j.mcp.client.McpServerConnection (${MCP_WINDOW_TITLE})`),
+    'Uses of Class com.agentforge4j.mcp.client.McpServerConnection',
+  );
+  assert.equal(stripJavadocWindowTitle(`AgentForge4jProperties (${STARTER_WINDOW_TITLE})`), 'AgentForge4jProperties');
+  assert.equal(stripJavadocWindowTitle(`All Packages (${STARTER_WINDOW_TITLE})`), 'All Packages');
+  // A future release bumps the version — the shape, not the literal string, is what is matched.
+  assert.equal(stripJavadocWindowTitle('Foo (AgentForge4J MCP 2.5.0-SNAPSHOT API)'), 'Foo');
+});
+
+test('stripJavadocWindowTitle stays conservative against the plugin-default shape too', () => {
+  assert.equal(stripJavadocWindowTitle('Foo (deprecated)'), 'Foo (deprecated)');
+  assert.equal(stripJavadocWindowTitle('SomeClass (Some Other Library 1.0 API)'), 'SomeClass (Some Other Library 1.0 API)');
+  // The sub-surface stub's title IS the bare window title — nothing page-specific to keep.
+  assert.equal(stripJavadocWindowTitle(MCP_WINDOW_TITLE), MCP_WINDOW_TITLE);
+});
+
+test('a sub-surface page generated with the plugin-default window title is fully normalised — title, og:title and description all carry the mount label and no residual window title', () => {
+  const raw = rawClassPageHtml({ title: `AgentForge4jProperties (${STARTER_WINDOW_TITLE})` });
+  // Composed the same way applyJavadocSeo's own nestedPageCopy does: strip the generated window
+  // title from the page's raw <title>, then apply the mount's lifecycle label.
+  const pageTitle = stripJavadocWindowTitle(`AgentForge4jProperties (${STARTER_WINDOW_TITLE})`);
+  const html = injectJavadocPageSeo(raw, {
+    title: `${pageTitle} — AgentForge4j API Reference (latest stable, 0.1.0)`,
+    description: `Generated Javadoc API reference for the AgentForge4j framework (latest stable, 0.1.0) — ${pageTitle}.`,
+    canonical: 'https://agentforge4j.org/javadoc/latest/spring-boot-starter/com/agentforge4j/starter/AgentForge4jProperties.html',
+    ogImage: 'https://agentforge4j.org/brand/icon-512.png',
+  });
+  assert.match(html, /<title>AgentForge4jProperties — AgentForge4j API Reference \(latest stable, 0\.1\.0\)<\/title>/);
+  assert.match(html, /<meta property="og:title" content="AgentForge4jProperties — AgentForge4j API Reference \(latest stable, 0\.1\.0\)">/);
+  assert.doesNotMatch(html, /Spring Boot Starter 0\.1\.0 API/, 'the plugin-default window title must not survive anywhere');
+});
+
+test('a sub-surface overview <h1> carrying the plugin-default doc title is corrected too', () => {
+  const rawOverview =
+    '<!DOCTYPE HTML>\n<html lang>\n<head>\n' +
+    `<title>Overview (${MCP_WINDOW_TITLE})</title>\n` +
+    '<meta name="description" content="module index">\n' +
+    '<meta name="generator" content="javadoc/ModuleIndexWriter">\n</head>\n' +
+    `<body class="module-index-page"><div class="header"><h1 class="title">${MCP_WINDOW_TITLE}</h1></div></body>\n</html>\n`;
+  const html = injectJavadocPageSeo(rawOverview, {
+    title: 'AgentForge4j API Reference — latest stable, 0.1.0',
+    description: 'd',
+    canonical: 'https://agentforge4j.org/javadoc/latest/mcp/index.html',
+    ogImage: 'https://agentforge4j.org/brand/icon-512.png',
+  });
+  assert.match(html, /<h1 class="title">AgentForge4j API Reference — latest stable, 0\.1\.0<\/h1>/);
+  assert.doesNotMatch(html, /AgentForge4J MCP 0\.1\.0 API/, 'the plugin-default doc title must not survive in the heading');
+});
+
+test('a real class heading is still never rewritten under the widened heading rule', () => {
+  for (const heading of ['Class Foo', 'Package com.example', 'Module agentforge4j.core', 'All Classes and Interfaces']) {
+    const raw = rawClassPageHtml().replace('<h1 class="title">Class Foo</h1>', `<h1 class="title">${heading}</h1>`);
+    const html = injectJavadocPageSeo(raw, {
+      title: 'T', description: 'd',
+      canonical: 'https://agentforge4j.org/javadoc/latest/com/example/Foo.html',
+      ogImage: 'x',
+    });
+    assert.match(html, new RegExp(`<h1 class="title">${heading}</h1>`), `"${heading}" must survive untouched`);
+  }
+});
+
+// --- robots-directive conflict ------------------------------------------------------------------
+
+test('addRobotsNoindexTag refuses a stub that already carries a NON-noindex robots directive, rather than leaving it indexable on a suppressed surface', () => {
+  const conflicting = RAW_REDIRECT_STUB_HTML.replace(
+    '</head>',
+    '<meta name="robots" content="index,follow">\n</head>',
+  );
+  assert.throws(() => addRobotsNoindexTag(conflicting), /conflicting robots directive \("index,follow"\)/);
+});
+
+test('addRobotsNoindexTag accepts an existing directive that already achieves noindex (idempotent), including a richer one', () => {
+  for (const directive of ['noindex,follow', 'noindex', 'noindex, nofollow', 'NOINDEX,FOLLOW']) {
+    const already = RAW_REDIRECT_STUB_HTML.replace('</head>', `<meta name="robots" content="${directive}">\n</head>`);
+    assert.equal(addRobotsNoindexTag(already), already, `"${directive}" already suppresses — must be left untouched`);
+  }
+});
+
+test('addRobotsNoindexTag fails closed on an unrecognized robots tag shape rather than adding a second one', () => {
+  const oddShape = RAW_REDIRECT_STUB_HTML.replace('</head>', "<meta content='index' name=\"robots\">\n</head>");
+  assert.throws(() => addRobotsNoindexTag(oddShape), /unrecognized robots tag shape/);
+});
+
+test('a malformed redirect stub names the file that failed, exactly like an ordinary page does', () => {
+  const { siteDir, surfaceRoot } = fixtureSiteDirWithNestedPages('javadoc/next', []);
+  // A stub recognized by its generator tag but with no </head> at all.
+  writeFileSync(
+    join(surfaceRoot, 'overview-summary.html'),
+    '<!DOCTYPE HTML>\n<html lang>\n<meta name="generator" content="javadoc/IndexRedirectWriter">\n<body></body>\n</html>\n',
+    'utf8',
+  );
+  assert.throws(
+    () => applyJavadocSeo({
+      siteDir, siteUrl: 'https://agentforge4j.org',
+      ogImage: 'https://agentforge4j.org/brand/icon-512.png', releasedVersions: [],
+    }),
+    /failed processing .*overview-summary\.html/,
+  );
 });
