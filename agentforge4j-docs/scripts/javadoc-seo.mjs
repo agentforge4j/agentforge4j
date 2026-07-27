@@ -19,27 +19,27 @@
 // produced the raw content.
 //
 // Duplicate-content policy, applied to EVERY page in a surface, not only its overview. `/latest/`'s
-// own source (see assemble-site.mjs's `latestSource`) is what every other surface's indexability is
-// derived from — never a hardcoded special case, always the same `latestMirroredVersion` value this
-// module itself computes below. Two lifecycle states:
+// own source (see assemble-site.mjs's `latestSource`) is what every VERSIONED surface's indexability
+// is derived from — never a hardcoded special case, always the same `latestMirroredVersion` value
+// this module itself computes below.
 //
-//   NO released version exists yet (`releasedVersions` is empty — `latestMirroredVersion === null`,
-//   so /latest/ mirrors /next/ byte-for-byte, per assembleSite's own fallback):
-//     - /javadoc/latest/** self-canonical, indexable — the evergreen public entry point.
-//     - /javadoc/next/**   self-canonical, `noindex,follow` — an exact duplicate of /latest/ in this
-//                          state; suppressed so there are not two indexable copies of the same
-//                          in-development content.
-//
-//   ONE OR MORE released versions exist (`latestMirroredVersion` is the newest one, the same value
-//   assembleSite's own `latestSource` picks — /latest/ now mirrors that pinned release, not /next/):
-//     - /javadoc/next/**              self-canonical, indexable — genuinely distinct in-development
-//                                      content once a stable release exists to diverge from.
-//     - /javadoc/latest/**            self-canonical, indexable — the evergreen tree meant to be found.
-//     - /javadoc/<releasedVersions[0]>/** (the version /latest/ currently mirrors) self-canonical,
-//                                      `noindex,follow` — a duplicate of /latest/'s content, same
-//                                      established pattern already used for /docs/next/.
-//     - every OLDER released-version surface: self-canonical, indexable — genuinely distinct
-//                                      historical content, never a duplicate of /latest/.
+//   - /javadoc/latest/**  self-canonical, indexable — the evergreen public entry point, in every
+//                         lifecycle state. The one Javadoc tree meant to be found in search.
+//   - /javadoc/next/**    self-canonical, `noindex,follow` — UNCONDITIONALLY, in every lifecycle
+//                         state. `next` tracks `main`, so it is a duplicate of /latest/ whenever
+//                         main has not diverged from the newest release tag — which is the normal
+//                         steady state, not an edge case (immediately after a release the two trees
+//                         are byte-identical, and stay that way until the next API change lands).
+//                         Deriving this from `latestMirroredVersion` instead — suppressing /next/
+//                         only in the pre-release state — published two byte-identical indexable
+//                         trees for as long as main matched the release tag. In-development API
+//                         docs are not a search destination in EITHER state, so this never depends
+//                         on lifecycle: same unconditional rule the docs surface already applies to
+//                         /docs/next/.
+//   - /javadoc/<releasedVersions[0]>/** (the version /latest/ currently mirrors) self-canonical,
+//                         `noindex,follow` — a duplicate of /latest/'s content.
+//   - every OLDER released-version surface: self-canonical, indexable — genuinely distinct
+//                         historical content, never a duplicate of /latest/.
 //     Once a newer version ships, `releasedVersions[0]` changes and the OLD newest version (now
 //     genuinely distinct historical content, no longer a duplicate) automatically becomes indexable
 //     again on the very next deploy — no manual re-tagging, no hardcoded version string.
@@ -66,9 +66,17 @@ const SURFACES_LANDING_FILENAME = 'surfaces.html';
 // IndexRedirectWriter at each javadoc root — including one per stitched sub-surface (e.g. `mcp/`,
 // `spring-boot-starter/`). Its plugin-authored canonical (`href="index.html"`) already points at
 // the real overview page, which is exactly the right signal for a pure redirect shell, so these
-// pages are recognized by this generator meta tag and skipped whole: left byte-identical, never
-// run through `injectJavadocPageSeo` (whose already-processed guard would otherwise refuse them —
-// they are the reason that guard cannot be applied sight-unseen to every raw page).
+// pages are never run through `injectJavadocPageSeo` (whose already-processed guard would
+// otherwise refuse them — they are the reason that guard cannot be applied sight-unseen to every
+// raw page): their canonical, title, refresh and body are all left exactly as the plugin wrote
+// them.
+//
+// They are NOT, however, exempt from the surface's indexability policy. Skipping them whole left a
+// hole in it: on a `noindex` surface every real page carried the robots tag while the stub sitting
+// at that surface's own root did not, leaving a thin, indexable "index redirect" page inside a tree
+// that is meant to be suppressed in full. `addRobotsNoindexTag` below therefore adds the robots tag
+// — and ONLY the robots tag — to a stub on a noindex surface, so indexability cannot be escaped
+// through a redirect shell while its redirect/canonical behaviour stays byte-for-byte intact.
 const REDIRECT_STUB_GENERATOR_TAG = '<meta name="generator" content="javadoc/IndexRedirectWriter">';
 
 /** Whether `html` is maven-javadoc-plugin's own legacy-URL redirect stub (see
@@ -77,6 +85,111 @@ const REDIRECT_STUB_GENERATOR_TAG = '<meta name="generator" content="javadoc/Ind
  * real stub shape. */
 export function isJavadocRedirectStub(html) {
   return html.includes(REDIRECT_STUB_GENERATOR_TAG);
+}
+
+const ROBOTS_NOINDEX_TAG = '<meta name="robots" content="noindex,follow">';
+
+/**
+ * Adds the `noindex,follow` robots tag to `html` and changes NOTHING else — the minimal edit that
+ * brings a page under its surface's indexability policy without touching its canonical, title,
+ * refresh or body. Used only for the redirect stubs `applyJavadocSeo` otherwise skips whole (see
+ * `REDIRECT_STUB_GENERATOR_TAG`), which must keep their plugin-authored redirect behaviour exactly
+ * as generated.
+ *
+ * Idempotent by refusal, matching this module's fail-closed style elsewhere: a page that already
+ * carries a robots tag that ALREADY achieves noindex is returned untouched rather than gaining a
+ * second, so a double pass can never emit contradictory directives.
+ *
+ * An existing robots tag that does NOT say `noindex` is a hard error, never a silent pass. Treating
+ * "some robots tag is present" as "already suppressed" would let a directive such as
+ * `index,follow` survive on a surface the caller has decided must be suppressed — exactly the
+ * indexability hole this function exists to close, reintroduced through the guard meant to make it
+ * safe to re-run.
+ *
+ * @param {string} html
+ * @returns {string}
+ */
+export function addRobotsNoindexTag(html) {
+  if (!/<\/head>/.test(html)) {
+    throw new Error('javadoc-seo: expected a </head> closing tag on a redirect stub');
+  }
+  const existing = /<meta name="robots" content="([^"]*)">/.exec(html);
+  if (existing) {
+    if (/\bnoindex\b/i.test(existing[1])) {
+      return html;
+    }
+    throw new Error(
+      `javadoc-seo: refusing to leave a redirect stub indexable on a suppressed surface — it already ` +
+        `carries a conflicting robots directive ("${existing[1]}") that does not say noindex`,
+    );
+  }
+  // A robots tag in some other shape (attribute order, quoting) is not something this function can
+  // safely reason about — fail loudly rather than adding a second, possibly contradictory tag.
+  if (/<meta[^>]+name="robots"/i.test(html)) {
+    throw new Error('javadoc-seo: a redirect stub carries an unrecognized robots tag shape — template drift?');
+  }
+  return html.replace(/<\/head>/, () => `${ROBOTS_NOINDEX_TAG}\n</head>`);
+}
+
+// Every page maven-javadoc-plugin generates ends its `<title>` with the configured `-windowtitle`
+// in parentheses — `Overview (AgentForge4j API (next))`, `agentforge4j.core (AgentForge4j API
+// (next))`, and so on for every class/package/index/tree/help page. That window title is a single
+// fixed string baked in at GENERATION time (the `<windowtitle>`/`<doctitle>` in
+// agentforge4j-docs-javadoc/pom.xml), so it says `next` on every page of every surface — including
+// /latest/ and the version-pinned trees, which are copies of a surface built from a release tag by
+// that tag's own build (see build-javadoc-versions.mjs). The generator cannot know which lifecycle
+// mount its output will be published at, so the correction belongs here, in the one pass that does:
+// the raw suffix is stripped and the page's real, lifecycle-correct label is applied instead.
+//
+// A surface's window title is NOT one fixed string across the published corpus — the three
+// surfaces `build-javadoc.mjs` stitches together are generated by two different Maven
+// configurations, so both of these shapes ship on a normal publication path:
+//
+//   aggregate (javadoc:aggregate, explicit pom <windowtitle>):
+//     `Overview (AgentForge4j API (next))`
+//   the two intentionally-unnamed modules (javadoc:javadoc, NO explicit windowtitle, so
+//   maven-javadoc-plugin's own `${project.name} ${project.version} API` default applies):
+//     `All Classes and Interfaces (AgentForge4J MCP 0.1.0 API)`
+//     `AgentForge4jProperties (AgentForge4J Spring Boot Starter 0.1.0 API)`
+//
+// Note the capital `J` in the project-name form — matching only the aggregate's literal
+// `AgentForge4j API` silently left ~95 pages per tree (mcp + spring-boot-starter) carrying a stale
+// window title into their title, description and og:title, and left the sub-surface overview
+// headings uncorrected.
+//
+// Still anchored on the brand, case-insensitively on the `j`/`J`, rather than on "a trailing
+// parenthesised group" in general: a page whose own title legitimately ends in parentheses
+// (`Foo (deprecated)`) must never have that silently eaten. The optional inner group absorbs the
+// aggregate's nested `(next)`; the flat form covers the plugin default, including any future
+// version string.
+const WINDOW_TITLE_SUFFIX_PATTERN = /^(.*?)\s*\(\s*AgentForge4[jJ]\b[^()]*(?:\([^()]*\)[^()]*)?\)$/;
+
+// The same generated doc title rendered as a visible heading. Matched only when the `<h1>`'s text
+// STARTS with the brand and mentions `API` — the shape both generators produce for a surface
+// overview (`AgentForge4j API (next)`, `AgentForge4J MCP 0.1.0 API`). A real page heading
+// ("Class Foo", "Package com.example", "Module agentforge4j.core") starts with its own kind word
+// and can never match, so it is never rewritten.
+const DOC_TITLE_HEADING_PATTERN = /(<h1[^>]*>)\s*AgentForge4[jJ]\b[^<]*\bAPI\b[^<]*(<\/h1>)/;
+
+/**
+ * A raw Javadoc `<title>` with maven-javadoc-plugin's generated window-title suffix removed —
+ * `Overview (AgentForge4j API (next))` -> `Overview`. Returned unchanged when the suffix is absent
+ * (a hand-authored page, or a future window title that no longer matches), never guessed at.
+ * Exported so the stripping rule is directly testable against real generated titles.
+ *
+ * @param {string} rawTitle
+ * @returns {string}
+ */
+export function stripJavadocWindowTitle(rawTitle) {
+  const match = WINDOW_TITLE_SUFFIX_PATTERN.exec(rawTitle);
+  if (!match) {
+    return rawTitle;
+  }
+  const bare = match[1].trim();
+  // A page whose entire title IS the window title (the redirect stub's `AgentForge4j API (next)`)
+  // has no page-specific part to keep — leave it to the caller's own no-title fallback rather than
+  // returning an empty string.
+  return bare.length > 0 ? bare : rawTitle;
 }
 
 // The known maven-javadoc-plugin bug shape: a bare `lang` attribute with no `=` at all (invalid
@@ -96,6 +209,13 @@ const TITLE_TAG_PATTERN = /<title>([^<]*)<\/title>/;
 // must pass through this — there is no second, ad hoc escaping path.
 function escapeHtmlAttribute(value) {
   return value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+// Element-text escaping for the one value written between tags rather than into an attribute (the
+// rewritten `<title>`): `"` needs no escaping in text content and must stay a real quote character,
+// so this is deliberately not `escapeHtmlAttribute`.
+function escapeHtmlText(value) {
+  return value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
 /**
@@ -170,6 +290,33 @@ export function injectJavadocPageSeo(
   if (hasDescriptionTag) {
     result = result.replace(DESCRIPTION_TAG_PATTERN, () => `<meta name="description" content="${safeDescription}">`);
   }
+
+  // The `<title>` is rewritten to the SAME lifecycle-correct text used for og:title/twitter:title,
+  // never left as maven-javadoc-plugin generated it. The raw title ends in the generation-time
+  // window title (`... (AgentForge4j API (next))`), which is fixed at generation and therefore says
+  // `next` even on /latest/ and the version-pinned trees — see `WINDOW_TITLE_SUFFIX_PATTERN`. It is
+  // the strongest on-page signal there is, so leaving it untouched published the whole stable API
+  // reference under an in-development label. Fails closed on a page with no `<title>` at all, in
+  // keeping with this function's other template-drift checks — every page kind in a real corpus,
+  // plugin-generated or hand-authored, has one.
+  if (!TITLE_TAG_PATTERN.test(result)) {
+    throw new Error('javadoc-seo: expected a <title> tag — template drift?');
+  }
+  result = result.replace(TITLE_TAG_PATTERN, () => `<title>${escapeHtmlText(title)}</title>`);
+
+  // The same generation-time doc title is ALSO rendered as the visible `<h1>` on a surface's
+  // overview page (maven-javadoc-plugin's `<h1 class="title">`) and on build-javadoc.mjs's own
+  // hand-authored surfaces.html landing page — so /latest/ and every version-pinned tree displayed
+  // "AgentForge4j API (next)" as their on-page heading, not only in the `<head>`. Corrected to the
+  // same lifecycle-correct text, so the rendered page and its metadata agree.
+  //
+  // Deliberately narrow: matches ONLY an `<h1>` whose entire text IS the brand doc title. A heading
+  // with real page-specific content ("Module agentforge4j.core", "All Classes and Interfaces") can
+  // never match and is never touched.
+  result = result.replace(
+    DOC_TITLE_HEADING_PATTERN,
+    (_match, open, close) => `${open}${escapeHtmlText(title)}${close}`,
+  );
 
   // Function replacers throughout (never a plain-string second argument to String.replace): a
   // value containing a literal `$&`/`` $` ``/`$'` sequence would otherwise be interpreted as a
@@ -310,7 +457,10 @@ function surfaceCopy(label) {
  * surface label alone only in the (unexpected) case a page carries no `<title>` at all. */
 function nestedPageCopy(html, label) {
   const match = TITLE_TAG_PATTERN.exec(html);
-  const pageTitle = match ? decodeHtmlEntities(match[1].trim()) : null;
+  // Stripped BEFORE the label is applied: the raw title carries the generation-time window title
+  // (`... (AgentForge4j API (next))`), which would otherwise be propagated verbatim into this
+  // page's title, description AND og:title — labelling a /latest/ or version-pinned page `next`.
+  const pageTitle = match ? stripJavadocWindowTitle(decodeHtmlEntities(match[1].trim())) : null;
   if (!pageTitle) {
     return surfaceCopy(label);
   }
@@ -338,10 +488,15 @@ function canonicalFor(siteUrl, mountPath, surfaceRoot, htmlFilePath) {
  * Applies `injectJavadocPageSeo` to every generated `.html` page in the composed artifact's
  * javadoc surfaces: `javadoc/next/`, `javadoc/latest/`, and one per entry in `releasedVersions` —
  * the surface's own overview page and every nested class/package/index/tree/help page beneath it,
- * all under the one indexability policy that surface has (see this module's header comment). The
- * one exception: the plugin's own legacy-URL redirect stubs (see `isJavadocRedirectStub`) are
- * skipped whole — left byte-identical with their plugin-authored `href="index.html"` canonical
- * intact, and never counted in the returned total.
+ * all under the one indexability policy that surface has (see this module's header comment).
+ *
+ * The plugin's own legacy-URL redirect stubs (see `isJavadocRedirectStub`) are the one exception:
+ * they are never run through `injectJavadocPageSeo`, so their plugin-authored `href="index.html"`
+ * canonical, title, meta refresh and body are left exactly as generated, and they are never counted
+ * in the returned total. They are NOT exempt from the surface's indexability policy though — on a
+ * `noindex` surface a stub receives the robots tag, and only the robots tag (`addRobotsNoindexTag`),
+ * so the policy cannot be escaped through a redirect shell. On an indexable surface a stub is left
+ * byte-identical.
  *
  * @param {{siteDir: string, siteUrl: string, ogImage: string, releasedVersions: string[]}} options
  * @returns {number} the number of pages updated, across every surface
@@ -353,11 +508,11 @@ export function applyJavadocSeo({ siteDir, siteUrl, ogImage, releasedVersions })
     {
       mountPath: 'javadoc/next',
       label: 'next, in-development',
-      // /next/ mirrors /latest/ byte-for-byte only in the no-release state (assembleSite's own
-      // fallback: releasedVersions.length === 0 => latestSource is javadocDir, the same tree /next/
-      // itself is) — derived from the same latestMirroredVersion value every other surface's
-      // indexability comes from, never a standalone special case.
-      noindex: latestMirroredVersion === null,
+      // Unconditional, in every lifecycle state — NOT derived from latestMirroredVersion. /next/
+      // tracks main and is byte-identical to /latest/ for as long as main has not diverged from the
+      // newest release tag, which is the steady state rather than an edge case. See this module's
+      // header comment.
+      noindex: true,
     },
     {
       mountPath: 'javadoc/latest',
@@ -386,7 +541,23 @@ export function applyJavadocSeo({ siteDir, siteUrl, ogImage, releasedVersions })
       const html = readFileSync(pageInput, 'utf8');
       if (isJavadocRedirectStub(html)) {
         // A pure redirect shell whose plugin-authored canonical already points at the real overview
-        // page — skipped whole, never rewritten (see `isJavadocRedirectStub`).
+        // page — never rewritten (see `isJavadocRedirectStub`). On a noindex surface it still gets
+        // the robots tag, and nothing else, so the surface's indexability policy has no hole at the
+        // one page kind this pass otherwise leaves alone. Deliberately not counted in `updated`,
+        // which reports fully SEO-processed pages.
+        if (surface.noindex) {
+          // Same failure contract as the ordinary-page path below: a malformed stub must name the
+          // file that failed, or a corpus-wide build failure gives no way to find the one page.
+          let stubHtml;
+          try {
+            stubHtml = addRobotsNoindexTag(html);
+          } catch (error) {
+            throw new Error(`javadoc-seo: failed processing ${pageInput}: ${error.message}`);
+          }
+          if (stubHtml !== html) {
+            writeFileSync(pageInput, stubHtml, 'utf8');
+          }
+        }
         continue;
       }
       const canonical = canonicalFor(siteUrl, surface.mountPath, surfaceRoot, pageInput);

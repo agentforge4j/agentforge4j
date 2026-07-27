@@ -120,10 +120,19 @@ test('a real Javadoc build\'s own overview-summary.html redirect stub (which nat
     '<body class="index-redirect-page"><p><a href="index.html">index.html</a></p></body>\n</html>\n';
   writeFileSync(join(javadocDir, 'overview-summary.html'), redirectStub);
   assembleSite({spaDir, buildDir, javadocDir, archiveDir, siteDir, customDomain: null});
-  for (const mount of ['next', 'latest']) {
-    const composedStub = readFileSync(join(siteDir, 'javadoc', mount, 'overview-summary.html'), 'utf8');
-    assert.equal(composedStub, redirectStub, `/${mount}/ stub must be composed byte-identical, never SEO-rewritten`);
-  }
+  // /latest/ is indexable, so its stub is composed byte-identical. /next/ is noindex, so its stub
+  // gains the robots tag and NOTHING else — the surface's indexability policy must not be escapable
+  // through a redirect shell, while the redirect itself stays exactly as the plugin wrote it.
+  const latestStub = readFileSync(join(siteDir, 'javadoc', 'latest', 'overview-summary.html'), 'utf8');
+  assert.equal(latestStub, redirectStub, '/latest/ stub must be composed byte-identical, never SEO-rewritten');
+
+  const nextStub = readFileSync(join(siteDir, 'javadoc', 'next', 'overview-summary.html'), 'utf8');
+  assert.equal(
+    nextStub,
+    redirectStub.replace('</head>', '<meta name="robots" content="noindex,follow">\n</head>'),
+    '/next/ stub must gain exactly the robots tag, with its plugin canonical and body untouched',
+  );
+  assert.match(nextStub, /<link rel="canonical" href="index\.html">/);
   // The real overview page next to the stub is still processed normally.
   const overview = readFileSync(join(siteDir, 'javadoc', 'next', 'index.html'), 'utf8');
   assert.match(overview, /<link rel="canonical" href="https:\/\/agentforge4j\.org\/javadoc\/next\/">/);
