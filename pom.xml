@@ -70,7 +70,7 @@
     <jqwik.version>1.10.1</jqwik.version>
     <jacoco-maven-plugin.version>0.8.15</jacoco-maven-plugin.version>
     <sonar-maven-plugin.version>5.7.0.6970</sonar-maven-plugin.version>
-    <license-maven-plugin.version>5.0.0</license-maven-plugin.version>
+    <license-maven-plugin.version>5.1.1</license-maven-plugin.version>
     <!-- SonarQube Cloud coordinates (public OSS project). Plain build properties, NOT secrets;
          the analysis token is supplied separately via the SONAR_TOKEN env/secret in CI. -->
     <sonar.organization>agentforge4j</sonar.organization>
