@@ -20,6 +20,9 @@ import java.time.Instant;
  * @param reason           approval reason from the policy decision, or {@code null}
  * @param approverScope    required approver scope (persisted as data, not enforced in OSS), or
  *                         {@code null}
+ * @param origin           non-null discriminator for why the invocation is pending; governs which
+ *                         {@link ApprovalDecision} / {@code ToolDecision} may resolve it (see
+ *                         {@link Origin})
  * @param createdAt        non-null creation time
  */
 public record PendingToolInvocation(
@@ -33,16 +36,48 @@ public record PendingToolInvocation(
     String llmRationale,
     String reason,
     String approverScope,
+    Origin origin,
     Instant createdAt) {
 
   /**
-   * Validates the identity, capability, and timestamp.
+   * Validates the identity, capability, origin, and timestamp.
    */
   public PendingToolInvocation {
     Validate.notBlank(toolInvocationId, "PendingToolInvocation toolInvocationId must not be blank");
     Validate.notBlank(runId, "PendingToolInvocation runId must not be blank");
     Validate.notBlank(capability, "PendingToolInvocation capability must not be blank");
+    Validate.notNull(origin, "PendingToolInvocation origin must not be null");
     Validate.notNull(createdAt, "PendingToolInvocation createdAt must not be null");
+  }
+
+  /**
+   * Discriminates why an invocation is suspended pending an operator decision, so a resume attempt
+   * can be checked against the reason it suspended in the first place.
+   *
+   * <p>A {@link #POLICY_DENIED} row is terminal for that invocation: only a non-executing decision
+   * ({@link ApprovalDecision.Reject}, or the runtime's {@code ToolDecision.Continue}, which never
+   * calls {@link ToolExecutionService#resume}) may resolve it. {@link ApprovalDecision.Approve} —
+   * whether via the runtime's {@code ToolDecision.Retry} or a direct SPI call — must never execute a
+   * denied invocation; {@link ToolExecutionService#resume} rejects that transition without invoking
+   * the provider.
+   */
+  public enum Origin {
+    /**
+     * The invocation was refused by {@link ToolPolicy} ({@link PolicyDecision.Deny}). Terminal: not
+     * retryable/approvable.
+     */
+    POLICY_DENIED,
+    /**
+     * The invocation failed during resolve, validate, or invoke (after the service's own retries).
+     * Retryable: a fresh attempt genuinely re-runs the call.
+     */
+    EXECUTION_FAILED,
+    /**
+     * The invocation requires human approval ({@link PolicyDecision.RequireApproval}) before its
+     * first attempt. Approvable: an {@link ApprovalDecision.Approve} performs the original,
+     * not-yet-attempted call.
+     */
+    APPROVAL_REQUIRED
   }
 
   /**
@@ -78,6 +113,7 @@ public record PendingToolInvocation(
         command.llmRationale(),
         approval.reason(),
         approval.approverScope(),
+        Origin.APPROVAL_REQUIRED,
         createdAt);
   }
 
@@ -90,6 +126,8 @@ public record PendingToolInvocation(
    * @param context       non-null invocation context (supplies run, step, agent, workflow scope)
    * @param argumentsJson tool arguments serialized to JSON text, or {@code null}
    * @param reason        human-readable denial or failure detail, or {@code null}
+   * @param origin        non-null origin; must be {@link Origin#POLICY_DENIED} or
+   *                      {@link Origin#EXECUTION_FAILED}
    * @param createdAt     non-null creation time
    *
    * @return the assembled pending invocation
@@ -99,9 +137,14 @@ public record PendingToolInvocation(
       final ToolInvocationContext context,
       final String argumentsJson,
       final String reason,
+      final Origin origin,
       final Instant createdAt) {
     Validate.notNull(command, "PendingToolInvocation command must not be null");
     Validate.notNull(context, "PendingToolInvocation context must not be null");
+    Validate.notNull(origin, "PendingToolInvocation origin must not be null");
+    Validate.isTrue(origin == Origin.POLICY_DENIED || origin == Origin.EXECUTION_FAILED,
+        "PendingToolInvocation.forDecision origin must be POLICY_DENIED or EXECUTION_FAILED, was %s"
+            .formatted(origin));
     return new PendingToolInvocation(
         command.toolInvocationId(),
         context.runId(),
@@ -113,6 +156,7 @@ public record PendingToolInvocation(
         command.llmRationale(),
         reason,
         null,
+        origin,
         createdAt);
   }
 }

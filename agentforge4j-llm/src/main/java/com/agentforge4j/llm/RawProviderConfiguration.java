@@ -3,14 +3,10 @@ package com.agentforge4j.llm;
 
 import com.agentforge4j.util.Validate;
 import java.time.Duration;
-import java.time.format.DateTimeParseException;
 import java.util.LinkedHashMap;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 /**
  * Immutable neutral view over a provider's {@code agentforge4j.llm.<providerId>.*} configuration subtree, handed to a
@@ -32,11 +28,6 @@ import java.util.regex.Pattern;
  * on explicit keys (an {@code api-key}, an {@code enabled} flag) rather than on {@link #isEmpty()}.
  */
 public final class RawProviderConfiguration {
-
-  // Compact duration shorthand: an amount plus an optional unit suffix (ns/us/ms/s/m/h/d),
-  // defaulting to milliseconds — for example "15s", "2m", "500ms". Accepted alongside ISO-8601 so a
-  // duration value can be written in either form.
-  private static final Pattern COMPACT_DURATION = Pattern.compile("^([+-]?\\d+)\\s*([a-zA-Z]{0,2})$");
 
   private final String providerId;
   private final RawConfigurationSource source;
@@ -116,14 +107,12 @@ public final class RawProviderConfiguration {
    * @throws LlmProviderConfigurationException if present but not a valid integer
    */
   public Optional<Integer> getInt(String key) {
-    return nonBlank(key).map(value -> {
-      try {
-        return Integer.valueOf(value.trim());
-      } catch (NumberFormatException e) {
-        throw new LlmProviderConfigurationException(
-            "Provider '%s' property '%s' must be an integer".formatted(providerId, fullKey(key)));
-      }
-    });
+    return nonBlank(key).map(value -> TypedValueParser.parseInt(value.trim(), cause -> intError(key)));
+  }
+
+  private LlmProviderConfigurationException intError(String key) {
+    return new LlmProviderConfigurationException(
+        "Provider '%s' property '%s' must be an integer".formatted(providerId, fullKey(key)));
   }
 
   /**
@@ -134,14 +123,12 @@ public final class RawProviderConfiguration {
    * @throws LlmProviderConfigurationException if present but not a valid decimal number
    */
   public Optional<Double> getDouble(String key) {
-    return nonBlank(key).map(value -> {
-      try {
-        return Double.valueOf(value.trim());
-      } catch (NumberFormatException e) {
-        throw new LlmProviderConfigurationException(
-            "Provider '%s' property '%s' must be a decimal number".formatted(providerId, fullKey(key)));
-      }
-    });
+    return nonBlank(key).map(value -> TypedValueParser.parseDecimal(value.trim(), cause -> decimalError(key)));
+  }
+
+  private LlmProviderConfigurationException decimalError(String key) {
+    return new LlmProviderConfigurationException(
+        "Provider '%s' property '%s' must be a decimal number".formatted(providerId, fullKey(key)));
   }
 
   /**
@@ -156,39 +143,7 @@ public final class RawProviderConfiguration {
    * @throws LlmProviderConfigurationException if present but not a valid ISO-8601 or shorthand duration
    */
   public Optional<Duration> getDuration(String key) {
-    return nonBlank(key).map(value -> parseDuration(key, value.trim()));
-  }
-
-  private Duration parseDuration(String key, String value) {
-    String lower = value.toLowerCase(Locale.ROOT);
-    if (lower.startsWith("p") || lower.startsWith("+p") || lower.startsWith("-p")) {
-      try {
-        return Duration.parse(value);
-      } catch (DateTimeParseException e) {
-        throw durationError(key);
-      }
-    }
-    Matcher matcher = COMPACT_DURATION.matcher(value);
-    if (!matcher.matches()) {
-      throw durationError(key);
-    }
-    try {
-      long amount = Long.parseLong(matcher.group(1));
-      return switch (matcher.group(2).toLowerCase(Locale.ROOT)) {
-        case "", "ms" -> Duration.ofMillis(amount);
-        case "ns" -> Duration.ofNanos(amount);
-        case "us" -> Duration.ofNanos(Math.multiplyExact(amount, 1_000L));
-        case "s" -> Duration.ofSeconds(amount);
-        case "m" -> Duration.ofMinutes(amount);
-        case "h" -> Duration.ofHours(amount);
-        case "d" -> Duration.ofDays(amount);
-        default -> throw durationError(key);
-      };
-    } catch (ArithmeticException | NumberFormatException e) {
-      // An out-of-range amount (overflow on parse or on the microsecond multiply) is a malformed
-      // duration; surface it as the domain exception, which never echoes the offending value.
-      throw durationError(key);
-    }
+    return nonBlank(key).map(value -> TypedValueParser.parseDuration(value.trim(), cause -> durationError(key)));
   }
 
   private LlmProviderConfigurationException durationError(String key) {
@@ -205,17 +160,12 @@ public final class RawProviderConfiguration {
    * @throws LlmProviderConfigurationException if present but not a strict boolean
    */
   public Optional<Boolean> getBoolean(String key) {
-    return nonBlank(key).map(value -> {
-      String trimmed = value.trim();
-      if (trimmed.equalsIgnoreCase("true")) {
-        return Boolean.TRUE;
-      }
-      if (trimmed.equalsIgnoreCase("false")) {
-        return Boolean.FALSE;
-      }
-      throw new LlmProviderConfigurationException(
-          "Provider '%s' property '%s' must be true or false".formatted(providerId, fullKey(key)));
-    });
+    return nonBlank(key).map(value -> TypedValueParser.parseBool(value.trim(), cause -> booleanError(key)));
+  }
+
+  private LlmProviderConfigurationException booleanError(String key) {
+    return new LlmProviderConfigurationException(
+        "Provider '%s' property '%s' must be true or false".formatted(providerId, fullKey(key)));
   }
 
   /**

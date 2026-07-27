@@ -15,12 +15,18 @@
         "loopCount": "1",
         "agentDrivenLoopCount": "1",
         "humanGateCount": "0",
-        "maxNestingDepth": "1"
+        "maxNestingDepth": "1",
+        "minAgentTurns": "2",
+        "expectedAgentTurns": "1000000",
+        "maxAgentTurns": "1000000",
+        "iterationCeiling": "1000000",
+        "riskFlags": "AGENT_DRIVEN_LOOP,HIGH_ITERATION_CEILING"
       }
     }
   ],
   "expect": {
     "status": "FAILED",
+    "failedBecause": "No finite execution ceiling could be derived for the analyzed work",
     "visitedSteps": ["collect-analysis", "route-on-ceiling", "no-ceiling"],
     "notVisitedSteps": ["estimate"],
     "emittedEvents": ["RUN_FAILED"],

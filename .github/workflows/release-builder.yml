@@ -14,15 +14,19 @@ name: Release builder
 #                      this phase): fails if this package's own source carries a monetization/
 #                      billing term or a router/HTTP-client import, or if `npm pack` would ship a
 #                      file outside the dist/-only allowlist. No secrets, no approval.
-#   release-publish  — `npm publish --provenance` from the `npm-publish` GitHub environment.
+#   release-publish  — `npm publish` via OIDC trusted publishing from the `npm-publish` GitHub
+#                      environment; npm attaches provenance automatically once the repository is
+#                      public, no `--provenance` flag needed.
 #                      Stable tags publish to dist-tag `latest` (and verify the registry's
 #                      `latest` pointer actually moved to this version); RC tags publish to `next`.
 #   release-announce — creates the GitHub Release from the tag: title = tag, body = the committed
 #                      release-note source published verbatim. RC tags get the pre-release flag.
 #
 # Expected configuration (owner-managed): environment `npm-publish` with a required reviewer,
-# holding the secret NPM_TOKEN (an npm automation token with publish rights on
-# @agentforge4j/workflow-builder-react).
+# and a Trusted Publisher configured on npmjs.com for @agentforge4j/workflow-builder-react
+# (GitHub org agentforge4j, this repo, this workflow filename, environment npm-publish). No
+# NPM_TOKEN/NODE_AUTH_TOKEN secret is used — the release-publish job authenticates to npm via
+# OIDC using its id-token: write permission.
 
 on:
   push:
@@ -189,7 +193,7 @@ jobs:
     runs-on: ubuntu-latest
     environment: npm-publish
     permissions:
-      # npm provenance needs the OIDC id-token to attest this build to this exact workflow run.
+      # OIDC trusted publishing needs the id-token to attest this build to this exact workflow run.
       contents: read
       id-token: write
     steps:
@@ -201,6 +205,21 @@ jobs:
         with:
           node-version-file: '.nvmrc'
           registry-url: 'https://registry.npmjs.org'
+
+      - name: Ensure npm supports OIDC trusted publishing (>=11.5.1)
+        # actions/setup-node only guarantees the npm version bundled with the resolved Node
+        # build; trusted publishing needs npm >=11.5.1 and older npm silently skips OIDC instead
+        # of failing loudly, so an exact known-good version is pinned instead of floating on
+        # npm@latest.
+        env:
+          PINNED_NPM_VERSION: 11.9.0
+        run: |
+          npm install -g "npm@${PINNED_NPM_VERSION}"
+          INSTALLED_VERSION="$(npm --version)"
+          if [ "$INSTALLED_VERSION" != "$PINNED_NPM_VERSION" ]; then
+            echo "Installed npm version (${INSTALLED_VERSION}) does not match the pinned version (${PINNED_NPM_VERSION})." >&2
+            exit 1
+          fi
 
       - name: Install and build
         working-directory: agentforge4j-workflow-builder
@@ -216,10 +235,8 @@ jobs:
           else
             NPM_TAG=latest
           fi
-          npm publish --provenance --access public --tag "$NPM_TAG"
+          npm publish --access public --tag "$NPM_TAG"
           echo "NPM_TAG=$NPM_TAG" >> "$GITHUB_ENV"
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Verify the stable dist-tag moved
         if: ${{ env.NPM_TAG == 'latest' }}

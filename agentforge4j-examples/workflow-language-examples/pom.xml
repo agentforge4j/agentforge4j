@@ -17,7 +17,7 @@
   <description>Examples that demonstrate the declarative AgentForge4j workflow language — control flow
     and structure expressed in workflow definitions rather than in Java: branching, resources,
     human-in-the-loop gates, retry, loops, and SPAR. Each leaf is deterministic and offline, driven
-    by the shipped fake LLM provider. Leaf modules are added per example in later batches.</description>
+    by the shipped fake LLM provider.</description>
 
   <licenses>
     <license>

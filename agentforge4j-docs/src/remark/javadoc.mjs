@@ -28,7 +28,6 @@ export const AGGREGATE_MODULES = [
   'agentforge4j.util',
   'agentforge4j.llm.api',
   'agentforge4j.llm',
-  'agentforge4j.llm.gemini',
   'agentforge4j.llm.fake',
   'agentforge4j.core',
   'agentforge4j.tools.http',
@@ -36,6 +35,7 @@ export const AGGREGATE_MODULES = [
   'agentforge4j.config.loader',
   'agentforge4j.runtime',
   'agentforge4j.bootstrap',
+  'agentforge4j.testkit',
 ];
 const FLAT_SURFACES = [
   {packagePrefix: 'agentforge4j.mcp', surface: 'mcp'},

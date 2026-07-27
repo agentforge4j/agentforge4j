@@ -33,11 +33,11 @@ class OpenAiNeutralCreateTest {
   }
 
   @Test
-  void defaultsRequestTimeoutToThirtySecondsWhenAbsent() {
+  void defaultsRequestTimeoutToTwoMinutesWhenAbsent() {
     OpenAiNeutralConfiguration config = OpenAiNeutralConfiguration.fromNeutral(
         neutralWithoutRequestTimeout(), new LlmSecret("sk-test"));
 
-    assertThat(config.getRequestTimeout()).isEqualTo(Duration.ofSeconds(30));
+    assertThat(config.getRequestTimeout()).isEqualTo(OpenAiDefaults.REQUEST_TIMEOUT);
   }
 
   @Test

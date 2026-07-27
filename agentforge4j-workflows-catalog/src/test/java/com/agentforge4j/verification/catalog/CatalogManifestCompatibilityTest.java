@@ -22,9 +22,9 @@ import org.junit.jupiter.api.io.TempDir;
  *
  * <p>The accept cases run the gate against this module's <em>real</em> {@code agentforge4j-catalog.json}
  * — proving the genuine shipped catalog loads under the running framework — including the A1 case
- * (a {@code 0.0.1-SNAPSHOT} framework satisfies the catalog's {@code 0.0.1} minimum). The reject
- * cases drive catalog-shaped content with a deliberately incompatible manifest. (The gate mechanism
- * itself is also unit-tested in {@code agentforge4j-config-loader}.)
+ * (a {@code 0.1.0-SNAPSHOT} framework satisfies the catalog's {@code 0.1.0} minimum, numerically).
+ * The reject cases drive catalog-shaped content with a deliberately incompatible manifest. (The
+ * gate mechanism itself is also unit-tested in {@code agentforge4j-config-loader}.)
  */
 class CatalogManifestCompatibilityTest {
 
@@ -40,16 +40,17 @@ class CatalogManifestCompatibilityTest {
 
   @Test
   void snapshotFrameworkAcceptsRealCatalogMinimum() {
-    // A1: running 0.0.1-SNAPSHOT accepts the real catalog's minimumAgentForge4jVersion = 0.0.1.
+    // A1: running 0.1.0-SNAPSHOT accepts the real catalog's minimumAgentForge4jVersion = 0.1.0
+    // (NumericVersion comparison ignores the pre-release suffix).
     assertThatCode(() -> new CatalogCompatibilityGate(
-        CATALOG_LOADER, "0.0.1-SNAPSHOT", SUPPORTED_WORKFLOW_SCHEMA_VERSION, MAPPER).enforce())
+        CATALOG_LOADER, "0.1.0-SNAPSHOT", SUPPORTED_WORKFLOW_SCHEMA_VERSION, MAPPER).enforce())
         .doesNotThrowAnyException();
   }
 
   @Test
   void manifestAbsentWhileContentPresentIsRejected(@TempDir Path root) throws IOException {
     writeIndex(root);
-    assertThatThrownBy(() -> gate(root, "0.0.1-SNAPSHOT").enforce())
+    assertThatThrownBy(() -> gate(root, "0.1.0-SNAPSHOT").enforce())
         .isInstanceOf(CatalogCompatibilityException.class)
         .hasMessageContaining("manifest");
   }

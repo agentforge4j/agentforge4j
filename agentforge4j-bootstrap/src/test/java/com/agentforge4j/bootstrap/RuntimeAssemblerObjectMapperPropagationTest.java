@@ -86,6 +86,7 @@ class RuntimeAssemblerObjectMapperPropagationTest {
         RunExecutionInterceptor.NO_OP,
         spyMapper,
         List.of(),
+        List.of(),
         ContextPackRegistry.EMPTY);
 
     String runId = runtime.start("wf1");

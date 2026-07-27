@@ -12,7 +12,13 @@
 //      mount), the manifest maps every page route old address -> archive address, the version left
 //      versions.json, and the versioned snapshot remains in-repo (provenance);
 //   5. delete every produced artifact and restore the pre-state byte-for-byte;
-//   6. assert `git status` is unchanged from step 1 (net-zero: the simulation left no residue).
+//   6. assert `git status` is unchanged from step 1 — the working tree, the index, and every tracked
+//      and untracked file are exactly as they were, and nothing throwaway is ever committed to a
+//      branch. The one thing this simulation does leave behind lives inside the git dir, never the
+//      tree: the throwaway commit it gives the scratch version real history from (see
+//      git-isolated-history.mjs) stays reachable through HEAD's own reflog, so it survives until
+//      normal git housekeeping expires it. Both HEAD moves carry an explicit reflog message saying
+//      as much, and no branch or tag references that commit.
 //
 // Steps 5–6 run in `finally`, so a failed assertion still reverts. Run via `npm run docs:archive-scratch`.
 
@@ -22,6 +28,7 @@ import {join} from 'node:path';
 import {stage} from './release-stage.mjs';
 import {cut} from './release-cut.mjs';
 import {archiveTransition, ARCHIVE_ROOT} from './archive-transition.mjs';
+import {withIsolatedTemporaryHistory} from './git-isolated-history.mjs';
 import {
   MODULE_ROOT,
   STAGING_ROOT,
@@ -117,11 +124,25 @@ function main() {
       'utf8',
     );
 
-    // 3. The real transition.
-    archiveTransition(SCRATCH_VERSION);
+    // `git-ad-hoc` (docusaurus.config.ts) resolves lastmod from real per-file git history — the
+    // scratch version's files exist only on disk at this point, so a real archiveTransition() run
+    // would find no history for them and (correctly) refuse to freeze an archive with missing
+    // lastmod. `withIsolatedTemporaryHistory` gives them real, if throwaway, history to read —
+    // entirely through a temporary index and a temporarily detached HEAD, never touching this
+    // worktree's real index or working tree, so any of its own unrelated in-progress
+    // staged/unstaged/untracked changes are never read, absorbed, or disturbed.
+    withIsolatedTemporaryHistory(
+      REPO_ROOT,
+      [VERSIONS_JSON, VERSIONED_DOCS, VERSIONED_SIDEBARS],
+      'archive-scratch: temporary commit (isolated — never touches the real index or HEAD)',
+      () => {
+        // 3. The real transition.
+        archiveTransition(SCRATCH_VERSION);
 
-    // 4. Prove the artifact.
-    assertArchived(SCRATCH_VERSION);
+        // 4. Prove the artifact.
+        assertArchived(SCRATCH_VERSION);
+      },
+    );
     console.log('[archive-scratch] mechanism proven.');
   } finally {
     // 5. Full revert to the recorded pre-state.

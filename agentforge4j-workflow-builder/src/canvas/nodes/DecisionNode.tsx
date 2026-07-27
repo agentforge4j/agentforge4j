@@ -11,11 +11,12 @@ export type DecisionNodeProps = {
     canvasNode: CanvasNode;
     selected?: boolean;
     issueCount?: number;
+    isStart?: boolean;
   };
 };
 
 export function DecisionNode({ data }: DecisionNodeProps) {
-  const { canvasNode: node, selected, issueCount = 0 } = data;
+  const { canvasNode: node, selected, issueCount = 0, isStart = false } = data;
   if (node.kind !== 'DECISION') {
     return null;
   }
@@ -34,6 +35,7 @@ export function DecisionNode({ data }: DecisionNodeProps) {
         subtitle={d.contextKey?.trim() || meta.description}
         selected={selected}
         issueCount={issueCount}
+        isStart={isStart}
       >
         <div className="wf-node__branches">
           {d.cases.map((c) => (

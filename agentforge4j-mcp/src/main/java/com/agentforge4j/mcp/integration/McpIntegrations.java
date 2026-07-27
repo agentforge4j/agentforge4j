@@ -15,7 +15,6 @@ import io.modelcontextprotocol.json.McpJsonMapper;
 import io.modelcontextprotocol.json.jackson2.JacksonMcpJsonMapper;
 import java.time.Duration;
 import java.time.format.DateTimeParseException;
-import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Map.Entry;
@@ -158,9 +157,7 @@ final class McpIntegrations {
               + "to value)").formatted(definition.id(), definition.type(), field));
     }
     Map<String, String> result = new LinkedHashMap<>();
-    Iterator<Entry<String, JsonNode>> fields = value.fields();
-    while (fields.hasNext()) {
-      Entry<String, JsonNode> entry = fields.next();
+    for (Entry<String, JsonNode> entry : value.properties()) {
       JsonNode entryValue = entry.getValue();
       if (!entryValue.isTextual()) {
         throw new IllegalArgumentException(

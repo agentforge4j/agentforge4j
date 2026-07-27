@@ -1,0 +1,43 @@
+{
+  "workflowId": "agent-creator",
+  "gates": [
+    {
+      "type": "input",
+      "answers": {
+        "agent-intent": "Create an agent that summarises PDF documents into a short brief."
+      }
+    },
+    {
+      "type": "stepApproval",
+      "approve": true,
+      "note": "Design preview and token estimate look good; proceed."
+    }
+  ],
+  "expect": {
+    "status": "COMPLETED",
+    "context": {
+      "recommendedTier": "LITE",
+      "ruleFired": "COMPLEXITY_RISK_MATRIX",
+      "verdict": "PASS",
+      "agentId": "pdf-summarizer"
+    },
+    "visitedSteps": [
+      "collect-intent",
+      "structure-requirements",
+      "assess",
+      "design-preview",
+      "estimate-tokens",
+      "generate-agent",
+      "generate-verification",
+      "review"
+    ],
+    "createdFiles": [
+      "shipped-agents/generated.agent/agent.json",
+      "shipped-agents/generated.agent/systemprompt.md",
+      "shipped-agents/generated.agent/README.md",
+      "shipped-agents/generated.agent/verification/script.json",
+      "shipped-agents/generated.agent/verification/expected-result.json",
+      "shipped-agents/generated.agent/verification/README.md"
+    ]
+  }
+}

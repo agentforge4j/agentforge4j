@@ -15,7 +15,7 @@
   <packaging>pom</packaging>
   <name>AgentForge4j Framework Examples</name>
   <description>Examples that exercise the AgentForge4j framework directly (bootstrap, suspend/resume,
-    Spring Boot starter, HTTP tools, MCP). Leaf modules are added per example in later batches.</description>
+    Spring Boot starter, HTTP tools, MCP).</description>
 
   <licenses>
     <license>

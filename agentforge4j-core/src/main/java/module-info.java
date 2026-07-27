@@ -29,6 +29,7 @@ module agentforge4j.core {
   exports com.agentforge4j.core.spi.contextpack;
   exports com.agentforge4j.core.spi.governance;
   exports com.agentforge4j.core.spi.validation;
+  exports com.agentforge4j.core.spi.aggregation;
   exports com.agentforge4j.core.runtime;
   exports com.agentforge4j.core.workflow;
   exports com.agentforge4j.core.workflow.estimate;
@@ -48,4 +49,7 @@ module agentforge4j.core {
   exports com.agentforge4j.core.workflow.state;
   exports com.agentforge4j.core.workflow.repository;
   exports com.agentforge4j.core.workflow.reachability;
+
+  provides com.agentforge4j.core.spi.aggregation.ContextAggregator
+      with com.agentforge4j.core.workflow.estimate.WorkflowExecutionEstimateAggregator;
 }

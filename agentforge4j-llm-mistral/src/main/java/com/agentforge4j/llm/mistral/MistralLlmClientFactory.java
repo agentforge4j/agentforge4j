@@ -10,8 +10,7 @@ import com.agentforge4j.util.Validate;
 /**
  * Factory for creating Mistral AI {@link LlmClient} instances.
  * <p>
- * Requires a {@link MistralConfiguration} instance; any other configuration type will raise an
- * {@link IllegalArgumentException}.
+ * Discovered via JPMS ServiceLoader to provide Mistral-specific client instances.
  */
 public final class MistralLlmClientFactory implements LlmClientFactory {
 

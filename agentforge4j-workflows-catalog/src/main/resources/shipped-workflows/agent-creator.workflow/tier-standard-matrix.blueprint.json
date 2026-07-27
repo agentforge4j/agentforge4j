@@ -1,0 +1,29 @@
+{
+  "blueprintId": "tier-standard-matrix",
+  "name": "Assign STANDARD tier (complexity/risk matrix)",
+  "behaviour": {
+    "transition": "AUTO"
+  },
+  "steps": [
+    {
+      "kind": "STEP",
+      "stepId": "assign-tier-standard",
+      "name": "Assign recommendedTier = STANDARD",
+      "behaviour": {
+        "type": "ASSIGN_CONTEXT",
+        "contextKey": "recommendedTier",
+        "value": { "type": "STRING", "value": "STANDARD" }
+      }
+    },
+    {
+      "kind": "STEP",
+      "stepId": "assign-rule-matrix-standard",
+      "name": "Assign ruleFired = COMPLEXITY_RISK_MATRIX",
+      "behaviour": {
+        "type": "ASSIGN_CONTEXT",
+        "contextKey": "ruleFired",
+        "value": { "type": "STRING", "value": "COMPLEXITY_RISK_MATRIX" }
+      }
+    }
+  ]
+}

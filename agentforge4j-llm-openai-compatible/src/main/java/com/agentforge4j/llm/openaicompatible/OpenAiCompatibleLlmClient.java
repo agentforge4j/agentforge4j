@@ -2,7 +2,6 @@
 package com.agentforge4j.llm.openaicompatible;
 
 import com.agentforge4j.llm.AbstractHttpLlmClient;
-import com.agentforge4j.llm.api.LlmClient;
 import com.agentforge4j.llm.api.LlmExecutionRequest;
 import com.agentforge4j.llm.api.LlmExecutionResponse;
 import com.agentforge4j.llm.api.LlmInvocationException;
@@ -16,6 +15,7 @@ import com.agentforge4j.llm.openaicompatible.dto.OpenAiCompatibleResponsesReques
 import com.agentforge4j.llm.openaicompatible.dto.OpenAiCompatibleResponsesResponse;
 import com.agentforge4j.llm.openaicompatible.dto.OpenAiCompatibleResponsesUsage;
 import com.agentforge4j.util.Validate;
+import com.agentforge4j.util.text.CodeFence;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
 import java.net.URI;
@@ -107,7 +107,7 @@ public final class OpenAiCompatibleLlmClient extends AbstractHttpLlmClient {
     OpenAiCompatibleResponsesResponse dto =
         objectMapper.readValue(json, OpenAiCompatibleResponsesResponse.class);
     validateApiError(dto, json);
-    String text = LlmClient.stripCodeFence(extractAssistantText(dto)
+    String text = CodeFence.strip(extractAssistantText(dto)
         .orElseThrow(
             () -> {
               String truncated = json.substring(0, Math.min(500, json.length()));

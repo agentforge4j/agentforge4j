@@ -1,0 +1,13 @@
+{
+  "id": "bundle-reviewer",
+  "name": "Bundle Reviewer",
+  "locality": "CLOUD",
+  "enabled": true,
+  "providerPreferences": [
+    { "provider": "openai", "model": null },
+    { "provider": "claude", "model": null },
+    { "provider": "ollama", "model": null }
+  ],
+  "supportedCommands": ["SET_CONTEXT", "COMPLETE"],
+  "version": "1.0.0"
+}

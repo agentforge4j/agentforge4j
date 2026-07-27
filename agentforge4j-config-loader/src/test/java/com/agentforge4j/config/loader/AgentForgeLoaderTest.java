@@ -13,6 +13,7 @@ import com.agentforge4j.core.spi.contextpack.ContextPackVariant;
 import com.agentforge4j.core.workflow.WorkflowDefinition;
 import com.agentforge4j.core.workflow.WorkflowLifecycle;
 import com.agentforge4j.core.workflow.WorkflowSource;
+import com.agentforge4j.core.workflow.WorkflowTreeWalker;
 import com.agentforge4j.core.workflow.context.ContextMapping;
 import com.agentforge4j.core.workflow.step.ContextSelection;
 import com.agentforge4j.core.workflow.step.ContextSelector;
@@ -50,7 +51,7 @@ class AgentForgeLoaderTest {
 
   @Test
   void validateAgentRefs_reportsAllMissingRefsInOneException() {
-    WorkflowValidator validator = new WorkflowValidator();
+    WorkflowValidator validator = new WorkflowValidator(WorkflowTreeWalker.MAX_TRAVERSAL_DEPTH);
     StepDefinition step1 = StepDefinition.builder()
         .withStepId("s1")
         .withName("S1")
@@ -89,7 +90,7 @@ class AgentForgeLoaderTest {
 
   @Test
   void validateAgentRefs_succeedsWhenAgentsRegisteredBeforeValidation() {
-    WorkflowValidator validator = new WorkflowValidator();
+    WorkflowValidator validator = new WorkflowValidator(WorkflowTreeWalker.MAX_TRAVERSAL_DEPTH);
     StepDefinition step = StepDefinition.builder()
         .withStepId("s1")
         .withName("S1")

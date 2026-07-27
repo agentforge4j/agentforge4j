@@ -4,10 +4,14 @@ package com.agentforge4j.examples.wlresource;
 import com.agentforge4j.bootstrap.AgentForge4j;
 import com.agentforge4j.bootstrap.AgentForge4jBootstrap;
 import com.agentforge4j.core.workflow.context.ContextValue;
+import com.agentforge4j.core.workflow.context.ContextValueList;
+import com.agentforge4j.core.workflow.context.NumberContextValue;
+import com.agentforge4j.core.workflow.context.StringContextValue;
 import com.agentforge4j.core.workflow.state.WorkflowState;
 import java.net.URISyntaxException;
 import java.nio.file.Path;
 import java.util.Objects;
+import java.util.stream.Collectors;
 
 /**
  * A workflow-language example with no LLM call. A single {@code RESOURCE} step loads a bundled
@@ -52,7 +56,27 @@ public final class WlResourceApp {
 
     System.out.printf("status=%s%n", state.getStatus());
     state.getContextValue(CONTEXT_KEY)
-        .ifPresent(value -> System.out.printf("%s=%s%n", CONTEXT_KEY, value));
+        .ifPresent(value -> System.out.printf("%s=%s%n", CONTEXT_KEY, displayValue(value)));
+  }
+
+  /**
+   * Renders a {@link ContextValue} for console display as its plain typed content, not the
+   * internal record {@code toString()} (which would print {@code StringContextValue[value=...,
+   * provenance=...]} instead of the value itself).
+   */
+  static String displayValue(ContextValue value) {
+    if (value instanceof StringContextValue string) {
+      return string.value();
+    }
+    if (value instanceof NumberContextValue number) {
+      return String.valueOf(number.value());
+    }
+    if (value instanceof ContextValueList list) {
+      return list.values().stream().map(WlResourceApp::displayValue)
+          .collect(Collectors.joining(","));
+    }
+    throw new IllegalStateException(
+        "Unsupported disclosed context value type: " + value.getClass().getSimpleName());
   }
 
   /**

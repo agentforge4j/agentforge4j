@@ -63,6 +63,13 @@
       "agentId": "context-agent",
       "ordinal": 0,
       "responseText": "[{\"type\":\"REQUEST_CONTEXT\",\"requestedSelectors\":[{\"kind\":\"STATE_KEY\",\"ref\":\"note-a\",\"variant\":\"FULL\"},{\"kind\":\"STATE_KEY\",\"ref\":\"note-b\",\"variant\":\"FULL\"}]},{\"type\":\"COMPLETE\"}]"
+    },
+    {
+      "workflowId": "cmd-generate-questions",
+      "stepId": "run",
+      "agentId": "cmd-agent",
+      "ordinal": 1,
+      "responseText": "[{\"type\":\"COMPLETE\"}]"
     }
   ]
 }

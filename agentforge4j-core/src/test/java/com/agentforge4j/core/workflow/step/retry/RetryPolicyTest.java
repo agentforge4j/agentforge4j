@@ -31,7 +31,7 @@ class RetryPolicyTest {
 
   @Test
   void rejects_negative_max_attempts() {
-    assertThatThrownBy(() -> new RetryPolicy(true, false, false, false, -1))
+    assertThatThrownBy(() -> new RetryPolicy(true, false, -1))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("maxAttempts");
   }

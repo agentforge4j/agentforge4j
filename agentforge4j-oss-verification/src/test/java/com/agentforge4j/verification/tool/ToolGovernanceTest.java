@@ -4,6 +4,7 @@ package com.agentforge4j.verification.tool;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.agentforge4j.core.spi.tool.PolicyDecision;
+import com.agentforge4j.core.spi.tool.ToolExecutionOptions;
 import com.agentforge4j.core.spi.tool.ToolPolicy;
 import com.agentforge4j.core.spi.tool.ToolProvider;
 import com.agentforge4j.core.workflow.event.WorkflowEventType;
@@ -19,6 +20,7 @@ import com.agentforge4j.verification.support.Fixtures;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.file.Files;
+import java.time.Duration;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 
@@ -156,6 +158,50 @@ class ToolGovernanceTest {
         // The provider error is recorded as a failed invocation; the call never completes.
         .emittedEvent(WorkflowEventType.TOOL_INVOCATION_FAILED)
         .didNotEmitEvent(WorkflowEventType.TOOL_INVOCATION_COMPLETED);
+  }
+
+  @Test
+  void providerThrowingThenContinueDecisionAdvances() {
+    // A provider that throws (a bug or transport crash, not a ToolResult failure) reaches the
+    // execution-exception arm of the chokepoint: the root message is recorded on the failed
+    // invocation and the run suspends in AWAITING_TOOL_DECISION like any invoke failure.
+    WorkflowRunResult result = harness(
+        ScriptedToolProvider.throwing("p", CAPABILITY,
+            new IllegalStateException("provider crashed hard")))
+        .build()
+        .run("tool-run", List.of(GateResponse.toolContinue()));
+
+    WorkflowRunAssert.assertThat(result)
+        .isCompleted()
+        .emittedEvent(WorkflowEventType.TOOL_INVOCATION_FAILED)
+        .didNotEmitEvent(WorkflowEventType.TOOL_INVOCATION_COMPLETED);
+    assertThat(failedInvocationPayload(result)).contains("provider crashed hard");
+  }
+
+  @Test
+  void providerHangingFailsViaAuthoritativeTimeoutThenContinueAdvances() {
+    // A provider that never returns is cut off by the execution service's authoritative timeout
+    // (shortened via the harness), recorded as a failed invocation naming the timeout, and the
+    // run suspends for a decision rather than hanging forever.
+    WorkflowRunResult result = harness(ScriptedToolProvider.hanging("p", CAPABILITY))
+        .toolExecutionOptions(
+            new ToolExecutionOptions(Duration.ofMillis(250), 0, Duration.ZERO))
+        .build()
+        .run("tool-run", List.of(GateResponse.toolContinue()));
+
+    WorkflowRunAssert.assertThat(result)
+        .isCompleted()
+        .emittedEvent(WorkflowEventType.TOOL_INVOCATION_FAILED)
+        .didNotEmitEvent(WorkflowEventType.TOOL_INVOCATION_COMPLETED);
+    assertThat(failedInvocationPayload(result)).contains("timed out after");
+  }
+
+  private static String failedInvocationPayload(WorkflowRunResult result) {
+    return result.captures().events().stream()
+        .filter(event -> event.eventType() == WorkflowEventType.TOOL_INVOCATION_FAILED)
+        .findFirst()
+        .orElseThrow(() -> new AssertionError("No TOOL_INVOCATION_FAILED event captured"))
+        .payload();
   }
 
   @Test

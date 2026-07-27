@@ -14,13 +14,18 @@
         "loopCount": "48",
         "agentDrivenLoopCount": "48",
         "humanGateCount": "0",
-        "maxNestingDepth": "1"
+        "maxNestingDepth": "1",
+        "minAgentTurns": "49",
+        "expectedAgentTurns": "97",
+        "maxAgentTurns": "145",
+        "iterationCeiling": "3",
+        "riskFlags": "AGENT_DRIVEN_LOOP,LARGE_STRUCTURE"
       }
     }
   ],
   "expect": {
     "status": "AWAITING_STEP_APPROVAL",
-    "visitedSteps": ["collect-analysis", "route-on-ceiling", "estimate"],
+    "visitedSteps": ["collect-analysis", "route-on-ceiling", "estimate", "aggregate-estimate"],
     "notVisitedSteps": ["no-ceiling"],
     "context": {
       "mode": "SDLC_EPIC_PACKAGE",
@@ -35,10 +40,27 @@
       "agentStepCount",
       "estimatedInputTokensPerAgentTurn",
       "estimatedOutputTokensPerAgentTurn",
-      "estimatedToolInvocationsPerAgentTurn"
+      "estimatedToolInvocationsPerAgentTurn",
+      "executionEstimate.recommendation",
+      "executionEstimate.confidence",
+      "executionEstimate.complexity",
+      "executionEstimate.riskFlags",
+      "executionEstimate.minimumRequiredTokens",
+      "executionEstimate.estimatedMinTokens",
+      "executionEstimate.estimatedExpectedTokens",
+      "executionEstimate.estimatedMaxTokens",
+      "executionEstimate.iterationCeiling"
     ],
     "contextMatches": {
-      "estimatedInputTokensPerAgentTurn": "[0-9]+"
+      "estimatedInputTokensPerAgentTurn": "[0-9]+",
+      "executionEstimate.recommendation": "CONTINUE|NARROW|STOP",
+      "executionEstimate.confidence": "HIGH|MEDIUM|LOW|VERY_LOW",
+      "executionEstimate.complexity": "HIGH_RISK",
+      "executionEstimate.minimumRequiredTokens": "9900",
+      "executionEstimate.estimatedMinTokens": "[0-9]+",
+      "executionEstimate.estimatedExpectedTokens": "[0-9]+",
+      "executionEstimate.estimatedMaxTokens": "[0-9]+",
+      "executionEstimate.iterationCeiling": "3"
     }
   }
 }

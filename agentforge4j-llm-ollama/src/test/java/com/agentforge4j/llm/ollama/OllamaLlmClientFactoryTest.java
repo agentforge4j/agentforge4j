@@ -55,10 +55,10 @@ class OllamaLlmClientFactoryTest {
     }
 
     @Test
-    void defaultsRequestTimeoutToThirtySecondsWhenAbsent() {
+    void defaultsRequestTimeoutToFiveMinutesWhenAbsent() {
       OllamaNeutralConfiguration config = OllamaNeutralConfiguration.fromNeutral(neutralConfig(true, false));
 
-      assertThat(config.getRequestTimeout()).isEqualTo(Duration.ofSeconds(30));
+      assertThat(config.getRequestTimeout()).isEqualTo(OllamaDefaults.REQUEST_TIMEOUT);
     }
 
     private static LlmClientConfiguration neutralConfig(boolean withBaseUrl, boolean withTimeout) {

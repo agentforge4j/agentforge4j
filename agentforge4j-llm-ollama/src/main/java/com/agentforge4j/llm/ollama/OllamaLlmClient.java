@@ -2,7 +2,6 @@
 package com.agentforge4j.llm.ollama;
 
 import com.agentforge4j.llm.AbstractHttpLlmClient;
-import com.agentforge4j.llm.api.LlmClient;
 import com.agentforge4j.llm.api.LlmExecutionRequest;
 import com.agentforge4j.llm.api.LlmExecutionResponse;
 import com.agentforge4j.llm.api.LlmInvocationException;
@@ -11,6 +10,7 @@ import com.agentforge4j.llm.ollama.dto.MessageDto;
 import com.agentforge4j.llm.ollama.dto.OllamaChatRequestDto;
 import com.agentforge4j.llm.ollama.dto.OllamaChatResponseDto;
 import com.agentforge4j.util.Validate;
+import com.agentforge4j.util.text.CodeFence;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
 import java.net.URI;
@@ -68,7 +68,7 @@ public final class OllamaLlmClient extends AbstractHttpLlmClient {
     OllamaChatResponseDto dto = objectMapper.readValue(json, OllamaChatResponseDto.class);
     validateApiError(dto, json);
     return new LlmExecutionResponse(
-        LlmClient.stripCodeFence(retrieveResponse(dto, json).strip()),
+        CodeFence.strip(retrieveResponse(dto, json).strip()),
         StringUtils.trimToNull(dto.model()),
         toTokenUsageReport(dto));
   }

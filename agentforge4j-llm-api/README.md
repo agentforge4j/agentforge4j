@@ -25,7 +25,7 @@ dependencies.
 | Type | Purpose |
 |---|---|
 | `ModelTier` | Capability tier an agent requests instead of a model id: `LITE`, `STANDARD`, `POWERFUL` (with `fromName`). |
-| `LlmClient` | The provider-bound invocation contract: `getProviderName()`, `execute(LlmExecutionRequest)`, `getRetryPolicy()`, plus the static `stripCodeFence` helper. |
+| `LlmClient` | The provider-bound invocation contract: `getProviderName()`, `execute(LlmExecutionRequest)`, `getRetryPolicy()` (nullable). |
 | `LlmExecutionRequest` | Provider-neutral request: model, system prompt, user input, token cap, prompt-layer boundaries, optional invocation identity. |
 | `LlmExecutionResponse` | The result of one invocation: text, model used, token usage. |
 | `TokenUsageReport` | Token counts including cache-read and cache-write accounting. |

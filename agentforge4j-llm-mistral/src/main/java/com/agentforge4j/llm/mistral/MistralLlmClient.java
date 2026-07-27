@@ -2,7 +2,6 @@
 package com.agentforge4j.llm.mistral;
 
 import com.agentforge4j.llm.AbstractHttpLlmClient;
-import com.agentforge4j.llm.api.LlmClient;
 import com.agentforge4j.llm.api.LlmExecutionRequest;
 import com.agentforge4j.llm.api.LlmExecutionResponse;
 import com.agentforge4j.llm.api.LlmInvocationException;
@@ -14,6 +13,7 @@ import com.agentforge4j.llm.mistral.dto.MistralChoice;
 import com.agentforge4j.llm.mistral.dto.MistralMessage;
 import com.agentforge4j.llm.mistral.dto.MistralUsage;
 import com.agentforge4j.util.Validate;
+import com.agentforge4j.util.text.CodeFence;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
 import java.net.URI;
@@ -92,7 +92,7 @@ public final class MistralLlmClient extends AbstractHttpLlmClient {
     String content = Validate.notBlank(rawContent, () -> new LlmInvocationException(
         "mistral response first choice content is blank: %s".formatted(json)));
     return new LlmExecutionResponse(
-        LlmClient.stripCodeFence(content.strip()),
+        CodeFence.strip(content.strip()),
         StringUtils.trimToNull(dto.model()),
         toTokenUsageReport(dto.usage()));
   }

@@ -1,33 +1,43 @@
 # agentforge4j-web-ui
 
-A minimal React single-page application that hosts the
-[`@agentforge4j/workflow-builder-react`](../agentforge4j-workflow-builder/README.md) component as a
-standalone, runnable app.
+The public website for **agentforge4j.org** — a Vite/React single-page application composed with
+the Docusaurus docs stack and Javadoc into one GitHub Pages artifact.
 
 ## What it is
 
-`agentforge4j-web-ui` is a thin host around the workflow-builder package. Today it serves one
-purpose: render the `WorkflowBuilder` in a browser so the component can be used and demonstrated
-outside of any larger product shell. It is a private application (not published to npm) and is
-independent of the Maven reactor.
+This module was originally a thin standalone host for the
+[`@agentforge4j/workflow-builder-react`](../agentforge4j-workflow-builder/README.md) component. Its
+content and purpose have been superseded wholesale by the `.org` site, per design; the module
+identity carries forward unchanged (`agentforge4j-web-ui`), and there is no separate sibling
+module — this is it.
 
-The app mounts the builder with a deliberately minimal capability set — **import and export only**;
-save, run, publish, and AI-assist are off — so it exercises the component without needing a backend,
-persistence, or authentication. It also doubles as a reference for how a host wires the builder in.
-
-## Role and audience
-
-This is **not** the marketing / documentation website. Its audience is developers integrating or
-demonstrating the workflow builder: it shows a working embed, supplies the builder's design tokens,
-and provides a route to the builder plus a 404 fallback. As the programme progresses it is the
-intended home for the public builder host; broader site responsibilities are out of scope here today.
+`/builder` is one route among several (Home, Use, Catalogue, Builder, Architecture, Releases,
+Community, Security, Legal, Contact); it is not the app's sole purpose any more. It is a private
+application (not published to npm) and is independent of the Maven reactor.
 
 ## Structure
 
-- **Routing** (`react-router-dom`): `/` renders the builder page; any other path renders a 404 page.
-- **Builder page**: mounts `WorkflowBuilder` with `import`/`export` enabled and everything else
-  disabled.
-- **Styling**: Tailwind CSS 4 with the builder's `--afb-*` design tokens.
+- **Routing** (`react-router-dom`): the launch-required routes listed above, plus a catch-all 404.
+  `/builder` and `/catalogue` are real embeds (workflow-builder component; generated catalogue
+  data), lazy-loaded on demand; the rest carry real authored copy. `/docs` is deliberately NOT an
+  SPA route: the Assembler track composes the real Docusaurus build at that exact path in the
+  deployed artifact, so the SPA must not intercept it client-side — the Docs nav entry
+  (`src/config/nav.ts`) is a real anchor (`external: true`) to `/docs/`, not a `<Link>`.
+- **Nav/footer**: data-driven from `src/config/nav.ts`, internal to this module for now (no
+  cross-build sharing with the Docusaurus navbar yet).
+- **Branding**: the canonical logo (`public/brand/logo-horizontal.svg`) and the palette recorded in
+  the repository's `BRAND.md`; `favicon.ico`/`apple-touch-icon.png`/`brand/icon-512.png` are
+  generated derivatives of it.
+- **Committed-content gate**: `scripts/lint-content-gate.mjs` scans this module's own `.ts`/`.tsx`
+  sources under `src/`, plus its other committed prose surfaces (`README.md`, `index.html`,
+  `nginx.conf`, `Dockerfile.local`, `public/robots.txt`) against the product-boundary term group
+  defined in `agentforge4j-docs/scripts/product-name.mjs`, imported via a relative path — not a
+  duplicated copy. Generated/build output (`dist/`, `node_modules/`, `.tsbuildinfo` caches) is
+  never in scope.
+- **404**: `scripts/copy-404.mjs` ships `dist/404.html` as a byte-identical copy of `dist/index.html`
+  after every build, so GitHub Pages serves a real HTTP 404 with the site's own branded not-found
+  page.
+- **Styling**: Tailwind CSS 4, semantic design tokens in `src/styles/tokens.css`.
 
 ## Local development
 
@@ -37,7 +47,8 @@ npm install
 npm run dev
 ```
 
-To develop against the **unpublished** builder source instead of the released npm package, use:
+To develop against the **unpublished** workflow-builder source instead of the released npm package,
+use:
 
 ```bash
 npm run dev:local
@@ -46,12 +57,26 @@ npm run dev:local
 which sets `AFB_LOCAL_BUILDER=1` so Vite resolves the builder from
 `../agentforge4j-workflow-builder/src`.
 
-## Build
+## Build and verify
+
+`npm install`/`npm ci` installs the `playwright` package itself but never downloads the browser
+binary — `npm run build` and `npm run test:seo` provision the pinned Chromium build automatically
+via their own `prebuild`/`pretest:seo` lifecycle hooks (`scripts/ensure-chromium.mjs`), so no
+separate manual step is required on a clean checkout. It is a fast no-op if the browser is already
+cached (e.g. from `agentforge4j-ui-e2e`'s own Playwright setup — both pin the identical version, so
+the download is shared, not duplicated).
+
+On Linux, `npm run playwright:install` is available as an optional one-off if you also want the
+OS-level shared libraries Chromium needs at runtime (`--with-deps`, requires root) — the automatic
+hook above deliberately does not attempt that, the same way CI's own explicit install step doesn't
+either.
 
 ```bash
-npm run typecheck
-npm run build
+npm run check
 ```
+
+Runs lint, the committed-content gate, typecheck, the Vitest component/route/a11y suite, the
+content-gate integration test, and the production build (including the 404 mechanism) end to end.
 
 ## License
 

@@ -29,7 +29,7 @@ select and configure it by id, never by importing its types.
 
 ## Configuration
 
-Requires an API key; the base URL is optional (a built-in production host is used when unset).
+Requires an API key and a base URL.
 
 **Spring Boot starter** — bind under `agentforge4j.llm.openai`:
 
@@ -39,14 +39,15 @@ agentforge4j:
     openai:
       api-key: ${OPENAI_API_KEY}
       default-model: gpt-5.4-mini   # optional
-      url:                          # optional; null selects the built-in production host
+      url: https://api.openai.com/v1   # required
       connect-timeout: 10s          # optional; defaults to 10s
       request-timeout: 2m           # optional; defaults to 2m
 ```
 
 **Plain Java** — configure through the bootstrap builder with `LlmProviderConfig.openai()` (see the
 [bootstrap README](../agentforge4j-bootstrap/README.md) for the env-var / system-property convention
-and the programmatic factory). Programmatic configuration always wins.
+and the programmatic factory); the builder pre-populates the OpenAI production host as its default
+base URL. Programmatic configuration always wins.
 
 ## Maven coordinates
 

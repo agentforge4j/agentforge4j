@@ -10,6 +10,7 @@ import type {
   WorkflowDefinition,
 } from '../../api/types';
 import {
+  normalizeBlueprintForSchema,
   normalizeRuntimeDocumentForSchema,
   toRuntimeWorkflowDocument,
   validateAgainstSchema,
@@ -238,6 +239,15 @@ function workflowFileBase(workflow: WorkflowDefinition): string {
   return workflow.id.trim() || 'workflow';
 }
 
+/**
+ * The filename {@link exportWorkflowZip} downloads for a given draft. Exported so callers (e.g.
+ * the export-success confirmation in `WorkflowBuilder`) can display the exact produced filename
+ * without duplicating the naming convention or waiting on a broader adapter-contract change.
+ */
+export function workflowZipFileName(workflow: WorkflowDefinition): string {
+  return `${workflowFileBase(workflow)}.workflow.zip`;
+}
+
 export async function buildWorkflowZipBlob(workflow: WorkflowDefinition): Promise<Blob> {
   const zip = new JSZip();
   const folderName = `${workflowFileBase(workflow)}.workflow`;
@@ -257,7 +267,7 @@ export async function buildWorkflowZipBlob(workflow: WorkflowDefinition): Promis
   }
 
   for (const [blueprintId, blueprint] of Object.entries(workflow.blueprintBodies ?? {})) {
-    folder.file(`${blueprintId}.blueprint.json`, JSON.stringify(blueprint, null, 2));
+    folder.file(`${blueprintId}.blueprint.json`, JSON.stringify(normalizeBlueprintForSchema(blueprint), null, 2));
   }
 
   for (const [stepId, prompt] of collectStepPrompts(workflow)) {
@@ -278,7 +288,7 @@ function triggerDownload(blob: Blob, filename: string): void {
 
 export async function exportWorkflowZip(workflow: WorkflowDefinition): Promise<void> {
   const blob = await buildWorkflowZipBlob(workflow);
-  triggerDownload(blob, `${workflowFileBase(workflow)}.workflow.zip`);
+  triggerDownload(blob, workflowZipFileName(workflow));
 }
 
 function countSteps(workflow: WorkflowDefinition): number {

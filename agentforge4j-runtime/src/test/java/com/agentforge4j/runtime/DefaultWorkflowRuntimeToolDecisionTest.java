@@ -58,7 +58,7 @@ class DefaultWorkflowRuntimeToolDecisionTest {
   @Test
   void resolveToolDecisionContinueWritesErrorAndRemovesPending() {
     seedState(WorkflowStatus.AWAITING_TOOL_DECISION);
-    seedPending("policy denied");
+    seedPending("policy denied", PendingToolInvocation.Origin.POLICY_DENIED);
 
     runtime().resolveToolDecision("run-1", "tid-1", new ToolDecision.Continue("op-1"));
 
@@ -69,7 +69,7 @@ class DefaultWorkflowRuntimeToolDecisionTest {
   @Test
   void resolveToolDecisionRetryAppliesResultAndRemovesPending() {
     seedState(WorkflowStatus.AWAITING_TOOL_DECISION);
-    seedPending("invoke failed");
+    seedPending("invoke failed", PendingToolInvocation.Origin.EXECUTION_FAILED);
     toolService.resumeOutcome = ToolExecutionOutcome.executed(ToolResult.success("PR-ok", 1L));
 
     runtime().resolveToolDecision("run-1", "tid-1", new ToolDecision.Retry("op-1"));
@@ -82,7 +82,7 @@ class DefaultWorkflowRuntimeToolDecisionTest {
   void resolveToolDecisionGatesAHumanReviewStepAfterAdvancing() {
     DefaultWorkflowRuntime runtime = runtimeWith(StepTransition.HUMAN_REVIEW);
     seedState(WorkflowStatus.AWAITING_TOOL_DECISION);
-    seedPending("policy denied");
+    seedPending("policy denied", PendingToolInvocation.Origin.POLICY_DENIED);
 
     runtime.resolveToolDecision("run-1", "tid-1", new ToolDecision.Continue("op-1"));
 
@@ -112,7 +112,7 @@ class DefaultWorkflowRuntimeToolDecisionTest {
   @Test
   void continueAfterToolApprovalApproveAppliesResult() {
     seedState(WorkflowStatus.AWAITING_TOOL_APPROVAL);
-    seedPending("needs review");
+    seedPending("needs review", PendingToolInvocation.Origin.APPROVAL_REQUIRED);
     toolService.resumeOutcome = ToolExecutionOutcome.executed(
         ToolResult.success("approved-result", 1L));
 
@@ -125,7 +125,7 @@ class DefaultWorkflowRuntimeToolDecisionTest {
   @Test
   void continueAfterToolApprovalRejectWritesError() {
     seedState(WorkflowStatus.AWAITING_TOOL_APPROVAL);
-    seedPending("needs review");
+    seedPending("needs review", PendingToolInvocation.Origin.APPROVAL_REQUIRED);
     toolService.resumeOutcome = ToolExecutionOutcome.denied("rejected by bob");
 
     runtime().continueAfterToolApproval("run-1", "tid-1",
@@ -202,9 +202,9 @@ class DefaultWorkflowRuntimeToolDecisionTest {
     stateRepo.save(state);
   }
 
-  private void seedPending(String reason) {
+  private void seedPending(String reason, PendingToolInvocation.Origin origin) {
     store.save(new PendingToolInvocation("tid-1", "run-1", "s1", "agent-1", "wf-1", CAPABILITY,
-        "{}", "because", reason, null, Instant.parse("2026-05-01T00:00:00Z")));
+        "{}", "because", reason, null, origin, Instant.parse("2026-05-01T00:00:00Z")));
   }
 
   private String contextValue(String key) {

@@ -1,0 +1,29 @@
+{
+  "blueprintId": "tier-lite-matrix",
+  "name": "Assign LITE tier (complexity/risk matrix)",
+  "behaviour": {
+    "transition": "AUTO"
+  },
+  "steps": [
+    {
+      "kind": "STEP",
+      "stepId": "assign-tier-lite",
+      "name": "Assign recommendedTier = LITE",
+      "behaviour": {
+        "type": "ASSIGN_CONTEXT",
+        "contextKey": "recommendedTier",
+        "value": { "type": "STRING", "value": "LITE" }
+      }
+    },
+    {
+      "kind": "STEP",
+      "stepId": "assign-rule-matrix-lite",
+      "name": "Assign ruleFired = COMPLEXITY_RISK_MATRIX",
+      "behaviour": {
+        "type": "ASSIGN_CONTEXT",
+        "contextKey": "ruleFired",
+        "value": { "type": "STRING", "value": "COMPLEXITY_RISK_MATRIX" }
+      }
+    }
+  ]
+}

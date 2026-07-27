@@ -2,7 +2,6 @@
 package com.agentforge4j.llm.vllm;
 
 import com.agentforge4j.llm.AbstractHttpLlmClient;
-import com.agentforge4j.llm.api.LlmClient;
 import com.agentforge4j.llm.api.LlmExecutionRequest;
 import com.agentforge4j.llm.api.LlmExecutionResponse;
 import com.agentforge4j.llm.api.LlmInvocationException;
@@ -15,6 +14,7 @@ import com.agentforge4j.llm.vllm.dto.VllmRequest;
 import com.agentforge4j.llm.vllm.dto.VllmResponse;
 import com.agentforge4j.llm.vllm.dto.VllmUsage;
 import com.agentforge4j.util.Validate;
+import com.agentforge4j.util.text.CodeFence;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
 import java.net.URI;
@@ -93,7 +93,7 @@ public final class VllmLlmClient extends AbstractHttpLlmClient {
     VllmUsage usage = response == null ? null : response.usage();
     String modelUsed = response == null ? null : response.model();
     return new LlmExecutionResponse(
-        LlmClient.stripCodeFence(content.strip()),
+        CodeFence.strip(content.strip()),
         StringUtils.trimToNull(modelUsed),
         toTokenUsageReport(usage));
   }

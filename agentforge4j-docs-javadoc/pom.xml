@@ -28,14 +28,18 @@
   </licenses>
 
   <!-- The named OSS modules that EXPORT public API. Modules that only `provides` a ServiceLoader
-       implementation (no `exports`) carry no public API and are intentionally omitted; test,
-       verification, fixture and JSON-only modules are omitted too. A drift guard in
-       scripts/build-javadoc.mjs asserts this list matches the live named-public set. -->
+       implementation (no `exports`) carry no public API and are intentionally omitted; internal-only
+       verification/fixture/JSON-only modules (agentforge4j-testkit-consumer-verification,
+       agentforge4j-oss-verification, agentforge4j-starter-verification, agentforge4j-workflow-fixtures)
+       are omitted too. agentforge4j-testkit is NOT in that omitted category — it is a real,
+       general-purpose, embedder-facing assertion/harness API (proven by
+       agentforge4j-testkit-consumer-verification, a separate module that exists solely to compile
+       against it as a downstream consumer) and is documented here like any other exported module. A
+       drift guard in scripts/build-javadoc.mjs asserts this list matches the live named-public set. -->
   <modules>
     <module>../agentforge4j-util</module>
     <module>../agentforge4j-llm-api</module>
     <module>../agentforge4j-llm</module>
-    <module>../agentforge4j-llm-gemini</module>
     <module>../agentforge4j-llm-fake</module>
     <module>../agentforge4j-core</module>
     <module>../agentforge4j-tools-http</module>
@@ -43,6 +47,7 @@
     <module>../agentforge4j-config-loader</module>
     <module>../agentforge4j-runtime</module>
     <module>../agentforge4j-bootstrap</module>
+    <module>../agentforge4j-testkit</module>
   </modules>
 
   <properties>

@@ -1,22 +1,27 @@
 name: Deploy Docs
 
-# Publishes the documentation site to GitHub Pages. Builds the full site with the same shared
-# .github/actions/build-docs-site composite action the Docs gate uses (one pipeline definition, no
-# drift), then composes a single Pages artifact (/docs + /javadoc/{next,latest}, archived versions
-# carried forward) and deploys it. Never runs on pull requests (previews are the build artifact
-# uploaded by the Docs workflow).
+# Publishes the agentforge4j.org site to GitHub Pages. Builds the SPA (agentforge4j-web-ui), the
+# docs site with the same shared .github/actions/build-docs-site composite action the Docs gate
+# uses (one pipeline definition, no drift), and the Javadoc surfaces, then composes all three into
+# a single Pages artifact (SPA at the root, /docs, /javadoc/{next,latest}, archived versions carried
+# forward) and deploys it. Never runs on pull requests (previews are the build artifacts uploaded
+# by the Web UI and Docs workflows).
 #
-# MANUAL DISPATCH ONLY — deliberately fail-closed. GitHub Pages serves one site per custom domain,
-# and how this repository's /docs and /javadoc surfaces compose with the project website under
-# `agentforge4j.org` is not settled yet. Until it is, nothing may publish automatically: a deploy
-# happens only when a maintainer dispatches this workflow, and the artifact carries no CNAME unless
-# the repository variable DOCS_CUSTOM_DOMAIN is set (mapped below into the assemble step; see
-# scripts/assemble-site.mjs — an unset/empty variable resolves to no CNAME, the same as today). When
-# automatic publishing is enabled later, prefer an unfiltered `push: main` trigger — the generated
-# reference and the Javadoc surface depend on essentially the whole reactor, so any path filter
-# would let the published site go silently stale.
+# Deploys automatically on every push to `main` (no path filter — the generated reference and the
+# Javadoc surface depend on essentially the whole reactor, so any path filter would let the
+# published site go silently stale), and remains available via manual `workflow_dispatch` for
+# redeploys/recovery. The artifact carries no CNAME unless the repository variable
+# DOCS_CUSTOM_DOMAIN is set (mapped below into the assemble step; see scripts/assemble-site.mjs —
+# an unset/empty variable resolves to no CNAME, the same as today).
+#
+# `workflow_dispatch` lets a maintainer pick an arbitrary ref to run against (via the Actions UI,
+# CLI, or API) — not just `main`. Both jobs below are guarded to `github.ref == 'refs/heads/main'`
+# so a manual run against a feature/PR branch builds nothing and cannot publish to the production
+# `github-pages` environment; only `main` may ever be deployed.
 
 on:
+  push:
+    branches: [main]
   workflow_dispatch:
 
 # Allow one concurrent deployment; do not cancel an in-progress deploy (Pages best practice).
@@ -32,10 +37,13 @@ permissions:
 jobs:
   build:
     name: build
+    # Restricts production builds/deploys to `main` even when workflow_dispatch is run against
+    # another ref (see the `on:` block comment above).
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           # Full history + tags: the version-pinned Javadoc surfaces are built from each release
           # tag (build-javadoc-versions.mjs resolves refs/tags/v<version>), which a shallow,
@@ -43,7 +51,57 @@ jobs:
           fetch-depth: 0
 
       - name: Configure Pages
-        uses: actions/configure-pages@v5
+        uses: actions/configure-pages@v6
+
+      - name: Set up Node
+        uses: actions/setup-node@v6
+        with:
+          node-version-file: '.nvmrc'
+          cache: npm
+          cache-dependency-path: agentforge4j-web-ui/package-lock.json
+
+      - name: Install web-ui dependencies
+        working-directory: agentforge4j-web-ui
+        run: npm ci
+
+      # The SPA's production build boots the real built bundle in headless Chromium to prerender
+      # every route's body content (scripts/prerender-routes.mjs) — `npm ci` installs the
+      # `playwright` package itself but never downloads the browser binary. `npm run build` below
+      # (via its own `prebuild` lifecycle hook, scripts/ensure-chromium.mjs) now provisions the
+      # browser BINARY automatically regardless of caller — the explicit steps below are kept
+      # because they additionally install the Linux OS-level shared libraries Chromium needs at
+      # runtime (`--with-deps`), which the cross-platform hook deliberately does not attempt. They
+      # stay keyed off whether the module actually declares playwright, so on a tree without the
+      # prerender pass they skip and this workflow behaves exactly as before. Same cached-install
+      # convention as `Web UI` and `UI E2E`.
+      - name: Detect whether the site build needs a browser
+        id: needs-browser
+        working-directory: agentforge4j-web-ui
+        run: |
+          echo "needed=$(node -e "console.log((require('./package.json').devDependencies || {}).playwright ? 'true' : 'false')")" >> "$GITHUB_OUTPUT"
+
+      - name: Cache Playwright browsers
+        if: ${{ steps.needs-browser.outputs.needed == 'true' }}
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('agentforge4j-web-ui/package-lock.json') }}
+          restore-keys: |
+            playwright-${{ runner.os }}-
+
+      - name: Install Playwright Chromium
+        if: ${{ steps.needs-browser.outputs.needed == 'true' }}
+        working-directory: agentforge4j-web-ui
+        run: npx playwright install --with-deps chromium
+
+      - name: Build the agentforge4j.org SPA
+        # Build-only (lint/type-check/test already run on every push/PR via web-ui.yml) — a build
+        # failure here still fails this step (tsc/vite/copy-404.mjs all exit non-zero on error), and
+        # the assemble step below fails closed if the SPA build, the docs/Javadoc assembly, or the
+        # composed output itself is missing an expected entry (assemble-site.mjs's requireDir /
+        # verifyComposedArtifact).
+        working-directory: agentforge4j-web-ui
+        run: npm run build
 
       - name: Build the documentation site
         uses: ./.github/actions/build-docs-site
@@ -57,7 +115,7 @@ jobs:
         working-directory: agentforge4j-docs
         run: node scripts/build-javadoc-versions.mjs
 
-      - name: Assemble the Pages artifact (/docs + /javadoc)
+      - name: Assemble the Pages artifact (SPA + /docs + /javadoc)
         working-directory: agentforge4j-docs
         env:
           # Repository (or org) Actions variable — unset/empty means no custom domain (default,
@@ -66,13 +124,16 @@ jobs:
         run: node scripts/assemble-site.mjs
 
       - name: Upload the Pages artifact
-        uses: actions/upload-pages-artifact@v3
+        uses: actions/upload-pages-artifact@v5
         with:
           path: agentforge4j-docs/_site
 
   deploy:
     name: deploy
     needs: build
+    # Restricts production builds/deploys to `main` even when workflow_dispatch is run against
+    # another ref (see the `on:` block comment above).
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     environment:
       name: github-pages
@@ -80,4 +141,4 @@ jobs:
     steps:
       - name: Deploy to GitHub Pages
         id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5

@@ -130,7 +130,6 @@ void should_construct_with_valid_config() {
 
 ### LlmClientImpl
 - ✅ Constructor: config validation (provider, model, timeout)
-- ✅ stripCodeFence() utility: markdown removal, edge cases
 - ✅ Request validation: null, blank, and field checks
 - ✅ Field preservation and access via getters
 

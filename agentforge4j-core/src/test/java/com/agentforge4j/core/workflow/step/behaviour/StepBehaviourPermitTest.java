@@ -8,9 +8,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * Guards the {@code StepBehaviour} sealed hierarchy: the permit set and the {@link TransitionAware} carrier split.
- * {@code CollectionBehaviour} is the sixth transition carrier; {@code CompactBehaviour} is the twelfth permit; the
- * deterministic {@link ValidateBehaviour}, {@link AssignContextBehaviour}, and {@link CompactBehaviour} are permits
- * but not transition carriers.
+ * {@code CollectionBehaviour} is the sixth transition carrier and {@code AggregateBehaviour} the seventh;
+ * {@code CompactBehaviour} and {@code AggregateBehaviour} are the twelfth and thirteenth permits; the deterministic
+ * {@link ValidateBehaviour}, {@link AssignContextBehaviour}, and {@link CompactBehaviour} are permits but not
+ * transition carriers.
  */
 class StepBehaviourPermitTest {
 
@@ -20,13 +21,14 @@ class StepBehaviourPermitTest {
         AgentBehaviour.class, SparBehaviour.class, WorkflowBehaviour.class, InputBehaviour.class,
         ResourceBehaviour.class, BranchBehaviour.class, FailBehaviour.class,
         RetryPreviousBehaviour.class, ValidateBehaviour.class, AssignContextBehaviour.class,
-        CollectionBehaviour.class, CompactBehaviour.class);
+        CollectionBehaviour.class, CompactBehaviour.class, AggregateBehaviour.class);
   }
 
   @Test
   void transitionCarriersImplementTransitionAware() {
     assertThat(List.of(AgentBehaviour.class, InputBehaviour.class, ResourceBehaviour.class,
-        SparBehaviour.class, WorkflowBehaviour.class, CollectionBehaviour.class))
+        SparBehaviour.class, WorkflowBehaviour.class, CollectionBehaviour.class,
+        AggregateBehaviour.class))
         .allMatch(TransitionAware.class::isAssignableFrom);
   }
 

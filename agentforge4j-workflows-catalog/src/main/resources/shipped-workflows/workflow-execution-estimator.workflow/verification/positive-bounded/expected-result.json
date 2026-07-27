@@ -14,13 +14,18 @@
         "loopCount": "0",
         "agentDrivenLoopCount": "0",
         "humanGateCount": "1",
-        "maxNestingDepth": "0"
+        "maxNestingDepth": "0",
+        "minAgentTurns": "6",
+        "expectedAgentTurns": "6",
+        "maxAgentTurns": "6",
+        "iterationCeiling": "1",
+        "riskFlags": "NONE"
       }
     }
   ],
   "expect": {
     "status": "AWAITING_STEP_APPROVAL",
-    "visitedSteps": ["collect-analysis", "route-on-ceiling", "estimate"],
+    "visitedSteps": ["collect-analysis", "route-on-ceiling", "estimate", "aggregate-estimate"],
     "notVisitedSteps": ["no-ceiling"],
     "context": {
       "mode": "WORKFLOW_RUN",
@@ -35,10 +40,27 @@
       "agentStepCount",
       "estimatedInputTokensPerAgentTurn",
       "estimatedOutputTokensPerAgentTurn",
-      "estimatedToolInvocationsPerAgentTurn"
+      "estimatedToolInvocationsPerAgentTurn",
+      "executionEstimate.recommendation",
+      "executionEstimate.confidence",
+      "executionEstimate.complexity",
+      "executionEstimate.riskFlags",
+      "executionEstimate.minimumRequiredTokens",
+      "executionEstimate.estimatedMinTokens",
+      "executionEstimate.estimatedExpectedTokens",
+      "executionEstimate.estimatedMaxTokens",
+      "executionEstimate.iterationCeiling"
     ],
     "contextMatches": {
-      "estimatedInputTokensPerAgentTurn": "[0-9]+"
+      "estimatedInputTokensPerAgentTurn": "[0-9]+",
+      "executionEstimate.recommendation": "CONTINUE|NARROW|STOP",
+      "executionEstimate.confidence": "HIGH|MEDIUM|LOW|VERY_LOW",
+      "executionEstimate.complexity": "MODERATE",
+      "executionEstimate.minimumRequiredTokens": "1300",
+      "executionEstimate.estimatedMinTokens": "[0-9]+",
+      "executionEstimate.estimatedExpectedTokens": "[0-9]+",
+      "executionEstimate.estimatedMaxTokens": "[0-9]+",
+      "executionEstimate.iterationCeiling": "1"
     }
   }
 }

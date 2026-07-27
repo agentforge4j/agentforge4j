@@ -30,6 +30,10 @@ record OpenAiNeutralConfiguration(
   /**
    * Maps a neutral configuration and resolved credential into this provider's validated form.
    *
+   * <p>An absent {@code request.timeout} option defaults to {@link OpenAiDefaults#REQUEST_TIMEOUT} — the same value
+   * {@link OpenAiConfigurationAdapter} applies for the properties-configured path — so the two construction paths
+   * cannot silently diverge on what "the" default is.
+   *
    * @param neutral the neutral provider configuration
    * @param apiKey  the resolved credential
    *
@@ -44,7 +48,7 @@ record OpenAiNeutralConfiguration(
         neutral.getConnectTimeout(),
         neutral.requireBaseUrl(),
         apiKey,
-        neutral.getOptions().duration("request.timeout").orElse(Duration.ofSeconds(30)));
+        neutral.getOptions().duration("request.timeout").orElse(OpenAiDefaults.REQUEST_TIMEOUT));
   }
 
   @Override

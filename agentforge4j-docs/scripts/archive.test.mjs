@@ -7,7 +7,46 @@
 
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {pageRoutes, redirectManifest} from './archive-transition.mjs';
+import {execFileSync} from 'node:child_process';
+import {mkdtempSync, writeFileSync} from 'node:fs';
+import {tmpdir} from 'node:os';
+import {join} from 'node:path';
+import {pathToFileURL} from 'node:url';
+import {archiveTransition, pageRoutes, redirectManifest} from './archive-transition.mjs';
+
+function gitRepo() {
+  const dir = mkdtempSync(join(tmpdir(), 'archive-transition-git-'));
+  execFileSync('git', ['init', '--quiet'], {cwd: dir});
+  execFileSync('git', ['config', 'user.email', 'test@example.invalid'], {cwd: dir});
+  execFileSync('git', ['config', 'user.name', 'Test'], {cwd: dir});
+  writeFileSync(join(dir, 'a.txt'), 'a');
+  execFileSync('git', ['add', '.'], {cwd: dir});
+  execFileSync('git', ['commit', '--quiet', '-m', 'first'], {cwd: dir});
+  return dir;
+}
+
+function shallowClone() {
+  const origin = gitRepo();
+  writeFileSync(join(origin, 'b.txt'), 'b');
+  execFileSync('git', ['add', '.'], {cwd: origin});
+  execFileSync('git', ['commit', '--quiet', '-m', 'second'], {cwd: origin});
+  const parent = mkdtempSync(join(tmpdir(), 'archive-transition-shallow-'));
+  const shallowDir = join(parent, 'clone');
+  // file:// forces a real, transport-based (and thus genuinely shallow) clone — a plain local-path
+  // clone silently ignores --depth (see verify-canonical.test.mjs's own note on this).
+  execFileSync('git', ['clone', '--quiet', '--depth', '1', pathToFileURL(origin).href, shallowDir]);
+  return shallowDir;
+}
+
+test('archiveTransition refuses to run (docs:archive / docs:archive-scratch) against a shallow git clone — the archive-mode config derives <lastmod> from git history exactly like the live site does, and the frozen artifact can never be re-derived later', () => {
+  assert.throws(() => archiveTransition('1.0.0', shallowClone()), /is a shallow git clone/);
+});
+
+test('archiveTransition\'s shallow-history precondition does not fire against a full-history repo (falls through to the next, unrelated precondition instead)', () => {
+  // A nonexistent version reaches the "no versioned snapshot" check ONLY if the shallow-history
+  // precondition above it did not throw — proving the full-history case is not itself rejected.
+  assert.throws(() => archiveTransition('9.9.9-no-such-version', gitRepo()), /no versioned snapshot/);
+});
 
 test('pageRoutes: every index.html directory is a route; assets and 404 are not', () => {
   const files = [

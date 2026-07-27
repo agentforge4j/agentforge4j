@@ -40,6 +40,14 @@ class ClaudeNeutralCreateTest {
         .hasMessageContaining("max.token.size");
   }
 
+  @Test
+  void defaultsRequestTimeoutToTwoMinutesWhenAbsent() {
+    ClaudeNeutralConfiguration config = ClaudeNeutralConfiguration.fromNeutral(
+        neutralWithoutRequestTimeout(), new LlmSecret("ant-test"));
+
+    assertThat(config.getRequestTimeout()).isEqualTo(ClaudeDefaults.REQUEST_TIMEOUT);
+  }
+
   private static LlmClientConfiguration neutral(boolean withMaxTokenSize) {
     Map<String, String> options = new HashMap<>();
     options.put("api.version", "2023-06-01");
@@ -47,6 +55,17 @@ class ClaudeNeutralCreateTest {
     if (withMaxTokenSize) {
       options.put("max.token.size", "4096");
     }
+    return config(options);
+  }
+
+  private static LlmClientConfiguration neutralWithoutRequestTimeout() {
+    Map<String, String> options = new HashMap<>();
+    options.put("api.version", "2023-06-01");
+    options.put("max.token.size", "4096");
+    return config(options);
+  }
+
+  private static LlmClientConfiguration config(Map<String, String> options) {
     return new LlmClientConfiguration() {
       @Override
       public String getProviderName() {

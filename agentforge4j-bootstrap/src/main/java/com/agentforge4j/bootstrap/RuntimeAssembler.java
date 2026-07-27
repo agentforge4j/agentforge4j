@@ -4,6 +4,7 @@ package com.agentforge4j.bootstrap;
 import com.agentforge4j.config.loader.agent.ArtifactValidatorFactory;
 import com.agentforge4j.core.agent.AgentRepository;
 import com.agentforge4j.core.runtime.WorkflowRuntime;
+import com.agentforge4j.core.spi.aggregation.ContextAggregator;
 import com.agentforge4j.core.spi.tool.PendingToolInvocationStore;
 import com.agentforge4j.core.spi.tool.ToolCatalog;
 import com.agentforge4j.core.spi.tool.ToolExecutionService;
@@ -81,7 +82,7 @@ final class RuntimeAssembler {
       LOGGER.log(System.Logger.Level.WARNING,
           """
               No LLM providers configured. Workflows that invoke agents will fail at runtime. \
-              Set AGENTFORGE4J_LLM_<PROVIDER>_API_KEY, agentforge4j.llm.<provider>.api-key, \
+              Set AGENTFORGE4J_LLM_<PROVIDER>_API_KEY, agentforge4j.llm.<provider>.api.key, \
               or use withLlmProvider(...).""");
     }
   }
@@ -162,6 +163,8 @@ final class RuntimeAssembler {
    *                                in-process {@code DefaultRequirementResolver}
    * @param runExecutionInterceptor optional run-execution interceptor; when {@code null} the runtime builder defaults
    *                                to its {@code NO_OP} interceptor
+   * @param embedderContextAggregators additional {@code ContextAggregator}s to append to the ServiceLoader-discovered
+   *                                built-in set
    * @param contextPackRegistry     the context packs loaded by the bootstrap, keyed by name; empty when none are
    *                                configured — matches {@code WorkflowRuntimeBuilder}'s own {@code EMPTY} default
    *
@@ -181,6 +184,7 @@ final class RuntimeAssembler {
       RunExecutionInterceptor runExecutionInterceptor,
       ObjectMapper objectMapper,
       List<ArtifactValidator> embedderArtifactValidators,
+      List<ContextAggregator> embedderContextAggregators,
       ContextPackRegistry contextPackRegistry) {
     // Built-in ArtifactValidators are discovered via ServiceLoader (the built-in agent-bundle validator stays present
     // so shipped agent-bundle workflows keep working); each factory receives the same configured ObjectMapper the agent
@@ -190,6 +194,13 @@ final class RuntimeAssembler {
     ServiceLoader.load(ArtifactValidatorFactory.class, Thread.currentThread().getContextClassLoader())
         .forEach(factory -> artifactValidators.add(factory.create(objectMapper)));
     artifactValidators.addAll(embedderArtifactValidators);
+    // Built-in ContextAggregators are discovered directly via ServiceLoader (no factory indirection: unlike
+    // ArtifactValidatorFactory, no aggregator needs a construction-time dependency such as the shared ObjectMapper).
+    // Embedder-supplied aggregators are appended; a duplicate aggregator id fails fast in the runtime.
+    List<ContextAggregator> contextAggregators = new ArrayList<>();
+    ServiceLoader.load(ContextAggregator.class, Thread.currentThread().getContextClassLoader())
+        .forEach(contextAggregators::add);
+    contextAggregators.addAll(embedderContextAggregators);
     WorkflowRuntimeBuilder runtimeBuilder = new WorkflowRuntimeBuilder()
         .workflowRepository(workflowRepository)
         .workflowStateRepository(workflowStateRepository)
@@ -200,6 +211,7 @@ final class RuntimeAssembler {
         .eventRecorder(eventRecorder)
         .runExecutionInterceptor(runExecutionInterceptor)
         .artifactValidators(List.copyOf(artifactValidators))
+        .contextAggregators(List.copyOf(contextAggregators))
         // Without this, WorkflowRuntimeBuilder defaults to its own bare new ObjectMapper() for
         // context-selection JSON handling (ledger content, compact siblings), diverging from the
         // mapper configuration loading and artifact validation above already use.

@@ -76,6 +76,43 @@
       "id": "maxNestingDepth",
       "label": "Maximum structural nesting depth",
       "required": true
+    },
+    {
+      "type": "NUMBER",
+      "id": "minAgentTurns",
+      "label": "Loop-aware minimum agent turns (loops assumed to run once; not a true floor when branches are present)",
+      "required": true
+    },
+    {
+      "type": "NUMBER",
+      "id": "expectedAgentTurns",
+      "label": "Loop-aware expected agent turns (expected iteration factors; overstated when branches are present)",
+      "required": true
+    },
+    {
+      "type": "NUMBER",
+      "id": "maxAgentTurns",
+      "label": "Loop-aware maximum agent turns (maximum iteration factors; a true conservative ceiling)",
+      "required": true
+    },
+    {
+      "type": "NUMBER",
+      "id": "iterationCeiling",
+      "label": "Largest enclosing loop-iteration product (1 when there are no loops)",
+      "required": true
+    },
+    {
+      "type": "MULTI_CHOICE",
+      "id": "riskFlags",
+      "label": "Structural risk flags, carried through unmodified from the analyzer that produced this summary (comma-separated option names, or NONE when none apply)",
+      "required": true,
+      "options": [
+        "AGENT_DRIVEN_LOOP",
+        "HIGH_ITERATION_CEILING",
+        "LLM_DECIDED_BRANCHING",
+        "DEEP_NESTING",
+        "LARGE_STRUCTURE"
+      ]
     }
   ]
 }

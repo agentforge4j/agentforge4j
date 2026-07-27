@@ -11,8 +11,8 @@ import org.junit.jupiter.api.Test;
 /**
  * Loads the synthetic shipped-workflow fixture on the test classpath through the classpath loader,
  * proving the classloader-based locator and bundle loading still work after the locators moved into
- * {@code config-loader}. Conformance of the real shipped catalog is verified in the workflow catalog
- * module, not here.
+ * {@code config-loader}. Conformance of the real shipped catalog (agent-creator) is
+ * verified in the workflow catalog module, not here.
  */
 class ClasspathWorkflowLoaderTest {
 

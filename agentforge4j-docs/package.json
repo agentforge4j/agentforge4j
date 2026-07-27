@@ -7,7 +7,7 @@
   "scripts": {
     "docusaurus": "docusaurus",
     "start": "docusaurus start",
-    "build": "docusaurus build",
+    "build": "docusaurus build && node scripts/verify-noindex.mjs && node scripts/verify-canonical.mjs",
     "swizzle": "docusaurus swizzle",
     "clear": "docusaurus clear",
     "serve": "docusaurus serve",
@@ -21,10 +21,12 @@
     "lint:product-name": "node scripts/lint-product-name.mjs",
     "lint:javadoc-links": "node scripts/lint-javadoc-links.mjs",
     "lint:archive-drift": "node scripts/archive-drift-check.mjs",
-    "lint": "npm run lint:frontmatter && npm run lint:nav && npm run lint:fixtures && npm run lint:product-name && npm run lint:archive-drift",
+    "lint:navbar-logo": "node scripts/lint-navbar-logo.mjs",
+    "lint": "npm run lint:frontmatter && npm run lint:nav && npm run lint:fixtures && npm run lint:product-name && npm run lint:archive-drift && npm run lint:navbar-logo",
     "javadoc": "node scripts/build-javadoc.mjs",
     "javadoc:versions": "node scripts/build-javadoc-versions.mjs",
     "release:stage": "node scripts/release-stage.mjs",
+    "docs:regenerate-versioned-reference": "node scripts/regenerate-versioned-reference.mjs",
     "docs:scratch-cut": "node scripts/release-scratch-cut.mjs",
     "docs:archive": "node scripts/archive-transition.mjs",
     "docs:archive-check": "node scripts/archive-drift-check.mjs",
@@ -32,7 +34,7 @@
     "docs:javadoc-versions-scratch": "node scripts/javadoc-versions-scratch.mjs",
     "a11y": "node scripts/a11y.mjs",
     "site:assemble": "node scripts/assemble-site.mjs",
-    "test": "node --test scripts/vocab.test.mjs scripts/generate-references.test.mjs scripts/include.test.mjs scripts/fixtures.test.mjs scripts/javadoc.test.mjs scripts/dematerialize.test.mjs scripts/support-window.test.mjs scripts/product-name.test.mjs scripts/assemble-site.test.mjs scripts/lint-javadoc-links.test.mjs scripts/archive.test.mjs scripts/javadoc-versions.test.mjs scripts/archive-drift-check.test.mjs",
+    "test": "node --test",
     "check": "npm run generate && npm run lint && npm run typecheck && npm run test && npm run build"
   },
   "dependencies": {
@@ -51,6 +53,7 @@
     "@docusaurus/module-type-aliases": "3.10.1",
     "@docusaurus/tsconfig": "3.10.1",
     "@docusaurus/types": "3.10.1",
+    "@docusaurus/utils": "3.10.1",
     "@types/react": "^19.0.0",
     "ajv": "^8.17.1",
     "ajv-formats": "^3.0.1",
@@ -59,6 +62,8 @@
     "remark-frontmatter": "^5.0.0",
     "remark-mdx": "^3.1.1",
     "remark-parse": "^11.0.0",
+    "sax": "^1.6.0",
+    "sitemap": "^7.1.1",
     "typescript": "~6.0.2",
     "unified": "^11.0.5",
     "unist-util-visit": "^5.1.0"

@@ -17,7 +17,7 @@ package "agentforge4j-llm-api  (contracts, no impl)" #F3F7FF {
   interface LlmClient {
     +getProviderName() : String
     +execute(LlmExecutionRequest) : LlmExecutionResponse
-    +getRetryPolicy() : Optional<LlmRetryPolicy>
+    +getRetryPolicy() : LlmRetryPolicy
   }
   class LlmExecutionRequest <<record>>
   class LlmExecutionResponse <<record>>

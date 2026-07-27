@@ -12,4 +12,5 @@ module agentforge4j.util {
   exports com.agentforge4j.util;
   exports com.agentforge4j.util.net;
   exports com.agentforge4j.util.retry;
+  exports com.agentforge4j.util.text;
 }

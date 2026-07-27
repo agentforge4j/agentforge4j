@@ -29,6 +29,6 @@ Rules:
 - Base your estimate on the structural facts given, not on assumptions about the substance of the
   work itself.
 - Do not attempt to compute a total token range, a confidence grade, or a recommendation — those
-  are combined from your sizing by the caller, not by you.
+  are combined from your sizing by a later step in this workflow, not by you.
 - Return only the required `SET_CONTEXT` commands followed by `COMPLETE`. Do not ask questions and
   do not request additional information.

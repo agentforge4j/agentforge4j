@@ -9,6 +9,7 @@ import com.agentforge4j.core.workflow.LedgerMergeStrategy;
 import com.agentforge4j.core.workflow.WorkflowDefinition;
 import com.agentforge4j.core.workflow.WorkflowLifecycle;
 import com.agentforge4j.core.workflow.WorkflowSource;
+import com.agentforge4j.core.workflow.WorkflowTreeWalker;
 import com.agentforge4j.core.workflow.step.ContextSelection;
 import com.agentforge4j.core.workflow.step.ContextSelector;
 import com.agentforge4j.core.workflow.step.ContextSourceKind;
@@ -33,7 +34,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class WorkflowValidatorContextSelectionTest {
 
-  private final WorkflowValidator validator = new WorkflowValidator();
+  private final WorkflowValidator validator =
+      new WorkflowValidator(WorkflowTreeWalker.MAX_TRAVERSAL_DEPTH);
 
   private static ContextSelector sel(ContextSourceKind kind, String ref) {
     return new ContextSelector(kind, ref, ContextVariant.FULL);
