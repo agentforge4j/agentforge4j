@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import { useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
-import { canonicalUrl, findSeoRoute, type JsonLd } from '@/config/seo';
+import { canonicalUrl, findSeoRoute, NOT_FOUND_SEO, type JsonLd } from '@/config/seo';
 import { catalogueData } from '@/lib/catalogueData';
 import { catalogueWorkflowDescription, catalogueWorkflowTitle } from '@/lib/catalogueSeo';
 
@@ -22,14 +22,42 @@ function setMetaDescription(content: string): void {
   tag.setAttribute('content', content);
 }
 
-function setCanonical(href: string): void {
-  let link = document.querySelector('link[rel="canonical"]');
+/** `null` REMOVES the canonical link rather than pointing it anywhere. That is the not-found case,
+ * and removal is the only honest answer there: a canonical naming the home page asks a crawler to
+ * fold a nonexistent URL into a real one, and a self-referential one asserts the arbitrary address
+ * is a real page. Removal (not just "don't set it") matters because a client-side navigation into a
+ * missing route inherits whatever the previous route left in the document. */
+function setCanonical(href: string | null): void {
+  const existing = document.querySelector('link[rel="canonical"]');
+  if (href === null) {
+    existing?.remove();
+    return;
+  }
+  let link = existing;
   if (!link) {
     link = document.createElement('link');
     link.setAttribute('rel', 'canonical');
     document.head.appendChild(link);
   }
   link.setAttribute('href', href);
+}
+
+/** Sets, updates, or removes `<meta name="robots">`. `null` removes it, which is what a navigation
+ * OUT of a missing route back into a real one must do — a `noindex` left behind by the previous
+ * route would quietly suppress a page that is perfectly indexable. */
+function setRobots(content: string | null): void {
+  const existing = document.querySelector('meta[name="robots"]');
+  if (content === null) {
+    existing?.remove();
+    return;
+  }
+  let tag = existing;
+  if (!tag) {
+    tag = document.createElement('meta');
+    tag.setAttribute('name', 'robots');
+    document.head.appendChild(tag);
+  }
+  tag.setAttribute('content', content);
 }
 
 // Must stay byte-identical to build-seo.mjs's exported JSON_LD_SCRIPT_ID — the id the build-time
@@ -89,6 +117,9 @@ export function usePageSeo(): void {
       document.title = staticEntry.title;
       setMetaDescription(staticEntry.description);
       setCanonical(canonicalUrl(staticEntry.canonicalPath ?? staticEntry.path));
+      // Clears a `noindex` a preceding not-found route may have left in the document — this is a
+      // real, indexable page, and inheriting the previous route's robots directive would suppress it.
+      setRobots(null);
       setJsonLd(staticEntry.jsonLd);
       return;
     }
@@ -104,22 +135,32 @@ export function usePageSeo(): void {
       // trailing-slash or differently-cased "catalogue" segment on the visited URL can never leak
       // into the emitted canonical; the canonical is always the one clean, normalized address.
       setCanonical(canonicalUrl(`/catalogue/${workflow.id}`));
+      // Same reason as the static-route branch above: a real page must not inherit a preceding
+      // not-found route's noindex.
+      setRobots(null);
       // No catalogue workflow declares its own jsonLd today — clears whatever an earlier route
       // (e.g. home) left behind rather than letting it linger on an unrelated page.
       setJsonLd(undefined);
       return;
     }
 
-    // Unmatched path (NotFoundPage) or any other route with no SEO entry: fall back to the
-    // home entry rather than leaving a stale title/canonical from whatever route preceded it —
-    // matches the static 404.html shell, whose head carries the same home title/canonical
-    // (copy-404.mjs copies the built index.html shell before any per-route rewriting).
-    const home = findSeoRoute('/');
-    if (home) {
-      document.title = home.title;
-      setMetaDescription(home.description);
-      setCanonical(canonicalUrl('/'));
-      setJsonLd(home.jsonLd);
-    }
+    // Unmatched path (NotFoundPage) or any other route with no SEO entry: its own not-found
+    // metadata, never the home page's. This branch used to copy the home entry wholesale — title,
+    // description, canonical AND the home page's WebSite+Organization+SoftwareSourceCode structured
+    // data — so a mistyped address rendered as a second, indexable-looking home page whose only
+    // protection was the HTTP 404 status (and `/404.html`, served at 200, had not even that).
+    //
+    // Matches what build-seo.mjs now writes into the static dist/404.html head, so a direct load and
+    // a client-side navigation into a missing route converge on the same state rather than
+    // disagreeing about what a 404 is.
+    document.title = NOT_FOUND_SEO.title;
+    setMetaDescription(NOT_FOUND_SEO.description);
+    // No canonical at all — see NotFoundSeo's own doc comment for why neither the home page nor a
+    // self-reference is a truthful answer here.
+    setCanonical(null);
+    setRobots(NOT_FOUND_SEO.robots);
+    // Never the home page's structured data. Those nodes assert this URL is the site's WebSite
+    // entity and its Organization's home — untrue of an address that does not exist.
+    setJsonLd(undefined);
   }, [location.pathname]);
 }

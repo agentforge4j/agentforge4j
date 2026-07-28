@@ -21,6 +21,7 @@ import {
   gitLastModifiedDateForRouteMetadata,
   injectHead,
   injectJsonLd,
+  injectNotFoundHead,
   injectRoot,
   JSON_LD_SCRIPT_ID,
   newestGitLastModifiedDate,
@@ -2115,4 +2116,125 @@ test('global dependency scope contract: every file traced as materially affectin
       `${relFile} belongs in globalSourceFiles specifically (the shared render surface), not just anywhere global`,
     );
   }
+});
+
+// --- The not-found shell. copy-404.mjs copies dist/index.html verbatim (right for the body, which
+// must stay the empty pre-prerender mount point), which left the head saying the home page's title,
+// description, canonical and social tags on every mistyped address — and on /404.html itself, which
+// is served at 200 where the HTTP status protects nothing. ---
+
+const NOT_FOUND_CONFIG = {
+  title: 'Page not found — AgentForge4j',
+  description: 'This address does not match any page on agentforge4j.org.',
+  robots: 'noindex, follow',
+};
+
+test('injectNotFoundHead replaces the home title/description with the not-found ones', () => {
+  const html = injectNotFoundHead(BASE_INDEX_HTML, NOT_FOUND_CONFIG);
+  assert.match(html, /<title>Page not found — AgentForge4j<\/title>/);
+  assert.match(html, /<meta name="description" content="This address does not match any page on agentforge4j\.org\." \/>/);
+  assert.doesNotMatch(html, /Governed AI Workflows for Java/);
+});
+
+test('injectNotFoundHead REMOVES the canonical link rather than repointing it — a 404 must name no canonical URL at all', () => {
+  const html = injectNotFoundHead(BASE_INDEX_HTML, NOT_FOUND_CONFIG);
+  assert.doesNotMatch(html, /<link\s+rel="canonical"/);
+});
+
+test('injectNotFoundHead removes og:url too — it makes the same claim the canonical no longer does', () => {
+  const html = injectNotFoundHead(BASE_INDEX_HTML, NOT_FOUND_CONFIG);
+  assert.doesNotMatch(html, /property="og:url"/);
+});
+
+test('injectNotFoundHead adds the configured robots directive, since /404.html itself is served at 200', () => {
+  const html = injectNotFoundHead(BASE_INDEX_HTML, NOT_FOUND_CONFIG);
+  assert.match(html, /<meta name="robots" content="noindex, follow" \/>/);
+});
+
+test('injectNotFoundHead rewrites the social title/description as well, so the shell does not describe itself as the home page anywhere', () => {
+  const html = injectNotFoundHead(BASE_INDEX_HTML, NOT_FOUND_CONFIG);
+  assert.match(html, /<meta property="og:title" content="Page not found — AgentForge4j" \/>/);
+  assert.match(html, /<meta name="twitter:title" content="Page not found — AgentForge4j" \/>/);
+  assert.match(html, /<meta property="og:description" content="This address does not match any page on agentforge4j\.org\." \/>/);
+  assert.match(html, /<meta name="twitter:description" content="This address does not match any page on agentforge4j\.org\." \/>/);
+});
+
+test('injectNotFoundHead never touches the body — the empty mount point verify-seo gates on survives', () => {
+  const html = injectNotFoundHead(BASE_INDEX_HTML, NOT_FOUND_CONFIG);
+  assert.match(html, /<div id="root"><\/div>/);
+});
+
+test('injectNotFoundHead escapes its values into the head rather than trusting them', () => {
+  const html = injectNotFoundHead(BASE_INDEX_HTML, {
+    title: 'Not "found" <yet>',
+    description: 'A & B',
+    robots: 'noindex, follow',
+  });
+  assert.match(html, /<title>Not &quot;found&quot; &lt;yet&gt;<\/title>/);
+  assert.match(html, /content="A &amp; B"/);
+});
+
+test('injectNotFoundHead fails loudly on template drift rather than silently leaving the home metadata in place', () => {
+  const withoutTitle = BASE_INDEX_HTML.replace(/<title>[\s\S]*?<\/title>/, '');
+  assert.throws(() => injectNotFoundHead(withoutTitle, NOT_FOUND_CONFIG), /expected tag not found in dist\/404\.html/);
+});
+
+test('buildSeo gives a real dist/404.html its own not-found head, and reports having done so', () => {
+  const { distDir, seoRoutesPath, catalogueDataPath } = fixture({
+    routes: { ...SAMPLE_ROUTES, notFound: NOT_FOUND_CONFIG },
+  });
+  // Exactly what copy-404.mjs leaves behind before this runs: a verbatim copy of the built shell.
+  writeFileSync(join(distDir, '404.html'), BASE_INDEX_HTML, 'utf8');
+
+  const result = buildSeo({ distDir, seoRoutesPath, catalogueDataPath, repoRoot: REAL_MODULE_ROOT });
+  assert.equal(result.notFoundShellWritten, true);
+
+  const html = readFileSync(join(distDir, '404.html'), 'utf8');
+  assert.match(html, /<title>Page not found — AgentForge4j<\/title>/);
+  assert.doesNotMatch(html, /<link\s+rel="canonical"/);
+  assert.match(html, /<meta name="robots" content="noindex, follow" \/>/);
+  assert.match(html, /<div id="root"><\/div>/);
+});
+
+test('the not-found shell never receives structured data, even when a route declares some', () => {
+  const { distDir, seoRoutesPath, catalogueDataPath } = fixture({
+    routes: {
+      ...SAMPLE_ROUTES,
+      notFound: NOT_FOUND_CONFIG,
+      routes: [
+        {
+          path: '/',
+          title: 'Home Title',
+          description: 'Home description.',
+          jsonLd: { '@context': 'https://schema.org', '@type': 'WebSite', name: 'AgentForge4j' },
+        },
+        ...SAMPLE_ROUTES.routes.slice(1),
+      ],
+    },
+  });
+  writeFileSync(join(distDir, '404.html'), BASE_INDEX_HTML, 'utf8');
+
+  buildSeo({ distDir, seoRoutesPath, catalogueDataPath, repoRoot: REAL_MODULE_ROOT });
+
+  // The home shell gets it; the catch-all shell must not — that structured data asserts the URL IS
+  // the site's WebSite entity, which is untrue of every address that lands on the 404.
+  assert.match(readFileSync(join(distDir, 'index.html'), 'utf8'), /application\/ld\+json/);
+  assert.doesNotMatch(readFileSync(join(distDir, '404.html'), 'utf8'), /application\/ld\+json/);
+});
+
+test('buildSeo leaves 404.html alone (and says so) when the config declares no notFound metadata', () => {
+  const { distDir, seoRoutesPath, catalogueDataPath } = fixture();
+  writeFileSync(join(distDir, '404.html'), BASE_INDEX_HTML, 'utf8');
+  const result = buildSeo({ distDir, seoRoutesPath, catalogueDataPath, repoRoot: REAL_MODULE_ROOT });
+  assert.equal(result.notFoundShellWritten, false);
+  assert.equal(readFileSync(join(distDir, '404.html'), 'utf8'), BASE_INDEX_HTML);
+});
+
+test('the REAL committed seo-routes.json declares not-found metadata — without it every mistyped address ships the home page head', () => {
+  const real = JSON.parse(readFileSync(join(REAL_MODULE_ROOT, 'src/config/seo-routes.json'), 'utf8'));
+  assert.ok(real.notFound, 'expected a top-level `notFound` entry');
+  assert.ok(real.notFound.title.length > 0);
+  assert.ok(real.notFound.description.length > 0);
+  assert.match(real.notFound.robots, /\bnoindex\b/);
+  assert.notEqual(real.notFound.title, real.routes.find((route) => route.path === '/').title);
 });

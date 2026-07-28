@@ -29,6 +29,11 @@
     "agentforge4j-web-ui/scripts/build-catalogue-data.mjs",
     "agentforge4j-web-ui/src/lib/catalogueData.ts"
   ],
+  "notFound": {
+    "title": "Page not found — AgentForge4j",
+    "description": "This address does not match any page on agentforge4j.org. The documentation, the workflow catalogue, and the API reference are all reachable from the site navigation.",
+    "robots": "noindex, follow"
+  },
   "routes": [
     {
       "path": "/",

@@ -60,14 +60,31 @@ function sitemapXml(entries) {
   return `<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">${body}</urlset>`;
 }
 
+// The real committed not-found metadata. Fixtures build their default 404.html head from THIS
+// rather than from a hand-copied literal, so the shared fixture cannot drift out of agreement with
+// the config every test's default `seoRoutesPath` actually reads.
+const REAL_NOT_FOUND = JSON.parse(readFileSync(join(REAL_MODULE_ROOT, 'src/config/seo-routes.json'), 'utf8')).notFound;
+
+/** The head a correctly-built dist/404.html carries: not-found title and description, a noindex
+ * robots directive, and — by omission — no canonical and no og:url. */
+function notFoundHead(overrides = {}) {
+  const { title, description, robots } = { ...REAL_NOT_FOUND, ...overrides };
+  return (
+    `<title>${title}</title>` +
+    `<meta name="description" content="${description}" />` +
+    `<meta name="robots" content="${robots}" />`
+  );
+}
+
 function fixtureDir() {
   const distDir = mkdtempSync(join(tmpdir(), 'verify-seo-'));
   // Every fixture ships a valid 404 catch-all by default — the empty pre-prerender SPA shell
-  // copy-404.mjs produces on a real build. The dedicated 404-gate tests below overwrite or
-  // remove it deliberately.
+  // copy-404.mjs produces, with the not-found head build-seo.mjs then gives it on a real build. The
+  // dedicated 404-gate tests below overwrite or remove it deliberately.
   writeFileSync(
     join(distDir, '404.html'),
-    '<!doctype html><html lang="en"><head><meta charset="UTF-8"></head><body><div id="root"></div></body></html>',
+    `<!doctype html><html lang="en"><head><meta charset="UTF-8">${notFoundHead()}</head>` +
+      '<body><div id="root"></div></body></html>',
     'utf8',
   );
   return distDir;
@@ -976,4 +993,148 @@ test('startGhPagesEmulatingServer returns a controlled 400 for malformed percent
   } finally {
     await new Promise((r) => server.close(r));
   }
+});
+
+// --- The catch-all shell's own SEO. Served for every unmatched address, and served at 200 at its
+// own address (/404.html) — so unlike an unknown route, nothing about the HTTP status protects it. ---
+
+const NOT_FOUND_CONFIG = {
+  title: 'Page not found — AgentForge4j',
+  description: 'This address does not match any page on agentforge4j.org.',
+  robots: 'noindex, follow',
+};
+
+/** A fixture whose seo-routes.json declares real not-found metadata, plus a 404.html built from
+ * `overrides` — so each test below can break exactly one property of the shell and nothing else. */
+function notFoundFixture({ head, routesJson } = {}) {
+  const distDir = fixtureDir();
+  writePage(distDir, '', page({ canonical: 'https://agentforge4j.org/' }));
+  writeFileSync(
+    join(distDir, 'sitemap.xml'),
+    sitemapXml([{ url: 'https://agentforge4j.org/', lastmod: '2026-07-20' }]),
+    'utf8',
+  );
+  const defaultHead =
+    `<title>${NOT_FOUND_CONFIG.title}</title>` +
+    `<meta name="description" content="${NOT_FOUND_CONFIG.description}" />` +
+    `<meta name="robots" content="${NOT_FOUND_CONFIG.robots}" />`;
+  writeFileSync(
+    join(distDir, '404.html'),
+    `<!doctype html><html lang="en"><head><meta charset="UTF-8">${head ?? defaultHead}</head>` +
+      `<body><div id="root"></div></body></html>`,
+    'utf8',
+  );
+  const seoRoutesPath = join(distDir, 'seo-routes.json');
+  writeFileSync(
+    seoRoutesPath,
+    JSON.stringify(routesJson ?? { siteUrl: 'https://agentforge4j.org', notFound: NOT_FOUND_CONFIG, routes: [] }),
+    'utf8',
+  );
+  return { distDir, seoRoutesPath };
+}
+
+test('a correctly-headed dist/404.html passes clean', async () => {
+  const { distDir, seoRoutesPath } = notFoundFixture();
+  await assert.doesNotReject(() => verifySeo({ distDir, seoRoutesPath, staticRoutes: [] }));
+});
+
+test('NEGATIVE CONTROL — the audited defect: a dist/404.html still carrying the home page title fails', async () => {
+  const { distDir, seoRoutesPath } = notFoundFixture({
+    head:
+      '<title>AgentForge4j — Governed AI Workflows for Java</title>' +
+      `<meta name="description" content="${NOT_FOUND_CONFIG.description}" />` +
+      '<meta name="robots" content="noindex, follow" />',
+  });
+  await assert.rejects(
+    () => verifySeo({ distDir, seoRoutesPath, staticRoutes: [] }),
+    /dist\/404\.html — expected the not-found title "Page not found — AgentForge4j", got "AgentForge4j — Governed AI Workflows for Java"/,
+  );
+});
+
+test('NEGATIVE CONTROL — a dist/404.html carrying a canonical link fails, whichever URL it names', async () => {
+  const { distDir, seoRoutesPath } = notFoundFixture({
+    head:
+      `<title>${NOT_FOUND_CONFIG.title}</title>` +
+      `<meta name="description" content="${NOT_FOUND_CONFIG.description}" />` +
+      '<meta name="robots" content="noindex, follow" />' +
+      '<link rel="canonical" href="https://agentforge4j.org/" />',
+  });
+  await assert.rejects(
+    () => verifySeo({ distDir, seoRoutesPath, staticRoutes: [] }),
+    /dist\/404\.html carries a canonical link/,
+  );
+});
+
+test('a dist/404.html carrying an og:url fails too — it makes the same claim as a canonical', async () => {
+  const { distDir, seoRoutesPath } = notFoundFixture({
+    head:
+      `<title>${NOT_FOUND_CONFIG.title}</title>` +
+      `<meta name="description" content="${NOT_FOUND_CONFIG.description}" />` +
+      '<meta name="robots" content="noindex, follow" />' +
+      '<meta property="og:url" content="https://agentforge4j.org/" />',
+  });
+  await assert.rejects(() => verifySeo({ distDir, seoRoutesPath, staticRoutes: [] }), /dist\/404\.html carries an og:url/);
+});
+
+test('NEGATIVE CONTROL — a dist/404.html carrying the home page JSON-LD fails', async () => {
+  const { distDir, seoRoutesPath } = notFoundFixture({
+    head:
+      `<title>${NOT_FOUND_CONFIG.title}</title>` +
+      `<meta name="description" content="${NOT_FOUND_CONFIG.description}" />` +
+      '<meta name="robots" content="noindex, follow" />' +
+      '<script type="application/ld+json">{"@context":"https://schema.org","@type":"WebSite"}</script>',
+  });
+  await assert.rejects(
+    () => verifySeo({ distDir, seoRoutesPath, staticRoutes: [] }),
+    /dist\/404\.html carries 1 JSON-LD block\(s\)/,
+  );
+});
+
+test('a dist/404.html with no robots directive fails — /404.html is served at 200, so nothing else keeps it out of an index', async () => {
+  const { distDir, seoRoutesPath } = notFoundFixture({
+    head: `<title>${NOT_FOUND_CONFIG.title}</title><meta name="description" content="${NOT_FOUND_CONFIG.description}" />`,
+  });
+  await assert.rejects(
+    () => verifySeo({ distDir, seoRoutesPath, staticRoutes: [] }),
+    /robots directive is null, which does not say noindex/,
+  );
+});
+
+test('a robots directive that is present but does NOT say noindex is rejected, not accepted as "some directive is there"', async () => {
+  const { distDir, seoRoutesPath } = notFoundFixture({
+    head:
+      `<title>${NOT_FOUND_CONFIG.title}</title>` +
+      `<meta name="description" content="${NOT_FOUND_CONFIG.description}" />` +
+      '<meta name="robots" content="index, follow" />',
+  });
+  await assert.rejects(
+    () => verifySeo({ distDir, seoRoutesPath, staticRoutes: [] }),
+    /robots directive is "index, follow", which does not say noindex/,
+  );
+});
+
+test('a config with no notFound metadata at all fails the gate rather than skipping it', async () => {
+  const { distDir, seoRoutesPath } = notFoundFixture({
+    routesJson: { siteUrl: 'https://agentforge4j.org', routes: [] },
+  });
+  await assert.rejects(
+    () => verifySeo({ distDir, seoRoutesPath, staticRoutes: [] }),
+    /seo-routes\.json declares no `notFound` metadata/,
+  );
+});
+
+test('the shell is still required to be the empty pre-prerender mount point — the new head checks do not replace that one', async () => {
+  const { distDir, seoRoutesPath } = notFoundFixture();
+  writeFileSync(
+    join(distDir, '404.html'),
+    `<!doctype html><html lang="en"><head><title>${NOT_FOUND_CONFIG.title}</title>` +
+      `<meta name="description" content="${NOT_FOUND_CONFIG.description}" />` +
+      '<meta name="robots" content="noindex, follow" /></head>' +
+      '<body><div id="root"><h1>a whole prerendered home page</h1></div></body></html>',
+    'utf8',
+  );
+  await assert.rejects(
+    () => verifySeo({ distDir, seoRoutesPath, staticRoutes: [] }),
+    /no longer contains an empty <div id="root"><\/div> mount point/,
+  );
 });

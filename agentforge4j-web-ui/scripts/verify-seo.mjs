@@ -163,6 +163,64 @@ function h1Count(html) {
   return (html.match(/<h1[\s>]/g) ?? []).length;
 }
 
+/**
+ * The catch-all shell GitHub Pages serves for every unmatched address must describe itself as a
+ * not-found page — not as the home page, which is what a verbatim copy of dist/index.html made it.
+ *
+ * Each clause below is one of the audited claims, checked against the real built artifact:
+ *  - it carries the configured not-found title and description, so it is not simply the home page
+ *    under a different status code;
+ *  - it carries a `noindex` robots directive. `/404.html` is itself served at 200, so nothing else
+ *    keeps this out of an index, and the mismatch between "reads as a real page" and "is not one"
+ *    is precisely a soft-404 signal;
+ *  - it has NO canonical link and no `og:url`. Either one, pointed anywhere, makes a claim about a
+ *    URL that does not exist (see build-seo.mjs's injectNotFoundHead);
+ *  - it carries NO structured data. The home page's JSON-LD asserts this URL is the site's WebSite
+ *    entity and its Organization's home page, which is untrue of every address that lands here.
+ *
+ * `expected` comes from the same committed seo-routes.json the build reads, so this compares the
+ * artifact against the declared intent rather than against a second copy of the copy.
+ */
+function assertNotFoundShellSeo(html, expected) {
+  if (!expected) {
+    throw new Error(
+      'verify-seo: seo-routes.json declares no `notFound` metadata — dist/404.html would ship the home page\'s ' +
+        'title, description and canonical, which is the exact defect this check exists to prevent',
+    );
+  }
+  const title = extractTag(html, /<title>([\s\S]*?)<\/title>/);
+  if (title !== expected.title) {
+    throw new Error(`verify-seo: dist/404.html — expected the not-found title "${expected.title}", got "${title}"`);
+  }
+  const description = extractTag(html, /<meta name="description" content="([^"]*)"/);
+  if (description !== expected.description) {
+    throw new Error(`verify-seo: dist/404.html — expected the not-found description, got "${description}"`);
+  }
+  const robots = extractTag(html, /<meta name="robots" content="([^"]*)"/);
+  if (robots === null || !/\bnoindex\b/i.test(robots)) {
+    throw new Error(
+      `verify-seo: dist/404.html — robots directive is ${JSON.stringify(robots)}, which does not say noindex; ` +
+        '/404.html is served at 200, so nothing else stops it being indexed',
+    );
+  }
+  if (/<link\s+rel="canonical"/.test(html)) {
+    throw new Error(
+      'verify-seo: dist/404.html carries a canonical link — a 404 must not name any URL as its canonical ' +
+        '(the home page would consolidate a nonexistent URL into a real one; itself would assert the address is real)',
+    );
+  }
+  if (/<meta\s+property="og:url"/.test(html)) {
+    throw new Error('verify-seo: dist/404.html carries an og:url — the canonical claim it makes is as untrue as a canonical link');
+  }
+  const jsonLdBlocks = [...html.matchAll(/<script\b[^>]*type="application\/ld\+json"[^>]*>/gi)];
+  if (jsonLdBlocks.length > 0) {
+    throw new Error(
+      `verify-seo: dist/404.html carries ${jsonLdBlocks.length} JSON-LD block(s) — a not-found page must not ` +
+        "assert the home page's WebSite/Organization identity",
+    );
+  }
+}
+
 function extractTag(html, pattern) {
   const match = pattern.exec(html);
   return match ? match[1] : null;
@@ -351,13 +409,15 @@ export async function verifySeo({
   if (!existsSync(notFoundPath)) {
     throw new Error(`verify-seo: ${notFoundPath} does not exist — run the full build first`);
   }
-  if (!/<div id="root"><\/div>/.test(readFileSync(notFoundPath, 'utf8'))) {
+  const notFoundHtml = readFileSync(notFoundPath, 'utf8');
+  if (!/<div id="root"><\/div>/.test(notFoundHtml)) {
     throw new Error(
       'verify-seo: dist/404.html no longer contains an empty <div id="root"></div> mount point — ' +
         'it must stay the pre-prerender SPA shell (copy-404.mjs must run before build-seo.mjs, ' +
         'never after it)',
     );
   }
+  assertNotFoundShellSeo(notFoundHtml, JSON.parse(readFileSync(seoRoutesPath, 'utf8')).notFound);
 
   // Which served paths have a declaration of their own to be checked against, below. Every other
   // sitemap URL is a route that can only legitimately carry zero structured data — see the sitemap

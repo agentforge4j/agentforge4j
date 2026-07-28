@@ -14,7 +14,8 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import App from '@/App';
 import { ThemeProvider } from '@/theme/ThemeContext';
-import { findSeoRoute } from '@/config/seo';
+import { findSeoRoute, NOT_FOUND_SEO } from '@/config/seo';
+import { catalogueData } from '@/lib/catalogueData';
 // JSON_LD_SCRIPT_ID comes from build-seo.mjs deliberately, never re-typed as a literal here: the
 // static shell's script id and the one usePageSeo.ts's `setJsonLd` looks for MUST be the same
 // string, and this import is the only thing in the suite that can fail when they drift. A
@@ -22,9 +23,14 @@ import { findSeoRoute } from '@/config/seo';
 // long after build-seo.mjs had been renamed — leaving the shell shipping one id, the hook hunting
 // for another, and every gate still green. (usePageSeo.ts itself cannot import this module —
 // build-seo.mjs pulls in node:child_process — so the binding has to live here.)
-import { buildSeo, JSON_LD_SCRIPT_ID } from '../scripts/build-seo.mjs';
+import { buildSeo, injectNotFoundHead, JSON_LD_SCRIPT_ID } from '../scripts/build-seo.mjs';
+
 
 const MODULE_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
+// The committed index.html template every built shell (including dist/404.html) derives from —
+// read from the real file so the build-vs-client comparison below runs against the real template,
+// not a stand-in for it.
+const STATIC_SHELL_HTML = readFileSync(join(MODULE_ROOT, 'index.html'), 'utf8');
 
 function renderAt(path: string) {
   return render(
@@ -99,10 +105,11 @@ describe('usePageSeo', () => {
     expect(canonicalHref()).toBe('https://agentforge4j.org/catalogue/workflow-execution-estimator/');
   });
 
-  test('an unmatched path falls back to the home title/canonical rather than a stale value', () => {
+  test('an unmatched path gets the not-found metadata, neither a stale value nor the home page\'s', () => {
     renderAt('/this-route-does-not-exist');
-    expect(document.title).toBe('AgentForge4j — Governed AI Workflows for Java');
-    expect(canonicalHref()).toBe('https://agentforge4j.org/');
+    expect(document.title).toBe(NOT_FOUND_SEO.title);
+    expect(document.title).not.toBe('AgentForge4j — Governed AI Workflows for Java');
+    expect(canonicalHref()).toBeNull();
   });
 
   // React Router's own default matching is case-insensitive and tolerates an optional trailing
@@ -129,20 +136,21 @@ describe('usePageSeo', () => {
     expect(canonicalHref()).toBe('https://agentforge4j.org/catalogue/workflow-execution-estimator/');
   });
 
-  test('an unknown route with a trailing slash still falls back to Home, not a stale value', () => {
+  test('an unknown route with a trailing slash is not-found too, not a stale value', () => {
     renderAt('/this-route-does-not-exist/');
-    expect(document.title).toBe('AgentForge4j — Governed AI Workflows for Java');
-    expect(canonicalHref()).toBe('https://agentforge4j.org/');
+    expect(document.title).toBe(NOT_FOUND_SEO.title);
+    expect(canonicalHref()).toBeNull();
   });
 
-  test('an unknown catalogue workflow id uses NotFound (= Home) metadata, not stale or fabricated metadata', () => {
+  test('an unknown catalogue workflow id uses the not-found metadata, not stale or fabricated metadata', () => {
     // /catalogue/:id matches the route shape (CatalogueDetailPage renders), but no real workflow
-    // has this id, so CatalogueDetailPage itself renders NotFoundPage — this app has no metadata
-    // distinct from Home for "not found" (404.html is byte-identical to the home shell by design),
-    // so falling back to Home's title/canonical here is the correct "NotFound metadata", not a bug.
+    // has this id, so CatalogueDetailPage itself renders NotFoundPage — and the metadata must agree
+    // with what rendered. It used to fall back to Home's title/canonical because the app had no
+    // distinct not-found metadata at all; it now has its own, and this is one of the addresses that
+    // must get it.
     renderAt('/catalogue/this-workflow-id-does-not-exist');
-    expect(document.title).toBe('AgentForge4j — Governed AI Workflows for Java');
-    expect(canonicalHref()).toBe('https://agentforge4j.org/');
+    expect(document.title).toBe(NOT_FOUND_SEO.title);
+    expect(canonicalHref()).toBeNull();
   });
 
   test('build-time canonical (build-seo.mjs) and client-side canonical (usePageSeo) agree for a real shipped catalogue workflow id', () => {
@@ -197,14 +205,14 @@ describe('usePageSeo', () => {
     expect(jsonLdScript()).toBeNull();
   });
 
-  // The static 404.html shell carries NO JSON-LD of its own: copy-404.mjs takes it from the built
-  // index.html *before* build-seo.mjs injects anything, so unlike title/canonical — which that
-  // pre-injection shell already happens to carry in their home form — structured data on an
-  // unmatched path exists only because this hook adds it. Do not read this fallback as redundant
-  // with the shell; removing it would leave every unmatched path with no structured data at all.
-  test('an unmatched path gets home\'s jsonLd added client-side — the static 404.html shell ships with none of its own', () => {
+  // Both surfaces agree that an unmatched path carries no structured data: the static dist/404.html
+  // shell never receives any (build-seo.mjs's injectNotFoundHead adds none, and copy-404.mjs's
+  // source copy predates injection), and this hook actively clears whatever the previous route left
+  // behind. Adding home's JSON-LD here — which this branch used to do — asserted that a nonexistent
+  // address IS the site's WebSite entity and its Organization's home page.
+  test('an unmatched path carries no structured data at all, rather than inheriting the home page\'s identity', () => {
     renderAt('/this-route-does-not-exist');
-    expect(jsonLdContent()).toEqual(findSeoRoute('/')?.jsonLd);
+    expect(jsonLdScript()).toBeNull();
   });
 
   test('a client-side navigation from a route with no jsonLd to "/" adds it, without a fresh page load', () => {
@@ -262,5 +270,102 @@ describe('usePageSeo', () => {
     navigate();
 
     expect(document.head.querySelectorAll('script[type="application/ld+json"]').length).toBe(0);
+  });
+});
+
+// --- Not-found SEO in the rendered DOM. The static dist/404.html shell (build-seo.mjs's
+// injectNotFoundHead) covers the first request; this hook is what an unmatched route reaches after
+// a client-side navigation, and the two must say the same thing about what a 404 is. ---
+
+function robotsContent(): string | null {
+  return document.querySelector('meta[name="robots"]')?.getAttribute('content') ?? null;
+}
+
+describe('usePageSeo not-found metadata', () => {
+  test('an unknown route gets its OWN title and description, never the home page\'s', () => {
+    renderAt('/no-such-page');
+    expect(document.title).toBe(NOT_FOUND_SEO.title);
+    expect(metaDescription()).toBe(NOT_FOUND_SEO.description);
+    expect(document.title).not.toBe(findSeoRoute('/')?.title);
+  });
+
+  test('an unknown route carries NO canonical link at all — neither the home page nor itself', () => {
+    renderAt('/no-such-page');
+    expect(canonicalHref()).toBeNull();
+  });
+
+  test('an unknown route carries a noindex robots directive', () => {
+    renderAt('/no-such-page');
+    expect(robotsContent()).toBe(NOT_FOUND_SEO.robots);
+    expect(robotsContent()).toMatch(/\bnoindex\b/);
+  });
+
+  test('an unknown route carries no structured data — the home page\'s WebSite/Organization identity is not its own', () => {
+    renderAt('/no-such-page');
+    expect(jsonLdScript()).toBeNull();
+  });
+
+  test('an unknown catalogue workflow id is treated as not-found, not as the home page', () => {
+    renderAt('/catalogue/no-such-workflow');
+    expect(document.title).toBe(NOT_FOUND_SEO.title);
+    expect(canonicalHref()).toBeNull();
+    expect(jsonLdScript()).toBeNull();
+  });
+
+  test('navigating INTO a missing route from "/" drops the home canonical and JSON-LD rather than leaving them behind', () => {
+    const { navigate } = renderWithNavigation('/', '/no-such-page');
+    expect(canonicalHref()).toBe('https://agentforge4j.org/');
+    expect(jsonLdScript()).not.toBeNull();
+
+    navigate();
+    expect(document.title).toBe(NOT_FOUND_SEO.title);
+    expect(canonicalHref()).toBeNull();
+    expect(jsonLdScript()).toBeNull();
+    expect(robotsContent()).toMatch(/\bnoindex\b/);
+  });
+
+  test('navigating OUT of a missing route restores the destination canonical and clears the noindex — a real page must not inherit it', () => {
+    const { navigate } = renderWithNavigation('/no-such-page', '/architecture');
+    expect(robotsContent()).toMatch(/\bnoindex\b/);
+    expect(canonicalHref()).toBeNull();
+
+    navigate();
+    expect(document.title).toBe('Architecture — AgentForge4j');
+    expect(canonicalHref()).toBe('https://agentforge4j.org/architecture/');
+    expect(robotsContent()).toBeNull();
+  });
+
+  test('navigating out of a missing route to "/" restores the home JSON-LD as well as its canonical', () => {
+    const { navigate } = renderWithNavigation('/no-such-page', '/');
+    expect(jsonLdScript()).toBeNull();
+    navigate();
+    expect(canonicalHref()).toBe('https://agentforge4j.org/');
+    expect(jsonLdContent()).toEqual(findSeoRoute('/')?.jsonLd);
+    expect(robotsContent()).toBeNull();
+  });
+
+  test('navigating out of a missing route to a catalogue detail page also clears the noindex', () => {
+    const workflow = catalogueData.workflows[0];
+    const { navigate } = renderWithNavigation('/no-such-page', `/catalogue/${workflow.id}`);
+    navigate();
+    expect(canonicalHref()).toBe(`https://agentforge4j.org/catalogue/${workflow.id}/`);
+    expect(robotsContent()).toBeNull();
+  });
+
+  test('the client-side not-found state matches what build-seo.mjs writes into the static shell — one 404 policy, not two', () => {
+    // injectNotFoundHead is the build side's implementation; driving it here with the same committed
+    // config and comparing against what the hook produced is what binds the two together. A change
+    // to one that is not made in the other fails here rather than shipping two different 404s.
+    renderAt('/no-such-page');
+    const shell = injectNotFoundHead(STATIC_SHELL_HTML, NOT_FOUND_SEO);
+
+    expect(shell).toContain(`<title>${document.title}</title>`);
+    expect(shell).toContain(`content="${metaDescription()}"`);
+    expect(shell).toContain(`<meta name="robots" content="${robotsContent()}" />`);
+    // Both sides omit these entirely, rather than each choosing its own wrong answer.
+    expect(shell).not.toMatch(/<link\s+rel="canonical"/);
+    expect(canonicalHref()).toBeNull();
+    expect(shell).not.toMatch(/application\/ld\+json/);
+    expect(jsonLdScript()).toBeNull();
   });
 });

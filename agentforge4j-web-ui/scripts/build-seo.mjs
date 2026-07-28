@@ -271,6 +271,65 @@ export function injectHead(html, { title, description, canonical }) {
   return result;
 }
 
+/**
+ * Rewrites the copied `dist/404.html` head so the catch-all shell describes itself as a not-found
+ * page instead of as the home page.
+ *
+ * copy-404.mjs copies `dist/index.html` verbatim before any per-route rewriting, which is right for
+ * the BODY (it must stay the empty pre-prerender mount point — see that script and verify-seo.mjs)
+ * but leaves the HEAD saying the home page's title, description, canonical and social tags. Served
+ * for every mistyped address, that made a 404 present itself as a second home page, with only the
+ * HTTP 404 status keeping it out of an index — and `/404.html` itself is served at 200, where no
+ * status protects anything and the mismatch between "looks like the home page" and "is not the home
+ * page" is exactly a soft-404 signal.
+ *
+ * Three things change relative to `injectHead`'s per-route treatment, each for its own reason:
+ *  - the canonical link is REMOVED, not repointed. Naming the home page asks a crawler to fold a
+ *    nonexistent URL into a real one; naming itself asserts an arbitrary address is a real page.
+ *    Neither is true, and a 404 is entitled to say nothing.
+ *  - `og:url` is removed for the same reason — it is the canonical's Open Graph counterpart, and
+ *    leaving it pointing at the home page would keep making the claim the canonical no longer does.
+ *  - a `robots` directive is added, since this is the one shell whose own address (`/404.html`) is
+ *    genuinely served at 200.
+ *
+ * Never touches the body, so the empty `<div id="root"></div>` verify-seo.mjs gates on is preserved
+ * by construction rather than by care.
+ */
+export function injectNotFoundHead(html, { title, description, robots }) {
+  const safeTitle = escapeHtml(title);
+  const safeDescription = escapeHtml(description);
+  const replacements = [
+    [/<title>[\s\S]*?<\/title>/, `<title>${safeTitle}</title>`],
+    [/<meta\s+name="description"[\s\S]*?\/>/, `<meta name="description" content="${safeDescription}" />`],
+    [/<link\s+rel="canonical"[\s\S]*?\/>/, ''],
+    [/<meta\s+property="og:url"[\s\S]*?\/>\s*/, ''],
+    [/<meta\s+property="og:title"[\s\S]*?\/>/, `<meta property="og:title" content="${safeTitle}" />`],
+    [
+      /<meta\s+property="og:description"[\s\S]*?\/>/,
+      `<meta property="og:description" content="${safeDescription}" />`,
+    ],
+    [/<meta\s+name="twitter:title"[\s\S]*?\/>/, `<meta name="twitter:title" content="${safeTitle}" />`],
+    [
+      /<meta\s+name="twitter:description"[\s\S]*?\/>/,
+      `<meta name="twitter:description" content="${safeDescription}" />`,
+    ],
+  ];
+
+  let result = html;
+  for (const [pattern, replacement] of replacements) {
+    // Same fail-loudly contract as injectHead: these tags all exist in the committed index.html
+    // template, so one going missing is template drift to surface, not a silent no-op.
+    if (!pattern.test(result)) {
+      throw new Error(`build-seo: expected tag not found in dist/404.html: ${pattern}`);
+    }
+    result = result.replace(pattern, () => replacement);
+  }
+  if (!/<\/head>/.test(result)) {
+    throw new Error('build-seo: expected a </head> closing tag in dist/404.html');
+  }
+  return result.replace(/<\/head>/, () => `<meta name="robots" content="${escapeHtml(robots)}" />\n  </head>`);
+}
+
 const EMPTY_ROOT_PATTERN = /<div id="root"><\/div>/;
 
 /** Splices a route's real prerendered content (prerender-routes.mjs's captured `#root` innerHTML)
@@ -552,6 +611,7 @@ export function buildSeo({
 
   const {
     siteUrl,
+    notFound,
     artifactGenerationSourceFiles = [],
     globalSourceFiles = [],
     catalogueSourceFiles = [],
@@ -655,7 +715,19 @@ export function buildSeo({
 
   writeFileSync(join(distDir, 'sitemap.xml'), sitemapXml(sitemapEntries), 'utf8');
 
-  return { shellsWritten, sitemapUrls: uniqueUrls };
+  // The catch-all shell copy-404.mjs already wrote (it runs BEFORE this script, deliberately — see
+  // its header). Rewriting its head here rather than there keeps that script's one job — produce a
+  // byte-identical, pre-prerender copy — intact and separately verifiable, and puts the head
+  // rewriting in the one module that already owns it. Deliberately not counted in `shellsWritten`:
+  // 404.html is not a route shell and is not a sitemap URL.
+  const notFoundPath = join(distDir, '404.html');
+  let notFoundShellWritten = false;
+  if (notFound && existsSync(notFoundPath)) {
+    writeFileSync(notFoundPath, injectNotFoundHead(readFileSync(notFoundPath, 'utf8'), notFound), 'utf8');
+    notFoundShellWritten = true;
+  }
+
+  return { shellsWritten, sitemapUrls: uniqueUrls, notFoundShellWritten };
 }
 
 async function main() {
@@ -666,7 +738,8 @@ async function main() {
   const snapshots = await prerenderRoutes({ distDir: DIST_DIR });
   const result = buildSeo({ snapshots });
   console.log(
-    `[build-seo] wrote ${result.shellsWritten} route shell(s), ${result.sitemapUrls.length} sitemap URL(s)`,
+    `[build-seo] wrote ${result.shellsWritten} route shell(s), ${result.sitemapUrls.length} sitemap URL(s)` +
+      `${result.notFoundShellWritten ? ', and gave dist/404.html its own not-found head' : ''}`,
   );
 }
 
