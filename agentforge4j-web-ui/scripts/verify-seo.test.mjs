@@ -1025,9 +1025,21 @@ test('extractInternalLinkTargets reads only site-internal hrefs, strips fragment
     '<a href="#main-content">skip</a>' +
     '<a href="https://github.com/agentforge4j">gh</a>' +
     '<a href="//evil.example.com/x">protocol-relative</a>' +
-    "<a href='/single/'>single-quoted, not read</a>" +
-    '<a class="x" href="/legal/">attrs before href</a>';
-  assert.deepEqual(extractInternalLinkTargets(html), ['/api/', '/catalogue/', '/use/', '/legal/']);
+    "<a href='/single/'>single-quoted</a>" +
+    '<a href=/bare/>unquoted</a>' +
+    '<a class="x" href="/legal/">attrs before href</a>' +
+    '<a data-href="/decoy/" href="/real/">data-href must not be read as href</a>' +
+    '<a\n  href="/multiline/"\n  class="y"\n>attributes across lines</a>';
+  assert.deepEqual(extractInternalLinkTargets(html), [
+    '/api/',
+    '/catalogue/',
+    '/use/',
+    '/single/',
+    '/bare/',
+    '/legal/',
+    '/real/',
+    '/multiline/',
+  ]);
 });
 
 test('the internal-link crawl passes clean when every internal link already targets the trailing-slash form the host serves directly', async () => {

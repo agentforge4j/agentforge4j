@@ -178,6 +178,14 @@ const COMPOSED_ONLY_LINK_PREFIXES = ['/docs/', '/javadoc/'];
 /** Every site-internal `<a href>` target in `html`, as request paths, with any `#fragment` and
  * `?query` stripped and duplicates left in (the caller deduplicates across pages).
  *
+ * Reads the anchor the way `extractJsonLdScripts` reads a script tag — tokenise the element, then
+ * look the attribute up by name — so all three quoting forms the HTML tokenizer accepts
+ * (`href="x"`, `href='x'`, bare `href=x`) are read and attribute order is free. Anchoring on one
+ * exact spelling would make this a statement about how today's producers happen to format their
+ * markup rather than about the links the served page really contains — the same distinction
+ * `extractJsonLdScripts`'s own comment draws — and a link this missed is a link the crawl below
+ * would silently never check. Still bounded to real tags: `<a\b([^>]*)>`, never a loose scan.
+ *
  * Only `href` values beginning with a single `/` are site-internal. A protocol-relative
  * `//example.com/x` also begins with `/` but is a real off-site URL the browser resolves against
  * the current scheme — excluded explicitly, because fetching it against the local test server
@@ -187,9 +195,9 @@ const COMPOSED_ONLY_LINK_PREFIXES = ['/docs/', '/javadoc/'];
  * Exported so the extraction rule itself is directly testable against real served markup rather
  * than only through the end-to-end gate. */
 export function extractInternalLinkTargets(html) {
-  return [...html.matchAll(/<a\b[^>]*?\shref="([^"]*)"/gi)]
-    .map((match) => match[1])
-    .filter((href) => href.startsWith('/') && !href.startsWith('//'))
+  return [...html.matchAll(/<a\b([^>]*)>/gi)]
+    .map((match) => attributeValue(match[1], HREF_ATTR_PATTERN))
+    .filter((href) => href !== null && href.startsWith('/') && !href.startsWith('//'))
     .map((href) => href.split('#')[0].split('?')[0])
     .filter((href) => href.length > 0);
 }
@@ -258,6 +266,7 @@ function attributePattern(name) {
 
 const TYPE_ATTR_PATTERN = attributePattern('type');
 const ID_ATTR_PATTERN = attributePattern('id');
+const HREF_ATTR_PATTERN = attributePattern('href');
 
 /** The raw, untrimmed value of an attribute in `attrs`, or `null` when it is absent. Whichever of
  * the three quoting forms matched, exactly one of the three groups is set. */
