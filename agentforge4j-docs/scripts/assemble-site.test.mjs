@@ -6,6 +6,7 @@
 
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
+import {execFileSync} from 'node:child_process';
 import {existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
@@ -13,10 +14,12 @@ import sax from 'sax';
 import {SitemapStream, streamToPromise} from 'sitemap';
 import {
   assembleSite,
+  javadocSitemapEntries,
   scanComposedHtmlForForbiddenContent,
   verifyComposedJavadocLinks,
   verifyComposedAnchorLinks,
 } from './assemble-site.mjs';
+import {javadocSurfaces} from './javadoc-seo.mjs';
 
 function sitemapXmlFixture(urls) {
   const body = urls.map((url) => `  <url>\n    <loc>${url}</loc>\n  </url>`).join('\n');
@@ -578,12 +581,18 @@ test('verifyComposedArtifact fails closed when a released version\'s /javadoc/<v
   assert.deepEqual(exitCodes, [1]);
 });
 
-test('merges the SPA and docs sitemap fragments into one final sitemap.xml at the site root', () => {
+test('merges the SPA and docs sitemap fragments, plus the indexable Javadoc surfaces, into one final sitemap.xml at the site root', () => {
   const {spaDir, buildDir, javadocDir, archiveDir, siteDir} = fixture();
   assembleSite({spaDir, buildDir, javadocDir, archiveDir, siteDir, customDomain: null});
   const xml = readFileSync(join(siteDir, 'sitemap.xml'), 'utf8');
   const locs = [...xml.matchAll(/<loc>([^<]+)<\/loc>/g)].map((m) => m[1]);
-  assert.deepEqual(locs, ['https://agentforge4j.org/', 'https://agentforge4j.org/docs/0.1.0/']);
+  // The Javadoc trees have no generator of their own, so their entries are computed during
+  // composition — see javadocSitemapEntries. /javadoc/latest/ is the one indexable surface here.
+  assert.deepEqual(locs, [
+    'https://agentforge4j.org/',
+    'https://agentforge4j.org/docs/0.1.0/',
+    'https://agentforge4j.org/javadoc/latest/',
+  ]);
 });
 
 test('the merged sitemap.xml is not just a copy of the SPA fragment — it includes docs URLs too', () => {
@@ -845,9 +854,10 @@ test('a structurally valid but completely empty <urlset> is valid and contribute
   assembleSite({spaDir, buildDir, javadocDir, archiveDir, siteDir, customDomain: null});
   const xml = readFileSync(join(siteDir, 'sitemap.xml'), 'utf8');
   const locs = [...xml.matchAll(/<loc>([^<]+)<\/loc>/g)].map((m) => m[1]);
-  // Only the SPA fragment's one URL survives — the empty docs <urlset> legitimately contributed
-  // none, and the build did not fail because of it.
-  assert.deepEqual(locs, ['https://agentforge4j.org/']);
+  // Only the SPA fragment's one URL survives from the two FRAGMENTS — the empty docs <urlset>
+  // legitimately contributed none, and the build did not fail because of it. The Javadoc surface
+  // entry is computed during composition, not read from a fragment, so it is unaffected.
+  assert.deepEqual(locs, ['https://agentforge4j.org/', 'https://agentforge4j.org/javadoc/latest/']);
 });
 
 test('an unexpected sibling child element inside <url> fails closed even when it is the only content (no <loc> present either)', () => {
@@ -1632,4 +1642,104 @@ test("the real Docusaurus sitemap config stays compatible with the parser's narr
   assembleSite({spaDir, buildDir, javadocDir, archiveDir, siteDir, customDomain: null});
   const merged = readFileSync(join(siteDir, 'sitemap.xml'), 'utf8');
   assert.match(merged, /<loc>https:\/\/agentforge4j\.org\/docs\/0\.1\.0\/<\/loc>/);
+});
+
+// --- Javadoc surfaces in the sitemap. /javadoc/latest/ is indexable, is a real published surface,
+// and appeared in no sitemap at all — the only one of the site's three surfaces with no discovery
+// path. The entries are derived from the SAME indexability policy that stamps the robots tags, so a
+// sitemap advertising a suppressed surface is not expressible. ---
+
+const NO_TAGS_REPO = tmpdir(); // no git tags resolve here — the "never invent a date" path
+
+test('exactly the indexable Javadoc surfaces are listed: /latest/ in, /next/ out, the mirrored pinned version out', () => {
+  const entries = javadocSitemapEntries('https://agentforge4j.org', ['0.1.0'], NO_TAGS_REPO);
+  assert.deepEqual(
+    entries.map((entry) => entry.url),
+    ['https://agentforge4j.org/javadoc/latest/'],
+  );
+});
+
+test('NEGATIVE CONTROL — a noindex surface can never appear: /javadoc/next/ and the mirrored version are absent in every lifecycle state', () => {
+  for (const releasedVersions of [[], ['0.1.0'], ['0.3.0', '0.2.0', '0.1.0']]) {
+    const urls = javadocSitemapEntries('https://agentforge4j.org', releasedVersions, NO_TAGS_REPO).map((e) => e.url);
+    assert.ok(!urls.includes('https://agentforge4j.org/javadoc/next/'), '/javadoc/next/ is noindex in every state');
+    if (releasedVersions.length > 0) {
+      assert.ok(
+        !urls.includes(`https://agentforge4j.org/javadoc/${releasedVersions[0]}/`),
+        'the pinned version /latest/ mirrors is noindex, so it must not be advertised',
+      );
+    }
+  }
+});
+
+test('an older released version becomes discoverable the moment a newer one ships — no version string written down anywhere', () => {
+  // 0.1.0 is suppressed while it is what /latest/ mirrors...
+  assert.deepEqual(
+    javadocSitemapEntries('https://agentforge4j.org', ['0.1.0'], NO_TAGS_REPO).map((e) => e.url),
+    ['https://agentforge4j.org/javadoc/latest/'],
+  );
+  // ...and becomes genuinely distinct historical content, indexable and listed, once 0.2.0 lands.
+  assert.deepEqual(
+    javadocSitemapEntries('https://agentforge4j.org', ['0.2.0', '0.1.0'], NO_TAGS_REPO).map((e) => e.url),
+    ['https://agentforge4j.org/javadoc/latest/', 'https://agentforge4j.org/javadoc/0.1.0/'],
+  );
+});
+
+test('the sitemap and the robots directives are derived from one policy — every listed surface is one javadocSurfaces calls indexable', () => {
+  // The binding that makes "sitemap advertises a page the robots tag suppresses" unrepresentable.
+  for (const releasedVersions of [[], ['0.1.0'], ['0.3.0', '0.2.0', '0.1.0']]) {
+    const indexableMounts = javadocSurfaces(releasedVersions)
+      .filter((surface) => !surface.noindex)
+      .map((surface) => `https://agentforge4j.org/${surface.mountPath}/`);
+    assert.deepEqual(
+      javadocSitemapEntries('https://agentforge4j.org', releasedVersions, NO_TAGS_REPO).map((e) => e.url),
+      indexableMounts,
+    );
+  }
+});
+
+test('pre-release, /javadoc/latest/ is still listed — it is the evergreen entry point in both lifecycle states', () => {
+  assert.deepEqual(
+    javadocSitemapEntries('https://agentforge4j.org', [], NO_TAGS_REPO).map((e) => e.url),
+    ['https://agentforge4j.org/javadoc/latest/'],
+  );
+});
+
+test('a surface with no resolvable release tag carries no <lastmod> rather than an invented one', () => {
+  for (const entry of javadocSitemapEntries('https://agentforge4j.org', ['0.1.0'], NO_TAGS_REPO)) {
+    assert.equal(entry.lastmod, null);
+  }
+});
+
+test('a real release tag dates the surface it built, reproducibly', () => {
+  const repoRoot = mkdtempSync(join(tmpdir(), 'javadoc-tag-'));
+  const git = (...args) =>
+    execFileSync('git', args, {
+      cwd: repoRoot,
+      encoding: 'utf8',
+      env: {
+        ...process.env,
+        GIT_AUTHOR_NAME: 'T', GIT_AUTHOR_EMAIL: 't@example.com', GIT_AUTHOR_DATE: '2026-03-04T10:00:00Z',
+        GIT_COMMITTER_NAME: 'T', GIT_COMMITTER_EMAIL: 't@example.com', GIT_COMMITTER_DATE: '2026-03-04T10:00:00Z',
+      },
+    });
+  git('init', '-q');
+  writeFileSync(join(repoRoot, 'a.txt'), 'x');
+  git('add', '.');
+  git('commit', '-q', '-m', 'release');
+  git('tag', 'framework-v0.1.0');
+
+  const [latest] = javadocSitemapEntries('https://agentforge4j.org', ['0.1.0'], repoRoot);
+  assert.equal(latest.url, 'https://agentforge4j.org/javadoc/latest/');
+  // /latest/ mirrors 0.1.0, so it is dated by 0.1.0's own release tag — the commit that really
+  // produced the content, not the time this build happened to run.
+  assert.equal(latest.lastmod, '2026-03-04');
+});
+
+test('the composed sitemap really carries the Javadoc entry end to end', () => {
+  const {spaDir, buildDir, javadocDir, archiveDir, siteDir} = fixture();
+  assembleSite({spaDir, buildDir, javadocDir, archiveDir, siteDir, customDomain: null, repoRoot: NO_TAGS_REPO});
+  const composed = readFileSync(join(siteDir, 'sitemap.xml'), 'utf8');
+  assert.match(composed, /<loc>https:\/\/agentforge4j\.org\/javadoc\/latest\/<\/loc>/);
+  assert.doesNotMatch(composed, /<loc>https:\/\/agentforge4j\.org\/javadoc\/next\/<\/loc>/);
 });

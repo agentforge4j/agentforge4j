@@ -28,16 +28,17 @@
 //
 // Run via `node scripts/assemble-site.mjs` (usually from the deploy workflow).
 
+import {execFileSync} from 'node:child_process';
 import {cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync} from 'node:fs';
 import {basename, dirname, join, relative, resolve, sep} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import matter from 'gray-matter';
 import sax from 'sax';
-import {JAVADOC_VERSIONS_OUT, javadocBuildVersions} from './build-javadoc-versions.mjs';
+import {JAVADOC_VERSIONS_OUT, javadocBuildVersions, releaseTag} from './build-javadoc-versions.mjs';
 import {ARCHIVE_ROOT} from './archive-transition.mjs';
 import {resolveJavadocUrl} from '../src/remark/javadoc.mjs';
 import {liveJavadocRefs} from './lint-javadoc-links.mjs';
-import {applyJavadocSeo} from './javadoc-seo.mjs';
+import {applyJavadocSeo, javadocSurfaces} from './javadoc-seo.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const MODULE_ROOT = resolve(here, '..');
@@ -828,6 +829,55 @@ function sitemapXml(entries) {
   );
 }
 
+/** Real, reproducible git date (`%cs`, committer date, `YYYY-MM-DD`) for the release tag a
+ * version-pinned Javadoc surface was built from — the same "derive it from real history, never
+ * invent it" contract build-seo.mjs's own `gitLastModifiedDate` follows, applied to the one commit
+ * that actually produced this surface's content.
+ *
+ * `null` — meaning no `<lastmod>` is emitted for that URL, which the sitemap protocol permits —
+ * whenever there is no such tag to read: `next` (which tracks a moving branch, so no single commit
+ * dates it), `latest` before any release exists, or a checkout without the release tags. Omitting
+ * is the honest answer in all three; a build date would be a fresh, meaningless timestamp on every
+ * deploy, which is exactly what the rest of this site's sitemap work exists to avoid. */
+function javadocSurfaceLastmod(repoRoot, version) {
+  if (!version) {
+    return null;
+  }
+  try {
+    const output = execFileSync('git', ['log', '-1', '--format=%cs', `refs/tags/${releaseTag(version)}`], {
+      cwd: repoRoot,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+    }).trim();
+    return /^\d{4}-\d{2}-\d{2}$/.test(output) ? output : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Sitemap entries for the Javadoc surfaces — the third published surface of this site, and until
+ * now the only one absent from sitemap discovery entirely.
+ *
+ * Exactly the surfaces `javadocSurfaces` says are indexable, never a separate list: `/javadoc/next/`
+ * and the pinned version `/latest/` currently mirrors both carry `noindex`, so advertising them
+ * would be the sitemap contradicting the page. The complement matters just as much — an older
+ * released version becomes indexable again the moment a newer one ships, and joins the sitemap on
+ * that same deploy, with no version string written down anywhere.
+ *
+ * One URL per surface: its entry point. A Javadoc tree is thousands of generated pages that are all
+ * reachable from their overview and from each other; listing every class page would bury the real
+ * content of the site under generated API pages without making any of it more discoverable.
+ */
+export function javadocSitemapEntries(siteUrl, releasedVersions, repoRoot) {
+  return javadocSurfaces(releasedVersions)
+    .filter((surface) => !surface.noindex)
+    .map((surface) => ({
+      url: `${siteUrl}/${surface.mountPath}/`,
+      lastmod: javadocSurfaceLastmod(repoRoot, surface.version),
+    }));
+}
+
 /**
  * Merges the SPA's own sitemap.xml fragment (agentforge4j-web-ui/scripts/build-seo.mjs, already
  * copied to the site root in step 1) with the Docusaurus-generated docs/sitemap.xml (already
@@ -836,7 +886,7 @@ function sitemapXml(entries) {
  * misconfigured `siteConfig.url` would otherwise silently publish the wrong host), or a
  * duplicate URL across the two fragments.
  */
-function mergeSitemaps(siteDir, exit) {
+function mergeSitemaps(siteDir, exit, {siteUrl = DEFAULT_SITE_URL, releasedVersions = [], repoRoot = REPO_ROOT} = {}) {
   const spaSitemapPath = join(siteDir, 'sitemap.xml');
   const docsSitemapPath = join(siteDir, 'docs', 'sitemap.xml');
   requireDir(spaSitemapPath, 'SPA sitemap fragment', 'Run `npm run build` in agentforge4j-web-ui first.');
@@ -846,7 +896,17 @@ function mergeSitemaps(siteDir, exit) {
     'Run `npm run build` in agentforge4j-docs first (the sitemap plugin runs in postBuild).',
   );
 
-  const entries = [...extractSitemapEntries(spaSitemapPath, exit), ...extractSitemapEntries(docsSitemapPath, exit)];
+  // The third published surface. The SPA and the docs each generate their own fragment; the Javadoc
+  // trees have no generator of their own — they are raw maven-javadoc-plugin output, post-processed
+  // for SEO here — so their sitemap entries are computed here too, from the same indexability policy
+  // that stamps their robots tags (javadoc-seo.mjs's javadocSurfaces). Until now the site published
+  // an indexable /javadoc/latest/ that appeared in no sitemap at all.
+  const javadocEntries = javadocSitemapEntries(siteUrl, releasedVersions, repoRoot);
+  const entries = [
+    ...extractSitemapEntries(spaSitemapPath, exit),
+    ...extractSitemapEntries(docsSitemapPath, exit),
+    ...javadocEntries,
+  ];
 
   for (const { url } of entries) {
     if (!url.startsWith(SITEMAP_URL_PREFIX)) {
@@ -865,7 +925,10 @@ function mergeSitemaps(siteDir, exit) {
   }
 
   writeFileSync(join(siteDir, 'sitemap.xml'), sitemapXml(entries), 'utf8');
-  console.log(`[assemble-site] merged sitemap.xml: ${entries.length} URL(s) (SPA + docs)`);
+  console.log(
+    `[assemble-site] merged sitemap.xml: ${entries.length} URL(s) (SPA + docs + ${javadocEntries.length} indexable ` +
+      `Javadoc surface(s): ${javadocEntries.map((entry) => entry.url).join(', ') || 'none'})`,
+  );
 }
 
 /** A static meta-refresh redirect page. */
@@ -956,6 +1019,11 @@ export function assembleSite({
   customDomain,
   siteUrl = DEFAULT_SITE_URL,
   ogImage = DEFAULT_OG_IMAGE,
+  // Where the release tags live, for dating the version-pinned Javadoc surfaces in the sitemap.
+  // A parameter (not this module's own REPO_ROOT) so fixture tests can point it at a throwaway
+  // repository — or at one with no tags at all, which must degrade to "no <lastmod>", never to an
+  // invented one.
+  repoRoot = REPO_ROOT,
   exit = process.exit,
 }) {
   requireDir(spaDir, 'SPA build', 'Run `npm run build` in agentforge4j-web-ui first.');
@@ -1025,7 +1093,7 @@ export function assembleSite({
   // 6. Merge the SPA's own sitemap.xml fragment (copied to the site root in step 1) with the
   //    Docusaurus-generated docs/sitemap.xml (copied in step 2) into the one final sitemap.xml
   //    the composed artifact serves at /sitemap.xml.
-  mergeSitemaps(siteDir, exit);
+  mergeSitemaps(siteDir, exit, {siteUrl, releasedVersions, repoRoot});
 
   verifyComposedArtifact(siteDir, releasedVersions, exit);
 
