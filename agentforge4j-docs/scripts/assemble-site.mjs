@@ -213,6 +213,18 @@ export function applyRedirectStubSeo(siteDir, siteUrl, exit = process.exit) {
       description: REDIRECT_STUB_DESCRIPTION,
       robots: REDIRECT_STUB_ROBOTS,
     });
+    // Asserted against the file as it will actually ship, not against what the rewriter intended.
+    // The defect this catches — a stub carrying two <title> elements — was invisible to every other
+    // gate here: `scanComposedHtmlForForbiddenContent` looks for content patterns, and
+    // `verifyComposedArtifact` looks for presence and non-emptiness. Neither counts anything.
+    const titleCount = (rewritten.match(/<title>/gi) ?? []).length;
+    if (titleCount !== 1) {
+      console.error(
+        `[assemble-site] redirect stub ${file} would ship with ${titleCount} <title> element(s) — expected exactly one`,
+      );
+      exit(1);
+      return updated;
+    }
     if (rewritten !== html) {
       writeFileSync(file, rewritten, 'utf8');
       updated += 1;

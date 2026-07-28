@@ -29,6 +29,31 @@
 
 const REFRESH_PATTERN = /<meta\s+http-equiv="refresh"\s+content="0;\s*url=([^"]+)"\s*\/?>/i;
 const RELATIVE_CANONICAL_PATTERN = /<link\s+rel="canonical"\s+href="([^"]+)"\s*\/?>/i;
+const TITLE_PATTERN = /<title>[\s\S]*?<\/title>/i;
+const DESCRIPTION_PATTERN = /<meta\s+name="description"\s+content="[^"]*"\s*\/?>/i;
+
+/**
+ * Whether `value` is an absolute HTTP(S) URL, decided by actually parsing it rather than by how it
+ * begins.
+ *
+ * `value.startsWith('http')` — what this replaced — classifies `httpfoo/bar` as absolute (it is a
+ * relative path), and classifies nothing else correctly either: it would let `javascript:...` or
+ * `data:...` through as "relative" and then concatenate a site origin in front of it, producing a
+ * string that is neither. Parsing answers the real question, and the caller below rejects any
+ * absolute URL that is not HTTP(S) rather than guessing what to do with it.
+ */
+export function classifyRedirectTarget(value) {
+  let url;
+  try {
+    url = new URL(value);
+  } catch {
+    // Not an absolute URL of any kind. Only a site-root-relative path is meaningful here: both
+    // producers (the redirects plugin and assemble-site's own archive stubs) emit `/docs/...`, and
+    // a `../`-style value concatenated onto an origin would produce a malformed address.
+    return value.startsWith('/') ? 'site-relative' : 'unusable';
+  }
+  return url.protocol === 'http:' || url.protocol === 'https:' ? 'absolute-http' : 'unusable';
+}
 
 /** The destination a client-redirect stub points at, or `null` when `html` is not one. Recognized
  * by the meta refresh itself rather than by filename: which paths the plugin generates a stub for
@@ -48,6 +73,14 @@ export function redirectStubTarget(html) {
  * directive is returned unchanged rather than accumulating a second one, so re-running this over an
  * already-processed artifact cannot emit contradictory directives.
  *
+ * Every tag it writes REPLACES an existing one of the same kind when there is one, and is only
+ * appended when there is not. That distinction is load-bearing rather than tidy: two different
+ * producers emit stubs into `/docs/` of the composed artifact — `@docusaurus/plugin-client-redirects`
+ * (no `<title>`, relative canonical) and assemble-site.mjs's own `redirectHtml` for archived
+ * versions (which DOES carry a `<title>`) — so an unconditional append gave every archived version's
+ * stub two `<title>` elements. Nothing downstream counts titles, so that shipped silently; see the
+ * `writeRedirectStubs`-shaped regression test.
+ *
  * @param {string} html
  * @param {{siteUrl: string, title: string, description: string, robots: string}} options
  */
@@ -63,7 +96,14 @@ export function injectRedirectStubSeo(html, { siteUrl, title, description, robot
     throw new Error('redirect-stub-seo: expected a </head> closing tag — template drift?');
   }
 
-  const absoluteTarget = target.startsWith('http') ? target : `${siteUrl}${target}`;
+  const classification = classifyRedirectTarget(target);
+  if (classification === 'unusable') {
+    throw new Error(
+      `redirect-stub-seo: refusing a redirect target that is neither a site-relative path nor an ` +
+        `absolute HTTP(S) URL: ${JSON.stringify(target)}`,
+    );
+  }
+  const absoluteTarget = classification === 'absolute-http' ? target : `${siteUrl}${target}`;
   let result = html;
 
   // The plugin's own relative canonical is replaced, not supplemented — two canonical links on one
@@ -80,11 +120,38 @@ export function injectRedirectStubSeo(html, { siteUrl, title, description, robot
     );
   }
 
-  const added =
-    `<title>${escapeHtmlText(title)}</title>\n` +
-    `<meta name="description" content="${escapeHtmlAttribute(description)}">\n` +
-    `<meta name="robots" content="${escapeHtmlAttribute(robots)}">\n`;
-  return result.replace(/<\/head>/i, () => `${added}</head>`);
+  // Replace-or-append, per tag. See this function's own doc comment for the archive stub that made
+  // the difference between the two a real defect rather than a stylistic choice.
+  result = replaceOrAppend(result, TITLE_PATTERN, `<title>${escapeHtmlText(title)}</title>`);
+  result = replaceOrAppend(
+    result,
+    DESCRIPTION_PATTERN,
+    `<meta name="description" content="${escapeHtmlAttribute(description)}">`,
+  );
+  // The robots tag is unconditionally an append: the early return above already established that
+  // this page carries none.
+  result = result.replace(/<\/head>/i, () => `<meta name="robots" content="${escapeHtmlAttribute(robots)}">\n</head>`);
+
+  // Post-condition, checked on the real output rather than trusted from the edits above: a page with
+  // two titles is exactly the defect this function shipped, and it is cheap to make unrepresentable.
+  const titleCount = (result.match(/<title>/gi) ?? []).length;
+  if (titleCount !== 1) {
+    throw new Error(
+      `redirect-stub-seo: produced ${titleCount} <title> element(s) for ${absoluteTarget} — expected exactly one`,
+    );
+  }
+  return result;
+}
+
+/** Replaces the first match of `pattern` with `replacement`, or inserts `replacement` before
+ * `</head>` when the document has no such tag yet. Function replacers throughout: a `$&`/`` $` ``/
+ * `$'` sequence in a value would otherwise be expanded as a substitution pattern — the same guard
+ * build-seo.mjs and javadoc-seo.mjs already document. */
+function replaceOrAppend(html, pattern, replacement) {
+  if (pattern.test(html)) {
+    return html.replace(pattern, () => replacement);
+  }
+  return html.replace(/<\/head>/i, () => `${replacement}\n</head>`);
 }
 
 // Function replacers throughout above (never a bare replacement string): a value containing `$&`,

@@ -11,7 +11,7 @@ import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { applyRedirectStubSeo } from './assemble-site.mjs';
-import { injectRedirectStubSeo, redirectStubTarget } from './redirect-stub-seo.mjs';
+import { classifyRedirectTarget, injectRedirectStubSeo, redirectStubTarget } from './redirect-stub-seo.mjs';
 
 const SITE_URL = 'https://agentforge4j.org';
 
@@ -130,4 +130,131 @@ test('NEGATIVE CONTROL — an artifact where no stub is recognized fails closed 
   const exits = [];
   applyRedirectStubSeo(siteDir, SITE_URL, (code) => exits.push(code));
   assert.deepEqual(exits, [1]);
+});
+
+// --- Archive redirect stubs. assemble-site.mjs's own `writeRedirectStubs` (step 4) emits stubs for
+// every archived version's old address, into the SAME /docs/ tree this pass walks in step 8 — and
+// unlike the redirects plugin's stubs, those already carry a <title>. An unconditional append gave
+// each of them two. The fixture below is byte-for-byte `redirectHtml()`'s output. ---
+
+/** Byte-for-byte the output of assemble-site.mjs's `redirectHtml(to)`, which `writeRedirectStubs`
+ * writes for every archived version's old active address. Reproduced here rather than imported
+ * because `redirectHtml` is module-private — if it changes shape, `redirectStubTarget` below stops
+ * recognising this and the first assertion fails, which is the signal we want. */
+function archiveRedirectStub(to = '/docs/archive/0.1.0/') {
+  return (
+    `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">` +
+    `<meta http-equiv="refresh" content="0; url=${to}">` +
+    `<link rel="canonical" href="${to}"><title>AgentForge4j</title></head>` +
+    `<body><a href="${to}">Continue to the documentation</a></body></html>\n`
+  );
+}
+
+test('an archive redirect stub is recognised by the same rule as the plugin stubs — it is one too', () => {
+  assert.equal(redirectStubTarget(archiveRedirectStub()), '/docs/archive/0.1.0/');
+});
+
+test('NEGATIVE CONTROL — an archive stub that ALREADY has a <title> ends up with exactly one, not two', () => {
+  const raw = archiveRedirectStub();
+  assert.equal((raw.match(/<title>/gi) ?? []).length, 1, 'the fixture must start with one title');
+  const html = injectRedirectStubSeo(raw, OPTIONS);
+  assert.equal((html.match(/<title>/gi) ?? []).length, 1);
+  // The existing title is REPLACED by the intentional one, not left beside it.
+  assert.match(html, /<title>Documentation — AgentForge4j<\/title>/);
+  assert.doesNotMatch(html, /<title>AgentForge4j<\/title>/);
+});
+
+test('an archive stub keeps exactly one canonical, absolutised to the destination', () => {
+  const html = injectRedirectStubSeo(archiveRedirectStub(), OPTIONS);
+  assert.equal((html.match(/rel="canonical"/gi) ?? []).length, 1);
+  assert.match(html, /<link rel="canonical" href="https:\/\/agentforge4j\.org\/docs\/archive\/0\.1\.0\/">/);
+});
+
+test('an archive stub keeps its own redirect behaviour and body untouched', () => {
+  const html = injectRedirectStubSeo(archiveRedirectStub(), OPTIONS);
+  assert.match(html, /<meta http-equiv="refresh" content="0; url=\/docs\/archive\/0\.1\.0\/">/);
+  assert.match(html, /<a href="\/docs\/archive\/0\.1\.0\/">Continue to the documentation<\/a>/);
+});
+
+test('a stub with an existing description has it replaced rather than duplicated too', () => {
+  const withDescription = archiveRedirectStub().replace(
+    '<title>AgentForge4j</title>',
+    '<meta name="description" content="an older description"><title>AgentForge4j</title>',
+  );
+  const html = injectRedirectStubSeo(withDescription, OPTIONS);
+  assert.equal((html.match(/name="description"/gi) ?? []).length, 1);
+  assert.doesNotMatch(html, /an older description/);
+});
+
+test('the plugin stub path is unchanged — no title to replace, so one is inserted', () => {
+  const html = injectRedirectStubSeo(REAL_STUB, OPTIONS);
+  assert.equal((html.match(/<title>/gi) ?? []).length, 1);
+});
+
+// --- Redirect-target classification. `startsWith('http')` called `httpfoo/bar` absolute and would
+// have concatenated a site origin in front of `javascript:` and `data:` values. ---
+
+test('classifyRedirectTarget: site-relative paths', () => {
+  for (const value of ['/docs/0.1.0/', '/docs/archive/0.1.0/', '/']) {
+    assert.equal(classifyRedirectTarget(value), 'site-relative', value);
+  }
+});
+
+test('classifyRedirectTarget: absolute HTTP(S) URLs', () => {
+  for (const value of ['https://agentforge4j.org/docs/0.1.0/', 'http://example.com/x']) {
+    assert.equal(classifyRedirectTarget(value), 'absolute-http', value);
+  }
+});
+
+test('NEGATIVE CONTROL — a relative path merely BEGINNING with "http" is not absolute', () => {
+  // The exact input the old `startsWith('http')` test misclassified.
+  assert.equal(classifyRedirectTarget('httpfoo/bar'), 'unusable');
+  assert.equal(classifyRedirectTarget('/httpfoo/bar'), 'site-relative');
+});
+
+test('a non-HTTP scheme is refused outright rather than prefixed with the site origin', () => {
+  for (const value of ['javascript:alert(1)', 'data:text/html,x', 'mailto:a@b.example', 'file:///etc/passwd']) {
+    assert.equal(classifyRedirectTarget(value), 'unusable', value);
+  }
+});
+
+test('a relative target that is not site-rooted is refused rather than concatenated into nonsense', () => {
+  assert.equal(classifyRedirectTarget('../elsewhere/'), 'unusable');
+  assert.equal(classifyRedirectTarget('elsewhere/'), 'unusable');
+});
+
+test('injectRedirectStubSeo refuses an unusable target instead of emitting a malformed canonical', () => {
+  const nasty = REAL_STUB.replace('url=/docs/0.1.0/', 'url=javascript:alert(1)');
+  assert.throws(
+    () => injectRedirectStubSeo(nasty, OPTIONS),
+    /refusing a redirect target that is neither a site-relative path nor an absolute HTTP\(S\) URL/,
+  );
+});
+
+test('an already-absolute HTTPS target is used as-is, not double-prefixed', () => {
+  const absolute = REAL_STUB.replace('url=/docs/0.1.0/', 'url=https://agentforge4j.org/docs/0.1.0/');
+  const html = injectRedirectStubSeo(absolute, OPTIONS);
+  assert.match(html, /<link rel="canonical" href="https:\/\/agentforge4j\.org\/docs\/0\.1\.0\/">/);
+  assert.doesNotMatch(html, /agentforge4j\.org.*agentforge4j\.org/);
+});
+
+// --- The composed-artifact gate. ---
+
+test('applyRedirectStubSeo labels an archive stub in place, leaving it with exactly one title', () => {
+  const siteDir = mkdtempSync(join(tmpdir(), 'redirect-stub-archive-'));
+  mkdirSync(join(siteDir, 'docs', 'archive', '0.1.0'), { recursive: true });
+  mkdirSync(join(siteDir, 'docs', '0.1.0'), { recursive: true });
+  // The plugin's own stub at /docs/, and an archive stub at the archived version's old address.
+  writeFileSync(join(siteDir, 'docs', 'index.html'), REAL_STUB, 'utf8');
+  writeFileSync(join(siteDir, 'docs', '0.1.0', 'index.html'), archiveRedirectStub(), 'utf8');
+
+  const updated = applyRedirectStubSeo(siteDir, SITE_URL, () => {
+    throw new Error('should not have exited');
+  });
+  assert.equal(updated, 2);
+  for (const relPath of ['docs/index.html', 'docs/0.1.0/index.html']) {
+    const html = readFileSync(join(siteDir, ...relPath.split('/')), 'utf8');
+    assert.equal((html.match(/<title>/gi) ?? []).length, 1, `${relPath} must ship exactly one title`);
+    assert.match(html, /<meta name="robots" content="noindex, follow">/);
+  }
 });
