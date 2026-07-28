@@ -60,8 +60,34 @@ export interface SeoRouteEntry {
   readonly jsonLd?: JsonLd;
 }
 
+/**
+ * The metadata an address that matches no route gets — deliberately its own entry rather than a
+ * fall back to the home page's.
+ *
+ * Falling back to home was the audited defect. An unknown URL served the home page's title,
+ * description, canonical AND its WebSite+Organization+SoftwareSourceCode structured data, which
+ * says three untrue things at once: that a mistyped address is the home page, that the home page's
+ * identity claims apply to it, and — through the canonical — that a URL which does not exist is a
+ * legitimate alternate address for one that does. The HTTP 404 status was the only thing keeping
+ * that out of an index, and `/404.html` itself is served at 200, where no status protects anything.
+ *
+ * `canonicalPath` is absent by design, and its absence is meaningful: a not-found page gets NO
+ * canonical link at all. A canonical pointing at the home page would ask a crawler to consolidate a
+ * nonexistent URL into a real one (a textbook soft-404 signal), and a self-referential one would
+ * assert that this arbitrary address is a real, canonical page of the site. Neither is true; saying
+ * nothing is.
+ */
+export interface NotFoundSeo {
+  readonly title: string;
+  readonly description: string;
+  /** The `robots` directive a not-found page carries. `follow` is deliberate: the page is not
+   * indexable, but the site navigation on it is still worth crawling. */
+  readonly robots: string;
+}
+
 export const SITE_URL: string = seoData.siteUrl;
 export const SEO_ROUTES: readonly SeoRouteEntry[] = seoData.routes;
+export const NOT_FOUND_SEO: NotFoundSeo = seoData.notFound;
 
 /** Every route that is a permanent forward rather than a page — see `redirectTo`. App.tsx renders
  * one `<Navigate replace>` per entry, so the router and the static shells agree about which paths
