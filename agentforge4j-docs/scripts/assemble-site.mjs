@@ -38,6 +38,7 @@ import {ARCHIVE_ROOT} from './archive-transition.mjs';
 import {resolveJavadocUrl} from '../src/remark/javadoc.mjs';
 import {liveJavadocRefs} from './lint-javadoc-links.mjs';
 import {applyJavadocSeo} from './javadoc-seo.mjs';
+import {injectRedirectStubSeo, redirectStubTarget} from './redirect-stub-seo.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const MODULE_ROOT = resolve(here, '..');
@@ -170,6 +171,62 @@ export function scanComposedHtmlForForbiddenContent(siteDir, exit = process.exit
     return;
   }
   console.log(`[assemble-site] scanned ${files.length} composed HTML file(s) for forbidden content — clean.`);
+}
+
+// Copy for the client-redirect stubs (see redirect-stub-seo.mjs). Kept here, at the composition
+// layer, because that is where the stubs first exist as published pages — the docs build emits them
+// in postBuild, after every gate that could have looked at them.
+const REDIRECT_STUB_TITLE = 'Documentation — AgentForge4j';
+const REDIRECT_STUB_DESCRIPTION =
+  'This address forwards to the current AgentForge4j documentation. Follow the link to the current version.';
+const REDIRECT_STUB_ROBOTS = 'noindex, follow';
+
+/**
+ * Gives every client-redirect stub under `<siteDir>/docs/` a real title, description, robots
+ * directive and absolute canonical, without touching its redirect behaviour.
+ *
+ * Fails closed when it finds none. The docs config always produces at least the `/` and `/latest`
+ * redirects (docusaurus.config.ts's `redirectConfig`, in both lifecycle states), so "zero stubs"
+ * never means "nothing to do" — it means the recognition rule has stopped matching what the plugin
+ * emits, and the stubs are shipping raw again with nothing complaining.
+ *
+ * @param {(code: number) => void} [exit] injectable seam for that guard, mirroring this module's
+ *        other fail-closed checks.
+ * @returns {number} stubs updated
+ */
+export function applyRedirectStubSeo(siteDir, siteUrl, exit = process.exit) {
+  const docsDir = join(siteDir, 'docs');
+  if (!existsSync(docsDir)) {
+    console.error(`[assemble-site] no ${docsDir} to scan for client-redirect stubs`);
+    exit(1);
+    return 0;
+  }
+  let updated = 0;
+  for (const file of collectHtmlFiles(docsDir)) {
+    const html = readFileSync(file, 'utf8');
+    if (redirectStubTarget(html) === null) {
+      continue;
+    }
+    const rewritten = injectRedirectStubSeo(html, {
+      siteUrl,
+      title: REDIRECT_STUB_TITLE,
+      description: REDIRECT_STUB_DESCRIPTION,
+      robots: REDIRECT_STUB_ROBOTS,
+    });
+    if (rewritten !== html) {
+      writeFileSync(file, rewritten, 'utf8');
+      updated += 1;
+    }
+  }
+  if (updated === 0) {
+    console.error(
+      '[assemble-site] found no client-redirect stubs under /docs/ to label — the docs config always ' +
+        'generates at least the / and /latest redirects, so this means the recognition rule no longer ' +
+        'matches what the plugin emits and those stubs are shipping raw',
+    );
+    exit(1);
+  }
+  return updated;
 }
 
 const DOC_EXTENSIONS = ['.md', '.mdx'];
@@ -1038,6 +1095,13 @@ export function assembleSite({
   //    historical versions, whose own build-javadoc.mjs predates this fix — on every deploy.
   const javadocPagesUpdated = applyJavadocSeo({siteDir, siteUrl, ogImage, releasedVersions});
   console.log(`[assemble-site] applied Javadoc SEO metadata to ${javadocPagesUpdated} page(s) across every surface`);
+
+  // 8. The client-redirect stubs the docs build emits in postBuild (/docs/, /docs/latest/) — raw,
+  //    they are title-less, near-empty 200s at the site's most linked-to documentation address. See
+  //    redirect-stub-seo.mjs. Applied here for the same reason as the Javadoc pass above: this is
+  //    the first point at which they exist as published pages.
+  const stubsUpdated = applyRedirectStubSeo(siteDir, siteUrl, exit);
+  console.log(`[assemble-site] labelled ${stubsUpdated} client-redirect stub(s) under /docs/ (title, description, noindex, absolute canonical)`);
 
   scanComposedHtmlForForbiddenContent(siteDir, exit);
   verifyComposedJavadocLinks(siteDir, docsSourceDir, versionedDocsSourceDir, exit);

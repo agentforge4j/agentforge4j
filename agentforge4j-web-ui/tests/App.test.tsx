@@ -4,6 +4,7 @@ import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import App from '@/App';
+import { DOCS_ENTRY_URL } from '@/config/nav';
 import { ThemeProvider } from '@/theme/ThemeContext';
 
 function renderAt(path: string) {
@@ -85,7 +86,11 @@ describe('docs route collision', () => {
     renderAt('/');
     const primaryNav = screen.getByRole('navigation', { name: 'Primary' });
     const docsLink = within(primaryNav).getByRole('link', { name: 'Docs' });
-    expect(docsLink).toHaveAttribute('href', '/docs/');
+    expect(docsLink).toHaveAttribute('href', DOCS_ENTRY_URL);
+    // The resolved version, never the bare /docs/ client-redirect stub the site used to route
+    // everyone through — see config/nav.ts and scripts/build-docs-entry.mjs.
+    expect(docsLink.getAttribute('href')).not.toBe('/docs/');
+    expect(docsLink.getAttribute('href')).toMatch(/^\/docs\/.+\/$/);
     expect(docsLink.tagName).toBe('A');
   });
 
@@ -94,7 +99,11 @@ describe('docs route collision', () => {
     const footer = container.querySelector('footer');
     expect(footer).not.toBeNull();
     const docsLink = within(footer as HTMLElement).getByRole('link', { name: 'Docs' });
-    expect(docsLink).toHaveAttribute('href', '/docs/');
+    expect(docsLink).toHaveAttribute('href', DOCS_ENTRY_URL);
+    // The resolved version, never the bare /docs/ client-redirect stub the site used to route
+    // everyone through — see config/nav.ts and scripts/build-docs-entry.mjs.
+    expect(docsLink.getAttribute('href')).not.toBe('/docs/');
+    expect(docsLink.getAttribute('href')).toMatch(/^\/docs\/.+\/$/);
     expect(docsLink.tagName).toBe('A');
   });
 });

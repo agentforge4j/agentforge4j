@@ -64,7 +64,17 @@ function fixture() {
   writeFileSync(join(spaDir, 'robots.txt'), 'User-agent: *\nAllow: /\n\nSitemap: https://agentforge4j.org/sitemap.xml\n');
   writeFileSync(join(spaDir, 'sitemap.xml'), sitemapXmlFixture(['https://agentforge4j.org/']));
   mkdirSync(buildDir, {recursive: true});
-  writeFileSync(join(buildDir, 'index.html'), '<html>docs</html>');
+  // The docs build's root page really is a client-redirect stub, in both lifecycle states — the
+  // redirects plugin always emits `/` -> the current version (docusaurus.config.ts's
+  // `redirectConfig`). Modelling it here rather than as a generic `<html>docs</html>` keeps the
+  // fixture the shape assembleSite actually composes, and is what the redirect-stub labelling pass
+  // (and its fail-closed "found none" guard) is asserted against.
+  writeFileSync(
+    join(buildDir, 'index.html'),
+    '<!DOCTYPE html><html><head><meta charset="UTF-8">' +
+      '<meta http-equiv="refresh" content="0; url=/docs/0.1.0/">' +
+      '<link rel="canonical" href="/docs/0.1.0/" /></head></html>',
+  );
   // The real Docusaurus build ships its own sitemap.xml (the sitemap plugin's postBuild output).
   writeFileSync(join(buildDir, 'sitemap.xml'), sitemapXmlFixture(['https://agentforge4j.org/docs/0.1.0/']));
   mkdirSync(javadocDir, {recursive: true});

@@ -58,7 +58,14 @@ function fixture() {
   writeFileSync(join(spaDir, 'robots.txt'), 'User-agent: *\nAllow: /\n\nSitemap: https://agentforge4j.org/sitemap.xml\n');
   writeFileSync(join(spaDir, 'sitemap.xml'), sitemapXmlFixture([{ url: 'https://agentforge4j.org/' }]));
   mkdirSync(buildDir, { recursive: true });
-  writeFileSync(join(buildDir, 'index.html'), '<html>docs</html>');
+  // The real docs build's root page is the redirects plugin's client-redirect stub — see the same
+  // note in assemble-site.test.mjs's own fixture.
+  writeFileSync(
+    join(buildDir, 'index.html'),
+    '<!DOCTYPE html><html><head><meta charset="UTF-8">' +
+      '<meta http-equiv="refresh" content="0; url=/docs/0.1.0/">' +
+      '<link rel="canonical" href="/docs/0.1.0/" /></head></html>',
+  );
   // Stands in for a real Docusaurus `lastmod: 'date'` sitemap-plugin postBuild output, with
   // sufficient git history to have produced a real per-page date (this feature's own concern).
   writeFileSync(join(buildDir, 'sitemap.xml'), sitemapXmlFixture([{ url: DOCS_URL, lastmod: DOCS_LASTMOD }]));
