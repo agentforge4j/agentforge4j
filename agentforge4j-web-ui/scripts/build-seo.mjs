@@ -237,6 +237,76 @@ function catalogueWorkflowDescription(workflow) {
   return `${raw.slice(0, MAX_DESCRIPTION_LENGTH - 1).trimEnd()}…`;
 }
 
+/**
+ * The social tags whose value is a pure function of the route's own title/description/canonical,
+ * and therefore the exact set that must be re-derived on every client-side route change as well as
+ * baked into every static shell.
+ *
+ * This table is the single source for both. `injectHead` below builds its replacements from it, and
+ * `src/lib/usePageSeo.ts` re-declares it (it cannot import this module — build-seo.mjs pulls in
+ * node:child_process) with `tests/usePageSeo.test.tsx` importing this constant to bind the two
+ * copies together. That binding is the point: the audited defect was precisely a divergence between
+ * these two surfaces — the static shell rewrote all five of these while the client hook rewrote
+ * none of them, so every one went stale the moment a visitor navigated within the app, and no gate
+ * on either side could see it because each was individually self-consistent.
+ *
+ * Deliberately NOT included: the site-constant social tags (`og:type`, `og:site_name`, `og:image`
+ * and its dimensions/alt, `twitter:card`, `twitter:image`). Those carry the same value on every
+ * page, so index.html is their one home and there is nothing for a route change to re-derive —
+ * `verify-seo.mjs` proves every built shell actually carries them.
+ */
+export const ROUTE_SCOPED_SOCIAL_TAGS = [
+  { attribute: 'property', key: 'og:title', source: 'title' },
+  { attribute: 'property', key: 'og:description', source: 'description' },
+  { attribute: 'property', key: 'og:url', source: 'canonical' },
+  { attribute: 'name', key: 'twitter:title', source: 'title' },
+  { attribute: 'name', key: 'twitter:description', source: 'description' },
+];
+
+/** Escapes a literal so it can be embedded in a RegExp source and match itself. The keys below are
+ * committed constants today, but they arrive through an exported table other modules read and
+ * extend — an unescaped `.` or `+` in a future key would silently change what the pattern matches
+ * rather than failing, which is the worst possible failure mode for a gate. */
+function escapeRegExpLiteral(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/** The pattern matching one route-scoped social tag exactly as index.html writes it. `\s*` after
+ * the tag is included only for a REMOVAL, so deleting a tag does not leave the blank line (and the
+ * trailing spaces on it) that the tag used to occupy. */
+function socialTagPattern(attribute, key, { consumeTrailingWhitespace = false } = {}) {
+  return new RegExp(
+    `<meta\\s+${escapeRegExpLiteral(attribute)}="${escapeRegExpLiteral(key)}"[\\s\\S]*?/>` +
+      (consumeTrailingWhitespace ? '\\s*' : ''),
+  );
+}
+
+/**
+ * The `[pattern, replacement]` pairs for every route-scoped social tag, derived from one route's
+ * resolved values — the single place any producer turns `ROUTE_SCOPED_SOCIAL_TAGS` into edits.
+ *
+ * Every producer of a `<head>` in this repository goes through this: ordinary route shells
+ * (`injectHead`), the not-found shell (`injectNotFoundHead`) and redirect stubs
+ * (`injectRedirectStub`). Each of those previously carried its own hand-written copy of the same
+ * five tags, which is precisely the divergence the shared table exists to prevent — a copy is a
+ * copy whether it lives in another module or in the function next door.
+ *
+ * A `source` whose value is `null` REMOVES that tag instead of rewriting it, taking the whitespace
+ * it occupied with it. That is not a convenience: a not-found page must carry no `og:url`, because
+ * that tag makes a claim about which URL the content belongs to, and the address does not exist.
+ * Expressing "remove" in the same table-driven pass is what keeps that page from needing its own
+ * copy of the list just to differ in one entry.
+ */
+export function routeScopedSocialReplacements(values) {
+  return ROUTE_SCOPED_SOCIAL_TAGS.map(({ attribute, key, source }) => {
+    const value = values[source];
+    if (value === null || value === undefined) {
+      return [socialTagPattern(attribute, key, { consumeTrailingWhitespace: true }), ''];
+    }
+    return [socialTagPattern(attribute, key), `<meta ${attribute}="${key}" content="${escapeHtml(value)}" />`];
+  });
+}
+
 /** Replaces the title/description/canonical/OG/Twitter tags already present in the built
  * index.html shell — never adds new tags, so a template drift (a tag renamed/removed from
  * index.html) fails loudly here instead of silently no-op'ing. */
@@ -248,17 +318,7 @@ export function injectHead(html, { title, description, canonical }) {
     [/<title>[\s\S]*?<\/title>/, `<title>${safeTitle}</title>`],
     [/<meta\s+name="description"[\s\S]*?\/>/, `<meta name="description" content="${safeDescription}" />`],
     [/<link\s+rel="canonical"[\s\S]*?\/>/, `<link rel="canonical" href="${safeCanonical}" />`],
-    [/<meta\s+property="og:title"[\s\S]*?\/>/, `<meta property="og:title" content="${safeTitle}" />`],
-    [
-      /<meta\s+property="og:description"[\s\S]*?\/>/,
-      `<meta property="og:description" content="${safeDescription}" />`,
-    ],
-    [/<meta\s+property="og:url"[\s\S]*?\/>/, `<meta property="og:url" content="${safeCanonical}" />`],
-    [/<meta\s+name="twitter:title"[\s\S]*?\/>/, `<meta name="twitter:title" content="${safeTitle}" />`],
-    [
-      /<meta\s+name="twitter:description"[\s\S]*?\/>/,
-      `<meta name="twitter:description" content="${safeDescription}" />`,
-    ],
+    ...routeScopedSocialReplacements({ title, description, canonical }),
   ];
 
   let result = html;
@@ -301,18 +361,14 @@ export function injectNotFoundHead(html, { title, description, robots }) {
   const replacements = [
     [/<title>[\s\S]*?<\/title>/, `<title>${safeTitle}</title>`],
     [/<meta\s+name="description"[\s\S]*?\/>/, `<meta name="description" content="${safeDescription}" />`],
-    [/<link\s+rel="canonical"[\s\S]*?\/>/, ''],
-    [/<meta\s+property="og:url"[\s\S]*?\/>\s*/, ''],
-    [/<meta\s+property="og:title"[\s\S]*?\/>/, `<meta property="og:title" content="${safeTitle}" />`],
-    [
-      /<meta\s+property="og:description"[\s\S]*?\/>/,
-      `<meta property="og:description" content="${safeDescription}" />`,
-    ],
-    [/<meta\s+name="twitter:title"[\s\S]*?\/>/, `<meta name="twitter:title" content="${safeTitle}" />`],
-    [
-      /<meta\s+name="twitter:description"[\s\S]*?\/>/,
-      `<meta name="twitter:description" content="${safeDescription}" />`,
-    ],
+    // The canonical link is REMOVED, whitespace and all, rather than repointed — see this function's
+    // own doc comment. `\s*` keeps the line it occupied from becoming a blank one.
+    [/<link\s+rel="canonical"[\s\S]*?\/>\s*/, ''],
+    // The five social tags come from the one shared table, with `canonical: null` expressing the one
+    // way this page differs from an ordinary route: no og:url. Listing them here instead — which is
+    // what this function used to do — would be a second copy of exactly the list the table exists to
+    // keep single, and the next tag added to it would reach ordinary routes and silently skip 404s.
+    ...routeScopedSocialReplacements({ title, description, canonical: null }),
   ];
 
   let result = html;

@@ -21,14 +21,20 @@ import { dirname, extname, isAbsolute, join, relative, resolve } from 'node:path
 // build-seo.test.mjs and prerender-routes.test.mjs already do, and what this repo's lint block for
 // `scripts/**/*.mjs` requires (it declares only console/process/Buffer/fetch as globals).
 import { fileURLToPath, URL } from 'node:url';
-// The one import of another script's internals in this file, and a deliberate exception to the
-// convention withTrailingSlash's own comment below documents ("duplicated deliberately, not
-// imported"). That convention governs DERIVATIONS — two scripts computing the same answer from the
-// same committed config compute it separately, so a bug in one cannot make the other agree with it.
-// JSON_LD_SCRIPT_ID is not a derivation: it is an opaque literal whose entire contract is "these
-// bytes are identical everywhere", with no config to re-derive it from. Re-typing it here would not
-// buy independence, only a third place to drift. See build-seo.mjs's own comment on the constant.
-import { JSON_LD_SCRIPT_ID } from './build-seo.mjs';
+// The only two imports of another script's internals in this file, and both are the same deliberate
+// exception to the convention withTrailingSlash's own comment below documents ("duplicated
+// deliberately, not imported"). That convention governs DERIVATIONS — two scripts computing the same
+// answer from the same committed config compute it separately, so a bug in one cannot make the other
+// agree with it. Neither of these is a derivation:
+//
+//   JSON_LD_SCRIPT_ID is an opaque literal whose entire contract is "these bytes are identical
+//   everywhere", with no config to re-derive it from. Re-typing it here would not buy independence,
+//   only a third place to drift.
+//
+//   ROUTE_SCOPED_SOCIAL_TAGS is the single authoritative statement of WHICH tags are route-scoped.
+//   Re-listing them here would let this check quietly cover fewer tags than the build actually
+//   writes — the same class of divergence the table itself exists to end.
+import { JSON_LD_SCRIPT_ID, ROUTE_SCOPED_SOCIAL_TAGS } from './build-seo.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const MODULE_ROOT = join(here, '..');
@@ -80,10 +86,29 @@ function safeDecodeURIComponent(value) {
 }
 
 /** A bare directory path 301s to its trailing-slash form; the slash form serves the directory's
- * index.html directly at 200; a real file serves as itself. No SPA fallback here (unlike
- * prerender-routes.mjs's own static server) — this must reproduce exactly what a real static host
- * serves for the shells build-seo.mjs actually wrote, not fall back to a generic entry document. */
+ * index.html directly at 200; a real file serves as itself; anything else serves `dist/404.html`
+ * — the SPA's own branded not-found shell — under a real HTTP 404 status.
+ *
+ * That last case is what GitHub Pages genuinely does, and it matters in both directions. It is NOT
+ * an SPA fallback in the prerender-routes.mjs sense: that server answers EVERY path with
+ * dist/index.html at 200, because at prerender time no per-route shell exists yet. Doing that here
+ * would be actively wrong — every route would appear to serve the home page's `<head>`, and any
+ * check that compares one route's served metadata against another's would pass vacuously no matter
+ * what the build produced. The status stays 404, so every "must return 200" assertion in this file
+ * fails on a missing page exactly as before; the only thing that changes is that an unknown path
+ * now returns the same bytes a real visitor would get, which is what makes the unknown-route case
+ * checkable at all. */
 export function startGhPagesEmulatingServer(distDir) {
+  const notFoundPath = join(distDir, '404.html');
+  const serveNotFound = (res) => {
+    if (!existsSync(notFoundPath)) {
+      res.writeHead(404);
+      res.end('not found');
+      return;
+    }
+    res.writeHead(404, { 'content-type': 'text/html; charset=utf-8' });
+    createReadStream(notFoundPath).pipe(res);
+  };
   const server = createServer((req, res) => {
     const urlPath = safeDecodeURIComponent((req.url ?? '/').split('?')[0]);
     if (urlPath === null) {
@@ -101,8 +126,7 @@ export function startGhPagesEmulatingServer(distDir) {
     try {
       stat = statSync(candidate);
     } catch {
-      res.writeHead(404);
-      res.end('not found');
+      serveNotFound(res);
       return;
     }
     if (stat.isDirectory()) {
@@ -113,8 +137,7 @@ export function startGhPagesEmulatingServer(distDir) {
       }
       const indexPath = join(candidate, 'index.html');
       if (!existsSync(indexPath)) {
-        res.writeHead(404);
-        res.end('not found');
+        serveNotFound(res);
         return;
       }
       res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
@@ -221,6 +244,122 @@ function assertNotFoundShellSeo(html, expected) {
   }
 }
 
+// The site-constant social tags: identical on every page, so index.html is their one home and a
+// route change has nothing to re-derive for them (see build-seo.mjs's ROUTE_SCOPED_SOCIAL_TAGS,
+// which is deliberately the complement of this list). Checked for PRESENCE and non-emptiness on
+// every served shell rather than against expected literals — this file is not a second copy of the
+// site's marketing copy, and a check that restated those strings would fail on every legitimate
+// wording change while catching nothing a human would not already see.
+const CONSTANT_SOCIAL_TAGS = [
+  { attribute: 'property', key: 'og:type' },
+  { attribute: 'property', key: 'og:site_name' },
+  { attribute: 'property', key: 'og:image' },
+  { attribute: 'property', key: 'og:image:alt' },
+  { attribute: 'name', key: 'twitter:card' },
+  { attribute: 'name', key: 'twitter:image' },
+];
+
+// Twitter/X only honours a large summary card when the image is at least this size; below it the
+// card silently degrades to the small square form, which is exactly the state this pass moved the
+// site off. Declaring `summary_large_image` while shipping an image under it is therefore a real,
+// checkable contradiction rather than a matter of taste.
+const LARGE_IMAGE_CARD_MIN_WIDTH = 300;
+const LARGE_IMAGE_CARD_MIN_HEIGHT = 157;
+const RECOMMENDED_LARGE_IMAGE_WIDTH = 1200;
+const RECOMMENDED_LARGE_IMAGE_HEIGHT = 630;
+
+/** `{width, height}` from a PNG's IHDR header. PNG is the only format this build publishes as a
+ * social image; anything else must extend this rather than be waved through, so an unrecognized
+ * format throws instead of silently skipping the dimension agreement check below. */
+/**
+ * Proves one served page's social metadata against the page itself, not against a copy of the
+ * site's own copywriting:
+ *
+ *  - every route-scoped tag (build-seo.mjs's ROUTE_SCOPED_SOCIAL_TAGS) is present exactly once and
+ *    carries the same value as the `<title>` / description meta / canonical link it is derived
+ *    from. This is the audited defect stated as an invariant: a page whose og:title says one thing
+ *    while its `<title>` says another is wrong no matter which of the two is "right", and it is
+ *    exactly the state a client-side navigation used to leave behind;
+ *  - every site-constant tag is present and non-empty.
+ *
+ * `values` accumulates each constant tag's value across pages so the caller can prove they really
+ * are constant (and fetch the one declared image once).
+ */
+function assertSocialMetaConsistent(label, html, values) {
+  const derivedFrom = {
+    title: extractTag(html, /<title>([\s\S]*?)<\/title>/),
+    description: singleMetaContent(html, 'name', 'description'),
+    canonical: extractTag(html, /<link rel="canonical" href="([^"]+)"/),
+  };
+  for (const { attribute, key, source } of ROUTE_SCOPED_SOCIAL_TAGS) {
+    const actual = singleMetaContent(html, attribute, key);
+    if (actual === null) {
+      throw new Error(`verify-seo: ${label} — no <meta ${attribute}="${key}"> tag at all`);
+    }
+    if (actual !== derivedFrom[source]) {
+      throw new Error(
+        `verify-seo: ${label} — ${key} is "${actual}" but the page's own ${source} is ` +
+          `"${derivedFrom[source]}"; a page's social metadata must agree with the page it describes`,
+      );
+    }
+  }
+  for (const { attribute, key } of CONSTANT_SOCIAL_TAGS) {
+    const value = singleMetaContent(html, attribute, key);
+    if (value === null || value.trim() === '') {
+      throw new Error(`verify-seo: ${label} — <meta ${attribute}="${key}"> is missing or empty`);
+    }
+    if (!values.has(key)) {
+      values.set(key, new Map());
+    }
+    values.get(key).set(value, label);
+  }
+  // Dimensions are optional in principle but load-bearing here (see index.html) — recorded when
+  // declared so the caller can check them against the real image bytes.
+  for (const key of ['og:image:width', 'og:image:height']) {
+    const value = singleMetaContent(html, 'property', key);
+    if (value !== null) {
+      if (!values.has(key)) {
+        values.set(key, new Map());
+      }
+      values.get(key).set(value, label);
+    }
+  }
+}
+
+/** The one value recorded for `key`, or `null` when the tag never appeared. Only meaningful after
+ * `assertConstantSocialTagsAreConstant` has proven there is at most one. */
+function onlyValue(values, key) {
+  const byValue = values.get(key);
+  return byValue ? [...byValue.keys()][0] : null;
+}
+
+/** Every site-constant tag must genuinely be constant: one distinct value across the whole
+ * published corpus. A tag that differs page to page is either not site-constant after all (and
+ * belongs in the route-scoped table, where it would be derived and checked) or is a build that
+ * rewrote it on some pages and not others. */
+function assertConstantSocialTagsAreConstant(values) {
+  for (const [key, byValue] of values) {
+    if (byValue.size > 1) {
+      const shown = [...byValue].map(([value, label]) => `"${value}" (e.g. ${label})`).join(' vs ');
+      throw new Error(
+        `verify-seo: <meta ... "${key}"> is supposed to be site-constant but the build published ` +
+          `${byValue.size} different values: ${shown}`,
+      );
+    }
+  }
+}
+
+function pngDimensions(bytes) {
+  const signature = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+  if (bytes.length < 24 || Buffer.compare(bytes.subarray(0, 8), signature) !== 0) {
+    throw new Error(
+      'verify-seo: the declared og:image is not a PNG — this check reads dimensions from a PNG IHDR header only. ' +
+        'Extend it for the new format rather than leaving the declared og:image:width/height unverified.',
+    );
+  }
+  return { width: bytes.readUInt32BE(16), height: bytes.readUInt32BE(20) };
+}
+
 function extractTag(html, pattern) {
   const match = pattern.exec(html);
   return match ? match[1] : null;
@@ -270,12 +409,47 @@ function attributePattern(name) {
 
 const TYPE_ATTR_PATTERN = attributePattern('type');
 const ID_ATTR_PATTERN = attributePattern('id');
+const CONTENT_ATTR_PATTERN = attributePattern('content');
 
 /** The raw, untrimmed value of an attribute in `attrs`, or `null` when it is absent. Whichever of
  * the three quoting forms matched, exactly one of the three groups is set. */
 function attributeValue(attrs, pattern) {
   const match = pattern.exec(attrs);
   return match ? (match[1] ?? match[2] ?? match[3]) : null;
+}
+
+/** Every `<meta>` element's raw attribute list, in document order. Bounded to actual tags the same
+ * way `extractJsonLdScripts` is, and with the same acknowledged limitation: an attribute value
+ * containing a literal `>` would end the tag early. No producer here emits one, and the failure
+ * direction is over- rather than under-detection. */
+function metaAttributeLists(html) {
+  return [...html.matchAll(/<meta\b([^>]*)>/gi)].map((match) => match[1]);
+}
+
+/** The `content` of the single `<meta>` identified by `attribute="key"`, or `null` when absent —
+ * and a throw when the page carries more than one, which is the failure mode a client-side sync
+ * that appends instead of updating would produce: a crawler reads the first, a human debugging the
+ * page reads the last, and both are "present and correct" to any check that stops at the first hit.
+ *
+ * Reads the tag the way `extractJsonLdScripts` reads a script tag — tokenise the element, then look
+ * up attributes by name — rather than by matching one exact spelling. The earlier form required the
+ * `content` attribute to sit immediately after the identifying one and required both to be
+ * double-quoted, so a tag written `<meta content="…" property="og:title">`, or with single quotes,
+ * was reported as absent. That direction fails closed, but it makes the check a statement about one
+ * producer's formatting rather than about the page a crawler receives — the exact distinction
+ * `extractJsonLdScripts`'s own comment draws, and this file should not answer it two different ways.
+ *
+ * Fail-closed behaviour is unchanged: a genuinely missing tag still reads as `null` (the caller
+ * rejects it) and duplicates still throw here. */
+function singleMetaContent(html, attribute, key) {
+  const identifying = attributePattern(attribute);
+  const contents = metaAttributeLists(html)
+    .filter((attrs) => attributeValue(attrs, identifying) === key)
+    .map((attrs) => attributeValue(attrs, CONTENT_ATTR_PATTERN));
+  if (contents.length > 1) {
+    throw new Error(`verify-seo: ${contents.length} <meta ${attribute}="${key}"> tags on one page — expected exactly one`);
+  }
+  return contents.length === 1 ? contents[0] : null;
 }
 
 /** Every `<script>` block whose `type` attribute is `application/ld+json`, in document order —
@@ -424,6 +598,12 @@ export async function verifySeo({
   // loop's own stray-JSON-LD check.
   const staticRequestPaths = new Set(staticRoutes.map((route) => route.requestPath));
 
+  // key -> (value -> first page that carried it). Filled by assertSocialMetaConsistent on every
+  // served page; read afterwards to prove the site-constant tags really are constant and that the
+  // one declared social image is real and the size it claims to be.
+  const constantSocialValues = new Map();
+  let socialImageChecked = 'none declared';
+
   const server = await startGhPagesEmulatingServer(distDir);
   const { port } = server.address();
   const origin = `http://127.0.0.1:${port}`;
@@ -500,6 +680,8 @@ export async function verifySeo({
       if (count !== 1) {
         throw new Error(`verify-seo: ${url} — expected exactly one <h1> in the raw served HTML, found ${count}`);
       }
+
+      assertSocialMetaConsistent(url, html, constantSocialValues);
     }
 
     for (const { requestPath, expectedCanonical, jsonLd } of staticRoutes) {
@@ -589,6 +771,63 @@ export async function verifySeo({
       if (!h1Text || !h1Text.replace(/<[^>]+>/g, '').trim()) {
         throw new Error(`verify-seo: ${requestPath} — the raw <h1> has no real visible text content`);
       }
+
+      assertSocialMetaConsistent(requestPath, html, constantSocialValues);
+    }
+
+    assertConstantSocialTagsAreConstant(constantSocialValues);
+
+    // The declared social image, proven against the real bytes this build serves. Three separate
+    // ways a social card silently breaks, none of which any other gate here can see: the image URL
+    // names a file the build does not publish; the declared og:image:width/height describe a
+    // different image than the one shipped (a crawler that trusts them reserves the wrong box, and
+    // a mismatch is the normal outcome of swapping the asset without touching index.html); and a
+    // `summary_large_image` card whose image is under the platform's own minimum, which is not
+    // rejected — it just silently renders as the small square card the site was moving away from.
+    const declaredImage = onlyValue(constantSocialValues, 'og:image');
+    if (declaredImage !== null) {
+      const imageUrl = new URL(declaredImage, `${SITE_ORIGIN}/`);
+      if (imageUrl.origin !== SITE_ORIGIN) {
+        throw new Error(
+          `verify-seo: og:image "${declaredImage}" is off-origin — this gate verifies what THIS build ` +
+            'publishes, and a social image the site does not own cannot be proven to exist or to be the right size',
+        );
+      }
+      const imageResponse = await fetch(`${origin}${imageUrl.pathname}`, { redirect: 'manual' });
+      if (imageResponse.status !== 200) {
+        throw new Error(
+          `verify-seo: og:image ${imageUrl.pathname} is not served by this build (got ${imageResponse.status}) — ` +
+            'every social card would fall back to no image at all',
+        );
+      }
+      const { width, height } = pngDimensions(Buffer.from(await imageResponse.arrayBuffer()));
+
+      const declaredWidth = onlyValue(constantSocialValues, 'og:image:width');
+      const declaredHeight = onlyValue(constantSocialValues, 'og:image:height');
+      if (declaredWidth !== null && Number(declaredWidth) !== width) {
+        throw new Error(`verify-seo: og:image:width declares ${declaredWidth} but the served image is ${width}px wide`);
+      }
+      if (declaredHeight !== null && Number(declaredHeight) !== height) {
+        throw new Error(`verify-seo: og:image:height declares ${declaredHeight} but the served image is ${height}px tall`);
+      }
+
+      if (onlyValue(constantSocialValues, 'twitter:card') === 'summary_large_image') {
+        if (width < LARGE_IMAGE_CARD_MIN_WIDTH || height < LARGE_IMAGE_CARD_MIN_HEIGHT) {
+          throw new Error(
+            `verify-seo: twitter:card is summary_large_image but the image is only ${width}x${height} — below the ` +
+              `${LARGE_IMAGE_CARD_MIN_WIDTH}x${LARGE_IMAGE_CARD_MIN_HEIGHT} minimum, so the card silently degrades ` +
+              'to the small summary form',
+          );
+        }
+        if (width < RECOMMENDED_LARGE_IMAGE_WIDTH || height < RECOMMENDED_LARGE_IMAGE_HEIGHT) {
+          throw new Error(
+            `verify-seo: twitter:card is summary_large_image but the image is only ${width}x${height} — under the ` +
+              `${RECOMMENDED_LARGE_IMAGE_WIDTH}x${RECOMMENDED_LARGE_IMAGE_HEIGHT} a large card needs to render ` +
+              'sharply across platforms',
+          );
+        }
+      }
+      socialImageChecked = `${imageUrl.pathname} (${width}x${height})`;
     }
   } finally {
     await new Promise((resolvePromise) => server.close(resolvePromise));
@@ -603,7 +842,10 @@ export async function verifySeo({
     `[verify-seo] verified ${entries.length} sitemap URL(s) (200, no redirect, self-canonical, exactly one real <h1>) ` +
       `and ${staticRoutes.length} configured static route(s) (200, no redirect, exactly one real <h1>, expected canonical, ` +
       `declared JSON-LD present with the shared script id and matching content, every same-origin asset it names served ` +
-      `200) — with no JSON-LD on any sitemap URL or configured route that declares none — all clean`,
+      `200) — with no JSON-LD on any sitemap URL or configured route that declares none — and, on every one of those ` +
+      `pages, each of the ${ROUTE_SCOPED_SOCIAL_TAGS.length} route-scoped social tags present exactly once and equal ` +
+      `to the page's own title/description/canonical, every site-constant social tag present, non-empty and genuinely ` +
+      `constant across the corpus, social image ${socialImageChecked} — all clean`,
   );
 }
 
