@@ -35,6 +35,7 @@ class ModelTierTest {
     assertThat(ModelTier.fromName("powerful")).isEqualTo(ModelTier.POWERFUL);
     assertThat(ModelTier.fromName("Standard")).isEqualTo(ModelTier.STANDARD);
     assertThat(ModelTier.fromName("  lite  ")).isEqualTo(ModelTier.LITE);
+    assertThat(ModelTier.fromName("  premium ")).isEqualTo(ModelTier.PREMIUM);
   }
 
   @Test

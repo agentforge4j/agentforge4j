@@ -43,6 +43,19 @@ class ConfigModelTierResolverTest {
   }
 
   @Test
+  void everyShippedProviderMapsEveryDeclaredTier() {
+    ConfigModelTierResolver resolver = ConfigModelTierResolver.withShippedDefaults();
+
+    for (String provider : ShippedModelTierDefaults.asMap().keySet()) {
+      for (ModelTier tier : ModelTier.values()) {
+        assertThat(resolver.resolve(provider, tier))
+            .as("provider '%s' must ship a default for tier %s", provider, tier)
+            .isNotNull();
+      }
+    }
+  }
+
+  @Test
   void returnsNullWhenProviderIsUnknown() {
     ConfigModelTierResolver resolver = ConfigModelTierResolver.withShippedDefaults();
 

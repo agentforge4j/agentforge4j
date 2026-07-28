@@ -19,6 +19,7 @@ Shipped tier defaults for provider id `bedrock`:
 | `LITE` | `anthropic.claude-haiku-4-5-20251001-v1:0` |
 | `STANDARD` | `anthropic.claude-sonnet-4-6` |
 | `POWERFUL` | `anthropic.claude-opus-4-8` |
+| `PREMIUM` | `anthropic.claude-opus-4-8` |
 
 ## How it activates
 
