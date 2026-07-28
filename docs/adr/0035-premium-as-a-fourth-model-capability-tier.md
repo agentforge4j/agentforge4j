@@ -41,7 +41,7 @@ This amends ADR-0008 rather than superseding it: the decision recorded there —
 
 - Four tiers is more vocabulary for an author to hold, and the boundary between `POWERFUL` and `PREMIUM` is a judgement call rather than a definition.
 - Where the two tiers ship mapped to the same model, an author may reasonably expect a difference and observe none. This is documented in the shipped-defaults contract, not enforced.
-- Every future tier addition now touches four surfaces — the enum, the shipped defaults, and two JSON schema enums — which is why the alignment between them is test-enforced rather than left to review.
+- Every future tier addition touches four surfaces — the enum, the shipped defaults, and two JSON schema enums — which is why the alignment between them will be test-enforced rather than left to review. That enforcement is not in place yet; it lands with the configuration-surface change, and the Verification note below gates this record on it.
 
 ### Neutral / tradeoffs
 
@@ -55,7 +55,7 @@ This amends ADR-0008 rather than superseding it: the decision recorded there —
 
 ## Compatibility impact
 
-Public contract, additive in both directions. The `modelTier` enums in `agent.schema.json` and `workflow.schema.json` gain a member: nothing previously valid becomes invalid, and no consumer that already rejected the unknown string `PREMIUM` changes behaviour. The workflow `schemaVersion` therefore stays at 1. `ModelTier` gains an enum constant, which is binary-compatible; a consumer that exhaustively switches over the enum without a default would need a new branch, and none exists in this repository.
+Public contract, additive in both directions. The `modelTier` enums in `agent.schema.json` and `workflow.schema.json` will gain a member when the configuration surface lands — they are unchanged by the runtime/API change that introduces the tier, so until then `PREMIUM` is not a publicly supported value in agent or workflow JSON. That widening is additive: nothing previously valid becomes invalid, and no consumer that already rejected the unknown string `PREMIUM` changes behaviour. The workflow `schemaVersion` therefore stays at 1. `ModelTier` gains an enum constant, which is binary-compatible; a consumer that exhaustively switches over the enum without a default would need a new branch, and none exists in this repository.
 
 ## Verification note
 

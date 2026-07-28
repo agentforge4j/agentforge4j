@@ -21,7 +21,6 @@ import java.nio.file.Path;
 import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.factory.ObjectProvider;
@@ -201,7 +200,7 @@ public class BootstrapAutoConfiguration {
 
   private static ModelTier parseTier(String tierName, String provider) {
     try {
-      return ModelTier.valueOf(tierName.toUpperCase(Locale.ROOT));
+      return ModelTier.fromName(tierName);
     } catch (IllegalArgumentException exception) {
       throw new IllegalStateException(
           ("Invalid tier '%s' for provider '%s' under agentforge4j.llm.model-tiers — "

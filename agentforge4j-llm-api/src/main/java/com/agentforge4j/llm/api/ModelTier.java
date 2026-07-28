@@ -58,9 +58,10 @@ public enum ModelTier {
   }
 
   /**
-   * Returns the declared tier names joined as {@code "LITE, STANDARD, POWERFUL, PREMIUM"}, for invalid-tier error
-   * messages. The single canonical source of the valid-tier list, so a new tier can never be missing from one
-   * caller's message.
+   * Returns every declared tier name, in declaration order, joined with {@code ", "} — for invalid-tier error
+   * messages. Derived from {@link #values()} rather than restated, so it is the single canonical source of the
+   * valid-tier list and a new tier can never be missing from one caller's message. The exact members are
+   * deliberately not repeated here; read them off the constants above.
    *
    * @return the comma-separated tier names in declaration order; never {@code null}
    */
