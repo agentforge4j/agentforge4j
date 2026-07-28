@@ -225,11 +225,18 @@ const config: Config = {
   themeConfig: {
     // Default social-preview image for every docs page that doesn't set its own (none currently
     // do). An absolute URL, not a `static/img/...`-relative one: this is the marketing SPA's own
-    // existing brand asset (agentforge4j-web-ui/public/brand/icon-512.png, composed to the site
-    // root alongside /docs/ by assemble-site.mjs), not a file inside this module's own static/ —
-    // useBaseUrl's own addBaseUrl no-ops on any URL that already has a protocol, so Docusaurus
-    // emits this unchanged as both og:image and twitter:image, already production-absolute.
-    image: `${SITE_URL}/brand/icon-512.png`,
+    // existing brand asset (agentforge4j-web-ui/public/brand/social-preview.png, composed to the
+    // site root alongside /docs/ by assemble-site.mjs), not a file inside this module's own
+    // static/ — useBaseUrl's own addBaseUrl no-ops on any URL that already has a protocol, so
+    // Docusaurus emits this unchanged as both og:image and twitter:image, already
+    // production-absolute.
+    //
+    // The dedicated 1280x640 card, not the 512x512 app icon. Docusaurus emits
+    // `twitter:card: summary_large_image` unconditionally, so the square icon was being served to
+    // a large-card renderer that has no square layout — it letterboxes or centre-crops it. The
+    // marketing SPA declares the same image for the same reason (see
+    // agentforge4j-web-ui/index.html), so the two halves of one site finally present the same card.
+    image: `${SITE_URL}/brand/social-preview.png`,
     colorMode: {
       respectPrefersColorScheme: true,
     },

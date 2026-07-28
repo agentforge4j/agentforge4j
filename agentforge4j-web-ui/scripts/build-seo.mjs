@@ -237,6 +237,32 @@ function catalogueWorkflowDescription(workflow) {
   return `${raw.slice(0, MAX_DESCRIPTION_LENGTH - 1).trimEnd()}…`;
 }
 
+/**
+ * The social tags whose value is a pure function of the route's own title/description/canonical,
+ * and therefore the exact set that must be re-derived on every client-side route change as well as
+ * baked into every static shell.
+ *
+ * This table is the single source for both. `injectHead` below builds its replacements from it, and
+ * `src/lib/usePageSeo.ts` re-declares it (it cannot import this module — build-seo.mjs pulls in
+ * node:child_process) with `tests/usePageSeo.test.tsx` importing this constant to bind the two
+ * copies together. That binding is the point: the audited defect was precisely a divergence between
+ * these two surfaces — the static shell rewrote all five of these while the client hook rewrote
+ * none of them, so every one went stale the moment a visitor navigated within the app, and no gate
+ * on either side could see it because each was individually self-consistent.
+ *
+ * Deliberately NOT included: the site-constant social tags (`og:type`, `og:site_name`, `og:image`
+ * and its dimensions/alt, `twitter:card`, `twitter:image`). Those carry the same value on every
+ * page, so index.html is their one home and there is nothing for a route change to re-derive —
+ * `verify-seo.mjs` proves every built shell actually carries them.
+ */
+export const ROUTE_SCOPED_SOCIAL_TAGS = [
+  { attribute: 'property', key: 'og:title', source: 'title' },
+  { attribute: 'property', key: 'og:description', source: 'description' },
+  { attribute: 'property', key: 'og:url', source: 'canonical' },
+  { attribute: 'name', key: 'twitter:title', source: 'title' },
+  { attribute: 'name', key: 'twitter:description', source: 'description' },
+];
+
 /** Replaces the title/description/canonical/OG/Twitter tags already present in the built
  * index.html shell — never adds new tags, so a template drift (a tag renamed/removed from
  * index.html) fails loudly here instead of silently no-op'ing. */
@@ -244,21 +270,15 @@ export function injectHead(html, { title, description, canonical }) {
   const safeTitle = escapeHtml(title);
   const safeDescription = escapeHtml(description);
   const safeCanonical = escapeHtml(canonical);
+  const safeBySource = { title: safeTitle, description: safeDescription, canonical: safeCanonical };
   const replacements = [
     [/<title>[\s\S]*?<\/title>/, `<title>${safeTitle}</title>`],
     [/<meta\s+name="description"[\s\S]*?\/>/, `<meta name="description" content="${safeDescription}" />`],
     [/<link\s+rel="canonical"[\s\S]*?\/>/, `<link rel="canonical" href="${safeCanonical}" />`],
-    [/<meta\s+property="og:title"[\s\S]*?\/>/, `<meta property="og:title" content="${safeTitle}" />`],
-    [
-      /<meta\s+property="og:description"[\s\S]*?\/>/,
-      `<meta property="og:description" content="${safeDescription}" />`,
-    ],
-    [/<meta\s+property="og:url"[\s\S]*?\/>/, `<meta property="og:url" content="${safeCanonical}" />`],
-    [/<meta\s+name="twitter:title"[\s\S]*?\/>/, `<meta name="twitter:title" content="${safeTitle}" />`],
-    [
-      /<meta\s+name="twitter:description"[\s\S]*?\/>/,
-      `<meta name="twitter:description" content="${safeDescription}" />`,
-    ],
+    ...ROUTE_SCOPED_SOCIAL_TAGS.map(({ attribute, key, source }) => [
+      new RegExp(`<meta\\s+${attribute}="${key}"[\\s\\S]*?/>`),
+      `<meta ${attribute}="${key}" content="${safeBySource[source]}" />`,
+    ]),
   ];
 
   let result = html;
