@@ -15,6 +15,8 @@ import { fileURLToPath } from 'node:url';
 import App from '@/App';
 import { ThemeProvider } from '@/theme/ThemeContext';
 import { findSeoRoute } from '@/config/seo';
+import { catalogueData } from '@/lib/catalogueData';
+import { catalogueWorkflowDescription } from '@/lib/catalogueSeo';
 // JSON_LD_SCRIPT_ID comes from build-seo.mjs deliberately, never re-typed as a literal here: the
 // static shell's script id and the one usePageSeo.ts's `setJsonLd` looks for MUST be the same
 // string, and this import is the only thing in the suite that can fail when they drift. A
@@ -22,7 +24,12 @@ import { findSeoRoute } from '@/config/seo';
 // long after build-seo.mjs had been renamed — leaving the shell shipping one id, the hook hunting
 // for another, and every gate still green. (usePageSeo.ts itself cannot import this module —
 // build-seo.mjs pulls in node:child_process — so the binding has to live here.)
-import { buildSeo, JSON_LD_SCRIPT_ID } from '../scripts/build-seo.mjs';
+import {
+  buildSeo,
+  describesCompleteWords as buildDescribesCompleteWords,
+  JSON_LD_SCRIPT_ID,
+  truncateDescription as buildTruncateDescription,
+} from '../scripts/build-seo.mjs';
 
 const MODULE_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -262,5 +269,34 @@ describe('usePageSeo', () => {
     navigate();
 
     expect(document.head.querySelectorAll('script[type="application/ld+json"]').length).toBe(0);
+  });
+});
+
+// --- Catalogue description truncation: the TS implementation the client renders from and the
+// plain-ESM one the build shell is written from are deliberate duplicates (neither can import the
+// other). This is what binds them: both are driven over the REAL shipped workflow data and must
+// agree exactly, so a fix applied to one and forgotten in the other fails here instead of shipping
+// two different meta descriptions for the same page.
+
+describe('catalogue description truncation', () => {
+  test('the client-side and build-time implementations produce identical descriptions for every real shipped workflow', () => {
+    expect(catalogueData.workflows.length).toBeGreaterThan(0);
+    for (const workflow of catalogueData.workflows) {
+      expect(catalogueWorkflowDescription(workflow), workflow.id).toBe(
+        buildTruncateDescription((workflow.description ?? '').trim()),
+      );
+    }
+  });
+
+  test('every real shipped workflow ends on a complete word, within the limit — and none reproduces the audited mid-word cut', () => {
+    for (const workflow of catalogueData.workflows) {
+      const raw = (workflow.description ?? '').trim();
+      const description = catalogueWorkflowDescription(workflow);
+      expect(description.length, workflow.id).toBeLessThanOrEqual(157);
+      expect(buildDescribesCompleteWords(raw, description), `${workflow.id}: ${description}`).toBe(true);
+      // The two published examples the audit named, stated as the properties they violated.
+      expect(description).not.toMatch(/\bSin…$/);
+      expect(description).not.toMatch(/\binvoc…$/);
+    }
   });
 });

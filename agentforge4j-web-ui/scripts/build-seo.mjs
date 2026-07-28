@@ -226,15 +226,82 @@ function catalogueWorkflowTitle(workflow) {
   return `${workflow.name} — AgentForge4j Catalogue`;
 }
 
+/** Below this a truncated description stops being a useful snippet — see catalogueSeo.ts. */
+const MIN_USEFUL_DESCRIPTION_LENGTH = 80;
+const SENTENCE_END_PATTERN = /[^\s][.!?](?=\s|$)/g;
+const TRAILING_CLAUSE_PUNCTUATION = /[\s,;:—–-]+$/;
+
+/** Mirrors src/lib/catalogueSeo.ts's `truncateDescription` exactly — the same deliberate
+ * duplication (not import) this file's header documents for the other two catalogue rules, bound to
+ * that copy by tests/usePageSeo.test.tsx, which drives BOTH implementations over the same real
+ * workflow data and requires identical output.
+ *
+ * Never a fixed-offset slice: that is what published `…and a verification starter). Sin…` and
+ * `…tool invoc…` as this site's own meta descriptions. Sentences first, whole words otherwise. */
+export function truncateDescription(raw) {
+  if (raw.length <= MAX_DESCRIPTION_LENGTH) {
+    return raw;
+  }
+  let lastSentenceEnd = -1;
+  for (const match of raw.matchAll(SENTENCE_END_PATTERN)) {
+    const end = match.index + match[0].length;
+    if (end > MAX_DESCRIPTION_LENGTH) {
+      break;
+    }
+    lastSentenceEnd = end;
+  }
+  if (lastSentenceEnd >= MIN_USEFUL_DESCRIPTION_LENGTH) {
+    return raw.slice(0, lastSentenceEnd);
+  }
+  const window = raw.slice(0, MAX_DESCRIPTION_LENGTH - 1);
+  const lastSpace = window.lastIndexOf(' ');
+  const words = (lastSpace === -1 ? window : window.slice(0, lastSpace)).replace(TRAILING_CLAUSE_PUNCTUATION, '');
+  return `${words}…`;
+}
+
+/** Mirrors src/lib/catalogueSeo.ts's `describesCompleteWords` — the mechanical statement of "no word
+ * was cut in half", checked against the source text rather than by inspecting the result. */
+export function describesCompleteWords(raw, description) {
+  const trimmed = raw.trim();
+  if (description === trimmed) {
+    return true;
+  }
+  const body = description.replace(/…$/, '');
+  if (body.length === 0 || !trimmed.startsWith(body)) {
+    return false;
+  }
+  // The one unavoidable case: the source's first word is longer than everything that fits, so no
+  // word-boundary cut exists. See catalogueSeo.ts's copy for why accepting it masks nothing.
+  const firstBoundary = trimmed.search(/\s/);
+  if (firstBoundary === -1 || firstBoundary >= body.length) {
+    return true;
+  }
+  const remainder = trimmed.slice(body.length).replace(/^[,;:—–-]+/, '');
+  return remainder.length === 0 || /^\s/.test(remainder);
+}
+
 function catalogueWorkflowDescription(workflow) {
   const raw = workflow.description?.trim();
   if (!raw) {
     return `${workflow.name} — a shipped, ready-to-run AgentForge4j workflow from the workflow catalogue.`;
   }
-  if (raw.length <= MAX_DESCRIPTION_LENGTH) {
-    return raw;
+  const description = truncateDescription(raw);
+  // Checked here, on every real build, for every shipped workflow — not only for the two whose
+  // truncation an audit happened to look at. A description that ends mid-word is a defect in the
+  // truncation rule, and this is the point at which it becomes impossible to publish one silently.
+  if (!describesCompleteWords(raw, description)) {
+    throw new Error(
+      `build-seo: the description generated for catalogue workflow "${workflow.id}" does not end on a word ` +
+        `boundary of its source text: ${JSON.stringify(description)}`,
+    );
   }
-  return `${raw.slice(0, MAX_DESCRIPTION_LENGTH - 1).trimEnd()}…`;
+  if (description.length > MAX_DESCRIPTION_LENGTH) {
+    throw new Error(
+      `build-seo: the description generated for catalogue workflow "${workflow.id}" is ${description.length} ` +
+        `characters, over the ${MAX_DESCRIPTION_LENGTH} limit`,
+    );
+  }
+  return description;
 }
 
 /** Replaces the title/description/canonical/OG/Twitter tags already present in the built

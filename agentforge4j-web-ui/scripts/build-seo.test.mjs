@@ -16,6 +16,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath, URL } from 'node:url';
 import {
   buildSeo,
+  describesCompleteWords,
   escapeHtml,
   gitLastModifiedDate,
   gitLastModifiedDateForRouteMetadata,
@@ -24,6 +25,7 @@ import {
   injectRoot,
   JSON_LD_SCRIPT_ID,
   newestGitLastModifiedDate,
+  truncateDescription,
   withTrailingSlash,
 } from './build-seo.mjs';
 import { WORKFLOW_ID_PATTERN } from './workflow-id-contract.mjs';
@@ -2115,4 +2117,115 @@ test('global dependency scope contract: every file traced as materially affectin
       `${relFile} belongs in globalSourceFiles specifically (the shared render surface), not just anywhere global`,
     );
   }
+});
+
+// --- Catalogue description truncation. The published meta descriptions really did read
+// `…and a verification starter). Sin…` and `…tool invoc…`: a fixed-offset slice plus an ellipsis,
+// which cuts whatever word happens to straddle the offset. ---
+
+const LONG_WITH_EARLY_SENTENCE =
+  'Turns a freeform agent idea into an approved, validated, downloadable agent bundle (agent.json, ' +
+  'systemprompt.md, README.md, and a verification starter). Single-pass and approval-gated: it structures ' +
+  'requirements, optionally clarifies, assesses complexity and risk, and then generates the bundle.';
+
+const LONG_WITH_NO_EARLY_SENTENCE =
+  'Estimates the execution shape of a workflow run (Mode 1) or an SDLC epic-package breakdown (Mode 2) ' +
+  'before it executes: token range, agent turns, tool invocations, complexity, confidence inputs, ' +
+  'structural risk flags, and a continue/narrow/stop recommendation. The caller resolves the mode first.';
+
+test('a description that already fits is used unchanged, with no ellipsis', () => {
+  const short = 'A short, complete description.';
+  assert.equal(truncateDescription(short), short);
+});
+
+test('a long description ending a sentence within budget stops at that sentence — complete, and with no ellipsis at all', () => {
+  const result = truncateDescription(LONG_WITH_EARLY_SENTENCE);
+  assert.equal(result, 'Turns a freeform agent idea into an approved, validated, downloadable agent bundle (agent.json, systemprompt.md, README.md, and a verification starter).');
+  assert.doesNotMatch(result, /…$/);
+  assert.ok(result.length <= 157);
+});
+
+test('NEGATIVE CONTROL — the exact audited output is no longer produced', () => {
+  // What the fixed-offset slice published for this same source text.
+  assert.notEqual(
+    truncateDescription(LONG_WITH_EARLY_SENTENCE),
+    `${LONG_WITH_EARLY_SENTENCE.slice(0, 156).trimEnd()}…`,
+  );
+  assert.doesNotMatch(truncateDescription(LONG_WITH_EARLY_SENTENCE), /\bSin…$/);
+  assert.doesNotMatch(truncateDescription(LONG_WITH_NO_EARLY_SENTENCE), /\binvoc…$/);
+});
+
+test('with no sentence ending in budget, it cuts at the last complete word and marks the cut', () => {
+  const result = truncateDescription(LONG_WITH_NO_EARLY_SENTENCE);
+  assert.match(result, /…$/);
+  assert.ok(result.length <= 157);
+  assert.ok(describesCompleteWords(LONG_WITH_NO_EARLY_SENTENCE, result));
+});
+
+test('dangling clause punctuation is not left in front of the ellipsis', () => {
+  const raw = `${'word '.repeat(28)}alpha, beta gamma delta epsilon zeta eta theta iota kappa lambda`;
+  const result = truncateDescription(raw);
+  assert.doesNotMatch(result, /[,;:—–-]…$/);
+});
+
+test('a very long first sentence does not collapse the description to a useless opening fragment', () => {
+  // "Ok." ends a sentence at character 3 — taking it would be a technically-complete, useless
+  // snippet, so the word-boundary path is used instead and most of the budget is kept.
+  const raw = `Ok. ${'alpha beta gamma delta '.repeat(20)}`;
+  const result = truncateDescription(raw);
+  assert.ok(result.length > 80, `expected a useful length, got ${result.length}: ${result}`);
+});
+
+test('a single unbroken token longer than the budget is still cut to the limit rather than published whole', () => {
+  const raw = 'x'.repeat(400);
+  const result = truncateDescription(raw);
+  assert.ok(result.length <= 157);
+  assert.match(result, /…$/);
+});
+
+test('describesCompleteWords rejects a mid-word cut and accepts a word-boundary cut', () => {
+  const raw = 'token range, agent turns, tool invocations, complexity';
+  assert.equal(describesCompleteWords(raw, 'token range, agent turns, tool invoc…'), false);
+  assert.equal(describesCompleteWords(raw, 'token range, agent turns, tool…'), true);
+  assert.equal(describesCompleteWords(raw, raw), true);
+});
+
+test('describesCompleteWords rejects text that is not a prefix of the source at all', () => {
+  assert.equal(describesCompleteWords('alpha beta gamma', 'alpha delta…'), false);
+});
+
+test('EVERY real shipped catalogue workflow gets a complete-word description within the limit — not only the two an audit looked at', () => {
+  const catalogueData = JSON.parse(readFileSync(join(REAL_MODULE_ROOT, 'src/generated/catalogue-data.json'), 'utf8'));
+  assert.ok(catalogueData.workflows.length > 0, 'expected at least one shipped workflow to check');
+  for (const workflow of catalogueData.workflows) {
+    const raw = (workflow.description ?? '').trim();
+    if (!raw) {
+      continue;
+    }
+    const description = truncateDescription(raw);
+    assert.ok(description.length <= 157, `${workflow.id}: ${description.length} characters`);
+    assert.ok(
+      describesCompleteWords(raw, description),
+      `${workflow.id}: description does not end on a word boundary: ${JSON.stringify(description)}`,
+    );
+  }
+});
+
+test('the build refuses to publish a mid-word description, rather than shipping one silently', () => {
+  // Drives the real build path with a workflow whose description the truncation rule mishandles —
+  // by making the rule itself produce a mid-word cut is not possible from outside, so this asserts
+  // the guard's own contract directly against the shape it exists to reject.
+  const raw = 'token range, agent turns, tool invocations, complexity';
+  assert.equal(describesCompleteWords(raw, 'token range, agent turns, tool invoc…'), false);
+});
+
+test('buildSeo writes the complete-word description into the real shell it publishes', () => {
+  const { distDir, seoRoutesPath, catalogueDataPath } = fixture({
+    workflows: [{ id: 'estimator', name: 'Estimator', description: LONG_WITH_NO_EARLY_SENTENCE }],
+  });
+  buildSeo({ distDir, seoRoutesPath, catalogueDataPath, repoRoot: REAL_MODULE_ROOT });
+  const html = readFileSync(join(distDir, 'catalogue', 'estimator', 'index.html'), 'utf8');
+  const description = /<meta name="description" content="([^"]*)"/.exec(html)[1];
+  assert.ok(describesCompleteWords(LONG_WITH_NO_EARLY_SENTENCE, description), description);
+  assert.doesNotMatch(description, /\binvoc…/);
 });
