@@ -241,12 +241,19 @@ function escapeHtmlText(value) {
  * one raw page kind that natively carries a canonical of its own: the IndexRedirectWriter redirect
  * stub, recognized and skipped whole by `applyJavadocSeo` (see `isJavadocRedirectStub`).
  *
+ * `heading` overrides the text written into a matched doc-title `<h1>`, and defaults to `title` —
+ * byte-identical behaviour to before for every page that does not pass it. It exists for the one
+ * page whose best `<title>` and best visible heading are genuinely different strings: a `<title>`
+ * carries the site and lifecycle context a search result needs, while an `<h1>` is read with the
+ * page already in front of you, so repeating that context in it produces the doubled, clumsy
+ * heading this option was added to fix (see `surfacesLandingCopy`).
+ *
  * @param {string} html
- * @param {{title: string, description: string, canonical: string, ogImage: string, noindex?: boolean, allowMissingDescription?: boolean}} options
+ * @param {{title: string, description: string, canonical: string, ogImage: string, heading?: string, noindex?: boolean, allowMissingDescription?: boolean}} options
  */
 export function injectJavadocPageSeo(
   html,
-  { title, description, canonical, ogImage, noindex = false, allowMissingDescription = false },
+  { title, description, canonical, ogImage, heading = title, noindex = false, allowMissingDescription = false },
 ) {
   if (!/<\/head>/.test(html)) {
     throw new Error('javadoc-seo: expected a </head> closing tag');
@@ -315,7 +322,7 @@ export function injectJavadocPageSeo(
   // never match and is never touched.
   result = result.replace(
     DOC_TITLE_HEADING_PATTERN,
-    (_match, open, close) => `${open}${escapeHtmlText(title)}${close}`,
+    (_match, open, close) => `${open}${escapeHtmlText(heading)}${close}`,
   );
 
   // Function replacers throughout (never a plain-string second argument to String.replace): a
@@ -450,6 +457,37 @@ function surfaceCopy(label) {
   };
 }
 
+/**
+ * Copy for `surfaces.html` — `build-javadoc.mjs`'s own hand-authored landing page, the one page in
+ * a surface that is not maven-javadoc-plugin output at all.
+ *
+ * It needs its own entry because the generic nested-page rule derives a page's copy from its raw
+ * `<title>`, and this page's raw title is `AgentForge4j API — surfaces`: brand-prefixed prose, not
+ * the "Foo" / "com.example" / "All Classes and Interfaces" identifier every generated page carries.
+ * Appending the lifecycle suffix to it produced
+ * `AgentForge4j API — surfaces — AgentForge4j API Reference (latest stable, 0.1.0)` — accurate, and
+ * unreadable, with the brand stated twice and two em-dash clauses.
+ *
+ * Narrow by construction: this is chosen by matching one exact filename in `applyJavadocSeo`, and it
+ * changes nothing about how any other page is titled. In particular it does NOT relax
+ * `stripJavadocWindowTitle` or `nestedPageCopy` — the general normalization, and the guarantee that
+ * no page of any tree is ever labelled with the generator's `(next)` window title, both apply to
+ * this page exactly as before. What changes is only which words this one page uses.
+ *
+ * `heading` differs from `title` deliberately: the `<title>` is read in a search result, where the
+ * brand and the lifecycle state are the context that makes it meaningful, while the `<h1>` is read
+ * with the page already open, where repeating them is the noise that made the old heading clumsy.
+ */
+function surfacesLandingCopy(label) {
+  return {
+    title: `API Surfaces — AgentForge4j API Reference (${label})`,
+    heading: `AgentForge4j API Surfaces (${label})`,
+    description:
+      `How the AgentForge4j API reference (${label}) is split across its three independently generated ` +
+      'surfaces: the modular aggregate, the MCP integration, and the Spring Boot starter.',
+  };
+}
+
 /** A nested page's own `<title>` (extracted from its still-unmodified raw HTML) grounds its
  * title/description in real content already present on the page, rather than inventing per-page
  * copy this script has no way to derive correctly for every one of maven-javadoc-plugin's own page
@@ -562,13 +600,24 @@ export function applyJavadocSeo({ siteDir, siteUrl, ogImage, releasedVersions })
       }
       const canonical = canonicalFor(siteUrl, surface.mountPath, surfaceRoot, pageInput);
       const isOverview = pageInput === indexPath;
-      const copy = isOverview ? surfaceCopy(surface.label) : nestedPageCopy(html, surface.label);
       const isSurfacesLandingPage = pageInput === join(surfaceRoot, SURFACES_LANDING_FILENAME);
+      // Three page kinds, decided by what the page IS, not by guessing from its content: the
+      // surface's own overview page, this repo's own hand-authored landing page, and every genuine
+      // maven-javadoc-plugin page (whose copy is derived from its own title).
+      let copy;
+      if (isSurfacesLandingPage) {
+        copy = surfacesLandingCopy(surface.label);
+      } else if (isOverview) {
+        copy = surfaceCopy(surface.label);
+      } else {
+        copy = nestedPageCopy(html, surface.label);
+      }
       let updatedHtml;
       try {
         updatedHtml = injectJavadocPageSeo(html, {
           title: copy.title,
           description: copy.description,
+          heading: copy.heading,
           canonical,
           ogImage,
           noindex: surface.noindex,

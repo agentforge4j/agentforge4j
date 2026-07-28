@@ -337,10 +337,36 @@ test('injectJavadocPageSeo inserts a fresh description tag (rather than failing 
   assert.match(html, /<meta name="description" content="Generated Javadoc API reference[^"]*">/);
   assert.equal((html.match(/<meta name="description"/g) ?? []).length, 1, 'exactly one description tag, never a duplicate');
   assert.match(html, /<link rel="canonical" href="https:\/\/agentforge4j\.org\/javadoc\/next\/surfaces\.html">/);
-  // The landing page's own <h1> is the same generated doc title text, corrected identically; its
-  // real hand-authored body content (the surface list) survives untouched.
+  // With no `heading` supplied, the <h1> takes the title — the pre-existing behaviour every other
+  // page still gets, unchanged.
   assert.match(html, /<h1>AgentForge4j API — surfaces — AgentForge4j API Reference \(next, in-development\)<\/h1>/);
   assert.match(html, /<li><a href="\.\/index\.html">Core API \(aggregate\)<\/a><\/li>/);
+});
+
+test('an explicit `heading` writes a different <h1> from the <title> — and changes nothing else about the page', () => {
+  const options = {
+    title: 'API Surfaces — AgentForge4j API Reference (next, in-development)',
+    description: 'How the reference is split.',
+    canonical: 'https://agentforge4j.org/javadoc/next/surfaces.html',
+    ogImage: 'https://agentforge4j.org/brand/icon-512.png',
+    allowMissingDescription: true,
+  };
+  const withHeading = injectJavadocPageSeo(RAW_SURFACES_LANDING_HTML, {
+    ...options,
+    heading: 'AgentForge4j API Surfaces (next, in-development)',
+  });
+  assert.match(withHeading, /<h1>AgentForge4j API Surfaces \(next, in-development\)<\/h1>/);
+  assert.match(withHeading, /<title>API Surfaces — AgentForge4j API Reference \(next, in-development\)<\/title>/);
+  // og:title follows the TITLE, not the heading — the heading is a page-local reading aid, the
+  // title is what a search result and a share preview show.
+  assert.match(withHeading, /<meta property="og:title" content="API Surfaces — AgentForge4j API Reference \(next, in-development\)">/);
+
+  // Omitting `heading` must be byte-identical to passing the title as the heading, so this option
+  // cannot have quietly changed any other page.
+  assert.equal(
+    injectJavadocPageSeo(RAW_SURFACES_LANDING_HTML, options),
+    injectJavadocPageSeo(RAW_SURFACES_LANDING_HTML, { ...options, heading: options.title }),
+  );
 });
 
 test('injectJavadocPageSeo still fails closed on a description-less page when allowMissingDescription is not set (the default) — allowMissingDescription must not weaken the template-drift protection for ordinary pages', () => {
@@ -767,9 +793,11 @@ test('applyJavadocSeo processes the real surfaces.html landing page (build-javad
   const surfacesPage = readFileSync(join(surfaceRoot, 'surfaces.html'), 'utf8');
   assert.match(surfacesPage, /<meta name="description" content="[^"]+">/);
   assert.match(surfacesPage, /<link rel="canonical" href="https:\/\/agentforge4j\.org\/javadoc\/next\/surfaces\.html">/);
-  // Same doc-title heading correction through the full applyJavadocSeo path; the hand-authored
-  // body content survives.
-  assert.match(surfacesPage, /<h1>AgentForge4j API — surfaces — AgentForge4j API Reference \(next, in-development\)<\/h1>/);
+  // The doc-title heading is still corrected through the full applyJavadocSeo path — to this page's
+  // own intentional heading (surfacesLandingCopy), not to the doubled brand-twice string the generic
+  // nested-page rule used to produce here; the hand-authored body content survives either way.
+  assert.match(surfacesPage, /<h1>AgentForge4j API Surfaces \(next, in-development\)<\/h1>/);
+  assert.doesNotMatch(surfacesPage, /AgentForge4j API \(next\)/);
   assert.match(surfacesPage, /<li><a href="\.\/index\.html">Core API \(aggregate\)<\/a><\/li>/);
 });
 
@@ -1391,4 +1419,113 @@ test('a malformed redirect stub names the file that failed, exactly like an ordi
     }),
     /failed processing .*overview-summary\.html/,
   );
+});
+
+// --- surfaces.html's own copy. Its raw title is brand-prefixed prose (`AgentForge4j API —
+// surfaces`), not the bare identifier every generated page carries, so the generic nested-page rule
+// produced `AgentForge4j API — surfaces — AgentForge4j API Reference (latest stable, 0.1.0)` — the
+// brand twice, two em-dash clauses, and the same string used as the visible heading. ---
+
+/** Builds a fixture surface tree with a real surfaces.html and runs the real pass over it. */
+function surfacesFixture(targetMountPath, releasedVersions) {
+  const { siteDir } = fixtureSiteDirWithNestedPages(targetMountPath, releasedVersions);
+  for (const mountPath of ['javadoc/next', 'javadoc/latest', ...releasedVersions.map((v) => `javadoc/${v}`)]) {
+    writeFileSync(join(siteDir, ...mountPath.split('/'), 'surfaces.html'), RAW_SURFACES_LANDING_HTML, 'utf8');
+  }
+  applyJavadocSeo({
+    siteDir,
+    siteUrl: 'https://agentforge4j.org',
+    ogImage: 'https://agentforge4j.org/brand/icon-512.png',
+    releasedVersions,
+  });
+  return (mountPath) => readFileSync(join(siteDir, ...mountPath.split('/'), 'surfaces.html'), 'utf8');
+}
+
+test('NEGATIVE CONTROL — the audited heading is gone from every lifecycle variant, not just /latest/', () => {
+  const read = surfacesFixture('javadoc/latest', ['0.1.0']);
+  for (const mountPath of ['javadoc/next', 'javadoc/latest', 'javadoc/0.1.0']) {
+    const html = read(mountPath);
+    assert.doesNotMatch(
+      html,
+      /AgentForge4j API — surfaces — AgentForge4j API Reference/,
+      `${mountPath}/surfaces.html still carries the doubled heading`,
+    );
+  }
+});
+
+test('surfaces.html gets an intentional, lifecycle-aware title and a distinct heading on every surface', () => {
+  const read = surfacesFixture('javadoc/latest', ['0.1.0']);
+  for (const [mountPath, label] of [
+    ['javadoc/next', 'next, in-development'],
+    ['javadoc/latest', 'latest stable, 0.1.0'],
+    ['javadoc/0.1.0', '0.1.0'],
+  ]) {
+    const html = read(mountPath);
+    assert.match(
+      html,
+      new RegExp(`<title>API Surfaces — AgentForge4j API Reference \\(${label.replace(/[.()]/g, '\\$&')}\\)</title>`),
+      `${mountPath}: wrong title`,
+    );
+    assert.match(
+      html,
+      new RegExp(`<h1>AgentForge4j API Surfaces \\(${label.replace(/[.()]/g, '\\$&')}\\)</h1>`),
+      `${mountPath}: wrong heading`,
+    );
+  }
+});
+
+test('surfaces.html gets a description about what the page actually is, not the generic per-page one', () => {
+  const read = surfacesFixture('javadoc/latest', ['0.1.0']);
+  const html = read('javadoc/latest');
+  assert.match(html, /<meta name="description" content="How the AgentForge4j API reference \(latest stable, 0\.1\.0\) is split across its three independently generated surfaces[^"]*">/);
+  assert.equal((html.match(/<meta name="description"/g) ?? []).length, 1);
+});
+
+test("the carve-out does not weaken the residual-window-title oracle: no surfaces.html is labelled with the generator's own (next) window title", () => {
+  // The property #185 established, re-asserted on the page this pass changes: the raw page's <h1>
+  // really is `AgentForge4j API (next)`, and it must not survive on ANY surface — including /next/,
+  // whose own honest label is a different string.
+  assert.match(RAW_SURFACES_LANDING_HTML, /<h1>AgentForge4j API \(next\)<\/h1>/);
+  const read = surfacesFixture('javadoc/latest', ['0.1.0']);
+  for (const mountPath of ['javadoc/next', 'javadoc/latest', 'javadoc/0.1.0']) {
+    assert.doesNotMatch(read(mountPath), /AgentForge4j API \(next\)/, `${mountPath}: raw window title survived`);
+  }
+});
+
+test('the carve-out is scoped to surfaces.html alone — every other page keeps the generic title/heading rule', () => {
+  const { siteDir } = fixtureSiteDirWithNestedPages('javadoc/latest', ['0.1.0']);
+  writeFileSync(join(siteDir, 'javadoc', 'latest', 'surfaces.html'), RAW_SURFACES_LANDING_HTML, 'utf8');
+  applyJavadocSeo({
+    siteDir,
+    siteUrl: 'https://agentforge4j.org',
+    ogImage: 'https://agentforge4j.org/brand/icon-512.png',
+    releasedVersions: ['0.1.0'],
+  });
+  // The overview page still uses surfaceCopy...
+  assert.match(
+    readFileSync(join(siteDir, 'javadoc', 'latest', 'index.html'), 'utf8'),
+    /<title>AgentForge4j API Reference — latest stable, 0\.1\.0<\/title>/,
+  );
+  // ...and a nested class page still derives its own copy from its own title, unchanged.
+  assert.match(
+    readFileSync(join(siteDir, 'javadoc', 'latest', 'com', 'example', 'Foo.html'), 'utf8'),
+    /<title>Foo — AgentForge4j API Reference \(latest stable, 0\.1\.0\)<\/title>/,
+  );
+  // Neither borrowed the landing page's copy.
+  assert.doesNotMatch(readFileSync(join(siteDir, 'javadoc', 'latest', 'index.html'), 'utf8'), /API Surfaces/);
+});
+
+test('the landing page keeps its indexability and canonical treatment — this pass changed words, not policy', () => {
+  const read = surfacesFixture('javadoc/latest', ['0.1.0']);
+  // /latest/ is the one indexable surface: no robots tag.
+  assert.doesNotMatch(read('javadoc/latest'), /<meta name="robots"/);
+  assert.match(read('javadoc/latest'), /<link rel="canonical" href="https:\/\/agentforge4j\.org\/javadoc\/latest\/surfaces\.html">/);
+  // /next/ and the mirrored pinned version stay suppressed.
+  assert.match(read('javadoc/next'), /<meta name="robots" content="noindex,follow">/);
+  assert.match(read('javadoc/0.1.0'), /<meta name="robots" content="noindex,follow">/);
+});
+
+test('the landing page keeps its own hand-authored body content', () => {
+  const read = surfacesFixture('javadoc/latest', ['0.1.0']);
+  assert.match(read('javadoc/latest'), /<li><a href="\.\/index\.html">Core API \(aggregate\)<\/a><\/li>/);
 });
