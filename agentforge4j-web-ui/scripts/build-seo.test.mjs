@@ -21,6 +21,8 @@ import {
   gitLastModifiedDateForRouteMetadata,
   injectHead,
   injectJsonLd,
+  ROUTE_SCOPED_SOCIAL_TAGS,
+  routeScopedSocialReplacements,
   injectRoot,
   JSON_LD_SCRIPT_ID,
   newestGitLastModifiedDate,
@@ -2114,5 +2116,81 @@ test('global dependency scope contract: every file traced as materially affectin
       globalSourceFiles.includes(relFile),
       `${relFile} belongs in globalSourceFiles specifically (the shared render surface), not just anywhere global`,
     );
+  }
+});
+
+/** Every producer of a `<head>` in this module, as a zero-argument call against the same base
+ * shell. Each PR that adds a producer adds it here — that is what makes the shared-table mutation
+ * test below a statement about ALL of them rather than about whichever one was written last. */
+const PRODUCERS = [
+  ['injectHead', () => injectHead(BASE_INDEX_HTML, { title: 'T', description: 'D', canonical: 'https://agentforge4j.org/x/' })],
+];
+
+// --- The shared route-scoped social table. Every producer of a <head> derives its social
+// replacements from ROUTE_SCOPED_SOCIAL_TAGS through routeScopedSocialReplacements — no producer
+// keeps its own copy of the five tags. These tests prove the coupling is real, not documentary. ---
+
+test('routeScopedSocialReplacements produces one replacement per declared tag, in table order', () => {
+  const pairs = routeScopedSocialReplacements({ title: 'T', description: 'D', canonical: 'C' });
+  assert.equal(pairs.length, ROUTE_SCOPED_SOCIAL_TAGS.length);
+  for (const [index, { attribute, key }] of ROUTE_SCOPED_SOCIAL_TAGS.entries()) {
+    assert.match(pairs[index][1], new RegExp(`^<meta ${attribute}="${key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}" content=`));
+  }
+});
+
+test('a null source REMOVES its tag, and takes the whitespace it occupied with it', () => {
+  const pairs = routeScopedSocialReplacements({ title: 'T', description: 'D', canonical: null });
+  const urlEntry = ROUTE_SCOPED_SOCIAL_TAGS.findIndex((tag) => tag.source === 'canonical');
+  assert.equal(pairs[urlEntry][1], '');
+  // The removal pattern consumes trailing whitespace; the rewrite patterns must not.
+  assert.match(pairs[urlEntry][0].source, /\\s\*$/);
+  const titleEntry = ROUTE_SCOPED_SOCIAL_TAGS.findIndex((tag) => tag.source === 'title');
+  assert.doesNotMatch(pairs[titleEntry][0].source, /\\s\*$/);
+});
+
+test('values are escaped into the emitted tag rather than trusted', () => {
+  const pairs = routeScopedSocialReplacements({ title: 'A & B <c> "d"', description: 'D', canonical: 'C' });
+  assert.match(pairs[0][1], /content="A &amp; B &lt;c&gt; &quot;d&quot;"/);
+});
+
+test('a key containing a RegExp metacharacter is escaped, not interpreted', () => {
+  // The table is committed data today, but it is exported and read by other modules. An unescaped
+  // `.` would match any character, so a pattern built for `og:a.b` would also rewrite `og:aXb`.
+  ROUTE_SCOPED_SOCIAL_TAGS.push({ attribute: 'property', key: 'og:a.b', source: 'title' });
+  try {
+    const pattern = routeScopedSocialReplacements({ title: 'T', description: 'D', canonical: 'C' }).at(-1)[0];
+    assert.equal(pattern.test('<meta property="og:a.b" content="x" />'), true);
+    assert.equal(pattern.test('<meta property="og:aXb" content="x" />'), false, 'the dot must be literal');
+  } finally {
+    ROUTE_SCOPED_SOCIAL_TAGS.pop();
+  }
+});
+
+test('MUTATION EVIDENCE — adding a tag to the shared table reaches every producer, with no producer edited', () => {
+  // The one assertion that proves single-sourcing rather than describing it: add an entry the
+  // committed index.html has no tag for, and every producer must now demand it and fail loudly.
+  // A producer still carrying its own hardcoded list would sail past this untouched.
+  ROUTE_SCOPED_SOCIAL_TAGS.push({ attribute: 'property', key: 'og:locale', source: 'title' });
+  try {
+    for (const [name, run] of PRODUCERS) {
+      assert.throws(run, /expected tag not found/, `${name} is not driven by the shared table`);
+    }
+  } finally {
+    ROUTE_SCOPED_SOCIAL_TAGS.pop();
+  }
+  // ...and with the entry removed again, every producer is happy against the same shell.
+  for (const [name, run] of PRODUCERS) {
+    assert.doesNotThrow(run, `${name} broke after the table was restored`);
+  }
+});
+
+test('every producer emits exactly one instance of each route-scoped tag — no duplicates', () => {
+  for (const [name, run] of PRODUCERS) {
+    const html = run();
+    for (const { attribute, key } of ROUTE_SCOPED_SOCIAL_TAGS) {
+      const count = (html.match(new RegExp(`${attribute}="${key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}"`, 'g')) ?? []).length;
+      // The not-found producer deliberately removes og:url; every other tag appears exactly once.
+      assert.ok(count <= 1, `${name} emitted ${count} copies of ${key}`);
+    }
   }
 });

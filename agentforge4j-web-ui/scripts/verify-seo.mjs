@@ -21,18 +21,19 @@ import { dirname, extname, isAbsolute, join, relative, resolve } from 'node:path
 // build-seo.test.mjs and prerender-routes.test.mjs already do, and what this repo's lint block for
 // `scripts/**/*.mjs` requires (it declares only console/process/Buffer/fetch as globals).
 import { fileURLToPath, URL } from 'node:url';
-// The one import of another script's internals in this file, and a deliberate exception to the
-// convention withTrailingSlash's own comment below documents ("duplicated deliberately, not
-// imported"). That convention governs DERIVATIONS — two scripts computing the same answer from the
-// same committed config compute it separately, so a bug in one cannot make the other agree with it.
-// JSON_LD_SCRIPT_ID is not a derivation: it is an opaque literal whose entire contract is "these
-// bytes are identical everywhere", with no config to re-derive it from. Re-typing it here would not
-// buy independence, only a third place to drift. See build-seo.mjs's own comment on the constant.
-// Both imports are the same deliberate exception the JSON_LD_SCRIPT_ID comment above describes:
-// opaque shared contracts with no config to re-derive from, whose whole point is that producer and
-// consumer agree. ROUTE_SCOPED_SOCIAL_TAGS is what makes the social check below a statement about
-// the real, single-sourced table rather than a hand-copied list that could quietly cover fewer tags
-// than the build actually writes.
+// The only two imports of another script's internals in this file, and both are the same deliberate
+// exception to the convention withTrailingSlash's own comment below documents ("duplicated
+// deliberately, not imported"). That convention governs DERIVATIONS — two scripts computing the same
+// answer from the same committed config compute it separately, so a bug in one cannot make the other
+// agree with it. Neither of these is a derivation:
+//
+//   JSON_LD_SCRIPT_ID is an opaque literal whose entire contract is "these bytes are identical
+//   everywhere", with no config to re-derive it from. Re-typing it here would not buy independence,
+//   only a third place to drift.
+//
+//   ROUTE_SCOPED_SOCIAL_TAGS is the single authoritative statement of WHICH tags are route-scoped.
+//   Re-listing them here would let this check quietly cover fewer tags than the build actually
+//   writes — the same class of divergence the table itself exists to end.
 import { JSON_LD_SCRIPT_ID, ROUTE_SCOPED_SOCIAL_TAGS } from './build-seo.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -183,20 +184,6 @@ function isRealCalendarDate(value) {
 
 function h1Count(html) {
   return (html.match(/<h1[\s>]/g) ?? []).length;
-}
-
-/** The `content` of the single `<meta>` identified by `attribute="key"`, or `null` when absent —
- * and a throw when the page carries more than one, which is the failure mode a client-side sync
- * that appends instead of updating would produce: a crawler reads the first, a human debugging the
- * page reads the last, and both are "present and correct" to any check that stops at the first hit. */
-function singleMetaContent(html, attribute, key) {
-  const matches = [
-    ...html.matchAll(new RegExp(`<meta\\s+${attribute}="${key}"\\s+content="([^"]*)"\\s*/?>`, 'g')),
-  ];
-  if (matches.length > 1) {
-    throw new Error(`verify-seo: ${matches.length} <meta ${attribute}="${key}"> tags on one page — expected exactly one`);
-  }
-  return matches.length === 1 ? matches[0][1] : null;
 }
 
 // The site-constant social tags: identical on every page, so index.html is their one home and a
@@ -364,12 +351,47 @@ function attributePattern(name) {
 
 const TYPE_ATTR_PATTERN = attributePattern('type');
 const ID_ATTR_PATTERN = attributePattern('id');
+const CONTENT_ATTR_PATTERN = attributePattern('content');
 
 /** The raw, untrimmed value of an attribute in `attrs`, or `null` when it is absent. Whichever of
  * the three quoting forms matched, exactly one of the three groups is set. */
 function attributeValue(attrs, pattern) {
   const match = pattern.exec(attrs);
   return match ? (match[1] ?? match[2] ?? match[3]) : null;
+}
+
+/** Every `<meta>` element's raw attribute list, in document order. Bounded to actual tags the same
+ * way `extractJsonLdScripts` is, and with the same acknowledged limitation: an attribute value
+ * containing a literal `>` would end the tag early. No producer here emits one, and the failure
+ * direction is over- rather than under-detection. */
+function metaAttributeLists(html) {
+  return [...html.matchAll(/<meta\b([^>]*)>/gi)].map((match) => match[1]);
+}
+
+/** The `content` of the single `<meta>` identified by `attribute="key"`, or `null` when absent —
+ * and a throw when the page carries more than one, which is the failure mode a client-side sync
+ * that appends instead of updating would produce: a crawler reads the first, a human debugging the
+ * page reads the last, and both are "present and correct" to any check that stops at the first hit.
+ *
+ * Reads the tag the way `extractJsonLdScripts` reads a script tag — tokenise the element, then look
+ * up attributes by name — rather than by matching one exact spelling. The earlier form required the
+ * `content` attribute to sit immediately after the identifying one and required both to be
+ * double-quoted, so a tag written `<meta content="…" property="og:title">`, or with single quotes,
+ * was reported as absent. That direction fails closed, but it makes the check a statement about one
+ * producer's formatting rather than about the page a crawler receives — the exact distinction
+ * `extractJsonLdScripts`'s own comment draws, and this file should not answer it two different ways.
+ *
+ * Fail-closed behaviour is unchanged: a genuinely missing tag still reads as `null` (the caller
+ * rejects it) and duplicates still throw here. */
+function singleMetaContent(html, attribute, key) {
+  const identifying = attributePattern(attribute);
+  const contents = metaAttributeLists(html)
+    .filter((attrs) => attributeValue(attrs, identifying) === key)
+    .map((attrs) => attributeValue(attrs, CONTENT_ATTR_PATTERN));
+  if (contents.length > 1) {
+    throw new Error(`verify-seo: ${contents.length} <meta ${attribute}="${key}"> tags on one page — expected exactly one`);
+  }
+  return contents.length === 1 ? contents[0] : null;
 }
 
 /** Every `<script>` block whose `type` attribute is `application/ld+json`, in document order —
