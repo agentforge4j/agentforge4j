@@ -194,7 +194,7 @@ describe('api nav placement', () => {
   test('/api appears in the primary navigation landmark, not footer-only', () => {
     renderAt('/');
     const primaryNav = screen.getByRole('navigation', { name: 'Primary' });
-    expect(within(primaryNav).getByRole('link', { name: 'API' })).toHaveAttribute('href', '/api');
+    expect(within(primaryNav).getByRole('link', { name: 'API' })).toHaveAttribute('href', '/api/');
   });
 });
 
@@ -227,8 +227,28 @@ describe('footer navigation', () => {
     const reachableHrefs = new Set(
       screen.getAllByRole('link').map((link) => link.getAttribute('href')),
     );
-    for (const path of ['/api', '/use', '/catalogue', '/builder', '/architecture', '/releases', '/community', '/security', '/legal', '/contact']) {
+    for (const path of ['/api/', '/use/', '/catalogue/', '/builder/', '/architecture/', '/releases/', '/community/', '/security/', '/legal/', '/contact/']) {
       expect(reachableHrefs.has(path)).toBe(true);
+    }
+  });
+
+  test('every internal link the shell renders is in the canonical trailing-slash form, not the redirecting bare form', () => {
+    // The companion, source-level half of scripts/verify-seo.mjs's production crawl: that gate
+    // proves the built site serves no redirecting internal link, this one names the defect at the
+    // component that renders it. Each built route is a directory, so only the trailing-slash
+    // address is served without a 301 — and it is the exact form seo.ts's canonicalUrl already
+    // publishes as that page's canonical, so a bare-form href makes the site's own navigation
+    // disagree with its own canonicals.
+    renderAt('/');
+    const internalHrefs = screen
+      .getAllByRole('link')
+      .map((link) => link.getAttribute('href') ?? '')
+      .filter((href) => href.startsWith('/') && !href.startsWith('//'));
+    // Non-vacuity: a render that produced no internal links at all would satisfy the loop below
+    // by having nothing to check.
+    expect(internalHrefs.length).toBeGreaterThan(5);
+    for (const href of internalHrefs) {
+      expect(href).toMatch(/\/$/);
     }
   });
 });

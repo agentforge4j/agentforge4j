@@ -163,6 +163,52 @@ function h1Count(html) {
   return (html.match(/<h1[\s>]/g) ?? []).length;
 }
 
+// Mounts that exist only in the FINAL composed artifact, never in this module's own dist/:
+// agentforge4j-docs/scripts/assemble-site.mjs copies the Docusaurus build to /docs/ and each
+// Javadoc surface to /javadoc/**. A link into one of those is a real, correct production link
+// this build simply has nothing to answer with, so it is excluded from the crawl below — but
+// never on trust: `assertComposedOnlyPrefixesAreAbsentLocally` re-proves on every run that each
+// prefix really is absent from this build, so a genuine SPA path can never hide behind an entry
+// here and escape the crawl. A declaration that nothing links into any more is harmless by
+// construction and deliberately not treated as an error: an exclusion can only ever remove link
+// targets that were actually found, so an unused one narrows nothing — the failure mode worth
+// guarding is the opposite one, an entry shadowing a path this build really does serve.
+const COMPOSED_ONLY_LINK_PREFIXES = ['/docs/', '/javadoc/'];
+
+/** Every site-internal `<a href>` target in `html`, as request paths, with any `#fragment` and
+ * `?query` stripped and duplicates left in (the caller deduplicates across pages).
+ *
+ * Only `href` values beginning with a single `/` are site-internal. A protocol-relative
+ * `//example.com/x` also begins with `/` but is a real off-site URL the browser resolves against
+ * the current scheme — excluded explicitly, because fetching it against the local test server
+ * would silently turn an external link into a "passing" internal one. Fragment-only (`#main-content`,
+ * the skip link) and relative hrefs are not internal *route* links and are out of scope.
+ *
+ * Exported so the extraction rule itself is directly testable against real served markup rather
+ * than only through the end-to-end gate. */
+export function extractInternalLinkTargets(html) {
+  return [...html.matchAll(/<a\b[^>]*?\shref="([^"]*)"/gi)]
+    .map((match) => match[1])
+    .filter((href) => href.startsWith('/') && !href.startsWith('//'))
+    .map((href) => href.split('#')[0].split('?')[0])
+    .filter((href) => href.length > 0);
+}
+
+/** Re-proves, on every run, that no `COMPOSED_ONLY_LINK_PREFIXES` entry is shadowing a path this
+ * build really serves — see that constant's own comment. */
+function assertComposedOnlyPrefixesAreAbsentLocally(distDir) {
+  for (const prefix of COMPOSED_ONLY_LINK_PREFIXES) {
+    const localPath = join(distDir, ...prefix.split('/').filter(Boolean));
+    if (existsSync(localPath)) {
+      throw new Error(
+        `verify-seo: "${prefix}" is excluded from the internal-link crawl as composed-artifact-only, but this ` +
+          `build really does serve ${localPath} — it is a real path of this module's own and must be crawled, ` +
+          'not excluded',
+      );
+    }
+  }
+}
+
 function extractTag(html, pattern) {
   const match = pattern.exec(html);
   return match ? match[1] : null;
@@ -364,6 +410,14 @@ export async function verifySeo({
   // loop's own stray-JSON-LD check.
   const staticRequestPaths = new Set(staticRoutes.map((route) => route.requestPath));
 
+  // Every page this run actually served, keyed by the path it was served at — filled by both
+  // loops below and consumed once by the internal-link crawl after them, so the crawl covers the
+  // union of "every sitemap URL" and "every configured static route" (a superset of either alone:
+  // catalogue detail shells are only in the first, `sitemap: false` aliases only in the second)
+  // without re-fetching a single page.
+  const servedHtmlByPath = new Map();
+  let internalLinksChecked = 0;
+
   const server = await startGhPagesEmulatingServer(distDir);
   const { port } = server.address();
   const origin = `http://127.0.0.1:${port}`;
@@ -414,6 +468,7 @@ export async function verifySeo({
         throw new Error(`verify-seo: sitemap URL ${url} did not return 200 with no redirect (got ${response.status})`);
       }
       const html = await response.text();
+      servedHtmlByPath.set(path, html);
 
       // Only `seo-routes.json` routes can declare `jsonLd`, and the loop below checks every one of
       // them against its own declaration. A sitemap URL that is NOT one of those routes — every
@@ -450,6 +505,7 @@ export async function verifySeo({
         );
       }
       const html = await response.text();
+      servedHtmlByPath.set(requestPath, html);
 
       // Proven against the real dist/ output this build actually produced, not just a fixture:
       // a route that declares jsonLd must carry exactly one JSON-LD script whose content parses as
@@ -530,6 +586,53 @@ export async function verifySeo({
         throw new Error(`verify-seo: ${requestPath} — the raw <h1> has no real visible text content`);
       }
     }
+
+    // Internal-link crawl. Canonicals and sitemap URLs are published in the trailing-slash form
+    // GitHub Pages serves directly, but the site's own navigation is a separate surface that can
+    // (and did) disagree with them: every generated route is a directory, so a bare-form `href`
+    // costs a 301 on every internal click and every crawl hop, and makes the site link to a URL
+    // its own canonical says is not the address of that page. Asking the real production build
+    // over real HTTP — through the same GitHub-Pages-emulating server whose own 301 behaviour is
+    // self-checked above — is what makes this a statement about what visitors and crawlers get,
+    // rather than about one config file's literals: it holds for links from nav.ts, from page
+    // components, and from anywhere a future link is added, none of which this file enumerates.
+    const sourcesByTarget = new Map();
+    for (const [sourcePath, html] of servedHtmlByPath) {
+      for (const target of extractInternalLinkTargets(html)) {
+        if (!sourcesByTarget.has(target)) {
+          sourcesByTarget.set(target, new Set());
+        }
+        sourcesByTarget.get(target).add(sourcePath);
+      }
+    }
+    assertComposedOnlyPrefixesAreAbsentLocally(distDir);
+
+    const crawlableTargets = [...sourcesByTarget.keys()].filter(
+      (target) => !COMPOSED_ONLY_LINK_PREFIXES.some((prefix) => target.startsWith(prefix)),
+    );
+    // Non-vacuity, stated as a real precondition rather than assumed: a corpus whose pages
+    // collectively link nowhere would make every assertion in the loop below true by having
+    // nothing to assert over, and would report the same clean line as a genuinely correct build.
+    if (crawlableTargets.length === 0) {
+      throw new Error(
+        `verify-seo: found no crawlable internal links at all across ${servedHtmlByPath.size} served page(s) — ` +
+          'the internal-link check would be vacuous, so this is a failure, not a pass',
+      );
+    }
+    for (const target of crawlableTargets.sort()) {
+      const response = await fetch(`${origin}${target}`, { redirect: 'manual' });
+      if (response.status !== 200) {
+        const sources = [...sourcesByTarget.get(target)].sort().join(', ');
+        throw new Error(
+          `verify-seo: internal link ${target} (linked from ${sources}) did not return 200 with no redirect ` +
+            `(got ${response.status}) — every internal link must target the canonical trailing-slash form the ` +
+            'host serves directly, not a form that redirects to it',
+        );
+      }
+      // Counted as each target actually clears, never set to the intended total up front: the
+      // number this run reports is then the number it really proved, even if it exits early.
+      internalLinksChecked += 1;
+    }
   } finally {
     await new Promise((resolvePromise) => server.close(resolvePromise));
   }
@@ -543,7 +646,10 @@ export async function verifySeo({
     `[verify-seo] verified ${entries.length} sitemap URL(s) (200, no redirect, self-canonical, exactly one real <h1>) ` +
       `and ${staticRoutes.length} configured static route(s) (200, no redirect, exactly one real <h1>, expected canonical, ` +
       `declared JSON-LD present with the shared script id and matching content, every same-origin asset it names served ` +
-      `200) — with no JSON-LD on any sitemap URL or configured route that declares none — all clean`,
+      `200) — with no JSON-LD on any sitemap URL or configured route that declares none — plus ${internalLinksChecked} ` +
+      `distinct internal link target(s) across those pages, each served 200 with no redirect (composed-artifact-only ` +
+      `mounts ${COMPOSED_ONLY_LINK_PREFIXES.join(', ')} excluded, each re-proven absent from this build so none can ` +
+      'be shadowing a real path) — all clean',
   );
 }
 
