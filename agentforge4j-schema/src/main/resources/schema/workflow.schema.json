@@ -87,6 +87,7 @@
             "LITE",
             "STANDARD",
             "POWERFUL",
+            "PREMIUM",
             null
           ],
           "description": "Optional capability tier overriding the agent tier for this step. A raw model pin always wins over the tier. Null inherits the agent tier."
