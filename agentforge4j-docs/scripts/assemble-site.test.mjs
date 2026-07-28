@@ -12,6 +12,7 @@ import {join} from 'node:path';
 import sax from 'sax';
 import {SitemapStream, streamToPromise} from 'sitemap';
 import {
+  verifyComposedArtifact,
   assembleSite,
   scanComposedHtmlForForbiddenContent,
   verifyComposedJavadocLinks,
@@ -1632,4 +1633,59 @@ test("the real Docusaurus sitemap config stays compatible with the parser's narr
   assembleSite({spaDir, buildDir, javadocDir, archiveDir, siteDir, customDomain: null});
   const merged = readFileSync(join(siteDir, 'sitemap.xml'), 'utf8');
   assert.match(merged, /<loc>https:\/\/agentforge4j\.org\/docs\/0\.1\.0\/<\/loc>/);
+});
+
+// --- One site, one sitemap. The docs fragment is a merge INPUT: nothing links it, robots.txt names
+// only the root sitemap, and mergeSitemaps is its sole consumer. Published, it was a second,
+// partial sitemap covering a subset of the root one's URLs with nothing saying which wins. ---
+
+test('the composed artifact publishes exactly one sitemap — the redundant /docs/sitemap.xml fragment is gone', () => {
+  const {spaDir, buildDir, javadocDir, archiveDir, siteDir} = fixture();
+  assembleSite({spaDir, buildDir, javadocDir, archiveDir, siteDir, customDomain: null});
+
+  assert.ok(existsSync(join(siteDir, 'sitemap.xml')), 'the merged root sitemap must be published');
+  assert.equal(
+    existsSync(join(siteDir, 'docs', 'sitemap.xml')),
+    false,
+    '/docs/sitemap.xml is a merge input, not a published surface',
+  );
+});
+
+test('removing the fragment loses no coverage — every docs URL it carried is in the merged root sitemap', () => {
+  const {spaDir, buildDir, javadocDir, archiveDir, siteDir} = fixture();
+  // Read the fragment's URLs before assembly consumes and deletes it, so this compares against what
+  // the docs build really produced rather than against a hardcoded expectation.
+  const docsUrls = [...readFileSync(join(buildDir, 'sitemap.xml'), 'utf8').matchAll(/<loc>([^<]+)<\/loc>/g)].map(
+    (match) => match[1],
+  );
+  assert.ok(docsUrls.length > 0, 'fixture must contain at least one docs URL for this to mean anything');
+
+  assembleSite({spaDir, buildDir, javadocDir, archiveDir, siteDir, customDomain: null});
+
+  const merged = readFileSync(join(siteDir, 'sitemap.xml'), 'utf8');
+  for (const url of docsUrls) {
+    assert.ok(merged.includes(`<loc>${url}</loc>`), `${url} was dropped when the docs fragment was removed`);
+  }
+});
+
+test('NEGATIVE CONTROL — an artifact that still ships /docs/sitemap.xml fails the composed-output check', () => {
+  const {spaDir, buildDir, javadocDir, archiveDir, siteDir} = fixture();
+  const exits = [];
+  assembleSite({spaDir, buildDir, javadocDir, archiveDir, siteDir, customDomain: null, exit: (code) => exits.push(code)});
+  assert.deepEqual(exits, [], 'the clean run must not have failed');
+
+  // Put the fragment back, exactly as a future change that stopped removing it would leave things,
+  // and re-run only the output verification.
+  writeFileSync(join(siteDir, 'docs', 'sitemap.xml'), readFileSync(join(siteDir, 'sitemap.xml'), 'utf8'), 'utf8');
+  const reExits = [];
+  verifyComposedArtifact(siteDir, [], (code) => reExits.push(code));
+  assert.deepEqual(reExits, [1]);
+});
+
+test('robots.txt still names the one root sitemap, and names no other', () => {
+  const {spaDir, buildDir, javadocDir, archiveDir, siteDir} = fixture();
+  assembleSite({spaDir, buildDir, javadocDir, archiveDir, siteDir, customDomain: null});
+  const robots = readFileSync(join(siteDir, 'robots.txt'), 'utf8');
+  const sitemapDirectives = [...robots.matchAll(/^Sitemap:\s*(\S+)$/gim)].map((match) => match[1]);
+  assert.deepEqual(sitemapDirectives, ['https://agentforge4j.org/sitemap.xml']);
 });

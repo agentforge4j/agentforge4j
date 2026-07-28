@@ -90,7 +90,9 @@ function requireDir(path, what, hint) {
 // existed and every copy step "succeeded" but the composed result is still wrong for some reason
 // requireDir cannot see (e.g. a future refactor that copies from the wrong source path, or a build
 // step that wrote a truncated/zero-byte file without itself erroring).
-function verifyComposedArtifact(siteDir, releasedVersions, exit) {
+// Exported so the composed-output contract — including the one file that must NOT be present — is
+// directly testable against a fixture artifact, the same way the other composition checks are.
+export function verifyComposedArtifact(siteDir, releasedVersions, exit) {
   // /javadoc/latest/ and one /javadoc/<v>/ per released version are real, separately-built copy
   // targets (steps 3 above) — a version whose Javadoc build silently produced an empty directory
   // (a real defect this exact check caught locally: a Windows-only Maven invocation failure in
@@ -114,6 +116,19 @@ function verifyComposedArtifact(siteDir, releasedVersions, exit) {
       console.error(`[assemble-site] composed artifact has an empty or non-file expected entry: ${entry}`);
       exit(1);
     }
+  }
+
+  // The mirror image of the checks above: one file that must NOT be in the composed artifact. The
+  // docs sitemap fragment is a build input mergeSitemaps consumes and then removes; if it is still
+  // here, the site is publishing two sitemaps — the root one robots.txt names, and a partial second
+  // one covering a subset of the same URLs with nothing declaring which is authoritative.
+  const docsSitemap = join(siteDir, 'docs', 'sitemap.xml');
+  if (existsSync(docsSitemap)) {
+    console.error(
+      `[assemble-site] composed artifact still contains ${docsSitemap} — it is a merge input, not a published ` +
+        'surface, and publishing it puts a second, partial sitemap on the site',
+    );
+    exit(1);
   }
 }
 
@@ -846,7 +861,8 @@ function mergeSitemaps(siteDir, exit) {
     'Run `npm run build` in agentforge4j-docs first (the sitemap plugin runs in postBuild).',
   );
 
-  const entries = [...extractSitemapEntries(spaSitemapPath, exit), ...extractSitemapEntries(docsSitemapPath, exit)];
+  const docsEntries = extractSitemapEntries(docsSitemapPath, exit);
+  const entries = [...extractSitemapEntries(spaSitemapPath, exit), ...docsEntries];
 
   for (const { url } of entries) {
     if (!url.startsWith(SITEMAP_URL_PREFIX)) {
@@ -865,7 +881,35 @@ function mergeSitemaps(siteDir, exit) {
   }
 
   writeFileSync(join(siteDir, 'sitemap.xml'), sitemapXml(entries), 'utf8');
-  console.log(`[assemble-site] merged sitemap.xml: ${entries.length} URL(s) (SPA + docs)`);
+
+  // The docs fragment is a BUILD INPUT, not a published surface. It exists because
+  // @docusaurus/plugin-sitemap writes it into this module's own build output and step 2 copies that
+  // output wholesale to /docs/ — nothing links it, robots.txt names only the merged root sitemap,
+  // and this function is its one and only consumer. Left in place it published a second, partial
+  // sitemap at /docs/sitemap.xml covering a subset of the same URLs the root one already lists, with
+  // no directive anywhere telling a crawler which of the two is authoritative. One site, one
+  // sitemap: the root file, which robots.txt points at.
+  //
+  // Removed only AFTER the merge has been written and re-read, so this can never delete coverage
+  // that did not make it across — see the verification immediately below, which asks the merged
+  // file itself rather than trusting the write.
+  const merged = extractSitemapEntries(join(siteDir, 'sitemap.xml'), exit);
+  const mergedUrls = new Set(merged.map(({url}) => url));
+  const dropped = docsEntries.filter(({url}) => !mergedUrls.has(url));
+  if (dropped.length > 0) {
+    console.error(
+      `[assemble-site] refusing to remove ${docsSitemapPath}: ${dropped.length} docs URL(s) are not in the merged ` +
+        `sitemap (e.g. ${dropped[0].url}) — removing it would lose them from search-engine discovery entirely`,
+    );
+    exit(1);
+    return;
+  }
+  rmSync(docsSitemapPath, {force: true});
+
+  console.log(
+    `[assemble-site] merged sitemap.xml: ${entries.length} URL(s) (SPA + docs); removed the redundant ` +
+      `/docs/sitemap.xml fragment after confirming all ${docsEntries.length} of its URL(s) survive in the root sitemap`,
+  );
 }
 
 /** A static meta-refresh redirect page. */
@@ -1023,8 +1067,16 @@ export function assembleSite({
   writeFileSync(join(siteDir, '.nojekyll'), '', 'utf8');
 
   // 6. Merge the SPA's own sitemap.xml fragment (copied to the site root in step 1) with the
-  //    Docusaurus-generated docs/sitemap.xml (copied in step 2) into the one final sitemap.xml
-  //    the composed artifact serves at /sitemap.xml.
+  //    Docusaurus-generated docs/sitemap.xml (copied in step 2) into the one final sitemap.xml the
+  //    composed artifact serves at /sitemap.xml — and then remove the docs fragment.
+  //
+  //    The sitemap architecture, stated once, here: this site publishes exactly ONE sitemap,
+  //    /sitemap.xml, and robots.txt (agentforge4j-web-ui/public/robots.txt) names exactly that one.
+  //    It is not a sitemap index and has no children. The two per-module fragments — the SPA's
+  //    (build-seo.mjs) and the docs' (@docusaurus/plugin-sitemap) — are inputs to this merge, and
+  //    the docs one only ever appeared under /docs/ because step 2 copies that module's whole build
+  //    output. Neither fragment is a published surface; the SPA's is overwritten in place by the
+  //    merged file, and the docs' is deleted below.
   mergeSitemaps(siteDir, exit);
 
   verifyComposedArtifact(siteDir, releasedVersions, exit);
