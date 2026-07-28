@@ -190,7 +190,10 @@ export function loadStaticRouteInventory(seoRoutesPath) {
   const { siteUrl, routes } = JSON.parse(readFileSync(seoRoutesPath, 'utf8'));
   return routes.map((route) => ({
     requestPath: withTrailingSlash(route.path),
-    expectedCanonical: `${siteUrl}${withTrailingSlash(route.canonicalPath ?? route.path)}`,
+    expectedCanonical: `${siteUrl}${withTrailingSlash(route.redirectTo ?? route.canonicalPath ?? route.path)}`,
+    // A redirect route is checked as a redirect stub, not as a page: it deliberately has no <h1>
+    // and no content of its own, which is the entire point of it.
+    ...(route.redirectTo !== undefined ? { redirectTarget: `${siteUrl}${withTrailingSlash(route.redirectTo)}` } : {}),
     // Present only when the route actually declares one, so an entry with no jsonLd deep-equals
     // exactly what every existing hand-built inventory fixture (and the tests asserting against
     // one) already expects — no `jsonLd: undefined` key showing up where none existed before.
@@ -442,7 +445,7 @@ export async function verifySeo({
       }
     }
 
-    for (const { requestPath, expectedCanonical, jsonLd } of staticRoutes) {
+    for (const { requestPath, expectedCanonical, jsonLd, redirectTarget } of staticRoutes) {
       const response = await fetch(`${origin}${requestPath}`, { redirect: 'manual' });
       if (response.status !== 200) {
         throw new Error(
@@ -521,6 +524,33 @@ export async function verifySeo({
         );
       }
 
+      if (redirectTarget !== undefined) {
+        // A redirect stub is held to the opposite standard of a page: it must forward, say it is
+        // not for indexing, and carry NO content — the duplicate-content defect this replaced was
+        // precisely a second full copy of the destination page living at this address.
+        const refresh = extractTag(html, /<meta http-equiv="refresh" content="0; url=([^"]+)"/);
+        if (refresh !== redirectTarget) {
+          throw new Error(
+            `verify-seo: ${requestPath} — expected a meta refresh to "${redirectTarget}", got ${JSON.stringify(refresh)}`,
+          );
+        }
+        const robots = extractTag(html, /<meta name="robots" content="([^"]*)"/);
+        if (robots === null || !/\bnoindex\b/i.test(robots)) {
+          throw new Error(
+            `verify-seo: ${requestPath} — a redirect stub must be noindex, got ${JSON.stringify(robots)}; a canonical ` +
+              'alone is a hint, and two indexable copies of one page is what this address used to be',
+          );
+        }
+        const stubH1Count = h1Count(html);
+        if (stubH1Count !== 0) {
+          throw new Error(
+            `verify-seo: ${requestPath} — a redirect stub must carry no <h1> at all, found ${stubH1Count}; content ` +
+              'here means the destination page has been duplicated at this address again',
+          );
+        }
+        continue;
+      }
+
       const count = h1Count(html);
       if (count !== 1) {
         throw new Error(`verify-seo: ${requestPath} — expected exactly one <h1> in the raw served HTML, found ${count}`);
@@ -539,9 +569,12 @@ export async function verifySeo({
   // dist/404.html, which is neither, and is gated separately above (empty pre-prerender shell).
   // Keep this sentence and the checks above in step: a claim of absence is only worth as much as
   // the set it was actually evaluated over.
+  const redirectRouteCount = staticRoutes.filter((route) => route.redirectTarget !== undefined).length;
   console.log(
     `[verify-seo] verified ${entries.length} sitemap URL(s) (200, no redirect, self-canonical, exactly one real <h1>) ` +
-      `and ${staticRoutes.length} configured static route(s) (200, no redirect, exactly one real <h1>, expected canonical, ` +
+      `and ${staticRoutes.length - redirectRouteCount} configured page route(s) plus ${redirectRouteCount} redirect ` +
+      `stub(s) (each forwarding to its declared destination, noindex, and carrying no <h1> of its own) ` +
+      `(200, no redirect, exactly one real <h1>, expected canonical, ` +
       `declared JSON-LD present with the shared script id and matching content, every same-origin asset it names served ` +
       `200) — with no JSON-LD on any sitemap URL or configured route that declares none — all clean`,
   );

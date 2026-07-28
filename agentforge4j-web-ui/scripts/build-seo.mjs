@@ -271,6 +271,67 @@ export function injectHead(html, { title, description, canonical }) {
   return result;
 }
 
+/**
+ * Turns a route's shell into a redirect stub: it forwards to `target`, says so, and carries no
+ * content of its own.
+ *
+ * The alternative this replaces was a second, fully-rendered copy of the destination page at a
+ * second address, distinguished only by a `canonicalPath` hint. A canonical is advice, not a rule —
+ * so the site was publishing genuine duplicate content and asking search engines to be
+ * understanding about it. A stub has nothing to duplicate.
+ *
+ * `noindex, follow` (not just the canonical) because this address should not be a search result at
+ * all; `follow` so the link to the destination still carries signal. The canonical names the
+ * destination, which is the standard "the real page is over there" pairing for a redirect shell.
+ *
+ * The body is replaced with a plain link rather than left empty: with JavaScript disabled the meta
+ * refresh still fires, but a client that honours neither must still have a way through, and a
+ * crawler that reads the body sees where this address leads.
+ *
+ * GitHub Pages serves static files with no redirect configuration of any kind (see
+ * .github/workflows/deploy.yml), so a real 301 is not implementable on this host — a meta refresh
+ * plus the canonical is the strongest available equivalent, and it is the same mechanism the docs
+ * archive stubs (agentforge4j-docs/scripts/assemble-site.mjs) already use for the same reason.
+ */
+export function injectRedirectStub(html, { target, title, description }) {
+  const safeTarget = escapeHtml(target);
+  const replacements = [
+    [/<title>[\s\S]*?<\/title>/, `<title>${escapeHtml(title)}</title>`],
+    [
+      /<meta\s+name="description"[\s\S]*?\/>/,
+      `<meta name="description" content="${escapeHtml(description)}" />\n` +
+        `    <meta name="robots" content="noindex, follow" />\n` +
+        `    <meta http-equiv="refresh" content="0; url=${safeTarget}" />`,
+    ],
+    [/<link\s+rel="canonical"[\s\S]*?\/>/, `<link rel="canonical" href="${safeTarget}" />`],
+    [/<meta\s+property="og:title"[\s\S]*?\/>/, `<meta property="og:title" content="${escapeHtml(title)}" />`],
+    [
+      /<meta\s+property="og:description"[\s\S]*?\/>/,
+      `<meta property="og:description" content="${escapeHtml(description)}" />`,
+    ],
+    [/<meta\s+property="og:url"[\s\S]*?\/>/, `<meta property="og:url" content="${safeTarget}" />`],
+    [/<meta\s+name="twitter:title"[\s\S]*?\/>/, `<meta name="twitter:title" content="${escapeHtml(title)}" />`],
+    [
+      /<meta\s+name="twitter:description"[\s\S]*?\/>/,
+      `<meta name="twitter:description" content="${escapeHtml(description)}" />`,
+    ],
+  ];
+  let result = html;
+  for (const [pattern, replacement] of replacements) {
+    if (!pattern.test(result)) {
+      throw new Error(`build-seo: expected tag not found while building a redirect stub: ${pattern}`);
+    }
+    result = result.replace(pattern, () => replacement);
+  }
+  if (!EMPTY_ROOT_PATTERN.test(result)) {
+    throw new Error('build-seo: expected an empty <div id="root"></div> mount point while building a redirect stub');
+  }
+  return result.replace(
+    EMPTY_ROOT_PATTERN,
+    () => `<div id="root"><p><a href="${safeTarget}">Continue to ${safeTarget}</a></p></div>`,
+  );
+}
+
 const EMPTY_ROOT_PATTERN = /<div id="root"><\/div>/;
 
 /** Splices a route's real prerendered content (prerender-routes.mjs's captured `#root` innerHTML)
@@ -599,6 +660,28 @@ export function buildSeo({
   let shellsWritten = 0;
 
   for (const route of routes) {
+    if (route.redirectTo) {
+      // A permanent forward, not a page — no prerendered body, no structured data, and never a
+      // sitemap entry regardless of what the entry says (asserted rather than assumed below, since
+      // a redirect listed for indexing is a config error, not a preference).
+      if (route.sitemap !== false) {
+        throw new Error(
+          `build-seo: route "${route.path}" declares redirectTo but is not marked \`"sitemap": false\` — ` +
+            'a redirect has no content to index and must never be submitted for indexing',
+        );
+      }
+      writeShell(
+        distDir,
+        route.path,
+        injectRedirectStub(baseHtml, {
+          target: `${siteUrl}${withTrailingSlash(route.redirectTo)}`,
+          title: route.title,
+          description: route.description,
+        }),
+      );
+      shellsWritten += 1;
+      continue;
+    }
     const canonicalPath = route.canonicalPath ?? route.path;
     const canonical = `${siteUrl}${withTrailingSlash(canonicalPath)}`;
     let html = injectHead(baseHtml, { title: route.title, description: route.description, canonical });

@@ -14,7 +14,7 @@ import {
   NON_INDEXABLE_STATIC_ROUTE_PATHS,
   STATIC_ROUTES,
 } from '@/config/appRoutes';
-import { SEO_ROUTES, type SeoRouteEntry } from '@/config/seo';
+import { REDIRECT_ROUTES, SEO_ROUTES, type SeoRouteEntry } from '@/config/seo';
 
 /** Lowercase + strip a trailing slash (except for "/" itself) — the same normalization
  * seo.ts's own route-matching uses, so "does this path collide with that one" answers the same
@@ -28,6 +28,16 @@ const EXPECTED_INDEXABLE_ROUTE_PATHS: readonly string[] = [
   ...STATIC_ROUTES.map((route) => route.path),
   LAZY_LOADED_ROUTE_PATH,
 ].filter((path) => !NON_INDEXABLE_STATIC_ROUTE_PATHS.includes(path));
+
+/** Redirect routes are rendered by App.tsx (one `<Navigate replace>` each, from the same
+ * REDIRECT_ROUTES list) but are not pages: no content, no sitemap entry, nothing to index. They
+ * belong in the "is this entry stale?" set below and nowhere near the indexable one. */
+const REDIRECT_ROUTE_PATHS: readonly string[] = REDIRECT_ROUTES.map((entry) => entry.path);
+
+const EXPECTED_RENDERED_ROUTE_PATHS: readonly string[] = [
+  ...EXPECTED_INDEXABLE_ROUTE_PATHS,
+  ...REDIRECT_ROUTE_PATHS,
+];
 
 describe('route / SEO inventory drift gate', () => {
   test('the two documented dynamic/catch-all exceptions are not plain static routes', () => {
@@ -65,9 +75,39 @@ describe('route / SEO inventory drift gate', () => {
   });
 
   test('every seo-routes.json entry corresponds to a route App.tsx actually renders (fails on a stale SEO entry)', () => {
-    const expectedSet = new Set(EXPECTED_INDEXABLE_ROUTE_PATHS);
+    const expectedSet = new Set(EXPECTED_RENDERED_ROUTE_PATHS);
     const stale = SEO_ROUTES.map((entry) => entry.path).filter((path) => !expectedSet.has(path));
     expect(stale, `seo-routes.json entry/entries with no matching rendered route: ${stale.join(', ')}`).toEqual([]);
+  });
+
+  test('a redirect route is never also an indexable route — one address cannot both forward and be a page', () => {
+    for (const path of REDIRECT_ROUTE_PATHS) {
+      expect(EXPECTED_INDEXABLE_ROUTE_PATHS, `${path} is rendered as both a redirect and a page`).not.toContain(path);
+    }
+  });
+
+  test('every redirect target is a real, indexable route — never a fabricated or itself-redirecting destination', () => {
+    const indexable = new Set(EXPECTED_INDEXABLE_ROUTE_PATHS);
+    for (const { path, redirectTo } of REDIRECT_ROUTES) {
+      expect(indexable, `${path} forwards to "${redirectTo}", which is not a real indexable route`).toContain(redirectTo);
+    }
+  });
+
+  test('a redirect route is excluded from the sitemap and declares no canonicalPath of its own', () => {
+    for (const entry of REDIRECT_ROUTES) {
+      expect(entry.sitemap, `${entry.path} is a redirect and must be sitemap: false`).toBe(false);
+      // redirectTo already implies the canonical (the destination); a second, independently-written
+      // canonicalPath could disagree with it.
+      expect(entry.canonicalPath, `${entry.path} declares both redirectTo and canonicalPath`).toBeUndefined();
+    }
+  });
+
+  test('/contributing is a redirect, not a second copy of /community — the audited duplicate', () => {
+    // Named explicitly because this is the finding, not a generic property: the address existed as a
+    // full second rendering of the Community page, distinguished only by a canonical hint.
+    const contributing = SEO_ROUTES.find((entry) => entry.path === '/contributing');
+    expect(contributing?.redirectTo).toBe('/community');
+    expect(STATIC_ROUTES.map((route) => route.path)).not.toContain('/contributing');
   });
 
   test('no two seo-routes.json entries declare the same path after case/trailing-slash normalization', () => {

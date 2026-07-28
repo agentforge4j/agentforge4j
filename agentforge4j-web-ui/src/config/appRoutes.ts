@@ -43,7 +43,6 @@ export const STATIC_ROUTES: readonly StaticRouteEntry[] = [
   { path: '/architecture', Component: ArchitecturePage },
   { path: '/releases', Component: ReleasesPage },
   { path: '/community', Component: CommunityPage },
-  { path: '/contributing', Component: CommunityPage },
   { path: '/security', Component: SecurityPage },
   { path: '/legal', Component: LegalPage },
   { path: '/contact', Component: ContactPage },

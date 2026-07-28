@@ -35,6 +35,23 @@ export interface SeoRouteEntry {
   /** Present only when this route's canonical URL is a different, real route (e.g. an
    * intentional alias serving identical content) — never a fabricated destination. */
   readonly canonicalPath?: string;
+  /**
+   * Present only when this path is not a page at all but a permanent forward to one — the value is
+   * the real route it forwards to.
+   *
+   * `/contributing` is the one such entry today. It used to be a full second copy of `/community`:
+   * the same component, the same prerendered body, the same visible content at a second address,
+   * with only a `canonicalPath` asking search engines to please disregard one of them. A canonical
+   * is a hint, and it was the only thing standing between the site and two indexable pages with
+   * identical content and conflicting titles. Forwarding removes the duplicate rather than
+   * annotating it, while keeping the address alive for inbound links that already exist — which is
+   * the whole reason it cannot simply be deleted.
+   *
+   * A redirect route has no content of its own, so it is never prerendered, never carries an `<h1>`,
+   * never appears in the sitemap, and is served as a `noindex` stub whose canonical names the
+   * destination.
+   */
+  readonly redirectTo?: string;
   /** `false` excludes this route from the sitemap (e.g. a non-canonical alias). Defaults to
    * included. */
   readonly sitemap?: boolean;
@@ -45,6 +62,13 @@ export interface SeoRouteEntry {
 
 export const SITE_URL: string = seoData.siteUrl;
 export const SEO_ROUTES: readonly SeoRouteEntry[] = seoData.routes;
+
+/** Every route that is a permanent forward rather than a page — see `redirectTo`. App.tsx renders
+ * one `<Navigate replace>` per entry, so the router and the static shells agree about which paths
+ * are redirects without either side keeping its own list. */
+export const REDIRECT_ROUTES: readonly (SeoRouteEntry & { readonly redirectTo: string })[] = SEO_ROUTES.filter(
+  (entry): entry is SeoRouteEntry & { readonly redirectTo: string } => entry.redirectTo !== undefined,
+);
 
 /** Normalizes a path for *route-matching purposes only* — lowercased, with any trailing slash
  * (other than the root `/` itself) stripped. React Router's own default matching is

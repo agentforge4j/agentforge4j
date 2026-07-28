@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import { lazy, Suspense } from 'react';
-import { Routes, Route, useMatch } from 'react-router-dom';
+import { Routes, Route, Navigate, useMatch } from 'react-router-dom';
+import { REDIRECT_ROUTES } from '@/config/seo';
 import SiteHeader from '@/components/SiteHeader';
 import SiteFooter from '@/components/SiteFooter';
 import CatalogueDetailPage from '@/pages/CatalogueDetailPage';
@@ -44,6 +45,14 @@ export default function App() {
         <Routes>
           {STATIC_ROUTES.map(({ path, Component }) => (
             <Route key={path} path={path} element={<Component />} />
+          ))}
+          {/* Permanent forwards, driven by the same seo-routes.json entries the static redirect
+              stubs are generated from (see config/seo.ts's REDIRECT_ROUTES). `replace` so the
+              redirecting address does not become a history entry the back button returns to.
+              A visitor arriving on one of these client-side ends up on the destination, exactly
+              like the static stub's meta refresh does for a fresh load. */}
+          {REDIRECT_ROUTES.map(({ path, redirectTo }) => (
+            <Route key={path} path={path} element={<Navigate to={`${redirectTo}/`} replace />} />
           ))}
           <Route path={CATALOGUE_DETAIL_ROUTE_PATH} element={<CatalogueDetailPage />} />
           <Route
