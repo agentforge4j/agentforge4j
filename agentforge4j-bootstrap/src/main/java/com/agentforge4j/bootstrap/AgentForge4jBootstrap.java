@@ -1009,8 +1009,8 @@ public final class AgentForge4jBootstrap {
         return ModelTier.valueOf(tierName.toUpperCase(Locale.ROOT));
       } catch (IllegalArgumentException exception) {
         throw new IllegalStateException(
-            ("Invalid tier '%s' in '%s' — valid tiers: LITE, STANDARD, POWERFUL")
-                .formatted(tierName, key), exception);
+            ("Invalid tier '%s' in '%s' — valid tiers: %s")
+                .formatted(tierName, key, ModelTier.joinedNames()), exception);
       }
     }
   }
