@@ -50,12 +50,12 @@ function rawGet(port, rawPath) {
 // so a link-free page is not a shape production ever produces; giving the fixtures one keeps the
 // internal-link crawl's own non-vacuity precondition satisfied for the checks these tests are
 // actually about. `links` overrides it for the tests that ARE about the crawl.
-function page({ h1 = '<h1>Real Title</h1>', canonical, extraHead = '', links = ['/'] } = {}) {
+function page({ h1 = '<h1>Real Title</h1>', canonical, extraHead = '', links = ['/'], extraBody = '' } = {}) {
   const anchors = links.map((href) => `<a href="${href}">link</a>`).join('');
   return (
     `<!doctype html><html lang="en"><head><meta charset="UTF-8">` +
     `<link rel="canonical" href="${canonical}" />${extraHead}</head>` +
-    `<body>${h1}${anchors}</body></html>`
+    `<body>${h1}${anchors}${extraBody}</body></html>`
   );
 }
 
@@ -1017,20 +1017,32 @@ function fixtureDirForLinkCrawl(homeLinks) {
   return distDir;
 }
 
-test('extractInternalLinkTargets reads only site-internal hrefs, strips fragment/query, and never mistakes a protocol-relative URL for an internal one', () => {
+test('extractInternalLinkTargets reads every href form the tokenizer accepts, resolves each against the page, and keeps exactly the same-origin ones', () => {
   const html =
     '<a href="/api/">a</a>' +
     '<a href="/catalogue/?tab=x">b</a>' +
     '<a href="/use/#top">c</a>' +
     '<a href="#main-content">skip</a>' +
+    '<a href="?tab=x">query-only, addresses this same page</a>' +
+    '<a href="">empty</a>' +
     '<a href="https://github.com/agentforge4j">gh</a>' +
-    '<a href="//evil.example.com/x">protocol-relative</a>' +
+    '<a href="mailto:security@agentforge4j.org">mail</a>' +
+    '<a href="//evil.example.com/x">protocol-relative, off-site</a>' +
     "<a href='/single/'>single-quoted</a>" +
     '<a href=/bare/>unquoted</a>' +
     '<a class="x" href="/legal/">attrs before href</a>' +
     '<a data-href="/decoy/" href="/real/">data-href must not be read as href</a>' +
-    '<a\n  href="/multiline/"\n  class="y"\n>attributes across lines</a>';
-  assert.deepEqual(extractInternalLinkTargets(html), [
+    '<a\n  href="/multiline/"\n  class="y"\n>attributes across lines</a>' +
+    // The three shapes a spelling-keyed rule silently skips. All three are ordinary links a
+    // browser follows to this same site, and all three redirect in production if written bare.
+    '<a href="https://agentforge4j.org/absolute/">same-origin absolute</a>' +
+    '<a href="relative/">relative to the page this html was served at</a>' +
+    '<a href="//agentforge4j.org/protocol-relative/">protocol-relative, on-site</a>' +
+    '<a title="a > b" href="/quoted-gt/">a quoted &gt; must not truncate the tag</a>' +
+    // Inert markup: no browser follows a link inside a comment, so counting it would fail the
+    // build over something that ships doing nothing.
+    '<!-- <a href="/commented-out/">ghost</a> -->';
+  assert.deepEqual(extractInternalLinkTargets(html, '/'), [
     '/api/',
     '/catalogue/',
     '/use/',
@@ -1039,7 +1051,20 @@ test('extractInternalLinkTargets reads only site-internal hrefs, strips fragment
     '/legal/',
     '/real/',
     '/multiline/',
+    '/absolute/',
+    '/relative/',
+    '/protocol-relative/',
+    '/quoted-gt/',
   ]);
+});
+
+test('extractInternalLinkTargets resolves a relative href against the page it was served at, not against the site root', () => {
+  // The whole point of taking sourcePath: `agent-creator/` means two different addresses depending
+  // on which page carries it, and only one of them is the one a visitor would actually request.
+  assert.deepEqual(extractInternalLinkTargets('<a href="agent-creator/">x</a>', '/catalogue/'), [
+    '/catalogue/agent-creator/',
+  ]);
+  assert.deepEqual(extractInternalLinkTargets('<a href="agent-creator/">x</a>', '/'), ['/agent-creator/']);
 });
 
 test('the internal-link crawl passes clean when every internal link already targets the trailing-slash form the host serves directly', async () => {
@@ -1056,6 +1081,64 @@ test('NEGATIVE CONTROL — the exact audited defect: a bare-form internal link (
     () => verifySeo({ distDir, staticRoutes: [] }),
     /internal link \/api \(linked from \/\) did not return 200 with no redirect \(got 301\)/,
   );
+});
+
+test('NEGATIVE CONTROL — a bare-form link written as a same-origin ABSOLUTE url fails the gate, exactly like the root-relative form', async () => {
+  // Same redirect, same cost to every visitor and crawler, different spelling — a gate keyed on
+  // "the href starts with a slash" reports this build clean.
+  const distDir = fixtureDirForLinkCrawl(['/', 'https://agentforge4j.org/api']);
+  await assert.rejects(
+    () => verifySeo({ distDir, staticRoutes: [] }),
+    /internal link \/api \(linked from \/\) did not return 200 with no redirect \(got 301\)/,
+  );
+});
+
+test('NEGATIVE CONTROL — a bare-form link written as a RELATIVE href fails the gate, resolved against the page that carries it', async () => {
+  const distDir = fixtureDirForLinkCrawl(['/', 'api']);
+  await assert.rejects(
+    () => verifySeo({ distDir, staticRoutes: [] }),
+    /internal link \/api \(linked from \/\) did not return 200 with no redirect \(got 301\)/,
+  );
+});
+
+test('NEGATIVE CONTROL — a quoted attribute containing a literal > does not hide the anchor beside it from the crawl', async () => {
+  // The tag tokenizer, not the href rule: end the tag on the first `>` and this element is never
+  // read at all, so the bare-form link it carries is never checked and the build passes clean.
+  const distDir = fixtureDir();
+  writePage(
+    distDir,
+    '',
+    page({
+      canonical: 'https://agentforge4j.org/',
+      extraBody: '<a title="a > b" href="/api">quoted gt</a>',
+    }),
+  );
+  writePage(distDir, 'api', page({ canonical: 'https://agentforge4j.org/api/' }));
+  writeFileSync(
+    join(distDir, 'sitemap.xml'),
+    sitemapXml([{ url: 'https://agentforge4j.org/', lastmod: '2026-07-20' }]),
+    'utf8',
+  );
+  await assert.rejects(
+    () => verifySeo({ distDir, staticRoutes: [] }),
+    /internal link \/api \(linked from \/\) did not return 200 with no redirect \(got 301\)/,
+  );
+});
+
+test('an anchor inside an HTML comment is inert markup, not a dead link — it must not fail the build', async () => {
+  // The opposite direction of the three controls above: over-detection here fails a build over a
+  // link no browser can follow. index.html already carries a comment the build reads around, so
+  // this is a live hazard in this repo, not a hypothetical one.
+  const distDir = fixtureDirForLinkCrawl(['/']);
+  writePage(
+    distDir,
+    '',
+    page({
+      canonical: 'https://agentforge4j.org/',
+      extraBody: '<!-- <a href="/deleted-page/">removed in a redesign</a> -->',
+    }),
+  );
+  await assert.doesNotReject(() => verifySeo({ distDir, staticRoutes: [] }));
 });
 
 test('a link to a path that does not exist at all fails the crawl too, not only a redirecting one', async () => {

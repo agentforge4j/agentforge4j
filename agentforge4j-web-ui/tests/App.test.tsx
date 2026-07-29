@@ -232,6 +232,13 @@ describe('footer navigation', () => {
     }
   });
 
+});
+
+// Deliberately its own block rather than part of `footer navigation` above: the assertion below
+// spans the whole rendered shell — header nav, CTA, logo, page body and footer — so filing it under
+// one of those surfaces would let a future change that prunes or rescopes that surface quietly take
+// a shell-wide regression guard with it.
+describe('canonical internal link form', () => {
   test('every internal link the shell renders is in the canonical trailing-slash form, not the redirecting bare form', () => {
     // The companion, source-level half of scripts/verify-seo.mjs's production crawl: that gate
     // proves the built site serves no redirecting internal link, this one names the defect at the
