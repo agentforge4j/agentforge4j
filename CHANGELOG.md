@@ -16,8 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`PREMIUM` capability tier.** A fourth `ModelTier` above `POWERFUL`, with a shipped default on
   every built-in provider — that provider's strongest available model, which is the same model as
   `POWERFUL` wherever no distinct higher-capability one is configured. Operators retarget it per
-  provider like any other tier, through `agentforge4j.llm.model-tiers.<provider>.premium` as a
-  Spring Boot property, environment variable, or system property.
+  provider like any other tier, through `agentforge4j.llm.model-tiers.<provider>.premium`.
 
 ### Changed
 
