@@ -19,7 +19,6 @@ import {
   verifyComposedJavadocLinks,
   verifyComposedAnchorLinks,
 } from './assemble-site.mjs';
-import {javadocSurfaces} from './javadoc-seo.mjs';
 
 function sitemapXmlFixture(urls) {
   const body = urls.map((url) => `  <url>\n    <loc>${url}</loc>\n  </url>`).join('\n');
@@ -74,6 +73,13 @@ function fixture() {
   writeFileSync(join(javadocDir, 'index.html'), realisticJavadocHtml('javadoc next'));
   return {root, spaDir, buildDir, javadocDir, archiveDir: join(root, 'archive-absent'), siteDir: join(root, '_site')};
 }
+
+// An empty directory that is not a git repository, so no release tag resolves in it — the "never
+// invent a date" path. Its own directory rather than `tmpdir()` itself, and passed explicitly by
+// every test that supplies `releasedVersions`: `assembleSite`'s `repoRoot` defaults to THIS
+// checkout, so a fixture test that omits it silently makes its composed output a function of
+// whatever tags the ambient repository happens to carry.
+const NO_TAGS_REPO = mkdtempSync(join(tmpdir(), 'assemble-no-tags-'));
 
 test('composes the _site layout: docs/, javadoc/next, javadoc/latest', () => {
   const {spaDir, buildDir, javadocDir, archiveDir, siteDir} = fixture();
@@ -271,6 +277,7 @@ test('copies one version-pinned Javadoc surface per released version; /javadoc/l
     archiveDir,
     siteDir,
     customDomain: null,
+    repoRoot: NO_TAGS_REPO,
   });
   assert.match(
     readFileSync(join(siteDir, 'javadoc', '1.1.0', 'index.html'), 'utf8'),
@@ -374,6 +381,7 @@ test('an archived version carried in releasedVersions still publishes its /javad
     archiveDir,
     siteDir,
     customDomain: null,
+    repoRoot: NO_TAGS_REPO,
   });
 
   assert.match(
@@ -574,6 +582,7 @@ test('verifyComposedArtifact fails closed when a released version\'s /javadoc/<v
         archiveDir,
         siteDir,
         customDomain: null,
+        repoRoot: NO_TAGS_REPO,
         exit: fakeExit,
       }),
     /exit\(1\)/,
@@ -1649,8 +1658,6 @@ test("the real Docusaurus sitemap config stays compatible with the parser's narr
 // path. The entries are derived from the SAME indexability policy that stamps the robots tags, so a
 // sitemap advertising a suppressed surface is not expressible. ---
 
-const NO_TAGS_REPO = tmpdir(); // no git tags resolve here — the "never invent a date" path
-
 test('exactly the indexable Javadoc surfaces are listed: /latest/ in, /next/ out, the mirrored pinned version out', () => {
   const entries = javadocSitemapEntries('https://agentforge4j.org', ['0.1.0'], NO_TAGS_REPO);
   assert.deepEqual(
@@ -1685,15 +1692,54 @@ test('an older released version becomes discoverable the moment a newer one ship
   );
 });
 
-test('the sitemap and the robots directives are derived from one policy — every listed surface is one javadocSurfaces calls indexable', () => {
+test('the sitemap never advertises a surface whose own composed page suppresses it — asserted against the shipped bytes, both directions', () => {
   // The binding that makes "sitemap advertises a page the robots tag suppresses" unrepresentable.
-  for (const releasedVersions of [[], ['0.1.0'], ['0.3.0', '0.2.0', '0.1.0']]) {
-    const indexableMounts = javadocSurfaces(releasedVersions)
-      .filter((surface) => !surface.noindex)
-      .map((surface) => `https://agentforge4j.org/${surface.mountPath}/`);
-    assert.deepEqual(
-      javadocSitemapEntries('https://agentforge4j.org', releasedVersions, NO_TAGS_REPO).map((e) => e.url),
-      indexableMounts,
+  // Asserted across the composed artifact rather than by recomputing the implementation's own
+  // expression: both halves are read back off disk — the <loc> list out of _site/sitemap.xml, the
+  // robots directive out of each surface's own composed index.html — so this fails if the two
+  // consumers of javadocSurfaces ever stop agreeing, which a comparison against javadocSurfaces
+  // itself cannot detect.
+  const {root, spaDir, buildDir, javadocDir, archiveDir, siteDir} = fixture();
+  const javadocVersionsDir = join(root, 'javadoc-versions');
+  for (const version of ['0.2.0', '0.1.0']) {
+    mkdirSync(join(javadocVersionsDir, version), {recursive: true});
+    writeFileSync(join(javadocVersionsDir, version, 'index.html'), realisticJavadocHtml(`javadoc ${version}`));
+  }
+  assembleSite({
+    spaDir,
+    buildDir,
+    javadocDir,
+    javadocVersionsDir,
+    // Two released versions so BOTH polarities occur twice: /next/ and the mirrored /0.2.0/ are
+    // suppressed, /latest/ and the superseded /0.1.0/ are indexable.
+    releasedVersions: ['0.2.0', '0.1.0'],
+    archiveDir,
+    siteDir,
+    customDomain: null,
+    repoRoot: NO_TAGS_REPO,
+  });
+
+  const advertised = new Set(
+    [...readFileSync(join(siteDir, 'sitemap.xml'), 'utf8').matchAll(/<loc>([^<]+)<\/loc>/g)].map((match) => match[1]),
+  );
+  const observed = ['javadoc/next', 'javadoc/latest', 'javadoc/0.2.0', 'javadoc/0.1.0'].map((mountPath) => ({
+    mountPath,
+    suppressed: /<meta name="robots" content="[^"]*noindex/i.test(
+      readFileSync(join(siteDir, ...mountPath.split('/'), 'index.html'), 'utf8'),
+    ),
+    listed: advertised.has(`https://agentforge4j.org/${mountPath}/`),
+  }));
+
+  // Neither half of the equivalence may hold vacuously.
+  assert.ok(observed.some((surface) => surface.suppressed), 'the fixture must compose a suppressed surface');
+  assert.ok(observed.some((surface) => !surface.suppressed), 'the fixture must compose an indexable surface');
+
+  for (const {mountPath, suppressed, listed} of observed) {
+    assert.equal(
+      listed,
+      !suppressed,
+      `${mountPath}: its composed page ${suppressed ? 'carries' : 'does not carry'} a noindex robots tag, ` +
+        `but the composed sitemap ${listed ? 'advertises' : 'omits'} it`,
     );
   }
 });
@@ -1742,4 +1788,58 @@ test('the composed sitemap really carries the Javadoc entry end to end', () => {
   const composed = readFileSync(join(siteDir, 'sitemap.xml'), 'utf8');
   assert.match(composed, /<loc>https:\/\/agentforge4j\.org\/javadoc\/latest\/<\/loc>/);
   assert.doesNotMatch(composed, /<loc>https:\/\/agentforge4j\.org\/javadoc\/next\/<\/loc>/);
+});
+
+// --- The documented `siteUrl` seam. This function now CONSTRUCTS sitemap URLs from it (the Javadoc
+// entries above) as well as validating URLs against it, so the origin it builds from and the origin
+// it checks against must be the same one. A guard pinned to a second hardcoded copy of the
+// production host rejected every entry the seam produced, the first time the seam was used. ---
+
+const OVERRIDE_URL = 'https://staging.example.test';
+
+test('an overridden siteUrl survives composition — all three sources are emitted at, and accepted on, that origin', () => {
+  const {spaDir, buildDir, javadocDir, archiveDir, siteDir} = fixture();
+  // A host publishing at a different origin generates its fragments at that origin too; only the
+  // Javadoc entries are constructed inside assembleSite.
+  writeFileSync(join(spaDir, 'sitemap.xml'), sitemapXmlFixture([`${OVERRIDE_URL}/`]));
+  writeFileSync(join(buildDir, 'sitemap.xml'), sitemapXmlFixture([`${OVERRIDE_URL}/docs/0.1.0/`]));
+
+  const exitCodes = [];
+  assembleSite({
+    spaDir,
+    buildDir,
+    javadocDir,
+    archiveDir,
+    siteDir,
+    customDomain: null,
+    siteUrl: OVERRIDE_URL,
+    repoRoot: NO_TAGS_REPO,
+    exit: (code) => exitCodes.push(code),
+  });
+  assert.deepEqual(exitCodes, [], 'composition must not fail closed against its own origin');
+
+  const composed = readFileSync(join(siteDir, 'sitemap.xml'), 'utf8');
+  assert.match(composed, /<loc>https:\/\/staging\.example\.test\/<\/loc>/, 'SPA fragment');
+  assert.match(composed, /<loc>https:\/\/staging\.example\.test\/docs\/0\.1\.0\/<\/loc>/, 'docs fragment');
+  assert.match(composed, /<loc>https:\/\/staging\.example\.test\/javadoc\/latest\/<\/loc>/, 'Javadoc entries');
+  assert.doesNotMatch(composed, /agentforge4j\.org/, 'no entry may carry the production host');
+});
+
+test('NEGATIVE CONTROL — the origin guard still fails closed: a fragment on a different host than the one being published is refused', () => {
+  const {spaDir, buildDir, javadocDir, archiveDir, siteDir} = fixture();
+  // The fragments are left on the production host while the site is published at the override —
+  // exactly the misconfigured-siteConfig.url case the guard exists for.
+  const exitCodes = [];
+  assembleSite({
+    spaDir,
+    buildDir,
+    javadocDir,
+    archiveDir,
+    siteDir,
+    customDomain: null,
+    siteUrl: OVERRIDE_URL,
+    repoRoot: NO_TAGS_REPO,
+    exit: (code) => exitCodes.push(code),
+  });
+  assert.ok(exitCodes.includes(1), 'a URL outside the published origin must fail closed');
 });

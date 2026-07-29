@@ -343,8 +343,6 @@ export function verifyComposedAnchorLinks(siteDir, docsSourceDir, versionedDocsS
   console.log(`[assemble-site] verified ${checked} in-page anchor link(s) against the composed artifact — all present.`);
 }
 
-const SITEMAP_URL_PREFIX = 'https://agentforge4j.org/';
-
 // The only <urlset> attributes this parser accepts: the base sitemaps.org namespace plus the four
 // extension namespaces the `sitemap` npm package's SitemapStream unconditionally declares by
 // default ({news,xhtml,image,video}: true — see its own sitemap-stream.js getURLSetNs/defaultXMLNS,
@@ -841,18 +839,40 @@ function sitemapXml(entries) {
  * deploy, which is exactly what the rest of this site's sitemap work exists to avoid. */
 function javadocSurfaceLastmod(repoRoot, version) {
   if (!version) {
+    // Not a degraded case: `next` and a pre-release `latest` genuinely have no single dating commit.
+    // Silent by design — see this docstring. Only a version-pinned surface reaching the paths below
+    // without a date is worth a word.
     return null;
   }
+  let output;
   try {
-    const output = execFileSync('git', ['log', '-1', '--format=%cs', `refs/tags/${releaseTag(version)}`], {
+    output = execFileSync('git', ['log', '-1', '--format=%cs', `refs/tags/${releaseTag(version)}`], {
       cwd: repoRoot,
       encoding: 'utf8',
-      stdio: ['ignore', 'pipe', 'ignore'],
+      // stderr captured rather than discarded so the notice below can say WHICH failure this was: a
+      // missing tag, a missing git binary and a non-repository repoRoot otherwise all degrade to the
+      // same empty <lastmod> with nothing in the log distinguishing them. The deploy pipeline makes
+      // the first unreachable (build-javadoc-versions.mjs fails hard on a missing tag in the same
+      // job, from a fetch-depth: 0 checkout) — this exists so that if that ever stops being true,
+      // the deploy log says so instead of the missing element having to be noticed.
+      stdio: ['ignore', 'pipe', 'pipe'],
     }).trim();
-    return /^\d{4}-\d{2}-\d{2}$/.test(output) ? output : null;
-  } catch {
+  } catch (error) {
+    const detail = String(error?.stderr ?? error?.message ?? error).trim().split('\n')[0];
+    console.warn(
+      `[assemble-site] no <lastmod> for the ${version} Javadoc surface: could not read ` +
+        `refs/tags/${releaseTag(version)} in ${repoRoot} — ${detail}`,
+    );
     return null;
   }
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(output)) {
+    console.warn(
+      `[assemble-site] no <lastmod> for the ${version} Javadoc surface: refs/tags/${releaseTag(version)} ` +
+        `resolved to ${JSON.stringify(output)}, which is not a YYYY-MM-DD committer date`,
+    );
+    return null;
+  }
+  return output;
 }
 
 /**
@@ -879,12 +899,17 @@ export function javadocSitemapEntries(siteUrl, releasedVersions, repoRoot) {
 }
 
 /**
- * Merges the SPA's own sitemap.xml fragment (agentforge4j-web-ui/scripts/build-seo.mjs, already
- * copied to the site root in step 1) with the Docusaurus-generated docs/sitemap.xml (already
- * copied to `docs/` in step 2) into the one final sitemap.xml the composed artifact serves at
- * `/sitemap.xml`. Fails closed on a missing fragment, a non-HTTPS/wrong-domain URL (a
- * misconfigured `siteConfig.url` would otherwise silently publish the wrong host), or a
- * duplicate URL across the two fragments.
+ * Merges this site's three sources of sitemap coverage into the one final sitemap.xml the composed
+ * artifact serves at `/sitemap.xml`:
+ *   1. the SPA's own sitemap.xml fragment (agentforge4j-web-ui/scripts/build-seo.mjs, already copied
+ *      to the site root in step 1),
+ *   2. the Docusaurus-generated docs/sitemap.xml (already copied to `docs/` in step 2), and
+ *   3. the Javadoc surfaces, which have no generator of their own and are therefore computed here
+ *      (`javadocSitemapEntries`).
+ *
+ * Fails closed on a missing fragment, a URL outside the origin being published (a misconfigured
+ * `siteConfig.url` would otherwise silently publish the wrong host), or a duplicate URL across any
+ * two of the three sources.
  */
 function mergeSitemaps(siteDir, exit, {siteUrl = DEFAULT_SITE_URL, releasedVersions = [], repoRoot = REPO_ROOT} = {}) {
   const spaSitemapPath = join(siteDir, 'sitemap.xml');
@@ -908,9 +933,15 @@ function mergeSitemaps(siteDir, exit, {siteUrl = DEFAULT_SITE_URL, releasedVersi
     ...javadocEntries,
   ];
 
+  // Derived from the origin this composition was told to publish at, never a second copy of the
+  // production literal. `siteUrl` is a documented seam (see assembleSite's own @param) and this
+  // function now *constructs* URLs from it for the Javadoc entries above — pinning the guard to a
+  // separate hardcoded host would make every entry it builds fail its own check the moment the seam
+  // was actually used. DEFAULT_SITE_URL stays this module's single literal for the production host.
+  const urlPrefix = `${siteUrl}/`;
   for (const { url } of entries) {
-    if (!url.startsWith(SITEMAP_URL_PREFIX)) {
-      console.error(`[assemble-site] refusing a sitemap URL outside ${SITEMAP_URL_PREFIX}: ${url}`);
+    if (!url.startsWith(urlPrefix)) {
+      console.error(`[assemble-site] refusing a sitemap URL outside ${urlPrefix}: ${url}`);
       exit(1);
     }
   }
@@ -918,7 +949,10 @@ function mergeSitemaps(siteDir, exit, {siteUrl = DEFAULT_SITE_URL, releasedVersi
   const seen = new Set();
   for (const { url } of entries) {
     if (seen.has(url)) {
-      console.error(`[assemble-site] duplicate sitemap URL across the SPA and docs fragments: ${url}`);
+      console.error(
+        `[assemble-site] duplicate sitemap URL across the SPA fragment, the docs fragment and the ` +
+          `Javadoc surfaces: ${url}`,
+      );
       exit(1);
     }
     seen.add(url);
@@ -992,12 +1026,16 @@ function writeRedirectStubs(siteDir, manifestPath, exit = process.exit) {
 /**
  * Assemble the Pages artifact into `siteDir` from the given inputs. Pure with respect to module
  * location (every path is a parameter), so it is directly unit-testable against fixture
- * directories; `main()` below is the real CLI entry, computing the live paths.
+ * directories; `main()` below is the real CLI entry, computing the live paths. `repoRoot` is the
+ * one parameter whose default reaches outside the fixture inputs — it points at this checkout so
+ * `main()` need not pass it, which means a test that supplies `releasedVersions` and leaves
+ * `repoRoot` unset reads the ambient repository's tags. Tests whose composed output depends on
+ * dates should pass an explicit `repoRoot`.
  *
  * @param {{spaDir: string, buildDir: string, javadocDir: string, javadocVersionsDir?: string,
  *          releasedVersions?: string[], archiveDir: string, siteDir: string,
  *          docsSourceDir?: string, versionedDocsSourceDir?: string,
- *          customDomain: string|null, siteUrl?: string, ogImage?: string,
+ *          customDomain: string|null, siteUrl?: string, ogImage?: string, repoRoot?: string,
  *          exit?: (code: number) => void}} options `exit` is an injectable seam for the
  *        redirect-stub collision guard and the composed-output verification (tests; default
  *        `process.exit`). `docsSourceDir`/`versionedDocsSourceDir` are undefined by default (the
@@ -1090,9 +1128,11 @@ export function assembleSite({
   }
   writeFileSync(join(siteDir, '.nojekyll'), '', 'utf8');
 
-  // 6. Merge the SPA's own sitemap.xml fragment (copied to the site root in step 1) with the
-  //    Docusaurus-generated docs/sitemap.xml (copied in step 2) into the one final sitemap.xml
-  //    the composed artifact serves at /sitemap.xml.
+  // 6. Merge the site's three sources of coverage into the one final sitemap.xml the composed
+  //    artifact serves at /sitemap.xml: the SPA's own fragment (copied to the site root in step 1),
+  //    the Docusaurus-generated docs/sitemap.xml (copied in step 2), and the Javadoc surfaces —
+  //    which, unlike the other two, have no generator of their own and are computed in there from
+  //    the same indexability policy that stamps their robots tags.
   mergeSitemaps(siteDir, exit, {siteUrl, releasedVersions, repoRoot});
 
   verifyComposedArtifact(siteDir, releasedVersions, exit);

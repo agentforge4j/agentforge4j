@@ -55,8 +55,9 @@
 //         aggregateCatalogueDependencies.
 //     `null` only when none of a page's dependencies resolve to a real, committed file.
 //     assemble-site.mjs (agentforge4j-docs) merges this fragment with the Docusaurus-generated
-//     docs/sitemap.xml into the one final sitemap.xml at the composed site root — this script knows
-//     nothing about docs pages, and assemble-site.mjs knows nothing about SPA routes.
+//     docs/sitemap.xml and the Javadoc surface entries it computes itself into the one final
+//     sitemap.xml at the composed site root — this script knows nothing about docs pages or Javadoc
+//     surfaces, and assemble-site.mjs knows nothing about SPA routes.
 //
 //     Deliberately excluded, traced and ruled out (not merely overlooked):
 //       - verify-seo.mjs, copy-404.mjs — verification/post-processing only; neither one's own logic
