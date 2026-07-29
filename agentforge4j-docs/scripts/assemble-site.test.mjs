@@ -8,16 +8,22 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
-import {join} from 'node:path';
+import {dirname, join, resolve} from 'node:path';
+import {fileURLToPath} from 'node:url';
 import sax from 'sax';
 import {SitemapStream, streamToPromise} from 'sitemap';
 import {
   verifyComposedArtifact,
   assembleSite,
   scanComposedHtmlForForbiddenContent,
+  urlsMissingFrom,
   verifyComposedJavadocLinks,
   verifyComposedAnchorLinks,
 } from './assemble-site.mjs';
+
+// The real repository root, for the handful of assertions that must be made against a committed
+// file rather than against a fixture this module wrote itself.
+const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 
 function sitemapXmlFixture(urls) {
   const body = urls.map((url) => `  <url>\n    <loc>${url}</loc>\n  </url>`).join('\n');
@@ -1635,9 +1641,11 @@ test("the real Docusaurus sitemap config stays compatible with the parser's narr
   assert.match(merged, /<loc>https:\/\/agentforge4j\.org\/docs\/0\.1\.0\/<\/loc>/);
 });
 
-// --- One site, one sitemap. The docs fragment is a merge INPUT: nothing links it, robots.txt names
-// only the root sitemap, and mergeSitemaps is its sole consumer. Published, it was a second,
-// partial sitemap covering a subset of the root one's URLs with nothing saying which wins. ---
+// --- One site, one sitemap. Every per-module fragment is a merge INPUT: nothing links them,
+// robots.txt names only the root sitemap, and mergeSitemaps is their sole consumer. Published, each
+// was a second, partial sitemap covering a subset of the root one's URLs with nothing saying which
+// wins. Proven here for the docs fragment, for an archived version's, and — by the invariant rather
+// than by path — for a fragment anywhere else in the composed tree. ---
 
 test('the composed artifact publishes exactly one sitemap — the redundant /docs/sitemap.xml fragment is gone', () => {
   const {spaDir, buildDir, javadocDir, archiveDir, siteDir} = fixture();
@@ -1682,10 +1690,130 @@ test('NEGATIVE CONTROL — an artifact that still ships /docs/sitemap.xml fails 
   assert.deepEqual(reExits, [1]);
 });
 
-test('robots.txt still names the one root sitemap, and names no other', () => {
-  const {spaDir, buildDir, javadocDir, archiveDir, siteDir} = fixture();
-  assembleSite({spaDir, buildDir, javadocDir, archiveDir, siteDir, customDomain: null});
-  const robots = readFileSync(join(siteDir, 'robots.txt'), 'utf8');
+test('the REAL shipped robots.txt names the one root sitemap, and names no other', () => {
+  // Deliberately NOT the composed fixture's robots.txt: that file is written by `fixture()` itself a
+  // few lines up, so asserting against it would only prove this test module can read back its own
+  // literal. The claim being made — "robots.txt names exactly one sitemap, the root one" — is about
+  // the committed file the SPA build ships, so that is the file this opens. Adding a second
+  // `Sitemap:` directive there must fail here.
+  const robots = readFileSync(join(REPO_ROOT, 'agentforge4j-web-ui', 'public', 'robots.txt'), 'utf8');
   const sitemapDirectives = [...robots.matchAll(/^Sitemap:\s*(\S+)$/gim)].map((match) => match[1]);
   assert.deepEqual(sitemapDirectives, ['https://agentforge4j.org/sitemap.xml']);
+});
+
+// --- The same invariant, on its sibling path: an archived version is frozen as a WHOLE Docusaurus
+// export, so it carries its own sitemap.xml for exactly the reason the docs build does, and step 4
+// copies it into /docs/archive/<v>/. It is a merge input too. ---
+
+/** Adds a frozen archive artifact for `version` — an `index.html` page plus the export's own
+ *  sitemap.xml, which `verify-canonical.mjs` requires to exist before an export may be frozen. */
+function writeArchivedVersion(archiveDir, version, urls) {
+  mkdirSync(join(archiveDir, version), {recursive: true});
+  writeFileSync(join(archiveDir, version, 'index.html'), `<html>archived ${version}</html>`);
+  writeFileSync(join(archiveDir, version, 'sitemap.xml'), sitemapXmlFixture(urls));
+}
+
+test("an archived version's own sitemap fragment is merged into the root sitemap, not published alongside it", () => {
+  const {spaDir, buildDir, javadocDir, siteDir, root} = fixture();
+  const archiveDir = join(root, 'archive');
+  const archivedUrls = [
+    'https://agentforge4j.org/docs/archive/0.0.9/',
+    'https://agentforge4j.org/docs/archive/0.0.9/intro/',
+  ];
+  writeArchivedVersion(archiveDir, '0.0.9', archivedUrls);
+
+  assembleSite({spaDir, buildDir, javadocDir, archiveDir, siteDir, customDomain: null});
+
+  assert.equal(
+    existsSync(join(siteDir, 'docs', 'archive', '0.0.9', 'sitemap.xml')),
+    false,
+    "an archived version's fragment is a merge input, not a second published sitemap",
+  );
+  assert.ok(
+    existsSync(join(siteDir, 'docs', 'archive', '0.0.9', 'index.html')),
+    'only the fragment is removed — the archived pages themselves are carried forward untouched',
+  );
+  const merged = readFileSync(join(siteDir, 'sitemap.xml'), 'utf8');
+  for (const url of archivedUrls) {
+    assert.ok(merged.includes(`<loc>${url}</loc>`), `${url} must survive the merge, not vanish with the fragment`);
+  }
+});
+
+test('an archive frozen without a sitemap fragment is carried forward unchanged, and is not an error', () => {
+  const {spaDir, buildDir, javadocDir, siteDir, root} = fixture();
+  const archiveDir = join(root, 'archive');
+  mkdirSync(join(archiveDir, '0.0.8'), {recursive: true});
+  writeFileSync(join(archiveDir, '0.0.8', 'index.html'), '<html>archived 0.0.8</html>');
+
+  const exits = [];
+  assembleSite({spaDir, buildDir, javadocDir, archiveDir, siteDir, customDomain: null, exit: (code) => exits.push(code)});
+
+  assert.deepEqual(exits, [], 'a fragment-less archive contributes nothing and must not fail the build');
+  assert.ok(existsSync(join(siteDir, 'docs', 'archive', '0.0.8', 'index.html')));
+});
+
+test('NEGATIVE CONTROL — an artifact that still ships an archived sitemap fragment fails the composed-output check', () => {
+  const {spaDir, buildDir, javadocDir, siteDir, root} = fixture();
+  const archiveDir = join(root, 'archive');
+  writeArchivedVersion(archiveDir, '0.0.9', ['https://agentforge4j.org/docs/archive/0.0.9/']);
+  const exits = [];
+  assembleSite({spaDir, buildDir, javadocDir, archiveDir, siteDir, customDomain: null, exit: (code) => exits.push(code)});
+  assert.deepEqual(exits, [], 'the clean run must not have failed');
+
+  // Exactly as a future change that stopped removing it would leave things. The check must catch it
+  // by the invariant ("exactly one sitemap.xml, at the root"), not by knowing this specific path.
+  writeFileSync(
+    join(siteDir, 'docs', 'archive', '0.0.9', 'sitemap.xml'),
+    readFileSync(join(siteDir, 'sitemap.xml'), 'utf8'),
+    'utf8',
+  );
+  const reExits = [];
+  verifyComposedArtifact(siteDir, [], (code) => reExits.push(code));
+  assert.deepEqual(reExits, [1]);
+});
+
+test('NEGATIVE CONTROL — a sitemap.xml anywhere else in the composed tree fails the composed-output check', () => {
+  // Neither of the two fragment paths that exist today: the guard is the invariant, so a fragment
+  // arriving from some future surface's build output must fail without anyone editing a path list.
+  const {spaDir, buildDir, javadocDir, archiveDir, siteDir} = fixture();
+  const exits = [];
+  assembleSite({spaDir, buildDir, javadocDir, archiveDir, siteDir, customDomain: null, exit: (code) => exits.push(code)});
+  assert.deepEqual(exits, []);
+
+  writeFileSync(join(siteDir, 'javadoc', 'next', 'sitemap.xml'), readFileSync(join(siteDir, 'sitemap.xml'), 'utf8'), 'utf8');
+  const reExits = [];
+  verifyComposedArtifact(siteDir, [], (code) => reExits.push(code));
+  assert.deepEqual(reExits, [1]);
+});
+
+// --- The coverage precondition for deleting a fragment, tested in BOTH directions. The caller's own
+// refusal branch is unreachable from any real input (sitemapXml/extractSitemapEntries round-trip
+// losslessly, deliberately), so the pure function that decides it is what gets proven here. ---
+
+test('urlsMissingFrom reports nothing when the merge carried every fragment URL across', () => {
+  const merged = [
+    {url: 'https://agentforge4j.org/', lastmod: '2026-07-20'},
+    {url: 'https://agentforge4j.org/docs/0.1.0/', lastmod: null},
+  ];
+  const fragment = [{url: 'https://agentforge4j.org/docs/0.1.0/', lastmod: null}];
+  assert.deepEqual(urlsMissingFrom(merged, fragment), []);
+});
+
+test('urlsMissingFrom reports exactly the fragment URLs the merge lost — the refusal branch\'s trigger', () => {
+  const merged = [{url: 'https://agentforge4j.org/', lastmod: null}];
+  const fragment = [
+    {url: 'https://agentforge4j.org/docs/0.1.0/', lastmod: null},
+    {url: 'https://agentforge4j.org/', lastmod: null},
+    {url: 'https://agentforge4j.org/docs/archive/0.0.9/', lastmod: '2026-01-01'},
+  ];
+  assert.deepEqual(urlsMissingFrom(merged, fragment), [
+    'https://agentforge4j.org/docs/0.1.0/',
+    'https://agentforge4j.org/docs/archive/0.0.9/',
+  ]);
+});
+
+test('urlsMissingFrom compares URLs only — a differing <lastmod> is not a lost URL', () => {
+  const merged = [{url: 'https://agentforge4j.org/docs/0.1.0/', lastmod: '2026-07-20'}];
+  const fragment = [{url: 'https://agentforge4j.org/docs/0.1.0/', lastmod: null}];
+  assert.deepEqual(urlsMissingFrom(merged, fragment), []);
 });

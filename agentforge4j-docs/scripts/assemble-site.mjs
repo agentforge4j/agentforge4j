@@ -90,9 +90,11 @@ function requireDir(path, what, hint) {
 // existed and every copy step "succeeded" but the composed result is still wrong for some reason
 // requireDir cannot see (e.g. a future refactor that copies from the wrong source path, or a build
 // step that wrote a truncated/zero-byte file without itself erroring).
-// Exported so the composed-output contract — including the one file that must NOT be present — is
+// Exported so the composed-output contract — including the files that must NOT be present — is
 // directly testable against a fixture artifact, the same way the other composition checks are.
-export function verifyComposedArtifact(siteDir, releasedVersions, exit) {
+// `exit` defaults to `process.exit`, matching every other exported check in this module, so this
+// one cannot be the single export that throws a TypeError instead of failing closed.
+export function verifyComposedArtifact(siteDir, releasedVersions, exit = process.exit) {
   // /javadoc/latest/ and one /javadoc/<v>/ per released version are real, separately-built copy
   // targets (steps 3 above) — a version whose Javadoc build silently produced an empty directory
   // (a real defect this exact check caught locally: a Windows-only Maven invocation failure in
@@ -118,15 +120,24 @@ export function verifyComposedArtifact(siteDir, releasedVersions, exit) {
     }
   }
 
-  // The mirror image of the checks above: one file that must NOT be in the composed artifact. The
-  // docs sitemap fragment is a build input mergeSitemaps consumes and then removes; if it is still
-  // here, the site is publishing two sitemaps — the root one robots.txt names, and a partial second
-  // one covering a subset of the same URLs with nothing declaring which is authoritative.
-  const docsSitemap = join(siteDir, 'docs', 'sitemap.xml');
-  if (existsSync(docsSitemap)) {
+  // The mirror image of the checks above: what must NOT be in the composed artifact. This site
+  // publishes exactly ONE sitemap, `/sitemap.xml` — so the check is stated that way, over the whole
+  // composed tree, rather than as a list of the fragment paths that happen to exist today. Every
+  // per-module sitemap is a merge INPUT mergeSitemaps consumes and then removes (the docs build's
+  // own, and one per archived version carried forward in step 4); a stray one left behind means the
+  // site is publishing a second, partial sitemap covering a subset of the same URLs, with nothing
+  // declaring which is authoritative. Enumerating paths here would silently miss the next fragment
+  // some future surface's build output brings in — the exact way the docs one arrived.
+  const rootSitemap = join(siteDir, 'sitemap.xml');
+  for (const stray of collectFiles(siteDir, (name) => name === 'sitemap.xml')) {
+    if (stray === rootSitemap) {
+      continue;
+    }
     console.error(
-      `[assemble-site] composed artifact still contains ${docsSitemap} — it is a merge input, not a published ` +
-        'surface, and publishing it puts a second, partial sitemap on the site',
+      `[assemble-site] composed artifact publishes a second sitemap: ${stray} — this site publishes exactly one, ` +
+        `${rootSitemap}. Per-module sitemaps are merge inputs assembly removes after merging them; if one is still ` +
+        'here, either an earlier [assemble-site] error above says why it was left in place (that is then the real ' +
+        'cause), or it is a new fragment nothing merges yet — teach mergeSitemaps about it rather than publishing it',
     );
     exit(1);
   }
@@ -148,17 +159,24 @@ const FORBIDDEN_HTML_PATTERNS = [
   {name: 'stale "generator is wired in a later phase" placeholder copy', pattern: /wired in a later phase/i},
 ];
 
-function collectHtmlFiles(dir) {
+/** Every file under `dir`, recursively, whose basename `matches`. The one tree walk both the
+ *  forbidden-content scan (every `.html`) and the one-sitemap check (every `sitemap.xml`) use, so
+ *  neither can drift into its own subtly different idea of what "the whole composed tree" means. */
+function collectFiles(dir, matches) {
   const out = [];
   for (const entry of readdirSync(dir, {withFileTypes: true})) {
     const full = join(dir, entry.name);
     if (entry.isDirectory()) {
-      out.push(...collectHtmlFiles(full));
-    } else if (entry.name.endsWith('.html')) {
+      out.push(...collectFiles(full, matches));
+    } else if (matches(entry.name)) {
       out.push(full);
     }
   }
   return out;
+}
+
+function collectHtmlFiles(dir) {
+  return collectFiles(dir, (name) => name.endsWith('.html'));
 }
 
 /**
@@ -844,12 +862,52 @@ function sitemapXml(entries) {
 }
 
 /**
+ * Every archived version's own sitemap fragment inside the composed artifact. An archived version is
+ * frozen as a WHOLE Docusaurus export (`archive-transition.mjs`: `cpSync(EXPORT_BUILD, artifactDir)`,
+ * verified before freezing by `verify-canonical.mjs`, which requires that export's `sitemap.xml` to
+ * exist), and step 4 copies that export wholesale to `/docs/archive/<v>/` — so each one arrives with
+ * its own fragment for exactly the same reason the docs build's does. Its `<loc>` values are real,
+ * indexable, self-canonical `/docs/archive/<v>/...` addresses (archive-mode `baseUrl`, see
+ * `docusaurus.config.ts`), so they belong in the one published sitemap, not in a second file nothing
+ * points at.
+ *
+ * Discovered from the composed tree rather than from `archiveDir`/`versions.json`, so this sees
+ * exactly what was actually copied in. Each fragment is optional: an archive frozen by some other
+ * means, without one, contributes nothing and is not an error. Empty until the first archive exists.
+ */
+function archivedSitemapFragments(siteDir) {
+  const archiveRoot = join(siteDir, 'docs', 'archive');
+  if (!existsSync(archiveRoot)) {
+    return [];
+  }
+  return readdirSync(archiveRoot, {withFileTypes: true})
+    .filter((entry) => entry.isDirectory())
+    .map((entry) => join(archiveRoot, entry.name, 'sitemap.xml'))
+    .filter((fragment) => existsSync(fragment));
+}
+
+/**
+ * The URLs a consumed fragment carried that are NOT in the merged sitemap — empty when the merge
+ * lost nothing, which is the precondition for deleting the fragment.
+ *
+ * A pure function, exported and directly tested in both directions, because it is the whole basis of
+ * "removing a fragment can never lose coverage" and the caller's own refusal branch is not reachable
+ * from any input either first-party generator can produce (both round-trip losslessly through
+ * `sitemapXml`/`extractSitemapEntries` — deliberately so). It is a guard against a future change to
+ * that serialization, and a guard nothing can execute is a guard nobody can trust.
+ */
+export function urlsMissingFrom(mergedEntries, fragmentEntries) {
+  const mergedUrls = new Set(mergedEntries.map(({url}) => url));
+  return fragmentEntries.filter(({url}) => !mergedUrls.has(url)).map(({url}) => url);
+}
+
+/**
  * Merges the SPA's own sitemap.xml fragment (agentforge4j-web-ui/scripts/build-seo.mjs, already
  * copied to the site root in step 1) with the Docusaurus-generated docs/sitemap.xml (already
- * copied to `docs/` in step 2) into the one final sitemap.xml the composed artifact serves at
- * `/sitemap.xml`. Fails closed on a missing fragment, a non-HTTPS/wrong-domain URL (a
- * misconfigured `siteConfig.url` would otherwise silently publish the wrong host), or a
- * duplicate URL across the two fragments.
+ * copied to `docs/` in step 2) and every archived version's fragment (copied in step 4) into the one
+ * final sitemap.xml the composed artifact serves at `/sitemap.xml`. Fails closed on a missing
+ * required fragment, a non-HTTPS/wrong-domain URL (a misconfigured `siteConfig.url` would otherwise
+ * silently publish the wrong host), or a duplicate URL across fragments.
  */
 function mergeSitemaps(siteDir, exit) {
   const spaSitemapPath = join(siteDir, 'sitemap.xml');
@@ -861,8 +919,13 @@ function mergeSitemaps(siteDir, exit) {
     'Run `npm run build` in agentforge4j-docs first (the sitemap plugin runs in postBuild).',
   );
 
-  const docsEntries = extractSitemapEntries(docsSitemapPath, exit);
-  const entries = [...extractSitemapEntries(spaSitemapPath, exit), ...docsEntries];
+  // Every per-module fragment INSIDE the composed artifact: the docs build's own (required) plus one
+  // per archived version (each optional, none until the first archive exists). These are the files
+  // this merge consumes and then removes; the SPA's fragment is not among them because it lives at
+  // the site root and is overwritten in place by the merged file rather than deleted.
+  const fragmentPaths = [docsSitemapPath, ...archivedSitemapFragments(siteDir)];
+  const fragmentEntries = fragmentPaths.flatMap((fragmentPath) => extractSitemapEntries(fragmentPath, exit));
+  const entries = [...extractSitemapEntries(spaSitemapPath, exit), ...fragmentEntries];
 
   for (const { url } of entries) {
     if (!url.startsWith(SITEMAP_URL_PREFIX)) {
@@ -882,33 +945,41 @@ function mergeSitemaps(siteDir, exit) {
 
   writeFileSync(join(siteDir, 'sitemap.xml'), sitemapXml(entries), 'utf8');
 
-  // The docs fragment is a BUILD INPUT, not a published surface. It exists because
-  // @docusaurus/plugin-sitemap writes it into this module's own build output and step 2 copies that
-  // output wholesale to /docs/ — nothing links it, robots.txt names only the merged root sitemap,
-  // and this function is its one and only consumer. Left in place it published a second, partial
-  // sitemap at /docs/sitemap.xml covering a subset of the same URLs the root one already lists, with
-  // no directive anywhere telling a crawler which of the two is authoritative. One site, one
-  // sitemap: the root file, which robots.txt points at.
+  // These fragments are BUILD INPUTS, not published surfaces. Each exists only because a module's
+  // own build output is copied into the composed tree wholesale: @docusaurus/plugin-sitemap writes
+  // one into this module's build/ (step 2 copies it to /docs/), and every archived version is frozen
+  // as a whole export carrying its own (step 4 copies it to /docs/archive/<v>/). Nothing links any of
+  // them, robots.txt names only the merged root sitemap, and this function is their one and only
+  // consumer. Left in place they published second, partial sitemaps covering a subset of the same
+  // URLs the root one lists, with no directive anywhere telling a crawler which is authoritative.
+  // One site, one sitemap: the root file, which robots.txt points at.
   //
   // Removed only AFTER the merge has been written and re-read, so this can never delete coverage
-  // that did not make it across — see the verification immediately below, which asks the merged
-  // file itself rather than trusting the write.
+  // that did not make it across — the verification below asks the merged file itself rather than
+  // trusting the write. Note what that does and does not prove: `sitemapXml` and
+  // `extractSitemapEntries` round-trip losslessly for every value the parser accepts, so on today's
+  // inputs this can only pass. It is a guard against a future change to either side of that round
+  // trip, not a live failure mode — `urlsMissingFrom` is exported and tested in both directions
+  // precisely because this branch itself cannot be reached from any real input.
   const merged = extractSitemapEntries(join(siteDir, 'sitemap.xml'), exit);
-  const mergedUrls = new Set(merged.map(({url}) => url));
-  const dropped = docsEntries.filter(({url}) => !mergedUrls.has(url));
+  const dropped = urlsMissingFrom(merged, fragmentEntries);
   if (dropped.length > 0) {
     console.error(
-      `[assemble-site] refusing to remove ${docsSitemapPath}: ${dropped.length} docs URL(s) are not in the merged ` +
-        `sitemap (e.g. ${dropped[0].url}) — removing it would lose them from search-engine discovery entirely`,
+      `[assemble-site] refusing to remove the consumed sitemap fragment(s): ${dropped.length} of their URL(s) are ` +
+        `not in the merged sitemap (e.g. ${dropped[0]}) — removing them would lose those URL(s) from search-engine ` +
+        `discovery entirely. Left in place: ${fragmentPaths.join(', ')}`,
     );
     exit(1);
     return;
   }
-  rmSync(docsSitemapPath, {force: true});
+  for (const fragmentPath of fragmentPaths) {
+    rmSync(fragmentPath, {force: true});
+  }
 
   console.log(
-    `[assemble-site] merged sitemap.xml: ${entries.length} URL(s) (SPA + docs); removed the redundant ` +
-      `/docs/sitemap.xml fragment after confirming all ${docsEntries.length} of its URL(s) survive in the root sitemap`,
+    `[assemble-site] merged sitemap.xml: ${entries.length} URL(s) (SPA + ${fragmentPaths.length} in-artifact ` +
+      `fragment(s): ${fragmentPaths.join(', ')}); removed those fragments after confirming all ` +
+      `${fragmentEntries.length} of their URL(s) survive in the root sitemap`,
   );
 }
 
@@ -1066,17 +1137,21 @@ export function assembleSite({
   }
   writeFileSync(join(siteDir, '.nojekyll'), '', 'utf8');
 
-  // 6. Merge the SPA's own sitemap.xml fragment (copied to the site root in step 1) with the
-  //    Docusaurus-generated docs/sitemap.xml (copied in step 2) into the one final sitemap.xml the
-  //    composed artifact serves at /sitemap.xml — and then remove the docs fragment.
+  // 6. Merge the SPA's own sitemap.xml fragment (copied to the site root in step 1), the
+  //    Docusaurus-generated docs/sitemap.xml (copied in step 2), and every archived version's own
+  //    fragment (copied in step 4) into the one final sitemap.xml the composed artifact serves at
+  //    /sitemap.xml — and then remove the in-artifact fragments.
   //
   //    The sitemap architecture, stated once, here: this site publishes exactly ONE sitemap,
   //    /sitemap.xml, and robots.txt (agentforge4j-web-ui/public/robots.txt) names exactly that one.
-  //    It is not a sitemap index and has no children. The two per-module fragments — the SPA's
-  //    (build-seo.mjs) and the docs' (@docusaurus/plugin-sitemap) — are inputs to this merge, and
-  //    the docs one only ever appeared under /docs/ because step 2 copies that module's whole build
-  //    output. Neither fragment is a published surface; the SPA's is overwritten in place by the
-  //    merged file, and the docs' is deleted below.
+  //    It is not a sitemap index and has no children. Every per-module fragment — the SPA's
+  //    (build-seo.mjs), the docs' (@docusaurus/plugin-sitemap), and one per archived version (a
+  //    frozen whole Docusaurus export) — is an INPUT to this merge. None is a published surface:
+  //    the SPA's is overwritten in place by the merged file, and the rest are deleted after the
+  //    merge is verified to carry their URLs. Each of the latter only ever appeared under /docs/**
+  //    because steps 2 and 4 copy those modules' whole build outputs. verifyComposedArtifact then
+  //    proves the result over the whole tree — exactly one sitemap.xml, at the root — rather than
+  //    over a list of the fragment paths known today.
   mergeSitemaps(siteDir, exit);
 
   verifyComposedArtifact(siteDir, releasedVersions, exit);
