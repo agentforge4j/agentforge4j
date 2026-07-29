@@ -24,6 +24,7 @@ import {
   injectJsonLd,
   injectRoot,
   JSON_LD_SCRIPT_ID,
+  MAX_DESCRIPTION_LENGTH,
   newestGitLastModifiedDate,
   truncateDescription,
   withTrailingSlash,
@@ -298,7 +299,7 @@ test('truncates an over-length workflow description rather than overflowing the 
   const html = readFileSync(join(distDir, 'catalogue', 'long', 'index.html'), 'utf8');
   const match = /name="description" content="([^"]*)"/.exec(html);
   assert.ok(match);
-  assert.ok(match[1].length <= 157);
+  assert.ok(match[1].length <= MAX_DESCRIPTION_LENGTH);
   assert.ok(match[1].endsWith('…'));
 });
 
@@ -2142,14 +2143,14 @@ test('a long description ending a sentence within budget stops at that sentence 
   const result = truncateDescription(LONG_WITH_EARLY_SENTENCE);
   assert.equal(result, 'Turns a freeform agent idea into an approved, validated, downloadable agent bundle (agent.json, systemprompt.md, README.md, and a verification starter).');
   assert.doesNotMatch(result, /…$/);
-  assert.ok(result.length <= 157);
+  assert.ok(result.length <= MAX_DESCRIPTION_LENGTH);
 });
 
-test('NEGATIVE CONTROL — the exact audited output is no longer produced', () => {
+test('NEGATIVE CONTROL — the exact output the fixed-offset slice published is no longer produced', () => {
   // What the fixed-offset slice published for this same source text.
   assert.notEqual(
     truncateDescription(LONG_WITH_EARLY_SENTENCE),
-    `${LONG_WITH_EARLY_SENTENCE.slice(0, 156).trimEnd()}…`,
+    `${LONG_WITH_EARLY_SENTENCE.slice(0, MAX_DESCRIPTION_LENGTH - 1).trimEnd()}…`,
   );
   assert.doesNotMatch(truncateDescription(LONG_WITH_EARLY_SENTENCE), /\bSin…$/);
   assert.doesNotMatch(truncateDescription(LONG_WITH_NO_EARLY_SENTENCE), /\binvoc…$/);
@@ -2158,7 +2159,7 @@ test('NEGATIVE CONTROL — the exact audited output is no longer produced', () =
 test('with no sentence ending in budget, it cuts at the last complete word and marks the cut', () => {
   const result = truncateDescription(LONG_WITH_NO_EARLY_SENTENCE);
   assert.match(result, /…$/);
-  assert.ok(result.length <= 157);
+  assert.ok(result.length <= MAX_DESCRIPTION_LENGTH);
   assert.ok(describesCompleteWords(LONG_WITH_NO_EARLY_SENTENCE, result));
 });
 
@@ -2169,17 +2170,66 @@ test('dangling clause punctuation is not left in front of the ellipsis', () => {
 });
 
 test('a very long first sentence does not collapse the description to a useless opening fragment', () => {
-  // "Ok." ends a sentence at character 3 — taking it would be a technically-complete, useless
-  // snippet, so the word-boundary path is used instead and most of the budget is kept.
-  const raw = `Ok. ${'alpha beta gamma delta '.repeat(20)}`;
+  // "Ok." is a real sentence end at character 3 (a capital follows it, so `endsSentence` accepts
+  // it) — taking it would be a technically-complete, useless snippet, so the useful-length floor
+  // rejects it, the word-boundary path is used instead, and most of the budget is kept.
+  const raw = `Ok. ${'Alpha beta gamma delta '.repeat(20)}`;
   const result = truncateDescription(raw);
   assert.ok(result.length > 80, `expected a useful length, got ${result.length}: ${result}`);
+});
+
+test('an abbreviation is not a sentence end — `e.g.` never ends the description', () => {
+  // The failure this prevents is the mirror image of a mid-word cut: a technically-complete
+  // fragment that stops at "e.g." and throws away most of the budget.
+  const raw =
+    'Runs adapters over several transports for governed workflow execution, e.g. HTTP, gRPC and ' +
+    'in-process, chosen per agent and per step by the configured provider for that run.';
+  const result = truncateDescription(raw);
+  assert.doesNotMatch(result, /e\.g\.$/);
+  assert.ok(result.length > 120, `expected most of the budget kept, got ${result.length}: ${result}`);
+  assert.ok(describesCompleteWords(raw, result), result);
+});
+
+test('a lower-case continuation after a full stop is not a sentence end — `etc. and` never ends the description', () => {
+  const raw =
+    'Estimates token range, agent turns, tool invocations, structural risk flags, etc. and then ' +
+    'returns a continue, narrow or stop recommendation for the caller to act on before executing.';
+  const result = truncateDescription(raw);
+  assert.doesNotMatch(result, /etc\.$/);
+  assert.ok(describesCompleteWords(raw, result), result);
+});
+
+test('a trailing `...` is not a sentence end either — the three-dot form, not just the single character', () => {
+  const raw =
+    'A summary of the governed workflow that trails off with a long lead-in clause and then ' +
+    'stops mid thought... and afterwards continues for a good while longer than the budget.';
+  const result = truncateDescription(raw);
+  assert.doesNotMatch(result, /thought\.\.\.$/);
+  // And the cut never publishes the source's dots and this rule's ellipsis together.
+  assert.doesNotMatch(result, /\.\.\.…$/);
+  assert.ok(describesCompleteWords(raw, result), result);
+});
+
+test('a word ending in `...` immediately before the cut loses the dots rather than doubling up with the ellipsis', () => {
+  // The word branch cuts right after `thought...` here, because the next token is longer than the
+  // rest of the budget — the one shape that produces the doubling.
+  const raw = `A governed workflow summary that stops mid thought... ${'x'.repeat(200)}`;
+  const result = truncateDescription(raw);
+  assert.ok(result.endsWith('thought…'), result);
+  assert.ok(describesCompleteWords(raw, result), result);
+});
+
+test('a word boundary that is a newline, not a space, is still found — the cut never lands mid-word', () => {
+  const raw = `${'alpha\nbeta\ngamma\n'.repeat(20)}delta`;
+  const result = truncateDescription(raw);
+  assert.ok(result.length <= MAX_DESCRIPTION_LENGTH);
+  assert.ok(describesCompleteWords(raw, result), JSON.stringify(result));
 });
 
 test('a single unbroken token longer than the budget is still cut to the limit rather than published whole', () => {
   const raw = 'x'.repeat(400);
   const result = truncateDescription(raw);
-  assert.ok(result.length <= 157);
+  assert.ok(result.length <= MAX_DESCRIPTION_LENGTH);
   assert.match(result, /…$/);
 });
 
@@ -2194,7 +2244,7 @@ test('describesCompleteWords rejects text that is not a prefix of the source at 
   assert.equal(describesCompleteWords('alpha beta gamma', 'alpha delta…'), false);
 });
 
-test('EVERY real shipped catalogue workflow gets a complete-word description within the limit — not only the two an audit looked at', () => {
+test('EVERY real shipped catalogue workflow gets a complete-word description within the limit — not only the ones anyone thought to look at', () => {
   const catalogueData = JSON.parse(readFileSync(join(REAL_MODULE_ROOT, 'src/generated/catalogue-data.json'), 'utf8'));
   assert.ok(catalogueData.workflows.length > 0, 'expected at least one shipped workflow to check');
   for (const workflow of catalogueData.workflows) {
@@ -2203,7 +2253,7 @@ test('EVERY real shipped catalogue workflow gets a complete-word description wit
       continue;
     }
     const description = truncateDescription(raw);
-    assert.ok(description.length <= 157, `${workflow.id}: ${description.length} characters`);
+    assert.ok(description.length <= MAX_DESCRIPTION_LENGTH, `${workflow.id}: ${description.length} characters`);
     assert.ok(
       describesCompleteWords(raw, description),
       `${workflow.id}: description does not end on a word boundary: ${JSON.stringify(description)}`,
@@ -2211,12 +2261,46 @@ test('EVERY real shipped catalogue workflow gets a complete-word description wit
   }
 });
 
-test('the build refuses to publish a mid-word description, rather than shipping one silently', () => {
-  // Drives the real build path with a workflow whose description the truncation rule mishandles —
-  // by making the rule itself produce a mid-word cut is not possible from outside, so this asserts
-  // the guard's own contract directly against the shape it exists to reject.
-  const raw = 'token range, agent turns, tool invocations, complexity';
-  assert.equal(describesCompleteWords(raw, 'token range, agent turns, tool invoc…'), false);
+test('the build REFUSES to publish a description the rule could not reduce to whole words — driven through buildSeo, not asserted about', () => {
+  // A source that is nothing but clause punctuation is the one shape reachable from outside: every
+  // candidate is stripped, leaving a bare ellipsis. This is what proves the refusal block is really
+  // wired into buildSeo and really aborts it, rather than being present but unreachable — the other
+  // two checks in that block cannot fire while the truncation rule is correct (see their comments).
+  const { distDir, seoRoutesPath, catalogueDataPath } = fixture({
+    workflows: [{ id: 'punctuation-only', name: 'Punctuation Only', description: ','.repeat(300) }],
+  });
+  assert.throws(
+    () => buildSeo({ distDir, seoRoutesPath, catalogueDataPath, repoRoot: REAL_MODULE_ROOT }),
+    /has no words to keep/,
+  );
+  assert.ok(
+    !existsSync(join(distDir, 'catalogue', 'punctuation-only', 'index.html')),
+    'the shell must not be written when the description is refused',
+  );
+});
+
+test('the word-boundary check rejects the exact output the fixed-offset slice used to publish — the shape the build guard exists to stop', () => {
+  // The rule cannot currently emit a mid-word cut, so the guard's own branch is unreachable from
+  // outside; this drives its PREDICATE with the exact output the removed slice published. If a
+  // future change to truncateDescription reintroduced that output, this is the property that says
+  // the build must stop — and it does: reverting the rule makes the guard throw inside buildSeo.
+  const raw = LONG_WITH_NO_EARLY_SENTENCE;
+  const asPublishedBefore = `${raw.slice(0, MAX_DESCRIPTION_LENGTH - 1).trimEnd()}…`;
+  assert.match(asPublishedBefore, /\binvoc…$/, 'fixture drift: this is no longer the shape that was published');
+  assert.equal(describesCompleteWords(raw, asPublishedBefore), false);
+});
+
+test('a workflow with no description at all still publishes the fallback sentence, and the guard does not fire on it', () => {
+  const { distDir, seoRoutesPath, catalogueDataPath } = fixture({
+    workflows: [{ id: 'no-description', name: 'No Description', description: null }],
+  });
+  buildSeo({ distDir, seoRoutesPath, catalogueDataPath, repoRoot: REAL_MODULE_ROOT });
+  const html = readFileSync(join(distDir, 'catalogue', 'no-description', 'index.html'), 'utf8');
+  const description = /<meta name="description" content="([^"]*)"/.exec(html)[1];
+  assert.equal(
+    description,
+    'No Description — a shipped, ready-to-run AgentForge4j workflow from the workflow catalogue.',
+  );
 });
 
 test('buildSeo writes the complete-word description into the real shell it publishes', () => {

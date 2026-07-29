@@ -16,7 +16,12 @@ import App from '@/App';
 import { ThemeProvider } from '@/theme/ThemeContext';
 import { findSeoRoute } from '@/config/seo';
 import { catalogueData } from '@/lib/catalogueData';
-import { catalogueWorkflowDescription } from '@/lib/catalogueSeo';
+import {
+  catalogueWorkflowDescription,
+  describesCompleteWords,
+  MAX_DESCRIPTION_LENGTH,
+  truncateDescription,
+} from '@/lib/catalogueSeo';
 // JSON_LD_SCRIPT_ID comes from build-seo.mjs deliberately, never re-typed as a literal here: the
 // static shell's script id and the one usePageSeo.ts's `setJsonLd` looks for MUST be the same
 // string, and this import is the only thing in the suite that can fail when they drift. A
@@ -26,8 +31,10 @@ import { catalogueWorkflowDescription } from '@/lib/catalogueSeo';
 // build-seo.mjs pulls in node:child_process — so the binding has to live here.)
 import {
   buildSeo,
+  catalogueWorkflowDescription as buildCatalogueWorkflowDescription,
   describesCompleteWords as buildDescribesCompleteWords,
   JSON_LD_SCRIPT_ID,
+  MAX_DESCRIPTION_LENGTH as buildMaxDescriptionLength,
   truncateDescription as buildTruncateDescription,
 } from '../scripts/build-seo.mjs';
 
@@ -274,27 +281,91 @@ describe('usePageSeo', () => {
 
 // --- Catalogue description truncation: the TS implementation the client renders from and the
 // plain-ESM one the build shell is written from are deliberate duplicates (neither can import the
-// other). This is what binds them: both are driven over the REAL shipped workflow data and must
-// agree exactly, so a fix applied to one and forgotten in the other fails here instead of shipping
-// two different meta descriptions for the same page.
+// other). This is what binds them, and it is the ONLY thing that does — the rule is far too big to
+// keep in sync by eye. Every duplicated unit is driven in both implementations, over the REAL
+// shipped workflow data AND over a corpus of hard cases the real data does not happen to contain,
+// and must agree exactly. A fix applied to one copy and forgotten in the other fails here instead
+// of shipping two different meta descriptions for the same page.
+//
+// The corpus matters as much as the real data: with only two shipped workflows, a divergence that
+// does not change those two specific strings would otherwise ship unobserved.
+
+const BINDING_CORPUS: readonly string[] = [
+  'A short, complete description.',
+  'x'.repeat(MAX_DESCRIPTION_LENGTH),
+  'x'.repeat(MAX_DESCRIPTION_LENGTH + 1),
+  'x'.repeat(400),
+  ','.repeat(300),
+  `Ok. ${'Alpha beta gamma delta '.repeat(20)}`,
+  `${'word '.repeat(28)}alpha, beta gamma delta epsilon zeta eta theta iota kappa lambda`,
+  `${'alpha\nbeta\ngamma\n'.repeat(20)}delta`,
+  'Runs adapters over several transports for governed workflow execution, e.g. HTTP, gRPC and ' +
+    'in-process, chosen per agent and per step by the configured provider for that run.',
+  'Estimates token range, agent turns, tool invocations, structural risk flags, etc. and then ' +
+    'returns a continue, narrow or stop recommendation for the caller to act on before executing.',
+  'A summary of the governed workflow that trails off with a long lead-in clause and then stops ' +
+    'mid thought... and afterwards continues for a good while longer than the budget.',
+  `A governed workflow summary that stops mid thought... ${'x'.repeat(200)}`,
+  `Runs adapters for governed AI workflow execution, e.g. ${'y'.repeat(200)}`,
+  'Supports the governed workflow contract as shipped in release 1.0. The rest of this sentence ' +
+    'exists only to push the text past the budget so the rule has something to shorten.',
+];
 
 describe('catalogue description truncation', () => {
-  test('the client-side and build-time implementations produce identical descriptions for every real shipped workflow', () => {
+  test('the budget itself is one number, not two — the TS copy matches the build copy', () => {
+    expect(MAX_DESCRIPTION_LENGTH).toBe(buildMaxDescriptionLength);
+  });
+
+  test('the client-side and build-time implementations produce identical descriptions for every real shipped workflow, fallback included', () => {
     expect(catalogueData.workflows.length).toBeGreaterThan(0);
     for (const workflow of catalogueData.workflows) {
+      // Bound against the build's OWN entry point, not its truncation rule: that is what covers
+      // the no-description fallback sentence, which `truncateDescription` never sees. A workflow
+      // with no description is valid (`description` is optional in workflow.schema.json), and
+      // comparing against the rule alone would fail on it while both copies behaved correctly.
       expect(catalogueWorkflowDescription(workflow), workflow.id).toBe(
-        buildTruncateDescription((workflow.description ?? '').trim()),
+        buildCatalogueWorkflowDescription(workflow),
       );
     }
   });
 
-  test('every real shipped workflow ends on a complete word, within the limit — and none reproduces the audited mid-word cut', () => {
+  test('a workflow with no description is bound too — both copies emit the same fallback sentence', () => {
+    const workflow = { id: 'no-description', name: 'No Description', description: null };
+    expect(catalogueWorkflowDescription(workflow)).toBe(buildCatalogueWorkflowDescription(workflow));
+    expect(catalogueWorkflowDescription(workflow)).toContain('ready-to-run AgentForge4j workflow');
+  });
+
+  test('both truncation implementations agree on every case in the shared corpus, not only on the two shipped strings', () => {
+    for (const raw of BINDING_CORPUS) {
+      expect(truncateDescription(raw), JSON.stringify(raw.slice(0, 40))).toBe(buildTruncateDescription(raw));
+    }
+  });
+
+  test('both validator implementations agree on every case in the shared corpus, and on the shapes the rule must reject', () => {
+    for (const raw of BINDING_CORPUS) {
+      const description = truncateDescription(raw);
+      expect(describesCompleteWords(raw, description), JSON.stringify(description)).toBe(
+        buildDescribesCompleteWords(raw, description),
+      );
+    }
+    // Rejection shapes, so the binding covers `false` results and not only `true` ones.
+    const source = 'token range, agent turns, tool invocations, complexity';
+    for (const candidate of ['token range, agent turns, tool invoc…', 'alpha delta…', '…', source]) {
+      expect(describesCompleteWords(source, candidate), candidate).toBe(
+        buildDescribesCompleteWords(source, candidate),
+      );
+    }
+  });
+
+  test('every real shipped workflow ends on a complete word, within the limit — and none reproduces the mid-word cut this rule replaced', () => {
     for (const workflow of catalogueData.workflows) {
       const raw = (workflow.description ?? '').trim();
       const description = catalogueWorkflowDescription(workflow);
-      expect(description.length, workflow.id).toBeLessThanOrEqual(157);
-      expect(buildDescribesCompleteWords(raw, description), `${workflow.id}: ${description}`).toBe(true);
-      // The two published examples the audit named, stated as the properties they violated.
+      expect(description.length, workflow.id).toBeLessThanOrEqual(MAX_DESCRIPTION_LENGTH);
+      if (raw) {
+        expect(describesCompleteWords(raw, description), `${workflow.id}: ${description}`).toBe(true);
+      }
+      // The two descriptions this site actually published, stated as the properties they violated.
       expect(description).not.toMatch(/\bSin…$/);
       expect(description).not.toMatch(/\binvoc…$/);
     }

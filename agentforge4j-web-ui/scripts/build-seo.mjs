@@ -77,7 +77,10 @@
 //
 // Per-workflow title/description formatting mirrors src/lib/catalogueSeo.ts (used by the
 // client-side title/meta sync, usePageSeo) — duplicated deliberately, not imported, because this
-// is plain Node ESM with no bundler step ahead of it; kept to two small, easy-to-eyeball rules.
+// is plain Node ESM with no bundler step ahead of it. The truncation rule is far too big to keep
+// in sync by eye, so nothing here relies on that: tests/usePageSeo.test.tsx drives BOTH copies of
+// every duplicated unit over the real shipped catalogue data and a shared corpus of hard cases,
+// and requires identical results.
 
 import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
@@ -93,7 +96,11 @@ const DIST_DIR = join(MODULE_ROOT, 'dist');
 const SEO_ROUTES_PATH = join(MODULE_ROOT, 'src', 'config', 'seo-routes.json');
 const CATALOGUE_DATA_PATH = join(MODULE_ROOT, 'src', 'generated', 'catalogue-data.json');
 
-const MAX_DESCRIPTION_LENGTH = 157; // mirrors src/lib/catalogueSeo.ts
+/** The published meta-description budget. Exported, and imported by the test suites rather than
+ * re-typed there — the same "one opaque constant, no second place to drift" reasoning
+ * JSON_LD_SCRIPT_ID's own comment sets out below. src/lib/catalogueSeo.ts holds the one
+ * unavoidable copy (it cannot import this module), bound to this one by tests/usePageSeo.test.tsx. */
+export const MAX_DESCRIPTION_LENGTH = 157;
 
 // Every generated route shell is a directory (dist/<path>/index.html), which GitHub Pages only
 // serves without a redirect at its trailing-slash address — the non-slash form 301s there. The
@@ -228,13 +235,31 @@ function catalogueWorkflowTitle(workflow) {
 
 /** Below this a truncated description stops being a useful snippet — see catalogueSeo.ts. */
 const MIN_USEFUL_DESCRIPTION_LENGTH = 80;
-const SENTENCE_END_PATTERN = /[^\s][.!?](?=\s|$)/g;
-const TRAILING_CLAUSE_PUNCTUATION = /[\s,;:—–-]+$/;
+/** A CANDIDATE sentence end; `endsSentence` decides whether it is a real one. See catalogueSeo.ts. */
+const SENTENCE_END_PATTERN = /(\S+)[.!?](?=\s|$)/g;
+/** Dangling clause punctuation, and a `...` run that would otherwise publish `thought...…` — see
+ * catalogueSeo.ts. A single trailing dot is kept: it belongs to an abbreviation. */
+const TRAILING_CLAUSE_PUNCTUATION = /(\.{2,}|[\s,;:—–-])+$/;
+/** The mirror of the above, for `describesCompleteWords` — see catalogueSeo.ts. */
+const DROPPED_CLAUSE_PUNCTUATION = /^(\.{2,}|[,;:—–-])+/;
+/** The last whitespace of any kind in a window — see catalogueSeo.ts. */
+const LAST_WORD_BOUNDARY_PATTERN = /\s\S*$/;
+
+/** Mirrors src/lib/catalogueSeo.ts's `endsSentence` — an abbreviation (`e.g.`, `etc. and`) or a
+ * trailing `...` is not a sentence end, and taking one for a sentence discards most of the budget
+ * and reads as broken. See that copy for the reasoning behind both tests. */
+function endsSentence(raw, word, end) {
+  if (word.includes('.')) {
+    return false;
+  }
+  const rest = raw.slice(end);
+  return rest.trim().length === 0 || /^\s+\p{Lu}/u.test(rest);
+}
 
 /** Mirrors src/lib/catalogueSeo.ts's `truncateDescription` exactly — the same deliberate
- * duplication (not import) this file's header documents for the other two catalogue rules, bound to
- * that copy by tests/usePageSeo.test.tsx, which drives BOTH implementations over the same real
- * workflow data and requires identical output.
+ * duplication (not import) this file's header documents for the other catalogue rules, bound to
+ * that copy by tests/usePageSeo.test.tsx, which drives BOTH implementations over the real shipped
+ * workflow data and a shared corpus of hard cases and requires identical output.
  *
  * Never a fixed-offset slice: that is what published `…and a verification starter). Sin…` and
  * `…tool invoc…` as this site's own meta descriptions. Sentences first, whole words otherwise. */
@@ -248,14 +273,16 @@ export function truncateDescription(raw) {
     if (end > MAX_DESCRIPTION_LENGTH) {
       break;
     }
-    lastSentenceEnd = end;
+    if (endsSentence(raw, match[1], end)) {
+      lastSentenceEnd = end;
+    }
   }
   if (lastSentenceEnd >= MIN_USEFUL_DESCRIPTION_LENGTH) {
     return raw.slice(0, lastSentenceEnd);
   }
   const window = raw.slice(0, MAX_DESCRIPTION_LENGTH - 1);
-  const lastSpace = window.lastIndexOf(' ');
-  const words = (lastSpace === -1 ? window : window.slice(0, lastSpace)).replace(TRAILING_CLAUSE_PUNCTUATION, '');
+  const boundary = window.search(LAST_WORD_BOUNDARY_PATTERN);
+  const words = (boundary === -1 ? window : window.slice(0, boundary)).replace(TRAILING_CLAUSE_PUNCTUATION, '');
   return `${words}…`;
 }
 
@@ -276,25 +303,46 @@ export function describesCompleteWords(raw, description) {
   if (firstBoundary === -1 || firstBoundary >= body.length) {
     return true;
   }
-  const remainder = trimmed.slice(body.length).replace(/^[,;:—–-]+/, '');
+  const remainder = trimmed.slice(body.length).replace(DROPPED_CLAUSE_PUNCTUATION, '');
   return remainder.length === 0 || /^\s/.test(remainder);
 }
 
-function catalogueWorkflowDescription(workflow) {
+/** The published `<meta name="description">` for one catalogue workflow, and the point at which a
+ * description that ends mid-word becomes impossible to publish silently: the rule's output is
+ * checked on every real build, for every shipped workflow — not only for the ones anyone thought
+ * to look at. Exported so tests/usePageSeo.test.tsx can bind it to src/lib/catalogueSeo.ts's copy,
+ * fallback sentence and all. */
+export function catalogueWorkflowDescription(workflow) {
   const raw = workflow.description?.trim();
   if (!raw) {
     return `${workflow.name} — a shipped, ready-to-run AgentForge4j workflow from the workflow catalogue.`;
   }
   const description = truncateDescription(raw);
-  // Checked here, on every real build, for every shipped workflow — not only for the two whose
-  // truncation an audit happened to look at. A description that ends mid-word is a defect in the
-  // truncation rule, and this is the point at which it becomes impossible to publish one silently.
+  // Reported separately from the word-boundary failure below, because the cause is different and
+  // the fix is different: nothing survived truncation at all (a source that is entirely clause
+  // punctuation), so the workflow's own text is what needs attention, not the rule.
+  if (description.replace(/…$/, '').length === 0) {
+    throw new Error(
+      `build-seo: the description generated for catalogue workflow "${workflow.id}" is empty — its source ` +
+        `text has no words to keep: ${JSON.stringify(raw)}`,
+    );
+  }
+  // The specification of "no word was cut in half", re-checked against the source on every build.
+  // No INPUT reaches this branch while the rule above is correct — every one of its three paths
+  // ends on a real boundary — so it carries no negative test of its own, and that is the point: it
+  // is what stops a future REGRESSION of the rule from publishing, not a filter on bad workflows.
+  // Restoring the fixed-offset slice makes it fire here, inside buildSeo, for the real shipped
+  // agent-creator and workflow-execution-estimator descriptions. The empty-source refusal above is
+  // the reachable one, and the test that drives it end-to-end is what proves this whole block is
+  // wired into buildSeo at all rather than merely present.
   if (!describesCompleteWords(raw, description)) {
     throw new Error(
       `build-seo: the description generated for catalogue workflow "${workflow.id}" does not end on a word ` +
         `boundary of its source text: ${JSON.stringify(description)}`,
     );
   }
+  // Same standing as the check above, and the same reason for having no negative test:
+  // `truncateDescription` cannot exceed the budget on any of its three branches.
   if (description.length > MAX_DESCRIPTION_LENGTH) {
     throw new Error(
       `build-seo: the description generated for catalogue workflow "${workflow.id}" is ${description.length} ` +
