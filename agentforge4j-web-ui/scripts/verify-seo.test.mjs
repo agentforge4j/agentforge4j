@@ -460,6 +460,30 @@ test('fails closed when a leaked JSON-LD script pads its media type with whitesp
   );
 });
 
+test('fails closed when a leaked JSON-LD script carries a sibling attribute whose value contains a literal ">"', async () => {
+  // The under-detection direction, on the caller where under-detection is the unsafe one. A `>`
+  // inside a quoted attribute value does not end the start tag — the HTML tokenizer only ends it
+  // on a `>` outside quotes — so this block renders as real structured data. A start-tag matcher
+  // spelled `<script\b[^>]*>` truncates at the `>` in `data-note`, never reads the `type`
+  // attribute that follows it, and reports the page clean. This is the control for the shared
+  // `tagSource` tokenizer on the <script> path; the anchor path has its own.
+  const distDir = fixtureDir();
+  const leaked = { '@context': 'https://schema.org', '@type': 'WebSite', name: 'AgentForge4j' };
+  writePage(
+    distDir,
+    'architecture',
+    page({
+      canonical: 'https://agentforge4j.org/architecture/',
+      extraHead: `<script data-note="a > b" type="application/ld+json">${JSON.stringify(leaked)}</script>`,
+    }),
+  );
+  writeFileSync(join(distDir, 'sitemap.xml'), sitemapXml([{ url: 'https://agentforge4j.org/architecture/', lastmod: '2026-07-20' }]), 'utf8');
+  await assert.rejects(
+    () => verifySeo({ distDir, staticRoutes: [{ requestPath: '/architecture/', expectedCanonical: 'https://agentforge4j.org/architecture/' }] }),
+    /has 1 JSON-LD script\(s\) but declares no jsonLd/,
+  );
+});
+
 test('a stray JSON-LD block on a non-configured sitemap URL is caught in the widened spellings too, not only on configured routes', async () => {
   // Both leak checks share one extractor, so this proves the widened matcher reaches the second
   // caller — the catalogue detail shells nothing else covers — rather than only the first.
@@ -528,6 +552,28 @@ test('an id padded with whitespace is rejected rather than silently trimmed to a
   await assert.rejects(
     () => verifySeo({ distDir, staticRoutes: [{ requestPath: '/', expectedCanonical: 'https://agentforge4j.org/', jsonLd }] }),
     /has id " seo-json-ld " — expected/,
+  );
+});
+
+test('the id and type readers still see attributes that follow a sibling value containing a literal ">"', async () => {
+  // Sibling path of the stray-JSON-LD control above: `id` and `type` are read out of the attribute
+  // list `tagSource` captures, so a start tag truncated at a `>` inside an earlier quoted value
+  // hides both of them at once. Placing the `>`-bearing attribute FIRST is what makes this bite —
+  // the wrong-id rejection below can only be reached by a reader that got the whole list.
+  const distDir = fixtureDir();
+  const jsonLd = { '@context': 'https://schema.org', '@type': 'WebSite', name: 'AgentForge4j' };
+  writePage(
+    distDir,
+    '',
+    page({
+      canonical: 'https://agentforge4j.org/',
+      extraHead: `<script data-note="a > b" id="not-the-shared-id" type="application/ld+json">${JSON.stringify(jsonLd)}</script>`,
+    }),
+  );
+  writeFileSync(join(distDir, 'sitemap.xml'), sitemapXml([{ url: 'https://agentforge4j.org/', lastmod: '2026-07-20' }]), 'utf8');
+  await assert.rejects(
+    () => verifySeo({ distDir, staticRoutes: [{ requestPath: '/', expectedCanonical: 'https://agentforge4j.org/', jsonLd }] }),
+    /has id "not-the-shared-id" — expected/,
   );
 });
 

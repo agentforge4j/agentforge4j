@@ -653,7 +653,16 @@ export async function verifySeo({
     // over real HTTP — through the same GitHub-Pages-emulating server whose own 301 behaviour is
     // self-checked above — is what makes this a statement about what visitors and crawlers get,
     // rather than about one config file's literals: it holds for links from nav.ts, from page
-    // components, and from anywhere a future link is added, none of which this file enumerates.
+    // components, and from anywhere a future link is added to the served markup, none of which
+    // this file enumerates.
+    //
+    // Scoped honestly: the corpus is the PRERENDERED markup of each served page, so a link that
+    // only exists after a client-side interaction (the header's mobile menu panel, and any future
+    // modal or drawer) is not in it and cannot be — there is no browser here to open it. The one
+    // such surface that exists today is covered at the component level instead, by
+    // tests/App.test.tsx's canonical-internal-link-form assertion, which renders the shell with
+    // the menu open; a new one would have to be added there too. The two are complements, not one
+    // guard and its duplicate.
     const sourcesByTarget = new Map();
     for (const [sourcePath, html] of servedHtmlByPath) {
       for (const target of extractInternalLinkTargets(html, sourcePath)) {

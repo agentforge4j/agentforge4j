@@ -9,9 +9,15 @@
  * form `seo.ts`'s `canonicalUrl` and `build-seo.mjs`'s `withTrailingSlash` already publish as
  * every route's canonical and sitemap URL, so a bare-form link would make the site's own
  * navigation disagree with its own canonicals and send every internal click (and every crawl
- * hop) through a redirect. `verify-seo.mjs` crawls the real production build and fails on any
- * internal link that does not answer 200 directly, so this cannot silently regress here or at
- * any other link site.
+ * hop) through a redirect. Two guards hold this, with deliberately different corpora:
+ * `verify-seo.mjs` crawls the real production build and fails on any internal link in the
+ * PRERENDERED markup that does not answer 200 directly — which covers this file, every page
+ * component, and any future link site, but by construction cannot see a link that exists only
+ * after a client-side interaction; `tests/App.test.tsx`'s canonical-internal-link-form assertion
+ * covers the one such surface that exists today, the header's mobile menu panel, by rendering the
+ * shell with it open. So a bare-form entry in this file cannot regress silently by either route —
+ * but a NEW client-only surface (a modal, a drawer) is outside both corpora until it is added to
+ * that assertion, which is the cost of the client-only rendering, not an oversight.
  * Internal to this module for the foundation track — not consumed by the Docusaurus
  * theme (that cross-build sharing is deferred alongside full visual parity).
  *
