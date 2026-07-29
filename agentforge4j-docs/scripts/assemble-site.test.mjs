@@ -56,7 +56,11 @@ function fixture() {
   const buildDir = join(root, 'build');
   const javadocDir = join(root, 'javadoc-next');
   mkdirSync(spaDir, {recursive: true});
-  writeFileSync(join(spaDir, 'index.html'), '<html>spa</html>');
+  // The real SPA links the documentation entry point directly, in both its primary nav and its
+  // footer (agentforge4j-web-ui/src/config/nav.ts). Modelling that here rather than as a bare
+  // `<html>spa</html>` is what makes `verifyComposedSpaDocsLinks` non-vacuous in these suites — a
+  // fixture with no docs link would satisfy the gate by having nothing for it to check.
+  writeFileSync(join(spaDir, 'index.html'), '<html><body><a href="/docs/0.1.0/">Docs</a></body></html>');
   // The real SPA build ships dist/404.html as the empty pre-prerender SPA shell (copy-404.mjs).
   writeFileSync(join(spaDir, '404.html'), '<html>spa</html>');
   // The real SPA build also ships its own robots.txt and sitemap.xml fragment (build-seo.mjs) —
@@ -75,6 +79,11 @@ function fixture() {
       '<meta http-equiv="refresh" content="0; url=/docs/0.1.0/">' +
       '<link rel="canonical" href="/docs/0.1.0/" /></head></html>',
   );
+  // The versioned tree that stub — and the SPA's own Docs link — actually point at. Without it the
+  // composed artifact would carry a documentation entry point that does not exist, which is exactly
+  // what `verifyComposedSpaDocsLinks` is there to refuse.
+  mkdirSync(join(buildDir, '0.1.0'), {recursive: true});
+  writeFileSync(join(buildDir, '0.1.0', 'index.html'), '<html><head><title>Get started</title></head><body>docs</body></html>');
   // The real Docusaurus build ships its own sitemap.xml (the sitemap plugin's postBuild output).
   writeFileSync(join(buildDir, 'sitemap.xml'), sitemapXmlFixture(['https://agentforge4j.org/docs/0.1.0/']));
   mkdirSync(javadocDir, {recursive: true});
@@ -180,8 +189,10 @@ test('in the no-released-version composition, /next/ and /latest/ are copied fro
 test('copies the SPA build to the site root, including its own index.html/404.html', () => {
   const {spaDir, buildDir, javadocDir, archiveDir, siteDir} = fixture();
   assembleSite({spaDir, buildDir, javadocDir, archiveDir, siteDir, customDomain: null});
-  assert.equal(readFileSync(join(siteDir, 'index.html'), 'utf8'), '<html>spa</html>');
-  assert.equal(readFileSync(join(siteDir, '404.html'), 'utf8'), '<html>spa</html>');
+  // Compared against the fixture's own bytes rather than a duplicated literal: the point is that the
+  // SPA is copied through unchanged, which stays true however the fixture's pages evolve.
+  assert.equal(readFileSync(join(siteDir, 'index.html'), 'utf8'), readFileSync(join(spaDir, 'index.html'), 'utf8'));
+  assert.equal(readFileSync(join(siteDir, '404.html'), 'utf8'), readFileSync(join(spaDir, '404.html'), 'utf8'));
   assert.ok(existsSync(join(siteDir, '.nojekyll')));
 });
 
@@ -1642,4 +1653,52 @@ test("the real Docusaurus sitemap config stays compatible with the parser's narr
   assembleSite({spaDir, buildDir, javadocDir, archiveDir, siteDir, customDomain: null});
   const merged = readFileSync(join(siteDir, 'sitemap.xml'), 'utf8');
   assert.match(merged, /<loc>https:\/\/agentforge4j\.org\/docs\/0\.1\.0\/<\/loc>/);
+});
+
+// --- Steps 8 and 9 must be WIRED, not merely implemented. Both are exported and unit-tested
+// directly by redirect-stub-seo.test.mjs, which says nothing about whether assembleSite calls them:
+// deleting either call left every one of these suites green while the stubs shipped raw and the
+// documentation entry point went unverified. `assemble-site.mjs` runs only in the deploy workflow,
+// so a unit test of a function nobody calls is the whole guard. ---
+
+test('WIRING — assembleSite itself labels the composed client-redirect stubs (step 8)', () => {
+  const {spaDir, buildDir, javadocDir, archiveDir, siteDir} = fixture();
+  assembleSite({spaDir, buildDir, javadocDir, archiveDir, siteDir, customDomain: null});
+
+  const stub = readFileSync(join(siteDir, 'docs', 'index.html'), 'utf8');
+  assert.match(stub, /<title>Documentation — AgentForge4j<\/title>/, 'the composed stub must carry a real title');
+  assert.match(stub, /<meta name="robots" content="noindex, follow">/, 'and be explicitly non-indexable');
+  assert.match(stub, /<meta name="description" content="[^"]+">/, 'and describe itself');
+  // The redirect itself, and the plugin's own canonical, are untouched by the pass.
+  assert.match(stub, /<meta http-equiv="refresh" content="0; url=\/docs\/0\.1\.0\/">/);
+  assert.match(stub, /<link rel="canonical" href="\/docs\/0\.1\.0\/" \/>/);
+});
+
+test('WIRING — assembleSite itself verifies the /docs/ addresses the composed SPA links (step 9)', () => {
+  const {spaDir, buildDir, javadocDir, archiveDir, siteDir} = fixture();
+  // The SPA links /docs/0.1.0/, but this docs build does not publish it. That is precisely the
+  // silent failure the gate exists for: every other check passes, and the site's only route into
+  // the documentation 404s.
+  rmSync(join(buildDir, '0.1.0'), {recursive: true, force: true});
+  const exits = [];
+  assembleSite({spaDir, buildDir, javadocDir, archiveDir, siteDir, customDomain: null, exit: (code) => exits.push(code)});
+  assert.ok(exits.includes(1), 'a docs link with no page behind it must fail the composition');
+});
+
+test('NEGATIVE CONTROL — a composed SPA that links no /docs/ address at all fails closed', () => {
+  // The gate must not pass by having nothing to check: the site has a Docs entry in both its nav and
+  // its footer, so "no docs links found" means they stopped being emitted, not that all is well.
+  const {spaDir, buildDir, javadocDir, archiveDir, siteDir} = fixture();
+  writeFileSync(join(spaDir, 'index.html'), '<html><body>no docs link here</body></html>');
+  const exits = [];
+  assembleSite({spaDir, buildDir, javadocDir, archiveDir, siteDir, customDomain: null, exit: (code) => exits.push(code)});
+  assert.ok(exits.includes(1), 'zero recognised docs links must fail, not pass vacuously');
+});
+
+test('step 9 accepts the real composed artifact — the SPA link resolves to a published page', () => {
+  const {spaDir, buildDir, javadocDir, archiveDir, siteDir} = fixture();
+  const exits = [];
+  assembleSite({spaDir, buildDir, javadocDir, archiveDir, siteDir, customDomain: null, exit: (code) => exits.push(code)});
+  assert.deepEqual(exits, [], 'the happy path must not exit');
+  assert.ok(existsSync(join(siteDir, 'docs', '0.1.0', 'index.html')));
 });
