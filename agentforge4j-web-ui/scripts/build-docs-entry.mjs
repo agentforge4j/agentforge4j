@@ -50,6 +50,27 @@ function readVersionList(path) {
 }
 
 /**
+ * A path segment safe to splice into a site-wide URL: `next`, or a version string of the shape
+ * `versions.json` actually holds.
+ *
+ * `versions.json` is a committed JSON file, which is exactly the argument assemble-site.mjs makes
+ * for validating its own committed manifests (`isSafeManifestPath`) — the production writer already
+ * satisfies the rule, and the check guards against a hand-edit or a merge-conflict resolution
+ * corrupting the file undetected. Without it a stray `../` or a non-string entry becomes the href
+ * on every page of the site and nothing fails: the docs build would reject the same file, but
+ * `web-ui.yml` runs independently of it and would go green.
+ */
+function validateEntrySegment(segment) {
+  if (typeof segment !== 'string' || !/^(?:next|\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)$/.test(segment)) {
+    throw new Error(
+      `build-docs-entry: refusing to build a docs entry URL from ${JSON.stringify(segment)} — expected ` +
+        "'next' or a version of the shape agentforge4j-docs/versions.json holds. Check that file.",
+    );
+  }
+  return segment;
+}
+
+/**
  * The site-root-relative, trailing-slash URL of the current documentation entry point — e.g.
  * `/docs/0.1.0/` once 0.1.0 is the newest supported stable, `/docs/next/` before any release.
  *
@@ -57,13 +78,23 @@ function readVersionList(path) {
  * generated docs page is a directory, which GitHub Pages serves without a redirect only at its
  * slash address.
  *
+ * KNOWN LIMITATION, pre-first-release only. With an empty `versions.json` this resolves to
+ * `/docs/next/`, which the site deliberately keeps out of its own index — `/docs/next/**` is
+ * `noindex,follow` (agentforge4j-docs/scripts/verify-noindex.mjs) and excluded from the sitemap
+ * (docusaurus.config.ts's `sitemap.ignorePatterns`). Linking it as the site's only Docs entry is
+ * therefore in tension with that policy. It is accepted rather than worked around: before a first
+ * release there is no indexable documentation to point at, `next` is genuinely the current docs,
+ * and the alternative — linking the `/docs/` stub in that state only — reintroduces the extra hop
+ * this script exists to remove. The tension disappears at the first release cut and does not exist
+ * at this repository's current state (`versions.json` is non-empty).
+ *
  * @param {{versions?: string[], lts?: string[]}} [lists]
  * @returns {string}
  */
 export function resolveDocsEntryUrl({ versions, lts } = {}) {
   const released = versions ?? readVersionList(join(DOCS_MODULE_ROOT, 'versions.json'));
   const longTerm = lts ?? readVersionList(join(DOCS_MODULE_ROOT, 'lts.json'));
-  return `/docs/${docsEntryPath(supportWindow(released, longTerm))}/`;
+  return `/docs/${validateEntrySegment(docsEntryPath(supportWindow(released, longTerm)))}/`;
 }
 
 export function buildDocsEntry({ outPath = OUT_PATH } = {}) {

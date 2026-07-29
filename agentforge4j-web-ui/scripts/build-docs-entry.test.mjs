@@ -53,3 +53,31 @@ test('buildDocsEntry writes the resolved URL where nav.ts imports it from', () =
   assert.deepEqual(JSON.parse(readFileSync(outPath, 'utf8')), { url });
   assert.match(url, /^\/docs\/.+\/$/);
 });
+
+// --- The version segment becomes a site-wide URL, so it is held to the same fail-closed standard
+// assemble-site.mjs applies to its own committed manifests (`isSafeManifestPath`). ---
+
+test('NEGATIVE CONTROL — a traversal segment is refused rather than spliced into every page\'s href', () => {
+  assert.throws(() => resolveDocsEntryUrl({ versions: ['../evil'], lts: [] }), /refusing to build a docs entry URL/);
+});
+
+test('NEGATIVE CONTROL — a non-string entry is refused rather than stringified into the URL', () => {
+  for (const bogus of [{ version: '0.1.0' }, 42, ['0.1.0']]) {
+    assert.throws(() => resolveDocsEntryUrl({ versions: [bogus], lts: [] }), /refusing to build a docs entry URL/);
+  }
+});
+
+test('a FALSY entry degrades to /docs/next/ rather than throwing — deliberately, so the two sides still agree', () => {
+  // `docsEntryPath` is `(window && window.latest) || 'next'`, and it is the same function
+  // docusaurus.config.ts drives its own `/` and `/latest` redirects from. A `null`/`""` entry
+  // therefore makes the DOCS BUILD point at `next` too. Refusing it here would be the one outcome
+  // this script exists to prevent: the site and the docs build disagreeing about where the current
+  // documentation lives. The corrupt file still fails, in the docs build, where it is authoritative.
+  for (const falsy of [null, '', 0]) {
+    assert.equal(resolveDocsEntryUrl({ versions: [falsy], lts: [] }), '/docs/next/');
+  }
+});
+
+test('a pre-release version string is accepted — the shape versions.json really can hold', () => {
+  assert.equal(resolveDocsEntryUrl({ versions: ['1.0.0-rc.1'], lts: [] }), '/docs/1.0.0-rc.1/');
+});

@@ -230,8 +230,9 @@ describe('footer navigation', () => {
   test('every route is reachable from either the primary nav or the footer, except deliberate aliases', () => {
     // /contributing is a deliberate alias of /community (same content, same nav entry) —
     // not a defect, so it's excluded here rather than asserted unreachable. /docs is excluded
-    // too: it is deliberately NOT an SPA route (the docs link nav test above covers its real
-    // href, /docs/, into the composed artifact rather than an internal route).
+    // too: it is deliberately NOT an SPA route (the docs link nav tests above cover its real
+    // href — the versioned /docs/<version>/ tree in the composed artifact, resolved at build
+    // time by scripts/build-docs-entry.mjs — rather than an internal route).
     renderAt('/');
     const reachableHrefs = new Set(
       screen.getAllByRole('link').map((link) => link.getAttribute('href')),
