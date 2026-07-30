@@ -255,11 +255,22 @@ describe('canonical internal link form', () => {
       .getAllByRole('link')
       .map((link) => link.getAttribute('href') ?? '')
       .filter((href) => href.startsWith('/') && !href.startsWith('//'));
-    // Non-vacuity, derived from the nav config rather than hand-picked: with the menu open every
-    // primary entry and the CTA render twice (desktop nav + mobile panel) alongside every footer
-    // link, so pruning or unmounting any one of those surfaces drops below this floor instead of
-    // quietly continuing to satisfy it. Greater-than-or-equal, not equal: the home page body
-    // legitimately adds its own links, and this guard is about their form, not their number.
+    // Non-vacuity floor, derived from the nav config rather than hand-picked: with the menu open
+    // the shell must render every primary entry and the CTA twice (desktop nav + mobile panel) plus
+    // every footer link. It exists so a render that produced no links — or lost a whole surface —
+    // cannot satisfy the loop below by having nothing to check.
+    //
+    // Scoped to what it actually proves: the shell renders 27 such links (desktop nav 6, mobile
+    // panel 7, footer 10, plus the CTA, logo and page body) against a floor of 24, so the margin
+    // absorbs the loss of up to three. Losing one of the three multi-link surfaces outright is
+    // therefore caught, since the smallest of them is the desktop nav at six. Three things are NOT
+    // caught: pruning a few links out of a surface, dropping the single-link CTA or logo, and
+    // deleting entries from the nav config itself — the floor is computed from the same arrays the
+    // components render from, so a config deletion moves floor and render together. Route
+    // reachability is the `footer navigation` assertion's job above, which names its routes
+    // explicitly; this floor only keeps the form check below from passing on an empty or gutted
+    // render. Greater-than-or-equal, not equal: the home page body legitimately adds links of its
+    // own, and this guard is about their form, not their number.
     const navInternalLinkCount =
       (PRIMARY_NAV.length + 1) * 2 + FOOTER_COLUMNS.reduce((total, column) => total + column.links.length, 0);
     expect(internalHrefs.length).toBeGreaterThanOrEqual(navInternalLinkCount);
