@@ -313,6 +313,86 @@ function assertConstantSocialTagsAreConstant(values) {
   }
 }
 
+// Mounts that exist only in the FINAL composed artifact, never in this module's own dist/:
+// agentforge4j-docs/scripts/assemble-site.mjs copies the Docusaurus build to /docs/ and each
+// Javadoc surface to /javadoc/**. A link into one of those is a real, correct production link
+// this build simply has nothing to answer with, so it is excluded from the crawl below — but
+// never on trust: `assertComposedOnlyPrefixesAreAbsentLocally` re-proves on every run that each
+// prefix really is absent from this build, so a genuine SPA path can never hide behind an entry
+// here and escape the crawl. A declaration that nothing links into any more is harmless by
+// construction and deliberately not treated as an error: an exclusion can only ever remove link
+// targets that were actually found, so an unused one narrows nothing — the failure mode worth
+// guarding is the opposite one, an entry shadowing a path this build really does serve.
+const COMPOSED_ONLY_LINK_PREFIXES = ['/docs/', '/javadoc/'];
+
+/** Every site-internal `<a href>` target in `html` — the page served at `sourcePath` — as request
+ * paths, with any `#fragment` and `?query` dropped and duplicates left in (the caller deduplicates
+ * across pages).
+ *
+ * Reads the anchor the way `extractJsonLdScripts` reads a script tag — tokenise the element, then
+ * look the attribute up by name — so all three quoting forms the HTML tokenizer accepts
+ * (`href="x"`, `href='x'`, bare `href=x`) are read, attribute order is free, and a quoted value
+ * carrying a literal `>` does not truncate the tag (see `tagSource`). Anchoring on one exact
+ * spelling would make this a statement about how today's producers happen to format their markup
+ * rather than about the links the served page really contains — the same distinction
+ * `extractJsonLdScripts`'s own comment draws — and a link this missed is a link the crawl below
+ * would silently never check.
+ *
+ * Internal means same-origin *after resolution against the page's own address*, not "the href
+ * starts with a slash". A bare-form `https://agentforge4j.org/api`, or a bare-form relative `api`
+ * on `/`, redirects in production exactly like the root-relative `/api` this gate was written for,
+ * and a rule keyed on the literal spelling waves both through — the same how-it-is-written versus
+ * what-it-resolves-to distinction as above, one level up. Resolving also settles the
+ * protocol-relative case by construction instead of by special case: `//example.com/x` lands
+ * off-origin and drops out, while `//agentforge4j.org/x` really is an internal link and is crawled.
+ * `mailto:`, `tel:` and every other non-site origin drop out the same way.
+ *
+ * Fragment-only (`#main-content`, the skip link) and query-only hrefs address the page they are
+ * already on rather than a route, and are skipped before resolution so the crawl reports link
+ * targets rather than handing every page its own address back.
+ *
+ * HTML comments are stripped first. Unlike the JSON-LD readers — where a commented-out block being
+ * seen is fail-closed — an anchor found inside a comment is a link no browser can follow, so
+ * counting it would fail the build over markup that ships inert.
+ *
+ * Scope stated rather than assumed: `<a>` only (this site renders no `<area>` or other link
+ * element), and attribute values are read raw rather than HTML-entity-decoded — no producer here
+ * emits an entity inside an href, and that direction fails towards checking a link at its literal
+ * spelling rather than skipping it.
+ *
+ * Exported so the extraction rule itself is directly testable against real served markup rather
+ * than only through the end-to-end gate. */
+export function extractInternalLinkTargets(html, sourcePath) {
+  const base = `${SITE_ORIGIN}${sourcePath}`;
+  return [...stripHtmlComments(html).matchAll(ANCHOR_TAG_PATTERN)]
+    .map((match) => attributeValue(match[1], HREF_ATTR_PATTERN))
+    .filter((href) => href !== null && href !== '' && !href.startsWith('#') && !href.startsWith('?'))
+    .map((href) => resolveSameOrigin(href, base))
+    .filter((resolved) => resolved !== null)
+    .map((resolved) => resolved.pathname);
+}
+
+/** `html` with every HTML comment removed, so a reader below cannot mistake commented-out markup
+ * for markup the page actually renders. */
+function stripHtmlComments(html) {
+  return html.replace(/<!--[\s\S]*?-->/g, '');
+}
+
+/** Re-proves, on every run, that no `COMPOSED_ONLY_LINK_PREFIXES` entry is shadowing a path this
+ * build really serves — see that constant's own comment. */
+function assertComposedOnlyPrefixesAreAbsentLocally(distDir) {
+  for (const prefix of COMPOSED_ONLY_LINK_PREFIXES) {
+    const localPath = join(distDir, ...prefix.split('/').filter(Boolean));
+    if (existsSync(localPath)) {
+      throw new Error(
+        `verify-seo: "${prefix}" is excluded from the internal-link crawl as composed-artifact-only, but this ` +
+          `build really does serve ${localPath} — it is a real path of this module's own and must be crawled, ` +
+          'not excluded',
+      );
+    }
+  }
+}
+
 /** `{width, height}` from a PNG's IHDR header. PNG is the only format this build publishes as a
  * social image; anything else must extend this rather than be waved through, so an unrecognized
  * format throws instead of silently skipping the dimension agreement check its caller performs. */
@@ -374,9 +454,39 @@ function attributePattern(name) {
   return new RegExp(`(?:^|[\\s/])${name}\\s*=\\s*(?:"([^"]*)"|'([^']*)'|([^\\s"'\`=<>]+))`, 'i');
 }
 
+/** The source of a start-tag matcher for `name`, capturing its raw attribute list.
+ *
+ * A `>` only ends the tag when it sits outside an attribute value, exactly as the HTML tokenizer
+ * treats it — so a `title="a > b"` next to the attribute being read cannot truncate the tag and
+ * hide the element from whichever reader below is looking for it. Built once, for the same reason
+ * `attributePattern` is: two hand-written tag regexes in one file drift into recognising different
+ * subsets of legal HTML, and here the drift is silent in the worst direction (an element skipped is
+ * an element never checked). The alternatives are disjoint on their first character, so there is no
+ * backtracking to worry about. */
+function tagSource(name) {
+  return `<${name}\\b((?:[^>"']|"[^"]*"|'[^']*')*)>`;
+}
+
 const TYPE_ATTR_PATTERN = attributePattern('type');
 const ID_ATTR_PATTERN = attributePattern('id');
 const CONTENT_ATTR_PATTERN = attributePattern('content');
+const HREF_ATTR_PATTERN = attributePattern('href');
+const ANCHOR_TAG_PATTERN = new RegExp(tagSource('a'), 'gi');
+const META_TAG_PATTERN = new RegExp(tagSource('meta'), 'gi');
+const JSON_LD_SCRIPT_PATTERN = new RegExp(`${tagSource('script')}([\\s\\S]*?)<\\/script>`, 'g');
+
+/** `value` resolved against `base`, or `null` when it names another origin or is not a URL a
+ * browser could follow at all. One reader for the only question this file ever asks of a raw URL
+ * string — is this address on our own site, after resolution rather than by its spelling. */
+function resolveSameOrigin(value, base) {
+  let resolved;
+  try {
+    resolved = new URL(value, base);
+  } catch {
+    return null;
+  }
+  return resolved.origin === SITE_ORIGIN ? resolved : null;
+}
 
 /** The raw, untrimmed value of an attribute in `attrs`, or `null` when it is absent. Whichever of
  * the three quoting forms matched, exactly one of the three groups is set. */
@@ -385,12 +495,15 @@ function attributeValue(attrs, pattern) {
   return match ? (match[1] ?? match[2] ?? match[3]) : null;
 }
 
-/** Every `<meta>` element's raw attribute list, in document order. Bounded to actual tags the same
- * way `extractJsonLdScripts` is, and with the same acknowledged limitation: an attribute value
- * containing a literal `>` would end the tag early. No producer here emits one, and the failure
- * direction is over- rather than under-detection. */
+/** Every `<meta>` element's raw attribute list, in document order — read through the shared
+ * `tagSource` matcher, so a `>` inside an attribute value cannot truncate the tag and hide the
+ * element from the readers below. That is the whole reason `tagSource` exists: a second
+ * hand-written tag regex in this file would drift into recognising a different subset of legal
+ * HTML from the one `extractJsonLdScripts` and `extractInternalLinkTargets` accept, silently and
+ * in the worst direction — a meta element skipped here reads as absent, which fails the build on a
+ * page that is in fact correct, and lets a genuine duplicate go uncounted. */
 function metaAttributeLists(html) {
-  return [...html.matchAll(/<meta\b([^>]*)>/gi)].map((match) => match[1]);
+  return [...html.matchAll(META_TAG_PATTERN)].map((match) => match[1]);
 }
 
 /** The `content` of the single `<meta>` identified by `attribute="key"`, or `null` when absent —
@@ -447,11 +560,11 @@ function singleMetaContent(html, attribute, key, label) {
  * an id with spaces in it, which `document.getElementById('seo-json-ld')` does not find — trimming
  * it here would wave through precisely the shell the id check exists to reject.
  *
- * Not handled, and not claimed to be: an attribute value containing a literal `>`, which the outer
- * tag regex ends the tag on. No producer here emits one, and the failure direction is over- rather
- * than under-detection. */
+ * An attribute value containing a literal `>` is handled too, via the shared `tagSource` tokenizer
+ * — previously it ended the tag early, which under-detected on the one caller (stray-JSON-LD
+ * absence) where under-detection is the unsafe direction. */
 function extractJsonLdScripts(html) {
-  return [...html.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script>/g)]
+  return [...html.matchAll(JSON_LD_SCRIPT_PATTERN)]
     .filter((match) => attributeValue(match[1], TYPE_ATTR_PATTERN)?.trim().toLowerCase() === 'application/ld+json')
     .map((match) => ({ id: attributeValue(match[1], ID_ATTR_PATTERN), content: match[2] }));
 }
@@ -496,13 +609,8 @@ function assetUrlStrings(value) {
 function sameOriginAssetPaths(jsonLd) {
   const paths = new Set();
   const consider = (value) => {
-    let resolved;
-    try {
-      resolved = new URL(value, `${SITE_ORIGIN}/`);
-    } catch {
-      return;
-    }
-    if (resolved.origin === SITE_ORIGIN) {
+    const resolved = resolveSameOrigin(value, `${SITE_ORIGIN}/`);
+    if (resolved !== null) {
       paths.add(`${resolved.pathname}${resolved.search}`);
     }
   };
@@ -576,6 +684,14 @@ export async function verifySeo({
   const constantSocialValues = new Map();
   let socialImageChecked = 'none declared';
 
+  // Every page this run actually served, keyed by the path it was served at — filled by both
+  // loops below and consumed once by the internal-link crawl after them, so the crawl covers the
+  // union of "every sitemap URL" and "every configured static route" (a superset of either alone:
+  // catalogue detail shells are only in the first, `sitemap: false` aliases only in the second)
+  // without re-fetching a single page.
+  const servedHtmlByPath = new Map();
+  let internalLinksChecked = 0;
+
   const server = await startGhPagesEmulatingServer(distDir);
   const { port } = server.address();
   const origin = `http://127.0.0.1:${port}`;
@@ -626,6 +742,7 @@ export async function verifySeo({
         throw new Error(`verify-seo: sitemap URL ${url} did not return 200 with no redirect (got ${response.status})`);
       }
       const html = await response.text();
+      servedHtmlByPath.set(path, html);
 
       // Only `seo-routes.json` routes can declare `jsonLd`, and the loop below checks every one of
       // them against its own declaration. A sitemap URL that is NOT one of those routes — every
@@ -664,6 +781,7 @@ export async function verifySeo({
         );
       }
       const html = await response.text();
+      servedHtmlByPath.set(requestPath, html);
 
       // Proven against the real dist/ output this build actually produced, not just a fixture:
       // a route that declares jsonLd must carry exactly one JSON-LD script whose content parses as
@@ -801,6 +919,62 @@ export async function verifySeo({
       }
       socialImageChecked = `${imageUrl.pathname} (${width}x${height})`;
     }
+
+    // Internal-link crawl. Canonicals and sitemap URLs are published in the trailing-slash form
+    // GitHub Pages serves directly, but the site's own navigation is a separate surface that can
+    // (and did) disagree with them: every generated route is a directory, so a bare-form `href`
+    // costs a 301 on every internal click and every crawl hop, and makes the site link to a URL
+    // its own canonical says is not the address of that page. Asking the real production build
+    // over real HTTP — through the same GitHub-Pages-emulating server whose own 301 behaviour is
+    // self-checked above — is what makes this a statement about what visitors and crawlers get,
+    // rather than about one config file's literals: it holds for links from nav.ts, from page
+    // components, and from anywhere a future link is added to the served markup, none of which
+    // this file enumerates.
+    //
+    // Scoped honestly: the corpus is the PRERENDERED markup of each served page, so a link that
+    // only exists after a client-side interaction (the header's mobile menu panel, and any future
+    // modal or drawer) is not in it and cannot be — there is no browser here to open it. The one
+    // such surface that exists today is covered at the component level instead, by
+    // tests/App.test.tsx's canonical-internal-link-form assertion, which renders the shell with
+    // the menu open; a new one would have to be added there too. The two are complements, not one
+    // guard and its duplicate.
+    const sourcesByTarget = new Map();
+    for (const [sourcePath, html] of servedHtmlByPath) {
+      for (const target of extractInternalLinkTargets(html, sourcePath)) {
+        if (!sourcesByTarget.has(target)) {
+          sourcesByTarget.set(target, new Set());
+        }
+        sourcesByTarget.get(target).add(sourcePath);
+      }
+    }
+    assertComposedOnlyPrefixesAreAbsentLocally(distDir);
+
+    const crawlableTargets = [...sourcesByTarget.keys()].filter(
+      (target) => !COMPOSED_ONLY_LINK_PREFIXES.some((prefix) => target.startsWith(prefix)),
+    );
+    // Non-vacuity, stated as a real precondition rather than assumed: a corpus whose pages
+    // collectively link nowhere would make every assertion in the loop below true by having
+    // nothing to assert over, and would report the same clean line as a genuinely correct build.
+    if (crawlableTargets.length === 0) {
+      throw new Error(
+        `verify-seo: found no crawlable internal links at all across ${servedHtmlByPath.size} served page(s) — ` +
+          'the internal-link check would be vacuous, so this is a failure, not a pass',
+      );
+    }
+    for (const target of crawlableTargets.sort()) {
+      const response = await fetch(`${origin}${target}`, { redirect: 'manual' });
+      if (response.status !== 200) {
+        const sources = [...sourcesByTarget.get(target)].sort().join(', ');
+        throw new Error(
+          `verify-seo: internal link ${target} (linked from ${sources}) did not return 200 with no redirect ` +
+            `(got ${response.status}) — every internal link must target the canonical trailing-slash form the ` +
+            'host serves directly, not a form that redirects to it',
+        );
+      }
+      // Counted as each target actually clears, never set to the intended total up front: the
+      // number this run reports is then the number it really proved, even if it exits early.
+      internalLinksChecked += 1;
+    }
   } finally {
     await new Promise((resolvePromise) => server.close(resolvePromise));
   }
@@ -817,7 +991,10 @@ export async function verifySeo({
       `200) — with no JSON-LD on any sitemap URL or configured route that declares none — and, on every one of those ` +
       `pages, each of the ${REQUIRED_ROUTE_SCOPED_SOCIAL_TAGS.length} route-scoped social tags present exactly once and equal ` +
       `to the page's own title/description/canonical, every site-constant social tag present, non-empty and genuinely ` +
-      `constant across the corpus, social image ${socialImageChecked} — all clean`,
+      `constant across the corpus, social image ${socialImageChecked} — plus ${internalLinksChecked} ` +
+      `distinct internal link target(s) across those pages, each served 200 with no redirect (composed-artifact-only ` +
+      `mounts ${COMPOSED_ONLY_LINK_PREFIXES.join(', ')} excluded, each re-proven absent from this build so none can ` +
+      'be shadowing a real path) — all clean',
   );
 }
 
