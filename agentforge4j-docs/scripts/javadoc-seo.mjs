@@ -49,10 +49,17 @@
 // mechanism, unchanged from the original design.
 //
 // One page in every surface is NOT maven-javadoc-plugin output at all: `surfaces.html`, hand-authored
-// by `build-javadoc.mjs` itself as the three-surface landing page, ships with no
-// `<meta name="description">` tag by design. Recognized by filename below and passed
-// `allowMissingDescription: true` so it gets a fresh description inserted instead of tripping the
-// template-drift check every other (genuine plugin-generated) page is still held to.
+// by `build-javadoc.mjs` itself as the landing page that makes the stitched-surface split explicit.
+// Recognized by filename below, it is the one page carrying TWO carve-outs, both keyed on that same
+// exact filename and on nothing else:
+//
+//   - `allowMissingDescription: true` — it ships with no `<meta name="description">` tag by design,
+//     so it gets a fresh one inserted instead of tripping the template-drift check every other
+//     (genuine plugin-generated) page is still held to;
+//   - its own copy (`surfacesLandingCopy`) instead of the generic per-page rule — its raw `<title>`
+//     is brand-prefixed prose rather than the bare identifier every generated page carries, so it is
+//     the one page in the corpus whose title, heading and description are neither surface-derived
+//     nor derived from its own raw title.
 
 import { existsSync, readdirSync, readFileSync, realpathSync, statSync, writeFileSync } from 'node:fs';
 import { isAbsolute, join, relative } from 'node:path';
@@ -477,14 +484,32 @@ function surfaceCopy(label) {
  * `heading` differs from `title` deliberately: the `<title>` is read in a search result, where the
  * brand and the lifecycle state are the context that makes it meaningful, while the `<h1>` is read
  * with the page already open, where repeating them is the noise that made the old heading clumsy.
+ *
+ * The description deliberately does NOT name or count the surfaces. That list is authored in a
+ * DIFFERENT module (`build-javadoc.mjs`'s landing-page template) and, for every version-pinned
+ * surface, by THAT RELEASE TAG's own historical copy of it (see build-javadoc-versions.mjs) — this
+ * pass runs against the already-composed output and cannot see which surfaces a given tag's build
+ * actually produced. Enumerating them here would be this module inventing a claim about content it
+ * does not own, which is precisely what `nestedPageCopy` below exists to avoid: a future release
+ * that adds or drops a surface would silently publish a description its own page body contradicts,
+ * with no test able to fail. What is said instead holds for any surface set — the page explains the
+ * split and links each one.
+ *
+ * Kept inside the 157-character meta-description budget the rest of this site already publishes to
+ * (`agentforge4j-web-ui/scripts/build-seo.mjs`'s `MAX_DESCRIPTION_LENGTH`): a longer description is
+ * cut in the search result, and at 157 the first wording of this one was cut mid-word. Asserted for
+ * every lifecycle label in this module's tests rather than enforced at runtime — `nestedPageCopy`'s
+ * descriptions are as long as the page title they quote, so a hard limit in `injectJavadocPageSeo`
+ * would fail the whole site build on one long class name. The bound is knowable in advance only
+ * here, where the wording is fixed and only the label varies.
  */
 function surfacesLandingCopy(label) {
   return {
     title: `API Surfaces — AgentForge4j API Reference (${label})`,
     heading: `AgentForge4j API Surfaces (${label})`,
     description:
-      `How the AgentForge4j API reference (${label}) is split across its three independently generated ` +
-      'surfaces: the modular aggregate, the MCP integration, and the Spring Boot starter.',
+      `How the AgentForge4j API reference (${label}) is split across its independently generated ` +
+      'surfaces, with a link to each one.',
   };
 }
 

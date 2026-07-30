@@ -363,9 +363,20 @@ test('an explicit `heading` writes a different <h1> from the <title> — and cha
 
   // Omitting `heading` must be byte-identical to passing the title as the heading, so this option
   // cannot have quietly changed any other page.
+  const baseline = injectJavadocPageSeo(RAW_SURFACES_LANDING_HTML, options);
+  assert.equal(baseline, injectJavadocPageSeo(RAW_SURFACES_LANDING_HTML, { ...options, heading: options.title }));
+
+  // "changes nothing else" PROVED, not sampled: rewriting the one <h1> back to what the no-heading
+  // call produces must reproduce that output byte for byte. Asserting the <h1>, <title> and
+  // og:title individually (above) cannot show the heading reached no OTHER sink — a regression
+  // routing it into twitter:title, the description, or the body would leave all three green.
   assert.equal(
-    injectJavadocPageSeo(RAW_SURFACES_LANDING_HTML, options),
-    injectJavadocPageSeo(RAW_SURFACES_LANDING_HTML, { ...options, heading: options.title }),
+    withHeading.replace(
+      '<h1>AgentForge4j API Surfaces (next, in-development)</h1>',
+      `<h1>${options.title}</h1>`,
+    ),
+    baseline,
+    'an explicit heading must differ from the default rendering in the <h1> and nowhere else',
   );
 });
 
@@ -1477,8 +1488,73 @@ test('surfaces.html gets an intentional, lifecycle-aware title and a distinct he
 test('surfaces.html gets a description about what the page actually is, not the generic per-page one', () => {
   const read = surfacesFixture('javadoc/latest', ['0.1.0']);
   const html = read('javadoc/latest');
-  assert.match(html, /<meta name="description" content="How the AgentForge4j API reference \(latest stable, 0\.1\.0\) is split across its three independently generated surfaces[^"]*">/);
+  assert.match(html, /<meta name="description" content="How the AgentForge4j API reference \(latest stable, 0\.1\.0\) is split across its independently generated surfaces, with a link to each one\.">/);
   assert.equal((html.match(/<meta name="description"/g) ?? []).length, 1);
+});
+
+// The budget the rest of this site already publishes to — agentforge4j-web-ui/scripts/build-seo.mjs's
+// MAX_DESCRIPTION_LENGTH, itself mirroring src/lib/catalogueSeo.ts. Restated (not imported) because
+// these are two independently built modules with no dependency between them; the number is asserted
+// here so this page cannot drift back over it unnoticed, as it did at 190 characters — cut mid-word
+// at exactly this bound.
+const MAX_META_DESCRIPTION_LENGTH = 157;
+
+test(`surfaces.html's description stays within the ${MAX_META_DESCRIPTION_LENGTH}-character meta-description budget in EVERY lifecycle state — a longer one is truncated in the search result`, () => {
+  // Every label surfacesLandingCopy can be handed, including the pre-release one (no released
+  // version yet) and a deliberately long future version string — the label is the only part that
+  // varies, so the worst case is knowable in advance and must be asserted, not assumed.
+  const { siteDir } = fixtureSiteDirWithNestedPages('javadoc/latest', ['10.20.30-rc1']);
+  for (const mountPath of ['javadoc/next', 'javadoc/latest', 'javadoc/10.20.30-rc1']) {
+    writeFileSync(join(siteDir, ...mountPath.split('/'), 'surfaces.html'), RAW_SURFACES_LANDING_HTML, 'utf8');
+  }
+  applyJavadocSeo({
+    siteDir,
+    siteUrl: 'https://agentforge4j.org',
+    ogImage: 'https://agentforge4j.org/brand/icon-512.png',
+    releasedVersions: ['10.20.30-rc1'],
+  });
+  for (const mountPath of ['javadoc/next', 'javadoc/latest', 'javadoc/10.20.30-rc1']) {
+    const html = readFileSync(join(siteDir, ...mountPath.split('/'), 'surfaces.html'), 'utf8');
+    const description = /<meta name="description" content="([^"]*)">/.exec(html);
+    assert.ok(description, `${mountPath}: no description tag`);
+    assert.ok(
+      description[1].length <= MAX_META_DESCRIPTION_LENGTH,
+      `${mountPath}: ${description[1].length} characters, over the ${MAX_META_DESCRIPTION_LENGTH} budget: ${description[1]}`,
+    );
+  }
+});
+
+test('the pre-release lifecycle state (no released version yet) gets the same intentional landing copy, within budget', () => {
+  // releasedVersions: [] — /latest/ mirrors /next/ and its label is `latest (pre-release)`, a
+  // shape no other test in this file exercises for this page.
+  const { siteDir } = fixtureSiteDirWithNestedPages('javadoc/next', []);
+  for (const mountPath of ['javadoc/next', 'javadoc/latest']) {
+    writeFileSync(join(siteDir, ...mountPath.split('/'), 'surfaces.html'), RAW_SURFACES_LANDING_HTML, 'utf8');
+  }
+  applyJavadocSeo({
+    siteDir,
+    siteUrl: 'https://agentforge4j.org',
+    ogImage: 'https://agentforge4j.org/brand/icon-512.png',
+    releasedVersions: [],
+  });
+  const html = readFileSync(join(siteDir, 'javadoc', 'latest', 'surfaces.html'), 'utf8');
+  assert.match(html, /<title>API Surfaces — AgentForge4j API Reference \(latest \(pre-release\)\)<\/title>/);
+  assert.match(html, /<h1>AgentForge4j API Surfaces \(latest \(pre-release\)\)<\/h1>/);
+  const description = /<meta name="description" content="([^"]*)">/.exec(html);
+  assert.ok(description[1].length <= MAX_META_DESCRIPTION_LENGTH, `${description[1].length} characters`);
+});
+
+test('the landing description names no surface and counts none — it must not assert content build-javadoc.mjs owns', () => {
+  // The surface list lives in build-javadoc.mjs's landing-page template, and for a version-pinned
+  // surface in THAT TAG's own historical copy of it. This pass runs against composed output and
+  // cannot see either, so a description naming or counting the surfaces would be an unverifiable
+  // claim that a future release could silently make false — see surfacesLandingCopy.
+  const read = surfacesFixture('javadoc/latest', ['0.1.0']);
+  for (const mountPath of ['javadoc/next', 'javadoc/latest', 'javadoc/0.1.0']) {
+    const description = /<meta name="description" content="([^"]*)">/.exec(read(mountPath))[1];
+    assert.doesNotMatch(description, /\bthree\b/i, `${mountPath}: description counts the surfaces`);
+    assert.doesNotMatch(description, /\bMCP\b|Spring Boot|aggregate/i, `${mountPath}: description names a surface`);
+  }
 });
 
 test("the carve-out does not weaken the residual-window-title oracle: no surfaces.html is labelled with the generator's own (next) window title", () => {
