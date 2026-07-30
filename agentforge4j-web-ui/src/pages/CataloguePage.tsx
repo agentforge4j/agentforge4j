@@ -18,7 +18,7 @@ export default function CataloguePage() {
           {workflows.map((workflow) => (
             <li key={workflow.id} className="rounded-lg border border-border p-6">
               <h2 className="text-xl font-semibold text-fg">
-                <Link to={`/catalogue/${workflow.id}`} className="hover:underline">
+                <Link to={`/catalogue/${workflow.id}/`} className="hover:underline">
                   {workflow.name}
                 </Link>
               </h2>
