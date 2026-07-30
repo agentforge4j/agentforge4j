@@ -56,7 +56,7 @@ The tier vocabulary is part of the public workflow definition schema and agent c
 
 ## Follow-up work
 
-- A fourth capability tier has been proposed and is under review; if accepted it amends this record. Automatic tier selection has been proposed and is not accepted.
+- A fourth capability tier has been proposed and is under review ([ADR-0035](0035-premium-as-a-fourth-model-capability-tier.md)); if accepted it amends this record. Automatic tier selection has been proposed and is not accepted.
 
 ## Related documents
 

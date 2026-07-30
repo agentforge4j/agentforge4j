@@ -17,6 +17,7 @@ Shipped tier defaults for provider id `gemini`:
 | `LITE` | `gemini-3.1-flash-lite` |
 | `STANDARD` | `gemini-3.5-flash` |
 | `POWERFUL` | `gemini-3.1-pro` |
+| `PREMIUM` | `gemini-3.1-pro` |
 
 ## How it activates
 
