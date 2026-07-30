@@ -21,20 +21,18 @@ import { dirname, extname, isAbsolute, join, relative, resolve } from 'node:path
 // build-seo.test.mjs and prerender-routes.test.mjs already do, and what this repo's lint block for
 // `scripts/**/*.mjs` requires (it declares only console/process/Buffer/fetch as globals).
 import { fileURLToPath, URL } from 'node:url';
-// The only two imports of another script's internals in this file, and both are the same deliberate
-// exception to the convention withTrailingSlash's own comment below documents ("duplicated
-// deliberately, not imported"). That convention governs DERIVATIONS — two scripts computing the same
-// answer from the same committed config compute it separately, so a bug in one cannot make the other
-// agree with it. Neither of these is a derivation:
+// The one import of another script's internals in this file, and a deliberate exception to the
+// convention withTrailingSlash's own comment below documents ("duplicated deliberately, not
+// imported"). That convention governs DERIVATIONS — two scripts computing the same answer from the
+// same committed config compute it separately, so a bug in one cannot make the other agree with it.
+// JSON_LD_SCRIPT_ID is not a derivation: it is an opaque literal whose entire contract is "these
+// bytes are identical everywhere", with no config to re-derive it from. Re-typing it here would not
+// buy independence, only a third place to drift.
 //
-//   JSON_LD_SCRIPT_ID is an opaque literal whose entire contract is "these bytes are identical
-//   everywhere", with no config to re-derive it from. Re-typing it here would not buy independence,
-//   only a third place to drift.
-//
-//   ROUTE_SCOPED_SOCIAL_TAGS is the single authoritative statement of WHICH tags are route-scoped.
-//   Re-listing them here would let this check quietly cover fewer tags than the build actually
-//   writes — the same class of divergence the table itself exists to end.
-import { JSON_LD_SCRIPT_ID, ROUTE_SCOPED_SOCIAL_TAGS } from './build-seo.mjs';
+// The route-scoped social tag list is deliberately NOT imported — see
+// REQUIRED_ROUTE_SCOPED_SOCIAL_TAGS below for why an imported list would make this gate's coverage
+// a function of the very producer it is checking.
+import { JSON_LD_SCRIPT_ID } from './build-seo.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const MODULE_ROOT = join(here, '..');
@@ -186,12 +184,38 @@ function h1Count(html) {
   return (html.match(/<h1[\s>]/g) ?? []).length;
 }
 
+/**
+ * The route-scoped social tags this gate REQUIRES every published page to carry, stated
+ * independently of the producer that writes them.
+ *
+ * Deliberately duplicated rather than imported from build-seo.mjs's `ROUTE_SCOPED_SOCIAL_TAGS` —
+ * the same convention withTrailingSlash's own comment below documents, and for a sharper reason
+ * than usual. An imported list makes this gate's coverage a function of the very thing it checks:
+ * delete an entry from the producer's table and `injectHead` stops rewriting that tag AND this file
+ * stops looking for it in the same edit, so every shell silently ships index.html's home-page value
+ * for it — the crawler-visible half of the exact defect this pass fixed — with this gate green.
+ * (verify-client-nav-seo.mjs cannot cover that either: `usePageSeo` runs on a direct load too, so
+ * both sides of its convergence comparison are hook-written and agree regardless of what the shell
+ * shipped.) Stated here, a producer-side deletion fails the real build on the first route.
+ *
+ * The opposite drift — a tag ADDED to the producer's table and not to this one — is closed by
+ * verify-seo.test.mjs, which imports both lists and asserts they are equal in both directions. That
+ * assertion is the only place the two are allowed to meet.
+ */
+export const REQUIRED_ROUTE_SCOPED_SOCIAL_TAGS = [
+  { attribute: 'property', key: 'og:title', source: 'title' },
+  { attribute: 'property', key: 'og:description', source: 'description' },
+  { attribute: 'property', key: 'og:url', source: 'canonical' },
+  { attribute: 'name', key: 'twitter:title', source: 'title' },
+  { attribute: 'name', key: 'twitter:description', source: 'description' },
+];
+
 // The site-constant social tags: identical on every page, so index.html is their one home and a
-// route change has nothing to re-derive for them (see build-seo.mjs's ROUTE_SCOPED_SOCIAL_TAGS,
-// which is deliberately the complement of this list). Checked for PRESENCE and non-emptiness on
-// every served shell rather than against expected literals — this file is not a second copy of the
-// site's marketing copy, and a check that restated those strings would fail on every legitimate
-// wording change while catching nothing a human would not already see.
+// route change has nothing to re-derive for them (deliberately the complement of the route-scoped
+// list above). Checked for PRESENCE and non-emptiness on every served shell rather than against
+// expected literals — this file is not a second copy of the site's marketing copy, and a check that
+// restated those strings would fail on every legitimate wording change while catching nothing a
+// human would not already see.
 const CONSTANT_SOCIAL_TAGS = [
   { attribute: 'property', key: 'og:type' },
   { attribute: 'property', key: 'og:site_name' },
@@ -199,6 +223,7 @@ const CONSTANT_SOCIAL_TAGS = [
   { attribute: 'property', key: 'og:image:alt' },
   { attribute: 'name', key: 'twitter:card' },
   { attribute: 'name', key: 'twitter:image' },
+  { attribute: 'name', key: 'twitter:image:alt' },
 ];
 
 // Twitter/X only honours a large summary card when the image is at least this size; below it the
@@ -210,14 +235,11 @@ const LARGE_IMAGE_CARD_MIN_HEIGHT = 157;
 const RECOMMENDED_LARGE_IMAGE_WIDTH = 1200;
 const RECOMMENDED_LARGE_IMAGE_HEIGHT = 630;
 
-/** `{width, height}` from a PNG's IHDR header. PNG is the only format this build publishes as a
- * social image; anything else must extend this rather than be waved through, so an unrecognized
- * format throws instead of silently skipping the dimension agreement check below. */
 /**
  * Proves one served page's social metadata against the page itself, not against a copy of the
  * site's own copywriting:
  *
- *  - every route-scoped tag (build-seo.mjs's ROUTE_SCOPED_SOCIAL_TAGS) is present exactly once and
+ *  - every route-scoped tag (REQUIRED_ROUTE_SCOPED_SOCIAL_TAGS above) is present exactly once and
  *    carries the same value as the `<title>` / description meta / canonical link it is derived
  *    from. This is the audited defect stated as an invariant: a page whose og:title says one thing
  *    while its `<title>` says another is wrong no matter which of the two is "right", and it is
@@ -230,11 +252,11 @@ const RECOMMENDED_LARGE_IMAGE_HEIGHT = 630;
 function assertSocialMetaConsistent(label, html, values) {
   const derivedFrom = {
     title: extractTag(html, /<title>([\s\S]*?)<\/title>/),
-    description: singleMetaContent(html, 'name', 'description'),
+    description: singleMetaContent(html, 'name', 'description', label),
     canonical: extractTag(html, /<link rel="canonical" href="([^"]+)"/),
   };
-  for (const { attribute, key, source } of ROUTE_SCOPED_SOCIAL_TAGS) {
-    const actual = singleMetaContent(html, attribute, key);
+  for (const { attribute, key, source } of REQUIRED_ROUTE_SCOPED_SOCIAL_TAGS) {
+    const actual = singleMetaContent(html, attribute, key, label);
     if (actual === null) {
       throw new Error(`verify-seo: ${label} — no <meta ${attribute}="${key}"> tag at all`);
     }
@@ -246,7 +268,7 @@ function assertSocialMetaConsistent(label, html, values) {
     }
   }
   for (const { attribute, key } of CONSTANT_SOCIAL_TAGS) {
-    const value = singleMetaContent(html, attribute, key);
+    const value = singleMetaContent(html, attribute, key, label);
     if (value === null || value.trim() === '') {
       throw new Error(`verify-seo: ${label} — <meta ${attribute}="${key}"> is missing or empty`);
     }
@@ -258,7 +280,7 @@ function assertSocialMetaConsistent(label, html, values) {
   // Dimensions are optional in principle but load-bearing here (see index.html) — recorded when
   // declared so the caller can check them against the real image bytes.
   for (const key of ['og:image:width', 'og:image:height']) {
-    const value = singleMetaContent(html, 'property', key);
+    const value = singleMetaContent(html, 'property', key, label);
     if (value !== null) {
       if (!values.has(key)) {
         values.set(key, new Map());
@@ -291,6 +313,9 @@ function assertConstantSocialTagsAreConstant(values) {
   }
 }
 
+/** `{width, height}` from a PNG's IHDR header. PNG is the only format this build publishes as a
+ * social image; anything else must extend this rather than be waved through, so an unrecognized
+ * format throws instead of silently skipping the dimension agreement check its caller performs. */
 function pngDimensions(bytes) {
   const signature = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
   if (bytes.length < 24 || Buffer.compare(bytes.subarray(0, 8), signature) !== 0) {
@@ -382,14 +407,21 @@ function metaAttributeLists(html) {
  * `extractJsonLdScripts`'s own comment draws, and this file should not answer it two different ways.
  *
  * Fail-closed behaviour is unchanged: a genuinely missing tag still reads as `null` (the caller
- * rejects it) and duplicates still throw here. */
-function singleMetaContent(html, attribute, key) {
+ * rejects it) and duplicates still throw here.
+ *
+ * `label` names the page under inspection. It is required rather than optional because this is the
+ * one assertion in the social pass that only real `dist/` output can trigger, and a corpus of 25
+ * pages makes an unattributed "on one page" unactionable — every sibling assertion in
+ * `assertSocialMetaConsistent` already names the page it failed on. */
+function singleMetaContent(html, attribute, key, label) {
   const identifying = attributePattern(attribute);
   const contents = metaAttributeLists(html)
     .filter((attrs) => attributeValue(attrs, identifying) === key)
     .map((attrs) => attributeValue(attrs, CONTENT_ATTR_PATTERN));
   if (contents.length > 1) {
-    throw new Error(`verify-seo: ${contents.length} <meta ${attribute}="${key}"> tags on one page — expected exactly one`);
+    throw new Error(
+      `verify-seo: ${label} — ${contents.length} <meta ${attribute}="${key}"> tags on one page — expected exactly one`,
+    );
   }
   return contents.length === 1 ? contents[0] : null;
 }
@@ -783,7 +815,7 @@ export async function verifySeo({
       `and ${staticRoutes.length} configured static route(s) (200, no redirect, exactly one real <h1>, expected canonical, ` +
       `declared JSON-LD present with the shared script id and matching content, every same-origin asset it names served ` +
       `200) — with no JSON-LD on any sitemap URL or configured route that declares none — and, on every one of those ` +
-      `pages, each of the ${ROUTE_SCOPED_SOCIAL_TAGS.length} route-scoped social tags present exactly once and equal ` +
+      `pages, each of the ${REQUIRED_ROUTE_SCOPED_SOCIAL_TAGS.length} route-scoped social tags present exactly once and equal ` +
       `to the page's own title/description/canonical, every site-constant social tag present, non-empty and genuinely ` +
       `constant across the corpus, social image ${socialImageChecked} — all clean`,
   );

@@ -46,8 +46,13 @@ interface RouteScopedSocialTag {
  * Must stay in exact agreement with `ROUTE_SCOPED_SOCIAL_TAGS` in scripts/build-seo.mjs — the
  * build-time static shell's own copy, and the authority for what a fresh page load already carries.
  * Re-declared rather than imported only because this module cannot import build-seo.mjs at all (it
- * pulls in node:child_process). `tests/usePageSeo.test.tsx` imports that constant and asserts the
- * two tables are equal, which is the single assertion that fails if they ever drift apart.
+ * pulls in node:child_process). Exported solely so `tests/usePageSeo.test.tsx` can import both
+ * tables and assert they are equal — element for element, in both directions. That assertion is
+ * what fails if they ever drift apart, and it needs this table by value: iterating only the build's
+ * table (which is what the suite did at first) proves the hook writes everything the shell writes,
+ * but says nothing about a tag the hook writes and the shell does not — one that would then ship to
+ * JavaScript-executing consumers only, absent from every static shell a crawler receives, with
+ * every gate green.
  *
  * That drift is not hypothetical — it is the exact defect this table exists to close. The static
  * shell rewrote all five of these per route while this hook rewrote none, so a visitor who arrived
@@ -62,7 +67,7 @@ interface RouteScopedSocialTag {
  * index.html declares them once, and a route change has nothing to re-derive for them. That they
  * are present and correct on every built shell is proven separately by scripts/verify-seo.mjs.
  */
-const ROUTE_SCOPED_SOCIAL_TAGS: readonly RouteScopedSocialTag[] = [
+export const ROUTE_SCOPED_SOCIAL_TAGS: readonly RouteScopedSocialTag[] = [
   { attribute: 'property', key: 'og:title', source: 'title' },
   { attribute: 'property', key: 'og:description', source: 'description' },
   { attribute: 'property', key: 'og:url', source: 'canonical' },
@@ -131,7 +136,7 @@ function setJsonLd(jsonLd: JsonLd | undefined): void {
  * every branch below produces the same shape and there is exactly one place that applies it. The
  * three independent apply-sites this replaced are precisely what let the social tags be added on the
  * build side and forgotten here. */
-export interface ResolvedRouteSeo {
+interface ResolvedRouteSeo {
   readonly title: string;
   readonly description: string;
   readonly canonical: string;
@@ -149,11 +154,12 @@ function applyRouteSeo({ title, description, canonical, jsonLd }: ResolvedRouteS
   setJsonLd(jsonLd);
 }
 
-/** Resolves a path to its SEO state without touching the document — pure, so the mapping itself is
- * testable independently of the DOM writes, and so every branch is forced to produce one complete
- * state rather than a partial set of side effects. `null` only if the home entry itself is missing
- * from the committed config, which no real build can produce. */
-export function resolveRouteSeo(path: string): ResolvedRouteSeo | null {
+/** Resolves a path to its SEO state without touching the document, so every branch is forced to
+ * produce one complete state rather than a partial set of side effects — which is the property that
+ * makes `applyRouteSeo` above the single write path. Module-internal: the hook is the only caller,
+ * and the suite exercises the mapping through it rather than around it. `null` only if the home
+ * entry itself is missing from the committed config, which no real build can produce. */
+function resolveRouteSeo(path: string): ResolvedRouteSeo | null {
   const staticEntry = findSeoRoute(path);
   if (staticEntry) {
     return {

@@ -15,8 +15,19 @@ import { request } from 'node:http';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { loadStaticRouteInventory, resolveWithinRoot, startGhPagesEmulatingServer, verifySeo } from './verify-seo.mjs';
-import { JSON_LD_SCRIPT_ID } from './build-seo.mjs';
+import {
+  loadStaticRouteInventory,
+  REQUIRED_ROUTE_SCOPED_SOCIAL_TAGS,
+  resolveWithinRoot,
+  startGhPagesEmulatingServer,
+  verifySeo,
+} from './verify-seo.mjs';
+// The producer's own table, imported HERE and nowhere in verify-seo.mjs itself. This test file is
+// the one place the gate's independently-stated requirement and the build's table are allowed to
+// meet: the equality assertion below closes the "producer grew a tag the gate never learned about"
+// direction, while verify-seo.mjs staying independent closes the "producer dropped a tag and the
+// gate stopped looking" direction. Importing the table into the gate would close only the first.
+import { JSON_LD_SCRIPT_ID, ROUTE_SCOPED_SOCIAL_TAGS } from './build-seo.mjs';
 
 const REAL_MODULE_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -88,6 +99,7 @@ function page({
     'og:image:alt': 'A brand card',
     'twitter:card': 'summary_large_image',
     'twitter:image': `https://agentforge4j.org/${FIXTURE_IMAGE_PATH}`,
+    'twitter:image:alt': 'A brand card',
     ...constantSocial,
   };
   const social =
@@ -1220,4 +1232,60 @@ test('a sitemap URL that does not exist still fails the gate — serving 404.htm
     () => verifySeo({ distDir, staticRoutes: [] }),
     /sitemap URL https:\/\/agentforge4j\.org\/gone\/ did not return 200 with no redirect \(got 404\)/,
   );
+});
+
+// --- The gate's requirement vs the producer's table. verify-seo.mjs states which tags are
+// route-scoped independently (see REQUIRED_ROUTE_SCOPED_SOCIAL_TAGS), so that deleting an entry
+// from build-seo.mjs cannot delete this gate's coverage of it in the same edit. These two tests are
+// what make that arrangement safe in BOTH directions rather than merely different. ---
+
+test('the gate\'s required route-scoped tags and the build\'s table are equal — neither side may grow or shrink alone', () => {
+  assert.deepEqual(
+    REQUIRED_ROUTE_SCOPED_SOCIAL_TAGS,
+    ROUTE_SCOPED_SOCIAL_TAGS,
+    'verify-seo.mjs states the requirement independently of build-seo.mjs; when the build adds or ' +
+      'removes a route-scoped tag, both lists must be updated together and this assertion is what says so',
+  );
+  // Non-vacuity: two empty lists would satisfy deepEqual and check nothing at all.
+  assert.ok(REQUIRED_ROUTE_SCOPED_SOCIAL_TAGS.length > 0, 'expected at least one required route-scoped tag');
+});
+
+test('NEGATIVE CONTROL — removing a tag from the BUILD table does not shrink what this gate checks', async () => {
+  // The exact failure an imported list produced: dropping `og:url` from build-seo.mjs's table stops
+  // `injectHead` rewriting it, so every shell keeps index.html's home-page value — and, with a
+  // shared list, stopped this gate looking for it in the same edit. Statement of the property, not
+  // of the implementation: with the build table emptied entirely, a shell carrying a stale og:url
+  // must STILL be rejected.
+  const distDir = fixtureDir();
+  writePage(distDir, '', page({ canonical: 'https://agentforge4j.org/' }));
+  // /api/ is self-canonical but carries the HOME page's og:url — precisely what a shell looks like
+  // once injectHead stops rewriting that tag.
+  writePage(
+    distDir,
+    'api',
+    page({
+      canonical: 'https://agentforge4j.org/api/',
+      title: 'API Reference',
+      socialOverrides: { 'og:url': 'https://agentforge4j.org/' },
+    }),
+  );
+  writeFileSync(
+    join(distDir, 'sitemap.xml'),
+    sitemapXml([
+      { url: 'https://agentforge4j.org/', lastmod: '2026-07-20' },
+      { url: 'https://agentforge4j.org/api/', lastmod: '2026-07-20' },
+    ]),
+    'utf8',
+  );
+
+  const removed = ROUTE_SCOPED_SOCIAL_TAGS.splice(0, ROUTE_SCOPED_SOCIAL_TAGS.length);
+  try {
+    assert.equal(ROUTE_SCOPED_SOCIAL_TAGS.length, 0, 'the build table really is empty for this control');
+    await assert.rejects(
+      () => verifySeo({ distDir, staticRoutes: [] }),
+      /og:url is "https:\/\/agentforge4j\.org\/" but the page's own canonical is "https:\/\/agentforge4j\.org\/api\/"/,
+    );
+  } finally {
+    ROUTE_SCOPED_SOCIAL_TAGS.push(...removed);
+  }
 });

@@ -235,7 +235,14 @@ const config: Config = {
     // `twitter:card: summary_large_image` unconditionally, so the square icon was being served to
     // a large-card renderer that has no square layout — it letterboxes or centre-crops it. The
     // marketing SPA declares the same image for the same reason (see
-    // agentforge4j-web-ui/index.html), so the two halves of one site finally present the same card.
+    // agentforge4j-web-ui/index.html), so the SPA and the docs pages now present the same card.
+    //
+    // The Javadoc surfaces are the site's third published surface and deliberately do NOT: they
+    // declare the small `summary` card (javadoc-seo.mjs), for which the square icon is the correct
+    // pairing, and they take their image from assemble-site.mjs's own DEFAULT_OG_IMAGE. Unifying
+    // the two would mean changing that card type as well, which is a separate decision and not
+    // this file's to make. Both declarations are gated by scripts/lint-social-image.mjs, each
+    // against the size its own card type needs.
     image: `${SITE_URL}/brand/social-preview.png`,
     colorMode: {
       respectPrefersColorScheme: true,
