@@ -4,6 +4,7 @@ import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import App from '@/App';
+import { FOOTER_COLUMNS, PRIMARY_NAV } from '@/config/nav';
 import { ThemeProvider } from '@/theme/ThemeContext';
 
 function renderAt(path: string) {
@@ -194,7 +195,7 @@ describe('api nav placement', () => {
   test('/api appears in the primary navigation landmark, not footer-only', () => {
     renderAt('/');
     const primaryNav = screen.getByRole('navigation', { name: 'Primary' });
-    expect(within(primaryNav).getByRole('link', { name: 'API' })).toHaveAttribute('href', '/api');
+    expect(within(primaryNav).getByRole('link', { name: 'API' })).toHaveAttribute('href', '/api/');
   });
 });
 
@@ -227,8 +228,43 @@ describe('footer navigation', () => {
     const reachableHrefs = new Set(
       screen.getAllByRole('link').map((link) => link.getAttribute('href')),
     );
-    for (const path of ['/api', '/use', '/catalogue', '/builder', '/architecture', '/releases', '/community', '/security', '/legal', '/contact']) {
+    for (const path of ['/api/', '/use/', '/catalogue/', '/builder/', '/architecture/', '/releases/', '/community/', '/security/', '/legal/', '/contact/']) {
       expect(reachableHrefs.has(path)).toBe(true);
+    }
+  });
+});
+
+// Deliberately its own block rather than part of `footer navigation` above: the assertion below
+// spans the whole rendered shell — header nav, CTA, logo, page body, mobile menu and footer — so
+// filing it under one of those surfaces would let a future change that prunes or rescopes that
+// surface quietly take a shell-wide regression guard with it.
+describe('canonical internal link form', () => {
+  test('every internal link the shell renders, including the client-only mobile menu, is in the canonical trailing-slash form rather than the redirecting bare form', async () => {
+    // The companion, source-level half of scripts/verify-seo.mjs's production crawl. The two
+    // cover different corpora and neither subsumes the other: that gate reads the built site's
+    // prerendered markup, so it reaches every page body but nothing that exists only after a
+    // client-side interaction; this one renders the shell and OPENS THE MOBILE MENU, so it reaches
+    // the surface the crawl structurally cannot see. Each built route is a directory, so only the
+    // trailing-slash address is served without a 301 — and it is the exact form seo.ts's
+    // canonicalUrl already publishes as that page's canonical, so a bare-form href makes the site's
+    // own navigation disagree with its own canonicals.
+    const user = userEvent.setup();
+    renderAt('/');
+    await user.click(screen.getByRole('button', { name: 'Open menu' }));
+    const internalHrefs = screen
+      .getAllByRole('link')
+      .map((link) => link.getAttribute('href') ?? '')
+      .filter((href) => href.startsWith('/') && !href.startsWith('//'));
+    // Non-vacuity, derived from the nav config rather than hand-picked: with the menu open every
+    // primary entry and the CTA render twice (desktop nav + mobile panel) alongside every footer
+    // link, so pruning or unmounting any one of those surfaces drops below this floor instead of
+    // quietly continuing to satisfy it. Greater-than-or-equal, not equal: the home page body
+    // legitimately adds its own links, and this guard is about their form, not their number.
+    const navInternalLinkCount =
+      (PRIMARY_NAV.length + 1) * 2 + FOOTER_COLUMNS.reduce((total, column) => total + column.links.length, 0);
+    expect(internalHrefs.length).toBeGreaterThanOrEqual(navInternalLinkCount);
+    for (const href of internalHrefs) {
+      expect(href).toMatch(/\/$/);
     }
   });
 });

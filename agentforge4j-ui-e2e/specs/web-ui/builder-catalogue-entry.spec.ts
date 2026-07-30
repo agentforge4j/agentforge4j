@@ -29,7 +29,7 @@ test.describe('Builder public entry surface', () => {
     await page.goto('/');
     await expect(page.getByRole('link', { name: 'Visualizer' })).toHaveCount(0);
     await page.getByRole('navigation', { name: 'Primary' }).getByRole('link', { name: 'Builder' }).click();
-    await expect(page).toHaveURL(/\/builder$/);
+    await expect(page).toHaveURL(/\/builder\/$/);
     await expect(page.getByTestId('workflow-builder')).toBeVisible();
   });
 });
@@ -54,7 +54,7 @@ test.describe('Catalogue public entry surface', () => {
 
     await page.goto(`/catalogue/${REAL_CATALOGUE_WORKFLOW_ID}`);
     await expect(page.getByRole('heading', { level: 1, name: 'Workflow Execution Estimator' })).toBeVisible();
-    await expect(page.getByRole('link', { name: 'Open the Builder' })).toHaveAttribute('href', '/builder');
+    await expect(page.getByRole('link', { name: 'Open the Builder' })).toHaveAttribute('href', '/builder/');
     expect(errors).toEqual([]);
   });
 
