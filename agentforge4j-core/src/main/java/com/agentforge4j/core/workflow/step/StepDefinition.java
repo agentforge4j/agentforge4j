@@ -19,12 +19,12 @@ import com.agentforge4j.util.Validate;
  *                            behaviour
  * @param maxUserPromptRounds optional cap on consecutive blocking {@code USER_PROMPT} pauses;
  *                            {@code null} uses the runtime default
- * @param modelTier           optional capability tier name ({@code LITE}/{@code STANDARD}/
- *                            {@code POWERFUL}/{@code PREMIUM}) that overrides the agent's tier for
- *                            this step;
- *                            {@code null} inherits the agent tier. Stored as the tier name (a
- *                            String) so {@code core} stays free of the {@code llm-api} enum; the
- *                            name is validated at the runtime invocation boundary
+ * @param modelTier           optional capability tier name
+ *                            ({@code LITE}/{@code STANDARD}/{@code POWERFUL}/{@code PREMIUM})
+ *                            that overrides the agent's tier for this step; {@code null} inherits
+ *                            the agent tier. Stored as the tier name (a String) so {@code core}
+ *                            stays free of the {@code llm-api} enum; the name is validated at the
+ *                            runtime invocation boundary
  * @param estimatedInputTokens  optional usage-site hint: expected input tokens this step consumes,
  *                            for execution estimation; {@code null} when no hint is supplied. When
  *                            present it must not be negative. Advisory only — it never affects
@@ -190,8 +190,9 @@ public record StepDefinition(
     }
 
     /**
-     * Sets the optional step-level capability tier name ({@code LITE}/{@code STANDARD}/
-     * {@code POWERFUL}/{@code PREMIUM}) that overrides the agent tier for this step.
+     * Sets the optional step-level capability tier name
+     * ({@code LITE}/{@code STANDARD}/{@code POWERFUL}/{@code PREMIUM}) that overrides the agent
+     * tier for this step.
      *
      * @param modelTier capability tier name, or {@code null} to inherit the agent tier
      *

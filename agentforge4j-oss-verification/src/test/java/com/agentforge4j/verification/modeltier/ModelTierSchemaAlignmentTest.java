@@ -18,9 +18,15 @@ import static org.assertj.core.api.Assertions.assertThat;
  * compile-time link to the enum, so the two drift silently and in a user-visible direction: a tier
  * the runtime resolves happily is rejected when the same name appears in a bundle.
  *
- * <p>This lives in the verification module because it is the only place where the LLM API and the
- * schema resources are both on the classpath — the schema module deliberately depends on neither
- * core nor the LLM API.
+ * <p>The check belongs to the verification module because that is this repository's boundary for
+ * contracts spanning modules that do not depend on one another, and it can be enforced there
+ * without any production module taking on a dependency it does not otherwise need. The schema
+ * module deliberately depends on neither core nor the LLM API — the schemas describe the tier
+ * vocabulary rather than derive it — so handing it the enum purely to test against would undo
+ * that separation. Other modules do have both on their classpath ({@code agentforge4j-runtime}
+ * and {@code agentforge4j-bootstrap} each declare the schema module and the LLM API), but they
+ * own neither side of this contract; the verification module owns cross-module contracts and
+ * already hosts the tier-resolution suite.
  */
 class ModelTierSchemaAlignmentTest {
 

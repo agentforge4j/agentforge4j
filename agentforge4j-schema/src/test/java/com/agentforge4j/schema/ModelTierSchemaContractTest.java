@@ -56,9 +56,19 @@ class ModelTierSchemaContractTest {
 
   @Test
   void builderAgentSchemaMirrorsTheCanonicalAgentSchema() throws Exception {
-    // agent.schema.json is duplicated into the builder by hand — unlike workflow.schema.json,
-    // which the builder's scripts/sync-schema.mjs copies from here at build time — so the two
-    // can silently diverge and a tier accepted by the runtime can be rejected in the builder.
+    // The workflow builder ships its own copy of agent.schema.json in its published package.
+    // Unlike workflow.schema.json, which the builder's scripts/sync-schema.mjs copies from here
+    // at build time, that copy is maintained by hand, so nothing but this assertion keeps it from
+    // drifting away from the canonical schema it mirrors. The claim being enforced is alignment
+    // of a published contract surface, not builder behaviour: the builder does not compile or
+    // validate documents against this schema today.
+    assertThat(Files.exists(BUILDER_AGENT_SCHEMA_PATH))
+        .as("expected the builder's hand-maintained copy of agent.schema.json at %s. It is a "
+            + "published contract surface this test keeps aligned with the canonical schema, so "
+            + "the check needs the whole repository checked out, not this module alone.",
+            BUILDER_AGENT_SCHEMA_PATH)
+        .isTrue();
+
     assertThat(MAPPER.readTree(Files.readString(BUILDER_AGENT_SCHEMA_PATH)))
         .isEqualTo(MAPPER.readTree(Files.readString(AGENT_SCHEMA_PATH)));
   }

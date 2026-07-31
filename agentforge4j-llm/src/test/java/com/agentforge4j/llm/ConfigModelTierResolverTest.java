@@ -84,6 +84,34 @@ class ConfigModelTierResolverTest {
   }
 
   @Test
+  void overridingPowerfulLeavesPremiumOnTheShippedDefault() {
+    // PREMIUM and POWERFUL ship mapped to the same model, so an operator retargeting POWERFUL could
+    // plausibly be expected to move both. The merge is per tier: PREMIUM keeps the shipped default
+    // until it is overridden in its own right.
+    Map<ModelTier, String> claudeOverride = new EnumMap<>(ModelTier.class);
+    claudeOverride.put(ModelTier.POWERFUL, "claude-opus-custom");
+    ConfigModelTierResolver resolver = ConfigModelTierResolver.withShippedDefaultsAndOverrides(
+        Map.of("claude", claudeOverride));
+
+    assertThat(resolver.resolve("claude", ModelTier.POWERFUL)).isEqualTo("claude-opus-custom");
+    assertThat(resolver.resolve("claude", ModelTier.PREMIUM)).isEqualTo("claude-opus-4-8");
+  }
+
+  @Test
+  void premiumCanBeOverriddenWithoutDisturbingPowerful() {
+    Map<ModelTier, String> claudeOverride = new EnumMap<>(ModelTier.class);
+    claudeOverride.put(ModelTier.PREMIUM, "claude-opus-premium-custom");
+    ConfigModelTierResolver resolver = ConfigModelTierResolver.withShippedDefaultsAndOverrides(
+        Map.of("claude", claudeOverride));
+
+    assertThat(resolver.resolve("claude", ModelTier.PREMIUM))
+        .isEqualTo("claude-opus-premium-custom");
+    assertThat(resolver.resolve("claude", ModelTier.POWERFUL)).isEqualTo("claude-opus-4-8");
+    assertThat(resolver.resolve("claude", ModelTier.LITE))
+        .isEqualTo("claude-haiku-4-5-20251001");
+  }
+
+  @Test
   void overridesCanAddANewProvider() {
     Map<ModelTier, String> custom = new EnumMap<>(ModelTier.class);
     custom.put(ModelTier.STANDARD, "custom-model");
