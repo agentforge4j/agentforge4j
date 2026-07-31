@@ -28,16 +28,17 @@
 //
 // Run via `node scripts/assemble-site.mjs` (usually from the deploy workflow).
 
+import {execFileSync} from 'node:child_process';
 import {cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync} from 'node:fs';
 import {basename, dirname, join, relative, resolve, sep} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import matter from 'gray-matter';
 import sax from 'sax';
-import {JAVADOC_VERSIONS_OUT, javadocBuildVersions} from './build-javadoc-versions.mjs';
+import {JAVADOC_VERSIONS_OUT, javadocBuildVersions, releaseTag} from './build-javadoc-versions.mjs';
 import {ARCHIVE_ROOT} from './archive-transition.mjs';
 import {resolveJavadocUrl} from '../src/remark/javadoc.mjs';
 import {liveJavadocRefs} from './lint-javadoc-links.mjs';
-import {applyJavadocSeo} from './javadoc-seo.mjs';
+import {applyJavadocSeo, javadocSurfaces} from './javadoc-seo.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const MODULE_ROOT = resolve(here, '..');
@@ -375,8 +376,6 @@ export function verifyComposedAnchorLinks(siteDir, docsSourceDir, versionedDocsS
   }
   console.log(`[assemble-site] verified ${checked} in-page anchor link(s) against the composed artifact — all present.`);
 }
-
-const SITEMAP_URL_PREFIX = 'https://agentforge4j.org/';
 
 // The only <urlset> attributes this parser accepts: the base sitemaps.org namespace plus the four
 // extension namespaces the `sitemap` npm package's SitemapStream unconditionally declares by
@@ -862,6 +861,62 @@ function sitemapXml(entries) {
   );
 }
 
+/** Real, reproducible git date (`%cs`, committer date, `YYYY-MM-DD`) for the release tag a
+ * version-pinned Javadoc surface was built from — the same "derive it from real history, never
+ * invent it" contract build-seo.mjs's own `gitLastModifiedDate` follows, applied to the commit that
+ * produced this surface's DOCUMENTED CONTENT: the API the release tag froze.
+ *
+ * Deliberately not "the last commit that changed any published byte of this surface". Step 7 runs
+ * `applyJavadocSeo` across every surface on every deploy — that is the whole reason the SEO pass
+ * lives against the composed output rather than in build-javadoc.mjs — so a deploy can restamp a
+ * pinned surface's `<head>` without the tag, or this date, moving. That is the intended reading of
+ * `<lastmod>`: it dates the API a crawler came for, not the metadata wrapper around it. Reporting
+ * every deploy instead would be the same meaningless per-deploy timestamp the paragraph below
+ * rejects, just arrived at from the other direction.
+ *
+ * `null` — meaning no `<lastmod>` is emitted for that URL, which the sitemap protocol permits —
+ * whenever there is no such tag to read: `next` (which tracks a moving branch, so no single commit
+ * dates it), `latest` before any release exists, or a checkout without the release tags. Omitting
+ * is the honest answer in all three; a build date would be a fresh, meaningless timestamp on every
+ * deploy, which is exactly what the rest of this site's sitemap work exists to avoid. */
+function javadocSurfaceLastmod(repoRoot, version) {
+  if (!version) {
+    // Not a degraded case: `next` and a pre-release `latest` genuinely have no single dating commit.
+    // Silent by design — see this docstring. Only a version-pinned surface reaching the paths below
+    // without a date is worth a word.
+    return null;
+  }
+  let output;
+  try {
+    output = execFileSync('git', ['log', '-1', '--format=%cs', `refs/tags/${releaseTag(version)}`], {
+      cwd: repoRoot,
+      encoding: 'utf8',
+      // stderr captured rather than discarded so the notice below can say WHICH failure this was: a
+      // missing tag, a missing git binary and a non-repository repoRoot otherwise all degrade to the
+      // same empty <lastmod> with nothing in the log distinguishing them. The deploy pipeline makes
+      // the first unreachable (build-javadoc-versions.mjs fails hard on a missing tag in the same
+      // job, from a fetch-depth: 0 checkout) — this exists so that if that ever stops being true,
+      // the deploy log says so instead of the missing element having to be noticed.
+      stdio: ['ignore', 'pipe', 'pipe'],
+    }).trim();
+  } catch (error) {
+    const detail = String(error?.stderr ?? error?.message ?? error).trim().split('\n')[0];
+    console.warn(
+      `[assemble-site] no <lastmod> for the ${version} Javadoc surface: could not read ` +
+        `refs/tags/${releaseTag(version)} in ${repoRoot} — ${detail}`,
+    );
+    return null;
+  }
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(output)) {
+    console.warn(
+      `[assemble-site] no <lastmod> for the ${version} Javadoc surface: refs/tags/${releaseTag(version)} ` +
+        `resolved to ${JSON.stringify(output)}, which is not a YYYY-MM-DD committer date`,
+    );
+    return null;
+  }
+  return output;
+}
+
 /**
  * Every archived version's own sitemap fragment inside the composed artifact. An archived version is
  * frozen as a WHOLE Docusaurus export (`archive-transition.mjs`: `cpSync(EXPORT_BUILD, artifactDir)`,
@@ -903,14 +958,53 @@ export function urlsMissingFrom(mergedEntries, fragmentEntries) {
 }
 
 /**
- * Merges the SPA's own sitemap.xml fragment (agentforge4j-web-ui/scripts/build-seo.mjs, already
- * copied to the site root in step 1) with the Docusaurus-generated docs/sitemap.xml (already
- * copied to `docs/` in step 2) and every archived version's fragment (copied in step 4) into the one
- * final sitemap.xml the composed artifact serves at `/sitemap.xml`. Fails closed on a missing
- * required fragment, a non-HTTPS/wrong-domain URL (a misconfigured `siteConfig.url` would otherwise
- * silently publish the wrong host), or a duplicate URL across fragments.
+ * Sitemap entries for the Javadoc surfaces — the third published surface of this site, and until
+ * now the only one absent from sitemap discovery entirely.
+ *
+ * Exactly the surfaces `javadocSurfaces` says are indexable, never a separate list: `/javadoc/next/`
+ * and the pinned version `/latest/` currently mirrors both carry `noindex`, so advertising them
+ * would be the sitemap contradicting the page. The complement matters just as much — an older
+ * released version becomes indexable again the moment a newer one ships, and joins the sitemap on
+ * that same deploy, with no version string written down anywhere.
+ *
+ * One URL per surface: its entry point. A Javadoc tree is thousands of generated pages that are all
+ * reachable from their overview and from each other; listing every class page would bury the real
+ * content of the site under generated API pages without making any of it more discoverable.
+ *
+ * Unlike every other source `mergeSitemaps` folds in, these entries are COMPUTED rather than read
+ * from a fragment file on disk. That distinction is load-bearing downstream: they must never join
+ * `fragmentEntries`, which is the set whose survival is proved before the fragment files backing it
+ * are deleted. There is no file behind a Javadoc entry to delete or to lose coverage from.
  */
-function mergeSitemaps(siteDir, exit) {
+export function javadocSitemapEntries(siteUrl, releasedVersions, repoRoot) {
+  return javadocSurfaces(releasedVersions)
+    .filter((surface) => !surface.noindex)
+    .map((surface) => ({
+      url: `${siteUrl}/${surface.mountPath}/`,
+      lastmod: javadocSurfaceLastmod(repoRoot, surface.version),
+    }));
+}
+
+/**
+ * Merges this site's sources of sitemap coverage into the one final sitemap.xml the composed
+ * artifact serves at `/sitemap.xml`:
+ *   1. the SPA's own sitemap.xml fragment (agentforge4j-web-ui/scripts/build-seo.mjs, already copied
+ *      to the site root in step 1),
+ *   2. the Docusaurus-generated docs/sitemap.xml (already copied to `docs/` in step 2),
+ *   3. every archived version's own fragment (copied to `docs/archive/<v>/` in step 4, each
+ *      optional — see `archivedSitemapFragments`), and
+ *   4. the Javadoc surfaces, which have no generator of their own and are therefore computed here
+ *      (`javadocSitemapEntries`).
+ *
+ * 1–3 are fragments read from disk; 2 and 3 are additionally CONSUMED — removed after the merge is
+ * re-read and proved to carry their URLs, so the site publishes exactly one sitemap. 4 is computed
+ * and has no file behind it, so it takes no part in that removal proof.
+ *
+ * Fails closed on a missing required fragment, a URL outside the origin being published (a
+ * misconfigured `siteConfig.url` would otherwise silently publish the wrong host), a duplicate URL
+ * across any two sources, or a merge that would drop a consumed fragment's URL.
+ */
+function mergeSitemaps(siteDir, exit, {siteUrl = DEFAULT_SITE_URL, releasedVersions = [], repoRoot = REPO_ROOT} = {}) {
   const spaSitemapPath = join(siteDir, 'sitemap.xml');
   const docsSitemapPath = join(siteDir, 'docs', 'sitemap.xml');
   requireDir(spaSitemapPath, 'SPA sitemap fragment', 'Run `npm run build` in agentforge4j-web-ui first.');
@@ -926,11 +1020,30 @@ function mergeSitemaps(siteDir, exit) {
   // the site root and is overwritten in place by the merged file rather than deleted.
   const fragmentPaths = [docsSitemapPath, ...archivedSitemapFragments(siteDir)];
   const fragmentEntries = fragmentPaths.flatMap((fragmentPath) => extractSitemapEntries(fragmentPath, exit));
-  const entries = [...extractSitemapEntries(spaSitemapPath, exit), ...fragmentEntries];
 
+  // The third published surface. The SPA and the docs each generate their own fragment; the Javadoc
+  // trees have no generator of their own — they are raw maven-javadoc-plugin output, post-processed
+  // for SEO here — so their sitemap entries are computed here too, from the same indexability policy
+  // that stamps their robots tags (javadoc-seo.mjs's javadocSurfaces). Until now the site published
+  // an indexable /javadoc/latest/ that appeared in no sitemap at all.
+  //
+  // Deliberately a THIRD list rather than more `fragmentEntries`: these entries have no file behind
+  // them. `fragmentEntries` is the set proved to have survived the merge before its backing files
+  // are deleted below — putting computed entries in it would mean asking whether a file that was
+  // never read still has its URLs, and would make the removal guard report a count it did not check.
+  const javadocEntries = javadocSitemapEntries(siteUrl, releasedVersions, repoRoot);
+
+  const entries = [...extractSitemapEntries(spaSitemapPath, exit), ...fragmentEntries, ...javadocEntries];
+
+  // Derived from the origin this composition was told to publish at, never a second copy of the
+  // production literal. `siteUrl` is a documented seam (see assembleSite's own @param) and this
+  // function now *constructs* URLs from it for the Javadoc entries above — pinning the guard to a
+  // separate hardcoded host would make every entry it builds fail its own check the moment the seam
+  // was actually used. DEFAULT_SITE_URL stays this module's single literal for the production host.
+  const urlPrefix = `${siteUrl}/`;
   for (const { url } of entries) {
-    if (!url.startsWith(SITEMAP_URL_PREFIX)) {
-      console.error(`[assemble-site] refusing a sitemap URL outside ${SITEMAP_URL_PREFIX}: ${url}`);
+    if (!url.startsWith(urlPrefix)) {
+      console.error(`[assemble-site] refusing a sitemap URL outside ${urlPrefix}: ${url}`);
       exit(1);
     }
   }
@@ -938,7 +1051,10 @@ function mergeSitemaps(siteDir, exit) {
   const seen = new Set();
   for (const { url } of entries) {
     if (seen.has(url)) {
-      console.error(`[assemble-site] duplicate sitemap URL across the SPA and docs fragments: ${url}`);
+      console.error(
+        `[assemble-site] duplicate sitemap URL across the SPA fragment, the ${fragmentPaths.length} ` +
+          `in-artifact fragment(s) and the Javadoc surfaces: ${url}`,
+      );
       exit(1);
     }
     seen.add(url);
@@ -979,8 +1095,9 @@ function mergeSitemaps(siteDir, exit) {
 
   console.log(
     `[assemble-site] merged sitemap.xml: ${entries.length} URL(s) (SPA + ${fragmentPaths.length} in-artifact ` +
-      `fragment(s): ${fragmentPaths.join(', ')}); removed those fragments after confirming all ` +
-      `${fragmentEntries.length} of their URL(s) survive in the root sitemap`,
+      `fragment(s): ${fragmentPaths.join(', ')}; + ${javadocEntries.length} computed indexable Javadoc ` +
+      `surface(s): ${javadocEntries.map((entry) => entry.url).join(', ') || 'none'}); removed those fragments ` +
+      `after confirming all ${fragmentEntries.length} of their URL(s) survive in the root sitemap`,
   );
 }
 
@@ -1045,12 +1162,16 @@ function writeRedirectStubs(siteDir, manifestPath, exit = process.exit) {
 /**
  * Assemble the Pages artifact into `siteDir` from the given inputs. Pure with respect to module
  * location (every path is a parameter), so it is directly unit-testable against fixture
- * directories; `main()` below is the real CLI entry, computing the live paths.
+ * directories; `main()` below is the real CLI entry, computing the live paths. `repoRoot` is the
+ * one parameter whose default reaches outside the fixture inputs — it points at this checkout so
+ * `main()` need not pass it, which means a test that supplies `releasedVersions` and leaves
+ * `repoRoot` unset reads the ambient repository's tags. Tests whose composed output depends on
+ * dates should pass an explicit `repoRoot`.
  *
  * @param {{spaDir: string, buildDir: string, javadocDir: string, javadocVersionsDir?: string,
  *          releasedVersions?: string[], archiveDir: string, siteDir: string,
  *          docsSourceDir?: string, versionedDocsSourceDir?: string,
- *          customDomain: string|null, siteUrl?: string, ogImage?: string,
+ *          customDomain: string|null, siteUrl?: string, ogImage?: string, repoRoot?: string,
  *          exit?: (code: number) => void}} options `exit` is an injectable seam for the
  *        redirect-stub collision guard and the composed-output verification (tests; default
  *        `process.exit`). `docsSourceDir`/`versionedDocsSourceDir` are undefined by default (the
@@ -1070,10 +1191,23 @@ export function assembleSite({
   docsSourceDir,
   versionedDocsSourceDir,
   customDomain,
-  siteUrl = DEFAULT_SITE_URL,
+  siteUrl: rawSiteUrl = DEFAULT_SITE_URL,
   ogImage = DEFAULT_OG_IMAGE,
+  // Where the release tags live, for dating the version-pinned Javadoc surfaces in the sitemap.
+  // A parameter (not this module's own REPO_ROOT) so fixture tests can point it at a throwaway
+  // repository — or at one with no tags at all, which must degrade to "no <lastmod>", never to an
+  // invented one.
+  repoRoot = REPO_ROOT,
   exit = process.exit,
 }) {
+  // Normalised once, here, at the seam's only entrance. Everything downstream — the sitemap's
+  // Javadoc `<loc>` values, the origin guard's own prefix, and every canonical/OG URL
+  // `applyJavadocSeo` stamps — builds addresses by appending `/…` to this, so a caller-supplied
+  // trailing slash would produce `https://host//javadoc/latest/` and, worse, an origin guard whose
+  // prefix carries the same doubled slash and therefore accepts its own malformed output. The
+  // production default never has one; this exists so the documented seam cannot be held wrong.
+  const siteUrl = rawSiteUrl.replace(/\/+$/, '');
+
   requireDir(spaDir, 'SPA build', 'Run `npm run build` in agentforge4j-web-ui first.');
   requireDir(buildDir, 'Docusaurus build', 'Run `npm run build` first.');
   requireDir(javadocDir, 'Javadoc surface', 'Run `npm run javadoc` first.');
@@ -1139,9 +1273,9 @@ export function assembleSite({
   writeFileSync(join(siteDir, '.nojekyll'), '', 'utf8');
 
   // 6. Merge the SPA's own sitemap.xml fragment (copied to the site root in step 1), the
-  //    Docusaurus-generated docs/sitemap.xml (copied in step 2), and every archived version's own
-  //    fragment (copied in step 4) into the one final sitemap.xml the composed artifact serves at
-  //    /sitemap.xml — and then remove the in-artifact fragments.
+  //    Docusaurus-generated docs/sitemap.xml (copied in step 2), every archived version's own
+  //    fragment (copied in step 4), and the Javadoc surfaces into the one final sitemap.xml the
+  //    composed artifact serves at /sitemap.xml — and then remove the in-artifact fragments.
   //
   //    The sitemap architecture, stated once, here: this site publishes exactly ONE sitemap,
   //    /sitemap.xml, and robots.txt (agentforge4j-web-ui/public/robots.txt) names exactly that one.
@@ -1153,7 +1287,12 @@ export function assembleSite({
   //    because steps 2 and 4 copy those modules' whole build outputs. verifyComposedArtifact then
   //    proves the result over the whole tree — exactly one sitemap.xml, at the root — rather than
   //    over a list of the fragment paths known today.
-  mergeSitemaps(siteDir, exit);
+  //
+  //    The Javadoc surfaces are the one source that is not a fragment at all: they have no generator
+  //    of their own, so their entries are computed inside the merge from the same indexability
+  //    policy that stamps their robots tags. Nothing is deleted on their behalf, because nothing was
+  //    read on their behalf.
+  mergeSitemaps(siteDir, exit, {siteUrl, releasedVersions, repoRoot});
 
   verifyComposedArtifact(siteDir, releasedVersions, exit);
 
