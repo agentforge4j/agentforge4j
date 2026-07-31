@@ -1,25 +1,38 @@
 // SPDX-License-Identifier: Apache-2.0
 //
-// Copies the canonical workflow JSON schema into src/generated so the builder
-// bundles a build-time derivative instead of a hand-maintained duplicate.
+// Rewrites every builder-side schema copy from its canonical source in agentforge4j-schema.
+// Run it after changing a canonical schema; the copies are committed, so the change shows up in
+// the same pull request as the canonical edit and a reviewer sees both halves at once.
 //
-// Canonical source of truth (JVM-enforced via the agentforge4j-schema contract
-// tests): agentforge4j-schema/src/main/resources/schema/workflow.schema.json.
-// The generated target is gitignored; never edit it by hand.
+// This script deliberately does NOT run as part of build/typecheck/test. Those run
+// verify-schema-mirrors.mjs instead, which fails on drift rather than silently repairing it — a
+// build that re-synced first could never observe the drift it is supposed to catch.
+//
+// Which files are copied, and from where, lives in schema-mirrors.mjs. Nothing here knows any
+// individual schema by name.
 
 import { copyFileSync, mkdirSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { resolve } from 'node:path';
+import {
+  CANONICAL_ROOT,
+  CLASSIFICATIONS,
+  MIRROR_ROOT,
+  SCHEMA_MIRRORS,
+} from './schema-mirrors.mjs';
 
-const here = dirname(fileURLToPath(import.meta.url));
+mkdirSync(MIRROR_ROOT, { recursive: true });
 
-const canonical = resolve(
-  here,
-  '../../agentforge4j-schema/src/main/resources/schema/workflow.schema.json',
-);
-const target = resolve(here, '../src/generated/workflow.schema.json');
+let copied = 0;
+for (const mirror of SCHEMA_MIRRORS) {
+  if (mirror.classification === CLASSIFICATIONS.BUILDER_OWNED) {
+    console.log(`[sync-schema] skipped ${mirror.file} (builder-owned, no canonical source)`);
+    continue;
+  }
+  const canonical = resolve(CANONICAL_ROOT, mirror.file);
+  const target = resolve(MIRROR_ROOT, mirror.file);
+  copyFileSync(canonical, target);
+  copied += 1;
+  console.log(`[sync-schema] copied ${canonical} -> ${target}`);
+}
 
-mkdirSync(dirname(target), { recursive: true });
-copyFileSync(canonical, target);
-
-console.log(`[sync-schema] copied ${canonical} -> ${target}`);
+console.log(`[sync-schema] ${copied} of ${SCHEMA_MIRRORS.length} schema(s) synchronised`);

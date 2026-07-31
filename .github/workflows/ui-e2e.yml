@@ -82,7 +82,11 @@ jobs:
           echo "$changed"
           # .nvmrc included: a Node-version bump changes what both jobs actually run with, so it
           # must trigger both suites even when nothing under either target's own directory moved.
-          if echo "$changed" | grep -qE '^(agentforge4j-workflow-builder/|agentforge4j-ui-e2e/|\.nvmrc|\.github/workflows/ui-e2e\.yml)'; then
+          # agentforge4j-schema/ included: the builder commits a mirror of that module's JSON
+          # schemas and verify-schema-mirrors.mjs fails the build when the two diverge. Without
+          # this, a canonical schema edit on its own would skip the builder job entirely and the
+          # drift gate would report success without ever running.
+          if echo "$changed" | grep -qE '^(agentforge4j-workflow-builder/|agentforge4j-schema/|agentforge4j-ui-e2e/|\.nvmrc|\.github/workflows/ui-e2e\.yml)'; then
             echo "builder=true" >> "$GITHUB_OUTPUT"
           else
             echo "builder=false" >> "$GITHUB_OUTPUT"

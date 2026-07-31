@@ -587,8 +587,11 @@ function buildBlueprintJsonForRepeat(
     loopConfig.evaluatorAgentId = d.evaluatorAgentId.trim();
   }
   const blueprintId = canvasToStepId.get(repeatNode.id) ?? newStepId('repeat');
+  // No `kind` on a blueprint document root: BlueprintDefinition has no such component and the
+  // canonical blueprint.schema.json declares `additionalProperties: false` without one, so an
+  // emitted `kind` makes the document invalid against the framework's own published schema. The
+  // runtime never noticed because its loader ignores unknown properties.
   return {
-    kind: 'BLUEPRINT',
     blueprintId,
     name: d.name || 'Repeat',
     behaviour: {
