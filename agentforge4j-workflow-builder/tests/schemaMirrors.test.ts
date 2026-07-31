@@ -16,25 +16,55 @@ import {
   syncMirrors,
 } from '../scripts/schema-mirrors.mjs';
 
-const MIRROR_FILES = SCHEMA_MIRRORS.map((mirror) => mirror.file);
+/**
+ * Every file the mirror table declares, whatever its classification. Drives the checks that apply
+ * to a declaration as such — directory completeness, undeclared/missing inventory.
+ */
+const DECLARED_FILES = SCHEMA_MIRRORS.map((mirror) => mirror.file);
+
+/**
+ * Only the files classified `MIRROR`. Drives every check that presupposes a canonical source:
+ * drift detection, byte-identity, and what `syncMirrors` is expected to copy. A `BUILDER_OWNED`
+ * entry has no canonical counterpart by definition, so folding it into these would assert a
+ * contract the production code deliberately does not implement.
+ *
+ * There are no `BUILDER_OWNED` entries today, so the two lists are currently equal. They are kept
+ * separate anyway: the distinction is what the production classification means, and a test suite
+ * that only happens to be right while one branch of a two-branch contract is unused is not
+ * testing that contract. `describe('mixed classification table')` below exercises the other
+ * branch directly rather than waiting for a real builder-owned schema to appear.
+ */
+const MIRROR_FILES = SCHEMA_MIRRORS.filter(
+  (mirror) => mirror.classification === CLASSIFICATIONS.MIRROR,
+).map((mirror) => mirror.file);
 
 const temporaryRoots: string[] = [];
 
-/**
- * Copies the real canonical and mirror trees into a scratch directory so a negative control can
- * corrupt one file without touching the repository. A drift check that can only be exercised
- * against a clean tree cannot demonstrate that it bites.
- */
-function scratchTrees(): { canonicalRoot: string; mirrorRoot: string } {
+function newScratchRoot(): { canonicalRoot: string; mirrorRoot: string } {
   const root = mkdtempSync(join(tmpdir(), 'af4j-schema-mirrors-'));
   temporaryRoots.push(root);
   const canonicalRoot = join(root, 'canonical');
   const mirrorRoot = join(root, 'mirror');
   mkdirSync(canonicalRoot, { recursive: true });
   mkdirSync(mirrorRoot, { recursive: true });
+  return { canonicalRoot, mirrorRoot };
+}
+
+/**
+ * Copies the real canonical and mirror trees into a scratch directory so a negative control can
+ * corrupt one file without touching the repository. A drift check that can only be exercised
+ * against a clean tree cannot demonstrate that it bites.
+ *
+ * Every declared file gets a mirror-side copy; only `MIRROR` entries get a canonical-side one,
+ * because a builder-owned schema has no canonical source to copy from.
+ */
+function scratchTrees(): { canonicalRoot: string; mirrorRoot: string } {
+  const { canonicalRoot, mirrorRoot } = newScratchRoot();
+  for (const file of DECLARED_FILES) {
+    cpSync(resolve(MIRROR_ROOT, file), join(mirrorRoot, file));
+  }
   for (const file of MIRROR_FILES) {
     cpSync(resolve(CANONICAL_ROOT, file), join(canonicalRoot, file));
-    cpSync(resolve(MIRROR_ROOT, file), join(mirrorRoot, file));
   }
   return { canonicalRoot, mirrorRoot };
 }
@@ -46,9 +76,11 @@ afterEach(() => {
 });
 
 describe('canonical -> builder schema mirrors', () => {
+  // Declaration completeness applies to every declared file regardless of classification: a
+  // builder-owned schema still has to sit in src/schemas and still has to have a row.
   it('declares every schema file that exists in src/schemas, and no others', () => {
     const present = readdirSync(MIRROR_ROOT).filter((name) => name.endsWith('.json'));
-    expect([...present].sort()).toEqual([...MIRROR_FILES].sort());
+    expect([...present].sort()).toEqual([...DECLARED_FILES].sort());
   });
 
   it('has no drift in the committed tree', () => {
@@ -72,7 +104,9 @@ describe('canonical -> builder schema mirrors', () => {
     expect(drifted.map((result) => result.file)).toEqual([file]);
   });
 
-  it.each(MIRROR_FILES)('reports %s as missing when the copy is deleted', (file) => {
+  // Applies to every declared file: a missing copy is `MISSING_MIRROR` for a builder-owned entry
+  // exactly as it is for a mirrored one, so this is driven by the full declaration list.
+  it.each(DECLARED_FILES)('reports %s as missing when the copy is deleted', (file) => {
     const { canonicalRoot, mirrorRoot } = scratchTrees();
     rmSync(join(mirrorRoot, file));
 
@@ -94,28 +128,32 @@ describe('canonical -> builder schema mirrors', () => {
     expect(undeclared.map((result) => result.file)).toEqual(['rogue.schema.json']);
   });
 
+  // Only meaningful for a MIRROR entry — a builder-owned schema has no canonical source whose
+  // absence could be reported, which is the point of the next test.
   it('reports a missing canonical source rather than passing silently', () => {
     const { canonicalRoot, mirrorRoot } = scratchTrees();
-    rmSync(join(canonicalRoot, 'agent.schema.json'));
+    const file = MIRROR_FILES[0];
+    rmSync(join(canonicalRoot, file));
 
     const results = collectDrift({ canonicalRoot, mirrorRoot });
     const missing = results.filter((result) => result.status === DRIFT_STATUS.MISSING_CANONICAL);
-    expect(missing.map((result) => result.file)).toEqual(['agent.schema.json']);
+    expect(missing.map((result) => result.file)).toEqual([file]);
   });
 
   it('treats a builder-owned schema as having no canonical source to drift from', () => {
     const { canonicalRoot, mirrorRoot } = scratchTrees();
-    rmSync(join(canonicalRoot, 'agent.schema.json'));
+    const file = MIRROR_FILES[0];
+    rmSync(join(canonicalRoot, file));
 
     const results = collectDrift({
       canonicalRoot,
       mirrorRoot,
-      mirrors: [{ file: 'agent.schema.json', classification: CLASSIFICATIONS.BUILDER_OWNED }],
+      mirrors: [{ file, classification: CLASSIFICATIONS.BUILDER_OWNED }],
     });
     expect(isClean(results)).toBe(true);
   });
 
-  it('every declared mirror is byte-identical to its canonical source', () => {
+  it('every mirrored schema is byte-identical to its canonical source', () => {
     for (const file of MIRROR_FILES) {
       expect(readFileSync(resolve(MIRROR_ROOT, file))).toEqual(
         readFileSync(resolve(CANONICAL_ROOT, file)),
@@ -140,13 +178,12 @@ describe('sync-schema', () => {
 
   it('writes byte-identical copies, not re-serialized JSON', () => {
     const { canonicalRoot, mirrorRoot } = scratchTrees();
-    rmSync(join(mirrorRoot, 'agent.schema.json'));
+    const file = MIRROR_FILES[0];
+    rmSync(join(mirrorRoot, file));
 
     syncMirrors({ canonicalRoot, mirrorRoot });
 
-    expect(readFileSync(join(mirrorRoot, 'agent.schema.json'))).toEqual(
-      readFileSync(join(canonicalRoot, 'agent.schema.json')),
-    );
+    expect(readFileSync(join(mirrorRoot, file))).toEqual(readFileSync(join(canonicalRoot, file)));
   });
 
   it('is idempotent — a second run leaves every byte alone', () => {
@@ -183,7 +220,8 @@ describe('sync-schema', () => {
 
   it('names the missing canonical path in the error it throws', () => {
     const { canonicalRoot, mirrorRoot } = scratchTrees();
-    rmSync(join(canonicalRoot, 'agent.schema.json'));
+    const file = MIRROR_FILES[0];
+    rmSync(join(canonicalRoot, file));
 
     let thrown: unknown;
     try {
@@ -193,23 +231,122 @@ describe('sync-schema', () => {
     }
 
     expect(thrown).toBeInstanceOf(MissingCanonicalSchemaError);
-    expect((thrown as MissingCanonicalSchemaError).paths).toEqual([
-      resolve(canonicalRoot, 'agent.schema.json'),
-    ]);
+    expect((thrown as MissingCanonicalSchemaError).paths).toEqual([resolve(canonicalRoot, file)]);
   });
 
   it('skips a builder-owned schema instead of looking for a canonical source', () => {
     const { canonicalRoot, mirrorRoot } = scratchTrees();
-    rmSync(join(canonicalRoot, 'agent.schema.json'));
+    const file = MIRROR_FILES[0];
+    rmSync(join(canonicalRoot, file));
 
     const result = syncMirrors({
       canonicalRoot,
       mirrorRoot,
-      mirrors: [{ file: 'agent.schema.json', classification: CLASSIFICATIONS.BUILDER_OWNED }],
+      mirrors: [{ file, classification: CLASSIFICATIONS.BUILDER_OWNED }],
     });
 
     expect(result.copied).toEqual([]);
-    expect(result.skipped.map((entry) => entry.file)).toEqual(['agent.schema.json']);
+    expect(result.skipped.map((entry) => entry.file)).toEqual([file]);
+  });
+});
+
+/**
+ * The table supports two classifications but currently declares only `MIRROR` rows, so every
+ * suite above exercises one branch of a two-branch contract. These tests drive a table holding
+ * one of each, proving the `BUILDER_OWNED` branch behaves as documented before a real
+ * builder-owned schema exists — rather than discovering on the day one is added that the suite
+ * had quietly assumed every declaration has a canonical source.
+ */
+describe('mixed classification table', () => {
+  const MIRRORED = 'mirrored.schema.json';
+  const OWNED = 'builder-owned.schema.json';
+  const OWNED_BODY = '{\n  "title": "Builder-owned, no canonical counterpart"\n}\n';
+
+  const MIXED = [
+    { file: MIRRORED, classification: CLASSIFICATIONS.MIRROR },
+    { file: OWNED, classification: CLASSIFICATIONS.BUILDER_OWNED },
+  ];
+
+  /**
+   * Canonical holds only the mirrored file. The builder-owned file exists on the mirror side
+   * alone — deliberately, since that absence is the condition under test.
+   */
+  function mixedTrees(): { canonicalRoot: string; mirrorRoot: string } {
+    const { canonicalRoot, mirrorRoot } = newScratchRoot();
+    cpSync(resolve(CANONICAL_ROOT, MIRROR_FILES[0]), join(canonicalRoot, MIRRORED));
+    cpSync(resolve(CANONICAL_ROOT, MIRROR_FILES[0]), join(mirrorRoot, MIRRORED));
+    writeFileSync(join(mirrorRoot, OWNED), OWNED_BODY);
+    return { canonicalRoot, mirrorRoot };
+  }
+
+  it('requires no canonical file for the builder-owned entry', () => {
+    const { canonicalRoot, mirrorRoot } = mixedTrees();
+    expect(readdirSync(canonicalRoot)).toEqual([MIRRORED]);
+
+    const results = collectDrift({ canonicalRoot, mirrorRoot, mirrors: MIXED });
+
+    expect(isClean(results)).toBe(true);
+    const owned = results.find((result) => result.file === OWNED);
+    expect(owned?.status).toBe(DRIFT_STATUS.OK);
+    expect(owned?.detail).toBe('builder-owned; no canonical source');
+  });
+
+  it('never reports the builder-owned entry as drifted, whatever its content', () => {
+    const { canonicalRoot, mirrorRoot } = mixedTrees();
+    writeFileSync(join(mirrorRoot, OWNED), '{"title":"edited by hand, and legitimately so"}\n');
+
+    const results = collectDrift({ canonicalRoot, mirrorRoot, mirrors: MIXED });
+
+    expect(results.filter((result) => result.status === DRIFT_STATUS.DRIFTED)).toEqual([]);
+    expect(isClean(results)).toBe(true);
+  });
+
+  it('still reports the mirrored entry as drifted, so the mixed table is not simply inert', () => {
+    const { canonicalRoot, mirrorRoot } = mixedTrees();
+    writeFileSync(join(mirrorRoot, MIRRORED), '{"title":"drifted"}\n');
+
+    const results = collectDrift({ canonicalRoot, mirrorRoot, mirrors: MIXED });
+
+    const drifted = results.filter((result) => result.status === DRIFT_STATUS.DRIFTED);
+    expect(drifted.map((result) => result.file)).toEqual([MIRRORED]);
+  });
+
+  it('syncs only the mirrored entry and leaves the builder-owned file untouched', () => {
+    const { canonicalRoot, mirrorRoot } = mixedTrees();
+    writeFileSync(join(mirrorRoot, MIRRORED), '{"title":"drifted"}\n');
+
+    const result = syncMirrors({ canonicalRoot, mirrorRoot, mirrors: MIXED });
+
+    expect(result.copied.map((entry) => entry.file)).toEqual([MIRRORED]);
+    expect(result.skipped.map((entry) => entry.file)).toEqual([OWNED]);
+    expect(readFileSync(join(mirrorRoot, MIRRORED))).toEqual(
+      readFileSync(join(canonicalRoot, MIRRORED)),
+    );
+    expect(readFileSync(join(mirrorRoot, OWNED), 'utf8')).toBe(OWNED_BODY);
+  });
+
+  it('counts both files as declared, so neither is reported undeclared', () => {
+    const { canonicalRoot, mirrorRoot } = mixedTrees();
+
+    const results = collectDrift({
+      canonicalRoot,
+      mirrorRoot,
+      mirrors: MIXED,
+      presentFiles: readdirSync(mirrorRoot).filter((name) => name.endsWith('.json')),
+    });
+
+    expect(results.filter((r) => r.status === DRIFT_STATUS.UNDECLARED_MIRROR)).toEqual([]);
+    expect(results.map((result) => result.file).sort()).toEqual([OWNED, MIRRORED].sort());
+  });
+
+  it('reports a deleted builder-owned copy as missing, same as a mirrored one', () => {
+    const { canonicalRoot, mirrorRoot } = mixedTrees();
+    rmSync(join(mirrorRoot, OWNED));
+
+    const results = collectDrift({ canonicalRoot, mirrorRoot, mirrors: MIXED });
+
+    const missing = results.filter((result) => result.status === DRIFT_STATUS.MISSING_MIRROR);
+    expect(missing.map((result) => result.file)).toEqual([OWNED]);
   });
 });
 
