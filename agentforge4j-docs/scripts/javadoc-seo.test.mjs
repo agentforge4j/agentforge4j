@@ -1685,15 +1685,16 @@ test('only the surface OVERVIEW gains the link — nested pages and the landing 
   });
   for (const relPath of ['allclasses-index.html', 'com/example/package-summary.html', 'com/example/Foo.html']) {
     const html = readFileSync(join(surfaceRoot, ...relPath.split('/')), 'utf8');
-    assert.doesNotMatch(html, /data-af4j-surfaces-link/, `${relPath} gained the overview-only link`);
+    assert.doesNotMatch(html, /href="surfaces\.html"/, `${relPath} gained the overview-only link`);
   }
-  assert.doesNotMatch(readFileSync(join(surfaceRoot, 'surfaces.html'), 'utf8'), /data-af4j-surfaces-link/);
+  // The landing page links the overview, but must never link itself.
+  assert.doesNotMatch(readFileSync(join(surfaceRoot, 'surfaces.html'), 'utf8'), /href="surfaces\.html"/);
 });
 
 test('linkSurfacesLandingFromOverview is idempotent by refusal — a second pass adds no second link', () => {
   const once = linkSurfacesLandingFromOverview(RAW_OVERVIEW_HTML);
   assert.equal(linkSurfacesLandingFromOverview(once), once);
-  assert.equal((once.match(/data-af4j-surfaces-link/g) ?? []).length, 1);
+  assert.equal((once.match(/href="surfaces\.html"/g) ?? []).length, 1);
 });
 
 test('linkSurfacesLandingFromOverview fails closed when there is no </h1> to anchor to — never a silent skip', () => {
@@ -1764,7 +1765,7 @@ test('the link does not weaken the residual-window-title oracle on any surface',
 
 test('the injected link names no surface and counts none — the same rule the landing description follows', () => {
   const read = discoverabilityFixture('javadoc/latest', ['0.1.0']);
-  const link = /<p data-af4j-surfaces-link>[\s\S]*?<\/p>/.exec(read('javadoc/latest'))[0];
+  const link = /<p><a href="surfaces\.html">[\s\S]*?<\/p>/.exec(read('javadoc/latest'))[0];
   assert.doesNotMatch(link, /\bthree\b/i);
   assert.doesNotMatch(link, /\bMCP\b|Spring Boot|aggregate/i);
 });
@@ -1772,7 +1773,7 @@ test('the injected link names no surface and counts none — the same rule the l
 test('the link is sibling-relative, so the same markup is correct on every mount', () => {
   const read = discoverabilityFixture('javadoc/latest', ['0.1.0']);
   for (const mountPath of ['javadoc/next', 'javadoc/latest', 'javadoc/0.1.0']) {
-    const link = /<p data-af4j-surfaces-link>[\s\S]*?<\/p>/.exec(read(mountPath))[0];
+    const link = /<p><a href="surfaces\.html">[\s\S]*?<\/p>/.exec(read(mountPath))[0];
     assert.match(link, /href="surfaces\.html"/, `${mountPath}: not a sibling-relative href`);
     assert.doesNotMatch(link, /href="(https?:)?\/\//, `${mountPath}: absolute URL hard-codes one mount`);
     assert.doesNotMatch(link, /href="\//, `${mountPath}: root-relative URL hard-codes one mount`);

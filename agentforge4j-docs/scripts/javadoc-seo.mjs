@@ -164,7 +164,7 @@ export function addRobotsNoindexTag(html) {
 // composed sitemap's own policy is one URL per surface — its entry point — precisely so thousands
 // of generated pages do not bury the site's real content; `surfaces.html` is not an entry point, it
 // is a page that was missing its inbound link.
-const SURFACES_LANDING_LINK_MARKER = 'data-af4j-surfaces-link';
+const SURFACES_LANDING_HREF = `href="${SURFACES_LANDING_FILENAME}"`;
 const HEADING_CLOSE_PATTERN = /<\/h1>/;
 
 /**
@@ -177,8 +177,13 @@ const HEADING_CLOSE_PATTERN = /<\/h1>/;
  * An absolute URL would have to know which mount it was being written into and would hard-code one
  * surface's path into every copy of it.
  *
- * Idempotent by refusal, matching `addRobotsNoindexTag`: a page that already carries this link is
- * returned untouched rather than gaining a second one.
+ * Idempotent by refusal, matching `addRobotsNoindexTag`: a page that already links the landing page
+ * is returned untouched rather than gaining a second one. Keyed on the LINK itself, not on a private
+ * marker attribute — partly to keep an implementation detail out of every published page, but mainly
+ * because the two behave differently in the one case that matters. Should maven-javadoc-plugin ever
+ * start emitting its own link to `surfaces.html`, a marker check would not recognise it and would
+ * silently add a duplicate; keying on the href leaves that page alone, and the before-state oracle in
+ * the tests fails so the now-redundant injection is noticed rather than quietly doubling up.
  *
  * Fails loudly when the overview has no `</h1>` to anchor to, in keeping with this module's other
  * template-drift checks — silently skipping would restore the exact orphaning this exists to fix,
@@ -192,7 +197,7 @@ const HEADING_CLOSE_PATTERN = /<\/h1>/;
  * @returns {string}
  */
 export function linkSurfacesLandingFromOverview(html) {
-  if (html.includes(SURFACES_LANDING_LINK_MARKER)) {
+  if (html.includes(SURFACES_LANDING_HREF)) {
     return html;
   }
   if (!HEADING_CLOSE_PATTERN.test(html)) {
@@ -200,9 +205,7 @@ export function linkSurfacesLandingFromOverview(html) {
       'javadoc-seo: expected a </h1> on the surface overview page to anchor the surfaces link to — template drift?',
     );
   }
-  const link =
-    `<p ${SURFACES_LANDING_LINK_MARKER}><a href="${SURFACES_LANDING_FILENAME}">All API surfaces</a>` +
-    ' — how this reference is split.</p>';
+  const link = `<p><a ${SURFACES_LANDING_HREF}>All API surfaces</a> — how this reference is split.</p>`;
   return html.replace(HEADING_CLOSE_PATTERN, () => `</h1>\n${link}`);
 }
 
