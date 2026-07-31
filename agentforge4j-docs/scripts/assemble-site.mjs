@@ -958,6 +958,55 @@ export function urlsMissingFrom(mergedEntries, fragmentEntries) {
 }
 
 /**
+ * Proves the consumed fragment files can be removed without losing coverage, then removes them.
+ *
+ * The set whose survival is proved is derived HERE, from `fragmentPaths` — the very list of files
+ * about to be unlinked — and this function is handed no other source of entries. That is why it
+ * exists as a function at all rather than as a few lines of `mergeSitemaps`. The merge folds in a
+ * third list of Javadoc entries that are COMPUTED rather than read from disk, and "did this URL
+ * survive out of the file it came from" is not a question that can be asked about a URL that no
+ * file supplied. Counting those would have the guard report a survival it never checked, in the one
+ * place it is about to delete data.
+ *
+ * Keeping them out is therefore not a rule to be remembered, and not something a reviewer has to
+ * re-check: there is no parameter here for a caller-supplied entry list, and `javadocSitemapEntries`
+ * cannot be reached from this scope without first threading `siteUrl`, `releasedVersions` and
+ * `repoRoot` through this signature — a deliberate, visible change to the contract, not a slip.
+ *
+ * Re-reads the fragments rather than reusing whatever the merge was built from: the same files,
+ * unchanged in between, so the same entries — but the question is asked of the bytes on disk at the
+ * moment of deletion rather than of a variable that arrived here from somewhere else.
+ *
+ * Exported so its refusal branch can be driven directly, the way `urlsMissingFrom` is. It is one
+ * step of this module's own composition, not an extension point: `mergeSitemaps` is its only
+ * production caller and there is no reason for anything outside this file to call it.
+ *
+ * @param fragmentPaths the fragment files this merge consumed, and the only source of the proof set
+ * @param mergedEntries the merged sitemap, re-read from disk by the caller
+ * @param exit process-exit seam, called with 1 if the proof fails
+ * @returns the number of fragment URLs proved to have survived, or `null` if the proof failed and
+ *   nothing was removed — in which case the caller must not proceed (`exit` does not return in
+ *   production, but the tests' seam does)
+ */
+export function removeConsumedFragments(fragmentPaths, mergedEntries, exit) {
+  const fragmentEntries = fragmentPaths.flatMap((fragmentPath) => extractSitemapEntries(fragmentPath, exit));
+  const dropped = urlsMissingFrom(mergedEntries, fragmentEntries);
+  if (dropped.length > 0) {
+    console.error(
+      `[assemble-site] refusing to remove the consumed sitemap fragment(s): ${dropped.length} of their URL(s) are ` +
+        `not in the merged sitemap (e.g. ${dropped[0]}) — removing them would lose those URL(s) from search-engine ` +
+        `discovery entirely. Left in place: ${fragmentPaths.join(', ')}`,
+    );
+    exit(1);
+    return null;
+  }
+  for (const fragmentPath of fragmentPaths) {
+    rmSync(fragmentPath, {force: true});
+  }
+  return fragmentEntries.length;
+}
+
+/**
  * Sitemap entries for the Javadoc surfaces — the third published surface of this site, and until
  * now the only one absent from sitemap discovery entirely.
  *
@@ -972,9 +1021,10 @@ export function urlsMissingFrom(mergedEntries, fragmentEntries) {
  * content of the site under generated API pages without making any of it more discoverable.
  *
  * Unlike every other source `mergeSitemaps` folds in, these entries are COMPUTED rather than read
- * from a fragment file on disk. That distinction is load-bearing downstream: they must never join
- * `fragmentEntries`, which is the set whose survival is proved before the fragment files backing it
- * are deleted. There is no file behind a Javadoc entry to delete or to lose coverage from.
+ * from a fragment file on disk. That distinction is load-bearing downstream: they must never enter
+ * the fragment-removal proof, since there is no file behind a Javadoc entry to delete or to lose
+ * coverage from. `removeConsumedFragments` enforces that by construction — it derives the proved set
+ * from the fragment paths itself and accepts no entry list from its caller.
  */
 export function javadocSitemapEntries(siteUrl, releasedVersions, repoRoot) {
   return javadocSurfaces(releasedVersions)
@@ -1019,7 +1069,6 @@ function mergeSitemaps(siteDir, exit, {siteUrl = DEFAULT_SITE_URL, releasedVersi
   // this merge consumes and then removes; the SPA's fragment is not among them because it lives at
   // the site root and is overwritten in place by the merged file rather than deleted.
   const fragmentPaths = [docsSitemapPath, ...archivedSitemapFragments(siteDir)];
-  const fragmentEntries = fragmentPaths.flatMap((fragmentPath) => extractSitemapEntries(fragmentPath, exit));
 
   // The third published surface. The SPA and the docs each generate their own fragment; the Javadoc
   // trees have no generator of their own — they are raw maven-javadoc-plugin output, post-processed
@@ -1027,13 +1076,16 @@ function mergeSitemaps(siteDir, exit, {siteUrl = DEFAULT_SITE_URL, releasedVersi
   // that stamps their robots tags (javadoc-seo.mjs's javadocSurfaces). Until now the site published
   // an indexable /javadoc/latest/ that appeared in no sitemap at all.
   //
-  // Deliberately a THIRD list rather than more `fragmentEntries`: these entries have no file behind
-  // them. `fragmentEntries` is the set proved to have survived the merge before its backing files
-  // are deleted below — putting computed entries in it would mean asking whether a file that was
-  // never read still has its URLs, and would make the removal guard report a count it did not check.
+  // Folded into the merge below like any other source, but note that no variable in this function
+  // holds "the fragment entries" for anything else to be appended to: the removal proof further down
+  // re-derives its own set from `fragmentPaths`, so these computed entries have nowhere to leak into.
   const javadocEntries = javadocSitemapEntries(siteUrl, releasedVersions, repoRoot);
 
-  const entries = [...extractSitemapEntries(spaSitemapPath, exit), ...fragmentEntries, ...javadocEntries];
+  const entries = [
+    ...extractSitemapEntries(spaSitemapPath, exit),
+    ...fragmentPaths.flatMap((fragmentPath) => extractSitemapEntries(fragmentPath, exit)),
+    ...javadocEntries,
+  ];
 
   // Derived from the origin this composition was told to publish at, never a second copy of the
   // production literal. `siteUrl` is a documented seam (see assembleSite's own @param) and this
@@ -1072,32 +1124,24 @@ function mergeSitemaps(siteDir, exit, {siteUrl = DEFAULT_SITE_URL, releasedVersi
   // One site, one sitemap: the root file, which robots.txt points at.
   //
   // Removed only AFTER the merge has been written and re-read, so this can never delete coverage
-  // that did not make it across — the verification below asks the merged file itself rather than
-  // trusting the write. Note what that does and does not prove: `sitemapXml` and
+  // that did not make it across — `removeConsumedFragments` asks the merged file itself rather than
+  // trusting the write, and derives what it checks against from `fragmentPaths` rather than from
+  // anything assembled up here. Note what that does and does not prove: `sitemapXml` and
   // `extractSitemapEntries` round-trip losslessly for every value the parser accepts, so on today's
   // inputs this can only pass. It is a guard against a future change to either side of that round
   // trip, not a live failure mode — `urlsMissingFrom` is exported and tested in both directions
-  // precisely because this branch itself cannot be reached from any real input.
+  // precisely because that branch cannot be reached from any real input.
   const merged = extractSitemapEntries(join(siteDir, 'sitemap.xml'), exit);
-  const dropped = urlsMissingFrom(merged, fragmentEntries);
-  if (dropped.length > 0) {
-    console.error(
-      `[assemble-site] refusing to remove the consumed sitemap fragment(s): ${dropped.length} of their URL(s) are ` +
-        `not in the merged sitemap (e.g. ${dropped[0]}) — removing them would lose those URL(s) from search-engine ` +
-        `discovery entirely. Left in place: ${fragmentPaths.join(', ')}`,
-    );
-    exit(1);
+  const provedUrlCount = removeConsumedFragments(fragmentPaths, merged, exit);
+  if (provedUrlCount === null) {
     return;
-  }
-  for (const fragmentPath of fragmentPaths) {
-    rmSync(fragmentPath, {force: true});
   }
 
   console.log(
     `[assemble-site] merged sitemap.xml: ${entries.length} URL(s) (SPA + ${fragmentPaths.length} in-artifact ` +
       `fragment(s): ${fragmentPaths.join(', ')}; + ${javadocEntries.length} computed indexable Javadoc ` +
       `surface(s): ${javadocEntries.map((entry) => entry.url).join(', ') || 'none'}); removed those fragments ` +
-      `after confirming all ${fragmentEntries.length} of their URL(s) survive in the root sitemap`,
+      `after confirming all ${provedUrlCount} of their URL(s) survive in the root sitemap`,
   );
 }
 

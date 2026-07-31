@@ -17,6 +17,7 @@ import {
   verifyComposedArtifact,
   assembleSite,
   javadocSitemapEntries,
+  removeConsumedFragments,
   scanComposedHtmlForForbiddenContent,
   urlsMissingFrom,
   verifyComposedJavadocLinks,
@@ -2057,70 +2058,133 @@ test('urlsMissingFrom compares URLs only — a differing <lastmod> is not a lost
 });
 
 // --- The scope of the removal proof. mergeSitemaps deletes the fragment FILES it consumed, and is
-// entitled to do that only because urlsMissingFrom has just proved every URL those files carried
-// survived into the merged sitemap. The computed Javadoc entries have no file behind them, so they
-// must never enter that proof: "was this URL lost from a fragment" is not a question that can be
-// asked about a URL no fragment ever supplied, and counting them would make the guard report a
-// survival it never checked — inflating its own evidence exactly where it is about to delete data.
+// entitled to do that only because every URL those files carried has just been proved to survive
+// into the merged sitemap. The computed Javadoc entries have no file behind them, so they must
+// never enter that proof: "was this URL lost from a fragment" is not a question that can be asked
+// about a URL no fragment ever supplied, and counting them would make the guard report a survival
+// it never checked — inflating its own evidence exactly where it is about to delete data.
 //
-// Asserted against the module's source, which needs justifying because this suite otherwise tests
-// behaviour. The correct and the contaminated implementations are observationally IDENTICAL for
-// every input reachable on any supported platform: a computed entry is written into the merged file
-// microseconds before that file is re-read, so it is never absent, so urlsMissingFrom returns empty
-// either way and the same files are removed. Making one absent would need a URL that survives
-// sitemapXml but not the read back — the module documents exactly one such character (a carriage
-// return, XML 1.0 §2.11), and the only way to route one into a computed URL is a release-version
-// string, which cannot exist because it would have to name a directory (EINVAL on Windows).
-//
-// So there is no fixture that distinguishes them, and a behavioural test asserting today's output
-// would pass under both. What is left is the data flow itself. This is a deliberate last resort,
-// not a shortcut: it fails on the mutation it exists to catch, and — because a guard that cannot go
-// red is worth nothing — every precondition it depends on is asserted before the assertion itself,
-// so a rename or a restructure fails loudly here rather than quietly passing.
-test('the fragment-removal proof is fed only file-backed fragments, never the computed Javadoc entries', () => {
-  // Line endings normalised first: the structure below is located by newline anchors, and a
-  // checkout with core.autocrlf=true delivers this file with CRLF. Without this the preconditions
-  // fail on a perfectly correct working tree — a false red, which is its own kind of broken guard.
-  const source = readFileSync(join(REPO_ROOT, 'agentforge4j-docs', 'scripts', 'assemble-site.mjs'), 'utf8').replace(
-    /\r\n/g,
-    '\n',
+// `removeConsumedFragments` is the whole of that step, and it takes the fragment PATHS rather than
+// a list of entries: it reads them itself, immediately before unlinking them. So the tests below
+// are ordinary behavioural tests of an exported function, and the property that used to need
+// asserting — that no computed entry reaches the proof — is now a fact about the signature. There
+// is no entry-list parameter to contaminate, and `javadocSitemapEntries` cannot be called from that
+// scope without first threading `siteUrl`, `releasedVersions` and `repoRoot` into it.
+
+function fragmentFixture(prefix, urlsPerFragment) {
+  const root = mkdtempSync(join(tmpdir(), prefix));
+  const paths = urlsPerFragment.map((urls, index) => {
+    const path = join(root, `sitemap-${index}.xml`);
+    writeFileSync(path, sitemapXmlFixture(urls), 'utf8');
+    return path;
+  });
+  return {root, paths};
+}
+
+test('removeConsumedFragments deletes the fragments and reports the URL count it proved', () => {
+  const {paths} = fragmentFixture('removal-proof-ok-', [
+    ['https://agentforge4j.org/docs/', 'https://agentforge4j.org/docs/intro/'],
+    ['https://agentforge4j.org/docs/archive/0.1.0/'],
+  ]);
+  const exitCodes = [];
+  const merged = [
+    {url: 'https://agentforge4j.org/', lastmod: null},
+    {url: 'https://agentforge4j.org/docs/', lastmod: null},
+    {url: 'https://agentforge4j.org/docs/intro/', lastmod: null},
+    {url: 'https://agentforge4j.org/docs/archive/0.1.0/', lastmod: null},
+    {url: 'https://agentforge4j.org/javadoc/latest/', lastmod: null},
+  ];
+
+  const proved = removeConsumedFragments(paths, merged, (code) => exitCodes.push(code));
+
+  assert.deepEqual(exitCodes, []);
+  // 3, not 5: the count is what the FRAGMENTS carried. The merged sitemap's two other URLs — the SPA
+  // root and a computed Javadoc surface — are not the function's to vouch for, and a count that
+  // included them would be the guard overstating what it checked.
+  assert.equal(proved, 3);
+  assert.deepEqual(
+    paths.map((path) => existsSync(path)),
+    [false, false],
+  );
+});
+
+test('removeConsumedFragments refuses and leaves every fragment in place when a URL was lost', () => {
+  const {paths} = fragmentFixture('removal-proof-lost-', [
+    ['https://agentforge4j.org/docs/'],
+    ['https://agentforge4j.org/docs/archive/0.1.0/'],
+  ]);
+  const exitCodes = [];
+
+  // Only the first fragment's URL survived the merge.
+  const proved = removeConsumedFragments(
+    paths,
+    [{url: 'https://agentforge4j.org/docs/', lastmod: null}],
+    (code) => exitCodes.push(code),
   );
 
-  const opening = source.indexOf('\nfunction mergeSitemaps(');
-  assert.notEqual(opening, -1, 'precondition: mergeSitemaps must still be declared in assemble-site.mjs');
-  const closing = source.indexOf('\n}\n', opening);
-  assert.notEqual(closing, -1, 'precondition: mergeSitemaps must have a top-level closing brace');
-  const body = source.slice(opening, closing);
+  assert.equal(proved, null);
+  assert.deepEqual(exitCodes, [1]);
+  // Neither file removed — including the one whose URL did survive. Partial deletion would leave the
+  // artifact in a state no rerun reproduces.
+  assert.deepEqual(
+    paths.map((path) => existsSync(path)),
+    [true, true],
+  );
+});
 
-  // The call whose second argument IS the proof set. One call, so there is no ambiguity about which
-  // one this test governs; if a second appears, this must be revisited rather than silently pick one.
-  const calls = [...body.matchAll(/urlsMissingFrom\(\s*([A-Za-z0-9_$]+)\s*,\s*([A-Za-z0-9_$]+)\s*\)/g)];
-  assert.equal(calls.length, 1, 'precondition: mergeSitemaps must call urlsMissingFrom exactly once');
-  const proofSet = calls[0][2];
+test('removeConsumedFragments proves the fragments it is deleting, not whatever else the merge holds', () => {
+  // The merged sitemap legitimately carries URLs from sources that have no fragment file: the SPA's
+  // own entries and the computed Javadoc surfaces. Their presence must not be mistaken for evidence
+  // about the files being deleted, and their ABSENCE from the fragment set must not fail the proof.
+  const {paths} = fragmentFixture('removal-proof-scope-', [['https://agentforge4j.org/docs/']]);
+  const exitCodes = [];
 
-  const declaration = new RegExp(`\\bconst\\s+${proofSet}\\s*=([\\s\\S]*?);\\n`).exec(body);
-  assert.ok(declaration, `precondition: ${proofSet} must be declared inside mergeSitemaps`);
-  const initialiser = declaration[1];
+  const proved = removeConsumedFragments(
+    paths,
+    [
+      {url: 'https://agentforge4j.org/docs/', lastmod: null},
+      {url: 'https://agentforge4j.org/javadoc/latest/', lastmod: null},
+    ],
+    (code) => exitCodes.push(code),
+  );
 
-  // Derived from the consumed fragment FILES, and from nothing else.
+  assert.deepEqual(exitCodes, []);
+  assert.equal(proved, 1);
+});
+
+test('removeConsumedFragments handles the no-archives case without claiming anything it did not check', () => {
+  const exitCodes = [];
+  const proved = removeConsumedFragments([], [{url: 'https://agentforge4j.org/', lastmod: null}], (code) =>
+    exitCodes.push(code),
+  );
+  assert.deepEqual(exitCodes, []);
+  assert.equal(proved, 0);
+});
+
+// The one thing the behavioural tests above cannot express, because it is a property of the shape of
+// the code rather than of its output: that the proof still has no way to be handed entries from
+// somewhere else. Two exact call shapes, both single literal matches — no parsing of an arbitrary
+// initialiser, and no guessing from identifier names.
+test('the removal proof takes fragment paths, and mergeSitemaps hands it exactly those', () => {
+  const source = readFileSync(join(REPO_ROOT, 'agentforge4j-docs', 'scripts', 'assemble-site.mjs'), 'utf8');
+
+  // Widening this signature is the only route by which a computed entry could reach the proof: the
+  // Javadoc entries cannot be built without siteUrl/releasedVersions/repoRoot, none of which are
+  // here. Adding any of them, or an entry-list parameter, fails this and has to be argued for.
+  // Whitespace-tolerant on purpose: the parameter LIST is the invariant, so a reformat that wraps
+  // the arguments must not turn this red. The identifiers and their order are still exact.
   assert.match(
-    initialiser,
-    /fragmentPaths/,
-    `the removal proof (${proofSet}) must be derived from fragmentPaths — the files about to be deleted`,
+    source,
+    /export function removeConsumedFragments\(\s*fragmentPaths,\s*mergedEntries,\s*exit,?\s*\)\s*\{/,
+    'removeConsumedFragments must keep its (fragmentPaths, mergedEntries, exit) signature — widening ' +
+      'it is how computed entries would get in',
   );
-  assert.doesNotMatch(
-    initialiser,
-    /javadoc/i,
-    `the removal proof (${proofSet}) must not be fed the computed Javadoc entries: they have no ` +
-      'backing file, so they cannot be lost from one, and including them would have the guard ' +
-      'count URLs it never verified against anything on disk',
-  );
-  // A spread is how an unrelated list gets folded in. The legitimate initialiser maps over
-  // fragmentPaths and needs none, so forbidding it closes the aliased-variable route that a bare
-  // "javadoc" spelling check would miss.
-  assert.doesNotMatch(
-    initialiser,
-    /\.\.\./,
-    `the removal proof (${proofSet}) must not concatenate any other list into itself`,
+
+  // And it is called with the paths themselves, so the set it proves is re-derived at the call site
+  // from the files about to be unlinked rather than from anything assembled earlier in the merge.
+  assert.match(
+    source,
+    /removeConsumedFragments\(\s*fragmentPaths,\s*merged,\s*exit,?\s*\)/,
+    'mergeSitemaps must pass fragmentPaths — the files it is about to delete — as the proof source',
   );
 });
