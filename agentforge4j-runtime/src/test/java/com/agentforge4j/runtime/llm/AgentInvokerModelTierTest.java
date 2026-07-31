@@ -85,6 +85,51 @@ class AgentInvokerModelTierTest {
   }
 
   @Test
+  void premiumTierIsResolvedAndReportedLikeAnyOtherTier() {
+    LlmClient client = client();
+    ModelTierResolver resolver = (provider, tier) ->
+        tier == ModelTier.PREMIUM ? "resolved-premium" : null;
+    AgentInvoker invoker = invoker(agent(new ProviderPreference("openai", null), "PREMIUM"),
+        client, resolver);
+
+    AgentInvocationResult result = invoker.invoke("agent-x", ContextMapping.none(),
+        state("run-premium-tier"), null);
+
+    assertThat(requestModel(client)).isEqualTo("resolved-premium");
+    assertThat(result.modelSource()).isEqualTo(ModelSource.TIER);
+    assertThat(result.resolvedModel()).isEqualTo("resolved-premium");
+    assertThat(result.requestedModelTier()).isEqualTo(ModelTier.PREMIUM);
+  }
+
+  @Test
+  void premiumStepTierOverridesPowerfulAgentTier() {
+    LlmClient client = client();
+    ModelTierResolver resolver = (provider, tier) -> "resolved-" + tier.name();
+    AgentInvoker invoker = invoker(agent(new ProviderPreference("openai", null), "POWERFUL"),
+        client, resolver);
+
+    AgentInvocationResult result = invoker.invoke("agent-x", ContextMapping.none(),
+        state("run-premium-step-tier"), null, "PREMIUM");
+
+    assertThat(requestModel(client)).isEqualTo("resolved-PREMIUM");
+    assertThat(result.requestedModelTier()).isEqualTo(ModelTier.PREMIUM);
+  }
+
+  @Test
+  void invalidTierMessageListsEveryDeclaredTier() {
+    LlmClient client = client();
+    ModelTierResolver resolver = (provider, tier) -> "x";
+    AgentInvoker invoker = invoker(agent(new ProviderPreference("openai", null), "SUPER"),
+        client, resolver);
+
+    assertThatThrownBy(() ->
+        invoker.invoke("agent-x", ContextMapping.none(), state("run-bad-tier-message"), null))
+        .isInstanceOf(ModelTierResolutionException.class)
+        .hasMessageContaining("PREMIUM")
+        .hasMessageContaining(ModelTier.joinedNames());
+  }
+
+  @Test
   void lowercaseTierResolvesIdenticallyToUppercase() {
     LlmClient client = client();
     ModelTierResolver resolver = (provider, tier) ->

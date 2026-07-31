@@ -49,10 +49,17 @@
 // mechanism, unchanged from the original design.
 //
 // One page in every surface is NOT maven-javadoc-plugin output at all: `surfaces.html`, hand-authored
-// by `build-javadoc.mjs` itself as the three-surface landing page, ships with no
-// `<meta name="description">` tag by design. Recognized by filename below and passed
-// `allowMissingDescription: true` so it gets a fresh description inserted instead of tripping the
-// template-drift check every other (genuine plugin-generated) page is still held to.
+// by `build-javadoc.mjs` itself as the landing page that makes the stitched-surface split explicit.
+// Recognized by filename below, it is the one page carrying TWO carve-outs, both keyed on that same
+// exact filename and on nothing else:
+//
+//   - `allowMissingDescription: true` — it ships with no `<meta name="description">` tag by design,
+//     so it gets a fresh one inserted instead of tripping the template-drift check every other
+//     (genuine plugin-generated) page is still held to;
+//   - its own copy (`surfacesLandingCopy`) instead of the generic per-page rule — its raw `<title>`
+//     is brand-prefixed prose rather than the bare identifier every generated page carries, so it is
+//     the one page in the corpus whose title, heading and description are neither surface-derived
+//     nor derived from its own raw title.
 
 import { existsSync, readdirSync, readFileSync, realpathSync, statSync, writeFileSync } from 'node:fs';
 import { isAbsolute, join, relative } from 'node:path';
@@ -241,12 +248,19 @@ function escapeHtmlText(value) {
  * one raw page kind that natively carries a canonical of its own: the IndexRedirectWriter redirect
  * stub, recognized and skipped whole by `applyJavadocSeo` (see `isJavadocRedirectStub`).
  *
+ * `heading` overrides the text written into a matched doc-title `<h1>`, and defaults to `title` —
+ * byte-identical behaviour to before for every page that does not pass it. It exists for the one
+ * page whose best `<title>` and best visible heading are genuinely different strings: a `<title>`
+ * carries the site and lifecycle context a search result needs, while an `<h1>` is read with the
+ * page already in front of you, so repeating that context in it produces the doubled, clumsy
+ * heading this option was added to fix (see `surfacesLandingCopy`).
+ *
  * @param {string} html
- * @param {{title: string, description: string, canonical: string, ogImage: string, noindex?: boolean, allowMissingDescription?: boolean}} options
+ * @param {{title: string, description: string, canonical: string, ogImage: string, heading?: string, noindex?: boolean, allowMissingDescription?: boolean}} options
  */
 export function injectJavadocPageSeo(
   html,
-  { title, description, canonical, ogImage, noindex = false, allowMissingDescription = false },
+  { title, description, canonical, ogImage, heading = title, noindex = false, allowMissingDescription = false },
 ) {
   if (!/<\/head>/.test(html)) {
     throw new Error('javadoc-seo: expected a </head> closing tag');
@@ -315,7 +329,7 @@ export function injectJavadocPageSeo(
   // never match and is never touched.
   result = result.replace(
     DOC_TITLE_HEADING_PATTERN,
-    (_match, open, close) => `${open}${escapeHtmlText(title)}${close}`,
+    (_match, open, close) => `${open}${escapeHtmlText(heading)}${close}`,
   );
 
   // Function replacers throughout (never a plain-string second argument to String.replace): a
@@ -447,6 +461,55 @@ function surfaceCopy(label) {
   return {
     title: `AgentForge4j API Reference — ${label}`,
     description: `Generated Javadoc API reference for the AgentForge4j framework (${label}).`,
+  };
+}
+
+/**
+ * Copy for `surfaces.html` — `build-javadoc.mjs`'s own hand-authored landing page, the one page in
+ * a surface that is not maven-javadoc-plugin output at all.
+ *
+ * It needs its own entry because the generic nested-page rule derives a page's copy from its raw
+ * `<title>`, and this page's raw title is `AgentForge4j API — surfaces`: brand-prefixed prose, not
+ * the "Foo" / "com.example" / "All Classes and Interfaces" identifier every generated page carries.
+ * Appending the lifecycle suffix to it produced
+ * `AgentForge4j API — surfaces — AgentForge4j API Reference (latest stable, 0.1.0)` — accurate, and
+ * unreadable, with the brand stated twice and two em-dash clauses.
+ *
+ * Narrow by construction: this is chosen by matching one exact filename in `applyJavadocSeo`, and it
+ * changes nothing about how any other page is titled. In particular it does NOT relax
+ * `stripJavadocWindowTitle` or `nestedPageCopy` — the general normalization, and the guarantee that
+ * no page of any tree is ever labelled with the generator's `(next)` window title, both apply to
+ * this page exactly as before. What changes is only which words this one page uses.
+ *
+ * `heading` differs from `title` deliberately: the `<title>` is read in a search result, where the
+ * brand and the lifecycle state are the context that makes it meaningful, while the `<h1>` is read
+ * with the page already open, where repeating them is the noise that made the old heading clumsy.
+ *
+ * The description deliberately does NOT name or count the surfaces. That list is authored in a
+ * DIFFERENT module (`build-javadoc.mjs`'s landing-page template) and, for every version-pinned
+ * surface, by THAT RELEASE TAG's own historical copy of it (see build-javadoc-versions.mjs) — this
+ * pass runs against the already-composed output and cannot see which surfaces a given tag's build
+ * actually produced. Enumerating them here would be this module inventing a claim about content it
+ * does not own, which is precisely what `nestedPageCopy` below exists to avoid: a future release
+ * that adds or drops a surface would silently publish a description its own page body contradicts,
+ * with no test able to fail. What is said instead holds for any surface set — the page explains the
+ * split and links each one.
+ *
+ * Kept inside the 157-character meta-description budget the rest of this site already publishes to
+ * (`agentforge4j-web-ui/scripts/build-seo.mjs`'s `MAX_DESCRIPTION_LENGTH`): a longer description is
+ * cut in the search result, and at 157 the first wording of this one was cut mid-word. Asserted for
+ * every lifecycle label in this module's tests rather than enforced at runtime — `nestedPageCopy`'s
+ * descriptions are as long as the page title they quote, so a hard limit in `injectJavadocPageSeo`
+ * would fail the whole site build on one long class name. The bound is knowable in advance only
+ * here, where the wording is fixed and only the label varies.
+ */
+function surfacesLandingCopy(label) {
+  return {
+    title: `API Surfaces — AgentForge4j API Reference (${label})`,
+    heading: `AgentForge4j API Surfaces (${label})`,
+    description:
+      `How the AgentForge4j API reference (${label}) is split across its independently generated ` +
+      'surfaces, with a link to each one.',
   };
 }
 
@@ -587,13 +650,24 @@ export function applyJavadocSeo({ siteDir, siteUrl, ogImage, releasedVersions })
       }
       const canonical = canonicalFor(siteUrl, surface.mountPath, surfaceRoot, pageInput);
       const isOverview = pageInput === indexPath;
-      const copy = isOverview ? surfaceCopy(surface.label) : nestedPageCopy(html, surface.label);
       const isSurfacesLandingPage = pageInput === join(surfaceRoot, SURFACES_LANDING_FILENAME);
+      // Three page kinds, decided by what the page IS, not by guessing from its content: the
+      // surface's own overview page, this repo's own hand-authored landing page, and every genuine
+      // maven-javadoc-plugin page (whose copy is derived from its own title).
+      let copy;
+      if (isSurfacesLandingPage) {
+        copy = surfacesLandingCopy(surface.label);
+      } else if (isOverview) {
+        copy = surfaceCopy(surface.label);
+      } else {
+        copy = nestedPageCopy(html, surface.label);
+      }
       let updatedHtml;
       try {
         updatedHtml = injectJavadocPageSeo(html, {
           title: copy.title,
           description: copy.description,
+          heading: copy.heading,
           canonical,
           ogImage,
           noindex: surface.noindex,

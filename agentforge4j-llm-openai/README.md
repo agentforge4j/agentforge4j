@@ -18,6 +18,7 @@ Shipped tier defaults for provider id `openai`:
 | `LITE` | `gpt-5.4-nano` |
 | `STANDARD` | `gpt-5.4-mini` |
 | `POWERFUL` | `gpt-5.5` |
+| `PREMIUM` | `gpt-5.5` |
 
 Agents request a tier; operators may override any tier-to-model mapping.
 

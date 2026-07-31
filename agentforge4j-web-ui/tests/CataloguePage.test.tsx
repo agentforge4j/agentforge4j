@@ -16,7 +16,7 @@ describe('CataloguePage (real generated data)', () => {
     expect(screen.getAllByRole('listitem')).toHaveLength(catalogueData.workflows.length);
     for (const workflow of catalogueData.workflows) {
       const link = screen.getByRole('link', { name: workflow.name });
-      expect(link).toHaveAttribute('href', `/catalogue/${workflow.id}`);
+      expect(link).toHaveAttribute('href', `/catalogue/${workflow.id}/`);
     }
   });
 

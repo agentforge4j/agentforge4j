@@ -18,6 +18,7 @@ Shipped tier defaults for provider id `ollama`:
 | `LITE` | `qwen3:4b` |
 | `STANDARD` | `qwen3:14b` |
 | `POWERFUL` | `qwen3:32b` |
+| `PREMIUM` | `qwen3:32b` |
 
 Pull the corresponding models in Ollama (or override the tier mapping to models you have pulled).
 

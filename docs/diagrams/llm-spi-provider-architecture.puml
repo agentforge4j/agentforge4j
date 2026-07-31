@@ -35,6 +35,7 @@ package "agentforge4j-llm-api  (contracts, no impl)" #F3F7FF {
     LITE
     STANDARD
     POWERFUL
+    PREMIUM
   }
   interface ModelTierResolver {
     +resolve(provider : String, tier : ModelTier) : String
