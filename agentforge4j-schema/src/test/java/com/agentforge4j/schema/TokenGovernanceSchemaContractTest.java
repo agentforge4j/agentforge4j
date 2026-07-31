@@ -16,8 +16,12 @@ import org.junit.jupiter.api.Test;
 
 /**
  * Contract tests for the token-governance additions to the workflow and agent schemas: the COMPACT
- * behaviour, per-step context selection, workflow ledgers, the PREMIUM tier, the TOOL_INVOCATION
- * and REQUEST_CONTEXT commands, and agent output contracts.
+ * behaviour, per-step context selection, workflow ledgers, the TOOL_INVOCATION and REQUEST_CONTEXT
+ * commands, and agent output contracts.
+ *
+ * <p>Fixtures here declare {@code PREMIUM} where a tier is incidental to the case under test. The
+ * tier itself is not this class's contract — {@code ModelTierSchemaContractTest} and
+ * {@code ModelTierSchemaAlignmentTest} own it.
  */
 class TokenGovernanceSchemaContractTest {
 
