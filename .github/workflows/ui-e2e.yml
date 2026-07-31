@@ -20,11 +20,12 @@ name: UI E2E
 #     steps and succeeds, so unrelated PRs (Java-only, or builder-only, or web-ui-only) are
 #     gated-but-not-blocked on the parts they didn't touch;
 #   - if the relevant path did change, the full unit + Playwright suite runs and gates the PR.
-# `agentforge4j-ui-e2e/`, `.nvmrc` and `agentforge4j-schema/` are common triggers for both jobs.
-# The first two because a change there can affect either target's test harness or runtime;
-# `agentforge4j-schema/` for two independent reasons — the builder commits a mirror of that
-# module's JSON schemas and fails its own build when the two diverge, and the site build reads
-# schema version constants straight from agentforge4j-schema's Java source.
+# Four paths are common triggers for both jobs: `agentforge4j-ui-e2e/`, `.nvmrc`, this workflow
+# file itself, and `agentforge4j-schema/`. The first three because a change there can affect
+# either target's test harness, runtime, or the gate itself; `agentforge4j-schema/` for two
+# independent reasons — the builder commits a mirror of that module's JSON schemas and fails its
+# own build when the two diverge, and the site build reads schema version constants straight from
+# agentforge4j-schema's Java source.
 # `agentforge4j-workflows-catalog/` is a web-ui-relevant trigger only: the site build reads
 # shipped-workflow content straight from the catalog module's source resources, so a change there
 # can change what the site actually renders without touching agentforge4j-web-ui/ itself.
