@@ -2055,3 +2055,72 @@ test('urlsMissingFrom compares URLs only — a differing <lastmod> is not a lost
   const fragment = [{url: 'https://agentforge4j.org/docs/0.1.0/', lastmod: null}];
   assert.deepEqual(urlsMissingFrom(merged, fragment), []);
 });
+
+// --- The scope of the removal proof. mergeSitemaps deletes the fragment FILES it consumed, and is
+// entitled to do that only because urlsMissingFrom has just proved every URL those files carried
+// survived into the merged sitemap. The computed Javadoc entries have no file behind them, so they
+// must never enter that proof: "was this URL lost from a fragment" is not a question that can be
+// asked about a URL no fragment ever supplied, and counting them would make the guard report a
+// survival it never checked — inflating its own evidence exactly where it is about to delete data.
+//
+// Asserted against the module's source, which needs justifying because this suite otherwise tests
+// behaviour. The correct and the contaminated implementations are observationally IDENTICAL for
+// every input reachable on any supported platform: a computed entry is written into the merged file
+// microseconds before that file is re-read, so it is never absent, so urlsMissingFrom returns empty
+// either way and the same files are removed. Making one absent would need a URL that survives
+// sitemapXml but not the read back — the module documents exactly one such character (a carriage
+// return, XML 1.0 §2.11), and the only way to route one into a computed URL is a release-version
+// string, which cannot exist because it would have to name a directory (EINVAL on Windows).
+//
+// So there is no fixture that distinguishes them, and a behavioural test asserting today's output
+// would pass under both. What is left is the data flow itself. This is a deliberate last resort,
+// not a shortcut: it fails on the mutation it exists to catch, and — because a guard that cannot go
+// red is worth nothing — every precondition it depends on is asserted before the assertion itself,
+// so a rename or a restructure fails loudly here rather than quietly passing.
+test('the fragment-removal proof is fed only file-backed fragments, never the computed Javadoc entries', () => {
+  // Line endings normalised first: the structure below is located by newline anchors, and a
+  // checkout with core.autocrlf=true delivers this file with CRLF. Without this the preconditions
+  // fail on a perfectly correct working tree — a false red, which is its own kind of broken guard.
+  const source = readFileSync(join(REPO_ROOT, 'agentforge4j-docs', 'scripts', 'assemble-site.mjs'), 'utf8').replace(
+    /\r\n/g,
+    '\n',
+  );
+
+  const opening = source.indexOf('\nfunction mergeSitemaps(');
+  assert.notEqual(opening, -1, 'precondition: mergeSitemaps must still be declared in assemble-site.mjs');
+  const closing = source.indexOf('\n}\n', opening);
+  assert.notEqual(closing, -1, 'precondition: mergeSitemaps must have a top-level closing brace');
+  const body = source.slice(opening, closing);
+
+  // The call whose second argument IS the proof set. One call, so there is no ambiguity about which
+  // one this test governs; if a second appears, this must be revisited rather than silently pick one.
+  const calls = [...body.matchAll(/urlsMissingFrom\(\s*([A-Za-z0-9_$]+)\s*,\s*([A-Za-z0-9_$]+)\s*\)/g)];
+  assert.equal(calls.length, 1, 'precondition: mergeSitemaps must call urlsMissingFrom exactly once');
+  const proofSet = calls[0][2];
+
+  const declaration = new RegExp(`\\bconst\\s+${proofSet}\\s*=([\\s\\S]*?);\\n`).exec(body);
+  assert.ok(declaration, `precondition: ${proofSet} must be declared inside mergeSitemaps`);
+  const initialiser = declaration[1];
+
+  // Derived from the consumed fragment FILES, and from nothing else.
+  assert.match(
+    initialiser,
+    /fragmentPaths/,
+    `the removal proof (${proofSet}) must be derived from fragmentPaths — the files about to be deleted`,
+  );
+  assert.doesNotMatch(
+    initialiser,
+    /javadoc/i,
+    `the removal proof (${proofSet}) must not be fed the computed Javadoc entries: they have no ` +
+      'backing file, so they cannot be lost from one, and including them would have the guard ' +
+      'count URLs it never verified against anything on disk',
+  );
+  // A spread is how an unrelated list gets folded in. The legitimate initialiser maps over
+  // fragmentPaths and needs none, so forbidding it closes the aliased-variable route that a bare
+  // "javadoc" spelling check would miss.
+  assert.doesNotMatch(
+    initialiser,
+    /\.\.\./,
+    `the removal proof (${proofSet}) must not concatenate any other list into itself`,
+  );
+});
