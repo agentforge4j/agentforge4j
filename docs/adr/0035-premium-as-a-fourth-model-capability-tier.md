@@ -54,7 +54,9 @@ This amends ADR-0008 rather than superseding it: the decision recorded there —
 
 ## Compatibility impact
 
-Public contract, additive in both directions. The `modelTier` enums in `agent.schema.json` and `workflow.schema.json` will gain a member when the configuration surface lands — they are unchanged by the runtime/API change that introduces the tier, so until then `PREMIUM` is not a publicly supported value in agent or workflow JSON. That widening is additive: nothing previously valid becomes invalid, and no consumer that already rejected the unknown string `PREMIUM` changes behaviour. The workflow `schemaVersion` therefore stays at 1. `ModelTier` gains an enum constant, which is binary-compatible; a consumer that exhaustively switches over the enum without a default would need a new branch, and none exists in this repository.
+Public contract, additive in both directions. The `modelTier` enums in `agent.schema.json` and `workflow.schema.json` have both gained the member: the runtime/API change that introduced the tier left them untouched, and the configuration-surface change that followed widened both, so `PREMIUM` is a publicly supported value in agent and workflow JSON. That widening is additive: nothing previously valid becomes invalid, and no consumer that already rejected the unknown string `PREMIUM` changes behaviour. The workflow `schemaVersion` therefore stays at 1. `ModelTier` gains an enum constant, which is binary-compatible; a consumer that exhaustively switches over the enum without a default would need a new branch, and none exists in this repository.
+
+**Updated 2026-07-31 (editorial — reflects current state, does not change the decision):** as drafted, this paragraph said the two schema enums "will gain a member when the configuration surface lands" and that `PREMIUM` was "not a publicly supported value in agent or workflow JSON" until then. That surface has since landed, so the tense is corrected above; the Implementation notes name the tests that hold the schemas and the enum together.
 
 ## Implementation notes
 
