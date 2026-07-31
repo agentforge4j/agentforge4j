@@ -25,6 +25,37 @@ class ConfigModelTierResolverTest {
   }
 
   @Test
+  void resolvesPremiumTierToStrongestShippedModelForEveryProvider() {
+    ConfigModelTierResolver resolver = ConfigModelTierResolver.withShippedDefaults();
+
+    // PREMIUM ships mapped to each provider's strongest available model (same as POWERFUL where
+    // no distinct higher-capability model is configured).
+    assertThat(resolver.resolve("claude", ModelTier.PREMIUM)).isEqualTo("claude-opus-4-8");
+    assertThat(resolver.resolve("openai", ModelTier.PREMIUM)).isEqualTo("gpt-5.5");
+    assertThat(resolver.resolve("gemini", ModelTier.PREMIUM)).isEqualTo("gemini-3.1-pro");
+    assertThat(resolver.resolve("mistral", ModelTier.PREMIUM)).isEqualTo("mistral-large-2512");
+    assertThat(resolver.resolve("bedrock", ModelTier.PREMIUM))
+        .isEqualTo("anthropic.claude-opus-4-8");
+    assertThat(resolver.resolve("azure-openai", ModelTier.PREMIUM)).isEqualTo("gpt-5.5");
+    assertThat(resolver.resolve("ollama", ModelTier.PREMIUM)).isEqualTo("qwen3:32b");
+    assertThat(resolver.resolve("vllm", ModelTier.PREMIUM)).isEqualTo("Qwen/Qwen3-32B");
+    assertThat(resolver.resolve("openai-compatible", ModelTier.PREMIUM)).isEqualTo("gpt-5.5");
+  }
+
+  @Test
+  void everyShippedProviderMapsEveryDeclaredTier() {
+    ConfigModelTierResolver resolver = ConfigModelTierResolver.withShippedDefaults();
+
+    for (String provider : ShippedModelTierDefaults.asMap().keySet()) {
+      for (ModelTier tier : ModelTier.values()) {
+        assertThat(resolver.resolve(provider, tier))
+            .as("provider '%s' must ship a default for tier %s", provider, tier)
+            .isNotNull();
+      }
+    }
+  }
+
+  @Test
   void returnsNullWhenProviderIsUnknown() {
     ConfigModelTierResolver resolver = ConfigModelTierResolver.withShippedDefaults();
 
@@ -50,6 +81,34 @@ class ConfigModelTierResolverTest {
     assertThat(resolver.resolve("claude", ModelTier.STANDARD)).isEqualTo("claude-sonnet-4-6");
     // Untouched provider still falls back to the shipped default.
     assertThat(resolver.resolve("openai", ModelTier.LITE)).isEqualTo("gpt-5.4-nano");
+  }
+
+  @Test
+  void overridingPowerfulLeavesPremiumOnTheShippedDefault() {
+    // PREMIUM and POWERFUL ship mapped to the same model, so an operator retargeting POWERFUL could
+    // plausibly be expected to move both. The merge is per tier: PREMIUM keeps the shipped default
+    // until it is overridden in its own right.
+    Map<ModelTier, String> claudeOverride = new EnumMap<>(ModelTier.class);
+    claudeOverride.put(ModelTier.POWERFUL, "claude-opus-custom");
+    ConfigModelTierResolver resolver = ConfigModelTierResolver.withShippedDefaultsAndOverrides(
+        Map.of("claude", claudeOverride));
+
+    assertThat(resolver.resolve("claude", ModelTier.POWERFUL)).isEqualTo("claude-opus-custom");
+    assertThat(resolver.resolve("claude", ModelTier.PREMIUM)).isEqualTo("claude-opus-4-8");
+  }
+
+  @Test
+  void premiumCanBeOverriddenWithoutDisturbingPowerful() {
+    Map<ModelTier, String> claudeOverride = new EnumMap<>(ModelTier.class);
+    claudeOverride.put(ModelTier.PREMIUM, "claude-opus-premium-custom");
+    ConfigModelTierResolver resolver = ConfigModelTierResolver.withShippedDefaultsAndOverrides(
+        Map.of("claude", claudeOverride));
+
+    assertThat(resolver.resolve("claude", ModelTier.PREMIUM))
+        .isEqualTo("claude-opus-premium-custom");
+    assertThat(resolver.resolve("claude", ModelTier.POWERFUL)).isEqualTo("claude-opus-4-8");
+    assertThat(resolver.resolve("claude", ModelTier.LITE))
+        .isEqualTo("claude-haiku-4-5-20251001");
   }
 
   @Test

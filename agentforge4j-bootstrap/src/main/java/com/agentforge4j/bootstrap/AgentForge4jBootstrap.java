@@ -61,7 +61,6 @@ import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.function.Function;
@@ -1006,11 +1005,11 @@ public final class AgentForge4jBootstrap {
 
     private static ModelTier getModelTier(String tierName, String key) {
       try {
-        return ModelTier.valueOf(tierName.toUpperCase(Locale.ROOT));
+        return ModelTier.fromName(tierName);
       } catch (IllegalArgumentException exception) {
         throw new IllegalStateException(
-            ("Invalid tier '%s' in '%s' — valid tiers: LITE, STANDARD, POWERFUL")
-                .formatted(tierName, key), exception);
+            ("Invalid tier '%s' in '%s' — valid tiers: %s")
+                .formatted(tierName, key, ModelTier.joinedNames()), exception);
       }
     }
   }

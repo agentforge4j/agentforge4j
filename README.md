@@ -91,7 +91,7 @@ These are the live terms used throughout the codebase.
 | **Human gate** | `ESCALATE` / `StepApprovalDecision` | A point where the run pauses for human input, review, or approval before continuing. |
 | **Tool call** | `ToolProvider` + `TOOL_INVOCATION` | Typed, explicit invocation of an external tool through an SPI. |
 | **Event log** | `WorkflowEvent` / `WorkflowEventLog` | The decision-level audit trail of everything that happened during a run. |
-| **Model tier** | `ModelTier` | A provider-independent capability level (`LITE`, `STANDARD`, `POWERFUL`) so workflows pick capability, not a vendor model name. |
+| **Model tier** | `ModelTier` | A provider-independent capability level (`LITE`, `STANDARD`, `POWERFUL`, `PREMIUM`) so workflows pick capability, not a vendor model name. |
 
 Agents return a typed list of commands rather than prose. Current command types include
 `CREATE_FILE`, `SET_CONTEXT`, `USER_PROMPT`, `RUN_COMMAND`, `TOOL_INVOCATION`,
