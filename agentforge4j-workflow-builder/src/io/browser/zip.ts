@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import JSZip from 'jszip';
+import { collectPreservedStepFields } from '../../model/preservedStepFields';
 import type {
   BlueprintJsonObject,
   EditableArtifact,
@@ -58,6 +59,7 @@ function runtimeStepToEditable(
     name: String(step.name ?? stepId),
     stepPrompt: prompts[stepId],
     contextMapping,
+    preservedFields: collectPreservedStepFields(step),
   };
 
   const registerNested = (executable: unknown): string | undefined => {

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import type { EditableArtifact, EditableArtifactItem } from '../api/types';
+import type { PreservedStepFields } from './preservedStepFields';
 import type { NodeKind } from './nodeKinds';
 import type { StepTransition } from '../api/types';
 
@@ -114,6 +115,12 @@ type CanvasNodeBase = {
   backendStepId?: string;
   position: { x: number; y: number };
   parentNode?: string;
+  /**
+   * Step-level properties the framework defines and this builder does not model, carried on the
+   * node so that editing, duplication, undo/redo and draft persistence all keep them. Written back
+   * onto the exported step by the mapper. See {@link PreservedStepFields}.
+   */
+  preservedFields?: PreservedStepFields;
 };
 
 export type CanvasNode =

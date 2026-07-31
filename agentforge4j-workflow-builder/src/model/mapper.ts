@@ -30,6 +30,11 @@ import type {
   WorkflowDefinition,
 } from '../api/types';
 import { NODE_LABELS } from '../copy/workflow-terminology';
+import {
+  BUILDER_OWNED_DETAIL_STEP_KEYS,
+  applyPreservedStepFields,
+  collectPreservedStepFields,
+} from './preservedStepFields';
 import { customAlphabet } from 'nanoid';
 
 const nanoid = customAlphabet('abcdefghijklmnopqrstuvwxyz0123456789', 10);
@@ -74,7 +79,9 @@ function serializeStepExecutable(workflow: WorkflowDefinition, step: EditableSte
   if (step.stepPrompt?.trim()) {
     body.stepPrompt = step.stepId;
   }
-  return body;
+  // Preserved fields are laid down first and the builder-written body overwrites them, so an
+  // edited value always wins over the copy captured at import.
+  return applyPreservedStepFields(body, step.preservedFields);
 }
 
 function serializeBehaviour(workflow: WorkflowDefinition, step: EditableStep): Record<string, unknown> {
@@ -374,7 +381,23 @@ function artifactFromAskUser(node: CanvasNode, artifactId: string): EditableArti
   return { id: artifactId, items };
 }
 
+/**
+ * Converts one canvas node to an editable step, re-attaching any framework step properties the
+ * builder does not model.
+ *
+ * The re-attachment happens here, once, rather than inside the per-kind conversion below: that
+ * switch builds a separate object literal for every node kind, so carrying the field there would
+ * mean ten copies of the same line and a fresh omission every time a kind is added.
+ */
 function canvasNodeToStep(
+  node: CanvasNode,
+  ctx: { artifactIdForAsk?: string; stepId: string },
+): EditableStep {
+  const step = canvasNodeToStepForKind(node, ctx);
+  return node.preservedFields ? { ...step, preservedFields: node.preservedFields } : step;
+}
+
+function canvasNodeToStepForKind(
   node: CanvasNode,
   ctx: { artifactIdForAsk?: string; stepId: string },
 ): EditableStep {
@@ -793,7 +816,14 @@ export function workflowToCanvas(workflow: WorkflowDefinition): CanvasModel {
         transition: cfg.transition as 'AUTO',
       };
     }
-    nodes.push({ id: cid, backendStepId: st.stepId, kind, position: { x: 200, y }, data } as CanvasNode);
+    nodes.push({
+      id: cid,
+      backendStepId: st.stepId,
+      kind,
+      position: { x: 200, y },
+      data,
+      preservedFields: st.preservedFields,
+    } as CanvasNode);
     y += gap;
     if (i > 0) {
       edges.push({
@@ -913,6 +943,10 @@ export function workflowDetailToCanvas(detail: WorkflowDetailDto): CanvasModel {
         inputKeys: s.inputKeys ?? [],
         outputKeys: s.outputKeys ?? [],
       },
+      preservedFields: collectPreservedStepFields(
+        s as unknown as Record<string, unknown>,
+        BUILDER_OWNED_DETAIL_STEP_KEYS,
+      ),
     };
     if (type === 'INPUT') {
       base.behaviourType = 'INPUT';
