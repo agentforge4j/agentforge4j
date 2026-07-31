@@ -1,5 +1,4 @@
 {
-  "kind": "BLUEPRINT",
   "blueprintId": "dup-body",
   "name": "Dup Body",
   "behaviour": {

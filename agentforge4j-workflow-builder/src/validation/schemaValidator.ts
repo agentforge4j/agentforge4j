@@ -7,7 +7,7 @@ import { exportStepJson } from '../model/mapper';
 import agentSchema from '../schemas/agent.schema.json';
 import artifactSchema from '../schemas/artifact.schema.json';
 import blueprintSchema from '../schemas/blueprint.schema.json';
-import workflowSchema from '../generated/workflow.schema.json';
+import workflowSchema from '../schemas/workflow.schema.json';
 
 type SchemaValidationResult = {
   valid: boolean;
@@ -250,7 +250,7 @@ export function validateRuntimeDocument(doc: Record<string, unknown>): SchemaVal
 /**
  * Validates a raw blueprint body document — the same document shape a `.workflow.zip` bundle's
  * `<blueprintId>.blueprint.json` carries — against the canonical `blueprint.schema.json` this
- * build was synced from. Exposed for the same reason as {@link validateRuntimeDocument}: tests,
+ * build mirrors. Exposed for the same reason as {@link validateRuntimeDocument}: tests,
  * and any future import-path caller, need to validate an emitted or imported blueprint body
  * directly, without going through a top-level workflow document.
  */
