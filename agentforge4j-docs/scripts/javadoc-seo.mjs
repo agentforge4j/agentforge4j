@@ -605,6 +605,56 @@ function canonicalFor(siteUrl, mountPath, surfaceRoot, htmlFilePath) {
 }
 
 /**
+ * Every published Javadoc surface, with the mount it lives at, the lifecycle label its pages carry,
+ * the version it presents (`null` for `next`, and for `latest` before any release), and whether the
+ * whole surface is suppressed from indexing — the duplicate-content policy in this module's header
+ * comment, expressed once as data.
+ *
+ * `applyJavadocSeo` below stamps the robots tags from this; `assemble-site.mjs` builds the composed
+ * sitemap's Javadoc entries from the SAME list, taking exactly the surfaces this says are
+ * indexable. That shared derivation is the point: a sitemap that advertises a surface the robots
+ * tag suppresses (or omits one it does not) is a self-contradiction no separate check would
+ * necessarily catch, and it is impossible to express here.
+ *
+ * @param {string[]} releasedVersions newest first, as `versions.json` holds them
+ * @returns {{mountPath: string, label: string, version: string|null, noindex: boolean}[]}
+ */
+export function javadocSurfaces(releasedVersions) {
+  const latestMirroredVersion = releasedVersions.length > 0 ? releasedVersions[0] : null;
+  return [
+    {
+      mountPath: 'javadoc/next',
+      label: 'next, in-development',
+      version: null,
+      // Unconditional, in every lifecycle state — NOT derived from latestMirroredVersion. /next/
+      // tracks main and is byte-identical to /latest/ for as long as main has not diverged from the
+      // newest release tag, which is the steady state rather than an edge case. See this module's
+      // header comment.
+      noindex: true,
+    },
+    {
+      mountPath: 'javadoc/latest',
+      label: latestMirroredVersion ? `latest stable, ${latestMirroredVersion}` : 'latest (pre-release)',
+      // The version whose surface /latest/ is a copy of — what dates it, and what its content
+      // actually is. `null` pre-release, when it mirrors `next` instead.
+      version: latestMirroredVersion,
+      // /latest/ is always the evergreen public entry point, indexable in both lifecycle states.
+      noindex: false,
+    },
+    ...releasedVersions.map((version) => ({
+      mountPath: `javadoc/${version}`,
+      label: version,
+      version,
+      // The version /latest/ currently mirrors byte-for-byte gets noindex,follow instead of a
+      // second indexable copy of the same content — see this module's header comment. Once a newer
+      // release ships, this one becomes genuinely distinct historical content, turns indexable
+      // again on the next deploy, and joins the sitemap on that same deploy for the same reason.
+      noindex: version === latestMirroredVersion,
+    })),
+  ];
+}
+
+/**
  * Applies `injectJavadocPageSeo` to every generated `.html` page in the composed artifact's
  * javadoc surfaces: `javadoc/next/`, `javadoc/latest/`, and one per entry in `releasedVersions` —
  * the surface's own overview page and every nested class/package/index/tree/help page beneath it,
@@ -622,32 +672,7 @@ function canonicalFor(siteUrl, mountPath, surfaceRoot, htmlFilePath) {
  * @returns {number} the number of pages updated, across every surface
  */
 export function applyJavadocSeo({ siteDir, siteUrl, ogImage, releasedVersions }) {
-  const latestMirroredVersion = releasedVersions.length > 0 ? releasedVersions[0] : null;
-
-  const surfaces = [
-    {
-      mountPath: 'javadoc/next',
-      label: 'next, in-development',
-      // Unconditional, in every lifecycle state — NOT derived from latestMirroredVersion. /next/
-      // tracks main and is byte-identical to /latest/ for as long as main has not diverged from the
-      // newest release tag, which is the steady state rather than an edge case. See this module's
-      // header comment.
-      noindex: true,
-    },
-    {
-      mountPath: 'javadoc/latest',
-      label: latestMirroredVersion ? `latest stable, ${latestMirroredVersion}` : 'latest (pre-release)',
-      // /latest/ is always the evergreen public entry point, indexable in both lifecycle states.
-      noindex: false,
-    },
-    ...releasedVersions.map((version) => ({
-      mountPath: `javadoc/${version}`,
-      label: version,
-      // The version /latest/ currently mirrors byte-for-byte gets noindex,follow instead of a
-      // second indexable copy of the same content — see this module's header comment.
-      noindex: version === latestMirroredVersion,
-    })),
-  ];
+  const surfaces = javadocSurfaces(releasedVersions);
 
   let updated = 0;
   for (const surface of surfaces) {

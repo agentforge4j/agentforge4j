@@ -8,6 +8,22 @@ workflow catalog.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this package adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+- The exporter no longer emits a root-level `kind` field on a REPEAT loop's exported blueprint
+  body. The framework's published `blueprint.schema.json` declares no such field and rejects any
+  document carrying one — earlier drafts of it did, and the builder's bundled copy still required
+  it — so the `<blueprintId>.blueprint.json` documents the builder produced were invalid against
+  the schema the framework actually publishes. The runtime happens to ignore the field, so nothing
+  failed at load, and bundles exported by earlier versions still import unchanged.
+- The bundled copies of the framework's `agent`, `artifact`, `blueprint` and `workflow` schemas
+  are now derived from, and checked against, the versions the framework itself publishes. Two had
+  drifted: the blueprint schema still required the root `kind` above, still permitted an inline
+  nested blueprint the framework no longer accepts, and was missing the loop behaviour's
+  `expectedIterations` hint; the artifact schema was missing `hint` on text and text-area items.
+  Validation messages shown while editing now match what the framework will actually accept.
+
 ## [0.6.1] - 2026-07-18
 
 ### Fixed

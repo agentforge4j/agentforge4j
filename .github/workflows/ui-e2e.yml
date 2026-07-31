@@ -20,12 +20,15 @@ name: UI E2E
 #     steps and succeeds, so unrelated PRs (Java-only, or builder-only, or web-ui-only) are
 #     gated-but-not-blocked on the parts they didn't touch;
 #   - if the relevant path did change, the full unit + Playwright suite runs and gates the PR.
-# `agentforge4j-ui-e2e/` and `.nvmrc` are common triggers for both jobs, since a change there can
-# affect either target's test harness or runtime. `agentforge4j-workflows-catalog/` and
-# `agentforge4j-schema/` are also web-ui-relevant triggers: the site build reads shipped-workflow
-# content straight from the catalog module's source resources and reads schema version constants
-# straight from agentforge4j-schema's Java source, so a change in either can change what the site
-# actually renders without touching agentforge4j-web-ui/ itself.
+# Four paths are common triggers for both jobs: `agentforge4j-ui-e2e/`, `.nvmrc`, this workflow
+# file itself, and `agentforge4j-schema/`. The first three because a change there can affect
+# either target's test harness, runtime, or the gate itself; `agentforge4j-schema/` for two
+# independent reasons — the builder commits a mirror of that module's JSON schemas and fails its
+# own build when the two diverge, and the site build reads schema version constants straight from
+# agentforge4j-schema's Java source.
+# `agentforge4j-workflows-catalog/` is a web-ui-relevant trigger only: the site build reads
+# shipped-workflow content straight from the catalog module's source resources, so a change there
+# can change what the site actually renders without touching agentforge4j-web-ui/ itself.
 # Both jobs also typecheck agentforge4j-ui-e2e's own Playwright specs/support code before running
 # them, same as each side's own app/package typecheck. `web-ui-e2e` additionally runs the site's
 # full `npm run check` (lint, content-boundary gate, typecheck, unit tests, build) before
@@ -82,7 +85,11 @@ jobs:
           echo "$changed"
           # .nvmrc included: a Node-version bump changes what both jobs actually run with, so it
           # must trigger both suites even when nothing under either target's own directory moved.
-          if echo "$changed" | grep -qE '^(agentforge4j-workflow-builder/|agentforge4j-ui-e2e/|\.nvmrc|\.github/workflows/ui-e2e\.yml)'; then
+          # agentforge4j-schema/ included: the builder commits a mirror of that module's JSON
+          # schemas and verify-schema-mirrors.mjs fails the build when the two diverge. Without
+          # this, a canonical schema edit on its own would skip the builder job entirely and the
+          # drift gate would report success without ever running.
+          if echo "$changed" | grep -qE '^(agentforge4j-workflow-builder/|agentforge4j-schema/|agentforge4j-ui-e2e/|\.nvmrc|\.github/workflows/ui-e2e\.yml)'; then
             echo "builder=true" >> "$GITHUB_OUTPUT"
           else
             echo "builder=false" >> "$GITHUB_OUTPUT"
@@ -199,7 +206,8 @@ jobs:
           exit 1
 
       # Gated on the same `builder` output as the `builder` job above — this suite is relevant to
-      # exactly the same paths (agentforge4j-workflow-builder/, agentforge4j-ui-e2e/).
+      # exactly the same paths, so the `builder` filter in the `changes` job is the single place
+      # that enumerates them (it is deliberately wider than this job's own directories).
       - name: Checkout
         if: ${{ needs.changes.outputs.builder == 'true' }}
         uses: actions/checkout@v7

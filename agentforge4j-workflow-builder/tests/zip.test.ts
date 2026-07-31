@@ -298,8 +298,10 @@ describe('blueprint export retryPolicy shape', () => {
     // Negative control proving the schema check above is real: this is exactly what
     // buildBlueprintJsonForRepeat produced before blueprint bodies were normalized — the disabled
     // policy's maxAttempts: 0 violates the RetryPolicy $def's minimum: 1.
+    // Deliberately carries no root `kind`: the canonical blueprint schema forbids one, so leaving
+    // it here would make this negative control pass on the wrong violation and stop proving that
+    // the RetryPolicy `minimum: 1` rule still bites.
     const unNormalizedBlueprint = {
-      kind: 'BLUEPRINT',
       blueprintId: 'repeat-1',
       name: 'Loop',
       behaviour: {
