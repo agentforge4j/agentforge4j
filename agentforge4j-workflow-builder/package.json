@@ -36,13 +36,14 @@
   },
   "scripts": {
     "sync-schema": "node scripts/sync-schema.mjs",
-    "build": "npm run sync-schema && tsup",
-    "dev": "npm run sync-schema && vite dev",
-    "build:dev-harness": "npm run sync-schema && vite build",
+    "verify-schemas": "node scripts/verify-schema-mirrors.mjs",
+    "build": "npm run verify-schemas && tsup",
+    "dev": "npm run verify-schemas && vite dev",
+    "build:dev-harness": "npm run verify-schemas && vite build",
     "preview": "vite preview",
     "prepublishOnly": "npm run typecheck && npm run build && npm run test",
-    "typecheck": "npm run sync-schema && tsc --noEmit",
-    "test": "npm run sync-schema && vitest run"
+    "typecheck": "npm run verify-schemas && tsc --noEmit",
+    "test": "npm run verify-schemas && vitest run"
   },
   "peerDependencies": {
     "react": "^18.0.0 || ^19.0.0",
