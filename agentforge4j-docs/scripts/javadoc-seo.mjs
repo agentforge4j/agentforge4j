@@ -457,10 +457,60 @@ function decodeHtmlEntities(value) {
     },
   );
 }
+// The search-snippet budget every description this site publishes is written to. A longer one is
+// cut in the search result, and the cut lands wherever it lands — mid-word if the boundary falls
+// inside one, which is what shipped here before it was caught by hand.
+//
+// Restated rather than imported: `agentforge4j-docs` and `agentforge4j-web-ui` are independently
+// built modules with no dependency between them, and adding one for a single integer would be a
+// worse trade than restating it. The claim that this IS the same number is not left to a comment —
+// a test reads `agentforge4j-web-ui/scripts/build-seo.mjs`'s own `MAX_DESCRIPTION_LENGTH` and
+// fails if the two ever drift apart.
+const MAX_SNIPPET_DESCRIPTION_LENGTH = 157;
+
+/**
+ * `description` returned unchanged, once proven to fit `MAX_SNIPPET_DESCRIPTION_LENGTH`.
+ *
+ * Deliberately narrow: applied ONLY to this module's own hand-authored copy — `surfaceCopy` and
+ * `surfacesLandingCopy`, whose wording is fixed and whose only variable is the short lifecycle
+ * label. For those two, the worst case is knowable in advance, so an overrun is always an authoring
+ * mistake and is worth refusing outright rather than publishing a snippet that will be cut.
+ *
+ * It is NOT applied to `nestedPageCopy`, and must never be. That description quotes a generated
+ * page's own `<title>` — an arbitrary class, package or index name this repo does not control and
+ * cannot bound. A limit there would make one long type name fail the entire site build, trading a
+ * cosmetic truncation on one generated page for a total loss of the published reference. The
+ * asymmetry is the whole point of putting the check here instead of in `injectJavadocPageSeo`,
+ * where it would necessarily apply to every page.
+ *
+ * Headroom, so the failure mode is understood rather than discovered: `surfacesLandingCopy` is the
+ * longer of the two and leaves room for a **26-character version string** in the
+ * `latest stable, <version>` label. `release-paths.mjs`'s `VERSION_RE` does not cap version length,
+ * so that ceiling is real but far above any plausible semver-plus-prerelease value.
+ *
+ * @param {string} description the hand-authored description to check
+ * @param {string} source the copy factory it came from, so a failure names the thing to edit
+ * @returns {string} `description`, unchanged
+ */
+export function withinSnippetBudget(description, source) {
+  if (description.length > MAX_SNIPPET_DESCRIPTION_LENGTH) {
+    throw new Error(
+      `javadoc-seo: ${source} produced a ${description.length}-character description, over the ` +
+        `${MAX_SNIPPET_DESCRIPTION_LENGTH}-character search-snippet budget — it would be truncated, ` +
+        `possibly mid-word. Shorten the wording (this copy is hand-authored, so its length is a ` +
+        `choice): ${description}`,
+    );
+  }
+  return description;
+}
+
 function surfaceCopy(label) {
   return {
     title: `AgentForge4j API Reference — ${label}`,
-    description: `Generated Javadoc API reference for the AgentForge4j framework (${label}).`,
+    description: withinSnippetBudget(
+      `Generated Javadoc API reference for the AgentForge4j framework (${label}).`,
+      'surfaceCopy',
+    ),
   };
 }
 
@@ -495,21 +545,20 @@ function surfaceCopy(label) {
  * with no test able to fail. What is said instead holds for any surface set — the page explains the
  * split and links each one.
  *
- * Kept inside the 157-character meta-description budget the rest of this site already publishes to
- * (`agentforge4j-web-ui/scripts/build-seo.mjs`'s `MAX_DESCRIPTION_LENGTH`): a longer description is
- * cut in the search result, and at 157 the first wording of this one was cut mid-word. Asserted for
- * every lifecycle label in this module's tests rather than enforced at runtime — `nestedPageCopy`'s
- * descriptions are as long as the page title they quote, so a hard limit in `injectJavadocPageSeo`
- * would fail the whole site build on one long class name. The bound is knowable in advance only
- * here, where the wording is fixed and only the label varies.
+ * Kept inside the search-snippet budget — now by `withinSnippetBudget` above rather than by
+ * assertion in tests alone, so a future reword cannot quietly reintroduce the truncated snippet
+ * this page already shipped once. See that function for why the check stops at this module's own
+ * hand-authored copy and never reaches `nestedPageCopy`.
  */
 function surfacesLandingCopy(label) {
   return {
     title: `API Surfaces — AgentForge4j API Reference (${label})`,
     heading: `AgentForge4j API Surfaces (${label})`,
-    description:
+    description: withinSnippetBudget(
       `How the AgentForge4j API reference (${label}) is split across its independently generated ` +
-      'surfaces, with a link to each one.',
+        'surfaces, with a link to each one.',
+      'surfacesLandingCopy',
+    ),
   };
 }
 
@@ -517,7 +566,15 @@ function surfacesLandingCopy(label) {
  * title/description in real content already present on the page, rather than inventing per-page
  * copy this script has no way to derive correctly for every one of maven-javadoc-plugin's own page
  * kinds (class, package summary, package tree, all-classes index, help, ...). Falls back to the
- * surface label alone only in the (unexpected) case a page carries no `<title>` at all. */
+ * surface label alone only in the (unexpected) case a page carries no `<title>` at all.
+ *
+ * Pointedly NOT passed through `withinSnippetBudget`: the quoted page title is arbitrary generated
+ * content this repo cannot bound, so a limit here would let one long type name fail the whole site
+ * build. A truncated snippet on a single generated class page is the lesser cost, and the only one
+ * of the two that is recoverable. See `withinSnippetBudget` for the full reasoning.
+ *
+ * Note the fallback path returns `surfaceCopy(label)`, which IS budget-checked — that is correct
+ * and not an inconsistency: that branch emits hand-authored copy, not a quoted page title. */
 function nestedPageCopy(html, label) {
   const match = TITLE_TAG_PATTERN.exec(html);
   // Stripped BEFORE the label is applied: the raw title carries the generation-time window title

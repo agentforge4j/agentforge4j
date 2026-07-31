@@ -17,6 +17,7 @@ import {
   isJavadocRedirectStub,
   isWithinRoot,
   stripJavadocWindowTitle,
+  withinSnippetBudget,
 } from './javadoc-seo.mjs';
 
 // A trimmed but structurally real sample — confirmed against a live-built /javadoc/0.1.0/ overview
@@ -1604,4 +1605,153 @@ test('the landing page keeps its indexability and canonical treatment — this p
 test('the landing page keeps its own hand-authored body content', () => {
   const read = surfacesFixture('javadoc/latest', ['0.1.0']);
   assert.match(read('javadoc/latest'), /<li><a href="\.\/index\.html">Core API \(aggregate\)<\/a><\/li>/);
+});
+
+// --- The search-snippet budget, enforced where it is knowable. PR #219 fixed one over-budget
+// description by rewriting the words; nothing stopped the next one. `withinSnippetBudget` closes
+// that for this module's own hand-authored copy, and deliberately leaves `nestedPageCopy` alone. ---
+
+test('withinSnippetBudget returns a description that fits, unchanged', () => {
+  const description = 'A short, perfectly publishable description.';
+  assert.equal(withinSnippetBudget(description, 'someCopy'), description);
+});
+
+test('withinSnippetBudget accepts a description of exactly the budget, and refuses one character more', () => {
+  // The boundary is the whole point of the guard, so it is asserted rather than assumed: 157 is
+  // publishable, 158 is not.
+  assert.equal(withinSnippetBudget('x'.repeat(157), 'someCopy').length, 157);
+  assert.throws(() => withinSnippetBudget('x'.repeat(158), 'someCopy'), /158-character description, over the 157-character/);
+});
+
+test('withinSnippetBudget names the copy factory to edit and quotes the offending text', () => {
+  // A corpus-wide build failure that does not say WHICH copy is too long, or by how much, forces a
+  // hunt through every description in the module — the same "name the file that failed" contract
+  // applyJavadocSeo already holds itself to.
+  assert.throws(
+    () => withinSnippetBudget(`Far too long. ${'padding '.repeat(30)}`, 'surfacesLandingCopy'),
+    (error) =>
+      /surfacesLandingCopy/.test(error.message) &&
+      /search-snippet budget/.test(error.message) &&
+      /Far too long\./.test(error.message),
+  );
+});
+
+test('BOTH hand-authored copy factories stay within budget for every lifecycle label the pass can produce', () => {
+  // surfaceCopy and surfacesLandingCopy are not exported (they are internal copy), so they are
+  // exercised the way production reaches them: through a real applyJavadocSeo run over a fixture
+  // surface, in every lifecycle state, reading the descriptions actually written to disk.
+  for (const releasedVersions of [[], ['0.1.0'], ['0.2.0', '0.1.0']]) {
+    const target = releasedVersions.length > 0 ? `javadoc/${releasedVersions[0]}` : 'javadoc/next';
+    const { siteDir } = fixtureSiteDirWithNestedPages(target, releasedVersions);
+    for (const mountPath of ['javadoc/next', 'javadoc/latest', ...releasedVersions.map((v) => `javadoc/${v}`)]) {
+      writeFileSync(join(siteDir, ...mountPath.split('/'), 'surfaces.html'), RAW_SURFACES_LANDING_HTML, 'utf8');
+    }
+    applyJavadocSeo({
+      siteDir,
+      siteUrl: 'https://agentforge4j.org',
+      ogImage: 'https://agentforge4j.org/brand/icon-512.png',
+      releasedVersions,
+    });
+    for (const mountPath of ['javadoc/next', 'javadoc/latest', ...releasedVersions.map((v) => `javadoc/${v}`)]) {
+      for (const page of ['index.html', 'surfaces.html']) {
+        const html = readFileSync(join(siteDir, ...mountPath.split('/'), page), 'utf8');
+        const description = /<meta name="description" content="([^"]*)">/.exec(html);
+        assert.ok(description, `${mountPath}/${page}: no description tag`);
+        assert.ok(
+          description[1].length <= MAX_META_DESCRIPTION_LENGTH,
+          `${mountPath}/${page} (releasedVersions=${JSON.stringify(releasedVersions)}): ` +
+            `${description[1].length} characters: ${description[1]}`,
+        );
+      }
+    }
+  }
+});
+
+test('a pathologically long version string fails LOUDLY rather than publishing a snippet that will be cut', () => {
+  // release-paths.mjs's VERSION_RE puts no length cap on a version, so the `latest stable, <v>`
+  // label is the one way hand-authored copy can be pushed over budget without anyone editing the
+  // words. It must name the copy and the length, not silently ship.
+  //
+  // It is specifically `surfacesLandingCopy` that gives way first, and the difference is not
+  // incidental: surfaceCopy's wording is short enough to absorb a 76-character version, while
+  // surfacesLandingCopy has room for 26. So the fixture must actually contain a surfaces.html —
+  // without one this scenario passes silently, which is exactly how it was caught here.
+  const version = '1.0.0-a-really-very-long-prerelease-qualifier';
+  const { siteDir } = fixtureSiteDirWithNestedPages(`javadoc/${version}`, [version]);
+  writeFileSync(join(siteDir, 'javadoc', 'latest', 'surfaces.html'), RAW_SURFACES_LANDING_HTML, 'utf8');
+  assert.throws(
+    () =>
+      applyJavadocSeo({
+        siteDir,
+        siteUrl: 'https://agentforge4j.org',
+        ogImage: 'https://agentforge4j.org/brand/icon-512.png',
+        releasedVersions: [version],
+      }),
+    /surfacesLandingCopy produced a \d+-character description, over the 157-character search-snippet budget/,
+  );
+});
+
+test('surfaceCopy absorbs a version that already breaks surfacesLandingCopy — the two budgets are not the same headroom', () => {
+  // Guards the claim withinSnippetBudget's JSDoc makes about WHICH copy is the binding constraint.
+  // If a future reword inverts that, the sentence in the docs becomes wrong and this fails.
+  const version = '1.0.0-a-really-very-long-prerelease-qualifier';
+  const { siteDir } = fixtureSiteDirWithNestedPages(`javadoc/${version}`, [version]);
+  // No surfaces.html: only surfaceCopy and nestedPageCopy run, and neither may throw.
+  assert.doesNotThrow(() =>
+    applyJavadocSeo({
+      siteDir,
+      siteUrl: 'https://agentforge4j.org',
+      ogImage: 'https://agentforge4j.org/brand/icon-512.png',
+      releasedVersions: [version],
+    }),
+  );
+});
+
+test('the guard does NOT reach nestedPageCopy — an arbitrarily long generated page title must never fail the site build', () => {
+  // The asymmetry this whole design rests on. A class page whose own <title> is enormous produces a
+  // description over budget BY DESIGN: truncating one generated page's snippet is recoverable,
+  // losing the entire published API reference to a build failure is not.
+  const { siteDir, surfaceRoot } = fixtureSiteDirWithNestedPages('javadoc/next');
+  const hugeTypeName = `A${'Extremely'.repeat(20)}LongGeneratedTypeName`;
+  writeFileSync(
+    join(surfaceRoot, 'com', 'example', 'Huge.html'),
+    rawClassPageHtml().replace(/<title>[^<]*<\/title>/, `<title>${withWindowTitle(hugeTypeName)}</title>`),
+    'utf8',
+  );
+  assert.doesNotThrow(() =>
+    applyJavadocSeo({
+      siteDir,
+      siteUrl: 'https://agentforge4j.org',
+      ogImage: 'https://agentforge4j.org/brand/icon-512.png',
+      releasedVersions: [],
+    }),
+  );
+  const html = readFileSync(join(surfaceRoot, 'com', 'example', 'Huge.html'), 'utf8');
+  const description = /<meta name="description" content="([^"]*)">/.exec(html)[1];
+  assert.ok(
+    description.length > MAX_META_DESCRIPTION_LENGTH,
+    'this test is only meaningful if the generated description really does exceed the budget; ' +
+      `got ${description.length} characters`,
+  );
+  assert.match(description, new RegExp(hugeTypeName));
+});
+
+test("the budget matches the SPA's own MAX_DESCRIPTION_LENGTH — the two modules must not drift apart", () => {
+  // javadoc-seo.mjs restates the number instead of importing it (two independently built modules,
+  // no dependency between them). Restating is only safe if "it is the same number" is verified
+  // rather than asserted in a comment, so this reads the SPA's constant from source.
+  const spaBuildSeo = readFileSync(
+    join(import.meta.dirname, '..', '..', 'agentforge4j-web-ui', 'scripts', 'build-seo.mjs'),
+    'utf8',
+  );
+  const spaBudget = /const MAX_DESCRIPTION_LENGTH = (\d+);/.exec(spaBuildSeo);
+  assert.ok(spaBudget, 'could not find MAX_DESCRIPTION_LENGTH in agentforge4j-web-ui/scripts/build-seo.mjs');
+  assert.equal(
+    Number(spaBudget[1]),
+    MAX_META_DESCRIPTION_LENGTH,
+    'the Javadoc snippet budget and the SPA description budget have drifted apart',
+  );
+  // ...and the module under test really does use that number, not merely this test file.
+  assert.throws(() => withinSnippetBudget('x'.repeat(Number(spaBudget[1]) + 1), 'someCopy'));
+  assert.equal(withinSnippetBudget('x'.repeat(Number(spaBudget[1])), 'someCopy').length, Number(spaBudget[1]));
 });
