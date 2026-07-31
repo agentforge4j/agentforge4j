@@ -17,6 +17,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   every built-in provider — that provider's strongest available model, which is the same model as
   `POWERFUL` wherever no distinct higher-capability one is configured. Operators retarget it per
   provider like any other tier, through `agentforge4j.llm.model-tiers.<provider>.premium`.
+  The tier is declarable in configuration as well as resolvable at runtime: the shipped
+  `agent.schema.json` and `workflow.schema.json` accept `"modelTier": "PREMIUM"` on an agent
+  definition and as a step-level override, alongside the three tiers that were already valid.
 
 ### Changed
 
