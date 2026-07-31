@@ -140,6 +140,7 @@ export function verifyComposedArtifact(siteDir, releasedVersions, exit = process
         'cause), or it is a new fragment nothing merges yet — teach mergeSitemaps about it rather than publishing it',
     );
     exit(1);
+    return;
   }
 }
 
