@@ -10,7 +10,7 @@
 // these documents; the builder only republishes them, and the JVM-side contract tests in
 // agentforge4j-schema hold the canonical side honest.
 
-import { readFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -129,4 +129,69 @@ export function collectDrift(options = {}) {
 /** True when every reported mirror is `OK`. */
 export function isClean(results) {
   return results.every((result) => result.status === DRIFT_STATUS.OK);
+}
+
+/** Thrown by {@link syncMirrors} when a canonical source cannot be read. */
+export class MissingCanonicalSchemaError extends Error {
+  /** @param {ReadonlyArray<string>} paths canonical paths that could not be read */
+  constructor(paths) {
+    const listed = paths.map((path) => `  - ${path}`).join('\n');
+    super(`canonical schema source(s) missing or unreadable:\n${listed}`);
+    this.name = 'MissingCanonicalSchemaError';
+    /** @type {ReadonlyArray<string>} */
+    this.paths = Object.freeze([...paths]);
+  }
+}
+
+/**
+ * Rewrites every declared mirror from its canonical source.
+ *
+ * Every source is read before anything is written, so a missing or unreadable canonical document
+ * aborts with nothing changed rather than leaving the tree half-synchronised — a partial sync is
+ * indistinguishable from drift to the verifier, and would send the next reader chasing a
+ * difference this script created.
+ *
+ * Roots are injectable for the same reason as {@link collectDrift}: the failure path has to be
+ * exercisable without corrupting the repository.
+ *
+ * @param {{canonicalRoot?: string, mirrorRoot?: string, mirrors?: ReadonlyArray<{file: string, classification: string}>}} [options]
+ * @returns {{copied: Array<{file: string, from: string, to: string}>, skipped: Array<{file: string, reason: string}>}}
+ * @throws {MissingCanonicalSchemaError} when any `MIRROR` row has no readable canonical source
+ */
+export function syncMirrors(options = {}) {
+  const canonicalRoot = options.canonicalRoot ?? CANONICAL_ROOT;
+  const mirrorRoot = options.mirrorRoot ?? MIRROR_ROOT;
+  const mirrors = options.mirrors ?? SCHEMA_MIRRORS;
+
+  const pending = [];
+  const skipped = [];
+  const missing = [];
+
+  for (const mirror of mirrors) {
+    if (mirror.classification === CLASSIFICATIONS.BUILDER_OWNED) {
+      skipped.push({ file: mirror.file, reason: 'builder-owned, no canonical source' });
+      continue;
+    }
+    const from = resolve(canonicalRoot, mirror.file);
+    const contents = readOrNull(from);
+    if (contents === null) {
+      missing.push(from);
+      continue;
+    }
+    pending.push({ file: mirror.file, from, to: resolve(mirrorRoot, mirror.file), contents });
+  }
+
+  if (missing.length > 0) {
+    throw new MissingCanonicalSchemaError(missing);
+  }
+
+  mkdirSync(mirrorRoot, { recursive: true });
+  for (const entry of pending) {
+    writeFileSync(entry.to, entry.contents);
+  }
+
+  return {
+    copied: pending.map(({ file, from, to }) => ({ file, from, to })),
+    skipped,
+  };
 }

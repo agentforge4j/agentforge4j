@@ -8,31 +8,34 @@
 // verify-schema-mirrors.mjs instead, which fails on drift rather than silently repairing it — a
 // build that re-synced first could never observe the drift it is supposed to catch.
 //
-// Which files are copied, and from where, lives in schema-mirrors.mjs. Nothing here knows any
-// individual schema by name.
+// Which files are copied, from where, and the all-or-nothing copy itself live in
+// schema-mirrors.mjs. Nothing here knows any individual schema by name; this file is the command
+// line around syncMirrors, so the copy behaviour — including its abort-before-writing failure
+// path — is exercisable from tests rather than only by running the script.
 
-import { copyFileSync, mkdirSync } from 'node:fs';
-import { resolve } from 'node:path';
-import {
-  CANONICAL_ROOT,
-  CLASSIFICATIONS,
-  MIRROR_ROOT,
-  SCHEMA_MIRRORS,
-} from './schema-mirrors.mjs';
+import { MissingCanonicalSchemaError, SCHEMA_MIRRORS, syncMirrors } from './schema-mirrors.mjs';
 
-mkdirSync(MIRROR_ROOT, { recursive: true });
-
-let copied = 0;
-for (const mirror of SCHEMA_MIRRORS) {
-  if (mirror.classification === CLASSIFICATIONS.BUILDER_OWNED) {
-    console.log(`[sync-schema] skipped ${mirror.file} (builder-owned, no canonical source)`);
-    continue;
+let result;
+try {
+  result = syncMirrors();
+} catch (error) {
+  if (error instanceof MissingCanonicalSchemaError) {
+    // Fail-closed and say which document is missing: the alternative is a raw ENOENT naming a
+    // path with no indication that the mirror table is what expected it to be there.
+    console.error(`[sync-schema] ${error.message}`);
+    console.error('[sync-schema] nothing was written; src/schemas is unchanged.');
+    process.exit(1);
   }
-  const canonical = resolve(CANONICAL_ROOT, mirror.file);
-  const target = resolve(MIRROR_ROOT, mirror.file);
-  copyFileSync(canonical, target);
-  copied += 1;
-  console.log(`[sync-schema] copied ${canonical} -> ${target}`);
+  throw error;
 }
 
-console.log(`[sync-schema] ${copied} of ${SCHEMA_MIRRORS.length} schema(s) synchronised`);
+for (const skipped of result.skipped) {
+  console.log(`[sync-schema] skipped ${skipped.file} (${skipped.reason})`);
+}
+for (const copied of result.copied) {
+  console.log(`[sync-schema] copied ${copied.from} -> ${copied.to}`);
+}
+
+console.log(
+  `[sync-schema] ${result.copied.length} of ${SCHEMA_MIRRORS.length} schema(s) synchronised`,
+);

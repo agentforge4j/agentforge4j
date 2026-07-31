@@ -9,9 +9,11 @@ import {
   CLASSIFICATIONS,
   DRIFT_STATUS,
   MIRROR_ROOT,
+  MissingCanonicalSchemaError,
   SCHEMA_MIRRORS,
   collectDrift,
   isClean,
+  syncMirrors,
 } from '../scripts/schema-mirrors.mjs';
 
 const MIRROR_FILES = SCHEMA_MIRRORS.map((mirror) => mirror.file);
@@ -119,6 +121,95 @@ describe('canonical -> builder schema mirrors', () => {
         readFileSync(resolve(CANONICAL_ROOT, file)),
       );
     }
+  });
+});
+
+describe('sync-schema', () => {
+  it('repairs every drifted mirror, so the verifier passes afterwards', () => {
+    const { canonicalRoot, mirrorRoot } = scratchTrees();
+    for (const file of MIRROR_FILES) {
+      writeFileSync(join(mirrorRoot, file), '{"title":"drifted"}\n');
+    }
+    expect(isClean(collectDrift({ canonicalRoot, mirrorRoot }))).toBe(false);
+
+    const result = syncMirrors({ canonicalRoot, mirrorRoot });
+
+    expect(result.copied.map((entry) => entry.file).sort()).toEqual([...MIRROR_FILES].sort());
+    expect(isClean(collectDrift({ canonicalRoot, mirrorRoot }))).toBe(true);
+  });
+
+  it('writes byte-identical copies, not re-serialized JSON', () => {
+    const { canonicalRoot, mirrorRoot } = scratchTrees();
+    rmSync(join(mirrorRoot, 'agent.schema.json'));
+
+    syncMirrors({ canonicalRoot, mirrorRoot });
+
+    expect(readFileSync(join(mirrorRoot, 'agent.schema.json'))).toEqual(
+      readFileSync(join(canonicalRoot, 'agent.schema.json')),
+    );
+  });
+
+  it('is idempotent — a second run leaves every byte alone', () => {
+    const { canonicalRoot, mirrorRoot } = scratchTrees();
+    syncMirrors({ canonicalRoot, mirrorRoot });
+    const first = MIRROR_FILES.map((file) => readFileSync(join(mirrorRoot, file)));
+
+    syncMirrors({ canonicalRoot, mirrorRoot });
+
+    MIRROR_FILES.forEach((file, index) => {
+      expect(readFileSync(join(mirrorRoot, file))).toEqual(first[index]);
+    });
+  });
+
+  // The failure this covers is a partial sync: an ENOENT part-way through the copy loop would
+  // leave some mirrors rewritten and others stale, which the verifier then reports as ordinary
+  // drift with no hint that the sync itself created it.
+  it('aborts without writing anything when a canonical source is missing', () => {
+    const { canonicalRoot, mirrorRoot } = scratchTrees();
+    // Drift every mirror, then remove a canonical source that is not the first row processed, so
+    // a naive loop would already have rewritten at least one file before it failed.
+    for (const file of MIRROR_FILES) {
+      writeFileSync(join(mirrorRoot, file), '{"title":"drifted"}\n');
+    }
+    const absent = MIRROR_FILES[MIRROR_FILES.length - 1];
+    rmSync(join(canonicalRoot, absent));
+
+    expect(() => syncMirrors({ canonicalRoot, mirrorRoot })).toThrow(MissingCanonicalSchemaError);
+
+    for (const file of MIRROR_FILES) {
+      expect(readFileSync(join(mirrorRoot, file), 'utf8')).toBe('{"title":"drifted"}\n');
+    }
+  });
+
+  it('names the missing canonical path in the error it throws', () => {
+    const { canonicalRoot, mirrorRoot } = scratchTrees();
+    rmSync(join(canonicalRoot, 'agent.schema.json'));
+
+    let thrown: unknown;
+    try {
+      syncMirrors({ canonicalRoot, mirrorRoot });
+    } catch (error) {
+      thrown = error;
+    }
+
+    expect(thrown).toBeInstanceOf(MissingCanonicalSchemaError);
+    expect((thrown as MissingCanonicalSchemaError).paths).toEqual([
+      resolve(canonicalRoot, 'agent.schema.json'),
+    ]);
+  });
+
+  it('skips a builder-owned schema instead of looking for a canonical source', () => {
+    const { canonicalRoot, mirrorRoot } = scratchTrees();
+    rmSync(join(canonicalRoot, 'agent.schema.json'));
+
+    const result = syncMirrors({
+      canonicalRoot,
+      mirrorRoot,
+      mirrors: [{ file: 'agent.schema.json', classification: CLASSIFICATIONS.BUILDER_OWNED }],
+    });
+
+    expect(result.copied).toEqual([]);
+    expect(result.skipped.map((entry) => entry.file)).toEqual(['agent.schema.json']);
   });
 });
 
