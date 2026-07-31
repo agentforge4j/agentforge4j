@@ -465,8 +465,8 @@ public final class AgentInvoker {
       return ModelTier.fromName(tierName);
     } catch (IllegalArgumentException e) {
       throw new ModelTierResolutionException(
-          "Invalid model tier '%s' for agent '%s'; valid tiers: LITE, STANDARD, POWERFUL".formatted(
-              tierName, agentId));
+          "Invalid model tier '%s' for agent '%s'; valid tiers: %s".formatted(
+              tierName, agentId, ModelTier.joinedNames()));
     }
   }
 

@@ -78,6 +78,7 @@
         "LITE",
         "STANDARD",
         "POWERFUL",
+        "PREMIUM",
         null
       ],
       "description": "Optional capability tier resolved to a concrete model per provider at invocation time. A raw model pin on a providerPreference always wins over the tier. Null relies on pins or provider defaults."

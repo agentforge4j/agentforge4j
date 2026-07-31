@@ -21,6 +21,7 @@ Shipped tier defaults for provider id `openai-compatible`:
 | `LITE` | `gpt-5.4-nano` |
 | `STANDARD` | `gpt-5.4-mini` |
 | `POWERFUL` | `gpt-5.5` |
+| `PREMIUM` | `gpt-5.5` |
 
 These are nominal defaults; set `default-model` and the tier mapping to whatever your endpoint
 serves.

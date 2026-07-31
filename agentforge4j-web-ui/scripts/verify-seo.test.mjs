@@ -15,7 +15,13 @@ import { request } from 'node:http';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { loadStaticRouteInventory, resolveWithinRoot, startGhPagesEmulatingServer, verifySeo } from './verify-seo.mjs';
+import {
+  extractInternalLinkTargets,
+  loadStaticRouteInventory,
+  resolveWithinRoot,
+  startGhPagesEmulatingServer,
+  verifySeo,
+} from './verify-seo.mjs';
 import { JSON_LD_SCRIPT_ID } from './build-seo.mjs';
 
 const REAL_MODULE_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -39,11 +45,17 @@ function rawGet(port, rawPath) {
   });
 }
 
-function page({ h1 = '<h1>Real Title</h1>', canonical, extraHead = '' } = {}) {
+// Every fixture page carries one internal link by default, to `/` — the one path `fixtureDir()`
+// guarantees exists in every fixture. Real prerendered shells always carry the header/footer nav,
+// so a link-free page is not a shape production ever produces; giving the fixtures one keeps the
+// internal-link crawl's own non-vacuity precondition satisfied for the checks these tests are
+// actually about. `links` overrides it for the tests that ARE about the crawl.
+function page({ h1 = '<h1>Real Title</h1>', canonical, extraHead = '', links = ['/'], extraBody = '' } = {}) {
+  const anchors = links.map((href) => `<a href="${href}">link</a>`).join('');
   return (
     `<!doctype html><html lang="en"><head><meta charset="UTF-8">` +
     `<link rel="canonical" href="${canonical}" />${extraHead}</head>` +
-    `<body>${h1}</body></html>`
+    `<body>${h1}${anchors}${extraBody}</body></html>`
   );
 }
 
@@ -68,6 +80,14 @@ function fixtureDir() {
   writeFileSync(
     join(distDir, '404.html'),
     '<!doctype html><html lang="en"><head><meta charset="UTF-8"></head><body><div id="root"></div></body></html>',
+    'utf8',
+  );
+  // A root index.html every fixture can rely on, so `page()`'s default `<a href="/">` always has
+  // something real to resolve to. Tests that care about the root page overwrite this with their
+  // own `writePage(distDir, '', ...)`; nothing here is asserted against.
+  writeFileSync(
+    join(distDir, 'index.html'),
+    page({ canonical: 'https://agentforge4j.org/' }),
     'utf8',
   );
   return distDir;
@@ -440,6 +460,30 @@ test('fails closed when a leaked JSON-LD script pads its media type with whitesp
   );
 });
 
+test('fails closed when a leaked JSON-LD script carries a sibling attribute whose value contains a literal ">"', async () => {
+  // The under-detection direction, on the caller where under-detection is the unsafe one. A `>`
+  // inside a quoted attribute value does not end the start tag — the HTML tokenizer only ends it
+  // on a `>` outside quotes — so this block renders as real structured data. A start-tag matcher
+  // spelled `<script\b[^>]*>` truncates at the `>` in `data-note`, never reads the `type`
+  // attribute that follows it, and reports the page clean. This is the control for the shared
+  // `tagSource` tokenizer on the <script> path; the anchor path has its own.
+  const distDir = fixtureDir();
+  const leaked = { '@context': 'https://schema.org', '@type': 'WebSite', name: 'AgentForge4j' };
+  writePage(
+    distDir,
+    'architecture',
+    page({
+      canonical: 'https://agentforge4j.org/architecture/',
+      extraHead: `<script data-note="a > b" type="application/ld+json">${JSON.stringify(leaked)}</script>`,
+    }),
+  );
+  writeFileSync(join(distDir, 'sitemap.xml'), sitemapXml([{ url: 'https://agentforge4j.org/architecture/', lastmod: '2026-07-20' }]), 'utf8');
+  await assert.rejects(
+    () => verifySeo({ distDir, staticRoutes: [{ requestPath: '/architecture/', expectedCanonical: 'https://agentforge4j.org/architecture/' }] }),
+    /has 1 JSON-LD script\(s\) but declares no jsonLd/,
+  );
+});
+
 test('a stray JSON-LD block on a non-configured sitemap URL is caught in the widened spellings too, not only on configured routes', async () => {
   // Both leak checks share one extractor, so this proves the widened matcher reaches the second
   // caller — the catalogue detail shells nothing else covers — rather than only the first.
@@ -508,6 +552,28 @@ test('an id padded with whitespace is rejected rather than silently trimmed to a
   await assert.rejects(
     () => verifySeo({ distDir, staticRoutes: [{ requestPath: '/', expectedCanonical: 'https://agentforge4j.org/', jsonLd }] }),
     /has id " seo-json-ld " — expected/,
+  );
+});
+
+test('the id and type readers still see attributes that follow a sibling value containing a literal ">"', async () => {
+  // Sibling path of the stray-JSON-LD control above: `id` and `type` are read out of the attribute
+  // list `tagSource` captures, so a start tag truncated at a `>` inside an earlier quoted value
+  // hides both of them at once. Placing the `>`-bearing attribute FIRST is what makes this bite —
+  // the wrong-id rejection below can only be reached by a reader that got the whole list.
+  const distDir = fixtureDir();
+  const jsonLd = { '@context': 'https://schema.org', '@type': 'WebSite', name: 'AgentForge4j' };
+  writePage(
+    distDir,
+    '',
+    page({
+      canonical: 'https://agentforge4j.org/',
+      extraHead: `<script data-note="a > b" id="not-the-shared-id" type="application/ld+json">${JSON.stringify(jsonLd)}</script>`,
+    }),
+  );
+  writeFileSync(join(distDir, 'sitemap.xml'), sitemapXml([{ url: 'https://agentforge4j.org/', lastmod: '2026-07-20' }]), 'utf8');
+  await assert.rejects(
+    () => verifySeo({ distDir, staticRoutes: [{ requestPath: '/', expectedCanonical: 'https://agentforge4j.org/', jsonLd }] }),
+    /has id "not-the-shared-id" — expected/,
   );
 });
 
@@ -976,4 +1042,200 @@ test('startGhPagesEmulatingServer returns a controlled 400 for malformed percent
   } finally {
     await new Promise((r) => server.close(r));
   }
+});
+
+// --- Internal-link crawl: the site's own navigation must target the same trailing-slash form its
+// canonicals and sitemap already publish, or every internal click and crawl hop costs a 301. The
+// audited defect was exactly this — canonicals were correct while every nav href was bare. ---
+
+function fixtureDirForLinkCrawl(homeLinks) {
+  const distDir = fixtureDir();
+  writePage(distDir, '', page({ canonical: 'https://agentforge4j.org/', links: homeLinks }));
+  writePage(distDir, 'api', page({ canonical: 'https://agentforge4j.org/api/' }));
+  writeFileSync(
+    join(distDir, 'sitemap.xml'),
+    sitemapXml([
+      { url: 'https://agentforge4j.org/', lastmod: '2026-07-20' },
+      { url: 'https://agentforge4j.org/api/', lastmod: '2026-07-21' },
+    ]),
+    'utf8',
+  );
+  return distDir;
+}
+
+test('extractInternalLinkTargets reads every href form the tokenizer accepts, resolves each against the page, and keeps exactly the same-origin ones', () => {
+  const html =
+    '<a href="/api/">a</a>' +
+    '<a href="/catalogue/?tab=x">b</a>' +
+    '<a href="/use/#top">c</a>' +
+    '<a href="#main-content">skip</a>' +
+    '<a href="?tab=x">query-only, addresses this same page</a>' +
+    '<a href="">empty</a>' +
+    '<a href="https://github.com/agentforge4j">gh</a>' +
+    '<a href="mailto:security@agentforge4j.org">mail</a>' +
+    '<a href="//evil.example.com/x">protocol-relative, off-site</a>' +
+    "<a href='/single/'>single-quoted</a>" +
+    '<a href=/bare/>unquoted</a>' +
+    '<a class="x" href="/legal/">attrs before href</a>' +
+    '<a data-href="/decoy/" href="/real/">data-href must not be read as href</a>' +
+    '<a\n  href="/multiline/"\n  class="y"\n>attributes across lines</a>' +
+    // The three shapes a spelling-keyed rule silently skips. All three are ordinary links a
+    // browser follows to this same site, and all three redirect in production if written bare.
+    '<a href="https://agentforge4j.org/absolute/">same-origin absolute</a>' +
+    '<a href="relative/">relative to the page this html was served at</a>' +
+    '<a href="//agentforge4j.org/protocol-relative/">protocol-relative, on-site</a>' +
+    '<a title="a > b" href="/quoted-gt/">a quoted &gt; must not truncate the tag</a>' +
+    // Inert markup: no browser follows a link inside a comment, so counting it would fail the
+    // build over something that ships doing nothing.
+    '<!-- <a href="/commented-out/">ghost</a> -->';
+  assert.deepEqual(extractInternalLinkTargets(html, '/'), [
+    '/api/',
+    '/catalogue/',
+    '/use/',
+    '/single/',
+    '/bare/',
+    '/legal/',
+    '/real/',
+    '/multiline/',
+    '/absolute/',
+    '/relative/',
+    '/protocol-relative/',
+    '/quoted-gt/',
+  ]);
+});
+
+test('extractInternalLinkTargets resolves a relative href against the page it was served at, not against the site root', () => {
+  // The whole point of taking sourcePath: `agent-creator/` means two different addresses depending
+  // on which page carries it, and only one of them is the one a visitor would actually request.
+  assert.deepEqual(extractInternalLinkTargets('<a href="agent-creator/">x</a>', '/catalogue/'), [
+    '/catalogue/agent-creator/',
+  ]);
+  assert.deepEqual(extractInternalLinkTargets('<a href="agent-creator/">x</a>', '/'), ['/agent-creator/']);
+});
+
+test('the internal-link crawl passes clean when every internal link already targets the trailing-slash form the host serves directly', async () => {
+  const distDir = fixtureDirForLinkCrawl(['/', '/api/']);
+  await assert.doesNotReject(() => verifySeo({ distDir, staticRoutes: [] }));
+});
+
+test('NEGATIVE CONTROL — the exact audited defect: a bare-form internal link (canonical still correct) fails the gate, naming the link and the page that carries it', async () => {
+  // /api/ is a real, correctly-canonicalled page here and every other check still passes; the ONLY
+  // difference from the clean fixture above is the href's missing trailing slash, which the
+  // GitHub-Pages-emulating server 301s exactly like production does.
+  const distDir = fixtureDirForLinkCrawl(['/', '/api']);
+  await assert.rejects(
+    () => verifySeo({ distDir, staticRoutes: [] }),
+    /internal link \/api \(linked from \/\) did not return 200 with no redirect \(got 301\)/,
+  );
+});
+
+test('NEGATIVE CONTROL — a bare-form link written as a same-origin ABSOLUTE url fails the gate, exactly like the root-relative form', async () => {
+  // Same redirect, same cost to every visitor and crawler, different spelling — a gate keyed on
+  // "the href starts with a slash" reports this build clean.
+  const distDir = fixtureDirForLinkCrawl(['/', 'https://agentforge4j.org/api']);
+  await assert.rejects(
+    () => verifySeo({ distDir, staticRoutes: [] }),
+    /internal link \/api \(linked from \/\) did not return 200 with no redirect \(got 301\)/,
+  );
+});
+
+test('NEGATIVE CONTROL — a bare-form link written as a RELATIVE href fails the gate, resolved against the page that carries it', async () => {
+  const distDir = fixtureDirForLinkCrawl(['/', 'api']);
+  await assert.rejects(
+    () => verifySeo({ distDir, staticRoutes: [] }),
+    /internal link \/api \(linked from \/\) did not return 200 with no redirect \(got 301\)/,
+  );
+});
+
+test('NEGATIVE CONTROL — a quoted attribute containing a literal > does not hide the anchor beside it from the crawl', async () => {
+  // The tag tokenizer, not the href rule: end the tag on the first `>` and this element is never
+  // read at all, so the bare-form link it carries is never checked and the build passes clean.
+  const distDir = fixtureDir();
+  writePage(
+    distDir,
+    '',
+    page({
+      canonical: 'https://agentforge4j.org/',
+      extraBody: '<a title="a > b" href="/api">quoted gt</a>',
+    }),
+  );
+  writePage(distDir, 'api', page({ canonical: 'https://agentforge4j.org/api/' }));
+  writeFileSync(
+    join(distDir, 'sitemap.xml'),
+    sitemapXml([{ url: 'https://agentforge4j.org/', lastmod: '2026-07-20' }]),
+    'utf8',
+  );
+  await assert.rejects(
+    () => verifySeo({ distDir, staticRoutes: [] }),
+    /internal link \/api \(linked from \/\) did not return 200 with no redirect \(got 301\)/,
+  );
+});
+
+test('an anchor inside an HTML comment is inert markup, not a dead link — it must not fail the build', async () => {
+  // The opposite direction of the three controls above: over-detection here fails a build over a
+  // link no browser can follow. index.html already carries a comment the build reads around, so
+  // this is a live hazard in this repo, not a hypothetical one.
+  const distDir = fixtureDirForLinkCrawl(['/']);
+  writePage(
+    distDir,
+    '',
+    page({
+      canonical: 'https://agentforge4j.org/',
+      extraBody: '<!-- <a href="/deleted-page/">removed in a redesign</a> -->',
+    }),
+  );
+  await assert.doesNotReject(() => verifySeo({ distDir, staticRoutes: [] }));
+});
+
+test('a link to a path that does not exist at all fails the crawl too, not only a redirecting one', async () => {
+  const distDir = fixtureDirForLinkCrawl(['/', '/nowhere/']);
+  await assert.rejects(
+    () => verifySeo({ distDir, staticRoutes: [] }),
+    /internal link \/nowhere\/ \(linked from \/\) did not return 200 with no redirect \(got 404\)/,
+  );
+});
+
+test('a link into a composed-artifact-only mount (/docs/, /javadoc/) is excluded rather than reported as a dead link — this build legitimately does not serve it', async () => {
+  const distDir = fixtureDirForLinkCrawl(['/', '/docs/', '/javadoc/latest/']);
+  await assert.doesNotReject(() => verifySeo({ distDir, staticRoutes: [] }));
+});
+
+test('the composed-only exclusion cannot shadow a path this build really serves — a real dist/docs/ fails closed instead of being silently skipped', async () => {
+  const distDir = fixtureDirForLinkCrawl(['/', '/docs/']);
+  writePage(distDir, 'docs', page({ canonical: 'https://agentforge4j.org/docs/' }));
+  await assert.rejects(
+    () => verifySeo({ distDir, staticRoutes: [] }),
+    /"\/docs\/" is excluded from the internal-link crawl as composed-artifact-only, but this build really does serve/,
+  );
+});
+
+test('a corpus whose pages link nowhere crawlable fails rather than reporting a vacuous pass', async () => {
+  const distDir = fixtureDirForLinkCrawl([]);
+  // /api/ still carries page()'s default link, so this fixture is emptied deliberately at both
+  // ends: the sitemap covers only the root, and the root itself links nowhere.
+  writeFileSync(
+    join(distDir, 'sitemap.xml'),
+    sitemapXml([{ url: 'https://agentforge4j.org/', lastmod: '2026-07-20' }]),
+    'utf8',
+  );
+  await assert.rejects(
+    () => verifySeo({ distDir, staticRoutes: [] }),
+    /found no crawlable internal links at all across 1 served page\(s\)/,
+  );
+});
+
+test('the crawl covers links carried by a sitemap: false alias shell too, not only sitemap URLs — the two inventories are a union, not a choice', async () => {
+  const distDir = fixtureDirWithAliasRoute();
+  writePage(distDir, 'contributing', page({ canonical: 'https://agentforge4j.org/community/', h1: '<h1>Community</h1>', links: ['/api'] }));
+  await assert.rejects(
+    () =>
+      verifySeo({
+        distDir,
+        staticRoutes: [
+          { requestPath: '/', expectedCanonical: 'https://agentforge4j.org/' },
+          { requestPath: '/contributing/', expectedCanonical: 'https://agentforge4j.org/community/' },
+        ],
+      }),
+    /internal link \/api \(linked from \/contributing\/\) did not return 200 with no redirect/,
+  );
 });
