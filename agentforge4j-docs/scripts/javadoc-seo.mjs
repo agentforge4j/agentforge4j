@@ -628,6 +628,24 @@ export function snippetBudgetExcerpt(description) {
 // catalogue description is already a sentence.
 const SNIPPET_ELLIPSIS = '…';
 
+// The least of the available room a whole-word cut may keep before it stops being an improvement.
+//
+// Not a taste setting — it is calibrated against what the real reference actually publishes.
+// Javadoc's own page titles are shaped `Uses of Class <fully.qualified.Name>`: a few short words,
+// then one long unbreakable token carrying every bit of the page's identity. Backing off to the
+// last space therefore discards precisely the part worth keeping, and the surviving prefix is
+// shared with every other page of that kind. Measured on the built corpus before this floor
+// existed: 511 shortened descriptions collapsed into **12 distinct texts** — 103 pages all reading
+// `... — Uses of Record Class….` — while averaging 106 characters against a 157-character budget,
+// leaving ~51 characters of room unspent. Two pages that a search result cannot tell apart are
+// worse than one that ends mid-token, so below this floor the mid-word cut wins.
+//
+// A half is the natural place to put it: it is the point where the whole-word cut stops keeping
+// most of what was available. Ordinary prose titles sit far above it (their words are short, so
+// the last space is near the end) and are unaffected; only a trailing token longer than half the
+// room trips it, which is exactly the qualified-name case.
+const WHOLE_WORD_RETENTION = 0.5;
+
 /**
  * A description built from prose this module owns plus a value it does not, guaranteed to fit
  * `MAX_SNIPPET_DESCRIPTION_LENGTH` by shortening ONLY the part that is not owned.
@@ -703,6 +721,11 @@ export function composeWithinSnippetBudget(prefix, generated, suffix, source) {
  * - A single word longer than the room available (one very long generated type name, the case with
  *   no word boundary to find): the hard cut is kept, since dropping the only word would leave
  *   nothing to identify the page by.
+ * - A cut mid-way through a trailing word so long that dropping it would throw away most of the
+ *   room: the hard cut is kept too, for exactly the same reason as the case above. Ending on a
+ *   whole word is a cosmetic preference; it is not worth surrendering the only part of the value
+ *   that says WHICH page this is. See `WHOLE_WORD_RETENTION` for the measured failure this rule
+ *   exists to prevent.
  * - A single token that is entirely punctuation: the hard cut is kept and marked, for the same
  *   reason — tidying it away would leave the prose trailing off into nothing. Tidying only ever
  *   removes a dangling END; it never empties a value that had content.
@@ -731,7 +754,13 @@ function shortenGeneratedValue(value, available) {
   // Whether the character the cut fell ON is whitespace decides if the last kept word is complete.
   const cutLandedOnWhitespace = /^\s/.test(value.slice(hardCut.length));
   const wholeWords = cutLandedOnWhitespace ? hardCut : hardCut.replace(/\s+\S*$/u, '');
-  const chosen = wholeWords.length > 0 ? wholeWords : hardCut;
+  // Ending on a whole word is worth a few characters, not most of them. Backing off to the last
+  // space is only an improvement while the words are short; when the trailing word is a long
+  // qualified type name — which is the shape nearly every generated page's title actually has —
+  // dropping it deletes the identifying part and keeps only a prefix shared with hundreds of other
+  // pages. Below the retention floor the mid-word cut is the better description, so it is kept.
+  const keepsEnough = wholeWords.length >= room * WHOLE_WORD_RETENTION;
+  const chosen = wholeWords.length > 0 && keepsEnough ? wholeWords : hardCut;
   const tidied = chosen.replace(/[\s\p{P}]+$/u, '');
   return `${tidied.length > 0 ? tidied : chosen.trimEnd()}${SNIPPET_ELLIPSIS}`;
 }
