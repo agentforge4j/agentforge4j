@@ -21,7 +21,7 @@ export default function UsePage() {
       </p>
       <p className="mt-2 max-w-2xl text-sm text-fg-muted">
         See the{' '}
-        <Link to="/releases" className="text-brand underline">
+        <Link to="/releases/" className="text-brand underline">
           Releases
         </Link>{' '}
         page for what's shipped so far.

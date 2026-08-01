@@ -161,7 +161,6 @@ describe('validateCrossReferences', () => {
     const workflow = baseWorkflow({
       blueprintBodies: {
         loop: {
-          kind: 'BLUEPRINT',
           blueprintId: 'loop',
           name: 'Loop',
           behaviour: {

@@ -10,10 +10,10 @@ test.describe('desktop navigation', () => {
   // navigation to /docs/, which this plain (un-assembled) SPA preview server has no directory for.
   // See "the Docs nav link is a real anchor, not a client-side route" below instead.
   const PRIMARY_NAV_LINKS: ReadonlyArray<readonly [label: string, path: string]> = [
-    ['Catalogue', '/catalogue'],
-    ['Builder', '/builder'],
-    ['Architecture', '/architecture'],
-    ['Community', '/community'],
+    ['Catalogue', '/catalogue/'],
+    ['Builder', '/builder/'],
+    ['Architecture', '/architecture/'],
+    ['Community', '/community/'],
   ];
 
   for (const [label, path] of PRIMARY_NAV_LINKS) {
@@ -59,22 +59,22 @@ test.describe('desktop navigation', () => {
   test('the header "Use" call-to-action navigates to /use', async ({ page }) => {
     await page.goto('/');
     await page.getByRole('link', { name: 'Use', exact: true }).click();
-    await expect(page).toHaveURL(/\/use$/);
+    await expect(page).toHaveURL(/\/use\/$/);
   });
 
   test('browser back/forward walk the real route history', async ({ page }) => {
     await page.goto('/');
     await page.getByRole('navigation', { name: 'Primary' }).getByRole('link', { name: 'Catalogue' }).click();
-    await expect(page).toHaveURL(/\/catalogue$/);
+    await expect(page).toHaveURL(/\/catalogue\/$/);
     await page.getByRole('navigation', { name: 'Primary' }).getByRole('link', { name: 'Builder' }).click();
-    await expect(page).toHaveURL(/\/builder$/);
+    await expect(page).toHaveURL(/\/builder\/$/);
 
     await page.goBack();
-    await expect(page).toHaveURL(/\/catalogue$/);
+    await expect(page).toHaveURL(/\/catalogue\/$/);
     await expect(page.getByRole('heading', { level: 1, name: 'Workflow catalogue' })).toBeVisible();
 
     await page.goForward();
-    await expect(page).toHaveURL(/\/builder$/);
+    await expect(page).toHaveURL(/\/builder\/$/);
   });
 });
 
@@ -94,7 +94,7 @@ test.describe('footer navigation', () => {
   test('Releases is reachable from the footer', async ({ page }) => {
     await page.goto('/');
     await page.locator('footer').getByRole('link', { name: 'Releases' }).click();
-    await expect(page).toHaveURL(/\/releases$/);
+    await expect(page).toHaveURL(/\/releases\/$/);
     await expect(page.getByRole('heading', { level: 1, name: 'Releases' })).toBeVisible();
   });
 });
