@@ -73,10 +73,12 @@ const readHeadState = () => {
     ogUrl: metaByKey('property', 'og:url'),
     ogSiteName: metaByKey('property', 'og:site_name'),
     ogImage: metaByKey('property', 'og:image'),
+    ogImageAlt: metaByKey('property', 'og:image:alt'),
     twitterTitle: metaByKey('name', 'twitter:title'),
     twitterDescription: metaByKey('name', 'twitter:description'),
     twitterCard: metaByKey('name', 'twitter:card'),
     twitterImage: metaByKey('name', 'twitter:image'),
+    twitterImageAlt: metaByKey('name', 'twitter:image:alt'),
     jsonLd: {
       count: jsonLdScripts.length,
       content: jsonLdScripts.map((script) => script.textContent),
@@ -89,7 +91,7 @@ const readHeadState = () => {
  * prerender-routes.mjs read — independently, per this module's established convention — plus the
  * unknown-route case. Trailing-slash form throughout: that is the address the host serves directly
  * and the form the site's own links use. */
-export function collectNavigablePaths({
+function collectNavigablePaths({
   seoRoutesPath = SEO_ROUTES_PATH,
   catalogueDataPath = CATALOGUE_DATA_PATH,
 } = {}) {
@@ -117,13 +119,66 @@ async function waitForAppReady(page) {
   );
 }
 
+/** Both address forms one route can be linked as, most-specific first.
+ *
+ * This exists because the two halves of this check speak different dialects: the addresses it
+ * navigates to are the trailing-slash form the host serves directly (`/api/`), while the site's own
+ * links are written slash-less (`/api`, see src/config/nav.ts). A selector built from one form
+ * alone therefore matches nothing for every header/footer route — which is exactly what this file
+ * did when it was written, so 36 of its 40 "real in-app navigations" were synthetic history pushes
+ * and the `<Link>` click path a visitor actually uses was exercised for one route out of fifteen. */
+function linkSelectorFor(path) {
+  const forms = path === '/' ? ['/'] : [path, path.replace(/\/+$/, '')];
+  return forms.map((form) => `a[href="${form}"]`).join(', ');
+}
+
+/** Whether the page currently renders any link that addresses `path`, in either slash form and
+ * whether written relative or absolute.
+ *
+ * Read from the live DOM rather than from the nav config, so the answer is about what a visitor can
+ * actually click, and deliberately broader than `linkSelectorFor` — that is the point. If this says
+ * yes and the selector matched nothing, the selector has gone stale against the site's link style
+ * again and the check is about to degrade to a synthetic push without saying so. */
+/* eslint-disable no-undef */
+async function pageLinksTo(page, path) {
+  return page.evaluate((target) => {
+    const normalise = (value) => (value === '/' ? '/' : value.replace(/\/+$/, ''));
+    return [...document.querySelectorAll('a[href]')].some((anchor) => {
+      let resolved;
+      try {
+        resolved = new URL(anchor.getAttribute('href'), window.location.href);
+      } catch {
+        return false;
+      }
+      return resolved.origin === window.location.origin && normalise(resolved.pathname) === normalise(target);
+    });
+  }, path);
+}
+/* eslint-enable no-undef */
+
 /** Navigates within the running app the way a visitor does — a real click on a real rendered link
- * where one exists, falling back to a history push for a route the current page does not link to
- * (the unknown-route case, and any route not in the header/footer). Both are genuine client-side
- * transitions: no document load, so no new shell is ever fetched. */
+ * where one exists, falling back to a history push only for a route the current page genuinely does
+ * not link to (the unknown-route case, and any route not in the header/footer). Both are genuine
+ * client-side transitions: no document load, so no new shell is ever fetched.
+ *
+ * Returns `'click'` or `'push'` so the caller can report the split rather than describing every
+ * transition as a click, and throws outright if the page DOES link to the destination but the
+ * selector failed to find it — silently taking the weaker path is how this check lost almost all of
+ * its click coverage in the first place.
+ *
+ * @returns {Promise<'click'|'push'>}
+ */
 async function navigateClientSide(page, path) {
-  const link = page.locator(`a[href="${path}"]`).first();
-  if ((await link.count()) > 0) {
+  const link = page.locator(linkSelectorFor(path)).first();
+  const clickable = (await link.count()) > 0;
+  if (!clickable && (await pageLinksTo(page, path))) {
+    throw new Error(
+      `verify-client-nav-seo: this page renders a link addressing ${path}, but the click selector ` +
+        `(${linkSelectorFor(path)}) did not match it. The check would silently fall back to a synthetic ` +
+        'history push — not what a visitor does, and not what this gate claims to exercise.',
+    );
+  }
+  if (clickable) {
     await link.click();
   } else {
     await page.evaluate(
@@ -138,12 +193,23 @@ async function navigateClientSide(page, path) {
     await page.evaluate(() => window.dispatchEvent(new PopStateEvent('popstate')));
   }
   await waitForAppReady(page);
+  // Compared with the trailing slash normalised away, because a real click lands on the address the
+  // SITE wrote, not the one this file navigates to: `<Link to="/catalogue">` pushes `/catalogue`
+  // while the direct-load reference was taken at `/catalogue/`. Those are the same route and the
+  // same SEO state by construction — src/config/seo.ts's `normalizeForMatch` matches either form
+  // and `canonicalUrl` emits the trailing-slash form from both — so the assertion here is that the
+  // router reached the route, not that the URL matched one particular spelling. The head-state
+  // comparison the caller then runs is unaffected: it is the real oracle, and it is exact.
   await page.waitForFunction(
-    // eslint-disable-next-line no-undef
-    (target) => window.location.pathname === target,
+    (target) => {
+      const normalise = (value) => (value === '/' ? '/' : value.replace(/\/+$/, ''));
+      // eslint-disable-next-line no-undef
+      return normalise(window.location.pathname) === normalise(target);
+    },
     path,
     { timeout: 30000 },
   );
+  return clickable ? 'click' : 'push';
 }
 
 function differences(expected, actual) {
@@ -160,7 +226,10 @@ function differences(expected, actual) {
 
 /**
  * @param {{distDir?: string, paths?: string[]}} [options]
- * @returns {Promise<{routesChecked: number, transitionsChecked: number}>}
+ * @returns {Promise<{routesChecked: number, transitionsChecked: number, clickedTransitions: number,
+ *   pushedTransitions: number}>} `clickedTransitions` and `pushedTransitions` are reported
+ *   separately rather than summed: a real `<Link>` click and a synthetic history push are not the
+ *   same evidence, and collapsing them is what let this check describe 40 clicks while performing 4.
  */
 export async function verifyClientNavSeo({ distDir = DIST_DIR, paths } = {}) {
   if (!existsSync(join(distDir, 'index.html'))) {
@@ -177,6 +246,11 @@ export async function verifyClientNavSeo({ distDir = DIST_DIR, paths } = {}) {
 
   let browser;
   let transitionsChecked = 0;
+  const modeCounts = { click: 0, push: 0 };
+  const recordTransition = (mode) => {
+    modeCounts[mode] += 1;
+    transitionsChecked += 1;
+  };
   try {
     browser = await chromium.launch();
     const page = await browser.newPage();
@@ -203,7 +277,7 @@ export async function verifyClientNavSeo({ distDir = DIST_DIR, paths } = {}) {
       ]) {
         await page.goto(`${origin}${start}`, { waitUntil: 'domcontentloaded' });
         await waitForAppReady(page);
-        await navigateClientSide(page, end);
+        const mode = await navigateClientSide(page, end);
         const problems = differences(direct.get(end), await page.evaluate(readHeadState));
         if (problems.length > 0) {
           throw new Error(
@@ -211,7 +285,7 @@ export async function verifyClientNavSeo({ distDir = DIST_DIR, paths } = {}) {
               `match a direct load of ${end}:\n  ${problems.join('\n  ')}`,
           );
         }
-        transitionsChecked += 1;
+        recordTransition(mode);
       }
     }
 
@@ -220,11 +294,15 @@ export async function verifyClientNavSeo({ distDir = DIST_DIR, paths } = {}) {
     //    to anything that looks at only the first one) and any state that only goes wrong on a
     //    route's second visit.
     const cycle = routePaths.slice(0, Math.min(4, routePaths.length));
-    await page.goto(`${origin}${cycle[0]}`, { waitUntil: 'domcontentloaded' });
+    // Entered from the LAST entry in the cycle, not the first: starting on `cycle[0]` made the first
+    // navigation of lap 1 a move to the address already loaded, which changes no pathname, re-runs
+    // no effect (usePageSeo's is keyed on location.pathname) and compares a route against itself.
+    // One of the counted transitions was therefore not a transition at all.
+    await page.goto(`${origin}${cycle[cycle.length - 1]}`, { waitUntil: 'domcontentloaded' });
     await waitForAppReady(page);
     for (let lap = 0; lap < 3; lap += 1) {
       for (const path of cycle) {
-        await navigateClientSide(page, path);
+        const mode = await navigateClientSide(page, path);
         const problems = differences(direct.get(path), await page.evaluate(readHeadState));
         if (problems.length > 0) {
           throw new Error(
@@ -232,7 +310,7 @@ export async function verifyClientNavSeo({ distDir = DIST_DIR, paths } = {}) {
               `load of itself:\n  ${problems.join('\n  ')}`,
           );
         }
-        transitionsChecked += 1;
+        recordTransition(mode);
       }
     }
   } finally {
@@ -245,16 +323,31 @@ export async function verifyClientNavSeo({ distDir = DIST_DIR, paths } = {}) {
     }
   }
 
-  return { routesChecked: routePaths.length, transitionsChecked };
+  if (modeCounts.click === 0) {
+    throw new Error(
+      'verify-client-nav-seo: not one transition was a real link click — every route fell back to a synthetic ' +
+        'history push, so the navigation mechanism a visitor actually uses went unexercised. Check that the ' +
+        "site's link hrefs still match linkSelectorFor's forms.",
+    );
+  }
+
+  return {
+    routesChecked: routePaths.length,
+    transitionsChecked,
+    clickedTransitions: modeCounts.click,
+    pushedTransitions: modeCounts.push,
+  };
 }
 
 if (process.argv[1]?.endsWith('verify-client-nav-seo.mjs')) {
   verifyClientNavSeo()
-    .then(({ routesChecked, transitionsChecked }) => {
+    .then(({ routesChecked, transitionsChecked, clickedTransitions, pushedTransitions }) => {
       console.log(
-        `[verify-client-nav-seo] ${routesChecked} route(s) incl. an unknown route, ${transitionsChecked} real ` +
-          'in-app navigation(s) checked in headless Chromium — every one reaches the same title, description, ' +
-          'canonical, og:*, twitter:* and JSON-LD state (and the same tag COUNTS) as a direct load of that URL',
+        `[verify-client-nav-seo] ${routesChecked} route(s) incl. an unknown route, ${transitionsChecked} in-app ` +
+          `navigation(s) checked in headless Chromium — ${clickedTransitions} by clicking the site's own rendered ` +
+          `link, ${pushedTransitions} by history push for routes the departure page links to nowhere. Every one ` +
+          'reaches the same title, description, canonical, og:*, twitter:* and JSON-LD state (and the same tag ' +
+          'COUNTS) as a direct load of that URL',
       );
     })
     .catch((error) => {

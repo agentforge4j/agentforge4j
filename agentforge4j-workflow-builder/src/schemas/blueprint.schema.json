@@ -2,10 +2,9 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "BlueprintDefinition",
   "type": "object",
-  "required": ["kind", "blueprintId", "name", "behaviour", "steps"],
+  "required": ["blueprintId", "name", "behaviour", "steps"],
   "additionalProperties": false,
   "properties": {
-    "kind": { "type": "string", "const": "BLUEPRINT" },
     "blueprintId": {
       "type": "string",
       "description": "Unique blueprint identifier (Unique to the workflow). Must match the filename stem."
@@ -61,6 +60,11 @@
           "type": "string",
           "enum": ["AWAIT_USER", "FAIL"],
           "default": "AWAIT_USER"
+        },
+        "expectedIterations": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Optional execution-estimation hint: expected-case iteration count (companion to the maxIterations ceiling). Must not exceed maxIterations. Advisory only; never affects runtime loop driving."
         }
       }
     },
@@ -68,7 +72,6 @@
       "oneOf": [
         { "$ref": "workflow.schema.json#/$defs/StepDefinition" },
         { "$ref": "#/$defs/BlueprintRef" },
-        { "$ref": "#" },
         { "$ref": "workflow.schema.json" }
       ]
     },

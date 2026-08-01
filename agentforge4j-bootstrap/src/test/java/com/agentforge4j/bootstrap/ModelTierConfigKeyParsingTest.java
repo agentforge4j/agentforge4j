@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 package com.agentforge4j.bootstrap;
 
+import com.agentforge4j.llm.api.ModelTier;
 import java.util.HashMap;
+import java.util.Locale;
 import java.util.Map;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -66,6 +68,25 @@ class ModelTierConfigKeyParsingTest {
     assertThat(AgentForge4jBootstrap.defaults().build()).isNotNull();
   }
 
+  @Test
+  void acceptsPremiumAsATierSegment() {
+    // PREMIUM is the newest tier and the one an operator has no shipped precedent for, so it is
+    // pinned explicitly: a clean build proves the segment parsed to a ModelTier constant, since an
+    // unrecognised tier throws out of getModelTier before the builder finishes.
+    setProperty(PREFIX + "openai.premium", "gpt-some-premium-model");
+
+    assertThat(AgentForge4jBootstrap.defaults().build()).isNotNull();
+  }
+
+  @Test
+  void acceptsEveryDeclaredTierAsATierSegment() {
+    for (ModelTier tier : ModelTier.values()) {
+      setProperty(PREFIX + "openai." + tier.name().toLowerCase(Locale.ROOT), "some-model");
+    }
+
+    assertThat(AgentForge4jBootstrap.defaults().build()).isNotNull();
+  }
+
   // --- malformed keys: rejected by getProviderEndIndex ------------------------------------------
 
   @Test
@@ -94,6 +115,22 @@ class ModelTierConfigKeyParsingTest {
     assertThatThrownBy(() -> AgentForge4jBootstrap.defaults().build())
         .isInstanceOf(IllegalStateException.class)
         .hasMessageContaining("Invalid model tier config key");
+  }
+
+  // --- unknown tier names: rejected by getModelTier ---------------------------------------------
+
+  @Test
+  void rejectsUnknownTierNameAndListsEveryDeclaredTier() {
+    setProperty(PREFIX + "openai.supreme", "gpt-some-model");
+
+    assertThatThrownBy(() -> AgentForge4jBootstrap.defaults().build())
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessageContaining("Invalid tier 'supreme'")
+        .hasMessageContaining(PREFIX + "openai.supreme")
+        // Derived from the enum, so the message can never omit a tier that is actually valid.
+        .hasMessageContaining(ModelTier.joinedNames())
+        .hasMessageContaining("PREMIUM")
+        .hasCauseInstanceOf(IllegalArgumentException.class);
   }
 
   private void setProperty(String key, String value) {

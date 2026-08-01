@@ -18,6 +18,7 @@ Shipped tier defaults for provider id `vllm`:
 | `LITE` | `Qwen/Qwen3-4B` |
 | `STANDARD` | `Qwen/Qwen3-14B` |
 | `POWERFUL` | `Qwen/Qwen3-32B` |
+| `PREMIUM` | `Qwen/Qwen3-32B` |
 
 The model id must match what your vLLM server has loaded; override the tier mapping to your served
 models as needed.
