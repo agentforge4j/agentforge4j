@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package com.agentforge4j.llm.claude;
 
-import com.agentforge4j.llm.DefaultTokenEstimator;
 import com.agentforge4j.llm.PromptLayerCacheSupport;
+import com.agentforge4j.llm.Utf8TokenEstimate;
 import com.agentforge4j.llm.api.PromptLayerBoundaries;
 import com.agentforge4j.llm.claude.dto.ClaudeSystemContentBlock;
 import java.util.List;
@@ -16,9 +16,8 @@ import java.util.Map;
  * {@link PromptLayerCacheSupport}; this class supplies the Claude-specific model-minimum-tokens
  * table and DTO construction.
  * <p>
- * Token estimates come from the shared {@link DefaultTokenEstimator} heuristic
- * ({@code ceil(utf8ByteLength / 4)}), a conservative fallback when the provider does not expose a
- * tokenizer.
+ * Token estimates come from the shared {@link Utf8TokenEstimate} heuristic, a conservative fallback
+ * when the provider does not expose a tokenizer.
  */
 final class ClaudePromptCacheSupport {
 
@@ -96,12 +95,13 @@ final class ClaudePromptCacheSupport {
   }
 
   /**
-   * Estimates token count from a UTF-8 byte length using the shared {@link DefaultTokenEstimator}.
+   * Estimates token count from a UTF-8 byte length using the shared {@link Utf8TokenEstimate}
+   * heuristic.
    *
    * @param utf8ByteLength segment size in UTF-8 bytes
    * @return estimated token count (at least 1 when length is positive)
    */
   static int estimateTokens(int utf8ByteLength) {
-    return DefaultTokenEstimator.estimateFromUtf8ByteLength(utf8ByteLength);
+    return Utf8TokenEstimate.fromUtf8ByteLength(utf8ByteLength);
   }
 }

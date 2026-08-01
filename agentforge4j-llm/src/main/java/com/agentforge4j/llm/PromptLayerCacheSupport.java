@@ -19,9 +19,8 @@ import java.util.Map;
  * and the per-model minimum-cacheable-segment-length table differ. Callers supply both as
  * parameters so this class stays provider-agnostic.
  * <p>
- * Token estimates come from the shared {@link DefaultTokenEstimator} heuristic
- * ({@code ceil(utf8ByteLength / 4)}), a conservative fallback when the provider does not expose a
- * tokenizer.
+ * Token estimates come from the shared {@link Utf8TokenEstimate} heuristic, a conservative fallback
+ * when the provider does not expose a tokenizer.
  */
 public final class PromptLayerCacheSupport {
 
@@ -182,12 +181,12 @@ public final class PromptLayerCacheSupport {
       Map<String, Integer> modelPrefixToMinTokens) {
     int threshold = resolveMinCacheableSegmentTokens(modelId, modelPrefixToMinTokens);
     boolean[] mark = new boolean[3];
-    mark[0] = DefaultTokenEstimator.estimateFromUtf8ByteLength(
+    mark[0] = Utf8TokenEstimate.fromUtf8ByteLength(
         promptLayerBoundaries.layer1EndOffset()) >= threshold;
-    mark[1] = DefaultTokenEstimator.estimateFromUtf8ByteLength(
+    mark[1] = Utf8TokenEstimate.fromUtf8ByteLength(
         promptLayerBoundaries.layer2EndOffset()) >= threshold;
     if (promptLayerBoundaries.layer3EndOffset() != null) {
-      mark[2] = DefaultTokenEstimator.estimateFromUtf8ByteLength(
+      mark[2] = Utf8TokenEstimate.fromUtf8ByteLength(
           promptLayerBoundaries.layer3EndOffset()) >= threshold;
     }
     // Logged here — the shared path every production buildSystemBlocks call goes through — so the

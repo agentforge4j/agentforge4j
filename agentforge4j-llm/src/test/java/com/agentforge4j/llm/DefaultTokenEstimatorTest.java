@@ -6,6 +6,11 @@ import org.junit.jupiter.api.Test;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+/**
+ * Covers what this class adds over the shared heuristic: encoding text to UTF-8 before estimating,
+ * and rejecting null. The ceiling arithmetic itself belongs to {@code Utf8TokenEstimateTest} and is
+ * not restated here.
+ */
 class DefaultTokenEstimatorTest {
 
   private final DefaultTokenEstimator estimator = new DefaultTokenEstimator();
@@ -36,17 +41,4 @@ class DefaultTokenEstimatorTest {
         .isInstanceOf(IllegalArgumentException.class);
   }
 
-  @Test
-  void byteLengthEntryPointMatchesCeilingHeuristic() {
-    assertThat(DefaultTokenEstimator.estimateFromUtf8ByteLength(0)).isZero();
-    assertThat(DefaultTokenEstimator.estimateFromUtf8ByteLength(1)).isEqualTo(1);
-    assertThat(DefaultTokenEstimator.estimateFromUtf8ByteLength(4)).isEqualTo(1);
-    assertThat(DefaultTokenEstimator.estimateFromUtf8ByteLength(5)).isEqualTo(2);
-    assertThat(DefaultTokenEstimator.estimateFromUtf8ByteLength(4096)).isEqualTo(1024);
-  }
-
-  @Test
-  void nonPositiveByteLengthEstimatesToZero() {
-    assertThat(DefaultTokenEstimator.estimateFromUtf8ByteLength(-1)).isZero();
-  }
 }
