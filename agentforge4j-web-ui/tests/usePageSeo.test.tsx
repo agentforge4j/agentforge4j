@@ -20,6 +20,7 @@ import {
   catalogueWorkflowDescription,
   describesCompleteWords,
   MAX_DESCRIPTION_LENGTH,
+  MIN_USEFUL_DESCRIPTION_LENGTH,
   truncateDescription,
 } from '@/lib/catalogueSeo';
 // JSON_LD_SCRIPT_ID comes from build-seo.mjs deliberately, never re-typed as a literal here: the
@@ -35,6 +36,7 @@ import {
   describesCompleteWords as buildDescribesCompleteWords,
   JSON_LD_SCRIPT_ID,
   MAX_DESCRIPTION_LENGTH as buildMaxDescriptionLength,
+  MIN_USEFUL_DESCRIPTION_LENGTH as buildMinUsefulDescriptionLength,
   truncateDescription as buildTruncateDescription,
 } from '../scripts/build-seo.mjs';
 
@@ -299,12 +301,15 @@ const BINDING_CORPUS: readonly string[] = [
   `Ok. ${'Alpha beta gamma delta '.repeat(20)}`,
   `${'word '.repeat(28)}alpha, beta gamma delta epsilon zeta eta theta iota kappa lambda`,
   `${'alpha\nbeta\ngamma\n'.repeat(20)}delta`,
-  'Runs adapters over several transports for governed workflow execution, e.g. HTTP, gRPC and ' +
-    'in-process, chosen per agent and per step by the configured provider for that run.',
+  // The `e.g.`/`...` entries deliberately place the terminator ABOVE MIN_USEFUL_DESCRIPTION_LENGTH
+  // and follow it with a capital: below the floor, or before a lower-case word, something other
+  // than the dotted-word rule explains the result and the entry stops binding that rule at all.
+  'Runs adapters over several transports for governed workflow execution and delivery to each ' +
+    'configured provider, e.g. HTTP, gRPC and in-process, chosen per agent and per step of the run.',
   'Estimates token range, agent turns, tool invocations, structural risk flags, etc. and then ' +
     'returns a continue, narrow or stop recommendation for the caller to act on before executing.',
-  'A summary of the governed workflow that trails off with a long lead-in clause and then stops ' +
-    'mid thought... and afterwards continues for a good while longer than the budget.',
+  'A governed workflow summary with a long lead-in clause that eventually trails off and then ' +
+    'stops mid thought... And afterwards it continues for a good while longer than the budget allows.',
   `A governed workflow summary that stops mid thought... ${'x'.repeat(200)}`,
   `Runs adapters for governed AI workflow execution, e.g. ${'y'.repeat(200)}`,
   'Supports the governed workflow contract as shipped in release 1.0. The rest of this sentence ' +
@@ -312,8 +317,23 @@ const BINDING_CORPUS: readonly string[] = [
 ];
 
 describe('catalogue description truncation', () => {
-  test('the budget itself is one number, not two — the TS copy matches the build copy', () => {
+  test('both thresholds are one number each, not two — the TS copies match the build copies', () => {
     expect(MAX_DESCRIPTION_LENGTH).toBe(buildMaxDescriptionLength);
+    expect(MIN_USEFUL_DESCRIPTION_LENGTH).toBe(buildMinUsefulDescriptionLength);
+  });
+
+  test('the corpus really exercises the sentence rule — every abbreviation entry sits above the useful-length floor', () => {
+    // Without this, a reworded corpus entry can drop its terminator below the floor and quietly
+    // stop binding the rule it was added for, while every test still passes. That is not
+    // hypothetical: it is how the `e.g.` binding was lost once, unnoticed by a green suite.
+    for (const terminator of ['e.g.', 'thought...']) {
+      const entry = BINDING_CORPUS.find((raw) => raw.includes(terminator));
+      expect(entry, terminator).toBeDefined();
+      const end = entry!.indexOf(terminator) + terminator.length;
+      expect(end, `${terminator} ends at ${end}`).toBeGreaterThanOrEqual(MIN_USEFUL_DESCRIPTION_LENGTH);
+      expect(end, `${terminator} ends at ${end}`).toBeLessThanOrEqual(MAX_DESCRIPTION_LENGTH);
+      expect(entry!.slice(end)).toMatch(/^\s+\p{Lu}/u);
+    }
   });
 
   test('the client-side and build-time implementations produce identical descriptions for every real shipped workflow, fallback included', () => {

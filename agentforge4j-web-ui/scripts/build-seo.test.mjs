@@ -25,6 +25,7 @@ import {
   injectRoot,
   JSON_LD_SCRIPT_ID,
   MAX_DESCRIPTION_LENGTH,
+  MIN_USEFUL_DESCRIPTION_LENGTH,
   newestGitLastModifiedDate,
   truncateDescription,
   withTrailingSlash,
@@ -2178,12 +2179,31 @@ test('a very long first sentence does not collapse the description to a useless 
   assert.ok(result.length > 80, `expected a useful length, got ${result.length}: ${result}`);
 });
 
+/** Fails a fixture that has drifted to where the useful-length floor, not the sentence rule, is
+ * what produces the expected result. A terminator BELOW the floor is rejected whatever
+ * `endsSentence` decides, so such a fixture proves nothing about the rule it is named for — a
+ * silent way for these guards to stop guarding, and exactly how it happened once already. The
+ * follower must also be upper-case, or the continuation rule alone would explain the result. */
+function assertIsolatesTheSentenceRule(raw, terminator) {
+  const end = raw.indexOf(terminator) + terminator.length;
+  assert.ok(end >= 0, `fixture drift: ${terminator} not present`);
+  assert.ok(
+    end >= MIN_USEFUL_DESCRIPTION_LENGTH,
+    `fixture drift: "${terminator}" ends at ${end}, below the ${MIN_USEFUL_DESCRIPTION_LENGTH}-character ` +
+      'useful-length floor — the floor would reject this cut on its own, so this test proves nothing',
+  );
+  assert.ok(end <= MAX_DESCRIPTION_LENGTH, `fixture drift: "${terminator}" ends at ${end}, past the budget`);
+  assert.match(raw.slice(end), /^\s+\p{Lu}/u, `fixture drift: "${terminator}" must be followed by a capital`);
+}
+
 test('an abbreviation is not a sentence end — `e.g.` never ends the description', () => {
   // The failure this prevents is the mirror image of a mid-word cut: a technically-complete
-  // fragment that stops at "e.g." and throws away most of the budget.
+  // fragment that stops at "e.g." and throws away most of the budget. The capital after it is
+  // deliberate — it makes the dotted-word rule the ONLY thing that can reject this cut.
   const raw =
-    'Runs adapters over several transports for governed workflow execution, e.g. HTTP, gRPC and ' +
-    'in-process, chosen per agent and per step by the configured provider for that run.';
+    'Runs adapters over several transports for governed workflow execution and delivery to each ' +
+    'configured provider, e.g. HTTP, gRPC and in-process, chosen per agent and per step of the run.';
+  assertIsolatesTheSentenceRule(raw, 'e.g.');
   const result = truncateDescription(raw);
   assert.doesNotMatch(result, /e\.g\.$/);
   assert.ok(result.length > 120, `expected most of the budget kept, got ${result.length}: ${result}`);
@@ -2191,18 +2211,26 @@ test('an abbreviation is not a sentence end — `e.g.` never ends the descriptio
 });
 
 test('a lower-case continuation after a full stop is not a sentence end — `etc. and` never ends the description', () => {
+  // The mirror of the test above: no dot inside `etc`, so only the continuation rule can reject it.
   const raw =
     'Estimates token range, agent turns, tool invocations, structural risk flags, etc. and then ' +
     'returns a continue, narrow or stop recommendation for the caller to act on before executing.';
+  const end = raw.indexOf('etc.') + 'etc.'.length;
+  assert.ok(
+    end >= MIN_USEFUL_DESCRIPTION_LENGTH,
+    `fixture drift: "etc." ends at ${end}, below the ${MIN_USEFUL_DESCRIPTION_LENGTH}-character floor`,
+  );
   const result = truncateDescription(raw);
   assert.doesNotMatch(result, /etc\.$/);
   assert.ok(describesCompleteWords(raw, result), result);
 });
 
 test('a trailing `...` is not a sentence end either — the three-dot form, not just the single character', () => {
+  // Capital after the dots, again so the dotted-word rule is the only thing that can reject it.
   const raw =
-    'A summary of the governed workflow that trails off with a long lead-in clause and then ' +
-    'stops mid thought... and afterwards continues for a good while longer than the budget.';
+    'A governed workflow summary with a long lead-in clause that eventually trails off and then ' +
+    'stops mid thought... And afterwards it continues for a good while longer than the budget allows.';
+  assertIsolatesTheSentenceRule(raw, 'thought...');
   const result = truncateDescription(raw);
   assert.doesNotMatch(result, /thought\.\.\.$/);
   // And the cut never publishes the source's dots and this rule's ellipsis together.

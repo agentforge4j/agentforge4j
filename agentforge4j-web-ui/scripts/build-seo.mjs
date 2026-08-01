@@ -233,8 +233,11 @@ function catalogueWorkflowTitle(workflow) {
   return `${workflow.name} — AgentForge4j Catalogue`;
 }
 
-/** Below this a truncated description stops being a useful snippet — see catalogueSeo.ts. */
-const MIN_USEFUL_DESCRIPTION_LENGTH = 80;
+/** Below this a truncated description stops being a useful snippet — see catalogueSeo.ts. Exported
+ * for the same reason MAX_DESCRIPTION_LENGTH is: a test whose fixture puts a sentence end BELOW
+ * this floor proves nothing about the sentence rule, because the floor rejects the cut whatever the
+ * rule decides. Binding fixtures to this number is what stops that happening silently. */
+export const MIN_USEFUL_DESCRIPTION_LENGTH = 80;
 /** A CANDIDATE sentence end; `endsSentence` decides whether it is a real one. See catalogueSeo.ts. */
 const SENTENCE_END_PATTERN = /(\S+)[.!?](?=\s|$)/g;
 /** Dangling clause punctuation, and a `...` run that would otherwise publish `thought...…` — see

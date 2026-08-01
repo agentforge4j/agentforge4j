@@ -21,8 +21,13 @@ export const MAX_DESCRIPTION_LENGTH = 157;
 /** Below this, a truncated description has stopped being a useful search snippet — so a sentence
  * boundary is only preferred over a longer word-boundary cut when it still leaves this much. Not a
  * threshold to optimise against: it exists so "end at a sentence" cannot silently collapse a
- * description to its four-word opening clause. */
-const MIN_USEFUL_DESCRIPTION_LENGTH = 80;
+ * description to its four-word opening clause.
+ *
+ * Exported for the same reason as MAX_DESCRIPTION_LENGTH, plus one of its own: a test whose fixture
+ * places a sentence end BELOW this floor proves nothing about the sentence rule, since the floor
+ * rejects that cut whatever the rule decides. Fixtures bind to this number so a reworded fixture
+ * fails loudly instead of quietly ceasing to test anything. */
+export const MIN_USEFUL_DESCRIPTION_LENGTH = 80;
 
 /** A CANDIDATE sentence end: `.`, `!` or `?` closing a run of non-space characters and followed by
  * whitespace or the end of the text. The captured group is the word it closes, which
