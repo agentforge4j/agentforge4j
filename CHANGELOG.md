@@ -34,6 +34,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Search snippets for the published API reference.** Page descriptions on the hosted Javadoc are
+  now kept inside the length a search result actually shows, so they are no longer cut off
+  mid-word. Descriptions built around a generated type name are shortened at a word boundary when
+  the name is long; the page's own title still carries the name in full. The reference's landing
+  page is also reachable from each surface's overview, so the MCP and Spring Boot starter surfaces
+  can be found from the entry point rather than only by direct link.
+
 ### Security
 
 ## [0.1.0] - 2026-07-19
