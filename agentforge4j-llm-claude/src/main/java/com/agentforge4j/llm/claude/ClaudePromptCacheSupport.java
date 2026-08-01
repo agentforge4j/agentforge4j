@@ -2,7 +2,6 @@
 package com.agentforge4j.llm.claude;
 
 import com.agentforge4j.llm.PromptLayerCacheSupport;
-import com.agentforge4j.llm.Utf8TokenEstimate;
 import com.agentforge4j.llm.api.PromptLayerBoundaries;
 import com.agentforge4j.llm.claude.dto.ClaudeSystemContentBlock;
 import java.util.List;
@@ -20,28 +19,16 @@ import java.util.Map;
 final class ClaudePromptCacheSupport {
 
   /**
-   * Default minimum estimated tokens in a layer segment for a cache breakpoint when the model id is
-   * not listed in {@link #MODEL_MIN_CACHEABLE_SEGMENT_TOKENS}.
+   * Claude per-model minimum cacheable segment lengths (estimated tokens). Keys are matched with
+   * {@link String#startsWith(String)} against the request model id (date suffixes allowed).
+   * Unrecognized models fall back to
+   * {@link PromptLayerCacheSupport#DEFAULT_MIN_CACHEABLE_SEGMENT_TOKENS}.
    */
-  static final int DEFAULT_MIN_CACHEABLE_SEGMENT_TOKENS =
-      PromptLayerCacheSupport.DEFAULT_MIN_CACHEABLE_SEGMENT_TOKENS;
-
   private static final Map<String, Integer> MODEL_MIN_CACHEABLE_SEGMENT_TOKENS = Map.of(
       "claude-haiku-4-5", 4096,
       "claude-3-5-haiku", 2048);
 
   private ClaudePromptCacheSupport() {
-  }
-
-  /**
-   * Resolves the minimum cacheable segment length for a Claude model id.
-   *
-   * @param modelId request model identifier (non-blank)
-   * @return minimum estimated tokens required before a layer may receive {@code cache_control}
-   */
-  static int resolveMinCacheableSegmentTokens(String modelId) {
-    return PromptLayerCacheSupport.resolveMinCacheableSegmentTokens(
-        modelId, MODEL_MIN_CACHEABLE_SEGMENT_TOKENS);
   }
 
   /**
@@ -64,33 +51,5 @@ final class ClaudePromptCacheSupport {
         (text, cacheBreakpoint) -> cacheBreakpoint
             ? ClaudeSystemContentBlock.cachedText(text)
             : ClaudeSystemContentBlock.plainText(text));
-  }
-
-  /**
-   * Selects which layer blocks receive {@code cache_control}.
-   * <p>
-   * Threshold checks use the cumulative UTF-8 prefix length at each layer boundary (Anthropic
-   * caches from the start of the prompt through the marked block), not the individual layer slice.
-   *
-   * @param promptLayerBoundaries layer end offsets
-   * @param modelId               resolved Claude model id
-   * @return per-layer marker flags
-   */
-  static boolean[] selectBreakpoints(PromptLayerBoundaries promptLayerBoundaries,
-      String modelId) {
-    // No logging here: the shared implementation already logs the decision, and repeating it would
-    // emit the line twice for every cached request.
-    return PromptLayerCacheSupport.selectBreakpoints(
-        promptLayerBoundaries, modelId, MODEL_MIN_CACHEABLE_SEGMENT_TOKENS);
-  }
-
-  /**
-   * Estimates token count from a UTF-8 byte length.
-   *
-   * @param utf8ByteLength segment size in UTF-8 bytes
-   * @return estimated token count (at least 1 when length is positive)
-   */
-  static int estimateTokens(int utf8ByteLength) {
-    return Utf8TokenEstimate.fromUtf8ByteLength(utf8ByteLength);
   }
 }

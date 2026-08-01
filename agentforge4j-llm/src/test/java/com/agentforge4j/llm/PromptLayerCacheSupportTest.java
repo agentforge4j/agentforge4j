@@ -275,4 +275,117 @@ class PromptLayerCacheSupportTest {
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("prompt caching is enabled");
   }
+
+  // ------------------------------------------------ multi-byte boundary alignment
+
+  @Test
+  void aBoundaryInsideAMultiByteCharacterIsRejectedRatherThanDecoded() {
+    // "€€€" is 9 UTF-8 bytes in 3-byte groups, so offsets 2 and 5 both split a character.
+    // Decoding those slices would substitute U+FFFD and silently corrupt the prompt.
+    byte[] utf8 = "€€€".getBytes(StandardCharsets.UTF_8);
+
+    assertThatThrownBy(
+        () -> PromptLayerCacheSupport.sliceLayers(utf8, new PromptLayerBoundaries(2, 5, 9)))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("falls inside a multi-byte UTF-8 character");
+  }
+
+  @Test
+  void aBoundaryInsideAMultiByteCharacterIsRejectedThroughThePublicEntryPoint() {
+    assertThatThrownBy(() -> blocks("€€€", new PromptLayerBoundaries(2, 5, 9), "m", NO_MATCH))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("falls inside a multi-byte UTF-8 character");
+  }
+
+  @Test
+  void everyLayerOffsetIsChecked() {
+    // Layers 1 and 3 aligned, layer 2 split — the middle offset must be caught too.
+    assertThatThrownBy(() -> blocks("€€€", new PromptLayerBoundaries(3, 7, 9), "m", NO_MATCH))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("offset 7");
+    // Layers 1 and 2 aligned, layer 3 split.
+    assertThatThrownBy(() -> blocks("€€€", new PromptLayerBoundaries(3, 6, 8), "m", NO_MATCH))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("offset 8");
+  }
+
+  @Test
+  void alignedMultiByteBoundariesStillRoundTrip() {
+    // The guard must reject only genuine splits — character-aligned offsets keep working, and the
+    // blocks still concatenate back to the original prompt byte for byte.
+    List<String> result = blocks("€€€", new PromptLayerBoundaries(3, 6, 9), "m", NO_MATCH);
+
+    assertThat(result).containsExactly("€|false", "€|false", "€|false");
+    assertThat(result.stream().map(block -> block.substring(0, block.lastIndexOf('|')))
+        .reduce("", String::concat)).isEqualTo("€€€");
+  }
+
+  // ------------------------------------------------ unsupported boundary shapes
+
+  @Test
+  void boundariesWithoutLayer1OrLayer2AreRejectedByName() {
+    // PromptLayerBoundaries accepts these — a null component means "layer not present" — but this
+    // slicing represents only "layers 1 and 2, layer 3 optional". Rejecting by name beats an
+    // unboxing NullPointerException several frames deeper.
+    assertThatThrownBy(() -> blocks("prompt", new PromptLayerBoundaries(null, null, null), "m",
+        NO_MATCH))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("layer1EndOffset must be present");
+    assertThatThrownBy(() -> blocks("prompt", new PromptLayerBoundaries(3, null, null), "m",
+        NO_MATCH))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("layer2EndOffset must be present");
+  }
+
+  @Test
+  void selectBreakpointsRejectsTheSameUnsupportedShapes() {
+    assertThatThrownBy(() -> PromptLayerCacheSupport.selectBreakpoints(null, "m", NO_MATCH))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("promptLayerBoundaries must not be null");
+    assertThatThrownBy(() -> PromptLayerCacheSupport.selectBreakpoints(
+        new PromptLayerBoundaries(null, null, null), "m", NO_MATCH))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("layer1EndOffset must be present");
+    assertThatThrownBy(() -> PromptLayerCacheSupport.selectBreakpoints(
+        new PromptLayerBoundaries(3, null, null), "m", NO_MATCH))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("layer2EndOffset must be present");
+  }
+
+  // ------------------------------------------------ hostile extension-point inputs
+
+  @Test
+  void aThresholdTableWithNullKeysOrValuesIsRejected() {
+    Map<String, Integer> nullKey = new LinkedHashMap<>();
+    nullKey.put(null, 512);
+    assertThatThrownBy(
+        () -> PromptLayerCacheSupport.resolveMinCacheableSegmentTokens("model", nullKey))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("null model prefix");
+
+    Map<String, Integer> nullValue = new LinkedHashMap<>();
+    nullValue.put("model", null);
+    assertThatThrownBy(
+        () -> PromptLayerCacheSupport.resolveMinCacheableSegmentTokens("model", nullValue))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("null minimum token count");
+  }
+
+  @Test
+  void aFactoryReturningNullIsRejectedWithTheLayerItFailedOn() {
+    assertThatThrownBy(() -> PromptLayerCacheSupport.buildSystemBlocks(
+        "abcdefghij", new PromptLayerBoundaries(3, 7, 10), "m", NO_MATCH,
+        (text, mark) -> null))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("blockFactory must not return null")
+        .hasMessageContaining("layer 1");
+  }
+
+  @Test
+  void aFactoryReturningNullIsRejectedOnTheCachingDisabledPathToo() {
+    assertThatThrownBy(() -> PromptLayerCacheSupport.buildSystemBlocks(
+        "prompt", null, "m", NO_MATCH, (text, mark) -> null))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("blockFactory must not return null");
+  }
 }
