@@ -19,9 +19,11 @@ public final class Utf8TokenEstimate {
 
   /**
    * UTF-8 bytes assumed per token. Conservative on purpose — over-estimating tokens would mark
-   * segments cacheable that a provider then rejects as too short.
+   * segments cacheable that a provider then rejects as too short. Private: callers want the
+   * estimate, not the divisor, and exposing it would invite a second implementation of the very
+   * formula this class exists to hold.
    */
-  public static final double BYTES_PER_TOKEN = 4.0;
+  private static final double BYTES_PER_TOKEN = 4.0;
 
   private Utf8TokenEstimate() {
   }
