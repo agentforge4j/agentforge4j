@@ -7,7 +7,7 @@ package com.agentforge4j.config.loader;
 public interface WorkflowLoader {
 
   /**
-   * Loads workflows from the supplied directory.
+   * Loads workflows from the backing source.
    *
    * @return loaded workflows with any bundled agents
    * @throws RuntimeException when the source cannot be read or contains invalid definitions

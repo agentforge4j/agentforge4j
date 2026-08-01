@@ -3,31 +3,21 @@ import { StepPalette } from '../src/palette/StepPalette';
 import { createInitialCanvasModel } from '../src/hooks/useCanvasState';
 import { StepConfigPanel } from '../src/inspector/StepConfigPanel';
 import { render, screen } from '@testing-library/react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
-
-function mockMobileViewport() {
-  Object.defineProperty(window, 'matchMedia', {
-    writable: true,
-    value: vi.fn().mockImplementation((query: string) => ({
-      matches: query.includes('max-width: 767px'),
-      media: query,
-      onchange: null,
-      addEventListener: vi.fn(),
-      removeEventListener: vi.fn(),
-      dispatchEvent: vi.fn(),
-    })),
-  });
-}
+import { describe, expect, it } from 'vitest';
 
 describe('Phase E responsive shell', () => {
-  beforeEach(() => {
-    mockMobileViewport();
-  });
-
-  it('palette renders mobile sheet trigger below md breakpoint', () => {
-    render(<StepPalette mode="guided" onAddStep={() => {}} />);
+  it('palette renders mobile sheet trigger when its container is narrow', () => {
+    // Narrowness is a container-derived prop (same measurement as the builder's
+    // narrow-container gate), not a viewport media query — the two axes can disagree.
+    render(<StepPalette mode="guided" onAddStep={() => {}} containerNarrow />);
     expect(document.querySelector('.wf-palette--mobile')).toBeTruthy();
     expect(screen.getByRole('button', { name: /Add step/i })).toBeInTheDocument();
+  });
+
+  it('palette renders the desktop rail when its container is wide, regardless of the viewport', () => {
+    render(<StepPalette mode="guided" onAddStep={() => {}} />);
+    expect(document.querySelector('.wf-palette--mobile')).toBeNull();
+    expect(document.querySelector('.wf-palette')).toBeTruthy();
   });
 
   it('inspector panel is present for selection (full-width styling is CSS at max-width 47.9375rem)', () => {

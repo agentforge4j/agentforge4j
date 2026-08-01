@@ -11,15 +11,18 @@ content and purpose have been superseded wholesale by the `.org` site, per desig
 identity carries forward unchanged (`agentforge4j-web-ui`), and there is no separate sibling
 module — this is it.
 
-`/builder` is one route among several (Home, Docs handoff, Use, Catalogue, Builder, Architecture,
-Releases, Community, Security, Legal, Contact); it is not the app's sole purpose any more. It is a
-private application (not published to npm) and is independent of the Maven reactor.
+`/builder` is one route among several (Home, Use, Catalogue, Builder, Architecture, Releases,
+Community, Security, Legal, Contact); it is not the app's sole purpose any more. It is a private
+application (not published to npm) and is independent of the Maven reactor.
 
 ## Structure
 
 - **Routing** (`react-router-dom`): the launch-required routes listed above, plus a catch-all 404.
   `/builder` and `/catalogue` are real embeds (workflow-builder component; generated catalogue
-  data), lazy-loaded on demand; the rest carry real authored copy.
+  data), lazy-loaded on demand; the rest carry real authored copy. `/docs` is deliberately NOT an
+  SPA route: the Assembler track composes the real Docusaurus build at that exact path in the
+  deployed artifact, so the SPA must not intercept it client-side — the Docs nav entry
+  (`src/config/nav.ts`) is a real anchor (`external: true`) to `/docs/`, not a `<Link>`.
 - **Nav/footer**: data-driven from `src/config/nav.ts`, internal to this module for now (no
   cross-build sharing with the Docusaurus navbar yet).
 - **Branding**: the canonical logo (`public/brand/logo-horizontal.svg`) and the palette recorded in
@@ -27,14 +30,33 @@ private application (not published to npm) and is independent of the Maven react
   generated derivatives of it.
 - **Committed-content gate**: `scripts/lint-content-gate.mjs` scans this module's own `.ts`/`.tsx`
   sources under `src/`, plus its other committed prose surfaces (`README.md`, `index.html`,
-  `nginx.conf`, `Dockerfile.local`, `public/robots.txt`) against both term groups defined in
-  `agentforge4j-docs/scripts/` (product-boundary + attribution), imported via a relative path —
-  not a duplicated copy. Generated/build output (`dist/`, `node_modules/`, `.tsbuildinfo` caches)
-  is never in scope.
+  `nginx.conf`, `Dockerfile.local`, `public/robots.txt`) against the product-boundary term group
+  defined in `agentforge4j-docs/scripts/product-name.mjs`, imported via a relative path — not a
+  duplicated copy. Generated/build output (`dist/`, `node_modules/`, `.tsbuildinfo` caches) is
+  never in scope.
 - **404**: `scripts/copy-404.mjs` ships `dist/404.html` as a byte-identical copy of `dist/index.html`
   after every build, so GitHub Pages serves a real HTTP 404 with the site's own branded not-found
   page.
 - **Styling**: Tailwind CSS 4, semantic design tokens in `src/styles/tokens.css`.
+
+## Sibling modules this build reads
+
+This module is not buildable on its own — its `pre*` npm scripts generate `src/generated/` from two
+sibling checkouts, so the repository root must be present:
+
+| Read from | By | Produces |
+| --- | --- | --- |
+| `../agentforge4j-workflows-catalog` | `scripts/build-catalogue-data.mjs` | `src/generated/catalogue-data.json` |
+| `../agentforge4j-docs` (`versions.json`, `lts.json`, `scripts/support-window.mjs`, `scripts/redirect-config.mjs`) | `scripts/build-docs-entry.mjs` | `src/generated/docs-entry.json` |
+
+The docs dependency is deliberate and one-directional at the source level: the site's Docs links must
+resolve to whatever version the docs build itself considers current, so both sides call the *same*
+pure functions over the *same* version lists rather than keeping two copies of the rule. A release
+cut moves both with no code change. Nothing in `agentforge4j-docs` imports from here — it composes
+this module's **built output** (`agentforge4j-docs/scripts/assemble-site.mjs`), not its sources.
+
+`Web UI` CI runs on every push and pull request with no `paths:` filter, so a change on either side
+of that coupling is always gated.
 
 ## Local development
 
@@ -55,6 +77,18 @@ which sets `AFB_LOCAL_BUILDER=1` so Vite resolves the builder from
 `../agentforge4j-workflow-builder/src`.
 
 ## Build and verify
+
+`npm install`/`npm ci` installs the `playwright` package itself but never downloads the browser
+binary — `npm run build` and `npm run test:seo` provision the pinned Chromium build automatically
+via their own `prebuild`/`pretest:seo` lifecycle hooks (`scripts/ensure-chromium.mjs`), so no
+separate manual step is required on a clean checkout. It is a fast no-op if the browser is already
+cached (e.g. from `agentforge4j-ui-e2e`'s own Playwright setup — both pin the identical version, so
+the download is shared, not duplicated).
+
+On Linux, `npm run playwright:install` is available as an optional one-off if you also want the
+OS-level shared libraries Chromium needs at runtime (`--with-deps`, requires root) — the automatic
+hook above deliberately does not attempt that, the same way CI's own explicit install step doesn't
+either.
 
 ```bash
 npm run check

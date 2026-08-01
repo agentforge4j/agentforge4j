@@ -36,14 +36,38 @@ const archiveVersion = process.env.AF4J_ARCHIVE_VERSION || null;
 // Route prefix for navbar/footer targets: inside an archive the archived version IS the site root.
 const entryBase = archiveVersion ? '' : `/${docsEntry}`;
 
+// The one place this module's own production origin is spelled out — `url` below and the default
+// social-preview `image` (themeConfig, further down) both derive from it instead of repeating the
+// literal, so a future domain move only requires changing it here.
+const SITE_URL = 'https://agentforge4j.org';
+
 const config: Config = {
   title: 'AgentForge4j',
-  tagline: 'An embeddable Java framework for building agentic LLM workflows',
+  tagline: 'An embeddable Java framework for governed AI workflows',
   favicon: 'img/favicon.svg',
 
   // Improve compatibility with the upcoming Docusaurus v4.
   future: {
     v4: true,
+    // `v4: true` implies `faster.gitEagerVcs: true`, which switches the site's default VCS
+    // strategy to VcsDefaultV2 (the "eager" bulk git-history reader). Verified against a real
+    // build with real versioned_docs/version-0.1.0 content: that strategy's file-info map is
+    // keyed by ABSOLUTE paths (resolved from `git ls-files`), but @docusaurus/plugin-sitemap
+    // passes each route's `sourceFilePath` as-is — relative to siteDir, never resolved to
+    // absolute — so every eager-strategy lookup silently missed and every /docs/0.1.0/** sitemap
+    // entry shipped with no <lastmod> at all. `git-ad-hoc` (the one-`git log`-call-per-file
+    // strategy, confirmed correct against this same real content) sidesteps the mismatch entirely —
+    // it resolves cwd/paths itself per call rather than pre-building an absolute-keyed map, so a
+    // relative sourceFilePath still works.
+    //
+    // Deliberately the RAW `git-ad-hoc` strategy, not the `default-v1` preset that wraps it: both
+    // `default-v1` and `default-v2` substitute VcsHardcoded whenever NODE_ENV is `development` or
+    // `test` (see @docusaurus/utils/vcs/vcsDefaultV1), which would hand this site fabricated dates
+    // that verify-canonical.mjs would then wave through — the exact "invented metadata" this whole
+    // pass exists to prevent. The cost is that a dev-server rebuild would shell out to real `git log`
+    // too if a VCS consumer is ever enabled in dev (nothing reads the VCS in dev today: the sitemap
+    // plugin runs only in postBuild, and the docs plugin's showLastUpdateTime/Author are both off).
+    experimental_vcs: 'git-ad-hoc',
   },
 
   // Production URL and base path. The site is built to mount under `/docs` on the
@@ -51,10 +75,18 @@ const config: Config = {
   // `routeBasePath` (below) are independent, so routes resolve as
   // baseUrl + routeBasePath + version-path + slug — yielding `/docs/next/...`
   // with no `/docs/docs/...` duplication.
-  url: 'https://agentforge4j.org',
+  url: SITE_URL,
   // In archive mode the artifact is mounted under its own frozen subpath (design §7), so every
   // generated asset/route reference resolves inside `/docs/archive/<v>/` — self-contained by build.
   baseUrl: archiveVersion ? `/docs/archive/${archiveVersion}/` : '/docs/',
+  // Every generated page is a directory (`.../index.html`), which GitHub Pages (a static host with
+  // no clean-URL rewriting) only serves without a redirect at its trailing-slash address — the
+  // non-slash form 301s there. Left unset, Docusaurus's own canonical/og:url/hreflang generation and
+  // the sitemap plugin (both driven by this one flag, see @docusaurus/utils-common's
+  // applyTrailingSlash) emit the non-slash form, so every doc page's own canonical tag pointed at a
+  // URL that redirected away from itself. `true` makes every self-reference consistently match what
+  // the host actually serves, with no per-page patching.
+  trailingSlash: true,
 
   organizationName: 'agentforge4j',
   projectName: 'agentforge4j',
@@ -130,6 +162,32 @@ const config: Config = {
         theme: {
           customCss: './src/css/custom.css',
         },
+        // `changefreq`/`priority` are set to `null` (omitted from the XML) rather than the
+        // plugin's own default uniform `weekly`/`0.5` for every page — real crawlers ignore
+        // both (see the plugin's own type-comments), and inventing the same value for every
+        // page would be exactly the fabricated metadata this pass is meant to avoid.
+        // Sitemap plugin routes are recorded baseUrl-inclusive (confirmed against a real build:
+        // an unqualified `/next/**` pattern matched nothing), so these patterns are rooted at
+        // `/docs/`, not relative to the docs plugin's own routeBasePath.
+        // `/docs/next/**` (the unreleased, constantly-changing development docs) is excluded: it
+        // is publicly reachable but not the intended stable indexable target — the release cut
+        // moves a version out of `next` into its own real `/next`-free path once it ships.
+        // `/docs/search` (the local-search plugin's results page) is excluded: it has no unique
+        // indexable content of its own.
+        sitemap: {
+          changefreq: null,
+          priority: null,
+          ignorePatterns: ['/docs/next/**', '/docs/search'],
+          // Real, reproducible, per-page git-derived last-modified dates — Docusaurus's own
+          // route metadata carries each page's sourceFilePath, and the explicit
+          // `future.experimental_vcs: 'git-ad-hoc'` override above (not the v4-implied eager
+          // default, which silently produced no <lastmod> at all against this site's real
+          // versioned content — see that setting's own comment) resolves it via a real `git log`
+          // call in production builds (see @docusaurus/utils/vcs/vcsGitAdHoc), so this needs no
+          // custom git-shelling of its own: the same commit always reproduces the same value, and
+          // a page's lastmod only changes when its source file's history does.
+          lastmod: 'date',
+        },
       } satisfies Preset.Options,
     ],
   ],
@@ -165,6 +223,27 @@ const config: Config = {
   ],
 
   themeConfig: {
+    // Default social-preview image for every docs page that doesn't set its own (none currently
+    // do). An absolute URL, not a `static/img/...`-relative one: this is the marketing SPA's own
+    // existing brand asset (agentforge4j-web-ui/public/brand/social-preview.png, composed to the
+    // site root alongside /docs/ by assemble-site.mjs), not a file inside this module's own
+    // static/ — useBaseUrl's own addBaseUrl no-ops on any URL that already has a protocol, so
+    // Docusaurus emits this unchanged as both og:image and twitter:image, already
+    // production-absolute.
+    //
+    // The dedicated 1280x640 card, not the 512x512 app icon. Docusaurus emits
+    // `twitter:card: summary_large_image` unconditionally, so the square icon was being served to
+    // a large-card renderer that has no square layout — it letterboxes or centre-crops it. The
+    // marketing SPA declares the same image for the same reason (see
+    // agentforge4j-web-ui/index.html), so the SPA and the docs pages now present the same card.
+    //
+    // The Javadoc surfaces are the site's third published surface and deliberately do NOT: they
+    // declare the small `summary` card (javadoc-seo.mjs), for which the square icon is the correct
+    // pairing, and they take their image from assemble-site.mjs's own DEFAULT_OG_IMAGE. Unifying
+    // the two would mean changing that card type as well, which is a separate decision and not
+    // this file's to make. Both declarations are gated by scripts/lint-social-image.mjs, each
+    // against the size its own card type needs.
+    image: `${SITE_URL}/brand/social-preview.png`,
     colorMode: {
       respectPrefersColorScheme: true,
     },
@@ -175,6 +254,10 @@ const config: Config = {
         // Byte-identical copy of the canonical mark at agentforge4j-web-ui/public/brand/logo-horizontal.svg
         // (single source of truth, per the .org site design's brand requirement) — not independently maintained.
         src: 'img/logo-horizontal.svg',
+        // Official dark-background variant (recolored wordmark/tagline only, same artwork) — Docusaurus
+        // swaps to this automatically in dark colour mode; without it the light (dark-text) mark was
+        // unreadable against the dark navbar.
+        srcDark: 'img/logo-horizontal-dark.svg',
         // The brand links to the current effective docs entry (see docsEntry above): `next`
         // pre-release, the newest supported stable version once one exists, or the archived
         // version itself (the artifact root) in archive mode.

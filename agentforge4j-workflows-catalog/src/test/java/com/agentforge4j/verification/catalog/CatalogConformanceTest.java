@@ -4,10 +4,12 @@ package com.agentforge4j.verification.catalog;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 
+import com.agentforge4j.config.loader.agent.AgentBundleLocator;
 import com.agentforge4j.config.loader.workflow.WorkflowBundleLocator;
 import com.agentforge4j.llm.fake.FakeScriptParser;
 import java.util.List;
 import java.util.Set;
+import java.util.stream.Collectors;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -22,7 +24,14 @@ import org.junit.jupiter.api.Test;
  * entry).
  *
  * <p>Each scenario must carry a {@code README.md}, a parseable {@code script.json}, and an
- * {@code expected-result.json} naming the same workflow as the folder that owns it.
+ * {@code expected-result.json} naming the same workflow as the folder that owns it and asserting at
+ * least the run's final status — an assertion-free scenario would otherwise pass even over a run
+ * that genuinely fails, so the floor is enforced here, not left to convention.
+ *
+ * <p>The discovery-integrity gates (physical-folder-vs-index, stray root entries) also cover the
+ * sibling {@code /shipped-agents} root, whose {@code index} drives the production agent loader via
+ * {@link AgentBundleLocator#shippedAgentIds()} — an unindexed {@code .agent} folder would otherwise
+ * ship as the same silent dead cargo the workflow-root gates close.
  */
 class CatalogConformanceTest {
 
@@ -32,6 +41,14 @@ class CatalogConformanceTest {
 
   private static Set<String> scenarioOwners() {
     return CatalogScenarios.scenarioOwningWorkflowIds();
+  }
+
+  // The agent loader accepts index entries with or without the .agent suffix, so normalise the
+  // same way before comparing against physical folder ids.
+  private static Set<String> shippedAgents() {
+    return AgentBundleLocator.shippedAgentIds().stream()
+        .map(id -> id.endsWith(".agent") ? id.substring(0, id.length() - ".agent".length()) : id)
+        .collect(Collectors.toSet());
   }
 
   @Test
@@ -61,6 +78,66 @@ class CatalogConformanceTest {
       assertThatCode(() -> new FakeScriptParser().parse(scenario.scriptJson()))
           .as("scenario '%s' script.json must parse", scenario.name())
           .doesNotThrowAnyException();
+      assertThat(scenario.expected().expect())
+          .as("scenario '%s' must declare an expect block — an assertion-free scenario passes "
+              + "even when the run fails, which is not verification", scenario.name())
+          .isNotNull();
+      assertThat(scenario.expected().expect().status())
+          .as("scenario '%s' must assert at least the run's final status", scenario.name())
+          .isNotBlank();
+    }
+  }
+
+  @Test
+  void noScenarioFolderLacksItsDiscoveryMarker() {
+    assertThat(CatalogScenarios.unmarkedScenarioFolders())
+        .as("a verification/ sub-folder without expected-result.json silently stops being a test "
+            + "(the marker is the sole discovery trigger) — restore or remove the folder")
+        .isEmpty();
+  }
+
+  @Test
+  void everyPhysicalWorkflowFolderIsIndexed() {
+    assertThat(shippedWorkflows())
+        .as("every physical <id>.workflow folder must be listed in shipped-workflows/index — an "
+            + "unindexed folder ships as dead cargo in the jar, invisible to the loader and to "
+            + "every scenario gate")
+        .containsAll(CatalogScenarios.physicalWorkflowFolderIds());
+  }
+
+  @Test
+  void noStrayEntriesAtCatalogRoot() {
+    assertThat(CatalogScenarios.strayCatalogRootEntries())
+        .as("the catalog root may contain only <id>.workflow folders, the index, and the "
+            + "compatibility manifest — anything else (e.g. a folder missing the .workflow "
+            + "suffix) is invisible to discovery and the loader")
+        .isEmpty();
+  }
+
+  @Test
+  void everyPhysicalAgentFolderIsIndexed() {
+    assertThat(shippedAgents())
+        .as("every physical <id>.agent folder must be listed in shipped-agents/index — an "
+            + "unindexed folder ships as dead cargo in the jar, invisible to the agent loader")
+        .containsAll(CatalogScenarios.physicalAgentFolderIds());
+  }
+
+  @Test
+  void noStrayEntriesAtAgentRoot() {
+    assertThat(CatalogScenarios.strayAgentRootEntries())
+        .as("the shipped-agents root may contain only <id>.agent folders and the index — anything "
+            + "else (e.g. a folder missing the .agent suffix) is invisible to the agent loader")
+        .isEmpty();
+  }
+
+  @Test
+  void everyShippedWorkflowCarriesAReadme() {
+    for (String workflowId : shippedWorkflows()) {
+      String readme = "/shipped-workflows/" + workflowId + ".workflow/README.md";
+      assertThat(CatalogConformanceTest.class.getResource(readme))
+          .as("shipped workflow '%s' must carry a bundle-level README.md (%s) describing what it "
+              + "does and how its verification scenarios drive it", workflowId, readme)
+          .isNotNull();
     }
   }
 

@@ -7,10 +7,11 @@ artifact, and integration bundles, plus a small provider for loading them from t
 
 Workflow and agent definitions live outside Java as JSON. Those documents need a single, shared
 contract so the loaders can validate user-authored bundles before they ever reach the core domain
-model. This module owns that contract — the schema files and the accessor that surfaces them — and
-nothing else. It carries no validation engine of its own; the loader modules feed these schemas to a
-validator. Keeping the schemas in one low-level module lets both the loaders and any external
-tooling (editors, CI checks) validate against exactly the same definitions.
+model. This module owns that contract — the schema files, the accessor that surfaces them, and the
+framework version/compatibility-gate metadata the shipped workflow catalog is checked against. It
+carries no validation engine of its own; the loader modules feed these schemas to a validator.
+Keeping the schemas in one low-level module lets both the loaders and any external tooling (editors,
+CI checks) validate against exactly the same definitions.
 
 ## How it fits
 
@@ -25,6 +26,8 @@ and an accessor.
 |---|---|
 | `SchemaProvider` | Contract exposing the five bundled schemas: `workflowSchema()`, `agentSchema()`, `blueprintSchema()`, `artifactSchema()`, `integrationSchema()`. |
 | `ClasspathSchemaProvider` | Default `SchemaProvider` that loads the schema resources from the classpath, fail-fast if any is missing. |
+| `FrameworkVersion` | Exposes the running framework version, read from a build-time resource; the catalog compatibility gate compares a shipped catalog's declared version bounds against it. |
+| `WorkflowSchemaVersion` | The workflow schema version this framework build understands (`SUPPORTED_WORKFLOW_SCHEMA_VERSION`), enforced against each workflow document's declared `schemaVersion`. |
 
 The bundled schemas are `workflow.schema.json`, `agent.schema.json`, `blueprint.schema.json`,
 `artifact.schema.json`, and `integration.schema.json`.

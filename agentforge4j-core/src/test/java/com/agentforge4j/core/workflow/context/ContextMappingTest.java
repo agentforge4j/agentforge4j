@@ -38,4 +38,30 @@ class ContextMappingTest {
     assertThatThrownBy(() -> m.outputKeys().add("z"))
         .isInstanceOf(UnsupportedOperationException.class);
   }
+
+  @Test
+  void rejects_reserved_namespace_output_keys() {
+    // A declared output key authorizes external writers (LLM commands, end-user answers) to write
+    // that bare key — the reserved runtime namespace must never be declarable.
+    assertThatThrownBy(() -> new ContextMapping(List.of(), List.of("__retry_policy_attempts:x")))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("reserved")
+        .hasMessageContaining("__retry_policy_attempts:x");
+  }
+
+  @Test
+  void allows_non_reserved_underscore_output_keys() {
+    ContextMapping single = new ContextMapping(List.of(), List.of("_x"));
+    ContextMapping interior = new ContextMapping(List.of(), List.of("a__b"));
+    assertThat(single.outputKeys()).containsExactly("_x");
+    assertThat(interior.outputKeys()).containsExactly("a__b");
+  }
+
+  @Test
+  void reserved_input_keys_remain_declarable() {
+    // Input keys only authorize reads; declaring a reserved key there stays legal (e.g. exposing
+    // the __llm_tokens_total counter to a step).
+    ContextMapping m = new ContextMapping(List.of("__llm_tokens_total"), List.of());
+    assertThat(m.inputKeys()).containsExactly("__llm_tokens_total");
+  }
 }

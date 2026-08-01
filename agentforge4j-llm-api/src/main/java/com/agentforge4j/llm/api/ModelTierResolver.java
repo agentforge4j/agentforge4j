@@ -8,6 +8,12 @@ package com.agentforge4j.llm.api;
  * <p>Implementations range from a static shipped default map to a context-aware, database-backed
  * resolver. Resolution is provider-scoped because the same tier maps to different model identifiers
  * across providers.
+ *
+ * <p>{@link ModelTier} is a growing set: an implementation written against an earlier release may
+ * have no mapping for a tier added since, and returning {@code null} for it is legitimate. The
+ * runtime treats an unresolved tier as a hard failure ({@code ModelTierResolutionException}) rather
+ * than silently downgrading to another tier or to the provider default, so an unmapped tier surfaces
+ * at the invocation that requested it instead of quietly running on a different model.
  */
 public interface ModelTierResolver {
 

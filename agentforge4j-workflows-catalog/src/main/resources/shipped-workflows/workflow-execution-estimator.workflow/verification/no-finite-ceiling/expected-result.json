@@ -26,6 +26,7 @@
   ],
   "expect": {
     "status": "FAILED",
+    "failedBecause": "No finite execution ceiling could be derived for the analyzed work",
     "visitedSteps": ["collect-analysis", "route-on-ceiling", "no-ceiling"],
     "notVisitedSteps": ["estimate"],
     "emittedEvents": ["RUN_FAILED"],

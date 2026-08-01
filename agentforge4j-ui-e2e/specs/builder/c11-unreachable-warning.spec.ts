@@ -25,7 +25,7 @@ test.describe('C11 — unreachable warning severity', () => {
 
     // Delete the mid-chain AI step (n-1) → the downstream decision becomes unreachable.
     await builder.selectNodeById('n-1');
-    await builder.inspector.getByRole('button', { name: /delete step/i }).click();
+    await builder.deleteSelectedStepFromInspector();
     await expect(builder.canvasNodes).toHaveCount(BUILDER_FIXTURE.initialNodeCount - 1);
 
     await page.locator('.wf-validation-pill').click();

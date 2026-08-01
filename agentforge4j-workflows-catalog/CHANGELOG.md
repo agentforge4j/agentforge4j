@@ -20,3 +20,12 @@ and this module adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 ### Fixed
 
 ### Security
+
+## [0.1.0] - 2026-07-19
+
+### Added
+
+- First public release: the Workflow Execution Estimator and Agent Creator shipped workflows,
+  each with their bundled agents, verified in-reactor against the real catalog.
+- Compatibility manifest pinning `minimumAgentForge4jVersion` and `maximumAgentForge4jVersion`
+  to `0.1.0` and `workflowSchemaVersion` to `1`.

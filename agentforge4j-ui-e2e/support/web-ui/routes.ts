@@ -13,7 +13,13 @@ export interface SiteRoute {
 
 export const SITE_ROUTES: readonly SiteRoute[] = [
   { path: '/', heading: 'AgentForge4j' },
-  { path: '/docs', heading: 'Documentation' },
+  // /docs is deliberately absent: it is NOT an agentforge4j-web-ui SPA route (see
+  // agentforge4j-web-ui/src/config/nav.ts's `external` flag) — the Assembler track composes the
+  // real Docusaurus build at that exact path on the deployed artifact, and the SPA must not
+  // intercept it client-side. The functional specs here (routes/navigation/responsive) exercise
+  // the plain SPA build only, so /docs has no place in this list; the assembled-site visual
+  // capture of the real composed page lives as its own standalone entry in visual/manifest.ts.
+  { path: '/api', heading: 'API reference' },
   { path: '/use', heading: 'Get started' },
   { path: '/catalogue', heading: 'Workflow catalogue' },
   { path: '/architecture', heading: 'Architecture' },
@@ -36,10 +42,10 @@ export interface NamedViewport {
   readonly height: number;
 }
 
-/** Representative sizes per the Day 1 review brief plus the final-review addendum (mobile
- *  landscape, tablet landscape at the `lg:` breakpoint boundary, and a large desktop) — still not
- *  an exhaustive device matrix, but wide enough to catch orientation- and breakpoint-specific
- *  overflow that the original three portrait/laptop sizes couldn't. */
+/** Representative sizes (mobile portrait/landscape, tablet portrait, tablet landscape at the
+ *  `lg:` breakpoint boundary, laptop, and a large desktop) — not an exhaustive device matrix,
+ *  but wide enough to catch orientation- and breakpoint-specific overflow that three
+ *  portrait/laptop sizes alone couldn't. */
 export const VIEWPORTS: readonly NamedViewport[] = [
   { name: 'mobile', width: 390, height: 844 },
   { name: 'mobile-landscape', width: 844, height: 390 },

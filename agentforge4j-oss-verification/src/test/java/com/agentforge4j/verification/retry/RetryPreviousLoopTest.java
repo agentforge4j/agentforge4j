@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 package com.agentforge4j.verification.retry;
 
-import com.agentforge4j.core.workflow.event.WorkflowEventType;
 import com.agentforge4j.llm.fake.FakeScript;
 import com.agentforge4j.llm.fake.FakeScriptParser;
 import com.agentforge4j.testkit.assertion.WorkflowRunAssert;
@@ -17,16 +16,17 @@ import java.util.Map;
 import org.junit.jupiter.api.Test;
 
 /**
- * End-to-end {@code RETRY_PREVIOUS} verification that a completed signal-loop's completion marker is
- * cleared by a rewind, so the loop re-executes instead of being permanently skipped.
+ * End-to-end proof that a {@code RETRY_PREVIOUS} step whose {@code FROM_STEP} replay range contains
+ * a composite (a completed signal-loop blueprint) is rejected fail-closed, rather than silently
+ * skipping the composite's cleared-but-unreplayed state.
  *
  * <p>The workflow is {@code anchor} (INPUT) → {@code loop-bp} (AGENT_SIGNAL loop) → {@code retry}
- * (top-level RETRY_PREVIOUS rewinding to {@code anchor}, FROM_STEP, one attempt). A
- * {@code RETRY_PREVIOUS} re-executes only the top-level steps in its rewound range — a blueprint
- * loop is not re-run inline — so rewinding to the pausing INPUT re-suspends the run; the resume
- * re-drive then re-reaches the loop, which re-runs only because the rewind cleared its completion
- * marker (the staleness fixed in {@code WorkflowState.clearEntriesFromUid}). On the second pass the
- * single retry attempt is exhausted and the run falls through to {@code done} and completes.
+ * (top-level {@code RETRY_PREVIOUS} rewinding to {@code anchor}, {@code FROM_STEP}). Once
+ * {@code loop-bp} has completed and {@code retry} dispatches, the loop blueprint sits inside the
+ * checked replay range — {@code retry}'s own inline replay never re-executes it, so its state would
+ * be silently stale for anything running after {@code retry} in the same drive. There is no safe
+ * "trailing composite" exception for this shape, so it is rejected before any state mutation, and
+ * the run fails rather than completing.
  */
 class RetryPreviousLoopTest {
 
@@ -39,51 +39,39 @@ class RetryPreviousLoopTest {
   }
 
   @Test
-  void completedSignalLoopReRunsAfterRetryPreviousRewindClearsItsMarker() {
+  void retryPreviousRewindThroughACompletedSignalLoopIsRejectedFailClosed() {
     WorkflowRunResult result = WorkflowTestHarness.builder()
         .workflowsDir(Fixtures.dir("/fixtures/retry/workflows"))
         .agentsDir(Fixtures.dir("/fixtures/retry/agents"))
         .script(script("/fixtures/retry/script.json"))
         .build()
-        // First INPUT drives the loop to completion then the retry rewinds and re-suspends the
-        // INPUT; the second INPUT resumes into the re-drive that re-runs the now-unmarked loop.
-        .run("retry-loop", List.of(
-            GateResponse.input(Map.of("go", "first")),
-            GateResponse.input(Map.of("go", "second"))));
+        // The single INPUT drives the loop to completion; the RETRY_PREVIOUS step then dispatches
+        // and is rejected before any further pause, so only one gate response is ever consumed.
+        .run("retry-loop", List.of(GateResponse.input(Map.of("go", "first"))));
 
     WorkflowRunAssert.assertThat(result)
-        .isCompleted()
-        .stepVisitCount("loop-body", 2)
-        // The RETRY_PREVIOUS step is entered on both passes — it rewinds on the first and its single
-        // attempt is exhausted on the second — emitting STEP_RETRIED twice.
-        .emittedEvent(WorkflowEventType.STEP_RETRIED)
-        .eventCount(WorkflowEventType.STEP_RETRIED, 2);
+        .isFailed()
+        .stepVisitCount("loop-body", 1)
+        .failedBecause("non-step executable");
   }
 
   /**
-   * Same rewind proof, but the completed loop's body is a nested blueprint ref ({@code outer-loop-bp}
-   * → {@code inner-bp} → {@code loop-body}). The completion marker must be keyed on the nested body
-   * step's uid, not {@code 0}; otherwise the rewind never clears it and the loop is permanently
-   * skipped, leaving {@code loop-body} visited only once. Regression for the nested-body case of
-   * {@code BlueprintExecutor.loopBodyCompletionUid}.
+   * Same rejection proof, but the completed loop's body is a nested blueprint ref ({@code
+   * outer-loop-bp} → {@code inner-bp} → {@code loop-body}) — the composite is still visible to the
+   * replay-range check via the full executable list regardless of nesting depth.
    */
   @Test
-  void completedNestedSignalLoopReRunsAfterRetryPreviousRewindClearsItsMarker() {
+  void retryPreviousRewindThroughACompletedNestedSignalLoopIsRejectedFailClosed() {
     WorkflowRunResult result = WorkflowTestHarness.builder()
         .workflowsDir(Fixtures.dir("/fixtures/retry/workflows"))
         .agentsDir(Fixtures.dir("/fixtures/retry/agents"))
         .script(script("/fixtures/retry/script-nested.json"))
         .build()
-        .run("retry-nested-loop", List.of(
-            GateResponse.input(Map.of("go", "first")),
-            GateResponse.input(Map.of("go", "second"))));
+        .run("retry-nested-loop", List.of(GateResponse.input(Map.of("go", "first"))));
 
     WorkflowRunAssert.assertThat(result)
-        .isCompleted()
-        .stepVisitCount("loop-body", 2)
-        // The RETRY_PREVIOUS step is entered on both passes — it rewinds on the first and its single
-        // attempt is exhausted on the second — emitting STEP_RETRIED twice.
-        .emittedEvent(WorkflowEventType.STEP_RETRIED)
-        .eventCount(WorkflowEventType.STEP_RETRIED, 2);
+        .isFailed()
+        .stepVisitCount("loop-body", 1)
+        .failedBecause("non-step executable");
   }
 }

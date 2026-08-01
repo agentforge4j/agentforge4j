@@ -31,8 +31,9 @@ import java.util.Objects;
  * carries the {@code loopConfig}. The example is LLM-agnostic: out of the box it runs offline against
  * the deterministic {@code agentforge4j-llm-fake} provider (one scripted response per iteration, no key,
  * no network, no extra dependency). Configure a provider key in {@code example.properties} (or via the
- * environment) <em>and</em> add a provider module to this module's POM to run the same workflows against a
- * real model — no code change. The fake/real choice is resolved by {@link ExampleLlmConfig}.
+ * environment), add a provider module to this module's POM, <em>and</em> point the loop agent's
+ * {@code providerPreferences} at that provider instead of {@code fake} to run the same workflows against a
+ * real model. The fake/real choice is resolved by {@link ExampleLlmConfig}.
  */
 public final class WlLoopApp {
 
@@ -115,7 +116,7 @@ public final class WlLoopApp {
   /**
    * Builds the real-provider configuration from {@code config}'s provider name, starting from that
    * provider's own {@link LlmProviderConfig} factory so the base URL and default model are populated (a
-   * provider selected via configuration only, with no code change, must still resolve a working model).
+   * provider selected via configuration only must still resolve a working model).
    *
    * @param config the resolved example configuration carrying the provider name and API key
    *

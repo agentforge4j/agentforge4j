@@ -3,7 +3,7 @@
   "title": "Scenario",
   "description": "Contract for a testkit catalog scenario (expected-result.json): the workflow to drive, the ordered human gate responses, and the assertions to project onto the captured run. The runtime loaders parse scenarios leniently; this schema is the test-only validation gate.",
   "type": "object",
-  "required": ["workflowId"],
+  "required": ["workflowId", "expect"],
   "additionalProperties": false,
   "patternProperties": {
     "^_": { "description": "Underscore-prefixed keys (e.g. _note) are author comments; ignored by the lenient loader." }
@@ -20,6 +20,8 @@
     "Gate": {
       "type": "object",
       "required": ["type"],
+      "if": { "properties": { "type": { "const": "stepApproval" } } },
+      "then": { "required": ["approve"] },
       "additionalProperties": false,
       "properties": {
         "type": {
@@ -49,9 +51,15 @@
     },
     "Expect": {
       "type": "object",
+      "required": ["status"],
       "additionalProperties": false,
       "properties": {
         "status": { "type": "string", "minLength": 1 },
+        "failedBecause": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Fragment the recorded failure reason must contain (implies status FAILED). Pins the specific rejection a failure scenario provokes rather than merely that the run ended FAILED."
+        },
         "context": {
           "type": "object",
           "additionalProperties": { "type": "string" }
@@ -69,7 +77,17 @@
         "visitedSteps": { "type": "array", "items": { "type": "string" } },
         "notVisitedSteps": { "type": "array", "items": { "type": "string" } },
         "emittedEvents": { "type": "array", "items": { "type": "string" } },
+        "notEmittedEvents": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Event type names that must not have been emitted. Use to prove a path was genuinely not taken (e.g. no completion event on a failure route)."
+        },
         "createdFiles": { "type": "array", "items": { "type": "string" } },
+        "absentFiles": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "File paths that must not have been created. Use to prove side effects did not happen (e.g. no files written before an approval gate)."
+        },
         "stepVisitCounts": {
           "type": "object",
           "additionalProperties": { "type": "integer", "minimum": 0},

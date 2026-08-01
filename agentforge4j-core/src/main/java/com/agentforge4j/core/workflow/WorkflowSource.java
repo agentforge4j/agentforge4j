@@ -6,7 +6,7 @@ package com.agentforge4j.core.workflow;
  */
 public enum WorkflowSource {
   /**
-   * Workflow loaded from a file on disk.
+   * Workflow bundled with the framework and loaded from the classpath.
    */
   SHIPPED,
   /**

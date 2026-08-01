@@ -57,4 +57,19 @@ class ModelTierResolutionTest {
         .providerCallCount(1)
         .providerCallTier(ModelTier.POWERFUL);
   }
+
+  @Test
+  void premiumStepTierLoadsFromConfigAndResolves() {
+    // Proves the fourth tier survives the file-config path end to end — declared as a step
+    // override in workflow JSON, parsed by the loader, resolved into the provider call. It does
+    // not prove schema acceptance: no production loader validates bundles against the JSON
+    // schema (see WorkflowSchemaCollectionStepRejectionTest), so this run would pass even with
+    // PREMIUM missing from the enum. ModelTierSchemaAlignmentTest is the guard for that half.
+    WorkflowRunResult result = harness().run("premium-step-tier");
+
+    WorkflowRunAssert.assertThat(result)
+        .isCompleted()
+        .providerCallCount(1)
+        .providerCallTier(ModelTier.PREMIUM);
+  }
 }

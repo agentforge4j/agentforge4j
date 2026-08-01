@@ -16,6 +16,14 @@ import com.agentforge4j.runtime.execution.StepSequenceExecutor;
  * elsewhere are unaffected. The flag reflects the last agent step of the iteration, so in a multi-step body the body's
  * final decision step controls termination.
  *
+ * <p>The termination check also consults {@link com.agentforge4j.core.workflow.state.WorkflowState#isAgentSignalCompleted(String)},
+ * the durable counterpart the behaviour handler persists alongside the transient flag: the transient flag is
+ * always reset to {@code false} at the top of a redriven iteration (see {@link #iterate}), so a {@code COMPLETE}
+ * signalled before a later step in the same iteration paused would otherwise be lost when that later step's resume
+ * finishes the iteration — the signalling step itself has an output by then and is correctly skip-guarded, so it
+ * never re-fires to re-set the transient flag. Reading the persisted marker closes that gap without re-invoking the
+ * agent.
+ *
  * <p>If {@code maxIterations} is reached without a completion signal the
  * {@link MaxIterationsHandler} decides whether to pause the run (await user) or fail it.
  */
@@ -37,6 +45,8 @@ public final class AgentSignalLoopStrategy extends AbstractLoopStrategy {
       LoopConfig config,
       ExecutionContext executionContext) {
     return iterateUntilSignalled(blueprint, config, executionContext,
-        iteration -> executionContext.isAgentCompletionSignalled(), "AGENT_SIGNAL");
+        iteration -> executionContext.isAgentCompletionSignalled()
+            || executionContext.getState().isAgentSignalCompleted(blueprint.blueprintId()),
+        "AGENT_SIGNAL");
   }
 }

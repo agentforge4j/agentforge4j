@@ -22,10 +22,10 @@ test.describe('no horizontal overflow', () => {
   }
 });
 
-// Final-review finding: the header's desktop/mobile-nav breakpoint was moved from Tailwind's
-// `md:` (768px) to `lg:` (1024px) during Day 1, specifically because the full desktop nav
-// overflowed at 768px tablet-portrait. Pin the exact boundary so a future breakpoint change
-// can't silently reintroduce that overflow.
+// The header's desktop/mobile-nav breakpoint was moved from Tailwind's `md:` (768px) to
+// `lg:` (1024px) specifically because the full desktop nav overflowed at 768px
+// tablet-portrait. Pin the exact boundary so a future breakpoint change can't silently
+// reintroduce that overflow.
 test.describe('header breakpoint (lg: 1024px)', () => {
   test('at 1024px (tablet landscape) the desktop nav is exposed and the hamburger is not', async ({ page }) => {
     await page.setViewportSize({ width: 1024, height: 768 });
@@ -48,7 +48,7 @@ test.describe('header breakpoint (lg: 1024px)', () => {
   });
 });
 
-// Day 1 review finding: the catalogue-detail workflow diagram carried explicit pixel
+// Regression guard: the catalogue-detail workflow diagram previously carried explicit pixel
 // width/height with no responsive scaling — a ~1690px-tall, partly off-screen box on every
 // device. Checked separately (needs a real workflow id, not in SITE_ROUTES).
 test.describe('catalogue detail diagram fits its container', () => {

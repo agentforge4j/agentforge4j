@@ -5,8 +5,9 @@ structure in workflow definitions (and blueprints) rather than in Java. Each exa
 Maven module that runs deterministically and offline against the shipped fake LLM provider by
 default — no network, no API keys — following the same five-section README format as the framework
 examples. Five of the six (all but `wl-resource`, which never invokes an agent) can also run against a
-real LLM provider with no code change, by configuring a provider and API key; see any of those
-modules' READMEs for the pattern.
+real LLM provider — by adding a provider module dependency, configuring a key, and pointing that
+module's agent(s) at the chosen provider instead of the bundled fake — with no change to the workflow
+or step structure; see any of those modules' READMEs for the pattern.
 
 ## Examples
 

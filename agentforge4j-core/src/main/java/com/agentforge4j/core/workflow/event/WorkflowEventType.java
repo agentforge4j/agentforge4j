@@ -110,14 +110,6 @@ public enum WorkflowEventType {
    */
   RUN_BLOCKED,
   /**
-   * Recorded when the active agent is changed mid-run.
-   */
-  AGENT_SWAPPED,
-  /**
-   * Recorded when the step prompt is replaced or patched during execution.
-   */
-  PROMPT_OVERRIDDEN,
-  /**
    * Recorded when a step exceeds {@code maxUserPromptRounds} for blocking user prompts.
    */
   USER_PROMPT_LIMIT_REACHED,
@@ -145,6 +137,13 @@ public enum WorkflowEventType {
    * {@code VALIDATE} / {@code INVOKE}), {@code errorMessage}.
    */
   TOOL_INVOCATION_FAILED,
+  /**
+   * Recorded when a resume attempt tries to approve/retry a tool invocation that a {@link
+   * com.agentforge4j.core.spi.tool.ToolPolicy} denied — a policy denial is terminal and is never executed by that
+   * route. The provider is never invoked; this is the audited "override of a denial" marker. Payload fields:
+   * {@code capability}, {@code reason}.
+   */
+  TOOL_INVOCATION_OVERRIDE_REJECTED,
   /**
    * Recorded when a collection gate is entered and intake opens. Payload fields: {@code stepId} and a config summary.
    */

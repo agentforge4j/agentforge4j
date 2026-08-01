@@ -8,6 +8,8 @@ import java.util.List;
  *
  * @param error  the error details if failed, or {@code null}
  * @param output the list of output items
+ * @param usage  token usage for the request, or {@code null} when absent
+ * @param model  the model that produced the response
  */
 public record OpenAiResponsesResponseDto(
     OpenAiErrorDto error,

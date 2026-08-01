@@ -1,0 +1,2 @@
+A directory without the .agent suffix is invisible to the agent loader; the stray-entry gate must
+report it.

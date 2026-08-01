@@ -2,7 +2,9 @@
 
 export const CATALOGUE_COPY = {
   listHeading: 'Workflow catalogue',
-  listIntro: 'Shipped, ready-to-run workflows from the agentforge4j-workflows-catalog module.',
+  listIntro:
+    'Browse the shipped, ready-to-run workflows published in the Workflow Catalog ' +
+    '(the agentforge4j-workflows-catalog artifact).',
   emptyState: 'No workflows are published yet.',
   shippedBadge: 'Shipped',
   backToList: '← Back to catalogue',
