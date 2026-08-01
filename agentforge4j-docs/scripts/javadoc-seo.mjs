@@ -639,12 +639,19 @@ const SNIPPET_ELLIPSIS = '…';
  * able to fail a build. So `prefix` and `suffix` are checked exactly as any other hand-authored
  * copy is, and `generated` absorbs whatever is left.
  *
- * `prefix` and `suffix` are asserted TOGETHER, without `generated` between them, so the guard
+ * What is TESTED is `prefix` and `suffix` together, without `generated` between them, so the guard
  * answers "does the prose this repo owns still fit on its own?" — the question a reword changes —
- * rather than a question about the current page's title. That is what closes the gap
- * `withinSnippetBudget` deliberately left: the prose skeleton around the generated title was
- * hand-authored and boundable, yet nothing bounded it, so a long enough reword would have truncated
- * the snippet of every generated page in every surface at once.
+ * rather than a question about the current page's title. Two pages with wildly different titles
+ * therefore fail or pass identically. That is what closes the gap `withinSnippetBudget` deliberately
+ * left: the prose around the generated title was hand-authored and boundable, yet nothing bounded
+ * it, so a long enough reword would have truncated the snippet of every generated page in every
+ * surface at once.
+ *
+ * What is REPORTED when it fails is the real composed description, title included — the string the
+ * page would actually have published. The prose on its own is never published, so quoting it would
+ * hand the reader a string they cannot find anywhere in the output. Condition and message answer
+ * different questions on purpose: the condition is about the invariant, the message is about the
+ * page in front of you.
  *
  * A title that already fits is composed verbatim, so ordinary pages are byte-for-byte what they
  * were before this existed. Only a title that cannot fit is shortened, and it degrades rather than
@@ -662,9 +669,18 @@ const SNIPPET_ELLIPSIS = '…';
  * @returns {string} a description of at most `MAX_SNIPPET_DESCRIPTION_LENGTH` characters
  */
 export function composeWithinSnippetBudget(prefix, generated, suffix, source) {
-  withinSnippetBudget(`${prefix}${suffix}`, source);
   const available = MAX_SNIPPET_DESCRIPTION_LENGTH - prefix.length - suffix.length;
   const value = generated.trim();
+  if (available < 0) {
+    // The owned prose cannot fit even with no title at all, so no amount of shortening rescues it.
+    // The CONDITION is deliberately about the prose alone — that is the invariant, and it must fail
+    // identically whatever title this page happened to carry. What gets REPORTED is the real
+    // description this page would have published, because a reader needs to see the string that
+    // failed, not a skeleton that is never published on its own. Always throws: the composition is
+    // at least as long as the prose, which is already over budget. Delegated so the message,
+    // excerpting and wording live in exactly one place.
+    withinSnippetBudget(`${prefix}${value}${suffix}`, source);
+  }
   if (value.length <= available) {
     return `${prefix}${value}${suffix}`;
   }

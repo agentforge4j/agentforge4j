@@ -2040,6 +2040,41 @@ test('the owned prose is STILL refused outright — shortening never rescues a r
   assert.throws(() => composeWithinSnippetBudget(overlongProse, '', '.', 'nestedPageCopy'), /nestedPageCopy/);
 });
 
+test('the failure reports the REAL description, not the prose skeleton that is never published', () => {
+  // A reader handed a length and a quote has to be able to reconcile them with the output. The
+  // prose spliced straight onto the suffix is a string that appears nowhere, so the message is
+  // built from the composition the page would actually have published.
+  //
+  // Note what CANNOT be shown: the title itself. Reaching this path means the prose alone is
+  // already over 157, so the excerpt — capped at the budget since the guard was introduced — is
+  // necessarily all prose. The observable correction is therefore the reported LENGTH, and that the
+  // quote is a genuine prefix of the real description rather than of a skeleton.
+  const overlongProse = `${'Padding word '.repeat(15)}(`;
+  const title = 'TheGeneratedTitle';
+  const composed = `${overlongProse}${title}.`;
+  const skeleton = `${overlongProse}.`;
+  assert.notEqual(composed.length, skeleton.length, 'the two lengths must differ for this to prove anything');
+
+  let message = '';
+  try {
+    composeWithinSnippetBudget(overlongProse, title, '.', 'nestedPageCopy');
+  } catch (error) {
+    message = error.message;
+  }
+  assert.notEqual(message, '', 'over-long prose must still throw');
+  assert.match(message, new RegExp(`produced a ${composed.length}-character description`), 'must report the real length');
+  assert.doesNotMatch(message, new RegExp(`produced a ${skeleton.length}-character description`), 'reported the skeleton');
+  assert.match(message, new RegExp(`\\(\\+${composed.length - MAX_META_DESCRIPTION_LENGTH} more\\)`), 'omitted count must match the real description');
+  // What is quoted is a real prefix of what the page would have published.
+  const quoted = /choice\): ([\s\S]*?)… \(\+\d+ more\)$/.exec(message)[1];
+  assert.ok(composed.startsWith(quoted), 'the quote is not a prefix of the real description');
+
+  // ...and the CONDITION is still title-independent: the same prose fails for every title.
+  for (const other of ['', 'Short', 'A'.repeat(400)]) {
+    assert.throws(() => composeWithinSnippetBudget(overlongProse, other, '.', 'nestedPageCopy'), /nestedPageCopy/);
+  }
+});
+
 test('composeWithinSnippetBudget degrades deterministically when the prose leaves almost no room', () => {
   // Total for every input, including the ones production cannot currently produce: the helper is
   // exported, so its contract is not allowed to depend on today's wording.
