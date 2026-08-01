@@ -2066,10 +2066,17 @@ test('urlsMissingFrom compares URLs only — a differing <lastmod> is not a lost
 //
 // `removeConsumedFragments` is the whole of that step, and it takes the fragment PATHS rather than
 // a list of entries: it reads them itself, immediately before unlinking them. So the tests below
-// are ordinary behavioural tests of an exported function, and the property that used to need
-// asserting — that no computed entry reaches the proof — is now a fact about the signature. There
-// is no entry-list parameter to contaminate, and `javadocSitemapEntries` cannot be called from that
-// scope without first threading `siteUrl`, `releasedVersions` and `repoRoot` into it.
+// are ordinary behavioural tests of an exported function.
+//
+// What that does and does not buy, stated accurately because an earlier version of this comment
+// overstated it: there is no entry-list parameter to contaminate, which removes the easy accident.
+// It does NOT make contamination impossible. `javadocSitemapEntries` needs `siteUrl`,
+// `releasedVersions` and `repoRoot`, but `DEFAULT_SITE_URL` and `REPO_ROOT` are module-scope
+// constants in that file and an empty released-version list is valid, so it can still be called
+// from inside `removeConsumedFragments` with the signature untouched. The load-bearing guard is
+// therefore behavioural, not structural: every test below asserts the EXACT proved count, so any
+// extra entry folded into the proof set changes a number and fails. Keep it that way — a count
+// assertion is what actually bites here, and loosening one to a range would give that up.
 
 function fragmentFixture(prefix, urlsPerFragment) {
   const root = mkdtempSync(join(tmpdir(), prefix));
@@ -2161,29 +2168,152 @@ test('removeConsumedFragments handles the no-archives case without claiming anyt
   assert.equal(proved, 0);
 });
 
-// The one thing the behavioural tests above cannot express, because it is a property of the shape of
-// the code rather than of its output: that the proof still has no way to be handed entries from
-// somewhere else. Two exact call shapes, both single literal matches — no parsing of an arbitrary
-// initialiser, and no guessing from identifier names.
-test('the removal proof takes fragment paths, and mergeSitemaps hands it exactly those', () => {
-  const source = readFileSync(join(REPO_ROOT, 'agentforge4j-docs', 'scripts', 'assemble-site.mjs'), 'utf8');
+// A rejected fragment must not authorize its own deletion.
+//
+// Every test above injects a RECORDING exit seam rather than a throwing one, which is the honest
+// way to test a function whose contract says it returns after a refusal — but it also means
+// execution continues past a rejection that `process.exit` would have ended. `extractSitemapEntries`
+// reports a semantic violation through `fail`, which calls `exit` and then carries on parsing, so
+// before this was fixed it handed back the entries it had collected BEFORE the bad one: a truncated
+// set, indistinguishable from a smaller valid file. `removeConsumedFragments` then compared that
+// short set against the merged sitemap, found nothing missing, and unlinked the fragment — losing
+// the URL the rejected entry carried, while reporting success.
+//
+// `<location>` is well-formed XML and a legal element name; it is simply not a child `<url>` accepts.
+// That matters: a NON-well-formed fragment throws out of the parser instead, which always stopped
+// the deletion, so a well-formed-but-semantically-rejected file is the shape that reached the bug.
+test('removeConsumedFragments removes nothing when a fragment is rejected as it is read', () => {
+  const root = mkdtempSync(join(tmpdir(), 'removal-proof-rejected-'));
+  const fragmentPath = join(root, 'sitemap-0.xml');
+  writeFileSync(
+    fragmentPath,
+    '<?xml version="1.0" encoding="UTF-8"?>\n' +
+      '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n' +
+      '  <url>\n    <loc>https://agentforge4j.org/docs/kept/</loc>\n  </url>\n' +
+      '  <url>\n    <location>https://agentforge4j.org/docs/lost/</location>\n  </url>\n' +
+      '</urlset>\n',
+    'utf8',
+  );
+  const exitCodes = [];
 
-  // Widening this signature is the only route by which a computed entry could reach the proof: the
-  // Javadoc entries cannot be built without siteUrl/releasedVersions/repoRoot, none of which are
-  // here. Adding any of them, or an entry-list parameter, fails this and has to be argued for.
+  // The merged set deliberately contains the one URL that parsed cleanly. That is what made the old
+  // behaviour pass its own check: every entry it managed to read WAS present, so nothing looked lost.
+  const proved = removeConsumedFragments(
+    [fragmentPath],
+    [{url: 'https://agentforge4j.org/docs/kept/', lastmod: null}],
+    (code) => exitCodes.push(code),
+  );
+
+  assert.deepEqual(exitCodes, [1], 'the rejected fragment must fail the build');
+  assert.equal(proved, null, 'a rejected read must report failure, not a proved count');
+  assert.equal(existsSync(fragmentPath), true, 'the rejected fragment must still be on disk');
+});
+
+// The same fail-closed property one level up, through the real merge rather than the exported
+// function. Needed because `mergeSitemaps` reads its sources through the same seam and has its own
+// early return: every other malformed-fragment test in this file injects a THROWING exit stub, which
+// unwinds before that return is ever reached, so the branch would otherwise be untested. A recording
+// stub is the only way to observe it — and the only way a partial read could ever travel onwards.
+test('mergeSitemaps writes nothing and deletes nothing when a fragment is rejected and exit returns', () => {
+  const {spaDir, buildDir, javadocDir, archiveDir, siteDir} = fixture();
+  writeFileSync(
+    join(buildDir, 'sitemap.xml'),
+    '<?xml version="1.0" encoding="UTF-8"?>\n' +
+      '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n' +
+      '  <url>\n    <loc>https://agentforge4j.org/docs/0.1.0/</loc>\n  </url>\n' +
+      '  <url>\n    <location>https://agentforge4j.org/docs/0.1.0/lost/</location>\n  </url>\n' +
+      '</urlset>\n',
+  );
+  const exitCodes = [];
+
+  assembleSite({
+    spaDir,
+    buildDir,
+    javadocDir,
+    archiveDir,
+    siteDir,
+    customDomain: null,
+    exit: (code) => exitCodes.push(code),
+    repoRoot: NO_TAGS_REPO,
+  });
+
+  assert.equal(exitCodes[0], 1, 'the rejected docs fragment must fail the build');
+  assert.equal(
+    existsSync(join(siteDir, 'docs', 'sitemap.xml')),
+    true,
+    'the rejected fragment must not be consumed — it is still a build input nobody proved',
+  );
+  // The root sitemap is still the SPA fragment copied in at step 1: the merge returned before its
+  // own write, so no Javadoc entry (which only the merge adds) can be in it.
+  assert.equal(
+    readFileSync(join(siteDir, 'sitemap.xml'), 'utf8').includes('/javadoc/latest/'),
+    false,
+    'the merged sitemap must not have been written from a rejected read',
+  );
+});
+
+/**
+ * The body of a top-level `function <name>(` in assemble-site.mjs, with comments removed.
+ *
+ * Scoping a structural assertion to one function body is the difference between proving something
+ * about the code and proving something about the file: a whole-file `assert.match` for a call shape
+ * is satisfied by that shape appearing in ANY comment, and this module quotes call shapes in prose
+ * routinely. Comments are stripped for the same reason. The `//` strip requires start-of-line or
+ * whitespace before the slashes so that a `https://` inside a string literal survives untouched.
+ *
+ * Deliberately a text slice rather than a real parse: the module has no JS parser available to its
+ * tests, and the alternative — matching the whole file — is what made the previous version of this
+ * assertion unable to fail. A brace-counting scan is overkill for top-level functions whose closing
+ * brace is the next line that is exactly `}`.
+ */
+function functionBodyWithoutComments(functionName) {
+  const source = readFileSync(join(REPO_ROOT, 'agentforge4j-docs', 'scripts', 'assemble-site.mjs'), 'utf8');
+  const opener = `\nfunction ${functionName}(`;
+  const exportedOpener = `\nexport function ${functionName}(`;
+  const start = source.includes(opener) ? source.indexOf(opener) : source.indexOf(exportedOpener);
+  assert.notEqual(start, -1, `assemble-site.mjs must declare a top-level function ${functionName}`);
+  const end = source.indexOf('\n}\n', start);
+  assert.notEqual(end, -1, `could not find the end of ${functionName} — the scan is no longer valid`);
+
+  // `start + 1` drops the leading newline the search pattern carried, so the slice begins exactly at
+  // the declaration and `^` in the assertions below anchors to it.
+  return source
+    .slice(start + 1, end)
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .split('\n')
+    .map((line) => line.replace(/(^|\s)\/\/.*$/, ''))
+    .join('\n');
+}
+
+// The one thing the behavioural tests above cannot express, because it is a property of the shape of
+// the code rather than of its output: where the proof's input comes from at the call site. Scoped to
+// the two function bodies concerned, not the whole file, so a comment quoting either shape cannot
+// satisfy it.
+//
+// Note what this is NOT: it is not a proof that computed entries cannot reach the proof set. They
+// can — see the comment above the behavioural tests. This pins the call shape so that changing it is
+// deliberate and visible in review; the exact proved counts asserted above are what actually fail
+// when the set is contaminated.
+test('the removal proof takes fragment paths, and mergeSitemaps hands it exactly those', () => {
+  const declaration = functionBodyWithoutComments('removeConsumedFragments');
+  const mergeBody = functionBodyWithoutComments('mergeSitemaps');
+
   // Whitespace-tolerant on purpose: the parameter LIST is the invariant, so a reformat that wraps
-  // the arguments must not turn this red. The identifiers and their order are still exact.
+  // the arguments must not turn this red. The identifiers and their order are still exact. The
+  // `exit` default is required, not merely tolerated — every other exported exit-taking helper in
+  // this module defaults it to process.exit, and omitting it here made this the odd one out.
   assert.match(
-    source,
-    /export function removeConsumedFragments\(\s*fragmentPaths,\s*mergedEntries,\s*exit,?\s*\)\s*\{/,
-    'removeConsumedFragments must keep its (fragmentPaths, mergedEntries, exit) signature — widening ' +
-      'it is how computed entries would get in',
+    declaration,
+    /^export function removeConsumedFragments\(\s*fragmentPaths,\s*mergedEntries,\s*exit\s*=\s*process\.exit,?\s*\)\s*\{/,
+    'removeConsumedFragments must keep its (fragmentPaths, mergedEntries, exit = process.exit) ' +
+      'signature — adding an entry-list parameter would make contaminating the proof trivial, and ' +
+      'dropping the exit default would break the convention its sibling exports follow',
   );
 
   // And it is called with the paths themselves, so the set it proves is re-derived at the call site
   // from the files about to be unlinked rather than from anything assembled earlier in the merge.
   assert.match(
-    source,
+    mergeBody,
     /removeConsumedFragments\(\s*fragmentPaths,\s*merged,\s*exit,?\s*\)/,
     'mergeSitemaps must pass fragmentPaths — the files it is about to delete — as the proof source',
   );

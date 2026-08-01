@@ -555,6 +555,12 @@ function containsInvalidXmlChar(text) {
  * choice, not an oversight. A structurally valid `<urlset>` with zero `<url>` children is valid and
  * contributes zero entries — it is not itself a malformed-input case.
  *
+ * Returns `null` — never a partial entry list — for every rejection above, so that a rejected read
+ * cannot be mistaken for a successful one that happened to find fewer entries. In production `exit`
+ * is `process.exit` and terminates at the point of failure, but it is an injectable seam and a
+ * caller handed a non-throwing one keeps running: a partial return would let that caller act on a
+ * set this function has already refused. Every call site must handle `null` before using the result.
+ *
  * KNOWN ACCEPTED LIMITATION: a literal, unescaped `]]>` inside
  * `<loc>`/`<lastmod>` text content is forbidden CharData per XML 1.0 §2.4 (the sequence is reserved
  * for terminating a CDATA section), but sax reports it to `ontext` as ordinary text — it is never
@@ -821,7 +827,44 @@ function extractSitemapEntries(xmlPath, exit) {
     fail('missing <urlset> root element — the file is empty or not XML at all');
   }
 
+  if (failed) {
+    // `fail` has already reported the reason and called `exit`. `exit` is `process.exit` in
+    // production and never returns, so this is dead there — but it is an injectable seam, and a
+    // RECORDING (non-throwing) seam lets execution continue right past the rejection carrying
+    // whatever partial entries the parse collected before it. Handing those back would let a
+    // caller act on a set this function has already refused; `removeConsumedFragments` in
+    // particular would compare a truncated set against the merged sitemap, find nothing missing,
+    // and unlink a fragment whose URL was never actually proved to survive. A rejected read
+    // yields no entries at all, so there is nothing partial left to act on.
+    return null;
+  }
+
   return entries;
+}
+
+/**
+ * Reads several sitemap fragments, failing closed as a unit.
+ *
+ * `null` if ANY of them was rejected — the rejection has already been reported and `exit` already
+ * called by `extractSitemapEntries` itself; this only stops a partial result from travelling
+ * onwards when `exit` returns. Reading stops at the first rejection rather than continuing: the
+ * remaining files' errors would add nothing once the build is already failing, and the first
+ * reported reason is the actionable one.
+ *
+ * @param xmlPaths the fragment files to read, in the order their entries should appear
+ * @param exit process-exit seam, forwarded unchanged to each read
+ * @returns every entry across all of them, or `null` if any single file was rejected
+ */
+function extractSitemapEntriesFrom(xmlPaths, exit) {
+  const all = [];
+  for (const xmlPath of xmlPaths) {
+    const entries = extractSitemapEntries(xmlPath, exit);
+    if (entries === null) {
+      return null;
+    }
+    all.push(...entries);
+  }
+  return all;
 }
 
 // The round-trip hazard a real XML parser introduces that a raw-regex extractor never had: `sax`
@@ -968,10 +1011,15 @@ export function urlsMissingFrom(mergedEntries, fragmentEntries) {
  * file supplied. Counting those would have the guard report a survival it never checked, in the one
  * place it is about to delete data.
  *
- * Keeping them out is therefore not a rule to be remembered, and not something a reviewer has to
- * re-check: there is no parameter here for a caller-supplied entry list, and `javadocSitemapEntries`
- * cannot be reached from this scope without first threading `siteUrl`, `releasedVersions` and
- * `repoRoot` through this signature — a deliberate, visible change to the contract, not a slip.
+ * Taking the paths rather than an entry list keeps the proof source next to the deletion it
+ * authorizes, and removes the most obvious way a computed entry could be handed in by accident.
+ * It does NOT make contamination structurally impossible, and this comment previously claimed it
+ * did: `javadocSitemapEntries` needs `siteUrl`, `releasedVersions` and `repoRoot`, but
+ * `DEFAULT_SITE_URL` and `REPO_ROOT` are module-scope constants and an empty released-version list
+ * is valid, so the call remains available inside this scope with the signature untouched. What
+ * actually keeps computed entries out of the proof is that this function reads its own set from
+ * `fragmentPaths` and the tests below assert the exact proved count — not the shape of the
+ * signature. Narrower and more local, not impossible.
  *
  * Re-reads the fragments rather than reusing whatever the merge was built from: the same files,
  * unchanged in between, so the same entries — but the question is asked of the bytes on disk at the
@@ -984,12 +1032,20 @@ export function urlsMissingFrom(mergedEntries, fragmentEntries) {
  * @param fragmentPaths the fragment files this merge consumed, and the only source of the proof set
  * @param mergedEntries the merged sitemap, re-read from disk by the caller
  * @param exit process-exit seam, called with 1 if the proof fails
- * @returns the number of fragment URLs proved to have survived, or `null` if the proof failed and
- *   nothing was removed — in which case the caller must not proceed (`exit` does not return in
- *   production, but the tests' seam does)
+ * @returns the number of fragment URLs proved to have survived, or `null` if the fragments were
+ *   left in place — either because a fragment was rejected on the way in, or because the proof
+ *   failed. `null` always means nothing was removed and the caller must not proceed (`exit` does
+ *   not return in production, but an injected seam may)
  */
-export function removeConsumedFragments(fragmentPaths, mergedEntries, exit) {
-  const fragmentEntries = fragmentPaths.flatMap((fragmentPath) => extractSitemapEntries(fragmentPath, exit));
+export function removeConsumedFragments(fragmentPaths, mergedEntries, exit = process.exit) {
+  const fragmentEntries = extractSitemapEntriesFrom(fragmentPaths, exit);
+  if (fragmentEntries === null) {
+    // A fragment was rejected as it was read. The reason and the `exit(1)` are already the read's
+    // own doing; what matters here is that a rejected read must never authorize a deletion. Falling
+    // through with a partial set would compare fewer URLs than the file actually holds, find none
+    // of them missing, and unlink a fragment carrying a URL nothing ever proved had survived.
+    return null;
+  }
   const dropped = urlsMissingFrom(mergedEntries, fragmentEntries);
   if (dropped.length > 0) {
     console.error(
@@ -1023,8 +1079,11 @@ export function removeConsumedFragments(fragmentPaths, mergedEntries, exit) {
  * Unlike every other source `mergeSitemaps` folds in, these entries are COMPUTED rather than read
  * from a fragment file on disk. That distinction is load-bearing downstream: they must never enter
  * the fragment-removal proof, since there is no file behind a Javadoc entry to delete or to lose
- * coverage from. `removeConsumedFragments` enforces that by construction — it derives the proved set
- * from the fragment paths itself and accepts no entry list from its caller.
+ * coverage from. `removeConsumedFragments` makes that unlikely rather than impossible: it derives
+ * the proved set from the fragment paths itself and takes no entry list from its caller, so there
+ * is no parameter to pass these in through — but nothing prevents this function from being called
+ * inside it (`DEFAULT_SITE_URL` and `REPO_ROOT` are module-scope), and what would actually catch it
+ * is that the removal tests assert the exact proved count.
  */
 export function javadocSitemapEntries(siteUrl, releasedVersions, repoRoot) {
   return javadocSurfaces(releasedVersions)
@@ -1076,16 +1135,23 @@ function mergeSitemaps(siteDir, exit, {siteUrl = DEFAULT_SITE_URL, releasedVersi
   // that stamps their robots tags (javadoc-seo.mjs's javadocSurfaces). Until now the site published
   // an indexable /javadoc/latest/ that appeared in no sitemap at all.
   //
-  // Folded into the merge below like any other source, but note that no variable in this function
-  // holds "the fragment entries" for anything else to be appended to: the removal proof further down
-  // re-derives its own set from `fragmentPaths`, so these computed entries have nowhere to leak into.
+  // Folded into the merge below like any other source. The removal proof further down re-derives its
+  // own set from `fragmentPaths` rather than reusing anything assembled here, which keeps these
+  // computed entries away from it by default — but that is a narrower property than it may look:
+  // `sourceEntries` below is a real list in this scope, and appending these to it, or to the merged
+  // set handed to the proof, is a change a reader has to notice. What catches it is the removal
+  // tests' exact proved counts, not the shape of this code.
   const javadocEntries = javadocSitemapEntries(siteUrl, releasedVersions, repoRoot);
 
-  const entries = [
-    ...extractSitemapEntries(spaSitemapPath, exit),
-    ...fragmentPaths.flatMap((fragmentPath) => extractSitemapEntries(fragmentPath, exit)),
-    ...javadocEntries,
-  ];
+  // Read as a unit so a rejected fragment can never be mistaken for a smaller valid one. `null` here
+  // means a read already reported its reason and called `exit`; with a non-returning `exit` (all
+  // production) this branch is dead, and with an injected seam it stops a partial set travelling on.
+  const sourceEntries = extractSitemapEntriesFrom([spaSitemapPath, ...fragmentPaths], exit);
+  if (sourceEntries === null) {
+    return;
+  }
+
+  const entries = [...sourceEntries, ...javadocEntries];
 
   // Derived from the origin this composition was told to publish at, never a second copy of the
   // production literal. `siteUrl` is a documented seam (see assembleSite's own @param) and this
@@ -1132,6 +1198,17 @@ function mergeSitemaps(siteDir, exit, {siteUrl = DEFAULT_SITE_URL, releasedVersi
   // trip, not a live failure mode — `urlsMissingFrom` is exported and tested in both directions
   // precisely because that branch cannot be reached from any real input.
   const merged = extractSitemapEntries(join(siteDir, 'sitemap.xml'), exit);
+  if (merged === null) {
+    // NOT INDEPENDENTLY TESTED, and deliberately so: reaching this would mean the file `sitemapXml`
+    // wrote three lines above was rejected by the parser on the way back in, which its own escaping
+    // makes unreachable — the round-trip property the block above already describes. Kept because
+    // `extractSitemapEntries` contracts to return `null` on rejection and every call site has to
+    // honour that; without it a future change to either side of that round trip would throw a
+    // TypeError here instead of failing closed. Sibling defensive guard to the `currentEntry === null`
+    // one in `onclosetag`. The two null checks either side of it ARE covered — see the two
+    // "rejected ... and exit returns" tests.
+    return;
+  }
   const provedUrlCount = removeConsumedFragments(fragmentPaths, merged, exit);
   if (provedUrlCount === null) {
     return;
