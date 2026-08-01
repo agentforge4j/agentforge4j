@@ -55,20 +55,41 @@
     <link rel="icon" href="/favicon.ico" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="AgentForge4j" />
     <meta property="og:url" content="https://agentforge4j.org/" />
     <meta property="og:title" content="AgentForge4j — Governed AI Workflows for Java" />
     <meta
       property="og:description"
       content="AgentForge4j is an open-source Java framework for Java teams building their own governed AI workflows, with approvals, tools, and observability."
     />
-    <meta property="og:image" content="https://agentforge4j.org/brand/icon-512.png" />
-    <meta name="twitter:card" content="summary" />
+    <!-- NOTE for editors: this comment, like the theme-bootstrap one above, must stay free of
+         literal angle-bracket tag text — scripts/build-seo.mjs rewrites the built page's head via
+         regexes anchored on the FIRST occurrence of each tag, and this comment sits AHEAD of
+         twitter:title and twitter:description, both of which it rewrites. Tag-like text here would
+         be matched instead and splice the file apart.
+
+         The dedicated 1280x640 social-preview card, not the 512x512 app icon: a square image is
+         letterboxed or centre-cropped by every large-card renderer, and `summary_large_image` needs
+         at least 1200x630 to be honoured at all. Declaring the real intrinsic width/height lets a
+         crawler reserve the right aspect ratio before fetching the bytes; both values are gated
+         against the real file's own PNG header by scripts/verify-seo.mjs, so they cannot drift into
+         describing an image that is no longer that size. twitter:image below must name this same
+         file, which scripts/verify-seo.mjs also asserts — only the Open Graph one is fetched and
+         size-checked, so a mirror that disagreed with it would be unverified. Byte-identical to
+         .github/assets/agentforge4j-social-preview.png, the committed record of the card uploaded
+         to the repository's social-preview setting; see scripts/lint-brand-assets.mjs. -->
+    <meta property="og:image" content="https://agentforge4j.org/brand/social-preview.png" />
+    <meta property="og:image:width" content="1280" />
+    <meta property="og:image:height" content="640" />
+    <meta property="og:image:alt" content="The AgentForge4j logo and the words Governed AI Workflows" />
+    <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content="AgentForge4j — Governed AI Workflows for Java" />
     <meta
       name="twitter:description"
       content="AgentForge4j is an open-source Java framework for Java teams building their own governed AI workflows, with approvals, tools, and observability."
     />
-    <meta name="twitter:image" content="https://agentforge4j.org/brand/icon-512.png" />
+    <meta name="twitter:image" content="https://agentforge4j.org/brand/social-preview.png" />
+    <meta name="twitter:image:alt" content="The AgentForge4j logo and the words Governed AI Workflows" />
   </head>
   <body>
     <div id="root"></div>

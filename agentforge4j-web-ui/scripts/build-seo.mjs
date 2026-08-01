@@ -237,6 +237,82 @@ function catalogueWorkflowDescription(workflow) {
   return `${raw.slice(0, MAX_DESCRIPTION_LENGTH - 1).trimEnd()}…`;
 }
 
+/**
+ * The social tags whose value is a pure function of the route's own title/description/canonical,
+ * and therefore the exact set that must be re-derived on every client-side route change as well as
+ * baked into every static shell.
+ *
+ * This table is the single source for both. `injectHead` below builds its replacements from it, and
+ * `src/lib/usePageSeo.ts` re-declares it (it cannot import this module — build-seo.mjs pulls in
+ * node:child_process) with `tests/usePageSeo.test.tsx` importing this constant to bind the two
+ * copies together. That binding is the point: the audited defect was precisely a divergence between
+ * these two surfaces — the static shell rewrote all five of these while the client hook rewrote
+ * none of them, so every one went stale the moment a visitor navigated within the app, and no gate
+ * on either side could see it because each was individually self-consistent.
+ *
+ * Deliberately NOT included: the site-constant social tags (`og:type`, `og:site_name`, `og:image`
+ * and its dimensions/alt, `twitter:card`, `twitter:image`). Those carry the same value on every
+ * page, so index.html is their one home and there is nothing for a route change to re-derive —
+ * `verify-seo.mjs` proves every built shell actually carries them.
+ */
+export const ROUTE_SCOPED_SOCIAL_TAGS = [
+  { attribute: 'property', key: 'og:title', source: 'title' },
+  { attribute: 'property', key: 'og:description', source: 'description' },
+  { attribute: 'property', key: 'og:url', source: 'canonical' },
+  { attribute: 'name', key: 'twitter:title', source: 'title' },
+  { attribute: 'name', key: 'twitter:description', source: 'description' },
+];
+
+/** Escapes a literal so it can be embedded in a RegExp source and match itself. The keys below are
+ * committed constants today, but they arrive through an exported table other modules read and
+ * extend — an unescaped `.` or `+` in a future key would silently change what the pattern matches
+ * rather than failing, which is the worst possible failure mode for a gate. */
+function escapeRegExpLiteral(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/** The pattern matching one route-scoped social tag exactly as index.html writes it. `\s*` after
+ * the tag is included only for a REMOVAL, so deleting a tag does not leave the blank line (and the
+ * trailing spaces on it) that the tag used to occupy. */
+function socialTagPattern(attribute, key, { consumeTrailingWhitespace = false } = {}) {
+  return new RegExp(
+    `<meta\\s+${escapeRegExpLiteral(attribute)}="${escapeRegExpLiteral(key)}"[\\s\\S]*?/>` +
+      (consumeTrailingWhitespace ? '\\s*' : ''),
+  );
+}
+
+/**
+ * The `[pattern, replacement]` pairs for every route-scoped social tag, derived from one route's
+ * resolved values — the single place any producer turns `ROUTE_SCOPED_SOCIAL_TAGS` into edits.
+ *
+ * `injectHead` is the only producer of a `<head>` in this module today, and it goes through here.
+ * The indirection exists so that the next one does too: any further head producer must derive its
+ * social replacements from this function rather than hand-copying the five tags, because a copy is
+ * a copy whether it lives in another module or in the function next door — and a divergence between
+ * two such copies is the defect this whole table exists to close. `build-seo.test.mjs`'s `PRODUCERS`
+ * list is where each producer is registered for the mutation test that enforces it.
+ *
+ * The replacement half of each pair is a plain string carrying `escapeHtml`ed route data, and
+ * `escapeHtml` deliberately does not escape `$`. Every consumer must therefore apply it through a
+ * REPLACER FUNCTION, never as a bare replacement string — see `injectHead`'s own loop for why.
+ *
+ * A `source` whose value is `null` REMOVES that tag instead of rewriting it, taking the whitespace
+ * it occupied with it. No producer needs that yet — it is here because the one obvious future head,
+ * a not-found page, must carry no `og:url`: that tag makes a claim about which URL the content
+ * belongs to, and the address does not exist. Expressing "remove" in the same table-driven pass is
+ * what will keep that page from needing its own copy of the list just to differ in one entry. Until
+ * a producer uses it, the branch is exercised by tests only, deliberately and visibly.
+ */
+export function routeScopedSocialReplacements(values) {
+  return ROUTE_SCOPED_SOCIAL_TAGS.map(({ attribute, key, source }) => {
+    const value = values[source];
+    if (value === null || value === undefined) {
+      return [socialTagPattern(attribute, key, { consumeTrailingWhitespace: true }), ''];
+    }
+    return [socialTagPattern(attribute, key), `<meta ${attribute}="${key}" content="${escapeHtml(value)}" />`];
+  });
+}
+
 /** Replaces the title/description/canonical/OG/Twitter tags already present in the built
  * index.html shell — never adds new tags, so a template drift (a tag renamed/removed from
  * index.html) fails loudly here instead of silently no-op'ing. */
@@ -248,17 +324,7 @@ export function injectHead(html, { title, description, canonical }) {
     [/<title>[\s\S]*?<\/title>/, `<title>${safeTitle}</title>`],
     [/<meta\s+name="description"[\s\S]*?\/>/, `<meta name="description" content="${safeDescription}" />`],
     [/<link\s+rel="canonical"[\s\S]*?\/>/, `<link rel="canonical" href="${safeCanonical}" />`],
-    [/<meta\s+property="og:title"[\s\S]*?\/>/, `<meta property="og:title" content="${safeTitle}" />`],
-    [
-      /<meta\s+property="og:description"[\s\S]*?\/>/,
-      `<meta property="og:description" content="${safeDescription}" />`,
-    ],
-    [/<meta\s+property="og:url"[\s\S]*?\/>/, `<meta property="og:url" content="${safeCanonical}" />`],
-    [/<meta\s+name="twitter:title"[\s\S]*?\/>/, `<meta name="twitter:title" content="${safeTitle}" />`],
-    [
-      /<meta\s+name="twitter:description"[\s\S]*?\/>/,
-      `<meta name="twitter:description" content="${safeDescription}" />`,
-    ],
+    ...routeScopedSocialReplacements({ title, description, canonical }),
   ];
 
   let result = html;
@@ -266,7 +332,18 @@ export function injectHead(html, { title, description, canonical }) {
     if (!pattern.test(result)) {
       throw new Error(`build-seo: expected tag not found in dist/index.html: ${pattern}`);
     }
-    result = result.replace(pattern, replacement);
+    // The replacement is supplied via a function, never as a bare replacement string — the same
+    // guard injectRoot and injectJsonLd already carry, and load-bearing here for the same reason.
+    // `String.prototype.replace` expands `$&`, "$`", `$'` and `$$` inside a replacement STRING
+    // *after* escapeHtml has run (escapeHtml handles `& < > "` and deliberately not `$`), so a
+    // `$`-token anywhere in a route title, description or a shipped workflow's name/description
+    // would reach the shell as document text rather than as itself. `$$` is the dangerous one: it
+    // collapses to a single `$` IDENTICALLY on the title, the description meta and all five
+    // route-scoped social tags, so verify-seo.mjs's social-consistency pass — which compares those
+    // tags against each other — sees a perfectly self-consistent page and the corrupted copy ships.
+    // `$&` splices the matched tag's own source into the value, and `$'` splices the entire rest of
+    // the document into it. A replacer function is never scanned for those tokens.
+    result = result.replace(pattern, () => replacement);
   }
   return result;
 }
