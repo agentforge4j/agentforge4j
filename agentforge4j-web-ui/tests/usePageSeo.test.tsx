@@ -5,7 +5,7 @@
 // navigation is client-side only, so this hook (wired once in App.tsx) is what keeps the
 // document's <head> honest after that.
 
-import { beforeEach, describe, expect, test } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { MemoryRouter, useNavigate } from 'react-router-dom';
 import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
@@ -32,6 +32,7 @@ import {
   buildSeo,
   injectNotFoundHead,
   JSON_LD_SCRIPT_ID,
+  ROBOTS_META_ID,
   ROUTE_SCOPED_SOCIAL_TAGS,
 } from '../scripts/build-seo.mjs';
 // The hook's own copy of the table, imported by value so the two can be compared directly rather
@@ -373,7 +374,7 @@ describe('usePageSeo not-found metadata', () => {
 
     expect(shell).toContain(`<title>${document.title}</title>`);
     expect(shell).toContain(`content="${metaDescription()}"`);
-    expect(shell).toContain(`<meta name="robots" content="${robotsContent()}" />`);
+    expect(shell).toContain(`<meta name="robots" id="${ROBOTS_META_ID}" content="${robotsContent()}" />`);
     // Both sides omit these entirely, rather than each choosing its own wrong answer.
     expect(shell).not.toMatch(/<link\s+rel="canonical"/);
     expect(canonicalHref()).toBeNull();
@@ -383,6 +384,104 @@ describe('usePageSeo not-found metadata', () => {
     // reason — proven here against both at once rather than trusted on either side.
     expect(shell).not.toMatch(/property="og:url"/);
     expect(document.querySelector('meta[property="og:url"]')).toBeNull();
+  });
+});
+
+// --- Robots-tag OWNERSHIP. `robots` is the only tag this hook writes on one route and DELETES on
+// every other, which makes its removal rule load-bearing in a way no other tag's is: a deletion
+// keyed on `meta[name="robots"]` removes whatever it finds, including a directive this codebase
+// never wrote. The tag is keyed on a shared id instead (build-seo.mjs's ROBOTS_META_ID), so the
+// static 404 shell's own tag is ADOPTED rather than duplicated, and everything else is left alone.
+//
+// No gate above these tests can see the over-deletion: verify-seo.mjs reads served HTML, where a
+// foreign directive is still present, and verify-client-nav-seo.mjs compares direct load against
+// client navigation, which agree precisely because the hook erased it on both. ---
+
+function robotsTags(): HTMLMetaElement[] {
+  return [...document.querySelectorAll<HTMLMetaElement>('meta[name="robots"]')];
+}
+
+describe('usePageSeo robots-tag ownership', () => {
+  // jsdom's document is shared across this file, and these tests deliberately plant robots tags the
+  // hook does NOT own — which, by design, it will never clean up. Removing them here keeps that
+  // deliberate leftover from leaking into the `expect(robotsContent()).toBeNull()` assertions in the
+  // suites around this one. In an `afterEach` rather than at the end of each test so a failing
+  // assertion cannot skip the cleanup and turn one red test into several.
+  afterEach(() => {
+    robotsTags().forEach((tag) => tag.remove());
+  });
+
+  test('the robots meta the hook CREATES carries the exact id build-seo.mjs stamps on the static 404 shell', () => {
+    // The one assertion binding usePageSeo.ts's own copy of the literal to build-seo.mjs's exported
+    // constant — the same role, and the same failure mode, as the JSON-LD id test above. Every other
+    // guard on this invariant lives on the build side and compares the shell against that same
+    // constant, so all of them stay green if it is renamed while production ships a shell the hook
+    // can no longer find: it would then append a SECOND robots meta on the 404 and strand the
+    // shell's own, and its clearing pass on every real route would reach neither.
+    renderAt('/no-such-page');
+    expect(robotsTags()).toHaveLength(1);
+    expect(robotsTags()[0].id).toBe(ROBOTS_META_ID);
+  });
+
+  test('adopts and updates the static 404 shell\'s own robots meta on mount, rather than appending a second one', () => {
+    // The real first-request condition on /404.html: build-seo.mjs already wrote this node, with
+    // this id, before React ever ran.
+    const shellTag = document.createElement('meta');
+    shellTag.id = ROBOTS_META_ID;
+    shellTag.setAttribute('name', 'robots');
+    shellTag.setAttribute('content', 'noindex, nofollow');
+    document.head.appendChild(shellTag);
+
+    renderAt('/no-such-page');
+
+    expect(robotsTags()).toHaveLength(1);
+    expect(robotsTags()[0]).toBe(shellTag);
+    expect(robotsContent()).toBe(NOT_FOUND_SEO.robots);
+  });
+
+  test('a robots directive this site did not write SURVIVES hydration on a real route, rather than being silently deleted', () => {
+    // The regression this ownership rule exists to prevent. A host embedding the SPA (or a future
+    // index.html line) declares a directive of its own; the hook must clear ITS not-found tag on a
+    // real route without touching this one.
+    const foreign = document.createElement('meta');
+    foreign.setAttribute('name', 'robots');
+    foreign.setAttribute('content', 'max-image-preview:large');
+    document.head.appendChild(foreign);
+
+    renderAt('/architecture');
+
+    expect(robotsTags()).toContain(foreign);
+    expect(foreign.getAttribute('content')).toBe('max-image-preview:large');
+  });
+
+  test('it survives a client-side navigation too — and the hook still clears its OWN tag on the way out', () => {
+    const foreign = document.createElement('meta');
+    foreign.setAttribute('name', 'robots');
+    foreign.setAttribute('content', 'max-image-preview:large');
+    document.head.appendChild(foreign);
+
+    const { navigate } = renderWithNavigation('/no-such-page', '/architecture');
+    // On the not-found route both are present: the foreign one and the hook's own noindex.
+    expect(robotsTags()).toHaveLength(2);
+    expect(document.getElementById(ROBOTS_META_ID)?.getAttribute('content')).toBe(NOT_FOUND_SEO.robots);
+
+    navigate();
+
+    // Leaving the missing route clears the noindex — and nothing else. Both halves matter: a hook
+    // that cleared neither would leave a real page noindexed, and one that cleared both would
+    // silently drop a directive it never owned.
+    expect(document.getElementById(ROBOTS_META_ID)).toBeNull();
+    expect(robotsTags()).toHaveLength(1);
+    expect(robotsTags()[0]).toBe(foreign);
+    expect(foreign.getAttribute('content')).toBe('max-image-preview:large');
+  });
+
+  test('repeated navigation in and out of a missing route never accumulates robots tags', () => {
+    const { navigate } = renderWithNavigation('/no-such-page', '/architecture');
+    navigate();
+    navigate();
+    navigate();
+    expect(robotsTags()).toHaveLength(0);
   });
 });
 

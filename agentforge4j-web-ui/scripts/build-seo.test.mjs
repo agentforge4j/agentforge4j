@@ -27,6 +27,7 @@ import {
   injectRoot,
   JSON_LD_SCRIPT_ID,
   newestGitLastModifiedDate,
+  ROBOTS_META_ID,
   withTrailingSlash,
 } from './build-seo.mjs';
 import { WORKFLOW_ID_PATTERN } from './workflow-id-contract.mjs';
@@ -2150,7 +2151,22 @@ test('injectNotFoundHead removes og:url too — it makes the same claim the cano
 
 test('injectNotFoundHead adds the configured robots directive, since /404.html itself is served at 200', () => {
   const html = injectNotFoundHead(BASE_INDEX_HTML, NOT_FOUND_CONFIG);
-  assert.match(html, /<meta name="robots" content="noindex, follow" \/>/);
+  assert.match(html, /<meta name="robots" id="[^"]+" content="noindex, follow" \/>/);
+});
+
+test('the robots directive carries the shared ownership id, so the client-side hook adopts it rather than appending a second one', () => {
+  // Asserted against the exported constant rather than a re-typed literal: this is the build side
+  // of the same binding tests/usePageSeo.test.tsx closes on the hook side, and a hardcoded string
+  // here would keep matching a renamed constant forever.
+  const html = injectNotFoundHead(BASE_INDEX_HTML, NOT_FOUND_CONFIG);
+  assert.match(html, new RegExp(`<meta name="robots" id="${ROBOTS_META_ID}" content=`));
+  // Non-vacuity: an empty id would satisfy a bare "contains id=" check while owning nothing.
+  assert.ok(ROBOTS_META_ID.length > 0, 'expected a non-empty robots ownership id');
+});
+
+test('the shell carries exactly one robots meta — a second one is the shape a hook that appends leaves behind', () => {
+  const html = injectNotFoundHead(BASE_INDEX_HTML, NOT_FOUND_CONFIG);
+  assert.equal((html.match(/<meta[^>]*name="robots"/g) ?? []).length, 1);
 });
 
 test('injectNotFoundHead rewrites the social title/description as well, so the shell does not describe itself as the home page anywhere', () => {
@@ -2194,7 +2210,7 @@ test('buildSeo gives a real dist/404.html its own not-found head, and reports ha
   const html = readFileSync(join(distDir, '404.html'), 'utf8');
   assert.match(html, /<title>Page not found — AgentForge4j<\/title>/);
   assert.doesNotMatch(html, /<link\s+rel="canonical"/);
-  assert.match(html, /<meta name="robots" content="noindex, follow" \/>/);
+  assert.match(html, new RegExp(`<meta name="robots" id="${ROBOTS_META_ID}" content="noindex, follow" />`));
   assert.match(html, /<div id="root"><\/div>/);
 });
 

@@ -42,18 +42,41 @@ function setCanonical(href: string | null): void {
   link.setAttribute('href', href);
 }
 
-/** Sets, updates, or removes `<meta name="robots">`. `null` removes it, which is what a navigation
- * OUT of a missing route back into a real one must do — a `noindex` left behind by the previous
- * route would quietly suppress a page that is perfectly indexable. */
+// Must stay byte-identical to build-seo.mjs's exported ROBOTS_META_ID — the id the build-time
+// static dist/404.html stamps on its own robots meta, and the one `setRobots` below looks for.
+// Re-declared rather than imported for the same reason as JSON_LD_SCRIPT_ID: this module cannot
+// import build-seo.mjs at all (it pulls in node:child_process). tests/usePageSeo.test.tsx imports
+// that constant and asserts on the id the hook CREATES, which is the single assertion in the suite
+// that fails if the two ever drift apart.
+const ROBOTS_META_ID = 'seo-robots';
+
+/** Sets, updates, or removes THIS SITE'S OWN `<meta name="robots" id={ROBOTS_META_ID}>`. `null`
+ * removes it, which is what a navigation OUT of a missing route back into a real one must do — a
+ * `noindex` left behind by the previous route would quietly suppress a page that is perfectly
+ * indexable.
+ *
+ * Keyed on the shared id rather than on `meta[name="robots"]`, so removal only ever reaches a node
+ * this codebase wrote. Robots is the one tag here whose normal case is DELETION on the majority of
+ * routes, which makes a name-keyed removal actively destructive: any robots directive the document
+ * arrived with — a host embedding this SPA, a future index.html line, an injected
+ * `max-image-preview:large` — would be present in the served HTML and then silently disappear the
+ * moment the bundle hydrated. `setJsonLd` below is keyed on its own id for exactly this reason;
+ * this is the same rule, applied to the tag that needed it more. Adoption comes free with it: the
+ * static 404 shell stamps the same id, so a direct load updates that node rather than appending a
+ * second, contradictory one beside it. */
 function setRobots(content: string | null): void {
-  const existing = document.querySelector('meta[name="robots"]');
+  const existing = document.getElementById(ROBOTS_META_ID);
   if (content === null) {
     existing?.remove();
     return;
   }
   let tag = existing;
-  if (!tag) {
+  // Same defensive branch as `setJsonLd`: an element carrying our id that is not a `<meta>` at all
+  // cannot be updated into one, so it is replaced rather than written through.
+  if (!tag || tag.tagName !== 'META') {
+    existing?.remove();
     tag = document.createElement('meta');
+    tag.id = ROBOTS_META_ID;
     tag.setAttribute('name', 'robots');
     document.head.appendChild(tag);
   }
@@ -184,9 +207,11 @@ interface ResolvedRouteSeo {
   readonly jsonLd?: JsonLd;
 }
 
-/** The one write path. `document.title`, the description meta and the canonical link carry the same
- * three values the route-scoped social tags are derived from, so a page's social metadata cannot
- * disagree with its own title/description/canonical — the property the audit found broken. */
+/** The one write path, covering every tag this hook owns: the title, the description meta, the
+ * canonical link, this site's own `robots` directive, the route-scoped social tags and the
+ * structured-data block. `document.title`, the description meta and the canonical link carry the
+ * same three values the route-scoped social tags are derived from, so a page's social metadata
+ * cannot disagree with its own title/description/canonical — the property the audit found broken. */
 function applyRouteSeo({ title, description, canonical, robots, jsonLd }: ResolvedRouteSeo): void {
   document.title = title;
   setMetaDescription(description);
@@ -199,9 +224,12 @@ function applyRouteSeo({ title, description, canonical, robots, jsonLd }: Resolv
 /** Resolves a path to its SEO state without touching the document, so every branch is forced to
  * produce one complete state rather than a partial set of side effects — which is the property that
  * makes `applyRouteSeo` above the single write path. Module-internal: the hook is the only caller,
- * and the suite exercises the mapping through it rather than around it. `null` only if the home
- * entry itself is missing from the committed config, which no real build can produce. */
-function resolveRouteSeo(path: string): ResolvedRouteSeo | null {
+ * and the suite exercises the mapping through it rather than around it.
+ *
+ * Total by construction: an address that matches no static route and no real catalogue workflow is
+ * not an absence of an answer, it is the not-found answer (the last branch below), so there is no
+ * path here that resolves to "nothing" and no caller-side guard to write. */
+function resolveRouteSeo(path: string): ResolvedRouteSeo {
   const staticEntry = findSeoRoute(path);
   if (staticEntry) {
     return {
@@ -254,20 +282,19 @@ function resolveRouteSeo(path: string): ResolvedRouteSeo | null {
 }
 
 /**
- * Keeps `document.title`, `<meta name="description">`, `<link rel="canonical">`, the route-scoped
- * Open Graph / Twitter tags, and any structured-data (`jsonLd`) block in sync with the current
- * client-side route. The build-time static per-route HTML shells (scripts/build-seo.mjs) only cover
- * the *first* request to a given route — any subsequent in-app navigation is client-side only and
- * never re-fetches a shell, so without this the tab title/canonical/social tags/JSON-LD would
+ * Keeps `document.title`, `<meta name="description">`, `<link rel="canonical">`, this site's own
+ * `<meta name="robots">` (present on a not-found address, absent on every real page — see
+ * `setRobots` for why it is removed by id rather than by name), the route-scoped Open Graph /
+ * Twitter tags, and any structured-data (`jsonLd`) block in sync with the current client-side
+ * route. The build-time static per-route HTML shells (scripts/build-seo.mjs) only cover the *first*
+ * request to a given route — any subsequent in-app navigation is client-side only and never
+ * re-fetches a shell, so without this the tab title/canonical/robots/social tags/JSON-LD would
  * silently keep whatever the initially-loaded shell said.
  */
 export function usePageSeo(): void {
   const location = useLocation();
 
   useEffect(() => {
-    const resolved = resolveRouteSeo(location.pathname);
-    if (resolved) {
-      applyRouteSeo(resolved);
-    }
+    applyRouteSeo(resolveRouteSeo(location.pathname));
   }, [location.pathname]);
 }

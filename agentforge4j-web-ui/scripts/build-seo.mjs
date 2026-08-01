@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 //
-// Generates two things from the already-built dist/index.html (run after `vite build` and after
+// Generates three things from the already-built dist/index.html (run after `vite build` and after
 // copy-404.mjs — 404.html must stay the *pre-prerender* empty shell, so an unmatched path served
 // under a real HTTP 404 boots the SPA and renders NotFoundPage, never a static copy of the full
 // prerendered home page body; verify-seo.mjs gates that ordering on every real build):
@@ -74,6 +74,12 @@
 //         surface); treating every dependency bump everywhere (eslint, vitest, a transitive patch
 //         bump with no rendering effect) as globally material would defeat the point of tracking
 //         real per-page dependencies at all.
+//
+//  3. The not-found head of the already-copied dist/404.html (see injectNotFoundHead). copy-404.mjs
+//     copies dist/index.html verbatim, which is right for the BODY and wrong for the HEAD — the
+//     catch-all shell would otherwise describe itself as the home page on every mistyped address,
+//     and on /404.html itself, which is served at 200. Only the head is rewritten; the empty
+//     `<div id="root"></div>` mount point the copy carries is preserved by construction.
 //
 // Per-workflow title/description formatting mirrors src/lib/catalogueSeo.ts (used by the
 // client-side title/meta sync, usePageSeo) — duplicated deliberately, not imported, because this
@@ -367,7 +373,11 @@ export function injectHead(html, { title, description, canonical }) {
  *  - `og:url` is removed for the same reason — it is the canonical's Open Graph counterpart, and
  *    leaving it pointing at the home page would keep making the claim the canonical no longer does.
  *  - a `robots` directive is added, since this is the one shell whose own address (`/404.html`) is
- *    genuinely served at 200.
+ *    genuinely served at 200. It carries `ROBOTS_META_ID`, which marks it as this build's own: the
+ *    client-side hook adopts and updates THIS node on a direct load instead of appending a second
+ *    one beside it, and — on every other route, where the directive must be cleared — removes only
+ *    a node bearing that id rather than any `meta[name="robots"]` the page happens to have. See
+ *    that constant's own comment.
  *
  * Never touches the body, so the empty `<div id="root"></div>` verify-seo.mjs gates on is preserved
  * by construction rather than by care.
@@ -400,7 +410,10 @@ export function injectNotFoundHead(html, { title, description, robots }) {
   if (!/<\/head>/.test(result)) {
     throw new Error('build-seo: expected a </head> closing tag in dist/404.html');
   }
-  return result.replace(/<\/head>/, () => `<meta name="robots" content="${escapeHtml(robots)}" />\n  </head>`);
+  return result.replace(
+    /<\/head>/,
+    () => `<meta name="robots" id="${ROBOTS_META_ID}" content="${escapeHtml(robots)}" />\n  </head>`,
+  );
 }
 
 const EMPTY_ROOT_PATTERN = /<div id="root"><\/div>/;
@@ -445,6 +458,25 @@ export function injectRoot(html, innerHtml) {
 // module — build-seo.mjs pulls in node:child_process), and tests/usePageSeo.test.tsx imports this
 // constant to bind that copy to this one.
 export const JSON_LD_SCRIPT_ID = 'seo-json-ld';
+
+/**
+ * The id stamped on the `<meta name="robots">` this build writes into dist/404.html, and the one
+ * `usePageSeo.ts`'s `setRobots` looks for — an OWNERSHIP marker, exactly as JSON_LD_SCRIPT_ID is
+ * for the structured-data block, and shared with that constant's own "opaque literal, imported
+ * rather than re-derived" rationale above.
+ *
+ * Ownership is the whole point, and it is not cosmetic. The robots directive is the one head tag
+ * this site adds on ONE page and removes on every other, so the client-side hook has to delete a
+ * tag on routes that never declared one — and a deletion keyed on `meta[name="robots"]` alone
+ * deletes whatever it finds, including a directive this build never wrote. A host embedding the
+ * SPA, a future `index.html` line, or an injected `max-image-preview:large` would be served in the
+ * static HTML, then silently vanish from the DOM the moment the bundle hydrated, with every gate
+ * green: verify-seo.mjs reads served HTML (where the tag is still there) and
+ * verify-client-nav-seo.mjs compares direct load against client navigation (which agree, because
+ * the hook erases it on both). Keyed on this id instead, the hook removes only its own node and
+ * anything else on the page survives untouched.
+ */
+export const ROBOTS_META_ID = 'seo-robots';
 
 /** Inserts a route's JSON-LD structured-data block right before `</head>` — an addition, not a
  * replacement (unlike injectHead's tags, no shell starts with one), so only routes that declare a
