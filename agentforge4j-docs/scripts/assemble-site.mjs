@@ -39,6 +39,7 @@ import {ARCHIVE_ROOT} from './archive-transition.mjs';
 import {resolveJavadocUrl} from '../src/remark/javadoc.mjs';
 import {liveJavadocRefs} from './lint-javadoc-links.mjs';
 import {applyJavadocSeo, javadocSurfaces} from './javadoc-seo.mjs';
+import {injectRedirectStubSeo, redirectStubTarget} from './redirect-stub-seo.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const MODULE_ROOT = resolve(here, '..');
@@ -205,6 +206,152 @@ export function scanComposedHtmlForForbiddenContent(siteDir, exit = process.exit
     return;
   }
   console.log(`[assemble-site] scanned ${files.length} composed HTML file(s) for forbidden content — clean.`);
+}
+
+// The indexing directive for the client-redirect stubs (see redirect-stub-seo.mjs). The title and
+// description are NOT here: they follow each stub's own destination, so that module owns them
+// (`redirectStubCopy`) — an archived version's stub must not claim to forward to the current docs.
+const REDIRECT_STUB_ROBOTS = 'noindex, follow';
+
+/**
+ * Gives every client-redirect stub under `<siteDir>/docs/` a real title, description and robots
+ * directive, without touching its redirect behaviour or its canonical.
+ *
+ * Fails closed when it RECOGNISES none. The docs config always produces at least the `/` and
+ * `/latest` redirects (docusaurus.config.ts's `redirectConfig`, in both lifecycle states), so "zero
+ * stubs recognised" never means "nothing to do" — it means the recognition rule has stopped
+ * matching what the plugin emits, and the stubs are shipping raw again with nothing complaining.
+ *
+ * Recognised and rewritten are counted separately on purpose. `injectRedirectStubSeo` is idempotent
+ * by refusal, so an already-labelled stub is recognised but not rewritten; keying the guard on the
+ * rewritten count made a re-run over a labelled artifact report that the recognition rule had
+ * broken, which was the one thing that had definitely not happened.
+ *
+ * @param {(code: number) => void} [exit] injectable seam for that guard, mirroring this module's
+ *        other fail-closed checks.
+ * @returns {{recognised: number, updated: number}} stubs seen, and of those, stubs changed
+ */
+export function applyRedirectStubSeo(siteDir, exit = process.exit) {
+  const docsDir = join(siteDir, 'docs');
+  if (!existsSync(docsDir)) {
+    console.error(`[assemble-site] no ${docsDir} to scan for client-redirect stubs`);
+    exit(1);
+    return {recognised: 0, updated: 0};
+  }
+  let recognised = 0;
+  let updated = 0;
+  for (const file of collectHtmlFiles(docsDir)) {
+    const html = readFileSync(file, 'utf8');
+    if (redirectStubTarget(html) === null) {
+      continue;
+    }
+    recognised += 1;
+    const rewritten = injectRedirectStubSeo(html, {robots: REDIRECT_STUB_ROBOTS});
+    // Asserted against the file as it will actually ship, not against what the rewriter intended.
+    // The defect this catches — a stub carrying two <title> elements — was invisible to every other
+    // gate here: `scanComposedHtmlForForbiddenContent` looks for content patterns, and
+    // `verifyComposedArtifact` looks for presence and non-emptiness. Neither counts anything.
+    // Counted for all three tags, not just the title: the same replace-or-append logic duplicates a
+    // description or robots tag the moment a pattern stops matching the shape a producer emits.
+    for (const [what, pattern] of [
+      ['<title>', /<title>/gi],
+      ['name="description"', /<meta[^>]*\sname="description"[^>]*>/gi],
+      ['name="robots"', /<meta[^>]*\sname="robots"[^>]*>/gi],
+    ]) {
+      const count = (rewritten.match(pattern) ?? []).length;
+      if (count !== 1) {
+        console.error(
+          `[assemble-site] redirect stub ${file} would ship with ${count} ${what} element(s) — expected exactly one`,
+        );
+        exit(1);
+        return {recognised, updated};
+      }
+    }
+    if (rewritten !== html) {
+      writeFileSync(file, rewritten, 'utf8');
+      updated += 1;
+    }
+  }
+  if (recognised === 0) {
+    console.error(
+      '[assemble-site] recognised no client-redirect stubs under /docs/ — the docs config always ' +
+        'generates at least the / and /latest redirects, so this means the recognition rule no longer ' +
+        'matches what the plugin emits and those stubs are shipping raw',
+    );
+    exit(1);
+  }
+  return {recognised, updated};
+}
+
+/**
+ * Proves that every `/docs/…` address the composed SPA actually links resolves to a real page in
+ * the composed artifact.
+ *
+ * This is the gate that moved when the link did. `verifyComposedArtifact` checks `docs/index.html`
+ * — which was both the Docs link's target and the verified entry until the site started linking
+ * `/docs/<version>/` directly. Afterwards it verified only the address nobody uses: nothing
+ * asserted that the one everybody uses exists. The SPA's own internal-link crawl cannot cover it
+ * either, because `/docs/` is composed-artifact-only and therefore excluded there by prefix.
+ *
+ * Derives nothing and assumes nothing about how the URL was produced — it reads the hrefs out of
+ * the composed SPA and resolves them against the composed tree, so a disagreement between the SPA's
+ * build-time derivation and the docs build's own version lifecycle fails here regardless of which
+ * side is wrong.
+ *
+ * @param {(code: number) => void} [exit] injectable seam, as elsewhere in this module.
+ * @returns {number} distinct `/docs/` link targets verified
+ */
+export function verifyComposedSpaDocsLinks(siteDir, exit = process.exit) {
+  const targets = new Set();
+  // The SPA owns the site root; /docs and /javadoc are the other tracks' subtrees and are not the
+  // SPA's own pages, so they are skipped rather than crawled.
+  for (const file of collectSpaHtmlFiles(siteDir)) {
+    const html = readFileSync(file, 'utf8');
+    for (const match of html.matchAll(/(?:href|src)="(\/docs\/[^"#?]*)"/gi)) {
+      targets.add(match[1]);
+    }
+  }
+  if (targets.size === 0) {
+    console.error(
+      '[assemble-site] the composed SPA links no /docs/ address at all — the site has a Docs entry in ' +
+        'both its primary nav and its footer, so this means those links have stopped being emitted (or ' +
+        'stopped being recognisable here) and the documentation is unreachable from the site',
+    );
+    exit(1);
+    return 0;
+  }
+  for (const target of targets) {
+    // Trailing-slash addresses are directories in the composed artifact; anything else is the file
+    // itself. Both forms are resolved rather than assumed, so a link that drops the slash is caught
+    // as the miss it is on a host that serves directories only at their slash address.
+    const relative = target.replace(/^\//, '').split('/').filter(Boolean);
+    const candidate = target.endsWith('/') ? join(siteDir, ...relative, 'index.html') : join(siteDir, ...relative);
+    if (!existsSync(candidate) || !statSync(candidate).isFile() || statSync(candidate).size === 0) {
+      console.error(`[assemble-site] the composed SPA links ${target}, which does not exist in the composed artifact`);
+      console.error(`  expected: ${candidate}`);
+      console.error('  The site links the documentation entry point directly, so this address must be a real page.');
+      exit(1);
+      return targets.size;
+    }
+  }
+  return targets.size;
+}
+
+/** Every HTML page belonging to the SPA itself — the composed site minus the `/docs/` and
+ * `/javadoc/` subtrees the other two tracks own. */
+function collectSpaHtmlFiles(siteDir) {
+  const out = [];
+  for (const entry of readdirSync(siteDir, {withFileTypes: true})) {
+    if (entry.isDirectory()) {
+      if (entry.name === 'docs' || entry.name === 'javadoc') {
+        continue;
+      }
+      out.push(...collectHtmlFiles(join(siteDir, entry.name)));
+    } else if (entry.name.endsWith('.html')) {
+      out.push(join(siteDir, entry.name));
+    }
+  }
+  return out;
 }
 
 const DOC_EXTENSIONS = ['.md', '.mdx'];
@@ -555,6 +702,12 @@ function containsInvalidXmlChar(text) {
  * choice, not an oversight. A structurally valid `<urlset>` with zero `<url>` children is valid and
  * contributes zero entries — it is not itself a malformed-input case.
  *
+ * Returns `null` — never a partial entry list — for every rejection above, so that a rejected read
+ * cannot be mistaken for a successful one that happened to find fewer entries. In production `exit`
+ * is `process.exit` and terminates at the point of failure, but it is an injectable seam and a
+ * caller handed a non-throwing one keeps running: a partial return would let that caller act on a
+ * set this function has already refused. Every call site must handle `null` before using the result.
+ *
  * KNOWN ACCEPTED LIMITATION: a literal, unescaped `]]>` inside
  * `<loc>`/`<lastmod>` text content is forbidden CharData per XML 1.0 §2.4 (the sequence is reserved
  * for terminating a CDATA section), but sax reports it to `ontext` as ordinary text — it is never
@@ -821,7 +974,44 @@ function extractSitemapEntries(xmlPath, exit) {
     fail('missing <urlset> root element — the file is empty or not XML at all');
   }
 
+  if (failed) {
+    // `fail` has already reported the reason and called `exit`. `exit` is `process.exit` in
+    // production and never returns, so this is dead there — but it is an injectable seam, and a
+    // RECORDING (non-throwing) seam lets execution continue right past the rejection carrying
+    // whatever partial entries the parse collected before it. Handing those back would let a
+    // caller act on a set this function has already refused; `removeConsumedFragments` in
+    // particular would compare a truncated set against the merged sitemap, find nothing missing,
+    // and unlink a fragment whose URL was never actually proved to survive. A rejected read
+    // yields no entries at all, so there is nothing partial left to act on.
+    return null;
+  }
+
   return entries;
+}
+
+/**
+ * Reads several sitemap fragments, failing closed as a unit.
+ *
+ * `null` if ANY of them was rejected — the rejection has already been reported and `exit` already
+ * called by `extractSitemapEntries` itself; this only stops a partial result from travelling
+ * onwards when `exit` returns. Reading stops at the first rejection rather than continuing: the
+ * remaining files' errors would add nothing once the build is already failing, and the first
+ * reported reason is the actionable one.
+ *
+ * @param xmlPaths the fragment files to read, in the order their entries should appear
+ * @param exit process-exit seam, forwarded unchanged to each read
+ * @returns every entry across all of them, or `null` if any single file was rejected
+ */
+function extractSitemapEntriesFrom(xmlPaths, exit) {
+  const all = [];
+  for (const xmlPath of xmlPaths) {
+    const entries = extractSitemapEntries(xmlPath, exit);
+    if (entries === null) {
+      return null;
+    }
+    all.push(...entries);
+  }
+  return all;
 }
 
 // The round-trip hazard a real XML parser introduces that a raw-regex extractor never had: `sax`
@@ -958,6 +1148,68 @@ export function urlsMissingFrom(mergedEntries, fragmentEntries) {
 }
 
 /**
+ * Proves the consumed fragment files can be removed without losing coverage, then removes them.
+ *
+ * The set whose survival is proved is derived HERE, from `fragmentPaths` — the very list of files
+ * about to be unlinked — and this function is handed no other source of entries. That is why it
+ * exists as a function at all rather than as a few lines of `mergeSitemaps`. The merge folds in a
+ * third list of Javadoc entries that are COMPUTED rather than read from disk, and "did this URL
+ * survive out of the file it came from" is not a question that can be asked about a URL that no
+ * file supplied. Counting those would have the guard report a survival it never checked, in the one
+ * place it is about to delete data.
+ *
+ * Taking the paths rather than an entry list keeps the proof source next to the deletion it
+ * authorizes, and removes the most obvious way a computed entry could be handed in by accident.
+ * It does NOT make contamination structurally impossible, and this comment previously claimed it
+ * did: `javadocSitemapEntries` needs `siteUrl`, `releasedVersions` and `repoRoot`, but
+ * `DEFAULT_SITE_URL` and `REPO_ROOT` are module-scope constants and an empty released-version list
+ * is valid, so the call remains available inside this scope with the signature untouched. What
+ * actually keeps computed entries out of the proof is that this function reads its own set from
+ * `fragmentPaths` and the tests below assert the exact proved count — not the shape of the
+ * signature. Narrower and more local, not impossible.
+ *
+ * Re-reads the fragments rather than reusing whatever the merge was built from: the same files,
+ * unchanged in between, so the same entries — but the question is asked of the bytes on disk at the
+ * moment of deletion rather than of a variable that arrived here from somewhere else.
+ *
+ * Exported so its refusal branch can be driven directly, the way `urlsMissingFrom` is. It is one
+ * step of this module's own composition, not an extension point: `mergeSitemaps` is its only
+ * production caller and there is no reason for anything outside this file to call it.
+ *
+ * @param fragmentPaths the fragment files this merge consumed, and the only source of the proof set
+ * @param mergedEntries the merged sitemap, re-read from disk by the caller
+ * @param exit process-exit seam, called with 1 if the proof fails
+ * @returns the number of fragment URLs proved to have survived, or `null` if the fragments were
+ *   left in place — either because a fragment was rejected on the way in, or because the proof
+ *   failed. `null` always means nothing was removed and the caller must not proceed (`exit` does
+ *   not return in production, but an injected seam may)
+ */
+export function removeConsumedFragments(fragmentPaths, mergedEntries, exit = process.exit) {
+  const fragmentEntries = extractSitemapEntriesFrom(fragmentPaths, exit);
+  if (fragmentEntries === null) {
+    // A fragment was rejected as it was read. The reason and the `exit(1)` are already the read's
+    // own doing; what matters here is that a rejected read must never authorize a deletion. Falling
+    // through with a partial set would compare fewer URLs than the file actually holds, find none
+    // of them missing, and unlink a fragment carrying a URL nothing ever proved had survived.
+    return null;
+  }
+  const dropped = urlsMissingFrom(mergedEntries, fragmentEntries);
+  if (dropped.length > 0) {
+    console.error(
+      `[assemble-site] refusing to remove the consumed sitemap fragment(s): ${dropped.length} of their URL(s) are ` +
+        `not in the merged sitemap (e.g. ${dropped[0]}) — removing them would lose those URL(s) from search-engine ` +
+        `discovery entirely. Left in place: ${fragmentPaths.join(', ')}`,
+    );
+    exit(1);
+    return null;
+  }
+  for (const fragmentPath of fragmentPaths) {
+    rmSync(fragmentPath, {force: true});
+  }
+  return fragmentEntries.length;
+}
+
+/**
  * Sitemap entries for the Javadoc surfaces — the third published surface of this site, and until
  * now the only one absent from sitemap discovery entirely.
  *
@@ -972,9 +1224,13 @@ export function urlsMissingFrom(mergedEntries, fragmentEntries) {
  * content of the site under generated API pages without making any of it more discoverable.
  *
  * Unlike every other source `mergeSitemaps` folds in, these entries are COMPUTED rather than read
- * from a fragment file on disk. That distinction is load-bearing downstream: they must never join
- * `fragmentEntries`, which is the set whose survival is proved before the fragment files backing it
- * are deleted. There is no file behind a Javadoc entry to delete or to lose coverage from.
+ * from a fragment file on disk. That distinction is load-bearing downstream: they must never enter
+ * the fragment-removal proof, since there is no file behind a Javadoc entry to delete or to lose
+ * coverage from. `removeConsumedFragments` makes that unlikely rather than impossible: it derives
+ * the proved set from the fragment paths itself and takes no entry list from its caller, so there
+ * is no parameter to pass these in through — but nothing prevents this function from being called
+ * inside it (`DEFAULT_SITE_URL` and `REPO_ROOT` are module-scope), and what would actually catch it
+ * is that the removal tests assert the exact proved count.
  */
 export function javadocSitemapEntries(siteUrl, releasedVersions, repoRoot) {
   return javadocSurfaces(releasedVersions)
@@ -1019,7 +1275,6 @@ function mergeSitemaps(siteDir, exit, {siteUrl = DEFAULT_SITE_URL, releasedVersi
   // this merge consumes and then removes; the SPA's fragment is not among them because it lives at
   // the site root and is overwritten in place by the merged file rather than deleted.
   const fragmentPaths = [docsSitemapPath, ...archivedSitemapFragments(siteDir)];
-  const fragmentEntries = fragmentPaths.flatMap((fragmentPath) => extractSitemapEntries(fragmentPath, exit));
 
   // The third published surface. The SPA and the docs each generate their own fragment; the Javadoc
   // trees have no generator of their own — they are raw maven-javadoc-plugin output, post-processed
@@ -1027,13 +1282,23 @@ function mergeSitemaps(siteDir, exit, {siteUrl = DEFAULT_SITE_URL, releasedVersi
   // that stamps their robots tags (javadoc-seo.mjs's javadocSurfaces). Until now the site published
   // an indexable /javadoc/latest/ that appeared in no sitemap at all.
   //
-  // Deliberately a THIRD list rather than more `fragmentEntries`: these entries have no file behind
-  // them. `fragmentEntries` is the set proved to have survived the merge before its backing files
-  // are deleted below — putting computed entries in it would mean asking whether a file that was
-  // never read still has its URLs, and would make the removal guard report a count it did not check.
+  // Folded into the merge below like any other source. The removal proof further down re-derives its
+  // own set from `fragmentPaths` rather than reusing anything assembled here, which keeps these
+  // computed entries away from it by default — but that is a narrower property than it may look:
+  // `sourceEntries` below is a real list in this scope, and appending these to it, or to the merged
+  // set handed to the proof, is a change a reader has to notice. What catches it is the removal
+  // tests' exact proved counts, not the shape of this code.
   const javadocEntries = javadocSitemapEntries(siteUrl, releasedVersions, repoRoot);
 
-  const entries = [...extractSitemapEntries(spaSitemapPath, exit), ...fragmentEntries, ...javadocEntries];
+  // Read as a unit so a rejected fragment can never be mistaken for a smaller valid one. `null` here
+  // means a read already reported its reason and called `exit`; with a non-returning `exit` (all
+  // production) this branch is dead, and with an injected seam it stops a partial set travelling on.
+  const sourceEntries = extractSitemapEntriesFrom([spaSitemapPath, ...fragmentPaths], exit);
+  if (sourceEntries === null) {
+    return;
+  }
+
+  const entries = [...sourceEntries, ...javadocEntries];
 
   // Derived from the origin this composition was told to publish at, never a second copy of the
   // production literal. `siteUrl` is a documented seam (see assembleSite's own @param) and this
@@ -1072,32 +1337,35 @@ function mergeSitemaps(siteDir, exit, {siteUrl = DEFAULT_SITE_URL, releasedVersi
   // One site, one sitemap: the root file, which robots.txt points at.
   //
   // Removed only AFTER the merge has been written and re-read, so this can never delete coverage
-  // that did not make it across — the verification below asks the merged file itself rather than
-  // trusting the write. Note what that does and does not prove: `sitemapXml` and
+  // that did not make it across — `removeConsumedFragments` asks the merged file itself rather than
+  // trusting the write, and derives what it checks against from `fragmentPaths` rather than from
+  // anything assembled up here. Note what that does and does not prove: `sitemapXml` and
   // `extractSitemapEntries` round-trip losslessly for every value the parser accepts, so on today's
   // inputs this can only pass. It is a guard against a future change to either side of that round
   // trip, not a live failure mode — `urlsMissingFrom` is exported and tested in both directions
-  // precisely because this branch itself cannot be reached from any real input.
+  // precisely because that branch cannot be reached from any real input.
   const merged = extractSitemapEntries(join(siteDir, 'sitemap.xml'), exit);
-  const dropped = urlsMissingFrom(merged, fragmentEntries);
-  if (dropped.length > 0) {
-    console.error(
-      `[assemble-site] refusing to remove the consumed sitemap fragment(s): ${dropped.length} of their URL(s) are ` +
-        `not in the merged sitemap (e.g. ${dropped[0]}) — removing them would lose those URL(s) from search-engine ` +
-        `discovery entirely. Left in place: ${fragmentPaths.join(', ')}`,
-    );
-    exit(1);
+  if (merged === null) {
+    // NOT INDEPENDENTLY TESTED, and deliberately so: reaching this would mean the file `sitemapXml`
+    // wrote three lines above was rejected by the parser on the way back in, which its own escaping
+    // makes unreachable — the round-trip property the block above already describes. Kept because
+    // `extractSitemapEntries` contracts to return `null` on rejection and every call site has to
+    // honour that; without it a future change to either side of that round trip would throw a
+    // TypeError here instead of failing closed. Sibling defensive guard to the `currentEntry === null`
+    // one in `onclosetag`. The two null checks either side of it ARE covered — see the two
+    // "rejected ... and exit returns" tests.
     return;
   }
-  for (const fragmentPath of fragmentPaths) {
-    rmSync(fragmentPath, {force: true});
+  const provedUrlCount = removeConsumedFragments(fragmentPaths, merged, exit);
+  if (provedUrlCount === null) {
+    return;
   }
 
   console.log(
     `[assemble-site] merged sitemap.xml: ${entries.length} URL(s) (SPA + ${fragmentPaths.length} in-artifact ` +
       `fragment(s): ${fragmentPaths.join(', ')}; + ${javadocEntries.length} computed indexable Javadoc ` +
       `surface(s): ${javadocEntries.map((entry) => entry.url).join(', ') || 'none'}); removed those fragments ` +
-      `after confirming all ${fragmentEntries.length} of their URL(s) survive in the root sitemap`,
+      `after confirming all ${provedUrlCount} of their URL(s) survive in the root sitemap`,
   );
 }
 
@@ -1305,6 +1573,23 @@ export function assembleSite({
   //    historical versions, whose own build-javadoc.mjs predates this fix — on every deploy.
   const javadocPagesUpdated = applyJavadocSeo({siteDir, siteUrl, ogImage, releasedVersions});
   console.log(`[assemble-site] applied Javadoc SEO metadata to ${javadocPagesUpdated} page(s) across every surface`);
+
+  // 8. The client-redirect stubs the docs build emits in postBuild (/docs/, /docs/latest/) — raw,
+  //    they are title-less, near-empty 200s at the site's most linked-to documentation address. See
+  //    redirect-stub-seo.mjs. Applied here for the same reason as the Javadoc pass above: this is
+  //    the first point at which they exist as published pages.
+  const {recognised: stubsSeen, updated: stubsUpdated} = applyRedirectStubSeo(siteDir, exit);
+  console.log(
+    `[assemble-site] labelled ${stubsUpdated} of ${stubsSeen} recognised client-redirect stub(s) under /docs/ ` +
+      '(title, description, noindex — canonical and redirect untouched)',
+  );
+
+  // 9. Every /docs/ address the composed SPA actually links must resolve. The site links the
+  //    documentation entry point directly now, so this is the check that the entry point exists —
+  //    verifyComposedArtifact above still guards /docs/index.html, which is the address the site
+  //    deliberately routes AROUND.
+  const docsLinksVerified = verifyComposedSpaDocsLinks(siteDir, exit);
+  console.log(`[assemble-site] verified ${docsLinksVerified} distinct /docs/ link target(s) from the composed SPA`);
 
   scanComposedHtmlForForbiddenContent(siteDir, exit);
   verifyComposedJavadocLinks(siteDir, docsSourceDir, versionedDocsSourceDir, exit);

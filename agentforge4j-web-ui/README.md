@@ -39,6 +39,25 @@ application (not published to npm) and is independent of the Maven reactor.
   page.
 - **Styling**: Tailwind CSS 4, semantic design tokens in `src/styles/tokens.css`.
 
+## Sibling modules this build reads
+
+This module is not buildable on its own — its `pre*` npm scripts generate `src/generated/` from two
+sibling checkouts, so the repository root must be present:
+
+| Read from | By | Produces |
+| --- | --- | --- |
+| `../agentforge4j-workflows-catalog` | `scripts/build-catalogue-data.mjs` | `src/generated/catalogue-data.json` |
+| `../agentforge4j-docs` (`versions.json`, `lts.json`, `scripts/support-window.mjs`, `scripts/redirect-config.mjs`) | `scripts/build-docs-entry.mjs` | `src/generated/docs-entry.json` |
+
+The docs dependency is deliberate and one-directional at the source level: the site's Docs links must
+resolve to whatever version the docs build itself considers current, so both sides call the *same*
+pure functions over the *same* version lists rather than keeping two copies of the rule. A release
+cut moves both with no code change. Nothing in `agentforge4j-docs` imports from here — it composes
+this module's **built output** (`agentforge4j-docs/scripts/assemble-site.mjs`), not its sources.
+
+`Web UI` CI runs on every push and pull request with no `paths:` filter, so a change on either side
+of that coupling is always gated.
+
 ## Local development
 
 ```bash
