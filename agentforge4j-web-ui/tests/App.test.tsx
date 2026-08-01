@@ -4,7 +4,7 @@ import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import App from '@/App';
-import { FOOTER_COLUMNS, PRIMARY_NAV } from '@/config/nav';
+import { DOCS_ENTRY_URL, FOOTER_COLUMNS, PRIMARY_NAV } from '@/config/nav';
 import { ThemeProvider } from '@/theme/ThemeContext';
 
 function renderAt(path: string) {
@@ -86,7 +86,11 @@ describe('docs route collision', () => {
     renderAt('/');
     const primaryNav = screen.getByRole('navigation', { name: 'Primary' });
     const docsLink = within(primaryNav).getByRole('link', { name: 'Docs' });
-    expect(docsLink).toHaveAttribute('href', '/docs/');
+    expect(docsLink).toHaveAttribute('href', DOCS_ENTRY_URL);
+    // The resolved version, never the bare /docs/ client-redirect stub the site used to route
+    // everyone through — see config/nav.ts and scripts/build-docs-entry.mjs.
+    expect(docsLink.getAttribute('href')).not.toBe('/docs/');
+    expect(docsLink.getAttribute('href')).toMatch(/^\/docs\/.+\/$/);
     expect(docsLink.tagName).toBe('A');
   });
 
@@ -95,7 +99,11 @@ describe('docs route collision', () => {
     const footer = container.querySelector('footer');
     expect(footer).not.toBeNull();
     const docsLink = within(footer as HTMLElement).getByRole('link', { name: 'Docs' });
-    expect(docsLink).toHaveAttribute('href', '/docs/');
+    expect(docsLink).toHaveAttribute('href', DOCS_ENTRY_URL);
+    // The resolved version, never the bare /docs/ client-redirect stub the site used to route
+    // everyone through — see config/nav.ts and scripts/build-docs-entry.mjs.
+    expect(docsLink.getAttribute('href')).not.toBe('/docs/');
+    expect(docsLink.getAttribute('href')).toMatch(/^\/docs\/.+\/$/);
     expect(docsLink.tagName).toBe('A');
   });
 });
@@ -222,8 +230,9 @@ describe('footer navigation', () => {
   test('every route is reachable from either the primary nav or the footer, except deliberate aliases', () => {
     // /contributing is a deliberate alias of /community (same content, same nav entry) —
     // not a defect, so it's excluded here rather than asserted unreachable. /docs is excluded
-    // too: it is deliberately NOT an SPA route (the docs link nav test above covers its real
-    // href, /docs/, into the composed artifact rather than an internal route).
+    // too: it is deliberately NOT an SPA route (the docs link nav tests above cover its real
+    // href — the versioned /docs/<version>/ tree in the composed artifact, resolved at build
+    // time by scripts/build-docs-entry.mjs — rather than an internal route).
     renderAt('/');
     const reachableHrefs = new Set(
       screen.getAllByRole('link').map((link) => link.getAttribute('href')),
