@@ -60,6 +60,10 @@
 //     is brand-prefixed prose rather than the bare identifier every generated page carries, so it is
 //     the one page in the corpus whose title, heading and description are neither surface-derived
 //     nor derived from its own raw title.
+//
+// It is also the one page this pass adds an inbound LINK to, rather than only metadata: nothing in
+// a generated surface links `surfaces.html`, so the landing page that explains the three-way split
+// was unreachable from the surface's own front door — see `linkSurfacesLandingFromOverview`.
 
 import { existsSync, readdirSync, readFileSync, realpathSync, statSync, writeFileSync } from 'node:fs';
 import { isAbsolute, join, relative } from 'node:path';
@@ -136,6 +140,73 @@ export function addRobotsNoindexTag(html) {
     throw new Error('javadoc-seo: a redirect stub carries an unrecognized robots tag shape — template drift?');
   }
   return html.replace(/<\/head>/, () => `${ROBOTS_NOINDEX_TAG}\n</head>`);
+}
+
+// A surface's own overview page (`index.html`) is maven-javadoc-plugin's aggregate index. It knows
+// nothing about the OTHER surfaces stitched in beside it (`mcp/`, `spring-boot-starter/`) — only
+// `surfaces.html` links those, and nothing links `surfaces.html`.
+//
+// That left the landing page reachable in exactly one direction. `/javadoc/latest/` is the surface
+// the SPA's API page links (agentforge4j-web-ui/src/pages/ApiPage.tsx) and the only one that is
+// indexable, and arriving there put a reader on the aggregate index with no route to the MCP or
+// Spring Boot starter surfaces at all — the split the landing page exists to explain was
+// undiscoverable from the one entry point the public actually uses. The docs' own Javadoc page
+// calls `surfaces.html` the place to "start", but only ever links the `next` and version-pinned
+// copies of it, both of which are `noindex`.
+//
+// The fix is a link from the overview to the landing page, added here rather than in
+// `build-javadoc.mjs` for the same reason everything else in this module is: a version-pinned
+// surface is built by that release tag's OWN historical copy of build-javadoc.mjs, so only a pass
+// over the composed artifact reaches every surface on every deploy.
+//
+// Deliberately NOT solved with a sitemap entry. A sitemap advertises URLs; it does not make a page
+// reachable, and a reader who lands on the overview still could not find the other surfaces. The
+// composed sitemap's own policy is one URL per surface — its entry point — precisely so thousands
+// of generated pages do not bury the site's real content; `surfaces.html` is not an entry point, it
+// is a page that was missing its inbound link.
+const SURFACES_LANDING_HREF = `href="${SURFACES_LANDING_FILENAME}"`;
+const HEADING_CLOSE_PATTERN = /<\/h1>/;
+
+/**
+ * `html` (a surface's overview page) with a link to that surface's `surfaces.html` landing page
+ * added directly beneath its heading, and nothing else changed.
+ *
+ * Relative (`href="surfaces.html"`), never absolute: the overview and the landing page are siblings
+ * in the same surface, so the same markup is correct on `/javadoc/next/`, `/javadoc/latest/` and
+ * every version-pinned mount, and correct whether the page is served as `.../` or `.../index.html`.
+ * An absolute URL would have to know which mount it was being written into and would hard-code one
+ * surface's path into every copy of it.
+ *
+ * Idempotent by refusal, matching `addRobotsNoindexTag`: a page that already links the landing page
+ * is returned untouched rather than gaining a second one. Keyed on the LINK itself, not on a private
+ * marker attribute — partly to keep an implementation detail out of every published page, but mainly
+ * because the two behave differently in the one case that matters. Should maven-javadoc-plugin ever
+ * start emitting its own link to `surfaces.html`, a marker check would not recognise it and would
+ * silently add a duplicate; keying on the href leaves that page alone, and the before-state oracle in
+ * the tests fails so the now-redundant injection is noticed rather than quietly doubling up.
+ *
+ * Fails loudly when the overview has no `</h1>` to anchor to, in keeping with this module's other
+ * template-drift checks — silently skipping would restore the exact orphaning this exists to fix,
+ * and do it invisibly.
+ *
+ * The link text says only what can be verified: that the landing page exists and lists this
+ * reference's surfaces. It does not name or count them — that content belongs to
+ * `build-javadoc.mjs`, and for a pinned surface to that release tag's copy of it.
+ *
+ * @param {string} html
+ * @returns {string}
+ */
+export function linkSurfacesLandingFromOverview(html) {
+  if (html.includes(SURFACES_LANDING_HREF)) {
+    return html;
+  }
+  if (!HEADING_CLOSE_PATTERN.test(html)) {
+    throw new Error(
+      'javadoc-seo: expected a </h1> on the surface overview page to anchor the surfaces link to — template drift?',
+    );
+  }
+  const link = `<p><a ${SURFACES_LANDING_HREF}>All API surfaces</a> — how this reference is split.</p>`;
+  return html.replace(HEADING_CLOSE_PATTERN, () => `</h1>\n${link}`);
 }
 
 // Every page maven-javadoc-plugin generates ends its `<title>` with the configured `-windowtitle`
@@ -548,6 +619,56 @@ function canonicalFor(siteUrl, mountPath, surfaceRoot, htmlFilePath) {
 }
 
 /**
+ * Every published Javadoc surface, with the mount it lives at, the lifecycle label its pages carry,
+ * the version it presents (`null` for `next`, and for `latest` before any release), and whether the
+ * whole surface is suppressed from indexing — the duplicate-content policy in this module's header
+ * comment, expressed once as data.
+ *
+ * `applyJavadocSeo` below stamps the robots tags from this; `assemble-site.mjs` builds the composed
+ * sitemap's Javadoc entries from the SAME list, taking exactly the surfaces this says are
+ * indexable. That shared derivation is the point: a sitemap that advertises a surface the robots
+ * tag suppresses (or omits one it does not) is a self-contradiction no separate check would
+ * necessarily catch, and it is impossible to express here.
+ *
+ * @param {string[]} releasedVersions newest first, as `versions.json` holds them
+ * @returns {{mountPath: string, label: string, version: string|null, noindex: boolean}[]}
+ */
+export function javadocSurfaces(releasedVersions) {
+  const latestMirroredVersion = releasedVersions.length > 0 ? releasedVersions[0] : null;
+  return [
+    {
+      mountPath: 'javadoc/next',
+      label: 'next, in-development',
+      version: null,
+      // Unconditional, in every lifecycle state — NOT derived from latestMirroredVersion. /next/
+      // tracks main and is byte-identical to /latest/ for as long as main has not diverged from the
+      // newest release tag, which is the steady state rather than an edge case. See this module's
+      // header comment.
+      noindex: true,
+    },
+    {
+      mountPath: 'javadoc/latest',
+      label: latestMirroredVersion ? `latest stable, ${latestMirroredVersion}` : 'latest (pre-release)',
+      // The version whose surface /latest/ is a copy of — what dates it, and what its content
+      // actually is. `null` pre-release, when it mirrors `next` instead.
+      version: latestMirroredVersion,
+      // /latest/ is always the evergreen public entry point, indexable in both lifecycle states.
+      noindex: false,
+    },
+    ...releasedVersions.map((version) => ({
+      mountPath: `javadoc/${version}`,
+      label: version,
+      version,
+      // The version /latest/ currently mirrors byte-for-byte gets noindex,follow instead of a
+      // second indexable copy of the same content — see this module's header comment. Once a newer
+      // release ships, this one becomes genuinely distinct historical content, turns indexable
+      // again on the next deploy, and joins the sitemap on that same deploy for the same reason.
+      noindex: version === latestMirroredVersion,
+    })),
+  ];
+}
+
+/**
  * Applies `injectJavadocPageSeo` to every generated `.html` page in the composed artifact's
  * javadoc surfaces: `javadoc/next/`, `javadoc/latest/`, and one per entry in `releasedVersions` —
  * the surface's own overview page and every nested class/package/index/tree/help page beneath it,
@@ -565,32 +686,7 @@ function canonicalFor(siteUrl, mountPath, surfaceRoot, htmlFilePath) {
  * @returns {number} the number of pages updated, across every surface
  */
 export function applyJavadocSeo({ siteDir, siteUrl, ogImage, releasedVersions }) {
-  const latestMirroredVersion = releasedVersions.length > 0 ? releasedVersions[0] : null;
-
-  const surfaces = [
-    {
-      mountPath: 'javadoc/next',
-      label: 'next, in-development',
-      // Unconditional, in every lifecycle state — NOT derived from latestMirroredVersion. /next/
-      // tracks main and is byte-identical to /latest/ for as long as main has not diverged from the
-      // newest release tag, which is the steady state rather than an edge case. See this module's
-      // header comment.
-      noindex: true,
-    },
-    {
-      mountPath: 'javadoc/latest',
-      label: latestMirroredVersion ? `latest stable, ${latestMirroredVersion}` : 'latest (pre-release)',
-      // /latest/ is always the evergreen public entry point, indexable in both lifecycle states.
-      noindex: false,
-    },
-    ...releasedVersions.map((version) => ({
-      mountPath: `javadoc/${version}`,
-      label: version,
-      // The version /latest/ currently mirrors byte-for-byte gets noindex,follow instead of a
-      // second indexable copy of the same content — see this module's header comment.
-      noindex: version === latestMirroredVersion,
-    })),
-  ];
+  const surfaces = javadocSurfaces(releasedVersions);
 
   let updated = 0;
   for (const surface of surfaces) {
@@ -650,6 +746,19 @@ export function applyJavadocSeo({ siteDir, siteUrl, ogImage, releasedVersions })
         });
       } catch (error) {
         throw new Error(`javadoc-seo: failed processing ${pageInput}: ${error.message}`);
+      }
+      // The overview is the surface's front door, and the only page a reader is linked to from
+      // outside; give it the one inbound link `surfaces.html` was missing (see
+      // `linkSurfacesLandingFromOverview`). Applied only when this surface actually HAS a landing
+      // page — an older release tag whose build-javadoc.mjs predates it must not gain a link to a
+      // page that does not exist there. Runs after the SEO injection, so it operates on the
+      // already-normalized heading rather than racing it.
+      if (isOverview && existsSync(join(surfaceRoot, SURFACES_LANDING_FILENAME))) {
+        try {
+          updatedHtml = linkSurfacesLandingFromOverview(updatedHtml);
+        } catch (error) {
+          throw new Error(`javadoc-seo: failed processing ${pageInput}: ${error.message}`);
+        }
       }
       writeFileSync(pageInput, updatedHtml, 'utf8');
       updated += 1;
