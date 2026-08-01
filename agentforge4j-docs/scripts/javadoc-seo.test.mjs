@@ -2104,10 +2104,91 @@ test('a title whose own ending is punctuation never yields doubled dots or a dou
     const shortened = composed.slice(prose.length);
     assert.doesNotMatch(shortened, /\.\.\.\u2026/, `${what}: ascii dots stacked onto the mark`);
     assert.doesNotMatch(shortened, /\u2026\u2026/, `${what}: the mark was doubled`);
-    // Exactly one mark, and the character before it is never punctuation or space.
-    assert.equal((shortened.match(/\u2026/gu) ?? []).length, 1, `${what}: expected exactly one mark`);
+    // Exactly one mark AT THE END, and the character before it is never punctuation or space.
+    //
+    // Deliberately not "exactly one mark anywhere". A title may legitimately contain an ellipsis of
+    // its own, and now that the retention floor keeps a long trailing token instead of discarding
+    // it, that character survives into the description \u2014 `Beta\u2026 XXX\u2026` is the source's own mark plus
+    // this one, 50 characters apart. That is faithful, not malformed. What the requirement forbids
+    // is stacking: two marks touching, or ascii dots running into the mark, or a mark hung off
+    // trailing punctuation. Each is asserted separately above and below, so relaxing the count does
+    // not relax the property.
     assert.match(shortened, /[^\s\p{P}]\u2026\.$/u, `${what}: ${JSON.stringify(shortened)}`);
+    // The mark this code appended is the LAST character before the suffix, and any other mark in
+    // the string came from the title and is separated from it by real content.
+    assert.equal(shortened.at(-2), '\u2026', `${what}: ${JSON.stringify(shortened)}`);
+    const earlier = shortened.slice(0, -2).lastIndexOf('\u2026');
+    assert.ok(
+      earlier === -1 || /[^\s\p{P}]/u.test(shortened.slice(earlier + 1, -2)),
+      `${what}: a second mark with nothing between it and the appended one: ${JSON.stringify(shortened)}`,
+    );
   }
+});
+
+test('a long trailing type name survives the cut — the identity the whole description exists to carry', () => {
+  // The regression this floor exists to stop, in the exact shape the real corpus has: a few short
+  // words then one long qualified name. Backing off to the last space kept `Uses of Interface…` and
+  // nothing else, so 103 different pages published a byte-identical description while leaving ~51
+  // characters of the budget unspent.
+  const title = 'Uses of Interface com.agentforge4j.config.loader.agent.AgentDefinitionAssembler.SiblingResolver';
+  const description = descriptionOf(nestedPageWithTitle(title));
+  assert.ok(description.length <= MAX_META_DESCRIPTION_LENGTH, `over budget at ${description.length}`);
+  const kept = description.slice(nestedPrefixFor('next, in-development').length).replace(/…\.$/, '');
+  assert.ok(title.startsWith(kept), `not a prefix of the title: ${JSON.stringify(kept)}`);
+  // The qualified name must actually be represented, not just the generic lead-in.
+  assert.ok(
+    kept.length > 'Uses of Interface '.length,
+    `the identifying name was discarded, leaving only the shared lead-in: ${JSON.stringify(kept)}`,
+  );
+  assert.match(kept, /com\.agentforge4j/, 'the package that identifies this page must survive');
+  // And the budget is actually used: a cut that spends less than half the room is the bug.
+  assert.ok(
+    description.length > MAX_META_DESCRIPTION_LENGTH - 12,
+    `${MAX_META_DESCRIPTION_LENGTH - description.length} characters of budget left unspent`,
+  );
+});
+
+test('two pages whose titles differ only in the long trailing name get DIFFERENT descriptions', () => {
+  // The property that actually matters for search: 499 of 511 shortened pages previously shared a
+  // description with another page. Distinctness is asserted directly rather than inferred.
+  const lead = 'Uses of Record Class com.agentforge4j.core.workflow.estimate.';
+  const a = descriptionOf(nestedPageWithTitle(`${lead}EpicPackageComplexityAnalyzer`));
+  const b = descriptionOf(nestedPageWithTitle(`${lead}WorkflowExecutionEstimateReport`));
+  assert.notEqual(a, b, 'two distinct pages published the same description');
+  for (const d of [a, b]) {
+    assert.ok(d.length <= MAX_META_DESCRIPTION_LENGTH);
+    assert.match(d, /…\.$/, 'this case is only meaningful if both were actually shortened');
+  }
+});
+
+test('short-word prose still ends on a whole word — the floor must not cost ordinary titles', () => {
+  // The floor only fires when the trailing token is longer than half the room. Ordinary prose sits
+  // far above it, so the whole-word behaviour that was already correct must be untouched.
+  const title = 'The Quick Brown Fox Jumps Over The Lazy Dog And Keeps On Running Forever And Ever';
+  const description = descriptionOf(nestedPageWithTitle(title));
+  const kept = description.slice(nestedPrefixFor('next, in-development').length).replace(/…\.$/, '');
+  assert.ok(title.startsWith(kept));
+  assert.ok(title.length > kept.length, 'only meaningful if the title was actually cut');
+  assert.match(title.charAt(kept.length), /\s/, 'an ordinary prose title must still cut at a space');
+});
+
+test('the retention floor is a real boundary, exercised from both sides', () => {
+  // Pinned against the constant rather than a hand-computed string, so a change to the floor or to
+  // the fixed prose fails here instead of silently moving the behaviour.
+  const available = MAX_META_DESCRIPTION_LENGTH - nestedPrefixFor('next, in-development').length - 1;
+  const room = available - 1;
+  const floor = Math.ceil(room * 0.5);
+  // A trailing token that leaves JUST enough behind: whole-word cut retained.
+  const keepsEnough = `${'w'.repeat(floor)} ${'z'.repeat(room)}`;
+  const keptA = descriptionOf(nestedPageWithTitle(keepsEnough))
+    .slice(nestedPrefixFor('next, in-development').length).replace(/…\.$/, '');
+  assert.equal(keptA, 'w'.repeat(floor), `expected the whole-word cut, got ${JSON.stringify(keptA)}`);
+  // One character less behind: the mid-token cut wins instead, and spends the whole room.
+  const tooLittle = `${'w'.repeat(floor - 1)} ${'z'.repeat(room)}`;
+  const keptB = descriptionOf(nestedPageWithTitle(tooLittle))
+    .slice(nestedPrefixFor('next, in-development').length).replace(/…\.$/, '');
+  assert.equal(keptB.length, room, `expected the hard cut to use the full room, got ${keptB.length}`);
+  assert.match(keptB, /z/, 'the hard cut must reach into the long trailing token');
 });
 
 test('a SHORT title that ends in punctuation is still composed verbatim — byte-identity outranks tidiness', () => {
