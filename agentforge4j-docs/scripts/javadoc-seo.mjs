@@ -528,10 +528,262 @@ function decodeHtmlEntities(value) {
     },
   );
 }
+// The search-snippet budget every description this site publishes is written to. A longer one is
+// cut in the search result, and the cut lands wherever it lands — mid-word if the boundary falls
+// inside one, which is what shipped here before it was caught by hand.
+//
+// Restated rather than imported: `agentforge4j-docs` and `agentforge4j-web-ui` are independently
+// built modules with no dependency between them, and adding one for a single integer would be a
+// worse trade than restating it. The claim that this IS the same number is not left to a comment —
+// a test reads `agentforge4j-web-ui/scripts/build-seo.mjs`'s own `MAX_DESCRIPTION_LENGTH` and
+// fails if the two ever drift apart.
+const MAX_SNIPPET_DESCRIPTION_LENGTH = 157;
+
+/**
+ * `description` returned unchanged, once proven to fit `MAX_SNIPPET_DESCRIPTION_LENGTH`.
+ *
+ * Deliberately narrow: applied to hand-authored copy whose length is a CHOICE — `surfaceCopy` and
+ * `surfacesLandingCopy` in full, and, through `composeWithinSnippetBudget`, the fixed prose around
+ * `nestedPageCopy`'s generated title. For all of those the worst case is knowable in advance, so an
+ * overrun is always an authoring mistake and is worth refusing outright rather than publishing a
+ * snippet that will be cut.
+ *
+ * It is NOT applied to a generated page title, and must never be. `nestedPageCopy` quotes a page's
+ * own `<title>` — an arbitrary class, package or index name this repo does not control and cannot
+ * bound. A limit there would make one long type name fail the entire site build, trading a cosmetic
+ * shortening on one generated page for a total loss of the published reference. That title is
+ * instead SHORTENED to whatever budget the owned prose leaves, which is what
+ * `composeWithinSnippetBudget` exists to do. The asymmetry — refuse what we chose, shorten what we
+ * were given — is the whole point of putting the check here instead of in `injectJavadocPageSeo`,
+ * where it would necessarily apply to every page as a single rule.
+ *
+ * Headroom, so the failure mode is understood rather than discovered: `surfacesLandingCopy` is the
+ * longer of the two and leaves room for a **26-character version string** in the
+ * `latest stable, <version>` label. `release-paths.mjs`'s `VERSION_RE` does not cap version length,
+ * so that ceiling is real but far above any plausible semver-plus-prerelease value.
+ *
+ * @param {string} description the hand-authored description to check
+ * @param {string} source the copy factory it came from, so a failure names the thing to edit
+ * @returns {string} `description`, unchanged
+ */
+export function withinSnippetBudget(description, source) {
+  if (description.length > MAX_SNIPPET_DESCRIPTION_LENGTH) {
+    throw new Error(
+      `javadoc-seo: ${source} produced a ${description.length}-character description, over the ` +
+        `${MAX_SNIPPET_DESCRIPTION_LENGTH}-character search-snippet budget — it would be truncated, ` +
+        `possibly mid-word. Shorten the wording (this copy is hand-authored, so its length is a ` +
+        `choice): ${snippetBudgetExcerpt(description)}`,
+    );
+  }
+  return description;
+}
+
+/**
+ * As much of `description` as a diagnostic may quote: at most `MAX_SNIPPET_DESCRIPTION_LENGTH`
+ * characters — exactly the portion a search result would have kept — and, when anything was left
+ * out, a count of how much.
+ *
+ * Total rather than partial: a `description` that already fits is returned unchanged, with no
+ * ellipsis and no count, because a suffix claiming an omission when nothing was omitted is a false
+ * statement in an error message. That branch is why this is exported: `withinSnippetBudget` only
+ * ever calls it above the budget, so quoting-without-omission is unreachable through the guard and
+ * could not otherwise be proven. The module already exports its internals on the same basis
+ * (`isWithinRoot`, `stripJavadocWindowTitle`).
+ *
+ * Bounded because the length of what is quoted is not this function's to predict. The only variable
+ * part of the two guarded descriptions is the lifecycle label, which carries a version string read
+ * straight out of `versions.json` by a bare `JSON.parse` (`assemble-site.mjs`); nothing checks its
+ * length there, and `release-paths.mjs`'s `VERSION_RE` constrains the alphabet but not the length.
+ *
+ * That is NOT a claim that a deploy can emit an enormous log. Through the composed site the same
+ * version must also name a `javadoc/<version>` directory, so a filesystem-valid name caps it well
+ * before a log could be flooded — a test attempting otherwise fails at `mkdir`, not at its
+ * assertion. The bound exists so this helper's own contract is predictable for any caller, not
+ * because an incident was observed.
+ *
+ * The head is quoted rather than some window around the overrun, because the head is what keeps the
+ * message diagnostic: the label is the only part that varies between two calls, and it begins 64
+ * characters into `surfaceCopy`'s wording and 36 into `surfacesLandingCopy`'s — both far enough
+ * inside the quote that the version responsible stays visible. Those two offsets are asserted in
+ * the tests rather than trusted from this comment, so a reword that buried the label past the quote
+ * would fail rather than quietly cost the next reader their only clue.
+ *
+ * @param {string} description any description, over budget or not
+ * @returns {string} `description` unchanged when it fits, else its quotable head plus an omitted count
+ */
+export function snippetBudgetExcerpt(description) {
+  if (description.length <= MAX_SNIPPET_DESCRIPTION_LENGTH) {
+    return description;
+  }
+  const omitted = description.length - MAX_SNIPPET_DESCRIPTION_LENGTH;
+  return `${description.slice(0, MAX_SNIPPET_DESCRIPTION_LENGTH)}… (+${omitted} more)`;
+}
+
+// The single-character ellipsis, matching how the SPA's catalogue descriptions mark a shortened
+// value (`agentforge4j-web-ui/scripts/build-seo.mjs`). Deliberately the same mark, deliberately NOT
+// the same code: the two modules are built independently with no dependency between them — the same
+// boundary that made `MAX_SNIPPET_DESCRIPTION_LENGTH` a restated constant rather than an import.
+// Behaviour and terminology are aligned (trim before the mark, never exceed the budget); this side
+// additionally cuts at a word boundary, because a Javadoc page title is prose-like where a
+// catalogue description is already a sentence.
+const SNIPPET_ELLIPSIS = '…';
+
+// The least of the available room a whole-word cut may keep before it stops being an improvement.
+//
+// Not a taste setting — it is calibrated against what the real reference actually publishes.
+// Javadoc's own page titles are shaped `Uses of Class <fully.qualified.Name>`: a few short words,
+// then one long unbreakable token carrying every bit of the page's identity. Backing off to the
+// last space therefore discards precisely the part worth keeping, and the surviving prefix is
+// shared with every other page of that kind. Measured on the built corpus before this floor
+// existed: 511 shortened descriptions collapsed into **12 distinct texts** — 103 pages all reading
+// `... — Uses of Record Class….` — while averaging 106 characters against a 157-character budget,
+// leaving ~51 characters of room unspent. Two pages that a search result cannot tell apart are
+// worse than one that ends mid-token, so below this floor the mid-word cut wins.
+//
+// A half is the natural place to put it: it is the point where the whole-word cut stops keeping
+// most of what was available. Ordinary prose titles sit far above it (their words are short, so
+// the last space is near the end) and are unaffected; only a trailing token longer than half the
+// room trips it, which is exactly the qualified-name case.
+const WHOLE_WORD_RETENTION = 0.5;
+
+/**
+ * A description built from prose this module owns plus a value it does not, guaranteed to fit
+ * `MAX_SNIPPET_DESCRIPTION_LENGTH` by shortening ONLY the part that is not owned.
+ *
+ * This is the other half of `withinSnippetBudget`. That function refuses copy whose length is a
+ * choice; this one composes copy whose length is only PARTLY a choice. `nestedPageCopy` quotes a
+ * generated page title — an arbitrary class, package or index name — around fixed prose, and both
+ * halves need a different answer: the prose must not silently shrink, and the title must not be
+ * able to fail a build. So `prefix` and `suffix` are checked exactly as any other hand-authored
+ * copy is, and `generated` absorbs whatever is left.
+ *
+ * What is TESTED is `prefix` and `suffix` together, without `generated` between them, so the guard
+ * answers "does the prose this repo owns still fit on its own?" — the question a reword changes —
+ * rather than a question about the current page's title. Two pages with wildly different titles
+ * therefore fail or pass identically. That is what closes the gap `withinSnippetBudget` deliberately
+ * left: the prose around the generated title was hand-authored and boundable, yet nothing bounded
+ * it, so a long enough reword would have truncated the snippet of every generated page in every
+ * surface at once.
+ *
+ * What is REPORTED when it fails is the real composed description, title included — the string the
+ * page would actually have published. The prose on its own is never published, so quoting it would
+ * hand the reader a string they cannot find anywhere in the output. Condition and message answer
+ * different questions on purpose: the condition is about the invariant, the message is about the
+ * page in front of you.
+ *
+ * A title that already fits is composed verbatim, so ordinary pages are byte-for-byte what they
+ * were before this existed. Only a title that cannot fit is shortened, and it degrades rather than
+ * failing publication: cut at a word boundary when there is one, stripped of the whitespace or
+ * punctuation the cut left dangling, and marked with an ellipsis.
+ *
+ * The lifecycle label belongs to `prefix`, never to `generated` — it is this repo's own diagnostic
+ * context and states which surface a page belongs to, so shortening it would trade a cosmetic
+ * overrun for a description that misidentifies its own content.
+ *
+ * @param {string} prefix owned prose before the generated value, including any label
+ * @param {string} generated the value this module does not control; the only shortenable part
+ * @param {string} suffix owned prose after the generated value
+ * @param {string} source the copy factory, so a failure in the owned prose names what to edit
+ * @returns {string} a description of at most `MAX_SNIPPET_DESCRIPTION_LENGTH` characters
+ */
+export function composeWithinSnippetBudget(prefix, generated, suffix, source) {
+  const available = MAX_SNIPPET_DESCRIPTION_LENGTH - prefix.length - suffix.length;
+  const value = generated.trim();
+  if (available < 0) {
+    // The owned prose cannot fit even with no title at all, so no amount of shortening rescues it.
+    // The CONDITION is deliberately about the prose alone — that is the invariant, and it must fail
+    // identically whatever title this page happened to carry. What gets REPORTED is the real
+    // description this page would have published, because a reader needs to see the string that
+    // failed, not a skeleton that is never published on its own. Always throws: the composition is
+    // at least as long as the prose, which is already over budget. Delegated so the message,
+    // excerpting and wording live in exactly one place.
+    withinSnippetBudget(`${prefix}${value}${suffix}`, source);
+  }
+  if (value.length <= available) {
+    return `${prefix}${value}${suffix}`;
+  }
+  return `${prefix}${shortenGeneratedValue(value, available)}${suffix}`;
+}
+
+/**
+ * `value` shortened to at most `available` characters, ending in `SNIPPET_ELLIPSIS` whenever there
+ * is room for one.
+ *
+ * Every branch is total and deterministic, because the caller has already proven the owned prose
+ * fits and must be able to return SOMETHING for any generated input:
+ *
+ * - No room at all (the prose fills the budget exactly): the value is dropped rather than pushing
+ *   the description over. The prose still says which surface the page belongs to.
+ * - Room for the mark alone: just the mark, which reads as "there was a title, it did not fit".
+ * - A cut that lands mid-word: the partial word is dropped, so the snippet ends on a whole word.
+ * - A cut that lands exactly at a space: kept as-is — the last word is already complete, and
+ *   dropping it would discard a word that fitted.
+ * - A single word longer than the room available (one very long generated type name, the case with
+ *   no word boundary to find): the hard cut is kept, since dropping the only word would leave
+ *   nothing to identify the page by.
+ * - A cut mid-way through a trailing word so long that dropping it would throw away most of the
+ *   room: the hard cut is kept too, for exactly the same reason as the case above. Ending on a
+ *   whole word is a cosmetic preference; it is not worth surrendering the only part of the value
+ *   that says WHICH page this is. See `WHOLE_WORD_RETENTION` for the measured failure this rule
+ *   exists to prevent.
+ * - A single token that is entirely punctuation: the hard cut is kept and marked, for the same
+ *   reason — tidying it away would leave the prose trailing off into nothing. Tidying only ever
+ *   removes a dangling END; it never empties a value that had content.
+ *
+ * A whitespace-only value never reaches here: the caller trims first, so it becomes empty, fits
+ * trivially, and is composed verbatim.
+ *
+ * The cut never splits a surrogate pair. `MAX_SNIPPET_DESCRIPTION_LENGTH` counts UTF-16 code units
+ * — the same unit `withinSnippetBudget` measures and the same unit the SPA's budget uses — so a cut
+ * can land between the halves of an astral character, and emitting a lone surrogate would put
+ * invalid text in a `<meta>` tag. The orphan is dropped instead, which only ever shortens.
+ *
+ * @param {string} value a trimmed value already known not to fit
+ * @param {number} available how many characters it may occupy
+ * @returns {string} the shortened value, never longer than `available`
+ */
+function shortenGeneratedValue(value, available) {
+  if (available <= 0) {
+    return '';
+  }
+  if (available <= SNIPPET_ELLIPSIS.length) {
+    return SNIPPET_ELLIPSIS;
+  }
+  const room = available - SNIPPET_ELLIPSIS.length;
+  const hardCut = withoutOrphanSurrogate(value.slice(0, room));
+  // Whether the character the cut fell ON is whitespace decides if the last kept word is complete.
+  const cutLandedOnWhitespace = /^\s/.test(value.slice(hardCut.length));
+  const wholeWords = cutLandedOnWhitespace ? hardCut : hardCut.replace(/\s+\S*$/u, '');
+  // Ending on a whole word is worth a few characters, not most of them. Backing off to the last
+  // space is only an improvement while the words are short; when the trailing word is a long
+  // qualified type name — which is the shape nearly every generated page's title actually has —
+  // dropping it deletes the identifying part and keeps only a prefix shared with hundreds of other
+  // pages. Below the retention floor the mid-word cut is the better description, so it is kept.
+  const keepsEnough = wholeWords.length >= room * WHOLE_WORD_RETENTION;
+  const chosen = wholeWords.length > 0 && keepsEnough ? wholeWords : hardCut;
+  const tidied = chosen.replace(/[\s\p{P}]+$/u, '');
+  return `${tidied.length > 0 ? tidied : chosen.trimEnd()}${SNIPPET_ELLIPSIS}`;
+}
+
+/**
+ * `text` without a trailing high surrogate whose partner was cut away. Any other `text` is returned
+ * unchanged, so this can only ever shorten by the one orphaned code unit.
+ *
+ * @param {string} text
+ * @returns {string}
+ */
+function withoutOrphanSurrogate(text) {
+  const last = text.charCodeAt(text.length - 1);
+  return last >= 0xd800 && last <= 0xdbff ? text.slice(0, -1) : text;
+}
+
 function surfaceCopy(label) {
   return {
     title: `AgentForge4j API Reference — ${label}`,
-    description: `Generated Javadoc API reference for the AgentForge4j framework (${label}).`,
+    description: withinSnippetBudget(
+      `Generated Javadoc API reference for the AgentForge4j framework (${label}).`,
+      'surfaceCopy',
+    ),
   };
 }
 
@@ -566,21 +818,20 @@ function surfaceCopy(label) {
  * with no test able to fail. What is said instead holds for any surface set — the page explains the
  * split and links each one.
  *
- * Kept inside the 157-character meta-description budget the rest of this site already publishes to
- * (`agentforge4j-web-ui/scripts/build-seo.mjs`'s `MAX_DESCRIPTION_LENGTH`): a longer description is
- * cut in the search result, and at 157 the first wording of this one was cut mid-word. Asserted for
- * every lifecycle label in this module's tests rather than enforced at runtime — `nestedPageCopy`'s
- * descriptions are as long as the page title they quote, so a hard limit in `injectJavadocPageSeo`
- * would fail the whole site build on one long class name. The bound is knowable in advance only
- * here, where the wording is fixed and only the label varies.
+ * Kept inside the search-snippet budget — now by `withinSnippetBudget` above rather than by
+ * assertion in tests alone, so a future reword cannot quietly reintroduce the truncated snippet
+ * this page already shipped once. See that function for why the check stops at this module's own
+ * hand-authored copy and never reaches `nestedPageCopy`.
  */
 function surfacesLandingCopy(label) {
   return {
     title: `API Surfaces — AgentForge4j API Reference (${label})`,
     heading: `AgentForge4j API Surfaces (${label})`,
-    description:
+    description: withinSnippetBudget(
       `How the AgentForge4j API reference (${label}) is split across its independently generated ` +
-      'surfaces, with a link to each one.',
+        'surfaces, with a link to each one.',
+      'surfacesLandingCopy',
+    ),
   };
 }
 
@@ -588,7 +839,27 @@ function surfacesLandingCopy(label) {
  * title/description in real content already present on the page, rather than inventing per-page
  * copy this script has no way to derive correctly for every one of maven-javadoc-plugin's own page
  * kinds (class, package summary, package tree, all-classes index, help, ...). Falls back to the
- * surface label alone only in the (unexpected) case a page carries no `<title>` at all. */
+ * surface label alone only in the (unexpected) case a page carries no `<title>` at all.
+ *
+ * Still pointedly NOT passed through `withinSnippetBudget`: the quoted page title is arbitrary
+ * generated content this repo cannot bound, so a hard limit on it would let one long type name fail
+ * the whole site build. A shortened snippet on a single generated class page is the lesser cost,
+ * and the only one of the two that is recoverable. See `withinSnippetBudget` for the full reasoning.
+ *
+ * What IS bounded is the part this repo does own. The description is composed through
+ * `composeWithinSnippetBudget`, which checks the fixed prose and the lifecycle label on their own —
+ * so a reword of that prose still fails loudly, exactly as it does for the two fully hand-authored
+ * factories — and then fits the generated title into whatever budget is left, shortening only the
+ * title. An ordinary title is composed verbatim and is byte-for-byte what it was before; a title
+ * too long to fit is cut at a word boundary and marked, rather than publishing a snippet the search
+ * result would cut at an arbitrary point.
+ *
+ * The `title` deliberately keeps the FULL generated title. Only the description is subject to the
+ * snippet budget: the `<title>` and `og:title` identify the page, and truncating them to a length
+ * rule about search snippets would lose information the page needs to be identifiable at all.
+ *
+ * Note the fallback path returns `surfaceCopy(label)`, which IS budget-checked — that is correct
+ * and not an inconsistency: that branch emits hand-authored copy, not a quoted page title. */
 function nestedPageCopy(html, label) {
   const match = TITLE_TAG_PATTERN.exec(html);
   // Stripped BEFORE the label is applied: the raw title carries the generation-time window title
@@ -600,7 +871,12 @@ function nestedPageCopy(html, label) {
   }
   return {
     title: `${pageTitle} — AgentForge4j API Reference (${label})`,
-    description: `Generated Javadoc API reference for the AgentForge4j framework (${label}) — ${pageTitle}.`,
+    description: composeWithinSnippetBudget(
+      `Generated Javadoc API reference for the AgentForge4j framework (${label}) — `,
+      pageTitle,
+      '.',
+      'nestedPageCopy',
+    ),
   };
 }
 

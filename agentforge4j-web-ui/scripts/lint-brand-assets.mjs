@@ -1,11 +1,19 @@
 // SPDX-License-Identifier: Apache-2.0
 //
-// Brand-asset single-source check. Some brand files legitimately exist in two places because two
-// consumers can only read them from their own directory — the published web asset under this
-// module's `public/`, and the repository-level asset GitHub itself reads. Neither can be a symlink
-// or a build-time copy (the web asset must be a committed file Vite copies verbatim; the GitHub one
-// must sit at the exact path GitHub looks for), so the copies are real and the only thing that can
-// keep them honest is a check that they are byte-identical.
+// Brand-asset single-source check. Some brand files legitimately exist in two places, and neither
+// copy can be a symlink or a build-time artefact: the published web asset must be a committed file
+// under this module's `public/` for Vite to copy it verbatim, and the repository-level copy under
+// `.github/assets/` is the committed source of truth for an image that lives outside the repository
+// altogether. The only thing that can keep two real copies honest is a check that they are
+// byte-identical.
+//
+// Stated precisely, because the obvious assumption is wrong: GitHub does NOT read a repository's
+// social preview from any committed path. It is uploaded once in Settings -> General -> Social
+// preview and stored server-side, so nothing in this repository can make GitHub's card change and
+// nothing in GitHub can make this file change. That is exactly why the committed copy is worth
+// keeping and worth checking — it is the only record of what was uploaded, the thing a future
+// rebrand diffs against, and the file someone re-uploads from. If it silently drifts from the card
+// the site serves, the two surfaces show different marks and nothing anywhere would say so.
 //
 // This is the same arrangement agentforge4j-docs already uses for the navbar logo
 // (scripts/lint-navbar-logo.mjs) — one canonical file, a documented copy, and a lint that fails the
@@ -28,8 +36,9 @@ export const MIRRORED_BRAND_ASSETS = [
     canonical: '.github/assets/agentforge4j-social-preview.png',
     copy: 'agentforge4j-web-ui/public/brand/social-preview.png',
     why:
-      "GitHub reads a repository's social preview from .github/assets; the site serves its own og:image/twitter:image " +
-      'from this module\'s public/ directory. Both must be the same card.',
+      "the committed record of the card uploaded to the repository's social-preview setting (GitHub stores that " +
+      'image server-side, not at any path in the tree); the site serves its own og:image/twitter:image from this ' +
+      "module's public/ directory. Both must be the same card.",
   },
 ];
 

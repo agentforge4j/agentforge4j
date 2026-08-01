@@ -1342,6 +1342,95 @@ test('a DUPLICATE social tag fails — a client-side sync that appends instead o
   await assert.rejects(() => verifySeo({ distDir, staticRoutes: [] }), /2 <meta property="og:title"> tags on one page/);
 });
 
+// --- Mirrored og:/twitter: pairs. Only the Open Graph half of each pair is fetched and
+// size-checked, so a mirror that disagrees with it is unverified by construction — three separate
+// ways of breaking `twitter:image` used to pass this gate untouched. ---
+
+test('NEGATIVE CONTROL — a twitter:image naming a file the build does not publish fails, via its disagreement with og:image', async () => {
+  const distDir = socialFixture({
+    constantSocial: { 'twitter:image': 'https://agentforge4j.org/brand/not-published.png' },
+  });
+  await assert.rejects(
+    () => verifySeo({ distDir, staticRoutes: [] }),
+    /twitter:image is ".*not-published\.png" but og:image is/,
+  );
+});
+
+test('NEGATIVE CONTROL — an off-origin twitter:image fails even though og:image is fine', async () => {
+  const distDir = socialFixture({ constantSocial: { 'twitter:image': 'https://cdn.example.com/card.png' } });
+  await assert.rejects(
+    () => verifySeo({ distDir, staticRoutes: [] }),
+    /twitter:image is "https:\/\/cdn\.example\.com\/card\.png" but og:image is/,
+  );
+});
+
+test('NEGATIVE CONTROL — a twitter:image too small for the declared large card fails, because it must be the same file og:image already proved', async () => {
+  // The pre-fix state exactly: a published, real, on-origin PNG — just the square app icon, which
+  // `summary_large_image` has no layout for. Every presence/non-emptiness/constancy check passes.
+  const distDir = socialFixture({ constantSocial: { 'twitter:image': 'https://agentforge4j.org/brand/icon-512.png' } });
+  writeFileSync(join(distDir, 'brand', 'icon-512.png'), fixturePngBytes(512, 512));
+  await assert.rejects(
+    () => verifySeo({ distDir, staticRoutes: [] }),
+    /twitter:image is ".*icon-512\.png" but og:image is/,
+  );
+});
+
+test('a twitter:image:alt that has drifted from og:image:alt fails too — the pair is checked, not just the image one', async () => {
+  const distDir = socialFixture({ constantSocial: { 'twitter:image:alt': 'a different description entirely' } });
+  await assert.rejects(
+    () => verifySeo({ distDir, staticRoutes: [] }),
+    /twitter:image:alt is "a different description entirely" but og:image:alt is/,
+  );
+});
+
+test('a shell whose mirrored pairs agree passes — the check is an equality, not a ban on the tags', async () => {
+  await assert.doesNotReject(() => verifySeo({ distDir: socialFixture(), staticRoutes: [] }));
+});
+
+// --- Canonical reading. Every canonical in this file is read through the same tokenizer the meta
+// readers use, so the gate is a statement about the page a crawler receives rather than about how
+// today's producer happens to order and quote its attributes. ---
+
+test('a canonical written with the attributes in the other order, single-quoted, is read — not reported as absent', async () => {
+  const distDir = fixtureDir();
+  const html = page({ canonical: 'https://agentforge4j.org/' }).replace(
+    '<link rel="canonical" href="https://agentforge4j.org/" />',
+    "<link href='https://agentforge4j.org/' rel = 'canonical' />",
+  );
+  writePage(distDir, '', html);
+  writeFileSync(
+    join(distDir, 'sitemap.xml'),
+    sitemapXml([{ url: 'https://agentforge4j.org/', lastmod: '2026-07-20' }]),
+    'utf8',
+  );
+  await assert.doesNotReject(() => verifySeo({ distDir, staticRoutes: [] }));
+});
+
+test('a DUPLICATE canonical fails — a crawler resolves two by picking one, and a client-side sync that appends leaves exactly this', async () => {
+  const distDir = socialFixture({
+    extraHead: '<link rel="canonical" href="https://agentforge4j.org/somewhere-else/" />',
+  });
+  await assert.rejects(
+    () => verifySeo({ distDir, staticRoutes: [] }),
+    /2 <link rel="canonical"> tags on one page/,
+  );
+});
+
+test('a page with no canonical at all is named as such, rather than blaming og:url for disagreeing with nothing', async () => {
+  const distDir = fixtureDir();
+  const html = page({ canonical: 'https://agentforge4j.org/' }).replace(
+    '<link rel="canonical" href="https://agentforge4j.org/" />',
+    '',
+  );
+  writePage(distDir, '', html);
+  writeFileSync(
+    join(distDir, 'sitemap.xml'),
+    sitemapXml([{ url: 'https://agentforge4j.org/', lastmod: '2026-07-20' }]),
+    'utf8',
+  );
+  await assert.rejects(() => verifySeo({ distDir, staticRoutes: [] }), /canonical tag \("null"\)|no <link rel="canonical"> at all/);
+});
+
 test('a missing site-constant tag (og:site_name) fails', async () => {
   const distDir = socialFixture({ constantSocial: { 'og:site_name': null } });
   await assert.rejects(() => verifySeo({ distDir, staticRoutes: [] }), /<meta property="og:site_name"> is missing or empty/);
@@ -1374,8 +1463,16 @@ test('a "site-constant" tag that is not actually constant across pages fails, na
   );
 });
 
+// Both tags are moved together in the two tests below, so the mirrored-pair check (which fires
+// first, and has its own controls further down) is satisfied and the og:image-specific rule is what
+// this test is actually about.
 test('an og:image this build does not actually serve fails — every social card would render with no image at all', async () => {
-  const distDir = socialFixture({ constantSocial: { 'og:image': 'https://agentforge4j.org/brand/not-published.png' } });
+  const distDir = socialFixture({
+    constantSocial: {
+      'og:image': 'https://agentforge4j.org/brand/not-published.png',
+      'twitter:image': 'https://agentforge4j.org/brand/not-published.png',
+    },
+  });
   await assert.rejects(
     () => verifySeo({ distDir, staticRoutes: [] }),
     /og:image \/brand\/not-published\.png is not served by this build/,
@@ -1383,7 +1480,12 @@ test('an og:image this build does not actually serve fails — every social card
 });
 
 test('an off-origin og:image is refused rather than trusted — this gate can only prove what THIS build publishes', async () => {
-  const distDir = socialFixture({ constantSocial: { 'og:image': 'https://cdn.example.com/card.png' } });
+  const distDir = socialFixture({
+    constantSocial: {
+      'og:image': 'https://cdn.example.com/card.png',
+      'twitter:image': 'https://cdn.example.com/card.png',
+    },
+  });
   await assert.rejects(
     () => verifySeo({ distDir, staticRoutes: [] }),
     /og:image "https:\/\/cdn\.example\.com\/card\.png" is off-origin/,

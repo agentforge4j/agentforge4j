@@ -297,6 +297,10 @@ function socialTagPattern(attribute, key, { consumeTrailingWhitespace = false } 
  * `og:url` from its own canonical, a redirect stub from its destination (the stub is not a page
  * about itself), and a not-found page from nothing at all.
  *
+ * The replacement half of each pair is a plain string carrying `escapeHtml`ed route data, and
+ * `escapeHtml` deliberately does not escape `$`. Every consumer must therefore apply it through a
+ * REPLACER FUNCTION, never as a bare replacement string — see `injectHead`'s own loop for why.
+ *
  * A `source` whose value is `null` REMOVES that tag instead of rewriting it, taking the whitespace
  * it occupied with it. That is not a convenience: a not-found page must carry no `og:url`, because
  * that tag makes a claim about which URL the content belongs to, and the address does not exist.
@@ -333,7 +337,18 @@ export function injectHead(html, { title, description, canonical }) {
     if (!pattern.test(result)) {
       throw new Error(`build-seo: expected tag not found in dist/index.html: ${pattern}`);
     }
-    result = result.replace(pattern, replacement);
+    // The replacement is supplied via a function, never as a bare replacement string — the same
+    // guard injectRoot and injectJsonLd already carry, and load-bearing here for the same reason.
+    // `String.prototype.replace` expands `$&`, "$`", `$'` and `$$` inside a replacement STRING
+    // *after* escapeHtml has run (escapeHtml handles `& < > "` and deliberately not `$`), so a
+    // `$`-token anywhere in a route title, description or a shipped workflow's name/description
+    // would reach the shell as document text rather than as itself. `$$` is the dangerous one: it
+    // collapses to a single `$` IDENTICALLY on the title, the description meta and all five
+    // route-scoped social tags, so verify-seo.mjs's social-consistency pass — which compares those
+    // tags against each other — sees a perfectly self-consistent page and the corrupted copy ships.
+    // `$&` splices the matched tag's own source into the value, and `$'` splices the entire rest of
+    // the document into it. A replacer function is never scanned for those tokens.
+    result = result.replace(pattern, () => replacement);
   }
   return result;
 }
