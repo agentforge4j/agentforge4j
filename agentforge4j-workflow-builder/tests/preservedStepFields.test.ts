@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest';
 import type { CanvasModel, CanvasNode, NodeData } from '../src/model/canvasModel';
 import type { NodeKind } from '../src/model/nodeKinds';
 import { NODE_KIND_META } from '../src/model/nodeKinds';
-import { importWorkflowZip } from '../src/io/browser/zip';
+import { buildWorkflowZipBlob, importWorkflowZip } from '../src/io/browser/zip';
 import { WorkflowParseError } from '../src/io/core';
 import {
   canvasToWorkflow,
@@ -106,6 +106,42 @@ describe('preserved step fields — import/export round trip', () => {
     const preserved = collectPreservedStepFields(runtimeStep({ someFutureField: { nested: ['x'] } }));
     expect(preserved).toEqual({ someFutureField: { nested: ['x'] } });
     expect(applyPreservedStepFields({ kind: 'STEP' }, preserved).someFutureField).toEqual({ nested: ['x'] });
+  });
+
+  it('rejects a field the schema has never declared at real import, rather than carrying it through', async () => {
+    // The previous test proves the collect/apply mechanism itself is value-agnostic. It does not
+    // prove that a document carrying such a field round-trips through the real import pipeline —
+    // validateAgainstSchema still runs on the reconstructed document, and StepDefinition's
+    // additionalProperties: false rejects anything it does not declare. A field only "survives
+    // untouched" once the schema itself knows about it (e.g. by widening an enum, or adding a
+    // property) — until then, the whole import fails visibly rather than silently dropping it.
+    await expect(
+      importWorkflowZip(await zipOf(runtimeDocument({ someFutureField: { nested: ['x'] } }))),
+    ).rejects.toThrow(WorkflowParseError);
+  });
+
+  it('rejects a field the schema has never declared at real export, rather than writing an invalid workflow.json', async () => {
+    // Flip side of the import case above, for the second import path (host workflow-detail DTO):
+    // a field workflowDetailToCanvas preserves because it does not recognize it must not be able
+    // to reach a produced ZIP unvalidated — that would convert the old "field silently dropped"
+    // bug into a new "document silently invalid" bug.
+    const model = workflowDetailToCanvas({
+      id: 'detail-unknown-field',
+      name: 'Detail',
+      steps: [
+        {
+          kind: 'STEP',
+          step: {
+            stepId: 'step-a',
+            name: 'Do the work',
+            behaviour: { type: 'AGENT', agentRef: 'agent-1', transition: 'AUTO' },
+            someHostSpecificField: { nested: true },
+          } as never,
+        },
+      ],
+    });
+    const workflow = canvasToWorkflow(model);
+    await expect(buildWorkflowZipBlob(workflow)).rejects.toThrow(WorkflowParseError);
   });
 
   it('preserves every unmodelled StepDefinition property, not only modelTier', async () => {

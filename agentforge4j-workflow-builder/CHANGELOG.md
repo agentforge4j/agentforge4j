@@ -10,6 +10,13 @@ and this package adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Step-level fields the builder has no editor for (e.g. `modelTier`, token estimates, prompt-round
+  caps) now survive an import→export round trip instead of being silently dropped. The mechanism
+  is bounded to step level and does not interpret what it holds, so a genuinely unrecognized field
+  is still rejected — visibly, at both import and export — rather than carried into an invalid
+  document.
+
 ### Fixed
 - The exporter no longer emits a root-level `kind` field on a REPEAT loop's exported blueprint
   body. The framework's published `blueprint.schema.json` declares no such field and rejects any

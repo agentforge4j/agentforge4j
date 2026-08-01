@@ -15,6 +15,7 @@ import {
   normalizeRuntimeDocumentForSchema,
   toRuntimeWorkflowDocument,
   validateAgainstSchema,
+  validateRuntimeDocument,
   validateSchemaVersion,
 } from '../../validation/schemaValidator';
 import { sanitizeObject, WorkflowParseError } from '../core';
@@ -262,6 +263,21 @@ export async function buildWorkflowZipBlob(workflow: WorkflowDefinition): Promis
     workflow,
     stripPromptsFromRuntimeDocument(toRuntimeWorkflowDocument(workflow)),
   );
+
+  // Preserved fields (see preservedStepFields.ts) let a step field this builder does not model
+  // ride through untouched, including one this build's bundled schema copy does not recognize.
+  // Import already refuses such a document; refuse it here too, before it is written into the
+  // ZIP, so an invalid workflow.json is never produced under the guise of a successful export.
+  // Gated on a real id: an id-less draft is intentionally exportable as a work in progress (see
+  // workflowFileBase's own "workflow" fallback) and was never schema-valid to begin with — that
+  // pre-existing, unrelated allowance must not be caught by this check.
+  if (workflow.id.trim()) {
+    const schemaResult = validateRuntimeDocument(runtimeDoc);
+    if (!schemaResult.valid) {
+      throw new WorkflowParseError(schemaResult.errors[0]?.message ?? 'Schema validation failed');
+    }
+  }
+
   folder.file('workflow.json', JSON.stringify(runtimeDoc, null, 2));
 
   for (const [artifactId, artifact] of Object.entries(workflow.artifacts)) {
