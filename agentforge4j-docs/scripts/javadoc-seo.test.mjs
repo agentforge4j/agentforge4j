@@ -13,9 +13,11 @@ import { join } from 'node:path';
 import {
   addRobotsNoindexTag,
   applyJavadocSeo,
+  composeWithinSnippetBudget,
   injectJavadocPageSeo,
   isJavadocRedirectStub,
   isWithinRoot,
+  javadocSurfaces,
   linkSurfacesLandingFromOverview,
   snippetBudgetExcerpt,
   stripJavadocWindowTitle,
@@ -1792,10 +1794,11 @@ test('surfaceCopy absorbs a version that already breaks surfacesLandingCopy — 
   );
 });
 
-test('the guard does NOT reach nestedPageCopy — an arbitrarily long generated page title must never fail the site build', () => {
-  // The asymmetry this whole design rests on. A class page whose own <title> is enormous produces a
-  // description over budget BY DESIGN: truncating one generated page's snippet is recoverable,
-  // losing the entire published API reference to a build failure is not.
+test('an arbitrarily long generated page title still must never fail the site build — it is shortened, not refused', () => {
+  // The asymmetry this whole design rests on: losing the entire published API reference to a build
+  // failure is not recoverable, a shortened snippet on one generated page is. What changed is only
+  // WHERE that lands — the description used to be published over budget, and is now brought inside
+  // it by shortening the generated title alone.
   const { siteDir, surfaceRoot } = fixtureSiteDirWithNestedPages('javadoc/next');
   const hugeTypeName = `A${'Extremely'.repeat(20)}LongGeneratedTypeName`;
   writeFileSync(
@@ -1813,12 +1816,352 @@ test('the guard does NOT reach nestedPageCopy — an arbitrarily long generated 
   );
   const html = readFileSync(join(surfaceRoot, 'com', 'example', 'Huge.html'), 'utf8');
   const description = /<meta name="description" content="([^"]*)">/.exec(html)[1];
+  // The point of the change: this used to assert the OPPOSITE, that the description ran over.
   assert.ok(
-    description.length > MAX_META_DESCRIPTION_LENGTH,
-    'this test is only meaningful if the generated description really does exceed the budget; ' +
-      `got ${description.length} characters`,
+    description.length <= MAX_META_DESCRIPTION_LENGTH,
+    `description still over budget at ${description.length} characters: ${description}`,
   );
-  assert.match(description, new RegExp(hugeTypeName));
+  // Enough of the type name survives to identify the page, and the fixed prose is untouched.
+  assert.match(description, /^Generated Javadoc API reference for the AgentForge4j framework \(next, in-development\) — AExtremely/);
+  assert.match(description, /…\.$/, 'a shortened title must be marked');
+  // The <title> and og:title are NOT subject to the snippet budget and keep the name in full.
+  assert.match(html, new RegExp(`<title>${hugeTypeName} — AgentForge4j API Reference \\(next, in-development\\)</title>`));
+  assert.match(html, new RegExp(`<meta property="og:title" content="${hugeTypeName} — `));
+});
+
+// --- Bounding the composition around a generated page title. PR #224 guarded the two fully
+// hand-authored factories and deliberately left nestedPageCopy's prose skeleton unguarded, so a
+// reword of that prose could have pushed EVERY generated page's description over budget at once.
+// composeWithinSnippetBudget closes that without making a long type name a build failure. ---
+
+/** The fixed prose nestedPageCopy composes around a generated title, for a given mount label. */
+function nestedPrefixFor(label) {
+  return `Generated Javadoc API reference for the AgentForge4j framework (${label}) — `;
+}
+
+/** Runs the real pass over a surface whose one class page carries `pageTitle`, and returns that
+ * page's HTML — the production path, not the helper in isolation. */
+function nestedPageWithTitle(pageTitle, mountPath = 'javadoc/next', releasedVersions = []) {
+  const { siteDir } = fixtureSiteDirWithNestedPages(mountPath, releasedVersions);
+  const surfaceDir = join(siteDir, ...mountPath.split('/'));
+  writeFileSync(
+    join(surfaceDir, 'com', 'example', 'Foo.html'),
+    rawClassPageHtml().replace(/<title>[^<]*<\/title>/, `<title>${withWindowTitle(pageTitle)}</title>`),
+    'utf8',
+  );
+  applyJavadocSeo({
+    siteDir,
+    siteUrl: 'https://agentforge4j.org',
+    ogImage: 'https://agentforge4j.org/brand/icon-512.png',
+    releasedVersions,
+  });
+  return readFileSync(join(surfaceDir, 'com', 'example', 'Foo.html'), 'utf8');
+}
+
+const descriptionOf = (html) => /<meta name="description" content="([^"]*)">/.exec(html)[1];
+
+test('a generated title that fits is composed VERBATIM — ordinary pages are byte-for-byte unchanged', () => {
+  // The compatibility guarantee. Composed independently of the implementation, from the exact
+  // string the pre-existing wording produced, so a change to either side shows up here.
+  const html = nestedPageWithTitle('AgentForge4jProperties');
+  assert.equal(
+    descriptionOf(html),
+    'Generated Javadoc API reference for the AgentForge4j framework (next, in-development) — AgentForge4jProperties.',
+  );
+  assert.doesNotMatch(descriptionOf(html), /…/, 'a title that fits must not be marked as shortened');
+});
+
+test('the exact budget boundary is composed whole, and one character more is shortened', () => {
+  // 68 characters is what the longest real label leaves for a title; asserted rather than assumed,
+  // so a reword of the fixed prose that changes the headroom fails here first.
+  const available = MAX_META_DESCRIPTION_LENGTH - nestedPrefixFor('next, in-development').length - 1;
+  assert.equal(available, 68);
+
+  const exact = descriptionOf(nestedPageWithTitle('x'.repeat(available)));
+  assert.equal(exact.length, MAX_META_DESCRIPTION_LENGTH);
+  assert.equal(exact, `${nestedPrefixFor('next, in-development')}${'x'.repeat(available)}.`);
+  assert.doesNotMatch(exact, /…/, 'a title that exactly fits must not be shortened');
+
+  const oneOver = descriptionOf(nestedPageWithTitle('x'.repeat(available + 1)));
+  assert.equal(oneOver.length, MAX_META_DESCRIPTION_LENGTH);
+  assert.match(oneOver, /…\.$/, 'one character over budget must be shortened and marked');
+});
+
+test('a long multi-word title is cut at a word boundary, never mid-word', () => {
+  const title = 'The Quick Brown Fox Jumps Over The Lazy Dog And Keeps On Running Forever And Ever';
+  const description = descriptionOf(nestedPageWithTitle(title));
+  assert.ok(description.length <= MAX_META_DESCRIPTION_LENGTH);
+  const kept = description.slice(nestedPrefixFor('next, in-development').length).replace(/…\.$/, '');
+  // Every word kept is a whole word from the original, and the original continues past the cut.
+  assert.ok(title.startsWith(kept), `kept text is not a prefix of the title: ${kept}`);
+  assert.ok(title.length > kept.length, 'this case is only meaningful if the title was actually cut');
+  assert.match(title.charAt(kept.length), /\s/, 'the cut did not land on a word boundary');
+});
+
+test('a single word longer than the budget is hard-cut deterministically rather than dropped', () => {
+  // There is no word boundary to find, and dropping the only word would leave nothing identifying
+  // the page. The hard cut is kept, and it is still within budget.
+  const title = `A${'Extremely'.repeat(20)}LongGeneratedTypeName`;
+  const description = descriptionOf(nestedPageWithTitle(title));
+  assert.equal(description.length, MAX_META_DESCRIPTION_LENGTH);
+  const kept = description.slice(nestedPrefixFor('next, in-development').length).replace(/…\.$/, '');
+  assert.ok(kept.length > 0, 'the only word must not be dropped entirely');
+  assert.ok(title.startsWith(kept));
+});
+
+test('punctuation left dangling by the cut is removed before the mark', () => {
+  const title = 'Some words here, and then more words follow, plus a trailing clause, indeed yes ok';
+  const description = descriptionOf(nestedPageWithTitle(title));
+  assert.ok(description.length <= MAX_META_DESCRIPTION_LENGTH);
+  const kept = description.slice(nestedPrefixFor('next, in-development').length).replace(/…\.$/, '');
+  assert.doesNotMatch(kept, /[\s,;:]$/, `dangling punctuation or whitespace survived: ${JSON.stringify(kept)}`);
+});
+
+test('a title of astral Unicode stays within budget and never emits half a character', () => {
+  // The budget counts UTF-16 code units, so a cut can land between the halves of a surrogate pair.
+  // A lone surrogate in a <meta> tag is invalid text, so the orphan is dropped instead.
+  const description = descriptionOf(nestedPageWithTitle('🚀'.repeat(60)));
+  assert.ok(description.length <= MAX_META_DESCRIPTION_LENGTH);
+  for (let i = 0; i < description.length; i += 1) {
+    const code = description.charCodeAt(i);
+    if (code >= 0xd800 && code <= 0xdbff) {
+      const next = description.charCodeAt(i + 1);
+      assert.ok(next >= 0xdc00 && next <= 0xdfff, `lone high surrogate at index ${i}`);
+    }
+    assert.ok(!(code >= 0xdc00 && code <= 0xdfff) || i > 0, `lone low surrogate at index ${i}`);
+  }
+  // Accented (non-astral) text is unremarkable and must survive intact when it fits.
+  assert.match(descriptionOf(nestedPageWithTitle('Café Ünïcøde Tÿpe')), / — Café Ünïcøde Tÿpe\.$/);
+});
+
+test('surrounding whitespace in a generated title is normalised away', () => {
+  assert.match(descriptionOf(nestedPageWithTitle('   Padded Name   ')), / — Padded Name\.$/);
+});
+
+test('a page with no usable title falls back to hand-authored copy, exactly as before', () => {
+  // The empty-title path: nestedPageCopy returns surfaceCopy(label), which is budget-CHECKED rather
+  // than composed, and must stay that way.
+  const { siteDir } = fixtureSiteDirWithNestedPages('javadoc/next');
+  const page = join(siteDir, 'javadoc', 'next', 'com', 'example', 'Foo.html');
+  writeFileSync(page, rawClassPageHtml().replace(/<title>[^<]*<\/title>/, '<title></title>'), 'utf8');
+  applyJavadocSeo({
+    siteDir,
+    siteUrl: 'https://agentforge4j.org',
+    ogImage: 'https://agentforge4j.org/brand/icon-512.png',
+    releasedVersions: [],
+  });
+  assert.equal(
+    descriptionOf(readFileSync(page, 'utf8')),
+    'Generated Javadoc API reference for the AgentForge4j framework (next, in-development).',
+  );
+});
+
+test('EVERY nested page in EVERY lifecycle variant stays within budget, with its prose intact', () => {
+  // The blast radius that made this worth closing: nestedPageCopy runs on every generated page of
+  // every surface, so the invariant is asserted across all of them rather than on one sample.
+  const longTitle = `Ridiculously${'Long'.repeat(30)}GeneratedName`;
+  const nestedPages = ['allclasses-index.html', 'com/example/package-summary.html', 'com/example/Foo.html'];
+  const seenLabels = new Set();
+  let variantsChecked = 0;
+  for (const releasedVersions of [[], ['0.1.0'], ['0.2.0', '0.1.0']]) {
+    // Driven by production's own surface model rather than a re-derived mount list, so a change to
+    // which surfaces or labels exist is picked up here instead of quietly narrowing this test.
+    // Nested pages exist only under the mount a fixture TARGETS, so each is targeted in turn.
+    for (const { mountPath, label } of javadocSurfaces(releasedVersions)) {
+      const { siteDir, surfaceRoot } = fixtureSiteDirWithNestedPages(mountPath, releasedVersions);
+      writeFileSync(
+        join(surfaceRoot, 'com', 'example', 'Foo.html'),
+        rawClassPageHtml().replace(/<title>[^<]*<\/title>/, `<title>${withWindowTitle(longTitle)}</title>`),
+        'utf8',
+      );
+      applyJavadocSeo({
+        siteDir,
+        siteUrl: 'https://agentforge4j.org',
+        ogImage: 'https://agentforge4j.org/brand/icon-512.png',
+        releasedVersions,
+      });
+      const where = `${mountPath} (releasedVersions=${JSON.stringify(releasedVersions)})`;
+      for (const relPath of nestedPages) {
+        const description = descriptionOf(readFileSync(join(surfaceRoot, ...relPath.split('/')), 'utf8'));
+        assert.ok(
+          description.length <= MAX_META_DESCRIPTION_LENGTH,
+          `${where} ${relPath}: ${description.length} characters: ${description}`,
+        );
+        // The fixed prose is never what gives way — it survives whole, INCLUDING this mount's own
+        // label, so a page can never be shortened into misidentifying which surface it belongs to.
+        assert.ok(
+          description.startsWith(nestedPrefixFor(label)),
+          `${where} ${relPath}: fixed prose or label was altered: ${description}`,
+        );
+      }
+      // The long title really did have to be shortened here, so the assertions above are not
+      // passing merely because every description happened to be short.
+      assert.match(descriptionOf(readFileSync(join(surfaceRoot, 'com', 'example', 'Foo.html'), 'utf8')), /…\.$/, where);
+      seenLabels.add(label);
+      variantsChecked += 1;
+    }
+  }
+  assert.equal(variantsChecked, 9, 'every lifecycle/surface variant must have been exercised');
+  // Both /latest/ lifecycle spellings must have been among them — the pre-release label contains
+  // parentheses of its own, which is exactly the shape a naive prose assertion mis-parses.
+  assert.deepEqual(
+    [...seenLabels].sort(),
+    ['0.1.0', '0.2.0', 'latest (pre-release)', 'latest stable, 0.1.0', 'latest stable, 0.2.0', 'next, in-development'],
+  );
+});
+
+test('shortening the description changes NOTHING about title, heading, canonical or robots', () => {
+  // The shortening is scoped to one meta tag. Every other SEO property of the page is asserted
+  // against a long title, so a future change that reached further shows up here.
+  const longTitle = `Enormous${'Type'.repeat(40)}Name`;
+  const html = nestedPageWithTitle(longTitle, 'javadoc/0.1.0', ['0.1.0']);
+  assert.match(html, new RegExp(`<title>${longTitle} — AgentForge4j API Reference \\(0\\.1\\.0\\)</title>`));
+  assert.match(html, new RegExp(`<meta property="og:title" content="${longTitle} — `));
+  assert.match(
+    html,
+    /<link rel="canonical" href="https:\/\/agentforge4j\.org\/javadoc\/0\.1\.0\/com\/example\/Foo\.html">/,
+  );
+  assert.match(html, /<meta name="robots" content="noindex,follow">/);
+  assert.ok(descriptionOf(html).length <= MAX_META_DESCRIPTION_LENGTH);
+});
+
+test('the owned prose is STILL refused outright — shortening never rescues a reworded skeleton', () => {
+  // The actual gap this closes. The prose around the generated title is hand-authored, so its
+  // length is a choice and an overrun is an authoring mistake, exactly as for the other two
+  // factories. It must fail loudly rather than being silently absorbed by shortening the title.
+  const overlongProse = `${'Padding word '.repeat(15)}(`;
+  assert.ok(overlongProse.length > MAX_META_DESCRIPTION_LENGTH);
+  assert.throws(
+    () => composeWithinSnippetBudget(overlongProse, 'AnyTitle', '.', 'nestedPageCopy'),
+    /nestedPageCopy produced a \d+-character description, over the 157-character search-snippet budget/,
+  );
+  // Proven to be about the PROSE alone: an empty generated value fails identically, so the check
+  // cannot be passing merely because the title happened to push it over.
+  assert.throws(() => composeWithinSnippetBudget(overlongProse, '', '.', 'nestedPageCopy'), /nestedPageCopy/);
+});
+
+test('the failure reports the REAL description, not the prose skeleton that is never published', () => {
+  // A reader handed a length and a quote has to be able to reconcile them with the output. The
+  // prose spliced straight onto the suffix is a string that appears nowhere, so the message is
+  // built from the composition the page would actually have published.
+  //
+  // Note what CANNOT be shown: the title itself. Reaching this path means the prose alone is
+  // already over 157, so the excerpt — capped at the budget since the guard was introduced — is
+  // necessarily all prose. The observable correction is therefore the reported LENGTH, and that the
+  // quote is a genuine prefix of the real description rather than of a skeleton.
+  const overlongProse = `${'Padding word '.repeat(15)}(`;
+  const title = 'TheGeneratedTitle';
+  const composed = `${overlongProse}${title}.`;
+  const skeleton = `${overlongProse}.`;
+  assert.notEqual(composed.length, skeleton.length, 'the two lengths must differ for this to prove anything');
+
+  let message = '';
+  try {
+    composeWithinSnippetBudget(overlongProse, title, '.', 'nestedPageCopy');
+  } catch (error) {
+    message = error.message;
+  }
+  assert.notEqual(message, '', 'over-long prose must still throw');
+  assert.match(message, new RegExp(`produced a ${composed.length}-character description`), 'must report the real length');
+  assert.doesNotMatch(message, new RegExp(`produced a ${skeleton.length}-character description`), 'reported the skeleton');
+  assert.match(message, new RegExp(`\\(\\+${composed.length - MAX_META_DESCRIPTION_LENGTH} more\\)`), 'omitted count must match the real description');
+  // What is quoted is a real prefix of what the page would have published.
+  const quoted = /choice\): ([\s\S]*?)… \(\+\d+ more\)$/.exec(message)[1];
+  assert.ok(composed.startsWith(quoted), 'the quote is not a prefix of the real description');
+
+  // ...and the CONDITION is still title-independent: the same prose fails for every title.
+  for (const other of ['', 'Short', 'A'.repeat(400)]) {
+    assert.throws(() => composeWithinSnippetBudget(overlongProse, other, '.', 'nestedPageCopy'), /nestedPageCopy/);
+  }
+});
+
+test('composeWithinSnippetBudget degrades deterministically when the prose leaves almost no room', () => {
+  // Total for every input, including the ones production cannot currently produce: the helper is
+  // exported, so its contract is not allowed to depend on today's wording.
+  const fill = (n) => 'p'.repeat(n);
+  // Exactly no room for a title: the value is dropped rather than pushing the result over.
+  assert.equal(composeWithinSnippetBudget(fill(156), 'AnyTitle', '.', 'src'), `${fill(156)}.`);
+  // Room for the mark alone.
+  assert.equal(composeWithinSnippetBudget(fill(155), 'AnyTitle', '.', 'src'), `${fill(155)}….`);
+  // A title made only of punctuation keeps its hard cut rather than trailing off into nothing.
+  const punctuation = composeWithinSnippetBudget(fill(140), '...,,,;;;'.repeat(5), '.', 'src');
+  assert.equal(punctuation.length, MAX_META_DESCRIPTION_LENGTH);
+  assert.match(punctuation, /[.,;]…\.$/);
+});
+test('a title whose own ending is punctuation never yields doubled dots or a doubled ellipsis', () => {
+  // The shape PR #218 hit on the SPA side: a source value that ALREADY trails off, plus a mark
+  // appended by the shortening, publishes `thought...…`. Here the dangling-end tidy runs before the
+  // mark is added, so the two can never stack — asserted on the ascii spelling, the single-character
+  // spelling, and a comma, because each is a different Unicode punctuation class.
+  const prose = 'p'.repeat(100);
+  for (const [what, generated] of [
+    ['ascii dots', `Alpha... ${'X'.repeat(100)}`],
+    ['a real ellipsis character', `Beta\u2026 ${'X'.repeat(100)}`],
+    ['a comma', 'One, two, three, four, five, six, seven, eight, nine, ten, eleven twelve'],
+  ]) {
+    const composed = composeWithinSnippetBudget(prose, generated, '.', 'src');
+    assert.ok(composed.length <= MAX_META_DESCRIPTION_LENGTH, `${what}: ${composed.length} characters`);
+    const shortened = composed.slice(prose.length);
+    assert.doesNotMatch(shortened, /\.\.\.\u2026/, `${what}: ascii dots stacked onto the mark`);
+    assert.doesNotMatch(shortened, /\u2026\u2026/, `${what}: the mark was doubled`);
+    // Exactly one mark, and the character before it is never punctuation or space.
+    assert.equal((shortened.match(/\u2026/gu) ?? []).length, 1, `${what}: expected exactly one mark`);
+    assert.match(shortened, /[^\s\p{P}]\u2026\.$/u, `${what}: ${JSON.stringify(shortened)}`);
+  }
+});
+
+test('a SHORT title that ends in punctuation is still composed verbatim — byte-identity outranks tidiness', () => {
+  // Deliberate, and the one place the rule above does not reach. Tidying is a consequence of
+  // CUTTING; a title that fits was not cut, so touching it would change the published description
+  // of a page that never had a problem. The pre-existing output is the contract.
+  assert.equal(
+    descriptionOf(nestedPageWithTitle('Foo...')),
+    'Generated Javadoc API reference for the AgentForge4j framework (next, in-development) — Foo....',
+  );
+});
+
+test('every nested page kind a real corpus contains stays within budget with its prose intact', () => {
+  // The three kinds in the shared fixture are not the whole corpus. maven-javadoc-plugin also emits
+  // trees, indexes, help and the summary pages below — all of them nested, all of them routed
+  // through nestedPageCopy. Written into the surface here rather than into the shared fixture,
+  // which several tests pin an exact processed-page COUNT against.
+  const longTitle = `Ridiculously${'Long'.repeat(30)}GeneratedName`;
+  const otherKinds = [
+    ['package-tree.html', 'com/example'],
+    ['help-doc.html', ''],
+    ['index-all.html', ''],
+    ['constant-values.html', ''],
+    ['serialized-form.html', ''],
+    ['deprecated-list.html', ''],
+    ['overview-tree.html', ''],
+  ];
+  const { siteDir, surfaceRoot } = fixtureSiteDirWithNestedPages('javadoc/next');
+  for (const [fileName, dir] of otherKinds) {
+    writeFileSync(
+      join(surfaceRoot, ...(dir ? dir.split('/') : []), fileName),
+      rawClassPageHtml().replace(/<title>[^<]*<\/title>/, `<title>${withWindowTitle(longTitle)}</title>`),
+      'utf8',
+    );
+  }
+  applyJavadocSeo({
+    siteDir,
+    siteUrl: 'https://agentforge4j.org',
+    ogImage: 'https://agentforge4j.org/brand/icon-512.png',
+    releasedVersions: [],
+  });
+  for (const [fileName, dir] of otherKinds) {
+    const html = readFileSync(join(surfaceRoot, ...(dir ? dir.split('/') : []), fileName), 'utf8');
+    const description = descriptionOf(html);
+    assert.ok(
+      description.length <= MAX_META_DESCRIPTION_LENGTH,
+      `${fileName}: ${description.length} characters: ${description}`,
+    );
+    assert.ok(description.startsWith(nestedPrefixFor('next, in-development')), `${fileName}: prose altered`);
+    // Non-vacuous: this title really did have to be shortened on every one of these kinds.
+    assert.match(description, /\u2026\.$/, `${fileName}: nothing was shortened, so this proves nothing`);
+    // And the full name still identifies the page in the <title>, which the budget does not bind.
+    assert.match(html, new RegExp(`<title>${longTitle} — `), `${fileName}: title was shortened`);
+  }
 });
 
 // Reads the SPA's budget out of its source. The gap this closes is SPACING: the previous pattern
