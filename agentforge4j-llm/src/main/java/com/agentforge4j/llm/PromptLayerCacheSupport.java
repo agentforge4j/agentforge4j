@@ -56,18 +56,6 @@ public final class PromptLayerCacheSupport {
   }
 
   /**
-   * A contiguous slice of the assembled system prompt corresponding to one prompt layer. Package
-   * scope: slicing is an internal step of {@link #buildSystemBlocks}, and no provider needs to see
-   * the intermediate form.
-   *
-   * @param text           slice text
-   * @param utf8ByteLength slice length in UTF-8 bytes
-   */
-  record LayerSlice(String text, int utf8ByteLength) {
-
-  }
-
-  /**
    * Resolves the minimum cacheable segment length for a model id against a provider's
    * model-prefix table.
    *
@@ -125,12 +113,12 @@ public final class PromptLayerCacheSupport {
     }
     Validate.notBlank(modelId, "modelId must not be blank when prompt caching is enabled");
     byte[] utf8 = systemPrompt.getBytes(StandardCharsets.UTF_8);
-    List<LayerSlice> slices = sliceLayers(utf8, promptLayerBoundaries);
+    List<String> slices = sliceLayers(utf8, promptLayerBoundaries);
     boolean[] markBreakpoint =
         selectBreakpoints(promptLayerBoundaries, modelId, modelPrefixToMinTokens);
     List<T> blocks = new ArrayList<>(slices.size());
     for (int index = 0; index < slices.size(); index++) {
-      blocks.add(blockFactory.create(slices.get(index).text(), markBreakpoint[index]));
+      blocks.add(blockFactory.create(slices.get(index), markBreakpoint[index]));
     }
     return List.copyOf(blocks);
   }
@@ -143,10 +131,11 @@ public final class PromptLayerCacheSupport {
    * @param utf8       assembled system prompt encoded as UTF-8 bytes
    * @param boundaries layer end offsets
    *
-   * @return one slice per present layer — two, or three when layer 3 is present
+   * @return the text of each present layer, in layer order — two entries, or three when layer 3
+   *         is present
    */
-  static List<LayerSlice> sliceLayers(byte[] utf8, PromptLayerBoundaries boundaries) {
-    List<LayerSlice> slices = new ArrayList<>(3);
+  static List<String> sliceLayers(byte[] utf8, PromptLayerBoundaries boundaries) {
+    List<String> slices = new ArrayList<>(3);
     appendSliceIfPresent(slices, utf8, 0, boundaries.layer1EndOffset());
     appendSliceIfPresent(slices, utf8, boundaries.layer1EndOffset(), boundaries.layer2EndOffset());
     if (boundaries.layer3EndOffset() != null) {
@@ -157,7 +146,7 @@ public final class PromptLayerCacheSupport {
   }
 
   private static void appendSliceIfPresent(
-      List<LayerSlice> slices,
+      List<String> slices,
       byte[] utf8,
       int startOffset,
       Integer endOffset) {
@@ -167,12 +156,10 @@ public final class PromptLayerCacheSupport {
     Validate.isTrue(endOffset <= utf8.length,
         "layer end offset must not exceed assembled prompt UTF-8 length");
     if (endOffset == startOffset) {
-      slices.add(new LayerSlice("", 0));
+      slices.add("");
       return;
     }
-    int segmentUtf8Length = endOffset - startOffset;
-    String text = new String(utf8, startOffset, segmentUtf8Length, StandardCharsets.UTF_8);
-    slices.add(new LayerSlice(text, segmentUtf8Length));
+    slices.add(new String(utf8, startOffset, endOffset - startOffset, StandardCharsets.UTF_8));
   }
 
   /**

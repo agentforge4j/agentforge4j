@@ -152,14 +152,8 @@ class PromptLayerCacheSupportTest {
   void slicesSplitThePromptAtExactUtf8Offsets() {
     byte[] utf8 = "abcdefghij".getBytes(StandardCharsets.UTF_8);
 
-    List<PromptLayerCacheSupport.LayerSlice> slices =
-        PromptLayerCacheSupport.sliceLayers(utf8, new PromptLayerBoundaries(3, 7, 10));
-
-    assertThat(slices).hasSize(3);
-    assertThat(slices.get(0).text()).isEqualTo("abc");
-    assertThat(slices.get(1).text()).isEqualTo("defg");
-    assertThat(slices.get(2).text()).isEqualTo("hij");
-    assertThat(slices.get(0).utf8ByteLength()).isEqualTo(3);
+    assertThat(PromptLayerCacheSupport.sliceLayers(utf8, new PromptLayerBoundaries(3, 7, 10)))
+        .containsExactly("abc", "defg", "hij");
   }
 
   @Test
@@ -168,13 +162,8 @@ class PromptLayerCacheSupportTest {
     byte[] utf8 = "€€€".getBytes(StandardCharsets.UTF_8);
     assertThat(utf8).hasSize(9);
 
-    List<PromptLayerCacheSupport.LayerSlice> slices =
-        PromptLayerCacheSupport.sliceLayers(utf8, new PromptLayerBoundaries(3, 6, 9));
-
-    assertThat(slices).extracting(PromptLayerCacheSupport.LayerSlice::text)
+    assertThat(PromptLayerCacheSupport.sliceLayers(utf8, new PromptLayerBoundaries(3, 6, 9)))
         .containsExactly("€", "€", "€");
-    assertThat(slices).extracting(PromptLayerCacheSupport.LayerSlice::utf8ByteLength)
-        .containsExactly(3, 3, 3);
   }
 
   @Test
@@ -183,15 +172,12 @@ class PromptLayerCacheSupportTest {
 
     // Empty layer 1 (0..0), then empty layer 2 (0..0), then the content in layer 3.
     assertThat(PromptLayerCacheSupport.sliceLayers(utf8, new PromptLayerBoundaries(0, 0, 4)))
-        .extracting(PromptLayerCacheSupport.LayerSlice::text)
         .containsExactly("", "", "abcd");
     // Empty layer 2 between two populated layers.
     assertThat(PromptLayerCacheSupport.sliceLayers(utf8, new PromptLayerBoundaries(2, 2, 4)))
-        .extracting(PromptLayerCacheSupport.LayerSlice::text)
         .containsExactly("ab", "", "cd");
     // Empty layer 3 at the end.
     assertThat(PromptLayerCacheSupport.sliceLayers(utf8, new PromptLayerBoundaries(2, 4, 4)))
-        .extracting(PromptLayerCacheSupport.LayerSlice::text)
         .containsExactly("ab", "cd", "");
   }
 
