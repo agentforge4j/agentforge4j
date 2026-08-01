@@ -107,9 +107,16 @@ function collectNavigablePaths({
   return paths;
 }
 
-/** Waits until the SPA has mounted and `usePageSeo`'s effect has run. `#root h1` is the same
- * mounted-content signal prerender-routes.mjs waits on, and the effect that writes the head runs in
- * the same commit as that render, so a settled DOM here means a settled head. */
+/** Waits until the page has rendered content under `#root`.
+ *
+ * Stated precisely, because it is weaker than it looks: `#root h1` is the mounted-content signal
+ * prerender-routes.mjs waits on, but that server answers every path with the CONTENTLESS shell,
+ * where the selector really does only match once React has committed. Here, every per-route shell
+ * already ships its prerendered `h1`, and during an in-app transition the departing route's `h1` is
+ * still attached — so on its own this predicate proves neither hydration nor that `usePageSeo`'s
+ * effect has run. What makes the check sound is `assertStillClientSide` below: a click that reached
+ * the network instead of the router destroys the sentinel, which is the failure this predicate
+ * cannot see by itself. */
 async function waitForAppReady(page) {
   await page.waitForSelector('#root h1', { state: 'attached', timeout: 30000 });
   await page.waitForFunction(
@@ -121,12 +128,14 @@ async function waitForAppReady(page) {
 
 /** Both address forms one route can be linked as, most-specific first.
  *
- * This exists because the two halves of this check speak different dialects: the addresses it
- * navigates to are the trailing-slash form the host serves directly (`/api/`), while the site's own
- * links are written slash-less (`/api`, see src/config/nav.ts). A selector built from one form
- * alone therefore matches nothing for every header/footer route — which is exactly what this file
- * did when it was written, so 36 of its 40 "real in-app navigations" were synthetic history pushes
- * and the `<Link>` click path a visitor actually uses was exercised for one route out of fifteen. */
+ * Deliberately not keyed to whichever form the site writes today. src/config/nav.ts writes the
+ * trailing-slash form (`/api/`) and verify-seo.mjs's internal-link crawl holds it there, but a page
+ * component is free to write a bare-form link to a route the nav does not carry, and this selector
+ * must find a visitor's real click target either way. A selector built from one form alone matches
+ * nothing for every route written in the other — which is exactly what this file did when it was
+ * written, so 36 of its 40 "real in-app navigations" were synthetic history pushes and the `<Link>`
+ * click path a visitor actually uses was exercised for one route out of fifteen. `pageLinksTo`
+ * below is the backstop that makes a future mismatch fail loudly instead of degrading quietly. */
 function linkSelectorFor(path) {
   const forms = path === '/' ? ['/'] : [path, path.replace(/\/+$/, '')];
   return forms.map((form) => `a[href="${form}"]`).join(', ');
@@ -156,10 +165,46 @@ async function pageLinksTo(page, path) {
 }
 /* eslint-enable no-undef */
 
+/** The sentinel proving a transition never left the document.
+ *
+ * `window` survives a client-side route change and is replaced wholesale by a document load, so a
+ * value planted immediately before the transition and read immediately after answers the one
+ * question this gate's soundness rests on and nothing else here could see. It matters because the
+ * failure is silent and passes: a click dispatched before React has claimed the anchor (or after a
+ * future change turns a `<Link>` back into a plain `<a>`) is handled by the browser, which fetches
+ * the destination's own correct shell — so both sides of the convergence comparison below become
+ * shell-derived, they agree, and the gate reports a clean run whatever `usePageSeo` does. That is
+ * the same shape of vacuity this file's header records it having shipped with once, reached by a
+ * different route. */
+const NAV_SENTINEL = 'agentforge4j-client-nav-probe';
+
+/* eslint-disable no-undef */
+async function plantNavSentinel(page) {
+  await page.evaluate((token) => {
+    window.__agentforge4jNavSentinel = token;
+  }, NAV_SENTINEL);
+}
+
+async function assertStillClientSide(page, from, to, mode) {
+  const survived = await page.evaluate(
+    (token) => window.__agentforge4jNavSentinel === token,
+    NAV_SENTINEL,
+  );
+  if (!survived) {
+    throw new Error(
+      `verify-client-nav-seo: navigating ${from} -> ${to} by ${mode} destroyed the window sentinel, so it was a real ` +
+        'document load, not a client-side route change. The browser then fetched the destination\'s own shell, which ' +
+        'makes both sides of this check shell-derived and every comparison below pass vacuously.',
+    );
+  }
+}
+/* eslint-enable no-undef */
+
 /** Navigates within the running app the way a visitor does — a real click on a real rendered link
  * where one exists, falling back to a history push only for a route the current page genuinely does
- * not link to (the unknown-route case, and any route not in the header/footer). Both are genuine
- * client-side transitions: no document load, so no new shell is ever fetched.
+ * not link to (the unknown-route case, and any route not in the header/footer). Both must be genuine
+ * client-side transitions — no document load, so no new shell is ever fetched — which
+ * `assertStillClientSide` proves rather than assumes.
  *
  * Returns `'click'` or `'push'` so the caller can report the split rather than describing every
  * transition as a click, and throws outright if the page DOES link to the destination but the
@@ -168,7 +213,7 @@ async function pageLinksTo(page, path) {
  *
  * @returns {Promise<'click'|'push'>}
  */
-async function navigateClientSide(page, path) {
+async function navigateClientSide(page, from, path) {
   const link = page.locator(linkSelectorFor(path)).first();
   const clickable = (await link.count()) > 0;
   if (!clickable && (await pageLinksTo(page, path))) {
@@ -178,6 +223,9 @@ async function navigateClientSide(page, path) {
         'history push — not what a visitor does, and not what this gate claims to exercise.',
     );
   }
+  // Planted last, immediately before the transition, so nothing between here and the click can be
+  // mistaken for the thing that cleared it.
+  await plantNavSentinel(page);
   if (clickable) {
     await link.click();
   } else {
@@ -194,9 +242,9 @@ async function navigateClientSide(page, path) {
   }
   await waitForAppReady(page);
   // Compared with the trailing slash normalised away, because a real click lands on the address the
-  // SITE wrote, not the one this file navigates to: `<Link to="/catalogue">` pushes `/catalogue`
-  // while the direct-load reference was taken at `/catalogue/`. Those are the same route and the
-  // same SEO state by construction — src/config/seo.ts's `normalizeForMatch` matches either form
+  // SITE wrote, not the one this file navigates to: a bare-form `<Link to="/catalogue">` pushes
+  // `/catalogue` while the direct-load reference was taken at `/catalogue/`. Those are the same
+  // route and the same SEO state by construction — src/config/seo.ts's `normalizeForMatch` matches either form
   // and `canonicalUrl` emits the trailing-slash form from both — so the assertion here is that the
   // router reached the route, not that the URL matched one particular spelling. The head-state
   // comparison the caller then runs is unaffected: it is the real oracle, and it is exact.
@@ -209,7 +257,9 @@ async function navigateClientSide(page, path) {
     path,
     { timeout: 30000 },
   );
-  return clickable ? 'click' : 'push';
+  const mode = clickable ? 'click' : 'push';
+  await assertStillClientSide(page, from, path, mode);
+  return mode;
 }
 
 function differences(expected, actual) {
@@ -277,7 +327,7 @@ export async function verifyClientNavSeo({ distDir = DIST_DIR, paths } = {}) {
       ]) {
         await page.goto(`${origin}${start}`, { waitUntil: 'domcontentloaded' });
         await waitForAppReady(page);
-        const mode = await navigateClientSide(page, end);
+        const mode = await navigateClientSide(page, start, end);
         const problems = differences(direct.get(end), await page.evaluate(readHeadState));
         if (problems.length > 0) {
           throw new Error(
@@ -300,9 +350,11 @@ export async function verifyClientNavSeo({ distDir = DIST_DIR, paths } = {}) {
     // One of the counted transitions was therefore not a transition at all.
     await page.goto(`${origin}${cycle[cycle.length - 1]}`, { waitUntil: 'domcontentloaded' });
     await waitForAppReady(page);
+    let current = cycle[cycle.length - 1];
     for (let lap = 0; lap < 3; lap += 1) {
       for (const path of cycle) {
-        const mode = await navigateClientSide(page, path);
+        const mode = await navigateClientSide(page, current, path);
+        current = path;
         const problems = differences(direct.get(path), await page.evaluate(readHeadState));
         if (problems.length > 0) {
           throw new Error(
@@ -346,6 +398,7 @@ if (process.argv[1]?.endsWith('verify-client-nav-seo.mjs')) {
         `[verify-client-nav-seo] ${routesChecked} route(s) incl. an unknown route, ${transitionsChecked} in-app ` +
           `navigation(s) checked in headless Chromium — ${clickedTransitions} by clicking the site's own rendered ` +
           `link, ${pushedTransitions} by history push for routes the departure page links to nowhere. Every one ` +
+          'stayed in the document (window sentinel survived, so none silently degraded to a full page load) and ' +
           'reaches the same title, description, canonical, og:*, twitter:* and JSON-LD state (and the same tag ' +
           'COUNTS) as a direct load of that URL',
       );

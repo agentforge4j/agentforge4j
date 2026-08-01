@@ -226,6 +226,28 @@ const CONSTANT_SOCIAL_TAGS = [
   { attribute: 'name', key: 'twitter:image:alt' },
 ];
 
+/**
+ * Pairs of site-constant tags that name the SAME thing in two vocabularies and must therefore carry
+ * the same value.
+ *
+ * Without this, only half of each pair is really verified. The image pass below fetches the declared
+ * `og:image`, reads its PNG header, matches it against `og:image:width`/`height` and holds it to the
+ * declared card type's minimum — and `twitter:image` was subject to none of that, despite X/Twitter
+ * reading `twitter:image` in preference to `og:image` when both are present. A `twitter:image`
+ * naming a file this build does not publish, naming another origin, or naming an image too small for
+ * `summary_large_image` passed every gate. (verify-client-nav-seo.mjs cannot see it either: the tag
+ * is the same on both sides of its convergence comparison whatever its value.)
+ *
+ * Asserting equality rather than duplicating the image pass is deliberate: it is the invariant
+ * scripts/lint-brand-assets.mjs already states in prose ("Both must be the same card"), and stating
+ * it here makes the one existing fetch/dimension/size pass cover both by construction, so the two
+ * can never come to be checked to different standards.
+ */
+const MIRRORED_SOCIAL_TAG_PAIRS = [
+  { primary: { attribute: 'property', key: 'og:image' }, mirror: { attribute: 'name', key: 'twitter:image' } },
+  { primary: { attribute: 'property', key: 'og:image:alt' }, mirror: { attribute: 'name', key: 'twitter:image:alt' } },
+];
+
 // Twitter/X only honours a large summary card when the image is at least this size; below it the
 // card silently degrades to the small square form, which is exactly the state this pass moved the
 // site off. Declaring `summary_large_image` while shipping an image under it is therefore a real,
@@ -244,16 +266,25 @@ const RECOMMENDED_LARGE_IMAGE_HEIGHT = 630;
  *    from. This is the audited defect stated as an invariant: a page whose og:title says one thing
  *    while its `<title>` says another is wrong no matter which of the two is "right", and it is
  *    exactly the state a client-side navigation used to leave behind;
- *  - every site-constant tag is present and non-empty.
+ *  - every site-constant tag is present and non-empty;
+ *  - every mirrored pair (MIRRORED_SOCIAL_TAG_PAIRS above) carries one value in both vocabularies,
+ *    so the checks the primary tag is subject to genuinely cover the mirror too.
  *
  * `values` accumulates each constant tag's value across pages so the caller can prove they really
  * are constant (and fetch the one declared image once).
  */
 function assertSocialMetaConsistent(label, html, values) {
+  const canonical = singleCanonicalHref(html, label);
+  if (canonical === null) {
+    throw new Error(
+      `verify-seo: ${label} — no <link rel="canonical"> at all; every page in this corpus must declare one, ` +
+        'and og:url is derived from it',
+    );
+  }
   const derivedFrom = {
     title: extractTag(html, /<title>([\s\S]*?)<\/title>/),
     description: singleMetaContent(html, 'name', 'description', label),
-    canonical: extractTag(html, /<link rel="canonical" href="([^"]+)"/),
+    canonical,
   };
   for (const { attribute, key, source } of REQUIRED_ROUTE_SCOPED_SOCIAL_TAGS) {
     const actual = singleMetaContent(html, attribute, key, label);
@@ -272,21 +303,41 @@ function assertSocialMetaConsistent(label, html, values) {
     if (value === null || value.trim() === '') {
       throw new Error(`verify-seo: ${label} — <meta ${attribute}="${key}"> is missing or empty`);
     }
-    if (!values.has(key)) {
-      values.set(key, new Map());
+    recordConstantValue(values, key, value, label);
+  }
+  for (const { primary, mirror } of MIRRORED_SOCIAL_TAG_PAIRS) {
+    // Both are in CONSTANT_SOCIAL_TAGS, so presence and non-emptiness are already proven above;
+    // what is left is that they agree.
+    const primaryValue = singleMetaContent(html, primary.attribute, primary.key, label);
+    const mirrorValue = singleMetaContent(html, mirror.attribute, mirror.key, label);
+    if (primaryValue !== mirrorValue) {
+      throw new Error(
+        `verify-seo: ${label} — ${mirror.key} is "${mirrorValue}" but ${primary.key} is "${primaryValue}"; ` +
+          'the two name the same thing in two vocabularies and must agree — only the Open Graph one is ' +
+          'fetched and size-checked, so a mirror that disagrees with it is unverified by construction',
+      );
     }
-    values.get(key).set(value, label);
   }
   // Dimensions are optional in principle but load-bearing here (see index.html) — recorded when
   // declared so the caller can check them against the real image bytes.
   for (const key of ['og:image:width', 'og:image:height']) {
     const value = singleMetaContent(html, 'property', key, label);
     if (value !== null) {
-      if (!values.has(key)) {
-        values.set(key, new Map());
-      }
-      values.get(key).set(value, label);
+      recordConstantValue(values, key, value, label);
     }
+  }
+}
+
+/** Records `value` for `key`, keeping the FIRST page that carried it as the example — a later page
+ * carrying the same value tells the reader nothing the first one did not, and `Map.set` would
+ * otherwise silently overwrite it with whichever page happened to be served last. */
+function recordConstantValue(values, key, value, label) {
+  if (!values.has(key)) {
+    values.set(key, new Map());
+  }
+  const byValue = values.get(key);
+  if (!byValue.has(value)) {
+    byValue.set(value, label);
   }
 }
 
@@ -471,8 +522,10 @@ const TYPE_ATTR_PATTERN = attributePattern('type');
 const ID_ATTR_PATTERN = attributePattern('id');
 const CONTENT_ATTR_PATTERN = attributePattern('content');
 const HREF_ATTR_PATTERN = attributePattern('href');
+const REL_ATTR_PATTERN = attributePattern('rel');
 const ANCHOR_TAG_PATTERN = new RegExp(tagSource('a'), 'gi');
 const META_TAG_PATTERN = new RegExp(tagSource('meta'), 'gi');
+const LINK_TAG_PATTERN = new RegExp(tagSource('link'), 'gi');
 const JSON_LD_SCRIPT_PATTERN = new RegExp(`${tagSource('script')}([\\s\\S]*?)<\\/script>`, 'g');
 
 /** `value` resolved against `base`, or `null` when it names another origin or is not a URL a
@@ -537,6 +590,26 @@ function singleMetaContent(html, attribute, key, label) {
     );
   }
   return contents.length === 1 ? contents[0] : null;
+}
+
+/** The `href` of the single `<link rel="canonical">`, or `null` when absent — read through the same
+ * tokenizer `singleMetaContent` uses, for the same reason its own doc gives: anchoring on one exact
+ * spelling (`<link rel="canonical" href="…"`) makes the check a statement about how today's producer
+ * formats its markup rather than about the page a crawler receives, and a canonical written with the
+ * attributes in the other order, single-quoted, or with whitespace around the `=` would read as
+ * absent — blaming `og:url` for a canonical that simply could not be read.
+ *
+ * Duplicates throw, exactly as they do for a meta: two canonicals is the shape a client-side sync
+ * that appends instead of updating leaves behind, and a crawler resolves it by picking one. */
+function singleCanonicalHref(html, label) {
+  const hrefs = [...html.matchAll(LINK_TAG_PATTERN)]
+    .map((match) => match[1])
+    .filter((attrs) => attributeValue(attrs, REL_ATTR_PATTERN)?.trim().toLowerCase() === 'canonical')
+    .map((attrs) => attributeValue(attrs, HREF_ATTR_PATTERN));
+  if (hrefs.length > 1) {
+    throw new Error(`verify-seo: ${label} — ${hrefs.length} <link rel="canonical"> tags on one page — expected exactly one`);
+  }
+  return hrefs.length === 1 ? hrefs[0] : null;
 }
 
 /** Every `<script>` block whose `type` attribute is `application/ld+json`, in document order —
@@ -760,7 +833,7 @@ export async function verifySeo({
         }
       }
 
-      const canonical = extractTag(html, /<link rel="canonical" href="([^"]+)"/);
+      const canonical = singleCanonicalHref(html, url);
       if (canonical !== url) {
         throw new Error(`verify-seo: ${url} — canonical tag ("${canonical}") does not match its own sitemap URL exactly`);
       }
@@ -846,7 +919,7 @@ export async function verifySeo({
         }
       }
 
-      const canonical = extractTag(html, /<link rel="canonical" href="([^"]+)"/);
+      const canonical = singleCanonicalHref(html, requestPath);
       if (canonical !== expectedCanonical) {
         throw new Error(
           `verify-seo: ${requestPath} — expected canonical "${expectedCanonical}", got "${canonical}"`,
@@ -991,7 +1064,8 @@ export async function verifySeo({
       `200) — with no JSON-LD on any sitemap URL or configured route that declares none — and, on every one of those ` +
       `pages, each of the ${REQUIRED_ROUTE_SCOPED_SOCIAL_TAGS.length} route-scoped social tags present exactly once and equal ` +
       `to the page's own title/description/canonical, every site-constant social tag present, non-empty and genuinely ` +
-      `constant across the corpus, social image ${socialImageChecked} — plus ${internalLinksChecked} ` +
+      `constant across the corpus, each of the ${MIRRORED_SOCIAL_TAG_PAIRS.length} mirrored og:/twitter: pair(s) ` +
+      `carrying one value in both vocabularies, social image ${socialImageChecked} — plus ${internalLinksChecked} ` +
       `distinct internal link target(s) across those pages, each served 200 with no redirect (composed-artifact-only ` +
       `mounts ${COMPOSED_ONLY_LINK_PREFIXES.join(', ')} excluded, each re-proven absent from this build so none can ` +
       'be shadowing a real path) — all clean',
