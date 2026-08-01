@@ -17,6 +17,7 @@ import {
   isJavadocRedirectStub,
   isWithinRoot,
   linkSurfacesLandingFromOverview,
+  snippetBudgetExcerpt,
   stripJavadocWindowTitle,
   withinSnippetBudget,
 } from './javadoc-seo.mjs';
@@ -1637,6 +1638,89 @@ test('withinSnippetBudget names the copy factory to edit and quotes the offendin
   );
 });
 
+test('the quoted description is BOUNDED — a long input cannot copy itself into the error', () => {
+  // withinSnippetBudget is exported, so this is its own contract rather than a claim about the
+  // composed site: whatever a caller passes, the message reports the string instead of repeating
+  // it. (End to end the label is in fact capped by the filesystem — see the version test below.)
+  const absurd = 'v'.repeat(20000);
+  let message = '';
+  try {
+    withinSnippetBudget(`Filler. ${absurd}`, 'surfaceCopy');
+  } catch (error) {
+    message = error.message;
+  }
+  assert.notEqual(message, '', 'an over-budget description must still throw');
+  // Bounded, and bounded by a wide margin — not merely "shorter than the input".
+  assert.ok(message.length < 500, `error message not bounded: ${message.length} characters`);
+  assert.ok(!message.includes(absurd), 'the full description was quoted verbatim');
+  // Bounding must not cost the two things the message exists to report.
+  assert.match(message, /surfaceCopy/);
+  assert.match(message, /produced a 20008-character description/, 'the FULL computed length must survive truncation');
+  assert.match(message, /\(\+19851 more\)/, 'the omitted count must be stated, not silently dropped');
+});
+
+test('the excerpt omits nothing, and says nothing about omitting, when the text already fits', () => {
+  // A suffix claiming an omission when nothing was omitted is a false statement in an error
+  // message. Asserted directly because withinSnippetBudget only ever excerpts ABOVE the budget, so
+  // this branch is unreachable through the guard and would otherwise be untestable.
+  for (const fits of ['', 'A short, perfectly publishable description.', 'x'.repeat(157)]) {
+    const excerpt = snippetBudgetExcerpt(fits);
+    assert.equal(excerpt, fits, `altered a description that fits: ${excerpt.slice(0, 40)}`);
+    assert.doesNotMatch(excerpt, /more\)/, 'claimed an omission where there was none');
+    assert.doesNotMatch(excerpt, /…/, 'added an ellipsis where nothing was cut');
+  }
+  // One character past the budget is the first input that may be cut at all, and the count is 1.
+  assert.equal(snippetBudgetExcerpt('x'.repeat(158)), `${'x'.repeat(157)}… (+1 more)`);
+});
+
+test('a description only just over budget still reads in full — the bound must not blind ordinary edits', () => {
+  // The realistic failure is an author adding a few words, and for that case the message should
+  // stay as legible as it was before the bound existed: only the overflow is withheld.
+  const justOver = `${'x'.repeat(150)}THE TAIL`;
+  assert.equal(justOver.length, 158);
+  let message = '';
+  try {
+    withinSnippetBudget(justOver, 'surfacesLandingCopy');
+  } catch (error) {
+    message = error.message;
+  }
+  assert.match(message, /\(\+1 more\)/, 'the omitted count must be exact, not approximate');
+  assert.match(message, /THE TAI…/, 'every character but the overflow must remain legible');
+  assert.match(message, /surfacesLandingCopy/, 'the factory name must survive');
+  assert.match(message, /produced a 158-character description/, 'the full length must survive');
+});
+
+test('truncating the quote does NOT hide which version caused the failure, in either copy factory', () => {
+  // The load-bearing property behind quoting the HEAD rather than an arbitrary window. The label is
+  // the only part of these descriptions that varies, and it sits 64 characters into surfaceCopy's
+  // wording and 36 into surfacesLandingCopy's — both inside the quote. A reword that pushed the
+  // label past the cut would leave a reader with a truncated message naming no version at all, so
+  // it is asserted here against the REAL copy rather than trusted from the comment that claims it.
+  //
+  // 200 characters, not an arbitrarily huge number, because this route runs through the real pass:
+  // the version has to name a `javadoc/<version>` directory, so a longer one fails at mkdir instead
+  // of reaching the guard. That ceiling is the reason the composed site cannot flood a log, and the
+  // reason the bound above is stated as a property of the exported function rather than of a deploy.
+  const version = `1.0.0-${'q'.repeat(200)}`;
+  const { siteDir } = fixtureSiteDirWithNestedPages(`javadoc/${version}`, [version]);
+  writeFileSync(join(siteDir, 'javadoc', 'latest', 'surfaces.html'), RAW_SURFACES_LANDING_HTML, 'utf8');
+  let message = '';
+  try {
+    applyJavadocSeo({
+      siteDir,
+      siteUrl: 'https://agentforge4j.org',
+      ogImage: 'https://agentforge4j.org/brand/icon-512.png',
+      releasedVersions: [version],
+    });
+  } catch (error) {
+    message = error.message;
+  }
+  assert.notEqual(message, '', 'an unbounded version must still fail the build');
+  // The version is identifiable from the message alone — enough of it to recognise, never all of it.
+  assert.match(message, /1\.0\.0-qqqqqqqqqq/, 'the failing version is no longer visible in the error');
+  assert.ok(!message.includes(version), 'the whole version was quoted, so the bound did not apply');
+});
+
 test('BOTH hand-authored copy factories stay within budget for every lifecycle label the pass can produce', () => {
   // surfaceCopy and surfacesLandingCopy are not exported (they are internal copy), so they are
   // exercised the way production reaches them: through a real applyJavadocSeo run over a fixture
@@ -1737,6 +1821,51 @@ test('the guard does NOT reach nestedPageCopy — an arbitrarily long generated 
   assert.match(description, new RegExp(hugeTypeName));
 });
 
+// Reads the SPA's budget out of its source. The gap this closes is SPACING: the previous pattern
+// spelled the declaration with exactly one space on each side of the `=`, so reformatting a budget
+// that still AGREES would have turned the drift check red. (It matched an `export` prefix already,
+// being an unanchored substring search — that spelling is kept in the cases below to hold the
+// behaviour, not because it was broken.)
+//
+// Tolerant about how the declaration is written, deliberately strict about which declaration it is:
+// requiring the `const` keyword and a numeric literal terminated by `;` is what stops a use site or
+// a near-miss identifier from being read as the budget and compared instead. Both halves asserted.
+const SPA_BUDGET_PATTERN = /\b(?:export\s+)?const\s+MAX_DESCRIPTION_LENGTH\s*=\s*(\d+)\s*;/;
+
+test('the SPA budget is found however its declaration is spaced, and only in that declaration', () => {
+  for (const spelling of [
+    'const MAX_DESCRIPTION_LENGTH = 157;',
+    'const MAX_DESCRIPTION_LENGTH=157;',
+    'const MAX_DESCRIPTION_LENGTH =157;',
+    'const MAX_DESCRIPTION_LENGTH= 157;',
+    'export const MAX_DESCRIPTION_LENGTH = 157;',
+    'const  MAX_DESCRIPTION_LENGTH   =   157 ;',
+    'const MAX_DESCRIPTION_LENGTH =\n  157;',
+  ]) {
+    const match = SPA_BUDGET_PATTERN.exec(spelling);
+    assert.ok(match, `did not match a valid declaration: ${JSON.stringify(spelling)}`);
+    assert.equal(Number(match[1]), 157, JSON.stringify(spelling));
+  }
+  // The other half: tolerance must not become a pattern that matches anything carrying the name.
+  // A use site has no number to capture, a near-miss identifier carries the WRONG one, and prose
+  // is not a declaration at all — reading any of them as the budget would compare something that
+  // was never checked and report agreement anyway.
+  for (const notTheDeclaration of [
+    'if (raw.length <= MAX_DESCRIPTION_LENGTH) {',
+    'const MAX_DESCRIPTION_LENGTH_FALLBACK = 200;',
+    'const OTHER_MAX_DESCRIPTION_LENGTH = 200;',
+    'return `${MAX_DESCRIPTION_LENGTH - 1}`;',
+    '// historical: MAX_DESCRIPTION_LENGTH = 999;',
+    'let MAX_DESCRIPTION_LENGTH = 999;',
+  ]) {
+    assert.equal(
+      SPA_BUDGET_PATTERN.exec(notTheDeclaration),
+      null,
+      `wrongly matched a non-declaration: ${JSON.stringify(notTheDeclaration)}`,
+    );
+  }
+});
+
 test("the budget matches the SPA's own MAX_DESCRIPTION_LENGTH — the two modules must not drift apart", () => {
   // javadoc-seo.mjs restates the number instead of importing it (two independently built modules,
   // no dependency between them). Restating is only safe if "it is the same number" is verified
@@ -1745,7 +1874,7 @@ test("the budget matches the SPA's own MAX_DESCRIPTION_LENGTH — the two module
     join(import.meta.dirname, '..', '..', 'agentforge4j-web-ui', 'scripts', 'build-seo.mjs'),
     'utf8',
   );
-  const spaBudget = /const MAX_DESCRIPTION_LENGTH = (\d+);/.exec(spaBuildSeo);
+  const spaBudget = SPA_BUDGET_PATTERN.exec(spaBuildSeo);
   assert.ok(spaBudget, 'could not find MAX_DESCRIPTION_LENGTH in agentforge4j-web-ui/scripts/build-seo.mjs');
   assert.equal(
     Number(spaBudget[1]),

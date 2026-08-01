@@ -569,10 +569,51 @@ export function withinSnippetBudget(description, source) {
       `javadoc-seo: ${source} produced a ${description.length}-character description, over the ` +
         `${MAX_SNIPPET_DESCRIPTION_LENGTH}-character search-snippet budget — it would be truncated, ` +
         `possibly mid-word. Shorten the wording (this copy is hand-authored, so its length is a ` +
-        `choice): ${description}`,
+        `choice): ${snippetBudgetExcerpt(description)}`,
     );
   }
   return description;
+}
+
+/**
+ * As much of `description` as a diagnostic may quote: at most `MAX_SNIPPET_DESCRIPTION_LENGTH`
+ * characters — exactly the portion a search result would have kept — and, when anything was left
+ * out, a count of how much.
+ *
+ * Total rather than partial: a `description` that already fits is returned unchanged, with no
+ * ellipsis and no count, because a suffix claiming an omission when nothing was omitted is a false
+ * statement in an error message. That branch is why this is exported: `withinSnippetBudget` only
+ * ever calls it above the budget, so quoting-without-omission is unreachable through the guard and
+ * could not otherwise be proven. The module already exports its internals on the same basis
+ * (`isWithinRoot`, `stripJavadocWindowTitle`).
+ *
+ * Bounded because the length of what is quoted is not this function's to predict. The only variable
+ * part of the two guarded descriptions is the lifecycle label, which carries a version string read
+ * straight out of `versions.json` by a bare `JSON.parse` (`assemble-site.mjs`); nothing checks its
+ * length there, and `release-paths.mjs`'s `VERSION_RE` constrains the alphabet but not the length.
+ *
+ * That is NOT a claim that a deploy can emit an enormous log. Through the composed site the same
+ * version must also name a `javadoc/<version>` directory, so a filesystem-valid name caps it well
+ * before a log could be flooded — a test attempting otherwise fails at `mkdir`, not at its
+ * assertion. The bound exists so this helper's own contract is predictable for any caller, not
+ * because an incident was observed.
+ *
+ * The head is quoted rather than some window around the overrun, because the head is what keeps the
+ * message diagnostic: the label is the only part that varies between two calls, and it begins 64
+ * characters into `surfaceCopy`'s wording and 36 into `surfacesLandingCopy`'s — both far enough
+ * inside the quote that the version responsible stays visible. Those two offsets are asserted in
+ * the tests rather than trusted from this comment, so a reword that buried the label past the quote
+ * would fail rather than quietly cost the next reader their only clue.
+ *
+ * @param {string} description any description, over budget or not
+ * @returns {string} `description` unchanged when it fits, else its quotable head plus an omitted count
+ */
+export function snippetBudgetExcerpt(description) {
+  if (description.length <= MAX_SNIPPET_DESCRIPTION_LENGTH) {
+    return description;
+  }
+  const omitted = description.length - MAX_SNIPPET_DESCRIPTION_LENGTH;
+  return `${description.slice(0, MAX_SNIPPET_DESCRIPTION_LENGTH)}… (+${omitted} more)`;
 }
 
 function surfaceCopy(label) {
