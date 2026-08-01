@@ -24,14 +24,29 @@ test.describe('desktop navigation', () => {
     });
   }
 
-  // Regression guard for the /docs route-collision bug: the SPA used to own a client-side route at
-  // /docs (agentforge4j-web-ui/src/pages/DocsPage.tsx, removed) that intercepted every click before
-  // a real browser request for the composed Docusaurus artifact could ever happen. The nav entry
-  // must render as a plain anchor (a real navigation), never a client-side <Link>.
-  test('the Docs nav link is a real anchor targeting /docs/, not a client-side route', async ({ page }) => {
+  // Two regression guards in one link.
+  //
+  // The first is the /docs route-collision bug: the SPA used to own a client-side route at /docs
+  // (agentforge4j-web-ui/src/pages/DocsPage.tsx, removed) that intercepted every click before a real
+  // browser request for the composed Docusaurus artifact could ever happen. The nav entry must
+  // render as a plain anchor (a real navigation), never a client-side <Link>.
+  //
+  // The second is the entry point itself. `/docs/` is not a page — it is the client-redirect stub
+  // the docs redirects plugin generates, a title-less near-empty 200 whose only content is a meta
+  // refresh. Linking it made every visit to the documentation take an extra hop, and it was the only
+  // route in. The link must target the real versioned documentation tree instead.
+  //
+  // Asserted by shape, not by version: which version is current is derived at build time from the
+  // docs module's own version lifecycle (agentforge4j-web-ui/scripts/build-docs-entry.mjs), so a
+  // literal here would have to be edited at every release — exactly the coupling that fix avoids.
+  test('the Docs nav link is a real anchor into the versioned documentation tree, not a client-side route and not the redirect stub', async ({
+    page,
+  }) => {
     await page.goto('/');
     const docsLink = page.getByRole('navigation', { name: 'Primary' }).getByRole('link', { name: 'Docs' });
-    await expect(docsLink).toHaveAttribute('href', '/docs/');
+    const href = await docsLink.getAttribute('href');
+    expect(href).toMatch(/^\/docs\/.+\/$/);
+    expect(href).not.toBe('/docs/');
   });
 
   test('the logo returns home from a non-home route', async ({ page }) => {

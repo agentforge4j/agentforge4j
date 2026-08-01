@@ -53,12 +53,24 @@ function fixture() {
   const buildDir = join(root, 'build');
   const javadocDir = join(root, 'javadoc-next');
   mkdirSync(spaDir, { recursive: true });
-  writeFileSync(join(spaDir, 'index.html'), '<html>spa</html>');
+  // Carries the real SPA's own Docs link — see assemble-site.test.mjs's fixture note.
+  writeFileSync(join(spaDir, 'index.html'), '<html><body><a href="/docs/0.1.0/">Docs</a></body></html>');
   writeFileSync(join(spaDir, '404.html'), '<html>spa</html>');
   writeFileSync(join(spaDir, 'robots.txt'), 'User-agent: *\nAllow: /\n\nSitemap: https://agentforge4j.org/sitemap.xml\n');
   writeFileSync(join(spaDir, 'sitemap.xml'), sitemapXmlFixture([{ url: 'https://agentforge4j.org/' }]));
   mkdirSync(buildDir, { recursive: true });
-  writeFileSync(join(buildDir, 'index.html'), '<html>docs</html>');
+  // The real docs build's root page is the redirects plugin's client-redirect stub — see the same
+  // note in assemble-site.test.mjs's own fixture.
+  writeFileSync(
+    join(buildDir, 'index.html'),
+    '<!DOCTYPE html><html><head><meta charset="UTF-8">' +
+      '<meta http-equiv="refresh" content="0; url=/docs/0.1.0/">' +
+      '<link rel="canonical" href="/docs/0.1.0/" /></head></html>',
+  );
+  // The versioned tree the stub and the SPA's Docs link both point at — see the same note in
+  // assemble-site.test.mjs's own fixture.
+  mkdirSync(join(buildDir, '0.1.0'), { recursive: true });
+  writeFileSync(join(buildDir, '0.1.0', 'index.html'), '<html><head><title>Get started</title></head><body>docs</body></html>');
   // Stands in for a real Docusaurus `lastmod: 'date'` sitemap-plugin postBuild output, with
   // sufficient git history to have produced a real per-page date (this feature's own concern).
   writeFileSync(join(buildDir, 'sitemap.xml'), sitemapXmlFixture([{ url: DOCS_URL, lastmod: DOCS_LASTMOD }]));
