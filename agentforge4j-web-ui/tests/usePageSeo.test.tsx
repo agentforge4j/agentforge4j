@@ -34,6 +34,9 @@ import {
   JSON_LD_SCRIPT_ID,
   ROUTE_SCOPED_SOCIAL_TAGS,
 } from '../scripts/build-seo.mjs';
+// The hook's own copy of the table, imported by value so the two can be compared directly rather
+// than only through the tags the hook happened to write on three sampled routes.
+import { ROUTE_SCOPED_SOCIAL_TAGS as HOOK_ROUTE_SCOPED_SOCIAL_TAGS } from '@/lib/usePageSeo';
 
 const MODULE_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 // The committed index.html template every built shell (including dist/404.html) derives from —
@@ -412,10 +415,22 @@ describe('usePageSeo route-scoped social metadata', () => {
     }
   });
 
-  // The binding between the two copies of the table: build-seo.mjs's ROUTE_SCOPED_SOCIAL_TAGS is
-  // imported here (never re-typed), and every entry in it is asserted against what the hook really
-  // wrote. Adding a sixth tag on the build side without teaching the hook about it fails here —
-  // which is precisely the drift that produced the audited defect, just in the other direction.
+  // The binding between the two copies of the table, stated as an equality so it holds in BOTH
+  // directions. The per-route assertions below prove the hook writes everything the build writes;
+  // only this proves the hook writes NOTHING MORE. A tag present in the hook's table and absent
+  // from build-seo.mjs's would ship to JavaScript-executing consumers only — missing from every
+  // static shell a crawler receives — and neither verify-seo.mjs (which states its own required
+  // list) nor verify-client-nav-seo.mjs (whose two sides are both hook-written, so they converge)
+  // would see it.
+  test('the hook\'s route-scoped table and the build\'s are element-for-element equal', () => {
+    expect(HOOK_ROUTE_SCOPED_SOCIAL_TAGS).toEqual(ROUTE_SCOPED_SOCIAL_TAGS);
+    // Non-vacuity: two empty tables would satisfy the equality and check nothing.
+    expect(HOOK_ROUTE_SCOPED_SOCIAL_TAGS.length).toBeGreaterThan(0);
+  });
+
+  // Every entry in the build's table is asserted against what the hook really wrote. Adding a sixth
+  // tag on the build side without teaching the hook about it fails here — which is precisely the
+  // drift that produced the audited defect, just in the other direction.
   test.each(['/', '/api', '/architecture'])(
     'every tag the static shell rewrites for a route is also written client-side, with the same derivation (%s)',
     (path) => {

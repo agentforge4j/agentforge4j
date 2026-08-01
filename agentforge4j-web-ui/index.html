@@ -62,7 +62,13 @@
       property="og:description"
       content="AgentForge4j is an open-source Java framework for Java teams building their own governed AI workflows, with approvals, tools, and observability."
     />
-    <!-- The dedicated 1280x640 social-preview card, not the 512x512 app icon: a square image is
+    <!-- NOTE for editors: this comment, like the theme-bootstrap one above, must stay free of
+         literal angle-bracket tag text — scripts/build-seo.mjs rewrites the built page's head via
+         regexes anchored on the FIRST occurrence of each tag, and this comment sits AHEAD of
+         twitter:title and twitter:description, both of which it rewrites. Tag-like text here would
+         be matched instead and splice the file apart.
+
+         The dedicated 1280x640 social-preview card, not the 512x512 app icon: a square image is
          letterboxed or centre-cropped by every large-card renderer, and `summary_large_image` needs
          at least 1200x630 to be honoured at all. Declaring the real intrinsic width/height lets a
          crawler reserve the right aspect ratio before fetching the bytes; both values are gated

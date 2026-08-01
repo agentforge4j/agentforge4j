@@ -19,6 +19,7 @@ Shipped tier defaults for provider id `azure-openai`:
 | `LITE` | `gpt-5.4-nano` |
 | `STANDARD` | `gpt-5.4-mini` |
 | `POWERFUL` | `gpt-5.5` |
+| `PREMIUM` | `gpt-5.5` |
 
 The deployment you create on Azure maps to the model selection; tier defaults name the underlying
 model.

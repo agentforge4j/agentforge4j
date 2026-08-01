@@ -285,17 +285,24 @@ function socialTagPattern(attribute, key, { consumeTrailingWhitespace = false } 
  * The `[pattern, replacement]` pairs for every route-scoped social tag, derived from one route's
  * resolved values — the single place any producer turns `ROUTE_SCOPED_SOCIAL_TAGS` into edits.
  *
- * Every producer of a `<head>` in this repository goes through this: ordinary route shells
+ * Every producer of a `<head>` in this module goes through here: ordinary route shells
  * (`injectHead`), the not-found shell (`injectNotFoundHead`) and redirect stubs
- * (`injectRedirectStub`). Each of those previously carried its own hand-written copy of the same
- * five tags, which is precisely the divergence the shared table exists to prevent — a copy is a
- * copy whether it lives in another module or in the function next door.
+ * (`injectRedirectStub`). Any further one must too, deriving its social replacements from this
+ * function rather than hand-copying the five tags, because a copy is a copy whether it lives in
+ * another module or in the function next door — and a divergence between two such copies is the
+ * defect this whole table exists to close. `build-seo.test.mjs`'s `PRODUCERS` list is where each
+ * producer is registered for the mutation test that enforces it.
+ *
+ * The three differ only in what they feed this function, which is the point: a route shell derives
+ * `og:url` from its own canonical, a redirect stub from its destination (the stub is not a page
+ * about itself), and a not-found page from nothing at all.
  *
  * A `source` whose value is `null` REMOVES that tag instead of rewriting it, taking the whitespace
  * it occupied with it. That is not a convenience: a not-found page must carry no `og:url`, because
  * that tag makes a claim about which URL the content belongs to, and the address does not exist.
  * Expressing "remove" in the same table-driven pass is what keeps that page from needing its own
- * copy of the list just to differ in one entry.
+ * copy of the list just to differ in one entry — `injectNotFoundHead` is the producer that relies
+ * on it.
  */
 export function routeScopedSocialReplacements(values) {
   return ROUTE_SCOPED_SOCIAL_TAGS.map(({ attribute, key, source }) => {
