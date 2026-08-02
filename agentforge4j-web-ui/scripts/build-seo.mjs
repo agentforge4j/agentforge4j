@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 //
-// Generates two things from the already-built dist/index.html (run after `vite build` and after
+// Generates three things from the already-built dist/index.html (run after `vite build` and after
 // copy-404.mjs — 404.html must stay the *pre-prerender* empty shell, so an unmatched path served
 // under a real HTTP 404 boots the SPA and renders NotFoundPage, never a static copy of the full
 // prerendered home page body; verify-seo.mjs gates that ordering on every real build):
@@ -74,6 +74,12 @@
 //         surface); treating every dependency bump everywhere (eslint, vitest, a transitive patch
 //         bump with no rendering effect) as globally material would defeat the point of tracking
 //         real per-page dependencies at all.
+//
+//  3. The not-found head of the already-copied dist/404.html (see injectNotFoundHead). copy-404.mjs
+//     copies dist/index.html verbatim, which is right for the BODY and wrong for the HEAD — the
+//     catch-all shell would otherwise describe itself as the home page on every mistyped address,
+//     and on /404.html itself, which is served at 200. Only the head is rewritten; the empty
+//     `<div id="root"></div>` mount point the copy carries is preserved by construction.
 //
 // Per-workflow title/description formatting mirrors src/lib/catalogueSeo.ts (used by the
 // client-side title/meta sync, usePageSeo) — duplicated deliberately, not imported, because this
@@ -403,23 +409,23 @@ function socialTagPattern(attribute, key, { consumeTrailingWhitespace = false } 
  * The `[pattern, replacement]` pairs for every route-scoped social tag, derived from one route's
  * resolved values — the single place any producer turns `ROUTE_SCOPED_SOCIAL_TAGS` into edits.
  *
- * `injectHead` is the only producer of a `<head>` in this module today, and it goes through here.
- * The indirection exists so that the next one does too: any further head producer must derive its
- * social replacements from this function rather than hand-copying the five tags, because a copy is
- * a copy whether it lives in another module or in the function next door — and a divergence between
- * two such copies is the defect this whole table exists to close. `build-seo.test.mjs`'s `PRODUCERS`
- * list is where each producer is registered for the mutation test that enforces it.
+ * Both producers of a `<head>` in this module go through here: ordinary route shells
+ * (`injectHead`) and the not-found shell (`injectNotFoundHead`). Any further one must too, deriving
+ * its social replacements from this function rather than hand-copying the five tags, because a copy
+ * is a copy whether it lives in another module or in the function next door — and a divergence
+ * between two such copies is the defect this whole table exists to close. `build-seo.test.mjs`'s
+ * `PRODUCERS` list is where each producer is registered for the mutation test that enforces it.
  *
  * The replacement half of each pair is a plain string carrying `escapeHtml`ed route data, and
  * `escapeHtml` deliberately does not escape `$`. Every consumer must therefore apply it through a
  * REPLACER FUNCTION, never as a bare replacement string — see `injectHead`'s own loop for why.
  *
  * A `source` whose value is `null` REMOVES that tag instead of rewriting it, taking the whitespace
- * it occupied with it. No producer needs that yet — it is here because the one obvious future head,
- * a not-found page, must carry no `og:url`: that tag makes a claim about which URL the content
- * belongs to, and the address does not exist. Expressing "remove" in the same table-driven pass is
- * what will keep that page from needing its own copy of the list just to differ in one entry. Until
- * a producer uses it, the branch is exercised by tests only, deliberately and visibly.
+ * it occupied with it. That is not a convenience: a not-found page must carry no `og:url`, because
+ * that tag makes a claim about which URL the content belongs to, and the address does not exist.
+ * Expressing "remove" in the same table-driven pass is what keeps that page from needing its own
+ * copy of the list just to differ in one entry — `injectNotFoundHead` is the producer that relies
+ * on it.
  */
 export function routeScopedSocialReplacements(values) {
   return ROUTE_SCOPED_SOCIAL_TAGS.map(({ attribute, key, source }) => {
@@ -466,6 +472,68 @@ export function injectHead(html, { title, description, canonical }) {
   return result;
 }
 
+/**
+ * Rewrites the copied `dist/404.html` head so the catch-all shell describes itself as a not-found
+ * page instead of as the home page.
+ *
+ * copy-404.mjs copies `dist/index.html` verbatim before any per-route rewriting, which is right for
+ * the BODY (it must stay the empty pre-prerender mount point — see that script and verify-seo.mjs)
+ * but leaves the HEAD saying the home page's title, description, canonical and social tags. Served
+ * for every mistyped address, that made a 404 present itself as a second home page, with only the
+ * HTTP 404 status keeping it out of an index — and `/404.html` itself is served at 200, where no
+ * status protects anything and the mismatch between "looks like the home page" and "is not the home
+ * page" is exactly a soft-404 signal.
+ *
+ * Three things change relative to `injectHead`'s per-route treatment, each for its own reason:
+ *  - the canonical link is REMOVED, not repointed. Naming the home page asks a crawler to fold a
+ *    nonexistent URL into a real one; naming itself asserts an arbitrary address is a real page.
+ *    Neither is true, and a 404 is entitled to say nothing.
+ *  - `og:url` is removed for the same reason — it is the canonical's Open Graph counterpart, and
+ *    leaving it pointing at the home page would keep making the claim the canonical no longer does.
+ *  - a `robots` directive is added, since this is the one shell whose own address (`/404.html`) is
+ *    genuinely served at 200. It carries `ROBOTS_META_ID`, which marks it as this build's own: the
+ *    client-side hook adopts and updates THIS node on a direct load instead of appending a second
+ *    one beside it, and — on every other route, where the directive must be cleared — removes only
+ *    a node bearing that id rather than any `meta[name="robots"]` the page happens to have. See
+ *    that constant's own comment.
+ *
+ * Never touches the body, so the empty `<div id="root"></div>` verify-seo.mjs gates on is preserved
+ * by construction rather than by care.
+ */
+export function injectNotFoundHead(html, { title, description, robots }) {
+  const safeTitle = escapeHtml(title);
+  const safeDescription = escapeHtml(description);
+  const replacements = [
+    [/<title>[\s\S]*?<\/title>/, `<title>${safeTitle}</title>`],
+    [/<meta\s+name="description"[\s\S]*?\/>/, `<meta name="description" content="${safeDescription}" />`],
+    // The canonical link is REMOVED, whitespace and all, rather than repointed — see this function's
+    // own doc comment. `\s*` keeps the line it occupied from becoming a blank one.
+    [/<link\s+rel="canonical"[\s\S]*?\/>\s*/, ''],
+    // The five social tags come from the one shared table, with `canonical: null` expressing the one
+    // way this page differs from an ordinary route: no og:url. Listing them here instead — which is
+    // what this function used to do — would be a second copy of exactly the list the table exists to
+    // keep single, and the next tag added to it would reach ordinary routes and silently skip 404s.
+    ...routeScopedSocialReplacements({ title, description, canonical: null }),
+  ];
+
+  let result = html;
+  for (const [pattern, replacement] of replacements) {
+    // Same fail-loudly contract as injectHead: these tags all exist in the committed index.html
+    // template, so one going missing is template drift to surface, not a silent no-op.
+    if (!pattern.test(result)) {
+      throw new Error(`build-seo: expected tag not found in dist/404.html: ${pattern}`);
+    }
+    result = result.replace(pattern, () => replacement);
+  }
+  if (!/<\/head>/.test(result)) {
+    throw new Error('build-seo: expected a </head> closing tag in dist/404.html');
+  }
+  return result.replace(
+    /<\/head>/,
+    () => `<meta name="robots" id="${ROBOTS_META_ID}" content="${escapeHtml(robots)}" />\n  </head>`,
+  );
+}
+
 const EMPTY_ROOT_PATTERN = /<div id="root"><\/div>/;
 
 /** Splices a route's real prerendered content (prerender-routes.mjs's captured `#root` innerHTML)
@@ -508,6 +576,25 @@ export function injectRoot(html, innerHtml) {
 // module — build-seo.mjs pulls in node:child_process), and tests/usePageSeo.test.tsx imports this
 // constant to bind that copy to this one.
 export const JSON_LD_SCRIPT_ID = 'seo-json-ld';
+
+/**
+ * The id stamped on the `<meta name="robots">` this build writes into dist/404.html, and the one
+ * `usePageSeo.ts`'s `setRobots` looks for — an OWNERSHIP marker, exactly as JSON_LD_SCRIPT_ID is
+ * for the structured-data block, and shared with that constant's own "opaque literal, imported
+ * rather than re-derived" rationale above.
+ *
+ * Ownership is the whole point, and it is not cosmetic. The robots directive is the one head tag
+ * this site adds on ONE page and removes on every other, so the client-side hook has to delete a
+ * tag on routes that never declared one — and a deletion keyed on `meta[name="robots"]` alone
+ * deletes whatever it finds, including a directive this build never wrote. A host embedding the
+ * SPA, a future `index.html` line, or an injected `max-image-preview:large` would be served in the
+ * static HTML, then silently vanish from the DOM the moment the bundle hydrated, with every gate
+ * green: verify-seo.mjs reads served HTML (where the tag is still there) and
+ * verify-client-nav-seo.mjs compares direct load against client navigation (which agree, because
+ * the hook erases it on both). Keyed on this id instead, the hook removes only its own node and
+ * anything else on the page survives untouched.
+ */
+export const ROBOTS_META_ID = 'seo-robots';
 
 /** Inserts a route's JSON-LD structured-data block right before `</head>` — an addition, not a
  * replacement (unlike injectHead's tags, no shell starts with one), so only routes that declare a
@@ -747,6 +834,7 @@ export function buildSeo({
 
   const {
     siteUrl,
+    notFound,
     artifactGenerationSourceFiles = [],
     globalSourceFiles = [],
     catalogueSourceFiles = [],
@@ -850,7 +938,19 @@ export function buildSeo({
 
   writeFileSync(join(distDir, 'sitemap.xml'), sitemapXml(sitemapEntries), 'utf8');
 
-  return { shellsWritten, sitemapUrls: uniqueUrls };
+  // The catch-all shell copy-404.mjs already wrote (it runs BEFORE this script, deliberately — see
+  // its header). Rewriting its head here rather than there keeps that script's one job — produce a
+  // byte-identical, pre-prerender copy — intact and separately verifiable, and puts the head
+  // rewriting in the one module that already owns it. Deliberately not counted in `shellsWritten`:
+  // 404.html is not a route shell and is not a sitemap URL.
+  const notFoundPath = join(distDir, '404.html');
+  let notFoundShellWritten = false;
+  if (notFound && existsSync(notFoundPath)) {
+    writeFileSync(notFoundPath, injectNotFoundHead(readFileSync(notFoundPath, 'utf8'), notFound), 'utf8');
+    notFoundShellWritten = true;
+  }
+
+  return { shellsWritten, sitemapUrls: uniqueUrls, notFoundShellWritten };
 }
 
 async function main() {
@@ -861,7 +961,8 @@ async function main() {
   const snapshots = await prerenderRoutes({ distDir: DIST_DIR });
   const result = buildSeo({ snapshots });
   console.log(
-    `[build-seo] wrote ${result.shellsWritten} route shell(s), ${result.sitemapUrls.length} sitemap URL(s)`,
+    `[build-seo] wrote ${result.shellsWritten} route shell(s), ${result.sitemapUrls.length} sitemap URL(s)` +
+      `${result.notFoundShellWritten ? ', and gave dist/404.html its own not-found head' : ''}`,
   );
 }
 
