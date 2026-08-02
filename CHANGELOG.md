@@ -23,6 +23,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Retry-policy absence is expressed the same way on both LLM contracts — breaking.**
+  `LlmClientConfiguration.getRetryPolicy()` now returns a nullable `LlmRetryPolicy` instead of
+  `Optional<LlmRetryPolicy>`, matching `LlmClient.getRetryPolicy()`, which already used `null` to
+  mean "no policy requested". *Migration:* a configuration that overrides the method changes its
+  return type and returns `null` where it returned `Optional.empty()`; callers replace
+  `getRetryPolicy().orElse(null)` with `getRetryPolicy()`, and `getRetryPolicy().isPresent()` with
+  a `!= null` check. Configurations that never overrode the method need no change. In the same
+  pass, `RetryingLlmClient.getRetryPolicy()` reports the policy it was constructed with — the one
+  it actually retries with — rather than the wrapped client's own value, which could be `null`
+  while retries were genuinely running.
 - **Invalid-tier error messages list the tier set from the enum.** Bootstrap configuration
   parsing, agent invocation, and Spring auto-configuration previously each restated
   `LITE, STANDARD, POWERFUL` in their own message; all three now derive the list from

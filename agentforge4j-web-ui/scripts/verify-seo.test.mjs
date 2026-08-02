@@ -28,7 +28,7 @@ import {
 // meet: the equality assertion below closes the "producer grew a tag the gate never learned about"
 // direction, while verify-seo.mjs staying independent closes the "producer dropped a tag and the
 // gate stopped looking" direction. Importing the table into the gate would close only the first.
-import { JSON_LD_SCRIPT_ID, ROUTE_SCOPED_SOCIAL_TAGS } from './build-seo.mjs';
+import { JSON_LD_SCRIPT_ID, ROBOTS_META_ID, ROUTE_SCOPED_SOCIAL_TAGS } from './build-seo.mjs';
 
 const REAL_MODULE_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -154,14 +154,52 @@ function sitemapXml(entries) {
 // the config every test's default `seoRoutesPath` actually reads.
 const REAL_NOT_FOUND = JSON.parse(readFileSync(join(REAL_MODULE_ROOT, 'src/config/seo-routes.json'), 'utf8')).notFound;
 
+/** The route-scoped social tags a correctly-built dist/404.html carries, as raw head markup:
+ * every tag derived from the not-found title/description, and — by omission — none derived from a
+ * canonical, since a 404 has none.
+ *
+ * Written out as literal `[attribute, key, source]` triples rather than generated from
+ * `REQUIRED_ROUTE_SCOPED_SOCIAL_TAGS`, matching what `page()` above already does for ordinary
+ * shells and for the same reason: a fixture generated from the very table the gate checks against
+ * would satisfy that gate by construction, so the positive test could not distinguish a correct
+ * shell from a correct table. `socialOverrides` breaks exactly one tag for the negative controls
+ * that are about this gate. */
+function notFoundSocialTags({ title, description }, socialOverrides = {}) {
+  return [
+    ['property', 'og:title', title],
+    ['property', 'og:description', description],
+    ['name', 'twitter:title', title],
+    ['name', 'twitter:description', description],
+  ]
+    .map(([attribute, key, derived]) => {
+      const content = key in socialOverrides ? socialOverrides[key] : derived;
+      return content === null ? '' : `<meta ${attribute}="${key}" content="${content}" />`;
+    })
+    .join('');
+}
+
 /** The head a correctly-built dist/404.html carries: not-found title and description, a noindex
- * robots directive, and — by omission — no canonical and no og:url. */
+ * robots directive bearing the shared ownership id, the route-scoped social tags derived from that
+ * title/description, and — by omission — no canonical and no og:url. */
 function notFoundHead(overrides = {}) {
-  const { title, description, robots } = { ...REAL_NOT_FOUND, ...overrides };
+  const { title, description, robots, robotsId, socialOverrides } = {
+    robotsId: ROBOTS_META_ID,
+    socialOverrides: {},
+    ...REAL_NOT_FOUND,
+    ...overrides,
+  };
   return (
     `<title>${title}</title>` +
     `<meta name="description" content="${description}" />` +
-    `<meta name="robots" content="${robots}" />`
+    // `robots: null` omits the tag entirely — the shape the "no robots directive at all" control
+    // needs, expressed as one broken property of an otherwise correct head rather than as a second
+    // hand-written head that could drift from this one.
+    // `robotsId: null` drops the id attribute alone, keeping the directive itself intact — the
+    // "present but unowned" shape the id controls need.
+    (robots === null
+      ? ''
+      : `<meta name="robots"${robotsId === null ? '' : ` id="${robotsId}"`} content="${robots}" />`) +
+    notFoundSocialTags({ title, description }, socialOverrides)
   );
 }
 
@@ -1161,13 +1199,9 @@ function notFoundFixture({ head, routesJson } = {}) {
     sitemapXml([{ url: 'https://agentforge4j.org/', lastmod: '2026-07-20' }]),
     'utf8',
   );
-  const defaultHead =
-    `<title>${NOT_FOUND_CONFIG.title}</title>` +
-    `<meta name="description" content="${NOT_FOUND_CONFIG.description}" />` +
-    `<meta name="robots" content="${NOT_FOUND_CONFIG.robots}" />`;
   writeFileSync(
     join(distDir, '404.html'),
-    `<!doctype html><html lang="en"><head><meta charset="UTF-8">${head ?? defaultHead}</head>` +
+    `<!doctype html><html lang="en"><head><meta charset="UTF-8">${head ?? notFoundHead(NOT_FOUND_CONFIG)}</head>` +
       `<body><div id="root"></div></body></html>`,
     'utf8',
   );
@@ -1187,10 +1221,7 @@ test('a correctly-headed dist/404.html passes clean', async () => {
 
 test('NEGATIVE CONTROL — the audited defect: a dist/404.html still carrying the home page title fails', async () => {
   const { distDir, seoRoutesPath } = notFoundFixture({
-    head:
-      '<title>AgentForge4j — Governed AI Workflows for Java</title>' +
-      `<meta name="description" content="${NOT_FOUND_CONFIG.description}" />` +
-      '<meta name="robots" content="noindex, follow" />',
+    head: notFoundHead({ ...NOT_FOUND_CONFIG, title: 'AgentForge4j — Governed AI Workflows for Java' }),
   });
   await assert.rejects(
     () => verifySeo({ distDir, seoRoutesPath, staticRoutes: [] }),
@@ -1200,11 +1231,7 @@ test('NEGATIVE CONTROL — the audited defect: a dist/404.html still carrying th
 
 test('NEGATIVE CONTROL — a dist/404.html carrying a canonical link fails, whichever URL it names', async () => {
   const { distDir, seoRoutesPath } = notFoundFixture({
-    head:
-      `<title>${NOT_FOUND_CONFIG.title}</title>` +
-      `<meta name="description" content="${NOT_FOUND_CONFIG.description}" />` +
-      '<meta name="robots" content="noindex, follow" />' +
-      '<link rel="canonical" href="https://agentforge4j.org/" />',
+    head: `${notFoundHead(NOT_FOUND_CONFIG)}<link rel="canonical" href="https://agentforge4j.org/" />`,
   });
   await assert.rejects(
     () => verifySeo({ distDir, seoRoutesPath, staticRoutes: [] }),
@@ -1214,21 +1241,18 @@ test('NEGATIVE CONTROL — a dist/404.html carrying a canonical link fails, whic
 
 test('a dist/404.html carrying an og:url fails too — it makes the same claim as a canonical', async () => {
   const { distDir, seoRoutesPath } = notFoundFixture({
-    head:
-      `<title>${NOT_FOUND_CONFIG.title}</title>` +
-      `<meta name="description" content="${NOT_FOUND_CONFIG.description}" />` +
-      '<meta name="robots" content="noindex, follow" />' +
-      '<meta property="og:url" content="https://agentforge4j.org/" />',
+    head: `${notFoundHead(NOT_FOUND_CONFIG)}<meta property="og:url" content="https://agentforge4j.org/" />`,
   });
-  await assert.rejects(() => verifySeo({ distDir, seoRoutesPath, staticRoutes: [] }), /dist\/404\.html carries an og:url/);
+  await assert.rejects(
+    () => verifySeo({ distDir, seoRoutesPath, staticRoutes: [] }),
+    /dist\/404\.html carries og:url \("https:\/\/agentforge4j\.org\/"\) — it is derived from the canonical/,
+  );
 });
 
 test('NEGATIVE CONTROL — a dist/404.html carrying the home page JSON-LD fails', async () => {
   const { distDir, seoRoutesPath } = notFoundFixture({
     head:
-      `<title>${NOT_FOUND_CONFIG.title}</title>` +
-      `<meta name="description" content="${NOT_FOUND_CONFIG.description}" />` +
-      '<meta name="robots" content="noindex, follow" />' +
+      `${notFoundHead(NOT_FOUND_CONFIG)}` +
       '<script type="application/ld+json">{"@context":"https://schema.org","@type":"WebSite"}</script>',
   });
   await assert.rejects(
@@ -1239,7 +1263,7 @@ test('NEGATIVE CONTROL — a dist/404.html carrying the home page JSON-LD fails'
 
 test('a dist/404.html with no robots directive fails — /404.html is served at 200, so nothing else keeps it out of an index', async () => {
   const { distDir, seoRoutesPath } = notFoundFixture({
-    head: `<title>${NOT_FOUND_CONFIG.title}</title><meta name="description" content="${NOT_FOUND_CONFIG.description}" />`,
+    head: notFoundHead({ ...NOT_FOUND_CONFIG, robots: null }),
   });
   await assert.rejects(
     () => verifySeo({ distDir, seoRoutesPath, staticRoutes: [] }),
@@ -1249,14 +1273,103 @@ test('a dist/404.html with no robots directive fails — /404.html is served at 
 
 test('a robots directive that is present but does NOT say noindex is rejected, not accepted as "some directive is there"', async () => {
   const { distDir, seoRoutesPath } = notFoundFixture({
-    head:
-      `<title>${NOT_FOUND_CONFIG.title}</title>` +
-      `<meta name="description" content="${NOT_FOUND_CONFIG.description}" />` +
-      '<meta name="robots" content="index, follow" />',
+    head: notFoundHead({ ...NOT_FOUND_CONFIG, robots: 'index, follow' }),
   });
   await assert.rejects(
     () => verifySeo({ distDir, seoRoutesPath, staticRoutes: [] }),
     /robots directive is "index, follow", which does not say noindex/,
+  );
+});
+
+// --- The robots tag's OWNERSHIP id. It is what lets the client-side hook adopt this exact node on a
+// direct load instead of appending a second one beside it, and — on every real route, where the
+// directive is cleared — remove only a tag this build wrote rather than any robots directive the
+// document happens to carry. A shell that lost the id is a shell whose hydration silently duplicates
+// or over-deletes, with nothing else here able to see it. ---
+
+test('NEGATIVE CONTROL — a robots directive with no ownership id fails: hydration would append a second one beside it', async () => {
+  const { distDir, seoRoutesPath } = notFoundFixture({
+    head: notFoundHead({ ...NOT_FOUND_CONFIG, robotsId: null }),
+  });
+  await assert.rejects(
+    () => verifySeo({ distDir, seoRoutesPath, staticRoutes: [] }),
+    /robots meta has id null — expected "seo-robots"/,
+  );
+});
+
+test('NEGATIVE CONTROL — a robots directive carrying a DIFFERENT id fails too, rather than passing on "it has an id"', async () => {
+  const { distDir, seoRoutesPath } = notFoundFixture({
+    head: notFoundHead({ ...NOT_FOUND_CONFIG, robotsId: 'some-other-id' }),
+  });
+  await assert.rejects(
+    () => verifySeo({ distDir, seoRoutesPath, staticRoutes: [] }),
+    /robots meta has id "some-other-id" — expected "seo-robots"/,
+  );
+});
+
+test('the id the gate demands is build-seo.mjs\'s own exported constant, not a literal re-typed here', () => {
+  // The gate imports ROBOTS_META_ID rather than restating it, so the two cannot drift; this states
+  // the value the negative controls above are written against, so a rename fails HERE — visibly —
+  // instead of silently turning both controls into assertions about a string nothing uses.
+  assert.equal(ROBOTS_META_ID, 'seo-robots');
+});
+
+test('two robots metas on the 404 shell are rejected — the shape a hook that appends instead of adopting leaves behind', async () => {
+  const { distDir, seoRoutesPath } = notFoundFixture({
+    head: `${notFoundHead(NOT_FOUND_CONFIG)}<meta name="robots" content="noindex, follow" />`,
+  });
+  await assert.rejects(
+    () => verifySeo({ distDir, seoRoutesPath, staticRoutes: [] }),
+    /dist\/404\.html — 2 <meta name="robots"> tags on one page — expected exactly one/,
+  );
+});
+
+// --- The route-scoped social tags on the 404 shell. dist/404.html is neither a sitemap URL nor a
+// configured static route, so `assertSocialMetaConsistent` — which holds every published page's
+// social card to its own title/description/canonical — never sees it. Until these checks existed,
+// a 404 whose card still read "AgentForge4j — Governed AI Workflows for Java" while its <title>
+// read "Page not found" shipped green: the gate named `og:url` and nothing else. ---
+
+// One control per tag the shell is required to carry, generated from the gate's own required list
+// rather than hand-listed, so a tag added to that list arrives here with a negative control already
+// written for it. Each mutates exactly ONE tag to the home page's value — the real regression shape
+// (a head copied from index.html and only partly rewritten) — leaving everything else correct, so
+// the failure can only be attributed to the tag under test.
+for (const { attribute, key, source } of REQUIRED_ROUTE_SCOPED_SOCIAL_TAGS.filter((tag) => tag.source !== 'canonical')) {
+  test(`NEGATIVE CONTROL — a dist/404.html whose ${key} still carries the home page's ${source} fails`, async () => {
+    const homeValue = 'AgentForge4j — Governed AI Workflows for Java';
+    const { distDir, seoRoutesPath } = notFoundFixture({
+      head: notFoundHead({ ...NOT_FOUND_CONFIG, socialOverrides: { [key]: homeValue } }),
+    });
+    await assert.rejects(
+      () => verifySeo({ distDir, seoRoutesPath, staticRoutes: [] }),
+      new RegExp(
+        `dist/404\\.html — ${key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')} is "${homeValue}" but the not-found ${source} is`,
+      ),
+      `${key} (${attribute}) is not checked against the not-found ${source}`,
+    );
+  });
+
+  test(`NEGATIVE CONTROL — a dist/404.html missing its ${key} entirely fails, rather than passing on absence`, async () => {
+    const { distDir, seoRoutesPath } = notFoundFixture({
+      head: notFoundHead({ ...NOT_FOUND_CONFIG, socialOverrides: { [key]: null } }),
+    });
+    await assert.rejects(
+      () => verifySeo({ distDir, seoRoutesPath, staticRoutes: [] }),
+      new RegExp(`dist/404\\.html — no <meta ${attribute}="${key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}"> tag at all`),
+    );
+  });
+}
+
+test('the 404 social controls above cover every non-canonical route-scoped tag — a shrunken list would silently check nothing', () => {
+  // The loop is generated, so its coverage is only as real as the list it iterates. Stating the
+  // count here means emptying or shrinking that list fails visibly instead of quietly reducing the
+  // number of negative controls this file runs.
+  const checked = REQUIRED_ROUTE_SCOPED_SOCIAL_TAGS.filter((tag) => tag.source !== 'canonical');
+  assert.equal(checked.length, 4);
+  assert.deepEqual(
+    checked.map((tag) => tag.key).sort(),
+    ['og:description', 'og:title', 'twitter:description', 'twitter:title'],
   );
 });
 
@@ -1272,11 +1385,10 @@ test('a config with no notFound metadata at all fails the gate rather than skipp
 
 test('the shell is still required to be the empty pre-prerender mount point — the new head checks do not replace that one', async () => {
   const { distDir, seoRoutesPath } = notFoundFixture();
+  // Everything about the head is correct here, so the only thing left to fail on is the body.
   writeFileSync(
     join(distDir, '404.html'),
-    `<!doctype html><html lang="en"><head><title>${NOT_FOUND_CONFIG.title}</title>` +
-      `<meta name="description" content="${NOT_FOUND_CONFIG.description}" />` +
-      '<meta name="robots" content="noindex, follow" /></head>' +
+    `<!doctype html><html lang="en"><head>${notFoundHead(NOT_FOUND_CONFIG)}</head>` +
       '<body><div id="root"><h1>a whole prerendered home page</h1></div></body></html>',
     'utf8',
   );

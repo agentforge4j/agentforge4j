@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 //
-// Generates two things from the already-built dist/index.html (run after `vite build` and after
+// Generates three things from the already-built dist/index.html (run after `vite build` and after
 // copy-404.mjs — 404.html must stay the *pre-prerender* empty shell, so an unmatched path served
 // under a real HTTP 404 boots the SPA and renders NotFoundPage, never a static copy of the full
 // prerendered home page body; verify-seo.mjs gates that ordering on every real build):
@@ -75,9 +75,18 @@
 //         bump with no rendering effect) as globally material would defeat the point of tracking
 //         real per-page dependencies at all.
 //
+//  3. The not-found head of the already-copied dist/404.html (see injectNotFoundHead). copy-404.mjs
+//     copies dist/index.html verbatim, which is right for the BODY and wrong for the HEAD — the
+//     catch-all shell would otherwise describe itself as the home page on every mistyped address,
+//     and on /404.html itself, which is served at 200. Only the head is rewritten; the empty
+//     `<div id="root"></div>` mount point the copy carries is preserved by construction.
+//
 // Per-workflow title/description formatting mirrors src/lib/catalogueSeo.ts (used by the
 // client-side title/meta sync, usePageSeo) — duplicated deliberately, not imported, because this
-// is plain Node ESM with no bundler step ahead of it; kept to two small, easy-to-eyeball rules.
+// is plain Node ESM with no bundler step ahead of it. The truncation rule is far too big to keep
+// in sync by eye, so nothing here relies on that: tests/usePageSeo.test.tsx drives BOTH copies of
+// every duplicated unit over the real shipped catalogue data and a shared corpus of hard cases,
+// and requires identical results.
 
 import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
@@ -93,7 +102,11 @@ const DIST_DIR = join(MODULE_ROOT, 'dist');
 const SEO_ROUTES_PATH = join(MODULE_ROOT, 'src', 'config', 'seo-routes.json');
 const CATALOGUE_DATA_PATH = join(MODULE_ROOT, 'src', 'generated', 'catalogue-data.json');
 
-const MAX_DESCRIPTION_LENGTH = 157; // mirrors src/lib/catalogueSeo.ts
+/** The published meta-description budget. Exported, and imported by the test suites rather than
+ * re-typed there — the same "one opaque constant, no second place to drift" reasoning
+ * JSON_LD_SCRIPT_ID's own comment sets out below. src/lib/catalogueSeo.ts holds the one
+ * unavoidable copy (it cannot import this module), bound to this one by tests/usePageSeo.test.tsx. */
+export const MAX_DESCRIPTION_LENGTH = 157;
 
 // Every generated route shell is a directory (dist/<path>/index.html), which GitHub Pages only
 // serves without a redirect at its trailing-slash address — the non-slash form 301s there. The
@@ -226,15 +239,126 @@ function catalogueWorkflowTitle(workflow) {
   return `${workflow.name} — AgentForge4j Catalogue`;
 }
 
-function catalogueWorkflowDescription(workflow) {
+/** Below this a truncated description stops being a useful snippet — see catalogueSeo.ts. Exported
+ * for the same reason MAX_DESCRIPTION_LENGTH is: a test whose fixture puts a sentence end BELOW
+ * this floor proves nothing about the sentence rule, because the floor rejects the cut whatever the
+ * rule decides. Binding fixtures to this number is what stops that happening silently. */
+export const MIN_USEFUL_DESCRIPTION_LENGTH = 80;
+/** A CANDIDATE sentence end; `endsSentence` decides whether it is a real one. See catalogueSeo.ts. */
+const SENTENCE_END_PATTERN = /(\S+)[.!?](?=\s|$)/g;
+/** Dangling clause punctuation, and a `...` run that would otherwise publish `thought...…` — see
+ * catalogueSeo.ts. A single trailing dot is kept: it belongs to an abbreviation. */
+const TRAILING_CLAUSE_PUNCTUATION = /(\.{2,}|[\s,;:—–-])+$/;
+/** The mirror of the above, for `describesCompleteWords` — see catalogueSeo.ts. */
+const DROPPED_CLAUSE_PUNCTUATION = /^(\.{2,}|[,;:—–-])+/;
+/** The last whitespace of any kind in a window — see catalogueSeo.ts. */
+const LAST_WORD_BOUNDARY_PATTERN = /\s\S*$/;
+
+/** Mirrors src/lib/catalogueSeo.ts's `endsSentence` — an abbreviation (`e.g.`, `etc. and`) or a
+ * trailing `...` is not a sentence end, and taking one for a sentence discards most of the budget
+ * and reads as broken. See that copy for the reasoning behind both tests. */
+function endsSentence(raw, word, end) {
+  if (word.includes('.')) {
+    return false;
+  }
+  const rest = raw.slice(end);
+  return rest.trim().length === 0 || /^\s+\p{Lu}/u.test(rest);
+}
+
+/** Mirrors src/lib/catalogueSeo.ts's `truncateDescription` exactly — the same deliberate
+ * duplication (not import) this file's header documents for the other catalogue rules, bound to
+ * that copy by tests/usePageSeo.test.tsx, which drives BOTH implementations over the real shipped
+ * workflow data and a shared corpus of hard cases and requires identical output.
+ *
+ * Never a fixed-offset slice: that is what published `…and a verification starter). Sin…` and
+ * `…tool invoc…` as this site's own meta descriptions. Sentences first, whole words otherwise. */
+export function truncateDescription(raw) {
+  if (raw.length <= MAX_DESCRIPTION_LENGTH) {
+    return raw;
+  }
+  let lastSentenceEnd = -1;
+  for (const match of raw.matchAll(SENTENCE_END_PATTERN)) {
+    const end = match.index + match[0].length;
+    if (end > MAX_DESCRIPTION_LENGTH) {
+      break;
+    }
+    if (endsSentence(raw, match[1], end)) {
+      lastSentenceEnd = end;
+    }
+  }
+  if (lastSentenceEnd >= MIN_USEFUL_DESCRIPTION_LENGTH) {
+    return raw.slice(0, lastSentenceEnd);
+  }
+  const window = raw.slice(0, MAX_DESCRIPTION_LENGTH - 1);
+  const boundary = window.search(LAST_WORD_BOUNDARY_PATTERN);
+  const words = (boundary === -1 ? window : window.slice(0, boundary)).replace(TRAILING_CLAUSE_PUNCTUATION, '');
+  return `${words}…`;
+}
+
+/** Mirrors src/lib/catalogueSeo.ts's `describesCompleteWords` — the mechanical statement of "no word
+ * was cut in half", checked against the source text rather than by inspecting the result. */
+export function describesCompleteWords(raw, description) {
+  const trimmed = raw.trim();
+  if (description === trimmed) {
+    return true;
+  }
+  const body = description.replace(/…$/, '');
+  if (body.length === 0 || !trimmed.startsWith(body)) {
+    return false;
+  }
+  // The one unavoidable case: the source's first word is longer than everything that fits, so no
+  // word-boundary cut exists. See catalogueSeo.ts's copy for why accepting it masks nothing.
+  const firstBoundary = trimmed.search(/\s/);
+  if (firstBoundary === -1 || firstBoundary >= body.length) {
+    return true;
+  }
+  const remainder = trimmed.slice(body.length).replace(DROPPED_CLAUSE_PUNCTUATION, '');
+  return remainder.length === 0 || /^\s/.test(remainder);
+}
+
+/** The published `<meta name="description">` for one catalogue workflow, and the point at which a
+ * description that ends mid-word becomes impossible to publish silently: the rule's output is
+ * checked on every real build, for every shipped workflow — not only for the ones anyone thought
+ * to look at. Exported so tests/usePageSeo.test.tsx can bind it to src/lib/catalogueSeo.ts's copy,
+ * fallback sentence and all. */
+export function catalogueWorkflowDescription(workflow) {
   const raw = workflow.description?.trim();
   if (!raw) {
     return `${workflow.name} — a shipped, ready-to-run AgentForge4j workflow from the workflow catalogue.`;
   }
-  if (raw.length <= MAX_DESCRIPTION_LENGTH) {
-    return raw;
+  const description = truncateDescription(raw);
+  // Reported separately from the word-boundary failure below, because the cause is different and
+  // the fix is different: nothing survived truncation at all (a source that is entirely clause
+  // punctuation), so the workflow's own text is what needs attention, not the rule.
+  if (description.replace(/…$/, '').length === 0) {
+    throw new Error(
+      `build-seo: the description generated for catalogue workflow "${workflow.id}" is empty — its source ` +
+        `text has no words to keep: ${JSON.stringify(raw)}`,
+    );
   }
-  return `${raw.slice(0, MAX_DESCRIPTION_LENGTH - 1).trimEnd()}…`;
+  // The specification of "no word was cut in half", re-checked against the source on every build.
+  // No INPUT reaches this branch while the rule above is correct — every one of its three paths
+  // ends on a real boundary — so it carries no negative test of its own, and that is the point: it
+  // is what stops a future REGRESSION of the rule from publishing, not a filter on bad workflows.
+  // Restoring the fixed-offset slice makes it fire here, inside buildSeo, for the real shipped
+  // agent-creator and workflow-execution-estimator descriptions. The empty-source refusal above is
+  // the reachable one, and the test that drives it end-to-end is what proves this whole block is
+  // wired into buildSeo at all rather than merely present.
+  if (!describesCompleteWords(raw, description)) {
+    throw new Error(
+      `build-seo: the description generated for catalogue workflow "${workflow.id}" does not end on a word ` +
+        `boundary of its source text: ${JSON.stringify(description)}`,
+    );
+  }
+  // Same standing as the check above, and the same reason for having no negative test:
+  // `truncateDescription` cannot exceed the budget on any of its three branches.
+  if (description.length > MAX_DESCRIPTION_LENGTH) {
+    throw new Error(
+      `build-seo: the description generated for catalogue workflow "${workflow.id}" is ${description.length} ` +
+        `characters, over the ${MAX_DESCRIPTION_LENGTH} limit`,
+    );
+  }
+  return description;
 }
 
 /**
@@ -427,7 +551,11 @@ export function injectRedirectStub(html, { target, title, description, linkText 
  *  - `og:url` is removed for the same reason — it is the canonical's Open Graph counterpart, and
  *    leaving it pointing at the home page would keep making the claim the canonical no longer does.
  *  - a `robots` directive is added, since this is the one shell whose own address (`/404.html`) is
- *    genuinely served at 200.
+ *    genuinely served at 200. It carries `ROBOTS_META_ID`, which marks it as this build's own: the
+ *    client-side hook adopts and updates THIS node on a direct load instead of appending a second
+ *    one beside it, and — on every other route, where the directive must be cleared — removes only
+ *    a node bearing that id rather than any `meta[name="robots"]` the page happens to have. See
+ *    that constant's own comment.
  *
  * Never touches the body, so the empty `<div id="root"></div>` verify-seo.mjs gates on is preserved
  * by construction rather than by care.
@@ -460,7 +588,10 @@ export function injectNotFoundHead(html, { title, description, robots }) {
   if (!/<\/head>/.test(result)) {
     throw new Error('build-seo: expected a </head> closing tag in dist/404.html');
   }
-  return result.replace(/<\/head>/, () => `<meta name="robots" content="${escapeHtml(robots)}" />\n  </head>`);
+  return result.replace(
+    /<\/head>/,
+    () => `<meta name="robots" id="${ROBOTS_META_ID}" content="${escapeHtml(robots)}" />\n  </head>`,
+  );
 }
 
 const EMPTY_ROOT_PATTERN = /<div id="root"><\/div>/;
@@ -505,6 +636,25 @@ export function injectRoot(html, innerHtml) {
 // module — build-seo.mjs pulls in node:child_process), and tests/usePageSeo.test.tsx imports this
 // constant to bind that copy to this one.
 export const JSON_LD_SCRIPT_ID = 'seo-json-ld';
+
+/**
+ * The id stamped on the `<meta name="robots">` this build writes into dist/404.html, and the one
+ * `usePageSeo.ts`'s `setRobots` looks for — an OWNERSHIP marker, exactly as JSON_LD_SCRIPT_ID is
+ * for the structured-data block, and shared with that constant's own "opaque literal, imported
+ * rather than re-derived" rationale above.
+ *
+ * Ownership is the whole point, and it is not cosmetic. The robots directive is the one head tag
+ * this site adds on ONE page and removes on every other, so the client-side hook has to delete a
+ * tag on routes that never declared one — and a deletion keyed on `meta[name="robots"]` alone
+ * deletes whatever it finds, including a directive this build never wrote. A host embedding the
+ * SPA, a future `index.html` line, or an injected `max-image-preview:large` would be served in the
+ * static HTML, then silently vanish from the DOM the moment the bundle hydrated, with every gate
+ * green: verify-seo.mjs reads served HTML (where the tag is still there) and
+ * verify-client-nav-seo.mjs compares direct load against client navigation (which agree, because
+ * the hook erases it on both). Keyed on this id instead, the hook removes only its own node and
+ * anything else on the page survives untouched.
+ */
+export const ROBOTS_META_ID = 'seo-robots';
 
 /** Inserts a route's JSON-LD structured-data block right before `</head>` — an addition, not a
  * replacement (unlike injectHead's tags, no shell starts with one), so only routes that declare a

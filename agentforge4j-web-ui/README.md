@@ -34,9 +34,13 @@ application (not published to npm) and is independent of the Maven reactor.
   defined in `agentforge4j-docs/scripts/product-name.mjs`, imported via a relative path — not a
   duplicated copy. Generated/build output (`dist/`, `node_modules/`, `.tsbuildinfo` caches) is
   never in scope.
-- **404**: `scripts/copy-404.mjs` ships `dist/404.html` as a byte-identical copy of `dist/index.html`
-  after every build, so GitHub Pages serves a real HTTP 404 with the site's own branded not-found
-  page.
+- **404**: `scripts/copy-404.mjs` ships `dist/404.html` as a copy of `dist/index.html` after every
+  build, so GitHub Pages serves a real HTTP 404 with the site's own branded not-found page.
+  `scripts/build-seo.mjs` then rewrites that copy's `<head>` — and only its head; the body stays the
+  empty pre-prerender mount point — so the catch-all describes itself as a not-found page instead of
+  as the home page: the not-found title and description, a `noindex` robots directive, no canonical
+  link and no `og:url`, no structured data, and social tags carrying the not-found copy.
+  `scripts/verify-seo.mjs` gates every one of those on each real build.
 - **Styling**: Tailwind CSS 4, semantic design tokens in `src/styles/tokens.css`.
 
 ## Sibling modules this build reads
