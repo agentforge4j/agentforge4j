@@ -463,13 +463,17 @@ class RetryingLlmClientTest {
     }
   }
 
-  @Test
-  void getRetryPolicy_reportsTheEffectivePolicy_notTheDelegates() {
-    ScriptedLlmClient delegate = new ScriptedLlmClient("prov");
-    LlmRetryPolicy effective = fastRetryPolicy(3);
-    RetryingLlmClient client = new RetryingLlmClient(delegate, effective);
+  @Nested
+  class RetryPolicyTests {
 
-    assertThat(delegate.getRetryPolicy()).isNull();
-    assertThat(client.getRetryPolicy()).isSameAs(effective);
+    @Test
+    void getRetryPolicy_reportsTheEffectivePolicy_notTheDelegates() {
+      ScriptedLlmClient delegate = new ScriptedLlmClient("prov");
+      LlmRetryPolicy effective = fastRetryPolicy(3);
+      RetryingLlmClient client = new RetryingLlmClient(delegate, effective);
+
+      assertThat(delegate.getRetryPolicy()).isNull();
+      assertThat(client.getRetryPolicy()).isSameAs(effective);
+    }
   }
 }

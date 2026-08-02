@@ -254,25 +254,29 @@ class RetryingLlmClientResolverTest {
     }
   }
 
-  @Test
-  void resolvedClient_reportsTheDefaultPolicy_whenTheInnerClientHasNone() {
-    LlmRetryPolicy defaultPolicy = new LlmRetryPolicy(2, 1L, 5L, 0L);
-    Fail503Client inner = new Fail503Client(null);
-    RetryingLlmClientResolver resolver =
-        new RetryingLlmClientResolver(new CountingDelegatingResolver(inner), defaultPolicy);
+  @Nested
+  class RetryPolicyTests {
 
-    assertThat(resolver.resolve("openai").getRetryPolicy()).isSameAs(defaultPolicy);
-  }
+    @Test
+    void resolvedClient_reportsTheDefaultPolicy_whenTheInnerClientHasNone() {
+      LlmRetryPolicy defaultPolicy = new LlmRetryPolicy(2, 1L, 5L, 0L);
+      Fail503Client inner = new Fail503Client(null);
+      RetryingLlmClientResolver resolver =
+          new RetryingLlmClientResolver(new CountingDelegatingResolver(inner), defaultPolicy);
 
-  @Test
-  void resolvedClient_reportsTheInnerClientsPolicy_whenItDeclaresOne() {
-    LlmRetryPolicy innerPolicy = new LlmRetryPolicy(4, 1L, 5L, 0L);
-    LlmRetryPolicy defaultPolicy = new LlmRetryPolicy(2, 1L, 5L, 0L);
-    Fail503Client inner = new Fail503Client(innerPolicy);
-    RetryingLlmClientResolver resolver =
-        new RetryingLlmClientResolver(new CountingDelegatingResolver(inner), defaultPolicy);
+      assertThat(resolver.resolve("openai").getRetryPolicy()).isSameAs(defaultPolicy);
+    }
 
-    assertThat(resolver.resolve("openai").getRetryPolicy()).isSameAs(innerPolicy);
+    @Test
+    void resolvedClient_reportsTheInnerClientsPolicy_whenItDeclaresOne() {
+      LlmRetryPolicy innerPolicy = new LlmRetryPolicy(4, 1L, 5L, 0L);
+      LlmRetryPolicy defaultPolicy = new LlmRetryPolicy(2, 1L, 5L, 0L);
+      Fail503Client inner = new Fail503Client(innerPolicy);
+      RetryingLlmClientResolver resolver =
+          new RetryingLlmClientResolver(new CountingDelegatingResolver(inner), defaultPolicy);
+
+      assertThat(resolver.resolve("openai").getRetryPolicy()).isSameAs(innerPolicy);
+    }
   }
 
   static class TestLlmClient implements LlmClient {

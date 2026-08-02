@@ -38,8 +38,11 @@ public interface LlmClientConfiguration {
   /**
    * The retry policy this configuration requests, or {@code null} when none is configured —
    * mirroring {@link com.agentforge4j.llm.api.LlmClient#getRetryPolicy()}'s nullable contract so
-   * both retry-policy surfaces represent absence the same way. Callers that need a policy either
-   * way fall back to {@link LlmRetryPolicy#defaults()} on a {@code null} return.
+   * both retry-policy surfaces represent absence the same way. A {@code null} return says only
+   * that this configuration requests no policy; it carries no fallback of its own. What happens
+   * next is the caller's decision — where retrying is wired in, {@link RetryingLlmClientResolver}
+   * substitutes the default it was constructed with; where it is not, the absence simply stands
+   * and nothing retries.
    *
    * @return the configured retry policy, or {@code null} when this configuration has none
    */
