@@ -39,6 +39,7 @@ import {ARCHIVE_ROOT} from './archive-transition.mjs';
 import {resolveJavadocUrl} from '../src/remark/javadoc.mjs';
 import {liveJavadocRefs} from './lint-javadoc-links.mjs';
 import {applyJavadocSeo, javadocSurfaces} from './javadoc-seo.mjs';
+import {injectRedirectStubSeo, redirectStubTarget} from './redirect-stub-seo.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const MODULE_ROOT = resolve(here, '..');
@@ -205,6 +206,152 @@ export function scanComposedHtmlForForbiddenContent(siteDir, exit = process.exit
     return;
   }
   console.log(`[assemble-site] scanned ${files.length} composed HTML file(s) for forbidden content — clean.`);
+}
+
+// The indexing directive for the client-redirect stubs (see redirect-stub-seo.mjs). The title and
+// description are NOT here: they follow each stub's own destination, so that module owns them
+// (`redirectStubCopy`) — an archived version's stub must not claim to forward to the current docs.
+const REDIRECT_STUB_ROBOTS = 'noindex, follow';
+
+/**
+ * Gives every client-redirect stub under `<siteDir>/docs/` a real title, description and robots
+ * directive, without touching its redirect behaviour or its canonical.
+ *
+ * Fails closed when it RECOGNISES none. The docs config always produces at least the `/` and
+ * `/latest` redirects (docusaurus.config.ts's `redirectConfig`, in both lifecycle states), so "zero
+ * stubs recognised" never means "nothing to do" — it means the recognition rule has stopped
+ * matching what the plugin emits, and the stubs are shipping raw again with nothing complaining.
+ *
+ * Recognised and rewritten are counted separately on purpose. `injectRedirectStubSeo` is idempotent
+ * by refusal, so an already-labelled stub is recognised but not rewritten; keying the guard on the
+ * rewritten count made a re-run over a labelled artifact report that the recognition rule had
+ * broken, which was the one thing that had definitely not happened.
+ *
+ * @param {(code: number) => void} [exit] injectable seam for that guard, mirroring this module's
+ *        other fail-closed checks.
+ * @returns {{recognised: number, updated: number}} stubs seen, and of those, stubs changed
+ */
+export function applyRedirectStubSeo(siteDir, exit = process.exit) {
+  const docsDir = join(siteDir, 'docs');
+  if (!existsSync(docsDir)) {
+    console.error(`[assemble-site] no ${docsDir} to scan for client-redirect stubs`);
+    exit(1);
+    return {recognised: 0, updated: 0};
+  }
+  let recognised = 0;
+  let updated = 0;
+  for (const file of collectHtmlFiles(docsDir)) {
+    const html = readFileSync(file, 'utf8');
+    if (redirectStubTarget(html) === null) {
+      continue;
+    }
+    recognised += 1;
+    const rewritten = injectRedirectStubSeo(html, {robots: REDIRECT_STUB_ROBOTS});
+    // Asserted against the file as it will actually ship, not against what the rewriter intended.
+    // The defect this catches — a stub carrying two <title> elements — was invisible to every other
+    // gate here: `scanComposedHtmlForForbiddenContent` looks for content patterns, and
+    // `verifyComposedArtifact` looks for presence and non-emptiness. Neither counts anything.
+    // Counted for all three tags, not just the title: the same replace-or-append logic duplicates a
+    // description or robots tag the moment a pattern stops matching the shape a producer emits.
+    for (const [what, pattern] of [
+      ['<title>', /<title>/gi],
+      ['name="description"', /<meta[^>]*\sname="description"[^>]*>/gi],
+      ['name="robots"', /<meta[^>]*\sname="robots"[^>]*>/gi],
+    ]) {
+      const count = (rewritten.match(pattern) ?? []).length;
+      if (count !== 1) {
+        console.error(
+          `[assemble-site] redirect stub ${file} would ship with ${count} ${what} element(s) — expected exactly one`,
+        );
+        exit(1);
+        return {recognised, updated};
+      }
+    }
+    if (rewritten !== html) {
+      writeFileSync(file, rewritten, 'utf8');
+      updated += 1;
+    }
+  }
+  if (recognised === 0) {
+    console.error(
+      '[assemble-site] recognised no client-redirect stubs under /docs/ — the docs config always ' +
+        'generates at least the / and /latest redirects, so this means the recognition rule no longer ' +
+        'matches what the plugin emits and those stubs are shipping raw',
+    );
+    exit(1);
+  }
+  return {recognised, updated};
+}
+
+/**
+ * Proves that every `/docs/…` address the composed SPA actually links resolves to a real page in
+ * the composed artifact.
+ *
+ * This is the gate that moved when the link did. `verifyComposedArtifact` checks `docs/index.html`
+ * — which was both the Docs link's target and the verified entry until the site started linking
+ * `/docs/<version>/` directly. Afterwards it verified only the address nobody uses: nothing
+ * asserted that the one everybody uses exists. The SPA's own internal-link crawl cannot cover it
+ * either, because `/docs/` is composed-artifact-only and therefore excluded there by prefix.
+ *
+ * Derives nothing and assumes nothing about how the URL was produced — it reads the hrefs out of
+ * the composed SPA and resolves them against the composed tree, so a disagreement between the SPA's
+ * build-time derivation and the docs build's own version lifecycle fails here regardless of which
+ * side is wrong.
+ *
+ * @param {(code: number) => void} [exit] injectable seam, as elsewhere in this module.
+ * @returns {number} distinct `/docs/` link targets verified
+ */
+export function verifyComposedSpaDocsLinks(siteDir, exit = process.exit) {
+  const targets = new Set();
+  // The SPA owns the site root; /docs and /javadoc are the other tracks' subtrees and are not the
+  // SPA's own pages, so they are skipped rather than crawled.
+  for (const file of collectSpaHtmlFiles(siteDir)) {
+    const html = readFileSync(file, 'utf8');
+    for (const match of html.matchAll(/(?:href|src)="(\/docs\/[^"#?]*)"/gi)) {
+      targets.add(match[1]);
+    }
+  }
+  if (targets.size === 0) {
+    console.error(
+      '[assemble-site] the composed SPA links no /docs/ address at all — the site has a Docs entry in ' +
+        'both its primary nav and its footer, so this means those links have stopped being emitted (or ' +
+        'stopped being recognisable here) and the documentation is unreachable from the site',
+    );
+    exit(1);
+    return 0;
+  }
+  for (const target of targets) {
+    // Trailing-slash addresses are directories in the composed artifact; anything else is the file
+    // itself. Both forms are resolved rather than assumed, so a link that drops the slash is caught
+    // as the miss it is on a host that serves directories only at their slash address.
+    const relative = target.replace(/^\//, '').split('/').filter(Boolean);
+    const candidate = target.endsWith('/') ? join(siteDir, ...relative, 'index.html') : join(siteDir, ...relative);
+    if (!existsSync(candidate) || !statSync(candidate).isFile() || statSync(candidate).size === 0) {
+      console.error(`[assemble-site] the composed SPA links ${target}, which does not exist in the composed artifact`);
+      console.error(`  expected: ${candidate}`);
+      console.error('  The site links the documentation entry point directly, so this address must be a real page.');
+      exit(1);
+      return targets.size;
+    }
+  }
+  return targets.size;
+}
+
+/** Every HTML page belonging to the SPA itself — the composed site minus the `/docs/` and
+ * `/javadoc/` subtrees the other two tracks own. */
+function collectSpaHtmlFiles(siteDir) {
+  const out = [];
+  for (const entry of readdirSync(siteDir, {withFileTypes: true})) {
+    if (entry.isDirectory()) {
+      if (entry.name === 'docs' || entry.name === 'javadoc') {
+        continue;
+      }
+      out.push(...collectHtmlFiles(join(siteDir, entry.name)));
+    } else if (entry.name.endsWith('.html')) {
+      out.push(join(siteDir, entry.name));
+    }
+  }
+  return out;
 }
 
 const DOC_EXTENSIONS = ['.md', '.mdx'];
@@ -1426,6 +1573,23 @@ export function assembleSite({
   //    historical versions, whose own build-javadoc.mjs predates this fix — on every deploy.
   const javadocPagesUpdated = applyJavadocSeo({siteDir, siteUrl, ogImage, releasedVersions});
   console.log(`[assemble-site] applied Javadoc SEO metadata to ${javadocPagesUpdated} page(s) across every surface`);
+
+  // 8. The client-redirect stubs the docs build emits in postBuild (/docs/, /docs/latest/) — raw,
+  //    they are title-less, near-empty 200s at the site's most linked-to documentation address. See
+  //    redirect-stub-seo.mjs. Applied here for the same reason as the Javadoc pass above: this is
+  //    the first point at which they exist as published pages.
+  const {recognised: stubsSeen, updated: stubsUpdated} = applyRedirectStubSeo(siteDir, exit);
+  console.log(
+    `[assemble-site] labelled ${stubsUpdated} of ${stubsSeen} recognised client-redirect stub(s) under /docs/ ` +
+      '(title, description, noindex — canonical and redirect untouched)',
+  );
+
+  // 9. Every /docs/ address the composed SPA actually links must resolve. The site links the
+  //    documentation entry point directly now, so this is the check that the entry point exists —
+  //    verifyComposedArtifact above still guards /docs/index.html, which is the address the site
+  //    deliberately routes AROUND.
+  const docsLinksVerified = verifyComposedSpaDocsLinks(siteDir, exit);
+  console.log(`[assemble-site] verified ${docsLinksVerified} distinct /docs/ link target(s) from the composed SPA`);
 
   scanComposedHtmlForForbiddenContent(siteDir, exit);
   verifyComposedJavadocLinks(siteDir, docsSourceDir, versionedDocsSourceDir, exit);

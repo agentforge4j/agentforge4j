@@ -25,6 +25,13 @@ public final class RetryingLlmClient implements LlmClient {
   private final LlmClient delegate;
   private final LlmRetryPolicy policy;
 
+  /**
+   * Creates a wrapper that retries {@code delegate} according to {@code policy}.
+   *
+   * @param delegate the client to execute and retry; must not be {@code null}
+   * @param policy   the policy to retry with, and the value {@link #getRetryPolicy()} then reports;
+   *                 must not be {@code null}
+   */
   public RetryingLlmClient(LlmClient delegate, LlmRetryPolicy policy) {
     this.delegate = Validate.notNull(delegate, "delegate must not be null");
     this.policy = Validate.notNull(policy, "policy must not be null");
@@ -35,9 +42,18 @@ public final class RetryingLlmClient implements LlmClient {
     return delegate.getProviderName();
   }
 
+  /**
+   * The policy supplied at construction, which is the policy this wrapper retries with.
+   * Deliberately not the delegate's own value: the delegate may report {@code null} while retries
+   * genuinely run with this policy, so the wrapper reports what it uses. Which policy is supplied
+   * here is the caller's choice; {@link RetryingLlmClientResolver} documents how it makes that
+   * choice for the wrappers it creates.
+   *
+   * @return the retry policy supplied at construction; never {@code null}
+   */
   @Override
   public LlmRetryPolicy getRetryPolicy() {
-    return delegate.getRetryPolicy();
+    return policy;
   }
 
   @Override

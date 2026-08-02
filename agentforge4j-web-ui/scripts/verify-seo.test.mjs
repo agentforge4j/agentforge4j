@@ -18,11 +18,17 @@ import { fileURLToPath } from 'node:url';
 import {
   extractInternalLinkTargets,
   loadStaticRouteInventory,
+  REQUIRED_ROUTE_SCOPED_SOCIAL_TAGS,
   resolveWithinRoot,
   startGhPagesEmulatingServer,
   verifySeo,
 } from './verify-seo.mjs';
-import { JSON_LD_SCRIPT_ID } from './build-seo.mjs';
+// The producer's own table, imported HERE and nowhere in verify-seo.mjs itself. This test file is
+// the one place the gate's independently-stated requirement and the build's table are allowed to
+// meet: the equality assertion below closes the "producer grew a tag the gate never learned about"
+// direction, while verify-seo.mjs staying independent closes the "producer dropped a tag and the
+// gate stopped looking" direction. Importing the table into the gate would close only the first.
+import { JSON_LD_SCRIPT_ID, ROUTE_SCOPED_SOCIAL_TAGS } from './build-seo.mjs';
 
 const REAL_MODULE_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -45,16 +51,87 @@ function rawGet(port, rawPath) {
   });
 }
 
-// Every fixture page carries one internal link by default, to `/` — the one path `fixtureDir()`
-// guarantees exists in every fixture. Real prerendered shells always carry the header/footer nav,
-// so a link-free page is not a shape production ever produces; giving the fixtures one keeps the
-// internal-link crawl's own non-vacuity precondition satisfied for the checks these tests are
-// actually about. `links` overrides it for the tests that ARE about the crawl.
-function page({ h1 = '<h1>Real Title</h1>', canonical, extraHead = '', links = ['/'], extraBody = '' } = {}) {
+// The social image every fixture shell points at. A real (if minimal) PNG: verify-seo reads the
+// declared og:image's own IHDR header to prove the declared dimensions describe the image actually
+// shipped, so a fixture cannot get away with a text file named .png. 1200x630 is the size a
+// `summary_large_image` card needs, which every fixture below declares.
+const FIXTURE_IMAGE_PATH = 'brand/social-preview.png';
+const FIXTURE_IMAGE_WIDTH = 1200;
+const FIXTURE_IMAGE_HEIGHT = 630;
+
+function fixturePngBytes(width = FIXTURE_IMAGE_WIDTH, height = FIXTURE_IMAGE_HEIGHT) {
+  const bytes = Buffer.alloc(24);
+  Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]).copy(bytes, 0);
+  bytes.writeUInt32BE(13, 8);
+  bytes.write('IHDR', 12, 'ascii');
+  bytes.writeUInt32BE(width, 16);
+  bytes.writeUInt32BE(height, 20);
+  return bytes;
+}
+
+/** A fixture shell shaped like one build-seo.mjs really writes: a `<title>`, a description meta, a
+ * canonical link, the five route-scoped social tags derived from those three, and the site-constant
+ * social tags. Modelling the real shape is what lets these tests keep asserting what each is about
+ * — a head missing the social tags would trip the social gate first and mask every other check.
+ * `socialOverrides` deliberately breaks one tag for the tests that ARE about that gate.
+ *
+ * Every fixture page also carries one internal link by default, to `/` — the one path
+ * `fixtureDir()` guarantees exists in every fixture. Real prerendered shells always carry the
+ * header/footer nav, so a link-free page is not a shape production ever produces; giving the
+ * fixtures one keeps the internal-link crawl's own non-vacuity precondition satisfied for the
+ * checks these tests are actually about. `links` overrides it for the tests that ARE about the
+ * crawl. */
+function page({
+  h1 = '<h1>Real Title</h1>',
+  canonical,
+  title = 'Real Title',
+  description = 'A real description of this page.',
+  extraHead = '',
+  socialOverrides = {},
+  constantSocial = {},
+  links = ['/'],
+  extraBody = '',
+} = {}) {
+  const derived = { title, description, canonical };
+  const routeScoped = [
+    ['property', 'og:title', 'title'],
+    ['property', 'og:description', 'description'],
+    ['property', 'og:url', 'canonical'],
+    ['name', 'twitter:title', 'title'],
+    ['name', 'twitter:description', 'description'],
+  ];
+  const constants = {
+    'og:type': 'website',
+    'og:site_name': 'AgentForge4j',
+    'og:image': `https://agentforge4j.org/${FIXTURE_IMAGE_PATH}`,
+    'og:image:width': String(FIXTURE_IMAGE_WIDTH),
+    'og:image:height': String(FIXTURE_IMAGE_HEIGHT),
+    'og:image:alt': 'A brand card',
+    'twitter:card': 'summary_large_image',
+    'twitter:image': `https://agentforge4j.org/${FIXTURE_IMAGE_PATH}`,
+    'twitter:image:alt': 'A brand card',
+    ...constantSocial,
+  };
+  const social =
+    routeScoped
+      .map(([attribute, key, source]) => {
+        const content = key in socialOverrides ? socialOverrides[key] : derived[source];
+        return content === null ? '' : `<meta ${attribute}="${key}" content="${content}" />`;
+      })
+      .join('') +
+    Object.entries(constants)
+      .map(([key, value]) =>
+        value === null
+          ? ''
+          : `<meta ${key.startsWith('twitter:') ? 'name' : 'property'}="${key}" content="${value}" />`,
+      )
+      .join('');
   const anchors = links.map((href) => `<a href="${href}">link</a>`).join('');
   return (
     `<!doctype html><html lang="en"><head><meta charset="UTF-8">` +
-    `<link rel="canonical" href="${canonical}" />${extraHead}</head>` +
+    `<title>${title}</title>` +
+    `<meta name="description" content="${description}" />` +
+    `<link rel="canonical" href="${canonical}" />${social}${extraHead}</head>` +
     `<body>${h1}${anchors}${extraBody}</body></html>`
   );
 }
@@ -82,6 +159,10 @@ function fixtureDir() {
     '<!doctype html><html lang="en"><head><meta charset="UTF-8"></head><body><div id="root"></div></body></html>',
     'utf8',
   );
+  // The social image every fixture shell declares, so the og:image existence/dimension checks have
+  // a real file to read rather than being skipped.
+  mkdirSync(join(distDir, dirname(FIXTURE_IMAGE_PATH)), { recursive: true });
+  writeFileSync(join(distDir, ...FIXTURE_IMAGE_PATH.split('/')), fixturePngBytes());
   // A root index.html every fixture can rely on, so `page()`'s default `<a href="/">` always has
   // something real to resolve to. Tests that care about the root page overwrite this with their
   // own `writePage(distDir, '', ...)`; nothing here is asserted against.
@@ -1041,6 +1122,338 @@ test('startGhPagesEmulatingServer returns a controlled 400 for malformed percent
     assert.match(valid.body, /Real Title/);
   } finally {
     await new Promise((r) => server.close(r));
+  }
+});
+
+// --- Social metadata. The audited defect was a page whose og:*/twitter:* described a DIFFERENT
+// route than its own title/description/canonical. These fixtures freeze that state into a served
+// shell, which is the only shape this gate can be asked about directly. ---
+
+function socialFixture(pageOptions = {}) {
+  const distDir = fixtureDir();
+  writePage(distDir, '', page({ canonical: 'https://agentforge4j.org/', ...pageOptions }));
+  writeFileSync(
+    join(distDir, 'sitemap.xml'),
+    sitemapXml([{ url: 'https://agentforge4j.org/', lastmod: '2026-07-20' }]),
+    'utf8',
+  );
+  return distDir;
+}
+
+test('a shell whose social tags agree with its own title/description/canonical passes clean', async () => {
+  await assert.doesNotReject(() => verifySeo({ distDir: socialFixture(), staticRoutes: [] }));
+});
+
+test('NEGATIVE CONTROL — the audited defect: og:title describing a different page than the <title> fails, naming both values', async () => {
+  const distDir = socialFixture({
+    title: 'Architecture — AgentForge4j',
+    socialOverrides: { 'og:title': 'AgentForge4j — Governed AI Workflows for Java' },
+  });
+  await assert.rejects(
+    () => verifySeo({ distDir, staticRoutes: [] }),
+    /og:title is "AgentForge4j — Governed AI Workflows for Java" but the page's own title is "Architecture — AgentForge4j"/,
+  );
+});
+
+test("a stale og:url — the tag naming which URL this content belongs to — fails against the page's own canonical", async () => {
+  const distDir = socialFixture({ socialOverrides: { 'og:url': 'https://agentforge4j.org/somewhere-else/' } });
+  await assert.rejects(
+    () => verifySeo({ distDir, staticRoutes: [] }),
+    /og:url is ".*somewhere-else.*" but the page's own canonical is/,
+  );
+});
+
+test('twitter:description going stale is caught too — every tag in the table is checked, not just the og: half', async () => {
+  const distDir = socialFixture({ socialOverrides: { 'twitter:description': 'a description of some other page' } });
+  await assert.rejects(
+    () => verifySeo({ distDir, staticRoutes: [] }),
+    /twitter:description is "a description of some other page"/,
+  );
+});
+
+test('a missing route-scoped social tag fails rather than being read as "nothing to disagree with"', async () => {
+  const distDir = socialFixture({ socialOverrides: { 'og:description': null } });
+  await assert.rejects(() => verifySeo({ distDir, staticRoutes: [] }), /no <meta property="og:description"> tag at all/);
+});
+
+test('a DUPLICATE social tag fails — a client-side sync that appends instead of updating leaves exactly this, and reading only the first would call it correct', async () => {
+  const distDir = socialFixture({ extraHead: '<meta property="og:title" content="a second, contradictory value" />' });
+  await assert.rejects(() => verifySeo({ distDir, staticRoutes: [] }), /2 <meta property="og:title"> tags on one page/);
+});
+
+// --- Mirrored og:/twitter: pairs. Only the Open Graph half of each pair is fetched and
+// size-checked, so a mirror that disagrees with it is unverified by construction — three separate
+// ways of breaking `twitter:image` used to pass this gate untouched. ---
+
+test('NEGATIVE CONTROL — a twitter:image naming a file the build does not publish fails, via its disagreement with og:image', async () => {
+  const distDir = socialFixture({
+    constantSocial: { 'twitter:image': 'https://agentforge4j.org/brand/not-published.png' },
+  });
+  await assert.rejects(
+    () => verifySeo({ distDir, staticRoutes: [] }),
+    /twitter:image is ".*not-published\.png" but og:image is/,
+  );
+});
+
+test('NEGATIVE CONTROL — an off-origin twitter:image fails even though og:image is fine', async () => {
+  const distDir = socialFixture({ constantSocial: { 'twitter:image': 'https://cdn.example.com/card.png' } });
+  await assert.rejects(
+    () => verifySeo({ distDir, staticRoutes: [] }),
+    /twitter:image is "https:\/\/cdn\.example\.com\/card\.png" but og:image is/,
+  );
+});
+
+test('NEGATIVE CONTROL — a twitter:image too small for the declared large card fails, because it must be the same file og:image already proved', async () => {
+  // The pre-fix state exactly: a published, real, on-origin PNG — just the square app icon, which
+  // `summary_large_image` has no layout for. Every presence/non-emptiness/constancy check passes.
+  const distDir = socialFixture({ constantSocial: { 'twitter:image': 'https://agentforge4j.org/brand/icon-512.png' } });
+  writeFileSync(join(distDir, 'brand', 'icon-512.png'), fixturePngBytes(512, 512));
+  await assert.rejects(
+    () => verifySeo({ distDir, staticRoutes: [] }),
+    /twitter:image is ".*icon-512\.png" but og:image is/,
+  );
+});
+
+test('a twitter:image:alt that has drifted from og:image:alt fails too — the pair is checked, not just the image one', async () => {
+  const distDir = socialFixture({ constantSocial: { 'twitter:image:alt': 'a different description entirely' } });
+  await assert.rejects(
+    () => verifySeo({ distDir, staticRoutes: [] }),
+    /twitter:image:alt is "a different description entirely" but og:image:alt is/,
+  );
+});
+
+test('a shell whose mirrored pairs agree passes — the check is an equality, not a ban on the tags', async () => {
+  await assert.doesNotReject(() => verifySeo({ distDir: socialFixture(), staticRoutes: [] }));
+});
+
+// --- Canonical reading. Every canonical in this file is read through the same tokenizer the meta
+// readers use, so the gate is a statement about the page a crawler receives rather than about how
+// today's producer happens to order and quote its attributes. ---
+
+test('a canonical written with the attributes in the other order, single-quoted, is read — not reported as absent', async () => {
+  const distDir = fixtureDir();
+  const html = page({ canonical: 'https://agentforge4j.org/' }).replace(
+    '<link rel="canonical" href="https://agentforge4j.org/" />',
+    "<link href='https://agentforge4j.org/' rel = 'canonical' />",
+  );
+  writePage(distDir, '', html);
+  writeFileSync(
+    join(distDir, 'sitemap.xml'),
+    sitemapXml([{ url: 'https://agentforge4j.org/', lastmod: '2026-07-20' }]),
+    'utf8',
+  );
+  await assert.doesNotReject(() => verifySeo({ distDir, staticRoutes: [] }));
+});
+
+test('a DUPLICATE canonical fails — a crawler resolves two by picking one, and a client-side sync that appends leaves exactly this', async () => {
+  const distDir = socialFixture({
+    extraHead: '<link rel="canonical" href="https://agentforge4j.org/somewhere-else/" />',
+  });
+  await assert.rejects(
+    () => verifySeo({ distDir, staticRoutes: [] }),
+    /2 <link rel="canonical"> tags on one page/,
+  );
+});
+
+test('a page with no canonical at all is named as such, rather than blaming og:url for disagreeing with nothing', async () => {
+  const distDir = fixtureDir();
+  const html = page({ canonical: 'https://agentforge4j.org/' }).replace(
+    '<link rel="canonical" href="https://agentforge4j.org/" />',
+    '',
+  );
+  writePage(distDir, '', html);
+  writeFileSync(
+    join(distDir, 'sitemap.xml'),
+    sitemapXml([{ url: 'https://agentforge4j.org/', lastmod: '2026-07-20' }]),
+    'utf8',
+  );
+  await assert.rejects(() => verifySeo({ distDir, staticRoutes: [] }), /canonical tag \("null"\)|no <link rel="canonical"> at all/);
+});
+
+test('a missing site-constant tag (og:site_name) fails', async () => {
+  const distDir = socialFixture({ constantSocial: { 'og:site_name': null } });
+  await assert.rejects(() => verifySeo({ distDir, staticRoutes: [] }), /<meta property="og:site_name"> is missing or empty/);
+});
+
+test('an empty site-constant tag is rejected as firmly as an absent one', async () => {
+  const distDir = socialFixture({ constantSocial: { 'og:image:alt': '   ' } });
+  await assert.rejects(() => verifySeo({ distDir, staticRoutes: [] }), /<meta property="og:image:alt"> is missing or empty/);
+});
+
+test('a "site-constant" tag that is not actually constant across pages fails, naming both values', async () => {
+  const distDir = fixtureDir();
+  writePage(distDir, '', page({ canonical: 'https://agentforge4j.org/' }));
+  writePage(
+    distDir,
+    'api',
+    page({ canonical: 'https://agentforge4j.org/api/', constantSocial: { 'og:site_name': 'Something Else' } }),
+  );
+  writeFileSync(
+    join(distDir, 'sitemap.xml'),
+    sitemapXml([
+      { url: 'https://agentforge4j.org/', lastmod: '2026-07-20' },
+      { url: 'https://agentforge4j.org/api/', lastmod: '2026-07-20' },
+    ]),
+    'utf8',
+  );
+  await assert.rejects(
+    () => verifySeo({ distDir, staticRoutes: [] }),
+    /"og:site_name"> is supposed to be site-constant but the build published 2 different values/,
+  );
+});
+
+// Both tags are moved together in the two tests below, so the mirrored-pair check (which fires
+// first, and has its own controls further down) is satisfied and the og:image-specific rule is what
+// this test is actually about.
+test('an og:image this build does not actually serve fails — every social card would render with no image at all', async () => {
+  const distDir = socialFixture({
+    constantSocial: {
+      'og:image': 'https://agentforge4j.org/brand/not-published.png',
+      'twitter:image': 'https://agentforge4j.org/brand/not-published.png',
+    },
+  });
+  await assert.rejects(
+    () => verifySeo({ distDir, staticRoutes: [] }),
+    /og:image \/brand\/not-published\.png is not served by this build/,
+  );
+});
+
+test('an off-origin og:image is refused rather than trusted — this gate can only prove what THIS build publishes', async () => {
+  const distDir = socialFixture({
+    constantSocial: {
+      'og:image': 'https://cdn.example.com/card.png',
+      'twitter:image': 'https://cdn.example.com/card.png',
+    },
+  });
+  await assert.rejects(
+    () => verifySeo({ distDir, staticRoutes: [] }),
+    /og:image "https:\/\/cdn\.example\.com\/card\.png" is off-origin/,
+  );
+});
+
+test('NEGATIVE CONTROL — a declared og:image:width that does not describe the image actually shipped fails', async () => {
+  const distDir = socialFixture({ constantSocial: { 'og:image:width': '1600' } });
+  await assert.rejects(
+    () => verifySeo({ distDir, staticRoutes: [] }),
+    /og:image:width declares 1600 but the served image is 1200px wide/,
+  );
+});
+
+test('a declared og:image:height that does not describe the shipped image fails too', async () => {
+  const distDir = socialFixture({ constantSocial: { 'og:image:height': '900' } });
+  await assert.rejects(
+    () => verifySeo({ distDir, staticRoutes: [] }),
+    /og:image:height declares 900 but the served image is 630px tall/,
+  );
+});
+
+test('summary_large_image backed by an image under the size a large card needs fails — the card would silently degrade to the small square form this pass moved off', async () => {
+  const distDir = socialFixture({ constantSocial: { 'og:image:width': '512', 'og:image:height': '512' } });
+  writeFileSync(join(distDir, ...FIXTURE_IMAGE_PATH.split('/')), fixturePngBytes(512, 512));
+  await assert.rejects(
+    () => verifySeo({ distDir, staticRoutes: [] }),
+    /twitter:card is summary_large_image but the image is only 512x512 — under the 1200x630/,
+  );
+});
+
+test('a non-PNG social image fails loudly rather than leaving the declared dimensions unverified', async () => {
+  const distDir = socialFixture();
+  writeFileSync(join(distDir, ...FIXTURE_IMAGE_PATH.split('/')), Buffer.from('not really a png at all, just bytes'));
+  await assert.rejects(() => verifySeo({ distDir, staticRoutes: [] }), /the declared og:image is not a PNG/);
+});
+
+// --- Server fidelity: GitHub Pages answers an unknown path with the site's own 404.html under a
+// real 404 status. Reproducing that is what makes the unknown-route case checkable at all, and the
+// status stays 404 so every "must return 200" assertion still fails on a missing page. ---
+
+test('the emulating server answers an unknown path with dist/404.html under a real HTTP 404, exactly as GitHub Pages does', async () => {
+  const distDir = fixtureDir();
+  const server = await startGhPagesEmulatingServer(distDir);
+  try {
+    const { port } = server.address();
+    const response = await rawGet(port, '/no-such-route/');
+    assert.equal(response.status, 404);
+    assert.match(response.body, /<div id="root"><\/div>/);
+  } finally {
+    await new Promise((r) => server.close(r));
+  }
+});
+
+test('a sitemap URL that does not exist still fails the gate — serving 404.html changes the bytes, never the status', async () => {
+  const distDir = fixtureDir();
+  writePage(distDir, '', page({ canonical: 'https://agentforge4j.org/' }));
+  // A real /api/ page sits ahead of the missing one so the harness self-check (which 301-probes the
+  // first non-root sitemap URL) still has a real directory to probe — the missing page is what this
+  // test is about, not the self-check.
+  writePage(distDir, 'api', page({ canonical: 'https://agentforge4j.org/api/' }));
+  writeFileSync(
+    join(distDir, 'sitemap.xml'),
+    sitemapXml([
+      { url: 'https://agentforge4j.org/', lastmod: '2026-07-20' },
+      { url: 'https://agentforge4j.org/api/', lastmod: '2026-07-20' },
+      { url: 'https://agentforge4j.org/gone/', lastmod: '2026-07-20' },
+    ]),
+    'utf8',
+  );
+  await assert.rejects(
+    () => verifySeo({ distDir, staticRoutes: [] }),
+    /sitemap URL https:\/\/agentforge4j\.org\/gone\/ did not return 200 with no redirect \(got 404\)/,
+  );
+});
+
+// --- The gate's requirement vs the producer's table. verify-seo.mjs states which tags are
+// route-scoped independently (see REQUIRED_ROUTE_SCOPED_SOCIAL_TAGS), so that deleting an entry
+// from build-seo.mjs cannot delete this gate's coverage of it in the same edit. These two tests are
+// what make that arrangement safe in BOTH directions rather than merely different. ---
+
+test('the gate\'s required route-scoped tags and the build\'s table are equal — neither side may grow or shrink alone', () => {
+  assert.deepEqual(
+    REQUIRED_ROUTE_SCOPED_SOCIAL_TAGS,
+    ROUTE_SCOPED_SOCIAL_TAGS,
+    'verify-seo.mjs states the requirement independently of build-seo.mjs; when the build adds or ' +
+      'removes a route-scoped tag, both lists must be updated together and this assertion is what says so',
+  );
+  // Non-vacuity: two empty lists would satisfy deepEqual and check nothing at all.
+  assert.ok(REQUIRED_ROUTE_SCOPED_SOCIAL_TAGS.length > 0, 'expected at least one required route-scoped tag');
+});
+
+test('NEGATIVE CONTROL — removing a tag from the BUILD table does not shrink what this gate checks', async () => {
+  // The exact failure an imported list produced: dropping `og:url` from build-seo.mjs's table stops
+  // `injectHead` rewriting it, so every shell keeps index.html's home-page value — and, with a
+  // shared list, stopped this gate looking for it in the same edit. Statement of the property, not
+  // of the implementation: with the build table emptied entirely, a shell carrying a stale og:url
+  // must STILL be rejected.
+  const distDir = fixtureDir();
+  writePage(distDir, '', page({ canonical: 'https://agentforge4j.org/' }));
+  // /api/ is self-canonical but carries the HOME page's og:url — precisely what a shell looks like
+  // once injectHead stops rewriting that tag.
+  writePage(
+    distDir,
+    'api',
+    page({
+      canonical: 'https://agentforge4j.org/api/',
+      title: 'API Reference',
+      socialOverrides: { 'og:url': 'https://agentforge4j.org/' },
+    }),
+  );
+  writeFileSync(
+    join(distDir, 'sitemap.xml'),
+    sitemapXml([
+      { url: 'https://agentforge4j.org/', lastmod: '2026-07-20' },
+      { url: 'https://agentforge4j.org/api/', lastmod: '2026-07-20' },
+    ]),
+    'utf8',
+  );
+
+  const removed = ROUTE_SCOPED_SOCIAL_TAGS.splice(0, ROUTE_SCOPED_SOCIAL_TAGS.length);
+  try {
+    assert.equal(ROUTE_SCOPED_SOCIAL_TAGS.length, 0, 'the build table really is empty for this control');
+    await assert.rejects(
+      () => verifySeo({ distDir, staticRoutes: [] }),
+      /og:url is "https:\/\/agentforge4j\.org\/" but the page's own canonical is "https:\/\/agentforge4j\.org\/api\/"/,
+    );
+  } finally {
+    ROUTE_SCOPED_SOCIAL_TAGS.push(...removed);
   }
 });
 

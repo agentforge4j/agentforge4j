@@ -16,49 +16,47 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath, URL } from 'node:url';
 import {
   buildSeo,
+  describesCompleteWords,
   escapeHtml,
   gitLastModifiedDate,
   gitLastModifiedDateForRouteMetadata,
   injectHead,
   injectJsonLd,
+  ROUTE_SCOPED_SOCIAL_TAGS,
+  routeScopedSocialReplacements,
   injectRoot,
   JSON_LD_SCRIPT_ID,
+  MAX_DESCRIPTION_LENGTH,
+  MIN_USEFUL_DESCRIPTION_LENGTH,
   newestGitLastModifiedDate,
+  truncateDescription,
   withTrailingSlash,
 } from './build-seo.mjs';
 import { WORKFLOW_ID_PATTERN } from './workflow-id-contract.mjs';
 
 const REAL_MODULE_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 
-const BASE_INDEX_HTML = `<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <title>AgentForge4j — Governed AI Workflows for Java</title>
-    <meta
-      name="description"
-      content="AgentForge4j is an open-source Java framework for building governed AI workflows."
-    />
-    <link rel="canonical" href="https://agentforge4j.org/" />
-    <meta property="og:type" content="website" />
-    <meta property="og:url" content="https://agentforge4j.org/" />
-    <meta property="og:title" content="AgentForge4j — Governed AI Workflows for Java" />
-    <meta
-      property="og:description"
-      content="AgentForge4j is an open-source Java framework for building governed AI workflows."
-    />
-    <meta name="twitter:card" content="summary" />
-    <meta name="twitter:title" content="AgentForge4j — Governed AI Workflows for Java" />
-    <meta
-      name="twitter:description"
-      content="AgentForge4j is an open-source Java framework for building governed AI workflows."
-    />
-  </head>
-  <body>
-    <div id="root"></div>
-  </body>
-</html>
-`;
+/**
+ * The real committed `index.html`, not a hand-written imitation of it.
+ *
+ * This used to be a literal, and it went stale the moment the shell grew tags: it carried no
+ * `og:site_name`, no `og:image` or its dimensions/alt, no `twitter:image`/`twitter:image:alt`, still
+ * declared `twitter:card` as `summary` after production moved to `summary_large_image`, and — most
+ * relevantly — had no `<head>` comment sitting between `og:description` and `twitter:title`, which
+ * is precisely the shape the shell has and precisely the shape `injectHead`'s first-occurrence
+ * regexes are sensitive to. Every producer test below therefore ran against a head that no longer
+ * resembled the one production feeds them, and the only thing that would have caught the difference
+ * was the real build.
+ *
+ * Reading the committed file instead makes these tests self-maintaining, and turns the "keep this
+ * comment free of literal angle-bracket tag text" NOTE in `index.html` from editor discipline into
+ * something a test can fail on (see the duplicate-emission test at the end of this file).
+ *
+ * The source file rather than `dist/index.html` deliberately: it is the committed artefact that
+ * controls the head, it needs no build to read, and Vite's output preserves the head structure these
+ * functions act on.
+ */
+const BASE_INDEX_HTML = readFileSync(join(REAL_MODULE_ROOT, 'index.html'), 'utf8');
 
 const SAMPLE_ROUTES = {
   siteUrl: 'https://agentforge4j.org',
@@ -296,7 +294,7 @@ test('truncates an over-length workflow description rather than overflowing the 
   const html = readFileSync(join(distDir, 'catalogue', 'long', 'index.html'), 'utf8');
   const match = /name="description" content="([^"]*)"/.exec(html);
   assert.ok(match);
-  assert.ok(match[1].length <= 157);
+  assert.ok(match[1].length <= MAX_DESCRIPTION_LENGTH);
   assert.ok(match[1].endsWith('…'));
 });
 
@@ -348,8 +346,17 @@ test('injectHead cannot be broken out of the href/content attribute by an unesca
     description: 'desc',
     canonical: maliciousCanonical,
   });
-  // No live <script> element may appear anywhere in the generated shell.
-  assert.ok(!/<script>/.test(html), 'a live <script> element must never appear in the generated shell');
+  // The malicious value must not add a live <script> element. Asserted as a DELTA against the base
+  // shell, not as an absolute "there are none": the committed index.html legitimately carries the
+  // theme-bootstrap inline script and the module entrypoint, so an absolute claim here was only ever
+  // a statement about the old hand-written fixture's shape — it said nothing about what injectHead
+  // does to the shell production actually feeds it.
+  assert.equal(
+    countScriptOpenTags(html) - countScriptOpenTags(BASE_INDEX_HTML),
+    0,
+    'the malicious canonical must not add a <script> element to the generated shell',
+  );
+  assert.ok(!html.includes('<script>alert(1)</script>'), 'the raw script payload must not reach the HTML unescaped');
   // Every canonical-bearing tag must remain a single, well-formed element whose attribute value
   // is the fully-escaped string, quote-for-quote — i.e. it is structurally impossible to break out
   // of the href/content attribute using the malicious input above.
@@ -546,10 +553,9 @@ test('injectJsonLd fails closed when the shell has no </head> to insert before (
 });
 
 /** `<script` open tags in a document. The assertions below compare this as a DELTA against the
- * base shell rather than against an absolute number: BASE_INDEX_HTML happens to carry none, but
- * the real built index.html carries two (the theme-bootstrap inline script and the module
- * entrypoint), so an absolute "exactly 1" would only ever have been a statement about this
- * fixture's shape, not about what injectJsonLd does to a real shell. */
+ * base shell rather than against an absolute number: the committed index.html carries two (the
+ * theme-bootstrap inline script and the module entrypoint), so an absolute "exactly 1" would only
+ * ever have been a statement about one shell's shape, not about what injectJsonLd does to it. */
 function countScriptOpenTags(html) {
   return (html.match(/<script[ >]/g) ?? []).length;
 }
@@ -2115,4 +2121,395 @@ test('global dependency scope contract: every file traced as materially affectin
       `${relFile} belongs in globalSourceFiles specifically (the shared render surface), not just anywhere global`,
     );
   }
+});
+
+/** Every producer of a `<head>` in this module, as a zero-argument call against the same base
+ * shell. Each PR that adds a producer adds it here — that is what makes the shared-table mutation
+ * test below a statement about ALL of them rather than about whichever one was written last. */
+const PRODUCERS = [
+  ['injectHead', () => injectHead(BASE_INDEX_HTML, { title: 'T', description: 'D', canonical: 'https://agentforge4j.org/x/' })],
+];
+
+/**
+ * The route-scoped tags each producer deliberately emits ZERO of, because it removes them rather
+ * than rewriting them (`routeScopedSocialReplacements`'s `null` source).
+ *
+ * Declared per producer, and defaulting to "omits nothing", so the duplicate test below can assert
+ * an exact count instead of a blanket "at most one". That blanket allowance was written to leave
+ * room for a producer that removes `og:url` — but it also let a producer emit zero copies of a tag
+ * it is supposed to rewrite, which is the same shape of under-checking as the defect the shared
+ * table exists to close, under a test whose name says "exactly one".
+ *
+ * The default is fail-closed on purpose: a producer added here without an entry is held to "exactly
+ * one of everything" and fails loudly until whoever added it states what it drops. That is the
+ * declaration this map exists to force.
+ */
+const PRODUCER_OMISSIONS = {
+  injectHead: [],
+};
+
+// --- The shared route-scoped social table. Every producer of a <head> derives its social
+// replacements from ROUTE_SCOPED_SOCIAL_TAGS through routeScopedSocialReplacements — no producer
+// keeps its own copy of the five tags. These tests prove the coupling is real, not documentary. ---
+
+test('routeScopedSocialReplacements produces one replacement per declared tag, in table order', () => {
+  const pairs = routeScopedSocialReplacements({ title: 'T', description: 'D', canonical: 'C' });
+  assert.equal(pairs.length, ROUTE_SCOPED_SOCIAL_TAGS.length);
+  for (const [index, { attribute, key }] of ROUTE_SCOPED_SOCIAL_TAGS.entries()) {
+    assert.match(pairs[index][1], new RegExp(`^<meta ${attribute}="${key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}" content=`));
+  }
+});
+
+test('a null source REMOVES its tag, and takes the whitespace it occupied with it', () => {
+  const pairs = routeScopedSocialReplacements({ title: 'T', description: 'D', canonical: null });
+  const urlEntry = ROUTE_SCOPED_SOCIAL_TAGS.findIndex((tag) => tag.source === 'canonical');
+  assert.equal(pairs[urlEntry][1], '');
+  // The removal pattern consumes trailing whitespace; the rewrite patterns must not.
+  assert.match(pairs[urlEntry][0].source, /\\s\*$/);
+  const titleEntry = ROUTE_SCOPED_SOCIAL_TAGS.findIndex((tag) => tag.source === 'title');
+  assert.doesNotMatch(pairs[titleEntry][0].source, /\\s\*$/);
+});
+
+test('values are escaped into the emitted tag rather than trusted', () => {
+  const pairs = routeScopedSocialReplacements({ title: 'A & B <c> "d"', description: 'D', canonical: 'C' });
+  assert.match(pairs[0][1], /content="A &amp; B &lt;c&gt; &quot;d&quot;"/);
+});
+
+test('a key containing a RegExp metacharacter is escaped, not interpreted', () => {
+  // The table is committed data today, but it is exported and read by other modules. An unescaped
+  // `.` would match any character, so a pattern built for `og:a.b` would also rewrite `og:aXb`.
+  ROUTE_SCOPED_SOCIAL_TAGS.push({ attribute: 'property', key: 'og:a.b', source: 'title' });
+  try {
+    const pattern = routeScopedSocialReplacements({ title: 'T', description: 'D', canonical: 'C' }).at(-1)[0];
+    assert.equal(pattern.test('<meta property="og:a.b" content="x" />'), true);
+    assert.equal(pattern.test('<meta property="og:aXb" content="x" />'), false, 'the dot must be literal');
+  } finally {
+    ROUTE_SCOPED_SOCIAL_TAGS.pop();
+  }
+});
+
+test('MUTATION EVIDENCE — adding a tag to the shared table reaches every producer, with no producer edited', () => {
+  // The one assertion that proves single-sourcing rather than describing it: add an entry the
+  // committed index.html has no tag for, and every producer must now demand it and fail loudly.
+  // A producer still carrying its own hardcoded list would sail past this untouched.
+  ROUTE_SCOPED_SOCIAL_TAGS.push({ attribute: 'property', key: 'og:locale', source: 'title' });
+  try {
+    for (const [name, run] of PRODUCERS) {
+      assert.throws(run, /expected tag not found/, `${name} is not driven by the shared table`);
+    }
+  } finally {
+    ROUTE_SCOPED_SOCIAL_TAGS.pop();
+  }
+  // ...and with the entry removed again, every producer is happy against the same shell.
+  for (const [name, run] of PRODUCERS) {
+    assert.doesNotThrow(run, `${name} broke after the table was restored`);
+  }
+});
+
+test('every producer declares what it omits — a new one cannot arrive without saying so', () => {
+  // The fail-closed default only helps if it is reachable: a producer with no entry here is held to
+  // "exactly one of everything" by the test below. This states that expectation up front so the
+  // failure reads as "declare your omissions", not as a mysterious count mismatch.
+  for (const [name] of PRODUCERS) {
+    assert.ok(
+      Object.hasOwn(PRODUCER_OMISSIONS, name),
+      `${name} has no PRODUCER_OMISSIONS entry — declare the route-scoped tags it removes, or [] if none`,
+    );
+  }
+});
+
+test('every producer emits exactly one instance of each route-scoped tag it does not declare it omits', () => {
+  // Run against the real committed index.html (see BASE_INDEX_HTML), so this is also the mechanical
+  // guard behind that file's "keep this comment free of literal angle-bracket tag text" NOTE:
+  // tag-like text in a head comment ahead of twitter:title is rewritten in place of the real tag,
+  // leaving two, and this fails on it rather than relying on an editor having read the note.
+  for (const [name, run] of PRODUCERS) {
+    const html = run();
+    const omits = PRODUCER_OMISSIONS[name] ?? [];
+    for (const { attribute, key } of ROUTE_SCOPED_SOCIAL_TAGS) {
+      const count = (html.match(new RegExp(`${attribute}="${key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}"`, 'g')) ?? []).length;
+      const expected = omits.includes(key) ? 0 : 1;
+      assert.equal(count, expected, `${name} emitted ${count} copies of ${key}, expected ${expected}`);
+    }
+  }
+});
+
+// --- `$`-substitution. `escapeHtml` handles `& < > "` and deliberately not `$`, so every value
+// reaching String.prototype.replace must go in through a replacer function. injectRoot and
+// injectJsonLd already carry this guard and their own tests; these are injectHead's. ---
+
+test('injectHead ships `$`-sequences in a route title/description verbatim, never as replacement patterns', () => {
+  const probes = ['A $$ B', 'A $& B', "A $' B", 'A $` B'];
+  for (const probe of probes) {
+    // The expected value is the HTML-escaped probe (`$&` contains a literal `&`), so this asserts
+    // escaping ran AND that nothing expanded a `$`-token after it.
+    const expected = escapeHtml(probe);
+    const html = injectHead(BASE_INDEX_HTML, {
+      title: probe,
+      description: probe,
+      canonical: 'https://agentforge4j.org/x/',
+    });
+    assert.equal(
+      /<title>([\s\S]*?)<\/title>/.exec(html)?.[1],
+      expected,
+      `<title> corrupted a $-token in ${JSON.stringify(probe)}`,
+    );
+    for (const { attribute, key } of ROUTE_SCOPED_SOCIAL_TAGS.filter((tag) => tag.source !== 'canonical')) {
+      const pattern = new RegExp(`<meta ${attribute}="${key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}" content="([\\s\\S]*?)" />`);
+      assert.equal(pattern.exec(html)?.[1], expected, `${key} corrupted a $-token in ${JSON.stringify(probe)}`);
+    }
+    // Structural footprint of each expansion, asserted directly rather than trusted to the value
+    // comparisons above: `$&` splices the matched tag's own source in, "$`" the preceding document,
+    // `$'` the following one.
+    assert.equal((html.match(/<\/head>/g) ?? []).length, 1, `a $-token spliced a second </head> in for ${JSON.stringify(probe)}`);
+    assert.equal((html.match(/<body>/g) ?? []).length, 1, `a $-token spliced a copy of the body in for ${JSON.stringify(probe)}`);
+  }
+});
+
+test('NEGATIVE CONTROL — `$$` is the case every consistency gate is blind to, so the unit must catch it', () => {
+  // `$$` collapses to a single `$` identically on the title, the description meta and all five
+  // route-scoped social tags. verify-seo.mjs's social pass compares those tags against each other,
+  // so a perfectly self-consistent — and silently wrong — page passes it. Nothing downstream of
+  // here can see this; it has to be caught at the producer.
+  const html = injectHead(BASE_INDEX_HTML, {
+    title: 'Costs $$ per run',
+    description: 'Costs $$ per run',
+    canonical: 'https://agentforge4j.org/x/',
+  });
+  assert.equal(/<title>([\s\S]*?)<\/title>/.exec(html)?.[1], 'Costs $$ per run');
+  assert.equal(
+    /<meta name="description" content="([\s\S]*?)" \/>/.exec(html)?.[1],
+    'Costs $$ per run',
+    'a lone `$` here means String.replace collapsed `$$`, consistently and invisibly',
+  );
+});
+
+test('injectHead escapes a `$`-token AND the HTML metacharacters around it, together', () => {
+  const html = injectHead(BASE_INDEX_HTML, {
+    title: 'A & B $& <c>',
+    description: 'D',
+    canonical: 'https://agentforge4j.org/x/',
+  });
+  assert.equal(/<title>([\s\S]*?)<\/title>/.exec(html)?.[1], 'A &amp; B $&amp; &lt;c&gt;');
+});
+
+// --- Catalogue description truncation. The published meta descriptions really did read
+// `…and a verification starter). Sin…` and `…tool invoc…`: a fixed-offset slice plus an ellipsis,
+// which cuts whatever word happens to straddle the offset. ---
+
+const LONG_WITH_EARLY_SENTENCE =
+  'Turns a freeform agent idea into an approved, validated, downloadable agent bundle (agent.json, ' +
+  'systemprompt.md, README.md, and a verification starter). Single-pass and approval-gated: it structures ' +
+  'requirements, optionally clarifies, assesses complexity and risk, and then generates the bundle.';
+
+const LONG_WITH_NO_EARLY_SENTENCE =
+  'Estimates the execution shape of a workflow run (Mode 1) or an SDLC epic-package breakdown (Mode 2) ' +
+  'before it executes: token range, agent turns, tool invocations, complexity, confidence inputs, ' +
+  'structural risk flags, and a continue/narrow/stop recommendation. The caller resolves the mode first.';
+
+test('a description that already fits is used unchanged, with no ellipsis', () => {
+  const short = 'A short, complete description.';
+  assert.equal(truncateDescription(short), short);
+});
+
+test('a long description ending a sentence within budget stops at that sentence — complete, and with no ellipsis at all', () => {
+  const result = truncateDescription(LONG_WITH_EARLY_SENTENCE);
+  assert.equal(result, 'Turns a freeform agent idea into an approved, validated, downloadable agent bundle (agent.json, systemprompt.md, README.md, and a verification starter).');
+  assert.doesNotMatch(result, /…$/);
+  assert.ok(result.length <= MAX_DESCRIPTION_LENGTH);
+});
+
+test('NEGATIVE CONTROL — the exact output the fixed-offset slice published is no longer produced', () => {
+  // What the fixed-offset slice published for this same source text.
+  assert.notEqual(
+    truncateDescription(LONG_WITH_EARLY_SENTENCE),
+    `${LONG_WITH_EARLY_SENTENCE.slice(0, MAX_DESCRIPTION_LENGTH - 1).trimEnd()}…`,
+  );
+  assert.doesNotMatch(truncateDescription(LONG_WITH_EARLY_SENTENCE), /\bSin…$/);
+  assert.doesNotMatch(truncateDescription(LONG_WITH_NO_EARLY_SENTENCE), /\binvoc…$/);
+});
+
+test('with no sentence ending in budget, it cuts at the last complete word and marks the cut', () => {
+  const result = truncateDescription(LONG_WITH_NO_EARLY_SENTENCE);
+  assert.match(result, /…$/);
+  assert.ok(result.length <= MAX_DESCRIPTION_LENGTH);
+  assert.ok(describesCompleteWords(LONG_WITH_NO_EARLY_SENTENCE, result));
+});
+
+test('dangling clause punctuation is not left in front of the ellipsis', () => {
+  const raw = `${'word '.repeat(28)}alpha, beta gamma delta epsilon zeta eta theta iota kappa lambda`;
+  const result = truncateDescription(raw);
+  assert.doesNotMatch(result, /[,;:—–-]…$/);
+});
+
+test('a very long first sentence does not collapse the description to a useless opening fragment', () => {
+  // "Ok." is a real sentence end at character 3 (a capital follows it, so `endsSentence` accepts
+  // it) — taking it would be a technically-complete, useless snippet, so the useful-length floor
+  // rejects it, the word-boundary path is used instead, and most of the budget is kept.
+  const raw = `Ok. ${'Alpha beta gamma delta '.repeat(20)}`;
+  const result = truncateDescription(raw);
+  assert.ok(result.length > 80, `expected a useful length, got ${result.length}: ${result}`);
+});
+
+/** Fails a fixture that has drifted to where the useful-length floor, not the sentence rule, is
+ * what produces the expected result. A terminator BELOW the floor is rejected whatever
+ * `endsSentence` decides, so such a fixture proves nothing about the rule it is named for — a
+ * silent way for these guards to stop guarding, and exactly how it happened once already. The
+ * follower must also be upper-case, or the continuation rule alone would explain the result. */
+function assertIsolatesTheSentenceRule(raw, terminator) {
+  const end = raw.indexOf(terminator) + terminator.length;
+  assert.ok(end >= 0, `fixture drift: ${terminator} not present`);
+  assert.ok(
+    end >= MIN_USEFUL_DESCRIPTION_LENGTH,
+    `fixture drift: "${terminator}" ends at ${end}, below the ${MIN_USEFUL_DESCRIPTION_LENGTH}-character ` +
+      'useful-length floor — the floor would reject this cut on its own, so this test proves nothing',
+  );
+  assert.ok(end <= MAX_DESCRIPTION_LENGTH, `fixture drift: "${terminator}" ends at ${end}, past the budget`);
+  assert.match(raw.slice(end), /^\s+\p{Lu}/u, `fixture drift: "${terminator}" must be followed by a capital`);
+}
+
+test('an abbreviation is not a sentence end — `e.g.` never ends the description', () => {
+  // The failure this prevents is the mirror image of a mid-word cut: a technically-complete
+  // fragment that stops at "e.g." and throws away most of the budget. The capital after it is
+  // deliberate — it makes the dotted-word rule the ONLY thing that can reject this cut.
+  const raw =
+    'Runs adapters over several transports for governed workflow execution and delivery to each ' +
+    'configured provider, e.g. HTTP, gRPC and in-process, chosen per agent and per step of the run.';
+  assertIsolatesTheSentenceRule(raw, 'e.g.');
+  const result = truncateDescription(raw);
+  assert.doesNotMatch(result, /e\.g\.$/);
+  assert.ok(result.length > 120, `expected most of the budget kept, got ${result.length}: ${result}`);
+  assert.ok(describesCompleteWords(raw, result), result);
+});
+
+test('a lower-case continuation after a full stop is not a sentence end — `etc. and` never ends the description', () => {
+  // The mirror of the test above: no dot inside `etc`, so only the continuation rule can reject it.
+  const raw =
+    'Estimates token range, agent turns, tool invocations, structural risk flags, etc. and then ' +
+    'returns a continue, narrow or stop recommendation for the caller to act on before executing.';
+  const end = raw.indexOf('etc.') + 'etc.'.length;
+  assert.ok(
+    end >= MIN_USEFUL_DESCRIPTION_LENGTH,
+    `fixture drift: "etc." ends at ${end}, below the ${MIN_USEFUL_DESCRIPTION_LENGTH}-character floor`,
+  );
+  const result = truncateDescription(raw);
+  assert.doesNotMatch(result, /etc\.$/);
+  assert.ok(describesCompleteWords(raw, result), result);
+});
+
+test('a trailing `...` is not a sentence end either — the three-dot form, not just the single character', () => {
+  // Capital after the dots, again so the dotted-word rule is the only thing that can reject it.
+  const raw =
+    'A governed workflow summary with a long lead-in clause that eventually trails off and then ' +
+    'stops mid thought... And afterwards it continues for a good while longer than the budget allows.';
+  assertIsolatesTheSentenceRule(raw, 'thought...');
+  const result = truncateDescription(raw);
+  assert.doesNotMatch(result, /thought\.\.\.$/);
+  // And the cut never publishes the source's dots and this rule's ellipsis together.
+  assert.doesNotMatch(result, /\.\.\.…$/);
+  assert.ok(describesCompleteWords(raw, result), result);
+});
+
+test('a word ending in `...` immediately before the cut loses the dots rather than doubling up with the ellipsis', () => {
+  // The word branch cuts right after `thought...` here, because the next token is longer than the
+  // rest of the budget — the one shape that produces the doubling.
+  const raw = `A governed workflow summary that stops mid thought... ${'x'.repeat(200)}`;
+  const result = truncateDescription(raw);
+  assert.ok(result.endsWith('thought…'), result);
+  assert.ok(describesCompleteWords(raw, result), result);
+});
+
+test('a word boundary that is a newline, not a space, is still found — the cut never lands mid-word', () => {
+  const raw = `${'alpha\nbeta\ngamma\n'.repeat(20)}delta`;
+  const result = truncateDescription(raw);
+  assert.ok(result.length <= MAX_DESCRIPTION_LENGTH);
+  assert.ok(describesCompleteWords(raw, result), JSON.stringify(result));
+});
+
+test('a single unbroken token longer than the budget is still cut to the limit rather than published whole', () => {
+  const raw = 'x'.repeat(400);
+  const result = truncateDescription(raw);
+  assert.ok(result.length <= MAX_DESCRIPTION_LENGTH);
+  assert.match(result, /…$/);
+});
+
+test('describesCompleteWords rejects a mid-word cut and accepts a word-boundary cut', () => {
+  const raw = 'token range, agent turns, tool invocations, complexity';
+  assert.equal(describesCompleteWords(raw, 'token range, agent turns, tool invoc…'), false);
+  assert.equal(describesCompleteWords(raw, 'token range, agent turns, tool…'), true);
+  assert.equal(describesCompleteWords(raw, raw), true);
+});
+
+test('describesCompleteWords rejects text that is not a prefix of the source at all', () => {
+  assert.equal(describesCompleteWords('alpha beta gamma', 'alpha delta…'), false);
+});
+
+test('EVERY real shipped catalogue workflow gets a complete-word description within the limit — not only the ones anyone thought to look at', () => {
+  const catalogueData = JSON.parse(readFileSync(join(REAL_MODULE_ROOT, 'src/generated/catalogue-data.json'), 'utf8'));
+  assert.ok(catalogueData.workflows.length > 0, 'expected at least one shipped workflow to check');
+  for (const workflow of catalogueData.workflows) {
+    const raw = (workflow.description ?? '').trim();
+    if (!raw) {
+      continue;
+    }
+    const description = truncateDescription(raw);
+    assert.ok(description.length <= MAX_DESCRIPTION_LENGTH, `${workflow.id}: ${description.length} characters`);
+    assert.ok(
+      describesCompleteWords(raw, description),
+      `${workflow.id}: description does not end on a word boundary: ${JSON.stringify(description)}`,
+    );
+  }
+});
+
+test('the build REFUSES to publish a description the rule could not reduce to whole words — driven through buildSeo, not asserted about', () => {
+  // A source that is nothing but clause punctuation is the one shape reachable from outside: every
+  // candidate is stripped, leaving a bare ellipsis. This is what proves the refusal block is really
+  // wired into buildSeo and really aborts it, rather than being present but unreachable — the other
+  // two checks in that block cannot fire while the truncation rule is correct (see their comments).
+  const { distDir, seoRoutesPath, catalogueDataPath } = fixture({
+    workflows: [{ id: 'punctuation-only', name: 'Punctuation Only', description: ','.repeat(300) }],
+  });
+  assert.throws(
+    () => buildSeo({ distDir, seoRoutesPath, catalogueDataPath, repoRoot: REAL_MODULE_ROOT }),
+    /has no words to keep/,
+  );
+  assert.ok(
+    !existsSync(join(distDir, 'catalogue', 'punctuation-only', 'index.html')),
+    'the shell must not be written when the description is refused',
+  );
+});
+
+test('the word-boundary check rejects the exact output the fixed-offset slice used to publish — the shape the build guard exists to stop', () => {
+  // The rule cannot currently emit a mid-word cut, so the guard's own branch is unreachable from
+  // outside; this drives its PREDICATE with the exact output the removed slice published. If a
+  // future change to truncateDescription reintroduced that output, this is the property that says
+  // the build must stop — and it does: reverting the rule makes the guard throw inside buildSeo.
+  const raw = LONG_WITH_NO_EARLY_SENTENCE;
+  const asPublishedBefore = `${raw.slice(0, MAX_DESCRIPTION_LENGTH - 1).trimEnd()}…`;
+  assert.match(asPublishedBefore, /\binvoc…$/, 'fixture drift: this is no longer the shape that was published');
+  assert.equal(describesCompleteWords(raw, asPublishedBefore), false);
+});
+
+test('a workflow with no description at all still publishes the fallback sentence, and the guard does not fire on it', () => {
+  const { distDir, seoRoutesPath, catalogueDataPath } = fixture({
+    workflows: [{ id: 'no-description', name: 'No Description', description: null }],
+  });
+  buildSeo({ distDir, seoRoutesPath, catalogueDataPath, repoRoot: REAL_MODULE_ROOT });
+  const html = readFileSync(join(distDir, 'catalogue', 'no-description', 'index.html'), 'utf8');
+  const description = /<meta name="description" content="([^"]*)"/.exec(html)[1];
+  assert.equal(
+    description,
+    'No Description — a shipped, ready-to-run AgentForge4j workflow from the workflow catalogue.',
+  );
+});
+
+test('buildSeo writes the complete-word description into the real shell it publishes', () => {
+  const { distDir, seoRoutesPath, catalogueDataPath } = fixture({
+    workflows: [{ id: 'estimator', name: 'Estimator', description: LONG_WITH_NO_EARLY_SENTENCE }],
+  });
+  buildSeo({ distDir, seoRoutesPath, catalogueDataPath, repoRoot: REAL_MODULE_ROOT });
+  const html = readFileSync(join(distDir, 'catalogue', 'estimator', 'index.html'), 'utf8');
+  const description = /<meta name="description" content="([^"]*)"/.exec(html)[1];
+  assert.ok(describesCompleteWords(LONG_WITH_NO_EARLY_SENTENCE, description), description);
+  assert.doesNotMatch(description, /\binvoc…/);
 });

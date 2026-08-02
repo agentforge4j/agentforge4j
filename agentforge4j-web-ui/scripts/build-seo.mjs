@@ -77,7 +77,10 @@
 //
 // Per-workflow title/description formatting mirrors src/lib/catalogueSeo.ts (used by the
 // client-side title/meta sync, usePageSeo) — duplicated deliberately, not imported, because this
-// is plain Node ESM with no bundler step ahead of it; kept to two small, easy-to-eyeball rules.
+// is plain Node ESM with no bundler step ahead of it. The truncation rule is far too big to keep
+// in sync by eye, so nothing here relies on that: tests/usePageSeo.test.tsx drives BOTH copies of
+// every duplicated unit over the real shipped catalogue data and a shared corpus of hard cases,
+// and requires identical results.
 
 import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
@@ -93,7 +96,11 @@ const DIST_DIR = join(MODULE_ROOT, 'dist');
 const SEO_ROUTES_PATH = join(MODULE_ROOT, 'src', 'config', 'seo-routes.json');
 const CATALOGUE_DATA_PATH = join(MODULE_ROOT, 'src', 'generated', 'catalogue-data.json');
 
-const MAX_DESCRIPTION_LENGTH = 157; // mirrors src/lib/catalogueSeo.ts
+/** The published meta-description budget. Exported, and imported by the test suites rather than
+ * re-typed there — the same "one opaque constant, no second place to drift" reasoning
+ * JSON_LD_SCRIPT_ID's own comment sets out below. src/lib/catalogueSeo.ts holds the one
+ * unavoidable copy (it cannot import this module), bound to this one by tests/usePageSeo.test.tsx. */
+export const MAX_DESCRIPTION_LENGTH = 157;
 
 // Every generated route shell is a directory (dist/<path>/index.html), which GitHub Pages only
 // serves without a redirect at its trailing-slash address — the non-slash form 301s there. The
@@ -226,15 +233,202 @@ function catalogueWorkflowTitle(workflow) {
   return `${workflow.name} — AgentForge4j Catalogue`;
 }
 
-function catalogueWorkflowDescription(workflow) {
+/** Below this a truncated description stops being a useful snippet — see catalogueSeo.ts. Exported
+ * for the same reason MAX_DESCRIPTION_LENGTH is: a test whose fixture puts a sentence end BELOW
+ * this floor proves nothing about the sentence rule, because the floor rejects the cut whatever the
+ * rule decides. Binding fixtures to this number is what stops that happening silently. */
+export const MIN_USEFUL_DESCRIPTION_LENGTH = 80;
+/** A CANDIDATE sentence end; `endsSentence` decides whether it is a real one. See catalogueSeo.ts. */
+const SENTENCE_END_PATTERN = /(\S+)[.!?](?=\s|$)/g;
+/** Dangling clause punctuation, and a `...` run that would otherwise publish `thought...…` — see
+ * catalogueSeo.ts. A single trailing dot is kept: it belongs to an abbreviation. */
+const TRAILING_CLAUSE_PUNCTUATION = /(\.{2,}|[\s,;:—–-])+$/;
+/** The mirror of the above, for `describesCompleteWords` — see catalogueSeo.ts. */
+const DROPPED_CLAUSE_PUNCTUATION = /^(\.{2,}|[,;:—–-])+/;
+/** The last whitespace of any kind in a window — see catalogueSeo.ts. */
+const LAST_WORD_BOUNDARY_PATTERN = /\s\S*$/;
+
+/** Mirrors src/lib/catalogueSeo.ts's `endsSentence` — an abbreviation (`e.g.`, `etc. and`) or a
+ * trailing `...` is not a sentence end, and taking one for a sentence discards most of the budget
+ * and reads as broken. See that copy for the reasoning behind both tests. */
+function endsSentence(raw, word, end) {
+  if (word.includes('.')) {
+    return false;
+  }
+  const rest = raw.slice(end);
+  return rest.trim().length === 0 || /^\s+\p{Lu}/u.test(rest);
+}
+
+/** Mirrors src/lib/catalogueSeo.ts's `truncateDescription` exactly — the same deliberate
+ * duplication (not import) this file's header documents for the other catalogue rules, bound to
+ * that copy by tests/usePageSeo.test.tsx, which drives BOTH implementations over the real shipped
+ * workflow data and a shared corpus of hard cases and requires identical output.
+ *
+ * Never a fixed-offset slice: that is what published `…and a verification starter). Sin…` and
+ * `…tool invoc…` as this site's own meta descriptions. Sentences first, whole words otherwise. */
+export function truncateDescription(raw) {
+  if (raw.length <= MAX_DESCRIPTION_LENGTH) {
+    return raw;
+  }
+  let lastSentenceEnd = -1;
+  for (const match of raw.matchAll(SENTENCE_END_PATTERN)) {
+    const end = match.index + match[0].length;
+    if (end > MAX_DESCRIPTION_LENGTH) {
+      break;
+    }
+    if (endsSentence(raw, match[1], end)) {
+      lastSentenceEnd = end;
+    }
+  }
+  if (lastSentenceEnd >= MIN_USEFUL_DESCRIPTION_LENGTH) {
+    return raw.slice(0, lastSentenceEnd);
+  }
+  const window = raw.slice(0, MAX_DESCRIPTION_LENGTH - 1);
+  const boundary = window.search(LAST_WORD_BOUNDARY_PATTERN);
+  const words = (boundary === -1 ? window : window.slice(0, boundary)).replace(TRAILING_CLAUSE_PUNCTUATION, '');
+  return `${words}…`;
+}
+
+/** Mirrors src/lib/catalogueSeo.ts's `describesCompleteWords` — the mechanical statement of "no word
+ * was cut in half", checked against the source text rather than by inspecting the result. */
+export function describesCompleteWords(raw, description) {
+  const trimmed = raw.trim();
+  if (description === trimmed) {
+    return true;
+  }
+  const body = description.replace(/…$/, '');
+  if (body.length === 0 || !trimmed.startsWith(body)) {
+    return false;
+  }
+  // The one unavoidable case: the source's first word is longer than everything that fits, so no
+  // word-boundary cut exists. See catalogueSeo.ts's copy for why accepting it masks nothing.
+  const firstBoundary = trimmed.search(/\s/);
+  if (firstBoundary === -1 || firstBoundary >= body.length) {
+    return true;
+  }
+  const remainder = trimmed.slice(body.length).replace(DROPPED_CLAUSE_PUNCTUATION, '');
+  return remainder.length === 0 || /^\s/.test(remainder);
+}
+
+/** The published `<meta name="description">` for one catalogue workflow, and the point at which a
+ * description that ends mid-word becomes impossible to publish silently: the rule's output is
+ * checked on every real build, for every shipped workflow — not only for the ones anyone thought
+ * to look at. Exported so tests/usePageSeo.test.tsx can bind it to src/lib/catalogueSeo.ts's copy,
+ * fallback sentence and all. */
+export function catalogueWorkflowDescription(workflow) {
   const raw = workflow.description?.trim();
   if (!raw) {
     return `${workflow.name} — a shipped, ready-to-run AgentForge4j workflow from the workflow catalogue.`;
   }
-  if (raw.length <= MAX_DESCRIPTION_LENGTH) {
-    return raw;
+  const description = truncateDescription(raw);
+  // Reported separately from the word-boundary failure below, because the cause is different and
+  // the fix is different: nothing survived truncation at all (a source that is entirely clause
+  // punctuation), so the workflow's own text is what needs attention, not the rule.
+  if (description.replace(/…$/, '').length === 0) {
+    throw new Error(
+      `build-seo: the description generated for catalogue workflow "${workflow.id}" is empty — its source ` +
+        `text has no words to keep: ${JSON.stringify(raw)}`,
+    );
   }
-  return `${raw.slice(0, MAX_DESCRIPTION_LENGTH - 1).trimEnd()}…`;
+  // The specification of "no word was cut in half", re-checked against the source on every build.
+  // No INPUT reaches this branch while the rule above is correct — every one of its three paths
+  // ends on a real boundary — so it carries no negative test of its own, and that is the point: it
+  // is what stops a future REGRESSION of the rule from publishing, not a filter on bad workflows.
+  // Restoring the fixed-offset slice makes it fire here, inside buildSeo, for the real shipped
+  // agent-creator and workflow-execution-estimator descriptions. The empty-source refusal above is
+  // the reachable one, and the test that drives it end-to-end is what proves this whole block is
+  // wired into buildSeo at all rather than merely present.
+  if (!describesCompleteWords(raw, description)) {
+    throw new Error(
+      `build-seo: the description generated for catalogue workflow "${workflow.id}" does not end on a word ` +
+        `boundary of its source text: ${JSON.stringify(description)}`,
+    );
+  }
+  // Same standing as the check above, and the same reason for having no negative test:
+  // `truncateDescription` cannot exceed the budget on any of its three branches.
+  if (description.length > MAX_DESCRIPTION_LENGTH) {
+    throw new Error(
+      `build-seo: the description generated for catalogue workflow "${workflow.id}" is ${description.length} ` +
+        `characters, over the ${MAX_DESCRIPTION_LENGTH} limit`,
+    );
+  }
+  return description;
+}
+
+/**
+ * The social tags whose value is a pure function of the route's own title/description/canonical,
+ * and therefore the exact set that must be re-derived on every client-side route change as well as
+ * baked into every static shell.
+ *
+ * This table is the single source for both. `injectHead` below builds its replacements from it, and
+ * `src/lib/usePageSeo.ts` re-declares it (it cannot import this module — build-seo.mjs pulls in
+ * node:child_process) with `tests/usePageSeo.test.tsx` importing this constant to bind the two
+ * copies together. That binding is the point: the audited defect was precisely a divergence between
+ * these two surfaces — the static shell rewrote all five of these while the client hook rewrote
+ * none of them, so every one went stale the moment a visitor navigated within the app, and no gate
+ * on either side could see it because each was individually self-consistent.
+ *
+ * Deliberately NOT included: the site-constant social tags (`og:type`, `og:site_name`, `og:image`
+ * and its dimensions/alt, `twitter:card`, `twitter:image`). Those carry the same value on every
+ * page, so index.html is their one home and there is nothing for a route change to re-derive —
+ * `verify-seo.mjs` proves every built shell actually carries them.
+ */
+export const ROUTE_SCOPED_SOCIAL_TAGS = [
+  { attribute: 'property', key: 'og:title', source: 'title' },
+  { attribute: 'property', key: 'og:description', source: 'description' },
+  { attribute: 'property', key: 'og:url', source: 'canonical' },
+  { attribute: 'name', key: 'twitter:title', source: 'title' },
+  { attribute: 'name', key: 'twitter:description', source: 'description' },
+];
+
+/** Escapes a literal so it can be embedded in a RegExp source and match itself. The keys below are
+ * committed constants today, but they arrive through an exported table other modules read and
+ * extend — an unescaped `.` or `+` in a future key would silently change what the pattern matches
+ * rather than failing, which is the worst possible failure mode for a gate. */
+function escapeRegExpLiteral(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/** The pattern matching one route-scoped social tag exactly as index.html writes it. `\s*` after
+ * the tag is included only for a REMOVAL, so deleting a tag does not leave the blank line (and the
+ * trailing spaces on it) that the tag used to occupy. */
+function socialTagPattern(attribute, key, { consumeTrailingWhitespace = false } = {}) {
+  return new RegExp(
+    `<meta\\s+${escapeRegExpLiteral(attribute)}="${escapeRegExpLiteral(key)}"[\\s\\S]*?/>` +
+      (consumeTrailingWhitespace ? '\\s*' : ''),
+  );
+}
+
+/**
+ * The `[pattern, replacement]` pairs for every route-scoped social tag, derived from one route's
+ * resolved values — the single place any producer turns `ROUTE_SCOPED_SOCIAL_TAGS` into edits.
+ *
+ * `injectHead` is the only producer of a `<head>` in this module today, and it goes through here.
+ * The indirection exists so that the next one does too: any further head producer must derive its
+ * social replacements from this function rather than hand-copying the five tags, because a copy is
+ * a copy whether it lives in another module or in the function next door — and a divergence between
+ * two such copies is the defect this whole table exists to close. `build-seo.test.mjs`'s `PRODUCERS`
+ * list is where each producer is registered for the mutation test that enforces it.
+ *
+ * The replacement half of each pair is a plain string carrying `escapeHtml`ed route data, and
+ * `escapeHtml` deliberately does not escape `$`. Every consumer must therefore apply it through a
+ * REPLACER FUNCTION, never as a bare replacement string — see `injectHead`'s own loop for why.
+ *
+ * A `source` whose value is `null` REMOVES that tag instead of rewriting it, taking the whitespace
+ * it occupied with it. No producer needs that yet — it is here because the one obvious future head,
+ * a not-found page, must carry no `og:url`: that tag makes a claim about which URL the content
+ * belongs to, and the address does not exist. Expressing "remove" in the same table-driven pass is
+ * what will keep that page from needing its own copy of the list just to differ in one entry. Until
+ * a producer uses it, the branch is exercised by tests only, deliberately and visibly.
+ */
+export function routeScopedSocialReplacements(values) {
+  return ROUTE_SCOPED_SOCIAL_TAGS.map(({ attribute, key, source }) => {
+    const value = values[source];
+    if (value === null || value === undefined) {
+      return [socialTagPattern(attribute, key, { consumeTrailingWhitespace: true }), ''];
+    }
+    return [socialTagPattern(attribute, key), `<meta ${attribute}="${key}" content="${escapeHtml(value)}" />`];
+  });
 }
 
 /** Replaces the title/description/canonical/OG/Twitter tags already present in the built
@@ -248,17 +442,7 @@ export function injectHead(html, { title, description, canonical }) {
     [/<title>[\s\S]*?<\/title>/, `<title>${safeTitle}</title>`],
     [/<meta\s+name="description"[\s\S]*?\/>/, `<meta name="description" content="${safeDescription}" />`],
     [/<link\s+rel="canonical"[\s\S]*?\/>/, `<link rel="canonical" href="${safeCanonical}" />`],
-    [/<meta\s+property="og:title"[\s\S]*?\/>/, `<meta property="og:title" content="${safeTitle}" />`],
-    [
-      /<meta\s+property="og:description"[\s\S]*?\/>/,
-      `<meta property="og:description" content="${safeDescription}" />`,
-    ],
-    [/<meta\s+property="og:url"[\s\S]*?\/>/, `<meta property="og:url" content="${safeCanonical}" />`],
-    [/<meta\s+name="twitter:title"[\s\S]*?\/>/, `<meta name="twitter:title" content="${safeTitle}" />`],
-    [
-      /<meta\s+name="twitter:description"[\s\S]*?\/>/,
-      `<meta name="twitter:description" content="${safeDescription}" />`,
-    ],
+    ...routeScopedSocialReplacements({ title, description, canonical }),
   ];
 
   let result = html;
@@ -266,7 +450,18 @@ export function injectHead(html, { title, description, canonical }) {
     if (!pattern.test(result)) {
       throw new Error(`build-seo: expected tag not found in dist/index.html: ${pattern}`);
     }
-    result = result.replace(pattern, replacement);
+    // The replacement is supplied via a function, never as a bare replacement string — the same
+    // guard injectRoot and injectJsonLd already carry, and load-bearing here for the same reason.
+    // `String.prototype.replace` expands `$&`, "$`", `$'` and `$$` inside a replacement STRING
+    // *after* escapeHtml has run (escapeHtml handles `& < > "` and deliberately not `$`), so a
+    // `$`-token anywhere in a route title, description or a shipped workflow's name/description
+    // would reach the shell as document text rather than as itself. `$$` is the dangerous one: it
+    // collapses to a single `$` IDENTICALLY on the title, the description meta and all five
+    // route-scoped social tags, so verify-seo.mjs's social-consistency pass — which compares those
+    // tags against each other — sees a perfectly self-consistent page and the corrupted copy ships.
+    // `$&` splices the matched tag's own source into the value, and `$'` splices the entire rest of
+    // the document into it. A replacer function is never scanned for those tokens.
+    result = result.replace(pattern, () => replacement);
   }
   return result;
 }
