@@ -1,5 +1,6 @@
 {
   "kind": "WORKFLOW",
+  "schemaVersion": 1,
   "id": "agent-signal-loop",
   "name": "Agent Signal Loop",
   "steps": [

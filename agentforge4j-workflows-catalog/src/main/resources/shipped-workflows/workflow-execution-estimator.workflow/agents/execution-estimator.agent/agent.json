@@ -1,0 +1,14 @@
+{
+  "id": "execution-estimator",
+  "name": "Execution Estimator",
+  "locality": "CLOUD",
+  "enabled": true,
+  "version": "1.0.0",
+  "providerPreferences": [
+    { "provider": "openai", "model": null },
+    { "provider": "claude", "model": null },
+    { "provider": "ollama", "model": null }
+  ],
+  "supportedCommands": ["SET_CONTEXT", "COMPLETE"],
+  "modelTier": "LITE"
+}

@@ -1,5 +1,6 @@
 {
   "kind": "WORKFLOW",
+  "schemaVersion": 1,
   "id": "quick-start",
   "name": "Quick Start",
   "description": "A single agent step that completes immediately — the shortest runnable workflow.",

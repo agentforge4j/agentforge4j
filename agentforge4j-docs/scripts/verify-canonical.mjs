@@ -1,0 +1,273 @@
+// SPDX-License-Identifier: Apache-2.0
+//
+// Post-build production-artifact check (same "check the real build output directly" philosophy as
+// this module's own verify-noindex.mjs, which it deliberately mirrors) for this pass's two docs-side
+// fixes: `trailingSlash: true` (docusaurus.config.ts) and the sitemap plugin's `lastmod: 'date'`
+// option. Both are framework-native Docusaurus config, not custom code of this repo's own — this
+// check exists to prove they actually took effect against a real build, and to catch a future config
+// change (or a Docusaurus upgrade that alters the default) that stops them producing output.
+//
+// What that covers and what it does not, stated precisely because the difference is load-bearing:
+// this checks the VALUES in the generated sitemap — present, trailing-slash form, a real calendar
+// day, not dated in the future — never their PROVENANCE. Every regression that stops a date being
+// DERIVED does surface here as a missing <lastmod>: the `lastmod` option dropped, `experimental_vcs`
+// back to the v4-implied eager default (whose absolute-keyed file map misses the sitemap plugin's
+// siteDir-relative sourceFilePath), or the strategy set to `disabled`. A strategy that FABRICATES
+// dates does not surface here at all: `VcsHardcoded` returns 2018-10-14 for every file, which is
+// present, well-formed, and a real calendar day. No inspection of a build artifact can tell an
+// invented date from a real one, so that single risk is carried by the config token instead —
+// `future.experimental_vcs: 'git-ad-hoc'` is deliberately the raw strategy rather than a
+// `default-v*` preset for exactly this reason (see its own comment in docusaurus.config.ts).
+//
+// Driven entirely by sitemap.xml (not a walk of every generated HTML file): every URL the sitemap
+// actually advertises to search engines must resolve to a real generated page with exactly one
+// canonical tag, equal to that sitemap URL exactly (which also proves the trailing-slash form,
+// since every sitemap URL itself is already checked for one). A page the sitemap never mentions at
+// all (the search results page, and any other page deliberately excluded from indexing) simply
+// never gets visited by this loop — no assertion is made about it either way. This closes the
+// previous gap where a page missing its canonical entirely was silently skipped rather than failing
+// the build: only a page's *absence from the sitemap* is allowed to opt it out now, not a missing
+// tag on a page the sitemap still advertises.
+//
+// Wired to run right after `docusaurus build` in package.json's build script, alongside
+// verify-noindex.mjs.
+
+import { execFileSync } from 'node:child_process';
+import { existsSync, readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const here = dirname(fileURLToPath(import.meta.url));
+const MODULE_ROOT = join(here, '..');
+
+const SITE_ORIGIN = 'https://agentforge4j.org';
+const DOCS_BASE_PATH = '/docs/';
+
+/**
+ * `docusaurus.config.ts`'s `experimental_vcs: 'git-ad-hoc'` resolves each page's lastmod from a
+ * real per-file `git log` — a shallow clone still has *a* commit to read, so it does not error, it
+ * just silently reports a plausible-looking but wrong date (typically the shallow fetch's own single
+ * commit, for every file). `verify-canonical`'s own YAGNI-free job is to catch exactly this class of
+ * silent regression, so it must fail closed on the precondition itself rather than trust whatever
+ * date comes back.
+ *
+ * The probe failing at all is itself a finding, and the two ways it realistically fails are separate
+ * preconditions the build now has rather than one diagnostic mystery: `git` is not on PATH, or the
+ * tree is not a git checkout (a source tarball, a release archive, a container context that excludes
+ * `.git`). Both are reported as what they are — naming the probe instead would send the reader
+ * hunting for a shallow-clone problem they do not have.
+ */
+function isShallowRepository(repoRoot) {
+  let output;
+  try {
+    output = execFileSync('git', ['rev-parse', '--is-shallow-repository'], { cwd: repoRoot, encoding: 'utf8' }).trim();
+  } catch (err) {
+    if (err.code === 'ENOENT') {
+      throw new Error(
+        "verify-canonical: 'git' was not found on PATH, but this build derives every page's sitemap " +
+          '<lastmod> from real per-file git history — install git, or build from an environment that has it',
+      );
+    }
+    if (/not a git repository/i.test(`${err.stderr ?? ''}\n${err.message ?? ''}`)) {
+      throw new Error(
+        `verify-canonical: ${repoRoot} is not inside a git repository, but this build derives every page's ` +
+          'sitemap <lastmod> from real per-file git history — build from a real git checkout (an extracted ' +
+          'source tarball, or a container context that excludes .git, cannot produce these dates)',
+      );
+    }
+    throw new Error(`verify-canonical: could not determine whether ${repoRoot} is a shallow git repository — ${err.message}`);
+  }
+  return output === 'true';
+}
+
+/**
+ * The one, coherent enforcement point for "any build that emits git-derived `<lastmod>` values
+ * needs sufficient git history" — `docusaurus.config.ts` sets both `experimental_vcs: 'git-ad-hoc'`
+ * and `sitemap.lastmod: 'date'` unconditionally, not just for the live site, so an archive build
+ * (`AF4J_ARCHIVE_VERSION` set) derives its own pages' `<lastmod>` from git history exactly the same
+ * way the live build does — and, unlike a live build, an archive's output is frozen forever once
+ * committed, so a shallow-history archive would permanently bake in wrong dates. Exported so
+ * `archive-transition.mjs` (which drives the archive export via a direct `docusaurus build` call,
+ * never through this module's own `verifyCanonicalTrailingSlash`) can enforce the same precondition
+ * before it invests in a build whose `<lastmod>` values would be untrustworthy anyway.
+ *
+ * @param {string} repoRoot the git repository root to check
+ */
+export function assertSufficientGitHistoryForLastmod(repoRoot) {
+  if (isShallowRepository(repoRoot)) {
+    throw new Error(
+      `verify-canonical: ${repoRoot} is a shallow git clone (git rev-parse --is-shallow-repository) — ` +
+        "the sitemap plugin's git-ad-hoc lastmod strategy reads real per-file git history and silently " +
+        'produces wrong or missing dates from a shallow clone; fetch full history (e.g. `fetch-depth: 0`) before building',
+    );
+  }
+}
+
+/** Rejects any value that is not a real calendar date — not just YYYY-MM-DD shaped (so
+ * `2026-02-31`/`2026-13-01`/`2026-00-10` fail, and leap years are handled correctly: `2024-02-29` is
+ * valid, `2026-02-29` is not) — via the same UTC round-trip already used on the SPA side.
+ *
+ * Also rejects a date in the FUTURE. A `<lastmod>` is derived from a commit timestamp and formatted
+ * as a UTC day (`new Date(timestamp).toISOString().split('T')[0]`, see the sitemap plugin's own
+ * `LastmodFormatters`), so it can never legitimately be later than the day the build runs — a future
+ * value means a skewed clock or an overridden `GIT_COMMITTER_DATE` reached the history the dates are
+ * read from. Search engines discount future `<lastmod>` values, which makes this exactly the kind of
+ * plausible-looking-but-wrong metadata this gate exists to keep out. Compared as strings: both sides
+ * are zero-padded UTC `YYYY-MM-DD`, for which lexicographic and chronological order agree. */
+function isTrustworthyLastmodDate(value) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    return false;
+  }
+  const date = new Date(`${value}T00:00:00.000Z`);
+  if (Number.isNaN(date.getTime()) || date.toISOString().slice(0, 10) !== value) {
+    return false;
+  }
+  return value <= new Date().toISOString().slice(0, 10);
+}
+
+// Docusaurus's head-tag renderer does not necessarily quote attribute values with no whitespace and
+// stamps a `data-rh` marker on every tag it dedupes (see verify-noindex.mjs's own note) — matched
+// the same quote-agnostic way here. Collects every `<link rel="canonical">` tag individually (not
+// just the first) so a page carrying more than one is caught as a duplicate, not silently resolved
+// to whichever one a single greedy match happened to find first.
+function canonicalHrefs(html) {
+  const tags = html.match(/<link\b[^>]*\brel=["']?canonical["']?[^>]*>/gi) ?? [];
+  return tags
+    .map((tag) => /\bhref=["']?([^"'\s>]+)/i.exec(tag)?.[1])
+    .filter((href) => href !== undefined);
+}
+
+/** Maps a sitemap URL back to the generated HTML file it must have produced — `sitemap.xml` records
+ * absolute, baseUrl-inclusive URLs (`https://agentforge4j.org/docs/0.1.0/...`), while `buildDir`
+ * itself is already rooted at the docs baseUrl (`0.1.0/.../index.html`) — the exact convention this
+ * module's own fixture tests already write against. Returns `null` for a URL outside the expected
+ * site/docs prefix, a defect in its own right the caller reports clearly rather than mis-resolving. */
+function sitemapUrlToPagePath(buildDir, url) {
+  const prefix = `${SITE_ORIGIN}${DOCS_BASE_PATH}`;
+  if (!url.startsWith(prefix)) {
+    return null;
+  }
+  return join(buildDir, url.slice(prefix.length), 'index.html');
+}
+
+/**
+ * @param {{buildDir?: string, archiveVersion?: string|null, repoRoot?: string}} [options]
+ */
+export function verifyCanonicalTrailingSlash({
+  buildDir = join(MODULE_ROOT, 'build'),
+  archiveVersion = process.env.AF4J_ARCHIVE_VERSION || null,
+  repoRoot = MODULE_ROOT,
+} = {}) {
+  if (!existsSync(buildDir)) {
+    throw new Error(`verify-canonical: ${buildDir} does not exist — run "docusaurus build" first`);
+  }
+  // Necessary but not sufficient: a full-history repo can still legitimately produce a null/missing
+  // lastmod for one specific file (e.g. a versioned-doc source that was never actually committed),
+  // so this precondition alone must never be mistaken for "the generated sitemap is trustworthy" —
+  // the per-URL lastmod check below still runs for archive mode too, on the real generated output.
+  assertSufficientGitHistoryForLastmod(repoRoot);
+
+  const sitemapPath = join(buildDir, 'sitemap.xml');
+  if (!existsSync(sitemapPath)) {
+    throw new Error(`verify-canonical: expected generated file does not exist: ${sitemapPath}`);
+  }
+  const sitemap = readFileSync(sitemapPath, 'utf8');
+  const entries = [...sitemap.matchAll(/<url>\s*<loc>([^<]+)<\/loc>(?:\s*<lastmod>([^<]+)<\/lastmod>)?\s*<\/url>/g)];
+  // A <url> block that does not match the strict shape above (extra/reordered elements, a
+  // renamed/missing <loc>, e.g. from a future sitemap-plugin/Docusaurus version bump) would
+  // otherwise silently vanish from this check entirely, rather than surfacing as the regression it
+  // is. Both the <url> block count and the <loc> tag count are checked, not just <loc>: a block
+  // with no <loc> at all (a typo'd <location>, say) would agree with a zero-<loc> contribution and
+  // slip through a <loc>-only comparison undetected. Checked before the zero-entries guard below so
+  // a mismatch is reported precisely, even in the all-blocks-malformed case where that guard would
+  // otherwise fire with a less specific message.
+  const urlBlockCount = (sitemap.match(/<url>/g) ?? []).length;
+  const locCount = (sitemap.match(/<loc>/g) ?? []).length;
+  if (entries.length !== urlBlockCount || entries.length !== locCount) {
+    throw new Error(
+      `verify-canonical: ${sitemapPath} has ${urlBlockCount} <url> block(s) and ${locCount} <loc> tag(s) but only ` +
+        `${entries.length} matched the expected <url><loc>...</loc>[<lastmod>...</lastmod>]</url> shape — at ` +
+        'least one <url> block has an unexpected structure and would be silently dropped from this check',
+    );
+  }
+  if (entries.length === 0) {
+    throw new Error(`verify-canonical: ${sitemapPath} parsed to zero <url> entries`);
+  }
+
+  for (const [, url, lastmod] of entries) {
+    if (!url.endsWith('/')) {
+      throw new Error(`verify-canonical: sitemap URL "${url}" does not end in '/' (trailingSlash: true regression?)`);
+    }
+    if (!lastmod || !isTrustworthyLastmodDate(lastmod)) {
+      throw new Error(
+        `verify-canonical: sitemap URL "${url}" has no valid <lastmod> (a real YYYY-MM-DD calendar date, ` +
+          `not in the future; this one is ${lastmod ? `"${lastmod}"` : 'absent'}). ` +
+          'Causes, in the order worth checking: (1) the route has no source file of its own — Docusaurus ' +
+          'attaches sourceFilePath only to real doc routes, so a category `link: {type: "generated-index"}` ' +
+          'page or a tag page can never carry a git-derived date; give that category a real index doc, or ' +
+          "add the route to the sitemap plugin's ignorePatterns in docusaurus.config.ts. (2) The source " +
+          'file exists but is not committed yet — a freshly cut versioned_docs/version-<v>/ snapshot is ' +
+          'already listed in versions.json (so it is built and advertised) while its own files are still ' +
+          "untracked; commit the cut before building. (3) The sitemap plugin's lastmod: 'date' option " +
+          'regressed. (4) The value is not a real calendar day. (5) The value is a real day but lies in ' +
+          "the future — a skewed clock, or an overridden GIT_COMMITTER_DATE, reached the history the " +
+          'dates are read from; a commit cannot legitimately be newer than the build reading it.',
+      );
+    }
+    // The remaining checks resolve the sitemap URL back to a local file path assuming buildDir is
+    // rooted at the live site's baseUrl (`/docs/`) — an archive export's local output is NOT
+    // nested under its own `/docs/archive/<v>/` baseUrl (baseUrl affects only generated
+    // URLs/links, never the local build directory layout), so that resolution would be wrong for
+    // archive mode; skipped here, not skipped above, so the lastmod check just above still runs.
+    if (archiveVersion) {
+      continue;
+    }
+
+    const pagePath = sitemapUrlToPagePath(buildDir, url);
+    if (pagePath === null) {
+      throw new Error(`verify-canonical: sitemap URL "${url}" is not rooted at ${SITE_ORIGIN}${DOCS_BASE_PATH}`);
+    }
+    if (!existsSync(pagePath)) {
+      throw new Error(`verify-canonical: sitemap URL "${url}" has no generated page at ${pagePath}`);
+    }
+    const html = readFileSync(pagePath, 'utf8');
+    const canonicals = canonicalHrefs(html);
+    if (canonicals.length === 0) {
+      throw new Error(
+        `verify-canonical: ${pagePath} (sitemap URL "${url}") has no canonical tag — every page the sitemap ` +
+          'advertises must declare one',
+      );
+    }
+    if (canonicals.length > 1) {
+      throw new Error(`verify-canonical: ${pagePath} has ${canonicals.length} canonical tags — expected exactly one`);
+    }
+    const [canonical] = canonicals;
+    if (canonical !== url) {
+      if (`${canonical}/` === url) {
+        throw new Error(
+          `verify-canonical: ${pagePath} — canonical "${canonical}" does not end in '/' (must match its sitemap ` +
+            `URL "${url}" exactly)`,
+        );
+      }
+      throw new Error(
+        `verify-canonical: ${pagePath} — canonical "${canonical}" does not match its own sitemap URL "${url}" exactly`,
+      );
+    }
+  }
+
+  console.log(
+    archiveVersion
+      ? `[verify-canonical] archive-mode build: verified ${entries.length} sitemap URL(s), each with a valid <lastmod> ` +
+          '(trailing-slash form) — canonical-tag matching is skipped (archive-mode-incompatible local path layout)'
+      : `[verify-canonical] verified ${entries.length} sitemap URL(s): exactly one canonical, matching its own sitemap ` +
+          'URL exactly (trailing-slash form), each with a valid <lastmod>',
+  );
+}
+
+function main() {
+  verifyCanonicalTrailingSlash();
+}
+
+if (process.argv[1]?.endsWith('verify-canonical.mjs')) {
+  main();
+}

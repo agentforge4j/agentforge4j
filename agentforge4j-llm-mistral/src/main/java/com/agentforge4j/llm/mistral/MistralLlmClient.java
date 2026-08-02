@@ -3,7 +3,6 @@ package com.agentforge4j.llm.mistral;
 
 import com.agentforge4j.llm.AbstractHttpLlmClient;
 import com.agentforge4j.llm.LlmHttpErrorBodyTruncate;
-import com.agentforge4j.llm.api.LlmClient;
 import com.agentforge4j.llm.api.LlmExecutionRequest;
 import com.agentforge4j.llm.api.LlmExecutionResponse;
 import com.agentforge4j.llm.api.LlmInvocationException;
@@ -13,6 +12,7 @@ import com.agentforge4j.llm.wireprotocol.ChatCompletionsRequest;
 import com.agentforge4j.llm.wireprotocol.ChatCompletionsResponse;
 import com.agentforge4j.llm.wireprotocol.ChatMessage;
 import com.agentforge4j.util.Validate;
+import com.agentforge4j.util.text.CodeFence;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
 import java.net.URI;
@@ -99,7 +99,7 @@ public final class MistralLlmClient extends AbstractHttpLlmClient {
     String content = Validate.notBlank(rawContent, () -> new LlmInvocationException(
         "mistral response first choice content is blank: %s".formatted(truncatedJson)));
     return new LlmExecutionResponse(
-        LlmClient.stripCodeFence(content.strip()),
+        CodeFence.strip(content.strip()),
         StringUtils.trimToNull(dto.model()),
         ChatCompletionsApiSupport.toTokenUsageReport(dto.usage()));
   }

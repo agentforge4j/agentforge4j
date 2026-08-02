@@ -42,7 +42,15 @@ public abstract class BaseAgentLoader implements AgentLoader {
   @Override
   public Map<String, AgentDefinition> loadAgents() {
     log(System.Logger.Level.INFO, "Loading agents for {0}", loaderName);
-    return loadAgents(listAgentDirectories());
+    // listAgentDirectories() for a top-level shipped catalog (AgentBundleLocator.shippedAgentIds())
+    // returns bare ids with no .agent suffix (e.g. "requirement-structurer"), unlike
+    // workflow-bundle-local index entries (e.g. "agents/agent-author.agent"), which already carry
+    // both a path prefix and the suffix. loadAgents(List) below relies on the suffix to recognize an
+    // agent entry, so bare ids must be suffixed here, at the one call site that knows they are bare.
+    List<String> suffixed = listAgentDirectories().stream()
+        .map(id -> id.endsWith(AGENT_DIR_SUFFIX) ? id : id + AGENT_DIR_SUFFIX)
+        .toList();
+    return loadAgents(suffixed);
   }
 
   @Override

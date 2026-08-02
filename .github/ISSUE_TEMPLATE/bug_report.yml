@@ -7,6 +7,22 @@ body:
       value: |
         Thanks for taking the time to file a bug. Please do **not** report security
         vulnerabilities here — see [SECURITY.md](https://github.com/agentforge4j/agentforge4j/blob/main/SECURITY.md) for private reporting.
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component
+      description: >-
+        Which release track does this affect? Report against that track's latest release — see
+        the support policy in SECURITY.md.
+      options:
+        - Framework (Maven reactor, framework-v*)
+        - Shipped workflow catalog (catalog-v*)
+        - Workflow builder (npm, builder-v*)
+        - Documentation
+        - Web UI (agentforge4j-web-ui)
+        - Other / not sure
+    validations:
+      required: true
   - type: textarea
     id: description
     attributes:

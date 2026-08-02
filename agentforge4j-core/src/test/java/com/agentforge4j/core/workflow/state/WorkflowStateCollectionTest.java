@@ -9,6 +9,7 @@ import com.agentforge4j.core.workflow.collection.CollectionState;
 import java.time.Instant;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Set;
 import org.junit.jupiter.api.Test;
 
 class WorkflowStateCollectionTest {
@@ -86,7 +87,7 @@ class WorkflowStateCollectionTest {
     WorkflowState state = newState();
     state.putCollectionState(open("step-1", 1L));
 
-    state.clearEntriesFromUid(0);
+    state.clearEntriesFromUid(0, Set.of());
 
     assertThat(state.getCollectionState("step-1")).get()
         .extracting(CollectionState::version).isEqualTo(1L);

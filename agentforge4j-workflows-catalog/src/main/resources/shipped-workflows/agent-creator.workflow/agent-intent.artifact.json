@@ -1,0 +1,12 @@
+{
+  "id": "agent-intent",
+  "items": [
+    {
+      "type": "TEXT_AREA",
+      "id": "agent-intent",
+      "label": "Describe the agent you want to create",
+      "required": true,
+      "hint": "Plain language: what should the agent do, in what domain, with what inputs and expected output? Mention any constraints or sensitivities (security, audit, critical reasoning)."
+    }
+  ]
+}

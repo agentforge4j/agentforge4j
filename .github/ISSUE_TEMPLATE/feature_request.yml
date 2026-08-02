@@ -7,6 +7,20 @@ body:
       value: |
         Thanks for suggesting an improvement. For anything substantial, this issue is a good place
         to agree the approach before any code is written.
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component
+      description: Which release track does this concern?
+      options:
+        - Framework (Maven reactor, framework-v*)
+        - Shipped workflow catalog (catalog-v*)
+        - Workflow builder (npm, builder-v*)
+        - Documentation
+        - Web UI (agentforge4j-web-ui)
+        - Other / not sure
+    validations:
+      required: true
   - type: textarea
     id: problem
     attributes:

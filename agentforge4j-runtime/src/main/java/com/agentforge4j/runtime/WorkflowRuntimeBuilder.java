@@ -1,11 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 package com.agentforge4j.runtime;
 
+import com.agentforge4j.config.loader.validation.WorkflowValidator;
 import com.agentforge4j.core.command.LlmCommand;
 import com.agentforge4j.core.runtime.WorkflowRuntime;
+import com.agentforge4j.core.spi.aggregation.ContextAggregator;
 import com.agentforge4j.core.spi.tool.PendingToolInvocationStore;
 import com.agentforge4j.core.spi.validation.ArtifactValidator;
 import com.agentforge4j.core.spi.tool.ToolExecutionService;
+import com.agentforge4j.core.workflow.WorkflowTreeWalker;
 import com.agentforge4j.core.workflow.event.WorkflowEventLog;
 import com.agentforge4j.core.workflow.repository.WorkflowRepository;
 import com.agentforge4j.core.workflow.repository.WorkflowStateRepository;
@@ -33,6 +36,7 @@ import com.agentforge4j.runtime.execution.TransitionGate;
 import com.agentforge4j.runtime.execution.WorkflowExecutor;
 import com.agentforge4j.runtime.execution.behaviour.BehaviourHandler;
 import com.agentforge4j.runtime.execution.behaviour.handler.AgentBehaviourHandler;
+import com.agentforge4j.runtime.execution.behaviour.handler.AggregateBehaviourHandler;
 import com.agentforge4j.runtime.execution.behaviour.handler.AssignContextBehaviourHandler;
 import com.agentforge4j.runtime.execution.behaviour.handler.BranchBehaviourHandler;
 import com.agentforge4j.runtime.execution.behaviour.handler.FailBehaviourHandler;
@@ -66,10 +70,9 @@ import static com.agentforge4j.runtime.command.ShellCommandRunner.NO_OP_SHELL_CO
  * Fluent builder that wires a {@link DefaultWorkflowRuntime} with the canonical executor graph, behaviour handlers,
  * loop strategies, and command handlers.
  *
- * <p>Required collaborators are repositories, a pre-built {@link AgentInvoker}, {@link FileSink},
- * and {@link ShellCommandRunner}. {@link java.time.Clock}, {@link LoopEvaluator}, and {@link RunContextManager} default
- * when omitted. A {@link com.agentforge4j.schema.SchemaProvider} may be configured but is not read by the current
- * {@link #build()} implementation.
+ * <p>Required collaborators are the {@link WorkflowRepository}, {@link WorkflowStateRepository},
+ * {@link WorkflowEventLog}, and a pre-built {@link AgentInvoker}. {@link FileSink}, {@link ShellCommandRunner},
+ * {@link java.time.Clock}, {@link LoopEvaluator}, and {@link RunContextManager} default when omitted.
  *
  * <p>Public construction path for {@link com.agentforge4j.core.runtime.WorkflowRuntime};
  * {@link DefaultWorkflowRuntime} constructors stay package-private because they accept non-exported execution types.
@@ -93,6 +96,7 @@ public final class WorkflowRuntimeBuilder {
   private RunExecutionInterceptor runExecutionInterceptor = RunExecutionInterceptor.NO_OP;
   private GeneratedArtifactStore generatedArtifactStore;
   private List<ArtifactValidator> artifactValidators = List.of();
+  private List<ContextAggregator> contextAggregators = List.of();
 
   /**
    * Configures the workflow definition source.
@@ -318,15 +322,42 @@ public final class WorkflowRuntimeBuilder {
   }
 
   /**
+   * Configures the {@link ContextAggregator}s an {@code AGGREGATE} step may select by
+   * {@code aggregatorId}. Defaults to none; an embedding assembly (for example bootstrap) supplies
+   * the defaults.
+   *
+   * @param value aggregators registered by id (no duplicate ids)
+   *
+   * @return this builder
+   */
+  public WorkflowRuntimeBuilder contextAggregators(List<ContextAggregator> value) {
+    this.contextAggregators =
+        List.copyOf(Validate.notNull(value, "contextAggregators must not be null"));
+    return this;
+  }
+
+  /**
    * Validates required dependencies, wires executors and handlers, and returns a runnable
    * {@link com.agentforge4j.core.runtime.WorkflowRuntime}.
    *
+   * <p>Also rejects, before returning, every registered
+   * {@link com.agentforge4j.core.workflow.WorkflowDefinition} in {@code workflowRepository}'s
+   * current snapshot that contains a {@code COLLECTION} step: that
+   * step type has no registered {@code BehaviourHandler} in this release (see
+   * {@link com.agentforge4j.config.loader.validation.WorkflowValidator#validateNoCollectionSteps}),
+   * so a run that reached one would otherwise fail deep inside execution instead of at build time.
+   * The JSON-loader path also runs this same check (defense-in-depth); this call covers
+   * definitions assembled programmatically, which never pass through the loader's validation
+   * suite.
+   *
    * @return configured runtime instance
    *
-   * @throws IllegalArgumentException if a required dependency is missing or invalid
+   * @throws IllegalArgumentException if a required dependency is missing or invalid, or if a
+   *                                   registered workflow contains a {@code COLLECTION} step
    */
   public WorkflowRuntime build() {
     validateRequired();
+    rejectUnsupportedCollectionSteps();
     Clock resolvedClock = resolveClock();
     FileSink resolvedFileSink = getResolvedFileSink();
     ShellCommandRunner resolvedShell = resolveShellCommandRunner();
@@ -380,7 +411,8 @@ public final class WorkflowRuntimeBuilder {
 
     setupBlueprintLoopStrategies(blueprintExecutor, stepSequenceExecutor, resolvedEventRecorder,
         maxIterationsHandler,
-        resolvedEvaluator);
+        resolvedEvaluator,
+        resolvedGeneratedArtifactStore);
     blueprintExecutor.setStepSequenceExecutor(stepSequenceExecutor);
     blueprintExecutor.setTransitionGate(transitionGate);
     workflowExecutor.setStepSequenceExecutor(stepSequenceExecutor);
@@ -403,10 +435,12 @@ public final class WorkflowRuntimeBuilder {
 
   private static void setupBlueprintLoopStrategies(BlueprintExecutor blueprintExecutor,
       StepSequenceExecutor stepSequenceExecutor, EventRecorder eventRecorder,
-      MaxIterationsHandler maxIterationsHandler, LoopEvaluator resolvedEvaluator) {
+      MaxIterationsHandler maxIterationsHandler, LoopEvaluator resolvedEvaluator,
+      GeneratedArtifactStore resolvedGeneratedArtifactStore) {
     blueprintExecutor.setLoopStrategies(List.of(
         new FixedCountLoopStrategy(stepSequenceExecutor, eventRecorder, maxIterationsHandler),
-        new ForEachLoopStrategy(stepSequenceExecutor, eventRecorder, maxIterationsHandler),
+        new ForEachLoopStrategy(stepSequenceExecutor, eventRecorder, maxIterationsHandler,
+            resolvedGeneratedArtifactStore),
         new AgentSignalLoopStrategy(stepSequenceExecutor, eventRecorder, maxIterationsHandler),
         new EvaluatorLoopStrategy(
             stepSequenceExecutor, eventRecorder, maxIterationsHandler, resolvedEvaluator)));
@@ -442,6 +476,10 @@ public final class WorkflowRuntimeBuilder {
       RetryPreviousBehaviourHandler retryPreviousBehaviourHandler,
       TransitionGate transitionGate,
       GeneratedArtifactStore generatedArtifactStore) {
+    // No handler is registered for CollectionBehaviour (COLLECTION): that step type has no runtime
+    // completion in this release. build() rejects any registered workflow reaching a COLLECTION
+    // step before returning (see rejectUnsupportedCollectionSteps()), so StepExecutor never has to
+    // look one up here.
     List<BehaviourHandler<? extends StepBehaviour>> handlers = List.of(
         new AgentBehaviourHandler(agentInvoker, commandApplier, eventRecorder),
         new SparBehaviourHandler(agentInvoker, commandApplier, eventRecorder),
@@ -452,7 +490,8 @@ public final class WorkflowRuntimeBuilder {
         new FailBehaviourHandler(),
         retryPreviousBehaviourHandler,
         new ValidateBehaviourHandler(generatedArtifactStore, artifactValidators, eventRecorder),
-        new AssignContextBehaviourHandler(eventRecorder));
+        new AssignContextBehaviourHandler(eventRecorder),
+        new AggregateBehaviourHandler(contextAggregators, eventRecorder));
     return new StepExecutor(handlers, eventRecorder, resolvedClock, transitionGate);
   }
 
@@ -480,6 +519,18 @@ public final class WorkflowRuntimeBuilder {
     return generatedArtifactStore != null
         ? generatedArtifactStore
         : new InMemoryGeneratedArtifactStore();
+  }
+
+  /**
+   * Fail-closed gate for the {@code COLLECTION} step type: rejects every registered workflow
+   * definition reaching a {@code CollectionBehaviour} step before {@link #build()} returns, instead
+   * of deferring the failure to a mid-run {@code StepExecutor} lookup miss. Reuses
+   * {@code agentforge4j-config-loader}'s bounded {@link WorkflowTreeWalker}-backed validator so the
+   * traversal logic exists in exactly one place, shared with the JSON-loader path.
+   */
+  private void rejectUnsupportedCollectionSteps() {
+    new WorkflowValidator(WorkflowTreeWalker.MAX_TRAVERSAL_DEPTH)
+        .validateNoCollectionSteps(workflowRepository.findAll());
   }
 
   private void validateRequired() {

@@ -13,11 +13,16 @@
 module agentforge4j.runtime {
   requires static lombok;
   requires agentforge4j.util;
-  requires agentforge4j.core;
+  // transitive: WorkflowRuntimeBuilder (the exported entry point) and RunExecutionContext (the
+  // exported interceptor SPI) both expose agentforge4j.core types directly to callers.
+  requires transitive agentforge4j.core;
   requires agentforge4j.config.loader;
   requires agentforge4j.schema;
   requires agentforge4j.llm.api;
-  requires agentforge4j.llm;
+  // transitive: exported com.agentforge4j.runtime.llm signatures (AgentInvocationResult,
+  // LlmCallObserver, AgentInvoker.Builder) expose ModelTier/TokenUsageReport/LlmExecutionResponse
+  // (llm.api, via llm's own transitive requires) and LlmClientResolver (llm) directly to callers.
+  requires transitive agentforge4j.llm;
   requires com.fasterxml.jackson.databind;
   requires com.fasterxml.jackson.core;
   requires org.apache.commons.lang3;

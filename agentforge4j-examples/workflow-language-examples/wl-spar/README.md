@@ -4,7 +4,10 @@
 
 How a `SPAR` step orchestrates two agents reasoning against each other under workflow control — a
 primary and a challenger exchange views over bounded rounds, and the primary then resolves. It also
-shows how the exchange decides to run another round. No Spring, no real LLM keys, no network.
+shows how the exchange decides to run another round. The example is LLM-agnostic: it runs offline
+against a deterministic fake by default; pointing it at a real provider needs a provider module,
+credentials, and the agents repointed away from the fake — no change to the workflow structure itself.
+No Spring, no network on the default path.
 
 ## AgentForge4j capability demonstrated
 
@@ -31,12 +34,30 @@ From the examples root (`agentforge4j-examples/`), after installing the framewor
 ./mvnw -pl workflow-language-examples/wl-spar -am verify
 ```
 
-`verify` runs the deterministic test, which asserts both rounds ran and the run resolved. To watch it
-print, run `WlSparExample.main` from your IDE.
+`verify` runs the deterministic test, which always uses the bundled fake and asserts both rounds ran
+and the run resolved.
+
+**Offline (default).** `WlSparApp.main` runs with no configuration: the `api-key` in
+`src/main/resources/example.properties` is blank, so the deterministic `agentforge4j-llm-fake` provider
+serves every agent turn — no key, no network, no extra dependency. Run it from your IDE to watch the
+exchange resolve and print.
+
+**Against a real LLM.** Set a provider key — either `agentforge4j.example.llm.api-key` in
+`example.properties`, or the `AGENTFORGE4J_EXAMPLE_LLM_API_KEY` environment variable (see `.env.example`)
+— add a provider module dependency (for example `agentforge4j-llm-openai`) to this module's `pom.xml`,
+and edit the `providerPreferences` in `src/main/resources/agents/architect.agent/agent.json` and
+`src/main/resources/agents/developer.agent/agent.json` to name the chosen provider instead of `fake`
+(both agents ship pinned to the fake provider so the offline default is deterministic). With those three
+changes made, the same workflow structure runs unchanged, with both agents' turns now served by the real
+model. With a key set but no provider module on the classpath, assembly fails fast with a clear "no
+provider factory" message; with the module present but the agents still pinned to `fake`, the run fails
+at the first agent step with an `LlmInvocationException` saying the agent has no available provider
+preferences. Precedence for every value is system property, then environment variable, then
+`example.properties`.
 
 ## Expected behaviour / output
 
-`main` runs the SPAR workflow and prints:
+On the offline fake path, `main` runs the SPAR workflow and prints:
 
 ```text
 status=COMPLETED
@@ -44,11 +65,14 @@ status=COMPLETED
 
 The bundled test asserts the run reaches `COMPLETED` and that both the primary and the challenger
 contributed in each of the two rounds (`spar.primary.round.1/2`, `spar.challenger.round.1/2`),
-deterministically.
+deterministically against the fake.
 
 ## Files to read first
 
 1. `src/main/resources/workflows/wl-spar.workflow/workflow.json` — the `SPAR` step and its
    `sparConfig` (`challengerAgentId`, `maxRounds`, `resolutionPrompt`).
-2. `src/main/java/.../WlSparExample.java` — the per-agent, per-round scripted turns and the resolution.
-3. `src/test/java/.../WlSparExampleTest.java` — the deterministic round-by-round assertions.
+2. `src/main/java/.../WlSparApp.java` — the run that resolves fake vs. real and prints the status.
+3. `src/main/java/.../WlSparFakeLlm.java` — the single source of truth for the per-agent, per-round
+   scripted turns and the resolution.
+4. `src/main/java/.../ExampleLlmConfig.java` — how the fake/real toggle, provider, and key are resolved.
+5. `src/test/java/.../WlSparAppTest.java` — the deterministic round-by-round assertions.

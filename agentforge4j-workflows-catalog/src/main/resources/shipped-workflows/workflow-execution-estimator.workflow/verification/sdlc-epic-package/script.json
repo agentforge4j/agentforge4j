@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "responses": [
+    {
+      "workflowId": "workflow-execution-estimator",
+      "stepId": "estimate",
+      "agentId": "execution-estimator",
+      "ordinal": 0,
+      "responseText": "[{\"type\":\"SET_CONTEXT\",\"key\":\"estimatedInputTokensPerAgentTurn\",\"value\":{\"type\":\"NUMBER\",\"value\":1200}},{\"type\":\"SET_CONTEXT\",\"key\":\"estimatedOutputTokensPerAgentTurn\",\"value\":{\"type\":\"NUMBER\",\"value\":700}},{\"type\":\"SET_CONTEXT\",\"key\":\"estimatedToolInvocationsPerAgentTurn\",\"value\":{\"type\":\"NUMBER\",\"value\":1}},{\"type\":\"COMPLETE\"}]"
+    }
+  ]
+}

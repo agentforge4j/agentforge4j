@@ -26,15 +26,12 @@ public final class WorkflowDraftValidator {
   public ValidationReport validate(Map<String, WorkflowDefinition> workflows,
                                    Map<String, AgentDefinition> globalAgents) {
     List<ValidationError> errors = new ArrayList<>();
-    runValidation(errors, "validateAgentRefs", () -> validator.validateAgentRefs(workflows, globalAgents));
-    runValidation(errors, "validateWorkflowRefs", () -> validator.validateWorkflowRefs(workflows));
-    runValidation(errors, "validateBlueprintRefs", () -> validator.validateBlueprintRefs(workflows));
-    runValidation(errors, "validateArtifactRefs", () -> validator.validateArtifactRefs(workflows));
-    runValidation(errors, "validateCircularRefs", () -> validator.validateCircularRefs(workflows));
-    runValidation(errors, "validateRetryStepRefs", () -> validator.validateRetryStepRefs(workflows));
-    runValidation(errors, "validateRequirements", () -> validator.validateRequirements(workflows));
-    runValidation(errors, "validateValidateBehaviourContracts",
-        () -> validator.validateValidateBehaviourContracts(workflows));
+    for (ValidationCheck check : ValidationCheck.suite(validator)) {
+      if (check.draftExempt()) {
+        continue;
+      }
+      runValidation(errors, check.code(), () -> check.action().accept(workflows, globalAgents));
+    }
     return new ValidationReport(errors);
   }
 

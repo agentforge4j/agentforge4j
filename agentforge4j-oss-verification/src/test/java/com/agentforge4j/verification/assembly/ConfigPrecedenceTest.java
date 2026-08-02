@@ -9,6 +9,7 @@ import java.nio.file.Path;
 import java.util.List;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import org.junitpioneer.jupiter.SetEnvironmentVariable;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -16,11 +17,15 @@ import static org.assertj.core.api.Assertions.assertThat;
  * Black-box proof of the bootstrap config-precedence contract for the {@code agentforge4j.agents.path} key. Live
  * resolution order is {@code programmatic > system-property > env}. Each leg is observed through
  * {@link AgentForge4j#agents()}: the agents catalog reflects whichever source won, since the two fixture directories
- * declare distinct agent ids.
+ * declare distinct agent ids. The env leg uses junit-pioneer's {@code @SetEnvironmentVariable} with a relative fixture
+ * path (annotation values must be compile-time constants, so a classpath-resolved absolute path via
+ * {@link Fixtures#dir(String)} cannot be used directly); the relative path resolves against Maven surefire's default
+ * working directory, this module's basedir.
  */
 class ConfigPrecedenceTest {
 
   private static final String AGENTS_PATH_KEY = "agentforge4j.agents.path";
+  private static final String AGENTS_B_RELATIVE_PATH = "src/test/resources/fixtures/assembly/agents-b";
 
   private String originalAgentsPath;
   private boolean agentsPathCaptured;
@@ -68,6 +73,37 @@ class ConfigPrecedenceTest {
 
     assertThat(agentIds(af))
         .as("the agents.path system property must be honoured when nothing is set programmatically")
+        .containsExactly("alpha-agent");
+  }
+
+  @Test
+  @SetEnvironmentVariable(key = "AGENTFORGE4J_AGENTS_PATH", value = AGENTS_B_RELATIVE_PATH)
+  void envAgentsPathHonouredWhenNothingOverridesIt() {
+    AgentForge4j af = AgentForge4jBootstrap.defaults()
+        .withLlmClientResolver(Fixtures.noOpLlmResolver())
+        .withLoadShippedWorkflows(false)
+        .withLoadShippedAgents(false)
+        .build();
+
+    assertThat(agentIds(af))
+        .as("AGENTFORGE4J_AGENTS_PATH must be honoured when nothing higher-precedence sets it")
+        .containsExactly("beta-agent");
+  }
+
+  @Test
+  @SetEnvironmentVariable(key = "AGENTFORGE4J_AGENTS_PATH", value = AGENTS_B_RELATIVE_PATH)
+  void systemPropertyAgentsPathWinsOverEnv() {
+    Path systemPropertyDir = Fixtures.dir("/fixtures/assembly/agents-a");
+    setAgentsPathProperty(systemPropertyDir);
+
+    AgentForge4j af = AgentForge4jBootstrap.defaults()
+        .withLlmClientResolver(Fixtures.noOpLlmResolver())
+        .withLoadShippedWorkflows(false)
+        .withLoadShippedAgents(false)
+        .build();
+
+    assertThat(agentIds(af))
+        .as("the agentforge4j.agents.path system property must win over the AGENTFORGE4J_AGENTS_PATH env var")
         .containsExactly("alpha-agent");
   }
 

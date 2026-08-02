@@ -26,6 +26,7 @@ class WorkflowHarnessGateTest {
   private static final String WORKFLOW_JSON = """
       {
         "kind": "WORKFLOW",
+        "schemaVersion": 1,
         "id": "testkit-input",
         "name": "Testkit Input",
         "steps": [

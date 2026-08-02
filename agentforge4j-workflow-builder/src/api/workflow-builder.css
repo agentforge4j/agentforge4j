@@ -20,9 +20,11 @@
   flex-wrap: wrap;
   align-items: center;
   gap: var(--builder-space-sm);
+  /* min-height (not a fixed height) so wrapped content on narrow viewports actually gets a
+     second row instead of being clipped by the parent's `overflow: hidden` — a fixed `height`
+     here combined with `flex-wrap: wrap` was self-defeating: wrapping needs room to grow into. */
   min-height: 3.5rem;
-  height: 3.5rem;
-  padding: 0 var(--builder-space-md);
+  padding: var(--builder-space-xs) var(--builder-space-md);
   border-bottom: 1px solid var(--afb-chrome-border);
   background: var(--afb-chrome-bg);
   color: var(--afb-chrome-text);
@@ -124,6 +126,11 @@
   background: color-mix(in srgb, var(--afb-accent) 12%, transparent);
 }
 
+.workflow-builder__history-group {
+  display: flex;
+  gap: 2px;
+}
+
 .workflow-builder__subtitle {
   position: absolute;
   width: 1px;
@@ -148,8 +155,16 @@
   top: var(--builder-space-sm);
   left: 4.5rem;
   right: var(--builder-space-md);
+  /* Bounded on all four sides (not just top/left/right) so the panel can never grow taller than
+     the available embed height and visually overlap the canvas content beneath it on a short
+     viewport — the actual scrolling happens on .wf-guided-stepper below, which (unlike this
+     positioning wrapper) has pointer-events enabled. */
+  bottom: var(--builder-space-sm);
   z-index: 2;
   pointer-events: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--builder-space-sm);
 }
 
 .workflow-builder__guided > * {
@@ -253,6 +268,22 @@
   color: var(--builder-color-danger);
 }
 
+.workflow-builder__status--success {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--builder-space-sm);
+  color: var(--builder-color-success);
+  font-weight: 600;
+}
+
+.workflow-builder__status-dismiss {
+  flex-shrink: 0;
+  color: inherit;
+  min-width: 1.5rem;
+  min-height: 1.5rem;
+}
+
 .workflow-builder__banner {
   padding: var(--builder-space-sm) var(--builder-space-md);
   border-bottom: 1px solid var(--builder-color-border);
@@ -274,6 +305,12 @@
   padding-left: 1.25rem;
   font-size: var(--builder-font-size-xs);
   color: var(--builder-color-muted);
+}
+
+.workflow-builder__banner-actions {
+  display: flex;
+  gap: var(--builder-space-xs);
+  margin-top: var(--builder-space-xs);
 }
 
 /* Shared controls */
@@ -515,6 +552,12 @@
   color: var(--afb-warn);
 }
 
+.wf-node-badge--start {
+  flex-shrink: 0;
+  background: color-mix(in srgb, var(--afb-accent) 16%, transparent);
+  color: var(--afb-accent);
+}
+
 .wf-node__branches {
   border-top: 1px solid var(--afb-node-border);
   padding: 0.375rem 0.75rem 0.5rem;
@@ -674,8 +717,16 @@
   font-family: var(--afb-font-sans);
 }
 
+.wf-palette__panel {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
 .wf-palette__body {
   flex: 1;
+  min-height: 0;
   overflow: auto;
   padding: var(--builder-space-sm);
 }
@@ -845,6 +896,32 @@
 
 .wf-palette--mobile .wf-palette__body {
   padding-bottom: var(--builder-space-md);
+}
+
+/* Delete-confirmation dialog — a small, centered modal shared by every step-
+   deletion trigger (inspector delete button, canvas Delete/Backspace key). */
+.wf-confirm-dialog__backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  background: color-mix(in srgb, var(--afb-navy-900) 55%, transparent);
+}
+
+.wf-confirm-dialog {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 6;
+  width: min(90vw, 22rem);
+}
+
+.wf-confirm-dialog__footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--builder-space-sm);
+  padding: var(--builder-space-md);
+  border-top: 1px solid var(--builder-color-border);
 }
 
 /* Inspector slide-over */
@@ -1192,6 +1269,37 @@
   box-shadow: 0 8px 24px color-mix(in srgb, var(--afb-navy-900) 45%, transparent);
   color: var(--afb-chrome-text);
   font-family: var(--afb-font-sans);
+  /* Scrolls internally rather than overflowing its now-bounded parent (.workflow-builder__guided)
+     when the stage list is taller than the available space, e.g. a short mobile viewport. */
+  max-height: 100%;
+  overflow-y: auto;
+  /* Allow this flex item to shrink below its content height so the start-step chooser sibling
+     (added below it in the same flex column) always has room, rather than the stepper's own
+     max-height:100% claiming the whole column first. */
+  min-height: 0;
+}
+
+/* Guided-mode start-step chooser: same dark-chrome card language as .wf-guided-stepper, since
+   both live in the same overlay column above the canvas. Only rendered once the workflow has
+   more than one node (see StartStepChooser). */
+.wf-guided-start {
+  flex-shrink: 0;
+  background: var(--afb-chrome-bg);
+  border: 1px solid var(--afb-chrome-border);
+  border-radius: var(--afb-radius-sm);
+  box-shadow: 0 8px 24px color-mix(in srgb, var(--afb-navy-900) 45%, transparent);
+  color: var(--afb-chrome-text);
+  font-family: var(--afb-font-sans);
+  padding: var(--builder-space-sm) var(--builder-space-md);
+}
+
+.wf-guided-start .wf-field {
+  margin-bottom: 0;
+}
+
+.wf-guided-start .wf-field__label,
+.wf-guided-start .wf-field__hint {
+  color: var(--afb-chrome-muted);
 }
 
 .wf-guided-stepper .wf-button--secondary {
@@ -1236,6 +1344,19 @@
   .wf-guided-stepper__action {
     width: 100%;
     margin-top: var(--builder-space-xs);
+  }
+
+  /* .wf-canvas__starter-overlay (the "Select start step" empty-state card) is centered across
+     the whole canvas by default, which visually collides with .workflow-builder__guided above
+     on a short viewport, since both now occupy the canvas's vertical space independently.
+     Anchoring the starter card to the bottom on mobile keeps it clear of the guided panel
+     without depending on either panel's exact content height. Guided mode itself additionally
+     suppresses this overlay entirely via WorkflowCanvas's `hideStarterHint` prop, since the two
+     serve the same purpose ("pick a start step") and their combined content doesn't fit a short
+     canvas regardless of alignment — this remaining CSS rule only matters for advanced mode. */
+  .wf-canvas__starter-overlay {
+    align-items: flex-end;
+    padding-bottom: var(--builder-space-lg);
   }
 }
 
@@ -1319,6 +1440,11 @@
 }
 
 .wf-validation-pill__popover {
+  /* Base position/z-index kept as a fallback for non-portal contexts (e.g. a snapshot test that
+     renders the class without JS-measured coordinates). The live component always portals this
+     element to document.body and supplies position/top/right inline (see --portal below), since a
+     raised z-index alone cannot escape the toolbar's own stacking context (established by its own
+     non-auto z-index as a flex item) to paint above an open inspector panel. */
   position: absolute;
   top: calc(100% + var(--builder-space-xs));
   right: 0;
@@ -1333,6 +1459,13 @@
   color: var(--afb-chrome-text);
   box-shadow: 0 12px 32px color-mix(in srgb, var(--afb-navy-900) 50%, transparent);
   overflow: hidden;
+}
+
+.wf-validation-pill__popover--portal {
+  /* Portaled to document.body: must out-rank every layer inside the builder itself (max internal
+     z-index elsewhere in this stylesheet is 20) plus reasonable host-page chrome, since it is now
+     a direct child of body rather than nested inside the toolbar's stacking context. */
+  z-index: 1000;
 }
 
 .wf-validation-pill__popover .wf-panel__header {
@@ -1532,4 +1665,31 @@
   letter-spacing: 0.02em;
   text-transform: uppercase;
   white-space: nowrap;
+}
+
+/* Narrow-container gate: replaces the whole editor below the supported container width
+   (see useNarrowContainerGate / NARROW_CONTAINER_BREAKPOINT_PX) instead of a reduced or
+   read-only mobile editing surface, which is out of scope for 0.1.0. */
+.workflow-builder__narrow-notice {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--builder-space-sm);
+  height: 100%;
+  padding: var(--builder-space-lg);
+  text-align: center;
+  background: var(--builder-color-bg);
+  color: var(--builder-color-fg);
+}
+
+.workflow-builder__narrow-notice-title {
+  margin: 0;
+  font-weight: 600;
+}
+
+.workflow-builder__narrow-notice-body {
+  margin: 0;
+  font-size: var(--builder-font-size-sm);
+  color: var(--builder-color-muted);
 }

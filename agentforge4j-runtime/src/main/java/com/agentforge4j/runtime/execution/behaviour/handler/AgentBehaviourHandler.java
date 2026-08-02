@@ -6,6 +6,7 @@ import com.agentforge4j.core.workflow.step.behaviour.AgentBehaviour;
 import com.agentforge4j.runtime.command.CommandApplicationResult;
 import com.agentforge4j.runtime.command.CommandApplier;
 import com.agentforge4j.runtime.event.EventRecorder;
+import com.agentforge4j.runtime.execution.AgentSignalPersistence;
 import com.agentforge4j.runtime.execution.CommandApplicationResults;
 import com.agentforge4j.runtime.execution.ExecutionContext;
 import com.agentforge4j.runtime.execution.ExecutionOutcome;
@@ -62,7 +63,13 @@ public final class AgentBehaviourHandler implements BehaviourHandler<AgentBehavi
 
     // Surface a COMPLETE command to an enclosing AGENT_SIGNAL loop without altering the execution
     // outcome (which stays COMPLETED so step gating and sequence continuation are unaffected).
-    executionContext.setAgentCompletionSignalled(applicationResult == CommandApplicationResult.COMPLETE_SIGNAL);
+    boolean signalled = applicationResult == CommandApplicationResult.COMPLETE_SIGNAL;
+    executionContext.setAgentCompletionSignalled(signalled);
+    // Also persist the signal on WorkflowState, scoped to every loop blueprint whose
+    // iteration body is currently active, so it survives a pause/resume that occurs later in the
+    // same iteration (the transient flag above is reset every iteration and never re-set on a
+    // resume, since a step with output is skip-guarded rather than re-invoked).
+    AgentSignalPersistence.record(step, executionContext, signalled);
 
     return CommandApplicationResults.toExecutionOutcome(applicationResult);
   }

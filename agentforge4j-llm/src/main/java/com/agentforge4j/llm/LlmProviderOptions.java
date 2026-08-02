@@ -56,13 +56,15 @@ public interface LlmProviderOptions {
   Optional<Boolean> bool(String key);
 
   /**
-   * Returns the {@link Duration} value for {@code key}, parsed as ISO-8601 (for example {@code PT30S}).
+   * Returns the {@link Duration} value for {@code key}, accepting either ISO-8601 (for example {@code PT30S}) or a
+   * compact shorthand — an amount plus an optional {@code ns}/{@code us}/{@code ms}/{@code s}/{@code m}/{@code h}/
+   * {@code d} unit suffix, defaulting to milliseconds (for example {@code 15s}, {@code 2m}, {@code 500ms}).
    *
    * @param key the option key
    *
    * @return the value, if present
    *
-   * @throws LlmProviderConfigurationException if the value is not a valid ISO-8601 duration
+   * @throws LlmProviderConfigurationException if the value is not a valid ISO-8601 or shorthand duration
    */
   Optional<Duration> duration(String key);
 
@@ -129,7 +131,7 @@ public interface LlmProviderOptions {
    *
    * @return the value
    *
-   * @throws LlmProviderConfigurationException if the key is absent, or not a valid ISO-8601 duration
+   * @throws LlmProviderConfigurationException if the key is absent, or not a valid ISO-8601 or shorthand duration
    */
   default Duration requireDuration(String key) {
     return duration(key).orElseThrow(() -> missing(key));

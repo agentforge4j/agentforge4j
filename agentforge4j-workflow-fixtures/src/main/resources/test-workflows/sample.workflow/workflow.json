@@ -1,5 +1,6 @@
 {
   "kind": "WORKFLOW",
+  "schemaVersion": 1,
   "id": "sample",
   "uuid": "f1e2d3c4-b5a6-4789-9012-3456789abcde",
   "name": "Sample Fixture Workflow",

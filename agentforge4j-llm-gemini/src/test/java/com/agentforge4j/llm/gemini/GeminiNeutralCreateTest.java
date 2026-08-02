@@ -41,9 +41,25 @@ class GeminiNeutralCreateTest {
         .hasMessageContaining("base URL");
   }
 
+  @Test
+  void defaultsRequestTimeoutToTwoMinutesWhenAbsent() {
+    GeminiNeutralConfiguration config = GeminiNeutralConfiguration.fromNeutral(
+        neutralWithoutRequestTimeout(), new LlmSecret("gm-test"));
+
+    assertThat(config.getRequestTimeout()).isEqualTo(GeminiDefaults.REQUEST_TIMEOUT);
+  }
+
   private static LlmClientConfiguration neutral(boolean withBaseUrl) {
     Map<String, String> options = new HashMap<>();
     options.put("request.timeout", "PT30S");
+    return config(withBaseUrl, options);
+  }
+
+  private static LlmClientConfiguration neutralWithoutRequestTimeout() {
+    return config(true, new HashMap<>());
+  }
+
+  private static LlmClientConfiguration config(boolean withBaseUrl, Map<String, String> options) {
     return new LlmClientConfiguration() {
       @Override
       public String getProviderName() {

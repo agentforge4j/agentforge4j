@@ -1,10 +1,20 @@
 {
   "name": "@agentforge4j/workflow-builder-react",
-  "version": "0.4.0",
+  "version": "0.6.1",
   "private": false,
   "description": "Reusable React workflow builder for AgentForge4j",
   "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/agentforge4j/agentforge4j.git",
+    "directory": "agentforge4j-workflow-builder"
+  },
   "type": "module",
+  "agentforge4j": {
+    "supportedSchemaVersions": [
+      1
+    ]
+  },
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -26,11 +36,14 @@
   },
   "scripts": {
     "sync-schema": "node scripts/sync-schema.mjs",
-    "build": "npm run sync-schema && tsup",
-    "dev": "npm run sync-schema && vite dev",
+    "verify-schemas": "node scripts/verify-schema-mirrors.mjs",
+    "build": "npm run verify-schemas && tsup",
+    "dev": "npm run verify-schemas && vite dev",
+    "build:dev-harness": "npm run verify-schemas && vite build",
+    "preview": "vite preview",
     "prepublishOnly": "npm run typecheck && npm run build && npm run test",
-    "typecheck": "npm run sync-schema && tsc --noEmit",
-    "test": "npm run sync-schema && vitest run"
+    "typecheck": "npm run verify-schemas && tsc --noEmit",
+    "test": "npm run verify-schemas && vitest run"
   },
   "peerDependencies": {
     "react": "^18.0.0 || ^19.0.0",
@@ -43,7 +56,7 @@
     "dagre": "^0.8.5",
     "jszip": "^3.10.1",
     "lucide-react": "^1.17.0",
-    "nanoid": "^5.1.11"
+    "nanoid": "^6.0.0"
   },
   "overrides": {
     "esbuild": "^0.28.1"
@@ -53,6 +66,7 @@
     "@testing-library/react": "^16.3.0",
     "@testing-library/user-event": "^14.6.1",
     "@types/dagre": "^0.7.54",
+    "@types/node": "^26.1.0",
     "@types/react": "^19.1.2",
     "@types/react-dom": "^19.1.2",
     "@vitejs/plugin-react": "^6.0.3",

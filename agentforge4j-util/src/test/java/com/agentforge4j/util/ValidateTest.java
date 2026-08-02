@@ -584,6 +584,13 @@ class ValidateTest {
     }
 
     @Test
+    void shouldThrowWhenFractionalNegativeWithStringMessage() {
+      assertThatThrownBy(() -> Validate.isNotNegative(-0.5, "message"))
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessage("message");
+    }
+
+    @Test
     void shouldThrowWhenValueNullWithStringMessage() {
       assertThatThrownBy(() -> Validate.isNotNegative(null, "message"))
           .isInstanceOf(IllegalArgumentException.class)

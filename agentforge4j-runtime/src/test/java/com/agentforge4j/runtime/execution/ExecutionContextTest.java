@@ -13,9 +13,11 @@ import com.agentforge4j.core.workflow.step.behaviour.ResourceBehaviour;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException;
 
 class ExecutionContextTest {
 
@@ -24,6 +26,60 @@ class ExecutionContextTest {
     ExecutionContext context = new ExecutionContext(state(), workflow("wf-root"), 32);
 
     assertThat(context.getActiveWorkflowId()).isEqualTo("wf-root");
+  }
+
+  @Test
+  void activeLoopBlueprintIds_isEmpty_whenNothingPushed() {
+    ExecutionContext context = new ExecutionContext(state(), workflow("wf-root"), 32);
+
+    assertThat(context.activeLoopBlueprintIds()).isEmpty();
+  }
+
+  @Test
+  void activeLoopBlueprintIds_reflectsEveryPushedBlueprint_untilItsOwnPop() {
+    ExecutionContext context = new ExecutionContext(state(), workflow("wf-root"), 32);
+
+    context.pushActiveLoopBlueprint("outer-loop");
+    assertThat(context.activeLoopBlueprintIds()).containsExactlyInAnyOrder("outer-loop");
+
+    context.pushActiveLoopBlueprint("inner-loop");
+    assertThat(context.activeLoopBlueprintIds()).containsExactlyInAnyOrder("outer-loop", "inner-loop");
+
+    context.popActiveLoopBlueprint();
+    assertThat(context.activeLoopBlueprintIds()).containsExactlyInAnyOrder("outer-loop");
+
+    context.popActiveLoopBlueprint();
+    assertThat(context.activeLoopBlueprintIds()).isEmpty();
+  }
+
+  @Test
+  void activeLoopBlueprintIds_returnsASnapshot_notALiveView() {
+    ExecutionContext context = new ExecutionContext(state(), workflow("wf-root"), 32);
+    context.pushActiveLoopBlueprint("loop-a");
+
+    Set<String> snapshot = context.activeLoopBlueprintIds();
+    context.pushActiveLoopBlueprint("loop-b");
+
+    assertThat(snapshot).containsExactlyInAnyOrder("loop-a");
+    assertThat(context.activeLoopBlueprintIds()).containsExactlyInAnyOrder("loop-a", "loop-b");
+  }
+
+  @Test
+  void popActiveLoopBlueprint_rejectsPoppingAnEmptyStack() {
+    ExecutionContext context = new ExecutionContext(state(), workflow("wf-root"), 32);
+
+    assertThatIllegalArgumentException().isThrownBy(context::popActiveLoopBlueprint);
+  }
+
+  @Test
+  void peekNextStepSequenceUid_returnsTheUidTheNextAllocationWouldAssign_withoutAllocatingIt() {
+    ExecutionContext context = new ExecutionContext(state(), workflow("wf-root"), 32);
+
+    int peeked = context.peekNextStepSequenceUid();
+
+    assertThat(context.peekNextStepSequenceUid()).isEqualTo(peeked);
+    assertThat(context.allocateStepSequenceUid()).isEqualTo(peeked);
+    assertThat(context.peekNextStepSequenceUid()).isEqualTo(peeked + 1);
   }
 
   @Test
@@ -58,6 +114,6 @@ class ExecutionContextTest {
         .build());
     return new WorkflowDefinition(
         id, id, null, null, null, null, null,
-        WorkflowSource.CUSTOM, WorkflowLifecycle.ACTIVE, Map.of(), Map.of(), steps);
+        WorkflowSource.CUSTOM, WorkflowLifecycle.ACTIVE, Map.of(), Map.of(), steps, List.of());
   }
 }

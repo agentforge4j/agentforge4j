@@ -1,0 +1,30 @@
+---
+title: Your first workflow
+description: A short, end-to-end tutorial that runs a complete AgentForge4j workflow.
+kind: doc
+audience: evaluating
+diataxis: tutorial
+sidebar_position: 1
+---
+
+# Your first workflow
+
+A short, focused walkthrough that picks up the already-assembled [Quick start](../get-started/quick-start.mdx)
+example — which shows the full assembly — and focuses in more depth on running a workflow and
+reading its result.
+
+By the end you will have:
+
+- bootstrapped the runtime,
+- supplied a workflow definition validated against the [schema](../reference/schemas/index.mdx),
+- executed the workflow and observed its [events](../reference/events.mdx) and final
+  [status](../reference/statuses.mdx).
+
+Running the workflow and reading its terminal state is the whole loop — this is the runnable
+`quick-start` example, included from source:
+
+```java file=agentforge4j-examples/framework-examples/quick-start/src/main/java/com/agentforge4j/examples/quickstart/QuickStartExample.java region=run title="QuickStartExample.java"
+```
+
+When you are comfortable with the basics, move on to the goal-oriented
+[How-to Guides](../how-to/configure-llm-provider.mdx) and the [Concepts](../concepts/workflows.mdx).

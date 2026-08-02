@@ -11,6 +11,7 @@ import com.agentforge4j.core.workflow.state.WorkflowState;
 import com.agentforge4j.core.workflow.step.StepDefinition;
 import com.agentforge4j.core.workflow.step.StepTransition;
 import com.agentforge4j.core.workflow.step.behaviour.ResourceBehaviour;
+import com.agentforge4j.runtime.LoopEvaluationContext;
 import com.agentforge4j.runtime.execution.ExecutionContext;
 import com.agentforge4j.runtime.llm.AgentInvocationResult;
 import com.agentforge4j.runtime.llm.AgentInvoker;
@@ -38,6 +39,7 @@ class DefaultLoopEvaluatorTest {
   private AgentInvoker agentInvoker;
   private DefaultLoopEvaluator evaluator;
   private ExecutionContext executionContext;
+  private LoopEvaluationContext loopEvaluationContext;
 
   @BeforeEach
   void setUp() {
@@ -60,11 +62,12 @@ class DefaultLoopEvaluatorTest {
             .withName("s1")
             .withBehaviour(new ResourceBehaviour("/examples/sample.txt", "out", StepTransition.AUTO))
             .withContextMapping(ContextMapping.none())
-            .build()));
+            .build()), List.of());
     WorkflowState state = new WorkflowState("run-1", workflow.id(), null,
         Instant.parse("2026-05-01T00:00:00Z"));
     executionContext = new ExecutionContext(state, workflow, 32);
     executionContext.enterWorkflow(workflow);
+    loopEvaluationContext = new LoopEvaluationContext(state, executionContext.getActiveWorkflowId());
   }
 
   @Test
@@ -77,7 +80,7 @@ class DefaultLoopEvaluatorTest {
             .withTokenUsage(TEST_TOKEN_USAGE)
             .build());
 
-    assertThat(evaluator.shouldTerminate("eval-agent", 2, executionContext)).isTrue();
+    assertThat(evaluator.shouldTerminate("eval-agent", 2, loopEvaluationContext)).isTrue();
   }
 
   @Test
@@ -90,7 +93,7 @@ class DefaultLoopEvaluatorTest {
             .withTokenUsage(TEST_TOKEN_USAGE)
             .build());
 
-    assertThat(evaluator.shouldTerminate("eval-agent", 2, executionContext)).isFalse();
+    assertThat(evaluator.shouldTerminate("eval-agent", 2, loopEvaluationContext)).isFalse();
   }
 
   @Test
@@ -98,7 +101,7 @@ class DefaultLoopEvaluatorTest {
     when(agentInvoker.invoke(eq("eval-agent"), any(), any(), isNull(), isNull(), any()))
         .thenThrow(new LlmCommandParseException("bad json"));
 
-    assertThatThrownBy(() -> evaluator.shouldTerminate("eval-agent", 1, executionContext))
+    assertThatThrownBy(() -> evaluator.shouldTerminate("eval-agent", 1, loopEvaluationContext))
         .isInstanceOf(LlmCommandParseException.class);
   }
 
@@ -113,7 +116,7 @@ class DefaultLoopEvaluatorTest {
             .withTokenUsage(TEST_TOKEN_USAGE)
             .build());
 
-    evaluator.shouldTerminate("eval-agent", 4, executionContext);
+    evaluator.shouldTerminate("eval-agent", 4, loopEvaluationContext);
 
     ArgumentCaptor<WorkflowState> stateCaptor = ArgumentCaptor.forClass(WorkflowState.class);
     verify(agentInvoker).invoke(eq("eval-agent"), eq(ContextMapping.none()),

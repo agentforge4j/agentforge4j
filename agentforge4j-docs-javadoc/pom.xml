@@ -1,0 +1,89 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <groupId>org.agentforge4j.docs</groupId>
+  <artifactId>agentforge4j-docs-javadoc</artifactId>
+  <version>0.0.1-SNAPSHOT</version>
+  <packaging>pom</packaging>
+
+  <name>AgentForge4j Docs — Javadoc Aggregator</name>
+  <description>Docs-side aggregator that generates aggregate Javadoc for the named OSS modules that
+    export public API. Standalone (NOT in the OSS reactor) and consumes the OSS modules by relative
+    path the way a documentation build would. It introduces NO change to any OSS production artifact:
+    no module-info, no Automatic-Module-Name, no manifest/metadata edit. The intentionally-unnamed
+    public modules (agentforge4j-mcp, agentforge4j-spring-boot-starter) are documented separately
+    (classpath mode) by scripts/build-javadoc.mjs and stitched alongside this aggregate; ServiceLoader
+    provider modules that export no package carry no public API and are intentionally absent.</description>
+
+  <licenses>
+    <license>
+      <name>Apache License, Version 2.0</name>
+      <url>https://www.apache.org/licenses/LICENSE-2.0</url>
+      <distribution>repo</distribution>
+    </license>
+  </licenses>
+
+  <!-- The named OSS modules that EXPORT public API. Modules that only `provides` a ServiceLoader
+       implementation (no `exports`) carry no public API and are intentionally omitted; internal-only
+       verification/fixture/JSON-only modules (agentforge4j-testkit-consumer-verification,
+       agentforge4j-oss-verification, agentforge4j-starter-verification, agentforge4j-workflow-fixtures)
+       are omitted too. agentforge4j-testkit is NOT in that omitted category — it is a real,
+       general-purpose, embedder-facing assertion/harness API (proven by
+       agentforge4j-testkit-consumer-verification, a separate module that exists solely to compile
+       against it as a downstream consumer) and is documented here like any other exported module. A
+       drift guard in scripts/build-javadoc.mjs asserts this list matches the live named-public set. -->
+  <modules>
+    <module>../agentforge4j-util</module>
+    <module>../agentforge4j-llm-api</module>
+    <module>../agentforge4j-llm</module>
+    <module>../agentforge4j-llm-fake</module>
+    <module>../agentforge4j-core</module>
+    <module>../agentforge4j-tools-http</module>
+    <module>../agentforge4j-schema</module>
+    <module>../agentforge4j-config-loader</module>
+    <module>../agentforge4j-runtime</module>
+    <module>../agentforge4j-bootstrap</module>
+    <module>../agentforge4j-testkit</module>
+  </modules>
+
+  <properties>
+    <maven.compiler.release>17</maven.compiler.release>
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    <maven-javadoc-plugin.version>3.12.0</maven-javadoc-plugin.version>
+  </properties>
+
+  <build>
+    <plugins>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-javadoc-plugin</artifactId>
+        <version>${maven-javadoc-plugin.version}</version>
+        <configuration>
+          <!-- Keep all doclint checks (syntax/HTML) except: -missing (many records/ctors lack comments)
+               and -reference (a few pre-existing OSS source @link bugs that the no-OSS-change rule
+               forbids fixing for docs; recorded as a separate follow-up). failOnError stays on so a
+               genuinely malformed Javadoc still fails the build. -->
+          <doclint>all,-missing,-reference</doclint>
+          <failOnError>true</failOnError>
+          <failOnWarnings>false</failOnWarnings>
+          <!-- Register the standard JDK block tags the OSS source uses, so the syntax checker does not
+               flag them as "unknown tag". Docs-side config only — no OSS source change. -->
+          <tags>
+            <tag><name>implSpec</name><placement>a</placement><head>Implementation Requirements:</head></tag>
+            <tag><name>implNote</name><placement>a</placement><head>Implementation Note:</head></tag>
+            <tag><name>apiNote</name><placement>a</placement><head>API Note:</head></tag>
+          </tags>
+          <doctitle>AgentForge4j API (next)</doctitle>
+          <windowtitle>AgentForge4j API (next)</windowtitle>
+          <!-- Modular layout: aggregate class pages sit under the module directory
+               (<module>/<package-path>/<Class>.html). JavadocLink resolves the module from the FQCN.
+               Default output (target/reports/apidocs); build-javadoc.mjs stitches it into /javadoc/next/. -->
+        </configuration>
+      </plugin>
+    </plugins>
+  </build>
+</project>

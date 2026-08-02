@@ -385,7 +385,8 @@ class OpenAiLlmClientTest {
           "ada-model",
           List.of(
               new ResponsesInputItem(InputRole.SYSTEM, "Be brief."),
-              new ResponsesInputItem(InputRole.USER, "Ping")));
+              new ResponsesInputItem(InputRole.USER, "Ping")),
+          null);
 
       assertThat(mapper.readTree(body)).isEqualTo(mapper.valueToTree(expected));
     }

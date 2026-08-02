@@ -66,7 +66,7 @@ public final class FileSystemWorkflowLoader extends BaseWorkflowBundleLoader
     Path jsonFile = Validate.requireWithinBase(workflowBundleDir, WORKFLOW_DEFINITION_FILE,
         "Path escapes base directory: %s".formatted(WORKFLOW_DEFINITION_FILE));
     try {
-      return workflowMapper.readValue(jsonFile.toFile(), WorkflowDefinition.class);
+      return toWorkflowDefinition(workflowMapper.readTree(jsonFile.toFile()), jsonFile.toString());
     } catch (IOException e) {
       throw new UncheckedIOException("Failed to parse workflow file: %s".formatted(jsonFile), e);
     }

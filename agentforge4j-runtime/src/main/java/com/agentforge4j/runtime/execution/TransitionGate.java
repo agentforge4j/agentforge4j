@@ -75,7 +75,7 @@ public final class TransitionGate {
    * resume advances past it rather than re-running it.
    *
    * <p>The marker is uid-scoped at {@code bodyCompletionUid} (the highest execution uid among the
-   * blueprint's body steps), so {@link WorkflowState#clearEntriesFromUid(int)} drops it exactly when a retry/rewind
+   * blueprint's body steps), so {@link WorkflowState#clearEntriesFromUid(int, java.util.Set)} drops it exactly when a retry/rewind
    * clears the body's execution range — the re-drive then re-runs and re-gates the blueprint instead of silently
    * skipping it over wiped body state.
    *

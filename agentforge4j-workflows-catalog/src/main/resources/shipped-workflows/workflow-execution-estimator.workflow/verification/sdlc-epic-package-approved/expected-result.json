@@ -1,0 +1,63 @@
+{
+  "workflowId": "workflow-execution-estimator",
+  "gates": [
+    {
+      "type": "input",
+      "answers": {
+        "mode": "SDLC_EPIC_PACKAGE",
+        "complexity": "HIGH_RISK",
+        "ceilingDerivable": "true",
+        "minimumRequiredTokens": "9900",
+        "stepCount": "49",
+        "agentStepCount": "49",
+        "branchCount": "0",
+        "loopCount": "48",
+        "agentDrivenLoopCount": "48",
+        "humanGateCount": "0",
+        "maxNestingDepth": "1",
+        "minAgentTurns": "49",
+        "expectedAgentTurns": "97",
+        "maxAgentTurns": "145",
+        "iterationCeiling": "3",
+        "riskFlags": "AGENT_DRIVEN_LOOP,LARGE_STRUCTURE"
+      }
+    },
+    {
+      "type": "stepApproval",
+      "approve": true,
+      "note": "reviewed the disclosed estimate before continuing"
+    }
+  ],
+  "expect": {
+    "status": "COMPLETED",
+    "visitedSteps": ["collect-analysis", "route-on-ceiling", "estimate", "aggregate-estimate"],
+    "notVisitedSteps": ["no-ceiling"],
+    "context": {
+      "mode": "SDLC_EPIC_PACKAGE",
+      "complexity": "HIGH_RISK",
+      "ceilingDerivable": "true",
+      "minimumRequiredTokens": "9900"
+    },
+    "contextPresent": [
+      "executionEstimate.recommendation",
+      "executionEstimate.confidence",
+      "executionEstimate.complexity",
+      "executionEstimate.riskFlags",
+      "executionEstimate.minimumRequiredTokens",
+      "executionEstimate.estimatedMinTokens",
+      "executionEstimate.estimatedExpectedTokens",
+      "executionEstimate.estimatedMaxTokens",
+      "executionEstimate.iterationCeiling"
+    ],
+    "contextMatches": {
+      "executionEstimate.recommendation": "NARROW",
+      "executionEstimate.confidence": "LOW",
+      "executionEstimate.complexity": "HIGH_RISK",
+      "executionEstimate.minimumRequiredTokens": "9900",
+      "executionEstimate.estimatedMinTokens": "103000",
+      "executionEstimate.estimatedExpectedTokens": "194200",
+      "executionEstimate.estimatedMaxTokens": "285400",
+      "executionEstimate.iterationCeiling": "3"
+    }
+  }
+}

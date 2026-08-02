@@ -2,6 +2,7 @@
 package com.agentforge4j.examples.toolshttp;
 
 import com.agentforge4j.bootstrap.AgentForge4j;
+import com.agentforge4j.core.workflow.context.StringContextValue;
 import com.agentforge4j.core.workflow.state.WorkflowState;
 import com.agentforge4j.core.workflow.state.WorkflowStatus;
 import com.sun.net.httpserver.HttpServer;
@@ -27,8 +28,9 @@ class HttpToolExampleTest {
 
       assertThat(state.getStatus()).isEqualTo(WorkflowStatus.COMPLETED);
       assertThat(state.getContext()).containsKey(HttpToolExample.TOOL_CONTEXT_KEY);
-      assertThat(state.getContext().get(HttpToolExample.TOOL_CONTEXT_KEY).toString())
-          .contains("London", "Sunny", "18");
+      StringContextValue toolResult =
+          (StringContextValue) state.getContext().get(HttpToolExample.TOOL_CONTEXT_KEY);
+      assertThat(toolResult.value()).isEqualTo("{\"city\":\"London\",\"summary\":\"Sunny\",\"tempC\":18}");
     } finally {
       stubServer.stop(0);
     }

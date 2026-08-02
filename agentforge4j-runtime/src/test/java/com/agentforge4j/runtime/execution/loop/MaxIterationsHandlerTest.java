@@ -63,7 +63,7 @@ class MaxIterationsHandlerTest {
         WorkflowLifecycle.ACTIVE,
         Map.of(),
         Map.of(),
-        List.of(dummyStep()));
+        List.of(dummyStep()), List.of());
     executionContext = new ExecutionContext(state, workflow, 32);
     blueprint = new BlueprintDefinition(
         BLUEPRINT_ID,
@@ -83,6 +83,7 @@ class MaxIterationsHandlerTest {
 
     assertThat(outcome).isEqualTo(ExecutionOutcome.PAUSED);
     assertThat(state.getStatus()).isEqualTo(WorkflowStatus.PAUSED);
+    assertThat(state.getBlueprintIdAwaitingMaxIterationsDecision()).isEqualTo(BLUEPRINT_ID);
     verify(eventRecorder).record(
         eq("run-1"),
         eq(BLUEPRINT_ID),

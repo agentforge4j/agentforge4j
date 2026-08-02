@@ -3,18 +3,18 @@ package com.agentforge4j.llm.mistral;
 
 import com.agentforge4j.llm.LlmClientConfiguration;
 import com.agentforge4j.llm.LlmClientConfigurationAdapter;
-import com.agentforge4j.llm.LlmProviderOptions;
 import com.agentforge4j.llm.LlmSecretReference;
 import com.agentforge4j.llm.NeutralOptions;
 import com.agentforge4j.llm.RawProviderConfiguration;
-import java.time.Duration;
-import java.util.Optional;
+import com.agentforge4j.llm.StandardNeutralConfiguration;
 
 /**
  * Maps the provider configuration subtree ({@code agentforge4j.llm.mistral.*}) into the neutral
  * {@link LlmClientConfiguration} the {@link MistralLlmClientFactory} consumes. The API key is wrapped as a literal
  * credential reference; {@code base-url} becomes the base URL. Activates when an API key is present; connect/request
- * timeout defaults are 10s / 2m.
+ * timeout defaults are {@link MistralDefaults#CONNECT_TIMEOUT} / {@link MistralDefaults#REQUEST_TIMEOUT} — the same
+ * constants {@link MistralNeutralConfiguration#fromNeutral} falls back to for a programmatically constructed neutral
+ * configuration that omits {@code request.timeout}.
  */
 public final class MistralConfigurationAdapter implements LlmClientConfigurationAdapter {
 
@@ -30,48 +30,14 @@ public final class MistralConfigurationAdapter implements LlmClientConfiguration
 
   @Override
   public LlmClientConfiguration adapt(RawProviderConfiguration raw) {
-    return new NeutralConfiguration(
+    return new StandardNeutralConfiguration(
+        "mistral",
         raw.get("default-model").orElse(null),
-        raw.getDuration("connect-timeout").orElse(Duration.ofSeconds(10)),
+        raw.getDuration("connect-timeout").orElse(MistralDefaults.CONNECT_TIMEOUT),
         raw.get("base-url").orElse(null),
         LlmSecretReference.literal(raw.get("api-key").orElse(null)),
-        raw.getDuration("request-timeout").orElse(Duration.ofMinutes(2)));
-  }
-
-  private record NeutralConfiguration(String defaultModel, Duration connectTimeout, String baseUrl,
-                                      LlmSecretReference apiKeyReference, Duration requestTimeout)
-      implements LlmClientConfiguration {
-
-    @Override
-    public String getProviderName() {
-      return "mistral";
-    }
-
-    @Override
-    public String getDefaultModel() {
-      return defaultModel;
-    }
-
-    @Override
-    public Duration getConnectTimeout() {
-      return connectTimeout;
-    }
-
-    @Override
-    public String getBaseUrl() {
-      return baseUrl;
-    }
-
-    @Override
-    public Optional<LlmSecretReference> getApiKeyReference() {
-      return Optional.of(apiKeyReference);
-    }
-
-    @Override
-    public LlmProviderOptions getOptions() {
-      return LlmProviderOptions.of("mistral", NeutralOptions.create()
-          .duration("request.timeout", requestTimeout)
-          .toMap());
-    }
+        NeutralOptions.create()
+            .duration("request.timeout", raw.getDuration("request-timeout").orElse(MistralDefaults.REQUEST_TIMEOUT))
+            .toMap());
   }
 }

@@ -3,7 +3,6 @@ package com.agentforge4j.llm.azureopenai;
 
 import com.agentforge4j.llm.AbstractHttpLlmClient;
 import com.agentforge4j.llm.LlmHttpErrorBodyTruncate;
-import com.agentforge4j.llm.api.LlmClient;
 import com.agentforge4j.llm.api.LlmExecutionRequest;
 import com.agentforge4j.llm.api.LlmExecutionResponse;
 import com.agentforge4j.llm.api.LlmInvocationException;
@@ -13,6 +12,7 @@ import com.agentforge4j.llm.wireprotocol.ChatCompletionsRequest;
 import com.agentforge4j.llm.wireprotocol.ChatCompletionsResponse;
 import com.agentforge4j.llm.wireprotocol.ChatMessage;
 import com.agentforge4j.util.Validate;
+import com.agentforge4j.util.text.CodeFence;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
 import java.net.URI;
@@ -119,7 +119,7 @@ public final class AzureOpenAiLlmClient extends AbstractHttpLlmClient {
         "azure-openai response first choice content is blank for deployment %s: %s".formatted(
             deploymentName, truncatedJson)));
     return new LlmExecutionResponse(
-        LlmClient.stripCodeFence(content.strip()),
+        CodeFence.strip(content.strip()),
         StringUtils.trimToNull(dto.model()),
         ChatCompletionsApiSupport.toTokenUsageReport(dto.usage()));
   }

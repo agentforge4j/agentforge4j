@@ -1,0 +1,114 @@
+// SPDX-License-Identifier: Apache-2.0
+//
+// Tests for the product-name separation vocabulary. Proves the gate blocks precise
+// commercial identifiers, leaves the generic English words "platform"/"cloud" alone, and honours the
+// reviewed allowlist.
+
+import {test} from 'node:test';
+import assert from 'node:assert/strict';
+import {findProductNameLeaks, BLOCKED} from './product-name.mjs';
+
+test('flags a proprietary artifact name', () => {
+  const hits = findProductNameLeaks('Add the `agentforge4j-platform-engine` dependency.');
+  assert.equal(hits.length, 1);
+  assert.equal(hits[0].token, 'agentforge4j-platform');
+});
+
+test('flags commercial vendors and the paywall term', () => {
+  assert.ok(findProductNameLeaks('Payments run through Stripe.').some((h) => h.token === 'Stripe'));
+  assert.ok(findProductNameLeaks('Behind a paywall.').some((h) => h.token === 'paywall'));
+});
+
+test('the structural layer-prefix guard flags bare private-module-shaped names without a literal roster', () => {
+  // None of these short forms are literal entries in BLOCKED — the naming convention alone catches
+  // them, so a renamed or newly added private module needs no lint-file update.
+  assert.ok(findProductNameLeaks('Add `platform-engine`.').some((h) => h.token === 'platform-engine'));
+  assert.ok(findProductNameLeaks('See `cloud-enforcement`.').some((h) => h.token === 'cloud-enforcement'));
+  assert.ok(findProductNameLeaks('Uses `billing-stripe`.').some((h) => h.token === 'billing-stripe'));
+  assert.ok(
+    findProductNameLeaks('Defaults to `entitlement-default`.').some((h) => h.token === 'entitlement-default'),
+  );
+});
+
+test('the structural guard does not double-count a layer word already inside an org-prefixed token', () => {
+  const hits = findProductNameLeaks('Add the `agentforge4j-platform-engine` dependency.');
+  assert.equal(hits.length, 1);
+  assert.equal(hits[0].token, 'agentforge4j-platform');
+});
+
+test('the structural guard exempts reviewed generic-English compounds sharing a layer word', () => {
+  assert.deepEqual(findProductNameLeaks('AgentForge4j is provider- and platform-agnostic.'), []);
+  assert.deepEqual(findProductNameLeaks('Run it cloud-native or on-prem.'), []);
+});
+
+test('the structural guard exempts the exact term cloud-metadata (SSRF/IMDS security vocabulary)', () => {
+  assert.deepEqual(
+    findProductNameLeaks(
+      'Outbound tool HTTP is screened against private, loopback, link-local, and cloud-metadata address ranges.',
+    ),
+    [],
+  );
+  assert.deepEqual(
+    findProductNameLeaks('lifting the private/loopback/link-local/cloud-metadata egress blocks'),
+    [],
+  );
+});
+
+test('the cloud-metadata exemption is exact and narrow — it does not widen to cloud or other cloud-* names', () => {
+  // The bare word "cloud" alone must still pass (unchanged generic-word behaviour)...
+  assert.deepEqual(findProductNameLeaks('Run it in your own cloud or on-prem.'), []);
+  // ...but any OTHER cloud-<capability> shaped token, including ones that share a prefix with a
+  // real private module family, must still be flagged — the exemption is one exact token, not a
+  // relaxation of the structural pattern or a "cloud" prefix carve-out.
+  assert.ok(findProductNameLeaks('See `cloud-enforcement`.').some((h) => h.token === 'cloud-enforcement'));
+  assert.ok(findProductNameLeaks('Uses `cloud-entitlement`.').some((h) => h.token === 'cloud-entitlement'));
+  assert.ok(findProductNameLeaks('Add `cloud-metadataservice`.').some((h) => h.token === 'cloud-metadataservice'));
+});
+
+test('representative private product/module naming remains rejected after the cloud-metadata exemption', () => {
+  // A cross-section spanning the literal BLOCKED entries, the structural guard, and the hosted
+  // product names — none of these must be affected by adding one narrow allowlist entry.
+  assert.ok(findProductNameLeaks('Add `agentforge4j-platform-admin`.').some((h) => h.token === 'agentforge4j-platform'));
+  assert.ok(findProductNameLeaks('Add `agentforge4j-cloud-enforcement`.').some((h) => h.token === 'agentforge4j-cloud'));
+  assert.ok(findProductNameLeaks('See `platform-sql-schema`.').some((h) => h.token === 'platform-sql-schema'));
+  assert.ok(findProductNameLeaks('See `billing-api`.').some((h) => h.token === 'billing-api'));
+  assert.ok(findProductNameLeaks('Try AgentForge4j Platform today.').some((h) => h.token === 'AgentForge4j Platform'));
+});
+
+test('does NOT flag bare concept words (avoids third-party false positives)', () => {
+  // These occur in generated reference text describing third-party providers (e.g. Gemini's
+  // "multi-tenant host") and must not block the build.
+  assert.deepEqual(findProductNameLeaks('the default multi-tenant host'), []);
+  assert.deepEqual(findProductNameLeaks('an event subscription in the queue'), []);
+  assert.deepEqual(findProductNameLeaks('token metering per request'), []);
+});
+
+test('flags the hosted product names and the proprietary licence', () => {
+  assert.ok(findProductNameLeaks('Try AgentForge4j Cloud today.').some((h) => h.token === 'AgentForge4j Cloud'));
+  assert.ok(findProductNameLeaks('Licensed under the Business Source License.').length > 0);
+});
+
+test('does NOT flag the generic words platform/cloud', () => {
+  assert.deepEqual(findProductNameLeaks('AgentForge4j is a platform for building agentic workflows.'), []);
+  assert.deepEqual(findProductNameLeaks('Run it in your own cloud or on-prem.'), []);
+});
+
+test('does NOT flag a blocked token embedded in a larger word', () => {
+  // "billingham" / "clerkship" must not trip billing / Clerk.
+  assert.deepEqual(findProductNameLeaks('The town of Billingham and a clerkship.'), []);
+});
+
+test('reports the 1-based line number', () => {
+  const hits = findProductNameLeaks('clean line\nuses Stripe here');
+  assert.equal(hits[0].line, 2);
+});
+
+test('the block list carries the org-prefixed guards; no literal short-form module roster', () => {
+  assert.ok(BLOCKED.includes('agentforge4j-platform'));
+  assert.ok(BLOCKED.includes('agentforge4j-cloud'));
+  assert.ok(BLOCKED.length >= 10);
+  // The specific current private module names (platform-engine, billing-stripe, ...) are
+  // deliberately absent from BLOCKED itself — see the structural-guard tests above.
+  assert.ok(!BLOCKED.includes('platform-engine'));
+  assert.ok(!BLOCKED.includes('billing-stripe'));
+});

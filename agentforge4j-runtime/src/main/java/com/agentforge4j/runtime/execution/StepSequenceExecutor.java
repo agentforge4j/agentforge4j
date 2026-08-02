@@ -53,8 +53,13 @@ public final class StepSequenceExecutor {
     // sequence rather than against the loop body that happened to run last.
     List<String> priorStepIds = executionContext.getCurrentSequenceStepIds();
     Map<String, Executable> priorExecutables = executionContext.getCurrentSequenceExecutables();
+    List<Executable> priorExecutableList = executionContext.getCurrentSequenceExecutableList();
     executionContext.setCurrentSequenceStepIds(executeHelper.orderedStepIds());
     executionContext.setCurrentSequenceExecutables(executeHelper.executableById());
+    // Full ordered list (includes BlueprintRef/nested WorkflowDefinition entries the two maps above
+    // omit) — lets RetryPreviousBehaviourHandler detect a composite executable sitting inside a
+    // replay range.
+    executionContext.setCurrentSequenceExecutableList(executables);
     LOG.log(System.Logger.Level.DEBUG, "Executing step sequence count={0}, stepIds={1}",
         executeHelper.orderedStepIds().size(), executeHelper.orderedStepIds());
 
@@ -77,6 +82,7 @@ public final class StepSequenceExecutor {
     } finally {
       executionContext.setCurrentSequenceStepIds(priorStepIds);
       executionContext.setCurrentSequenceExecutables(priorExecutables);
+      executionContext.setCurrentSequenceExecutableList(priorExecutableList);
     }
   }
 

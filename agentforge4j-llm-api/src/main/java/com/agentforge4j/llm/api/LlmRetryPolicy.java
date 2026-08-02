@@ -4,8 +4,8 @@ package com.agentforge4j.llm.api;
 import com.agentforge4j.util.Validate;
 
 /**
- * Immutable retry settings for {@code RetryingLlmClient}: attempt cap, decorrelated jitter bounds,
- * and optional total elapsed budget.
+ * Immutable retry settings for a retrying LLM client: attempt cap, decorrelated jitter bounds, and
+ * optional total elapsed budget.
  */
 public record LlmRetryPolicy(int maxAttempts, long baseBackoffMs, long maxBackoffMs,
                              long maxElapsedMs) {

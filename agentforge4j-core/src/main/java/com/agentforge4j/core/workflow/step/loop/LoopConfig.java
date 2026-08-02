@@ -25,6 +25,13 @@ import com.agentforge4j.util.Validate;
  *                                 step outputs / context and are not re-run for the same blueprint
  *                                 instance — but new list elements at the same index re-trigger the
  *                                 iteration body).
+ * @param expectedIterations       optional execution-estimation hint: the expected-case iteration
+ *                                 count (the companion to the {@code maxIterations} ceiling), used
+ *                                 to tighten estimate ranges. {@code null} when no hint is supplied.
+ *                                 When present it must be at least one and no greater than
+ *                                 {@code maxIterations}. Advisory only — it never affects the
+ *                                 runtime's loop driving, which is bounded solely by
+ *                                 {@code maxIterations}.
  */
 public record LoopConfig(
     LoopTerminationStrategy terminationStrategy,
@@ -32,11 +39,13 @@ public record LoopConfig(
     String evaluatorAgentId,
     int maxIterations,
     MaxIterationsAction maxIterationsAction,
-    boolean allowForEachListMutation
+    boolean allowForEachListMutation,
+    Integer expectedIterations
 ) {
 
   /**
-   * Creates a {@link LoopConfig} with {@code allowForEachListMutation} set to {@code false}.
+   * Creates a {@link LoopConfig} with {@code allowForEachListMutation} set to {@code false} and no
+   * {@code expectedIterations} hint.
    */
   public static LoopConfig withDefaults(
       LoopTerminationStrategy terminationStrategy,
@@ -50,7 +59,8 @@ public record LoopConfig(
         evaluatorAgentId,
         maxIterations,
         maxIterationsAction,
-        false);
+        false,
+        null);
   }
 
   public LoopConfig {
@@ -66,5 +76,12 @@ public record LoopConfig(
     Validate.isGreaterThanZero(maxIterations, "LoopConfig maxIterations must be at least 1");
     maxIterationsAction =
         maxIterationsAction != null ? maxIterationsAction : MaxIterationsAction.AWAIT_USER;
+    if (expectedIterations != null) {
+      Validate.isGreaterThanZero(expectedIterations,
+          "LoopConfig expectedIterations must be at least 1 when supplied");
+      Validate.isTrue(expectedIterations <= maxIterations,
+          "LoopConfig expectedIterations (%s) must not exceed maxIterations (%s)"
+              .formatted(expectedIterations, maxIterations));
+    }
   }
 }

@@ -1,19 +1,20 @@
 // SPDX-License-Identifier: Apache-2.0
 package com.agentforge4j.llm;
 
-import com.agentforge4j.llm.api.LlmClient;
 import com.agentforge4j.llm.api.LlmExecutionRequest;
 import com.agentforge4j.llm.api.LlmExecutionResponse;
+import com.agentforge4j.llm.api.LlmRetryPolicy;
 import java.io.IOException;
 import java.net.http.HttpRequest;
+import java.time.Duration;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class AbstractHttpLlmClientTest {
 
@@ -97,102 +98,6 @@ class AbstractHttpLlmClientTest {
   }
 
   @Nested
-  class StripCodeFenceTests {
-
-    @Test
-    void should_strip_markdown_code_fence() {
-      String input = "```json\n{\"key\": \"value\"}\n```";
-
-      String result = LlmClient.stripCodeFence(input);
-
-      assertEquals("{\"key\": \"value\"}", result);
-    }
-
-    @Test
-    void should_strip_code_fence_with_language_spec() {
-      String input = "```python\nprint('hello')\n```";
-
-      String result = LlmClient.stripCodeFence(input);
-
-      assertEquals("print('hello')", result);
-    }
-
-    @Test
-    void should_return_input_unchanged_when_no_fence() {
-      String input = "{\"key\": \"value\"}";
-
-      String result = LlmClient.stripCodeFence(input);
-
-      assertEquals(input, result);
-    }
-
-    @Test
-    void should_return_input_unchanged_when_null() {
-      String result = LlmClient.stripCodeFence(null);
-
-      assertNull(result);
-    }
-
-    @Test
-    void should_handle_fence_without_closing_marker() {
-      String input = "```json\n{\"key\": \"value\"}";
-
-      String result = LlmClient.stripCodeFence(input);
-
-      assertEquals("{\"key\": \"value\"}", result);
-    }
-
-    @Test
-    void should_handle_fence_without_newline_after_opening() {
-      String input = "```\n```";
-
-      String result = LlmClient.stripCodeFence(input);
-
-      assertEquals("", result);
-    }
-
-    @Test
-    void should_strip_leading_trailing_whitespace_from_content() {
-      String input = "```\n  content with spaces  \n```";
-
-      String result = LlmClient.stripCodeFence(input);
-
-      assertEquals("content with spaces", result);
-    }
-
-    @Test
-    void should_handle_multiline_content_with_code_fence() {
-      String input = "```json\nline1\nline2\nline3\n```";
-
-      String result = LlmClient.stripCodeFence(input);
-
-      assertTrue(result.contains("line1"));
-      assertTrue(result.contains("line2"));
-      assertTrue(result.contains("line3"));
-    }
-
-    @Test
-    void should_only_strip_outermost_fence() {
-      String input = "```\nouter ``` inner\n```";
-
-      String result = LlmClient.stripCodeFence(input);
-
-      assertTrue(result.contains("outer"));
-      assertTrue(result.contains("inner"));
-    }
-
-    @Test
-    void should_return_empty_string_unchanged_when_not_a_fence() {
-      assertEquals("", LlmClient.stripCodeFence(""));
-    }
-
-    @Test
-    void should_return_opening_fence_unchanged_when_no_newline_follows_opening_ticks() {
-      assertEquals("```json", LlmClient.stripCodeFence("```json"));
-    }
-  }
-
-  @Nested
   class ExecuteTests {
 
     private TestAbstractHttpLlmClient client;
@@ -231,6 +136,46 @@ class AbstractHttpLlmClientTest {
       assertThrows(IllegalArgumentException.class, () -> {
         client.execute(new LlmExecutionRequest("openai", null, "\t", "user", null, null, null));
       });
+    }
+  }
+
+  @Nested
+  class RetryPolicyTests {
+
+    @Test
+    void getRetryPolicy_isNull_whenTheConfigurationHasNone() {
+      TestAbstractHttpLlmClient client =
+          new TestAbstractHttpLlmClient(TestFixtures.testConfig("openai", "gpt-4"));
+
+      assertNull(client.getRetryPolicy());
+    }
+
+    @Test
+    void getRetryPolicy_returnsTheConfiguredPolicy() {
+      LlmRetryPolicy policy = new LlmRetryPolicy(2, 1L, 5L, 0L);
+      LlmClientConfiguration config = new LlmClientConfiguration() {
+        @Override
+        public String getProviderName() {
+          return "openai";
+        }
+
+        @Override
+        public String getDefaultModel() {
+          return "gpt-4";
+        }
+
+        @Override
+        public Duration getConnectTimeout() {
+          return Duration.ofSeconds(30);
+        }
+
+        @Override
+        public LlmRetryPolicy getRetryPolicy() {
+          return policy;
+        }
+      };
+
+      assertSame(policy, new TestAbstractHttpLlmClient(config).getRetryPolicy());
     }
   }
 }

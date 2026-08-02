@@ -301,6 +301,6 @@ class BlueprintExecutorTest {
         WorkflowLifecycle.ACTIVE,
         Map.of(),
         blueprints,
-        steps);
+        steps, List.of());
   }
 }

@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 package com.agentforge4j.llm.wireprotocol;
 
-import com.agentforge4j.llm.api.LlmClient;
 import com.agentforge4j.llm.api.LlmExecutionResponse;
 import com.agentforge4j.llm.api.LlmInvocationException;
 import com.agentforge4j.llm.api.TokenUsageReport;
 import com.agentforge4j.util.Validate;
+import com.agentforge4j.util.text.CodeFence;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
 import java.util.List;
@@ -64,7 +64,7 @@ public final class ResponsesApiSupport {
       String truncatedJson, String providerLabel) throws IOException {
     ResponsesResponse dto = objectMapper.readValue(json, ResponsesResponse.class);
     validateApiError(dto, truncatedJson, providerLabel);
-    String text = LlmClient.stripCodeFence(extractAssistantText(dto)
+    String text = CodeFence.strip(extractAssistantText(dto)
         .orElseThrow(() -> new LlmInvocationException(
             "%s response missing assistant output_text in message output item: %s".formatted(
                 providerLabel, truncatedJson)))

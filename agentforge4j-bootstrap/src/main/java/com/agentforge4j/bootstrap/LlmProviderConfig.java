@@ -2,6 +2,8 @@
 package com.agentforge4j.bootstrap;
 
 import com.agentforge4j.llm.LlmSecretReference;
+import com.agentforge4j.llm.ShippedModelTierDefaults;
+import com.agentforge4j.llm.api.ModelTier;
 import com.agentforge4j.util.Validate;
 import java.time.Duration;
 import java.util.LinkedHashMap;
@@ -22,15 +24,20 @@ import java.util.Map;
  * }</pre>
  *
  * <p>All fields except {@code provider} are nullable/empty. A null {@code apiKeyReference} means
- * "no credential configured at this layer." A null {@code baseUrl} or {@code defaultModel} means "use the provider
- * module's own default." {@code options} carries provider-specific settings (keyed in the canonical dotted form, e.g.
- * {@code request.timeout}, {@code auth.header.name}) consumed via {@link com.agentforge4j.llm.LlmProviderOptions}.
+ * "no credential configured at this layer." A null {@code baseUrl} or {@code defaultModel} does <em>not</em> fall back
+ * to a default supplied by the provider module itself — the provider client requires a non-blank base URL and default
+ * model at construction time and has no fallback of its own. A null value here means either the per-provider static
+ * factory already populated a recommended preset (see {@link #openai()}, {@link #claude()}, etc.) or, for
+ * deployment-specific providers such as {@link #azureOpenAi()}, {@link #openAiCompatible()}, and {@link #bedrock()},
+ * that the caller must supply one explicitly before {@link ProviderBuilder#build()}. {@code options} carries
+ * provider-specific settings (keyed in the canonical dotted form, e.g. {@code request.timeout},
+ * {@code auth.header.name}) consumed via {@link com.agentforge4j.llm.LlmProviderOptions}.
  *
  * @param provider        non-blank provider id
  * @param apiKeyReference optional credential reference for this layer (never a raw value in a {@code toString})
- * @param baseUrl         optional base URL; null uses the provider module default
- * @param defaultModel    optional default model; null uses the provider module default
- * @param connectTimeout  optional connect timeout; null uses the provider module default
+ * @param baseUrl         optional base URL; null requires the static factory preset or an explicit caller value
+ * @param defaultModel    optional default model; null requires the static factory preset or an explicit caller value
+ * @param connectTimeout  optional connect timeout; null requires the static factory preset or an explicit caller value
  * @param options         provider-specific option key/values; never {@code null} (empty when none)
  */
 public record LlmProviderConfig(
@@ -64,6 +71,25 @@ public record LlmProviderConfig(
   }
 
   /**
+   * The shipped OSS provider→tier→model defaults (design source of truth: {@link ShippedModelTierDefaults}), read once
+   * so the per-provider presets below stay in lockstep with it instead of carrying their own copy that can drift.
+   */
+  private static final Map<String, Map<ModelTier, String>> SHIPPED_MODEL_DEFAULTS = ShippedModelTierDefaults.asMap();
+
+  /**
+   * Returns the shipped {@link ModelTier#STANDARD} model for {@code provider}, used as this class's preset default
+   * model so it never carries its own copy of a model name that can go stale independently of
+   * {@link ShippedModelTierDefaults}.
+   *
+   * @param provider the provider id; must have a shipped mapping
+   *
+   * @return the shipped standard-tier model for {@code provider}; never {@code null}
+   */
+  private static String standardModel(String provider) {
+    return SHIPPED_MODEL_DEFAULTS.get(provider).get(ModelTier.STANDARD);
+  }
+
+  /**
    * Returns a builder pre-populated with OpenAI defaults.
    *
    * @return builder for OpenAI configuration
@@ -72,7 +98,7 @@ public record LlmProviderConfig(
     return new ProviderBuilder(
         "openai",
         "https://api.openai.com/v1",
-        "gpt-4o",
+        standardModel("openai"),
         Duration.ofSeconds(30));
   }
 
@@ -85,7 +111,7 @@ public record LlmProviderConfig(
     return new ProviderBuilder(
         "claude",
         "https://api.anthropic.com",
-        "claude-sonnet-4-5",
+        standardModel("claude"),
         Duration.ofSeconds(30));
   }
 
@@ -98,7 +124,7 @@ public record LlmProviderConfig(
     return new ProviderBuilder(
         "ollama",
         "http://localhost:11434",
-        "llama3",
+        standardModel("ollama"),
         Duration.ofSeconds(60));
   }
 
@@ -111,7 +137,7 @@ public record LlmProviderConfig(
     return new ProviderBuilder(
         "vllm",
         "http://localhost:8000",
-        null,
+        standardModel("vllm"),
         Duration.ofSeconds(30));
   }
 
@@ -124,7 +150,7 @@ public record LlmProviderConfig(
     return new ProviderBuilder(
         "gemini",
         "https://generativelanguage.googleapis.com",
-        "gemini-2.0-flash",
+        standardModel("gemini"),
         Duration.ofSeconds(30));
   }
 
@@ -137,7 +163,7 @@ public record LlmProviderConfig(
     return new ProviderBuilder(
         "mistral",
         "https://api.mistral.ai/v1",
-        "mistral-small-latest",
+        standardModel("mistral"),
         Duration.ofSeconds(30));
   }
 
@@ -207,11 +233,12 @@ public record LlmProviderConfig(
     }
 
     /**
-     * Pre-populates this builder with the provider's recommended defaults ({@code baseUrl}, {@code defaultModel},
-     * {@code connectTimeout}). The builder is already pre-populated on construction; this method exists for
-     * readability: {@code openai().defaults().apiKey(...).build()}.
+     * No-op kept purely for call-site readability, e.g. {@code openai().defaults().apiKey(...).build()}. The
+     * builder's recommended defaults ({@code baseUrl}, {@code defaultModel}, {@code connectTimeout}) are already set
+     * by the static factory method that created it (e.g. {@link LlmProviderConfig#openai()}); calling this method
+     * does not populate, refresh, or otherwise change anything.
      *
-     * @return {@code this} for chaining
+     * @return {@code this} for chaining, unchanged
      */
     public ProviderBuilder defaults() {
       return this;

@@ -1,0 +1,12 @@
+{
+  "id": "<vendor>",
+  "displayName": "<Vendor>",
+  "type": "MCP_STDIO",
+  "active": true,
+  "config": {
+    "command": "<executable, e.g. docker or a bare binary path>",
+    "args": ["<arg1>", "<arg2, e.g. run -i --rm -e ENV_VAR image:tag>"],
+    "env": { "<ENV_VAR>": "<omit if the process already inherits it from the OS environment — see README Secrets note>" },
+    "requestTimeout": "PT30S"
+  }
+}

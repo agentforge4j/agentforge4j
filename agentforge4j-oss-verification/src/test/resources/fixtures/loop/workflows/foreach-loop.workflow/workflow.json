@@ -1,5 +1,6 @@
 {
   "kind": "WORKFLOW",
+  "schemaVersion": 1,
   "id": "foreach-loop",
   "name": "For Each Loop",
   "steps": [

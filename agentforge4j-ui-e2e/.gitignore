@@ -2,3 +2,8 @@ node_modules/
 test-results/
 playwright-report/
 playwright/.cache/
+
+# Generated visual-review evidence (screenshots, per-capture results, reports) — regenerate
+# locally with `npm run visual:capture && npm run visual:report`. Only the small
+# `visual-evidence/attestation.json` file is committed (see README.md); this directory never is.
+visual-output/

@@ -8,8 +8,9 @@ import com.agentforge4j.util.Validate;
 
 /**
  * Shared rewind helper: evicts a run's captured artifact bytes for paths emitted at or after a rewind threshold, so the
- * two rewind chokepoints ({@code DefaultWorkflowRuntime.retry} and {@code RetryPreviousBehaviourHandler}) stay in sync.
- * Call before {@link WorkflowState#clearEntriesFromUid(int)} so the descriptors are still present to read the paths from.
+ * rewind chokepoints ({@code DefaultWorkflowRuntime.retry}, {@code RetryPreviousBehaviourHandler}, and
+ * {@code ForEachLoopStrategy}'s list-mutation/ceiling restart) stay in sync. Call before
+ * {@link WorkflowState#clearEntriesFromUid(int, java.util.Set)} so the descriptors are still present to read the paths from.
  *
  * <p>Internal runtime helper (its package is not exported).
  */

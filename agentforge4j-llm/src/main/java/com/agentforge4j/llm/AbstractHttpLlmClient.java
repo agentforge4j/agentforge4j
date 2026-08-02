@@ -11,7 +11,6 @@ import java.io.IOException;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
-import java.util.Optional;
 import java.util.function.Supplier;
 import lombok.Getter;
 import org.apache.commons.lang3.StringUtils;
@@ -61,7 +60,7 @@ public abstract class AbstractHttpLlmClient implements LlmClient {
   }
 
   @Override
-  public Optional<LlmRetryPolicy> getRetryPolicy() {
+  public LlmRetryPolicy getRetryPolicy() {
     return clientConfiguration.getRetryPolicy();
   }
 

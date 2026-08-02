@@ -19,8 +19,4 @@ public record ResponsesRequest(
     List<ResponsesInputItem> input,
     @JsonProperty("max_output_tokens") Integer maxOutputTokens
 ) {
-
-  public ResponsesRequest(String model, List<ResponsesInputItem> input) {
-    this(model, input, null);
-  }
 }

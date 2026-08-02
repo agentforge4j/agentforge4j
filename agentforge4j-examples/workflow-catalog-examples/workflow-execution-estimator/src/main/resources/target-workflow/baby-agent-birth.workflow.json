@@ -1,0 +1,78 @@
+{
+  "kind": "WORKFLOW",
+  "id": "baby-agent-birth",
+  "name": "Baby AI Agent Birth",
+  "description": "Gives birth to a new baby AI Agent for the AI Agent Adoption Center: collects the desired personality, generates a cute adoption profile, quirks, care instructions, a maturity level, training needs, and a tiny backstory, then pauses for human review before the baby agent is published.",
+  "steps": [
+    {
+      "kind": "STEP",
+      "stepId": "collect-personality",
+      "name": "Collect Personality",
+      "behaviour": {
+        "type": "INPUT",
+        "artifactId": "personality-form",
+        "transition": "AUTO"
+      }
+    },
+    {
+      "kind": "STEP",
+      "stepId": "generate-profile",
+      "name": "Generate Adoption Profile",
+      "behaviour": {
+        "type": "AGENT",
+        "agentRef": "profile-agent",
+        "transition": "AUTO"
+      }
+    },
+    {
+      "kind": "STEP",
+      "stepId": "generate-quirks-and-care",
+      "name": "Generate Quirks and Care Instructions",
+      "behaviour": {
+        "type": "AGENT",
+        "agentRef": "quirks-agent",
+        "transition": "AUTO"
+      }
+    },
+    {
+      "kind": "STEP",
+      "stepId": "assign-maturity",
+      "name": "Assign Maturity Level",
+      "behaviour": {
+        "type": "AGENT",
+        "agentRef": "maturity-agent",
+        "transition": "AUTO"
+      }
+    },
+    {
+      "kind": "STEP",
+      "stepId": "generate-training-needs",
+      "name": "Generate Training Needs",
+      "behaviour": {
+        "type": "AGENT",
+        "agentRef": "training-agent",
+        "transition": "AUTO"
+      }
+    },
+    {
+      "kind": "STEP",
+      "stepId": "generate-backstory",
+      "name": "Generate Backstory",
+      "behaviour": {
+        "type": "AGENT",
+        "agentRef": "backstory-agent",
+        "transition": "AUTO"
+      }
+    },
+    {
+      "kind": "STEP",
+      "stepId": "publish",
+      "name": "Publish To Adoption Center",
+      "behaviour": {
+        "type": "AGENT",
+        "agentRef": "publish-agent",
+        "transition": "HUMAN_REVIEW"
+      }
+    }
+  ]
+}

@@ -11,7 +11,9 @@ import com.agentforge4j.llm.fake.FakeLlmClientFactory;
  * workflow verification.
  */
 module agentforge4j.llm.fake {
-  requires agentforge4j.llm;
+  // transitive: the exported package's FakeLlmClientFactory/FakeConfiguration surface exposes
+  // LlmClient/LlmClientConfiguration/LlmInvocationException (agentforge4j.llm) directly to callers.
+  requires transitive agentforge4j.llm;
   requires agentforge4j.util;
   requires com.fasterxml.jackson.databind;
   requires com.networknt.schema;

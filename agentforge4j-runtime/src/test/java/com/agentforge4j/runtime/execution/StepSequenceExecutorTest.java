@@ -43,7 +43,7 @@ class StepSequenceExecutorTest {
         WorkflowLifecycle.ACTIVE,
         Map.of(),
         Map.of(),
-        List.of(step));
+        List.of(step), List.of());
 
     WorkflowState state1 = new WorkflowState("r1", "wf1", null, Instant.parse("2026-05-01T00:00:00Z"));
     ExecutionContext ctx1 = new ExecutionContext(state1, wf, 32);

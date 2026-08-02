@@ -7,8 +7,10 @@ import { defineConfig, devices } from '@playwright/test';
  * becomes release-critical; v1 ships the `builder` project only (drives the workflow-builder
  * library through its own `dev/` harness). The `web-ui` project is deferred (additive Phase 4).
  *
- * Server model (Phase 0, I2): the builder has no `preview` script, so the webServer runs the
- * existing `npm run dev` (vite, port 5173). `BROWSER=none` stops vite opening a tab in CI/headless.
+ * Server model: this config deliberately runs the dev server (`npm run dev`, vite, port 5173),
+ * not a production-style build — the production-style build+preview path belongs to
+ * `playwright.builder-functional.config.ts`. `BROWSER=none` stops vite opening a tab in
+ * CI/headless.
  */
 const BUILDER_DIR = '../agentforge4j-workflow-builder';
 const BUILDER_PORT = 5173;

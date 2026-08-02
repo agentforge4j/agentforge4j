@@ -1,5 +1,6 @@
 {
   "kind": "WORKFLOW",
+  "schemaVersion": 1,
   "id": "beh-resource",
   "name": "Resource Behaviour",
   "steps": [

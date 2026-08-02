@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import JSZip from 'jszip';
+import { collectPreservedStepFields } from '../../model/preservedStepFields';
 import type {
   BlueprintJsonObject,
   EditableArtifact,
@@ -9,7 +10,14 @@ import type {
   TopLevelScheduleEntry,
   WorkflowDefinition,
 } from '../../api/types';
-import { normalizeRuntimeDocumentForSchema, toRuntimeWorkflowDocument, validateAgainstSchema } from '../../validation/schemaValidator';
+import {
+  normalizeBlueprintForSchema,
+  normalizeRuntimeDocumentForSchema,
+  toRuntimeWorkflowDocument,
+  validateAgainstSchema,
+  validateRuntimeDocument,
+  validateSchemaVersion,
+} from '../../validation/schemaValidator';
 import { sanitizeObject, WorkflowParseError } from '../core';
 
 export { sanitizeObject } from '../core';
@@ -52,6 +60,7 @@ function runtimeStepToEditable(
     name: String(step.name ?? stepId),
     stepPrompt: prompts[stepId],
     contextMapping,
+    preservedFields: collectPreservedStepFields(step),
   };
 
   const registerNested = (executable: unknown): string | undefined => {
@@ -228,9 +237,23 @@ function stripPromptsFromRuntimeDocument(doc: Record<string, unknown>): Record<s
   return clone;
 }
 
+/** Falls back to a plain name when the draft has no id yet, matching downloadWorkflowJson's convention. */
+function workflowFileBase(workflow: WorkflowDefinition): string {
+  return workflow.id.trim() || 'workflow';
+}
+
+/**
+ * The filename {@link exportWorkflowZip} downloads for a given draft. Exported so callers (e.g.
+ * the export-success confirmation in `WorkflowBuilder`) can display the exact produced filename
+ * without duplicating the naming convention or waiting on a broader adapter-contract change.
+ */
+export function workflowZipFileName(workflow: WorkflowDefinition): string {
+  return `${workflowFileBase(workflow)}.workflow.zip`;
+}
+
 export async function buildWorkflowZipBlob(workflow: WorkflowDefinition): Promise<Blob> {
   const zip = new JSZip();
-  const folderName = `${workflow.id}.workflow`;
+  const folderName = `${workflowFileBase(workflow)}.workflow`;
   const folder = zip.folder(folderName);
   if (!folder) {
     throw new WorkflowParseError('Failed to create ZIP folder');
@@ -240,6 +263,21 @@ export async function buildWorkflowZipBlob(workflow: WorkflowDefinition): Promis
     workflow,
     stripPromptsFromRuntimeDocument(toRuntimeWorkflowDocument(workflow)),
   );
+
+  // Preserved fields (see preservedStepFields.ts) let a step field this builder does not model
+  // ride through untouched, including one this build's bundled schema copy does not recognize.
+  // Import already refuses such a document; refuse it here too, before it is written into the
+  // ZIP, so an invalid workflow.json is never produced under the guise of a successful export.
+  // Gated on a real id: an id-less draft is intentionally exportable as a work in progress (see
+  // workflowFileBase's own "workflow" fallback) and was never schema-valid to begin with — that
+  // pre-existing, unrelated allowance must not be caught by this check.
+  if (workflow.id.trim()) {
+    const schemaResult = validateRuntimeDocument(runtimeDoc);
+    if (!schemaResult.valid) {
+      throw new WorkflowParseError(schemaResult.errors[0]?.message ?? 'Schema validation failed');
+    }
+  }
+
   folder.file('workflow.json', JSON.stringify(runtimeDoc, null, 2));
 
   for (const [artifactId, artifact] of Object.entries(workflow.artifacts)) {
@@ -247,7 +285,7 @@ export async function buildWorkflowZipBlob(workflow: WorkflowDefinition): Promis
   }
 
   for (const [blueprintId, blueprint] of Object.entries(workflow.blueprintBodies ?? {})) {
-    folder.file(`${blueprintId}.blueprint.json`, JSON.stringify(blueprint, null, 2));
+    folder.file(`${blueprintId}.blueprint.json`, JSON.stringify(normalizeBlueprintForSchema(blueprint), null, 2));
   }
 
   for (const [stepId, prompt] of collectStepPrompts(workflow)) {
@@ -268,7 +306,7 @@ function triggerDownload(blob: Blob, filename: string): void {
 
 export async function exportWorkflowZip(workflow: WorkflowDefinition): Promise<void> {
   const blob = await buildWorkflowZipBlob(workflow);
-  triggerDownload(blob, `${workflow.id}.workflow.zip`);
+  triggerDownload(blob, workflowZipFileName(workflow));
 }
 
 function countSteps(workflow: WorkflowDefinition): number {
@@ -305,6 +343,14 @@ export async function importWorkflowZip(file: File): Promise<WorkflowDefinition>
     runtimeDoc = sanitizeObject(JSON.parse(workflowJsonText) as Record<string, unknown>);
   } catch {
     throw new WorkflowParseError('Invalid workflow.json in ZIP');
+  }
+
+  // Checked against the raw document, before conversion to the internal draft shape: the draft
+  // carries no schemaVersion of its own, and re-export always regenerates one, so validating
+  // anything past this point would silently accept whatever version the ZIP actually declared.
+  const schemaVersionResult = validateSchemaVersion(runtimeDoc);
+  if (!schemaVersionResult.valid) {
+    throw new WorkflowParseError(schemaVersionResult.errors[0]?.message ?? 'Unsupported schemaVersion');
   }
 
   const folderPrefix = workflowJsonPath.slice(0, workflowJsonPath.lastIndexOf('/') + 1);

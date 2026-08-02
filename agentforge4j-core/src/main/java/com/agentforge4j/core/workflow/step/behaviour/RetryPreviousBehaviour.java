@@ -11,7 +11,8 @@ import com.agentforge4j.util.Validate;
  * @param retryStepId step that becomes the retry pivot; semantics depend on the runtime
  * @param retryMode   scope of the retry rewind or replay
  * @param maxAttempts maximum retry attempts (runtime defines counting boundaries)
- * @param fallback    executable invoked when retries are exhausted; may be {@code null} if unused
+ * @param fallback    executable invoked when retries are exhausted; must not be {@code null} —
+ *                    the runtime always executes it once {@code maxAttempts} is reached
  */
 public record RetryPreviousBehaviour(
     String retryStepId,
@@ -27,6 +28,9 @@ public record RetryPreviousBehaviour(
             retryStepId));
     Validate.isGreaterThanZero(maxAttempts,
         "maxAttempts must be greater than zero for RetryPreviousBehaviour with retryStepId: %s".formatted(
+            retryStepId));
+    Validate.notNull(fallback,
+        "fallback must not be null for RetryPreviousBehaviour with retryStepId: %s".formatted(
             retryStepId));
   }
 }

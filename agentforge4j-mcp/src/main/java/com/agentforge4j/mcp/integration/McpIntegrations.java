@@ -15,6 +15,9 @@ import io.modelcontextprotocol.json.McpJsonMapper;
 import io.modelcontextprotocol.json.jackson2.JacksonMcpJsonMapper;
 import java.time.Duration;
 import java.time.format.DateTimeParseException;
+import java.util.LinkedHashMap;
+import java.util.Map;
+import java.util.Map.Entry;
 
 /**
  * Shared mechanics for the MCP {@code IntegrationToolProviderFactory} contributions: config JSON
@@ -126,5 +129,43 @@ final class McpIntegrations {
     return Validate.notBlank(text,
         "Integration '%s' (%s) requires a non-blank '%s' in config"
             .formatted(definition.id(), definition.type(), field));
+  }
+
+  /**
+   * Reads an optional header-map field (for example {@code staticHeaders} or {@code secretHeaders})
+   * from the config tree: an object of string keys to string values. Absent or {@code null} yields
+   * an empty map; per-entry validity (blank names/values, CR/LF, cross-map duplicates) is enforced
+   * downstream by the transport that consumes the parsed maps.
+   *
+   * @param config     the parsed config tree
+   * @param field      the field name
+   * @param definition the integration, for the error message
+   *
+   * @return the field's entries as a string-to-string map, or an empty map if the field is absent
+   *
+   * @throws IllegalArgumentException if the field is present but not an object of string values,
+   *                                  naming the integration id and field
+   */
+  static Map<String, String> stringMap(JsonNode config, String field, IntegrationDefinition definition) {
+    JsonNode value = config.get(field);
+    if (value == null || value.isNull()) {
+      return Map.of();
+    }
+    if (!value.isObject()) {
+      throw new IllegalArgumentException(
+          ("Integration '%s' (%s) has an invalid '%s' in config (expected an object of header name "
+              + "to value)").formatted(definition.id(), definition.type(), field));
+    }
+    Map<String, String> result = new LinkedHashMap<>();
+    for (Entry<String, JsonNode> entry : value.properties()) {
+      JsonNode entryValue = entry.getValue();
+      if (!entryValue.isTextual()) {
+        throw new IllegalArgumentException(
+            "Integration '%s' (%s) has a non-string value for '%s.%s' in config"
+                .formatted(definition.id(), definition.type(), field, entry.getKey()));
+      }
+      result.put(entry.getKey(), entryValue.asText());
+    }
+    return Map.copyOf(result);
   }
 }

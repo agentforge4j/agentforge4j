@@ -1,0 +1,10 @@
+{
+  "id": "retry-challenger",
+  "name": "Retry Spar Challenger",
+  "locality": "CLOUD",
+  "enabled": true,
+  "version": "1.0.0",
+  "providerPreferences": [
+    { "provider": "openai", "model": null }
+  ]
+}

@@ -76,6 +76,20 @@ describe('WorkflowBuilder capability contract', () => {
     expect(screen.getByTestId('workflow-builder-export')).toBeInTheDocument();
   });
 
+  it('exports via the versioned, schema-validated zip format, not the unvalidated plain-json draft format', async () => {
+    const user = userEvent.setup();
+    const exportBundle = vi.fn().mockResolvedValue(undefined);
+    render(
+      <WorkflowBuilder
+        capabilities={{ ...allDisabled, export: true }}
+        adapters={{ exportBundle }}
+      />,
+    );
+    await user.click(screen.getByTestId('workflow-builder-export'));
+    expect(exportBundle).toHaveBeenCalledTimes(1);
+    expect(exportBundle.mock.calls[0]?.[1]).toBe('zip');
+  });
+
   it('does not fetch when aiAssist is false', () => {
     const fetchSpy = vi.spyOn(globalThis, 'fetch');
     render(<WorkflowBuilder capabilities={allDisabled} />);

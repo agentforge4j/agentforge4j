@@ -1,5 +1,6 @@
 {
   "kind": "WORKFLOW",
+  "schemaVersion": 1,
   "id": "wl-resource",
   "name": "Resource Loading",
   "description": "A single RESOURCE step loads a bundled classpath resource into the workflow context under a chosen key, then the run completes — no agent, no LLM call.",

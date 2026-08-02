@@ -1,5 +1,6 @@
 {
   "kind": "WORKFLOW",
+  "schemaVersion": 1,
   "id": "tr-approval",
   "name": "Human Approval Transition",
   "steps": [

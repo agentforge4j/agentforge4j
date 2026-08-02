@@ -3,7 +3,6 @@ package com.agentforge4j.llm;
 
 import com.agentforge4j.util.Validate;
 import java.time.Duration;
-import java.time.format.DateTimeParseException;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
@@ -34,22 +33,25 @@ final class MapLlmProviderOptions implements LlmProviderOptions {
 
   @Override
   public Optional<Integer> integer(String key) {
-    return trimmed(key).map(value -> parseInteger(key, value));
+    return trimmed(key).map(value -> TypedValueParser.parseInt(value, cause -> invalid(key, "an integer", cause)));
   }
 
   @Override
   public Optional<Boolean> bool(String key) {
-    return trimmed(key).map(value -> parseBoolean(key, value));
+    return trimmed(key)
+        .map(value -> TypedValueParser.parseBool(value, cause -> invalid(key, "a boolean (true/false)", cause)));
   }
 
   @Override
   public Optional<Duration> duration(String key) {
-    return trimmed(key).map(value -> parseDuration(key, value));
+    return trimmed(key).map(value -> TypedValueParser.parseDuration(value,
+        cause -> invalid(key, "an ISO-8601 duration (e.g. PT30S) or shorthand (e.g. 15s, 2m, 500ms)", cause)));
   }
 
   @Override
   public Optional<Double> decimal(String key) {
-    return trimmed(key).map(value -> parseDecimal(key, value));
+    return trimmed(key)
+        .map(value -> TypedValueParser.parseDecimal(value, cause -> invalid(key, "a decimal number", cause)));
   }
 
   @Override
@@ -69,40 +71,6 @@ final class MapLlmProviderOptions implements LlmProviderOptions {
   @Override
   public String providerName() {
     return providerName;
-  }
-
-  private int parseInteger(String key, String value) {
-    try {
-      return Integer.parseInt(value);
-    } catch (NumberFormatException cause) {
-      throw invalid(key, "an integer", cause);
-    }
-  }
-
-  private boolean parseBoolean(String key, String value) {
-    if ("true".equalsIgnoreCase(value)) {
-      return true;
-    }
-    if ("false".equalsIgnoreCase(value)) {
-      return false;
-    }
-    throw invalid(key, "a boolean (true/false)", null);
-  }
-
-  private Duration parseDuration(String key, String value) {
-    try {
-      return Duration.parse(value);
-    } catch (DateTimeParseException cause) {
-      throw invalid(key, "an ISO-8601 duration (e.g. PT30S)", cause);
-    }
-  }
-
-  private double parseDecimal(String key, String value) {
-    try {
-      return Double.parseDouble(value);
-    } catch (NumberFormatException cause) {
-      throw invalid(key, "a decimal number", cause);
-    }
   }
 
   private LlmProviderConfigurationException invalid(String key, String expected, Throwable cause) {

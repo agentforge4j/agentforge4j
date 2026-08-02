@@ -1,5 +1,6 @@
 {
   "kind": "WORKFLOW",
+  "schemaVersion": 1,
   "id": "cyc",
   "name": "Self-Referencing Workflow",
   "steps": [

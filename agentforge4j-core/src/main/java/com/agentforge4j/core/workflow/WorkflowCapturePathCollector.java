@@ -35,13 +35,14 @@ public final class WorkflowCapturePathCollector {
    *
    * @return immutable set of declared {@code requiredArtifacts} paths (empty when no {@code VALIDATE} step is reachable)
    *
-   * @throws IllegalArgumentException if the tree nests deeper than {@link #MAX_TRAVERSAL_DEPTH}, indicating a circular
-   *                                  blueprint reference
+   * @throws BlueprintStructureException if the tree nests deeper than {@link #MAX_TRAVERSAL_DEPTH}, or a blueprint
+   *                                      reference does not resolve — both indicating a broken or circular blueprint
+   *                                      reference
    */
   public static Set<String> collect(WorkflowDefinition definition) {
     Validate.notNull(definition, "definition must not be null");
     Set<String> paths = new LinkedHashSet<>();
-    WorkflowTreeWalker.walk(definition, (step, scope) -> {
+    WorkflowTreeWalker.walk(definition, MAX_TRAVERSAL_DEPTH, (step, scope) -> {
       if (step.behaviour() instanceof ValidateBehaviour validate) {
         paths.addAll(validate.requiredArtifacts());
       }

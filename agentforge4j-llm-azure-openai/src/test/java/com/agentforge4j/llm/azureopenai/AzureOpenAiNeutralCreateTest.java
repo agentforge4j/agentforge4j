@@ -40,6 +40,14 @@ class AzureOpenAiNeutralCreateTest {
         .hasMessageContaining("deployment");
   }
 
+  @Test
+  void defaultsRequestTimeoutToTwoMinutesWhenAbsent() {
+    AzureOpenAiNeutralConfiguration config = AzureOpenAiNeutralConfiguration.fromNeutral(
+        neutralWithoutRequestTimeout(), new LlmSecret("az-test"));
+
+    assertThat(config.getRequestTimeout()).isEqualTo(AzureOpenAiDefaults.REQUEST_TIMEOUT);
+  }
+
   private static LlmClientConfiguration neutral(boolean withDeployment) {
     Map<String, String> options = new HashMap<>();
     options.put("api.version", "2024-02-01");
@@ -47,6 +55,17 @@ class AzureOpenAiNeutralCreateTest {
     if (withDeployment) {
       options.put("deployment", "gpt-4o-deployment");
     }
+    return config(options);
+  }
+
+  private static LlmClientConfiguration neutralWithoutRequestTimeout() {
+    Map<String, String> options = new HashMap<>();
+    options.put("api.version", "2024-02-01");
+    options.put("deployment", "gpt-4o-deployment");
+    return config(options);
+  }
+
+  private static LlmClientConfiguration config(Map<String, String> options) {
     return new LlmClientConfiguration() {
       @Override
       public String getProviderName() {

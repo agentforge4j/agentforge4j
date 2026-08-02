@@ -2,6 +2,7 @@
 package com.agentforge4j.core.workflow.step.behaviour;
 
 import com.agentforge4j.core.workflow.context.StringContextValue;
+import com.agentforge4j.core.workflow.step.StepTransition;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 
@@ -67,6 +68,22 @@ class StepBehaviourJsonMappingTest {
     assertThat(branch.predicates()).hasSize(1);
     assertThat(branch.predicates().get(0).kind()).isEqualTo(BranchPredicateKind.MEMBER_OF);
     assertThat(branch.predicates().get(0).members()).containsExactlyInAnyOrder("LITE", "STANDARD");
+  }
+
+  @Test
+  void deserializes_aggregate_behaviour() throws Exception {
+    String json = """
+        {"type":"AGGREGATE","aggregatorId":"workflow-execution-estimate",
+         "outputContextKeyPrefix":"executionEstimate","transition":"HUMAN_APPROVAL"}
+        """;
+
+    StepBehaviour behaviour = mapper.readValue(json, StepBehaviour.class);
+
+    assertThat(behaviour).isInstanceOf(AggregateBehaviour.class);
+    AggregateBehaviour aggregate = (AggregateBehaviour) behaviour;
+    assertThat(aggregate.aggregatorId()).isEqualTo("workflow-execution-estimate");
+    assertThat(aggregate.outputContextKeyPrefix()).isEqualTo("executionEstimate");
+    assertThat(aggregate.transition()).isEqualTo(StepTransition.HUMAN_APPROVAL);
   }
 
   @Test

@@ -1,5 +1,6 @@
 {
   "kind": "WORKFLOW",
+  "schemaVersion": 1,
   "id": "tools-http-demo",
   "name": "HTTP Tool Demo",
   "description": "A single agent step that calls an HTTP tool and then completes.",

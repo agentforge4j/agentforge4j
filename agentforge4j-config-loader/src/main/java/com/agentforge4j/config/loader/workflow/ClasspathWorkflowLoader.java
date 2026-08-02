@@ -39,7 +39,7 @@ public final class ClasspathWorkflowLoader extends BaseWorkflowBundleLoader impl
       Map<String, AgentDefinition> bundledAgents) {
     URL jsonUrl = WorkflowBundleLocator.locateWorkflowJson(workflowId);
     try (InputStream stream = jsonUrl.openStream()) {
-      return workflowMapper.readValue(stream, WorkflowDefinition.class);
+      return toWorkflowDefinition(workflowMapper.readTree(stream), jsonUrl.toString());
     } catch (IOException e) {
       throw new UncheckedIOException(
           "Failed to read shipped workflow: " + jsonUrl, e);

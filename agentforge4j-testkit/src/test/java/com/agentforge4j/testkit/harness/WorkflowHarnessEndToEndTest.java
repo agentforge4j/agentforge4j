@@ -22,6 +22,7 @@ class WorkflowHarnessEndToEndTest {
   private static final String WORKFLOW_JSON = """
       {
         "kind": "WORKFLOW",
+        "schemaVersion": 1,
         "id": "testkit-min",
         "name": "Testkit Minimal",
         "steps": [

@@ -7,14 +7,13 @@ import com.agentforge4j.llm.api.LlmExecutionResponse;
 import com.agentforge4j.llm.api.LlmInvocationException;
 import com.agentforge4j.llm.api.LlmRetryPolicy;
 import com.agentforge4j.util.Validate;
+import com.agentforge4j.util.retry.DecorrelatedJitter;
+import com.agentforge4j.util.retry.RetryableHttpStatuses;
 
 import java.io.IOException;
 import java.net.ConnectException;
 import java.net.SocketTimeoutException;
 import java.net.http.HttpTimeoutException;
-import java.util.Optional;
-import java.util.Set;
-import java.util.concurrent.ThreadLocalRandom;
 
 /**
  * Wraps an LLM client with retry logic for transient failures (decorrelated jitter backoff).
@@ -23,11 +22,16 @@ public final class RetryingLlmClient implements LlmClient {
 
   private static final System.Logger LOG = System.getLogger(RetryingLlmClient.class.getName());
 
-  private static final Set<Integer> RETRYABLE_HTTP_STATUS = Set.of(429, 500, 502, 503, 504);
-
   private final LlmClient delegate;
   private final LlmRetryPolicy policy;
 
+  /**
+   * Creates a wrapper that retries {@code delegate} according to {@code policy}.
+   *
+   * @param delegate the client to execute and retry; must not be {@code null}
+   * @param policy   the policy to retry with, and the value {@link #getRetryPolicy()} then reports;
+   *                 must not be {@code null}
+   */
   public RetryingLlmClient(LlmClient delegate, LlmRetryPolicy policy) {
     this.delegate = Validate.notNull(delegate, "delegate must not be null");
     this.policy = Validate.notNull(policy, "policy must not be null");
@@ -38,9 +42,18 @@ public final class RetryingLlmClient implements LlmClient {
     return delegate.getProviderName();
   }
 
+  /**
+   * The policy supplied at construction, which is the policy this wrapper retries with.
+   * Deliberately not the delegate's own value: the delegate may report {@code null} while retries
+   * genuinely run with this policy, so the wrapper reports what it uses. Which policy is supplied
+   * here is the caller's choice; {@link RetryingLlmClientResolver} documents how it makes that
+   * choice for the wrappers it creates.
+   *
+   * @return the retry policy supplied at construction; never {@code null}
+   */
   @Override
-  public Optional<LlmRetryPolicy> getRetryPolicy() {
-    return delegate.getRetryPolicy();
+  public LlmRetryPolicy getRetryPolicy() {
+    return policy;
   }
 
   @Override
@@ -101,28 +114,8 @@ public final class RetryingLlmClient implements LlmClient {
   }
 
   private static long nextDecorrelatedSleepMs(LlmRetryPolicy policy, long lastSleepMs) {
-    long drawn = randomBetweenBaseAndTriple(policy.baseBackoffMs(), lastSleepMs);
-    return Math.min(policy.maxBackoffMs(), drawn);
-  }
-
-  private static long randomBetweenBaseAndTriple(long baseBackoffMs, long lastSleepMs) {
-    long triple = cappedMultiplyByThree(lastSleepMs);
-    long upperInclusive = Math.max(baseBackoffMs, triple);
-    if (upperInclusive == baseBackoffMs) {
-      return baseBackoffMs;
-    }
-    long hiExclusive = upperInclusive + 1;
-    if (hiExclusive <= upperInclusive) {
-      return ThreadLocalRandom.current().nextLong(baseBackoffMs, Long.MAX_VALUE);
-    }
-    return ThreadLocalRandom.current().nextLong(baseBackoffMs, hiExclusive);
-  }
-
-  private static long cappedMultiplyByThree(long value) {
-    if (value > Long.MAX_VALUE / 3) {
-      return Long.MAX_VALUE;
-    }
-    return value * 3;
+    return DecorrelatedJitter.nextDelayMillis(
+        policy.baseBackoffMs(), lastSleepMs, policy.maxBackoffMs());
   }
 
   private static long elapsedMillisSince(long startNanos) {
@@ -144,7 +137,7 @@ public final class RetryingLlmClient implements LlmClient {
       return false;
     }
     Integer httpStatus = invocationException.getHttpStatus();
-    return httpStatus != null && RETRYABLE_HTTP_STATUS.contains(httpStatus);
+    return httpStatus != null && RetryableHttpStatuses.isRetryable(httpStatus);
   }
 
   private static void sleep(long durationMs) {

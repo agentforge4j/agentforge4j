@@ -3,7 +3,6 @@ package com.agentforge4j.llm.claude;
 
 import com.agentforge4j.llm.AbstractHttpLlmClient;
 import com.agentforge4j.llm.LlmHttpErrorBodyTruncate;
-import com.agentforge4j.llm.api.LlmClient;
 import com.agentforge4j.llm.api.LlmExecutionRequest;
 import com.agentforge4j.llm.api.LlmExecutionResponse;
 import com.agentforge4j.llm.api.LlmInvocationException;
@@ -16,6 +15,7 @@ import com.agentforge4j.llm.claude.dto.ClaudeSystemContentBlock;
 import com.agentforge4j.llm.claude.dto.ClaudeUsage;
 import com.agentforge4j.llm.wireprotocol.InputRole;
 import com.agentforge4j.util.Validate;
+import com.agentforge4j.util.text.CodeFence;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
 import java.net.URI;
@@ -112,7 +112,7 @@ public final class ClaudeLlmClient extends AbstractHttpLlmClient {
             "Claude response has no text content block: %s".formatted(truncatedJson)));
 
     return new LlmExecutionResponse(
-        LlmClient.stripCodeFence(text.strip()),
+        CodeFence.strip(text.strip()),
         StringUtils.trimToNull(response.model()),
         toTokenUsageReport(response.usage()));
   }

@@ -2,7 +2,6 @@
 package com.agentforge4j.testkit.consumer;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatCode;
 
 import com.agentforge4j.core.workflow.event.WorkflowEvent;
 import com.agentforge4j.core.workflow.event.WorkflowEventType;
@@ -10,6 +9,7 @@ import com.agentforge4j.core.workflow.state.WorkflowState;
 import com.agentforge4j.llm.api.ModelTier;
 import com.agentforge4j.llm.fake.FakeScript;
 import com.agentforge4j.runtime.command.FileSink;
+import com.agentforge4j.testkit.assertion.WorkflowRunAssert;
 import com.agentforge4j.testkit.capture.CaptureBundle;
 import com.agentforge4j.testkit.capture.CapturingFileSink;
 import com.agentforge4j.testkit.capture.WorkflowRunResult;
@@ -64,7 +64,8 @@ class TestkitModuleConsumerTest {
         new WorkflowState("run-1", "wf-1", null, Instant.EPOCH),
         new CaptureBundle(List.of(llmCall), List.of()));
 
-    assertThatCode(() -> consumer.assertProviderTier(result, ModelTier.STANDARD))
-        .doesNotThrowAnyException();
+    WorkflowRunAssert assertion = consumer.assertProviderTier(result, ModelTier.STANDARD);
+
+    assertThat(assertion).isNotNull();
   }
 }

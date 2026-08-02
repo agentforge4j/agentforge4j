@@ -7,9 +7,9 @@ module agentforge4j.bootstrap {
   requires agentforge4j.util;
   requires agentforge4j.core;
   requires agentforge4j.llm.api;
-  requires agentforge4j.llm;
-  requires agentforge4j.config.loader;
-  requires agentforge4j.runtime;
+  requires transitive agentforge4j.llm;
+  requires transitive agentforge4j.config.loader;
+  requires transitive agentforge4j.runtime;
   requires agentforge4j.schema;
   requires com.fasterxml.jackson.databind;
   requires com.fasterxml.jackson.datatype.jsr310;
@@ -18,6 +18,7 @@ module agentforge4j.bootstrap {
   uses com.agentforge4j.llm.LlmClientFactory;
   uses com.agentforge4j.core.spi.integration.IntegrationToolProviderFactory;
   uses com.agentforge4j.config.loader.agent.ArtifactValidatorFactory;
+  uses com.agentforge4j.core.spi.aggregation.ContextAggregator;
 
   exports com.agentforge4j.bootstrap;
 }

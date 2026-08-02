@@ -5,9 +5,20 @@ users safe.
 
 ## Supported versions
 
-AgentForge4j is in active, pre-1.0 development and has no released versions yet. Security fixes
-are made against the `main` branch. Once releases begin, this section will list the versions that
-receive security updates.
+> Only the **latest minor of each track** receives patches. When 0.(N+1).0 ships on a track,
+> 0.N.x of that track is end-of-life. No LTS, no backports. Breaking changes may occur in any
+> 0.x minor and are always listed in the release notes. Builder versions <0.5.0 are unsupported
+> pre-launch test builds.
+
+AgentForge4j publishes three independently versioned release tracks — the framework
+(`framework-v*`), the shipped workflow catalog (`catalog-v*`), and the workflow builder
+(`builder-v*`) — see [CONTRIBUTING.md](CONTRIBUTING.md#releases). Security fixes for an
+already-released version land on that version's `release/<track>-0.N.x` maintenance branch and
+ship as a patch release; fixes for unreleased tracks are made directly against `main`.
+
+Once 1.0.0 ships on a track, a major-version bump gives the previous major's last minor a
+6-month critical/security-fix-only window before it reaches end-of-life — never more than one
+legacy major supported at a time.
 
 ## Secure defaults
 

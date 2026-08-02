@@ -1,0 +1,276 @@
+name: Release builder
+
+# Tag-triggered release pipeline for the workflow-builder npm package (`builder-v*` tags; the
+# framework and catalog release on their own prefixed tracks with their own workflows). Mirrors
+# release-framework.yml's four-stage shape, adapted for an npm package instead of a Maven reactor:
+#
+#   release-guard    — fails fast: full tag-format check, tag version equals package.json's
+#                      version, package.json carries a non-empty agentforge4j.supportedSchemaVersions
+#                      field, the tagged commit is on `main` or a `release/builder-*` branch, and
+#                      the committed release-note source docs/releases/builder/<version>.md exists
+#                      with its mandatory headings.
+#   release-verify   — same install/typecheck/vitest/Playwright sequence as ui-e2e.yml's `builder`
+#                      job, plus a production build and the npm-pack-inspect script (net-new for
+#                      this phase): fails if this package's own source carries a monetization/
+#                      billing term or a router/HTTP-client import, or if `npm pack` would ship a
+#                      file outside the dist/-only allowlist. No secrets, no approval.
+#   release-publish  — `npm publish` via OIDC trusted publishing from the `npm-publish` GitHub
+#                      environment; npm attaches provenance automatically once the repository is
+#                      public, no `--provenance` flag needed.
+#                      Stable tags publish to dist-tag `latest` (and verify the registry's
+#                      `latest` pointer actually moved to this version); RC tags publish to `next`.
+#   release-announce — creates the GitHub Release from the tag: title = tag, body = the committed
+#                      release-note source published verbatim. RC tags get the pre-release flag.
+#
+# Expected configuration (owner-managed): environment `npm-publish` with a required reviewer,
+# and a Trusted Publisher configured on npmjs.com for @agentforge4j/workflow-builder-react
+# (GitHub org agentforge4j, this repo, this workflow filename, environment npm-publish). No
+# NPM_TOKEN/NODE_AUTH_TOKEN secret is used — the release-publish job authenticates to npm via
+# OIDC using its id-token: write permission.
+
+on:
+  push:
+    tags:
+      - "builder-v*"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-builder-${{ github.ref }}
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  release-guard:
+    name: release-guard
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        # Full history and all branches: the branch-ancestry guard needs origin/main and
+        # origin/release/builder-* to exist locally.
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Guard tag format
+        run: |
+          if [[ ! "$GITHUB_REF_NAME" =~ ^builder-v[0-9]+\.[0-9]+\.[0-9]+(-RC[0-9]+)?$ ]]; then
+            echo "Tag '${GITHUB_REF_NAME}' does not match builder-v<major>.<minor>.<patch>[-RCn]." >&2
+            exit 1
+          fi
+
+      - name: Set up Node
+        uses: actions/setup-node@v6
+        with:
+          node-version-file: '.nvmrc'
+
+      - name: Guard release tag matches package.json's version
+        working-directory: agentforge4j-workflow-builder
+        run: |
+          TAG_VERSION="${GITHUB_REF_NAME#builder-v}"
+          PKG_VERSION="$(node -p "require('./package.json').version")"
+          if [ "$TAG_VERSION" != "$PKG_VERSION" ]; then
+            echo "Tag version (${TAG_VERSION}) does not match package.json version (${PKG_VERSION})." >&2
+            exit 1
+          fi
+
+      - name: Guard package.json declares a non-empty supported-schema-version set
+        working-directory: agentforge4j-workflow-builder
+        run: |
+          COUNT="$(jq '.agentforge4j.supportedSchemaVersions | length' package.json)"
+          if [ "$COUNT" = "null" ] || [ "$COUNT" -eq 0 ]; then
+            echo "package.json's agentforge4j.supportedSchemaVersions must be a non-empty array." >&2
+            exit 1
+          fi
+
+      - name: Guard tagged commit is on main or a release branch
+        run: |
+          if git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "Tagged commit is on main."
+            exit 0
+          fi
+          for REF in $(git for-each-ref --format='%(refname:short)' 'refs/remotes/origin/release/builder-*'); do
+            if git merge-base --is-ancestor "$GITHUB_SHA" "$REF"; then
+              echo "Tagged commit is on ${REF}."
+              exit 0
+            fi
+          done
+          echo "Tagged commit ${GITHUB_SHA} is not on main or any release/builder-* branch." >&2
+          exit 1
+
+      - name: Guard committed release-note source exists with mandatory headings
+        run: |
+          VERSION="${GITHUB_REF_NAME#builder-v}"
+          NOTES="docs/releases/builder/${VERSION}.md"
+          if [ ! -f "$NOTES" ]; then
+            echo "Missing release-note source ${NOTES} in the tagged tree." >&2
+            exit 1
+          fi
+          MISSING=0
+          for HEADING in "Highlights" "Breaking changes" "Compatibility" "Coordinates" "Support"; do
+            if ! grep -Eq "^#{1,6} +${HEADING}" "$NOTES"; then
+              echo "Release-note source ${NOTES} is missing the mandatory heading '${HEADING}'." >&2
+              MISSING=1
+            fi
+          done
+          exit $MISSING
+
+  release-verify:
+    name: release-verify
+    needs: release-guard
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Node
+        uses: actions/setup-node@v6
+        with:
+          node-version-file: '.nvmrc'
+          cache: npm
+          cache-dependency-path: |
+            agentforge4j-workflow-builder/package-lock.json
+            agentforge4j-ui-e2e/package-lock.json
+
+      - name: Install workflow-builder
+        working-directory: agentforge4j-workflow-builder
+        run: npm ci
+
+      - name: Install ui-e2e
+        working-directory: agentforge4j-ui-e2e
+        run: npm ci
+
+      - name: Builder typecheck
+        working-directory: agentforge4j-workflow-builder
+        run: npm run typecheck
+
+      - name: Builder unit tests (vitest)
+        working-directory: agentforge4j-workflow-builder
+        run: npm run test
+
+      - name: Builder production build
+        working-directory: agentforge4j-workflow-builder
+        run: npm run build
+
+      - name: Inspect the packed tarball
+        working-directory: agentforge4j-workflow-builder
+        run: node scripts/npm-pack-inspect.mjs
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('agentforge4j-ui-e2e/package-lock.json') }}
+          restore-keys: |
+            playwright-${{ runner.os }}-
+
+      - name: Install Playwright Chromium
+        working-directory: agentforge4j-ui-e2e
+        run: npx playwright install --with-deps chromium
+
+      - name: Run builder e2e
+        working-directory: agentforge4j-ui-e2e
+        run: npm run test:e2e:builder
+
+      - name: Upload Playwright report
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-builder-playwright-report
+          path: |
+            agentforge4j-ui-e2e/playwright-report/**
+            agentforge4j-ui-e2e/test-results/**
+          if-no-files-found: ignore
+          retention-days: 7
+
+  release-publish:
+    name: release-publish
+    needs: release-verify
+    runs-on: ubuntu-latest
+    environment: npm-publish
+    permissions:
+      # OIDC trusted publishing needs the id-token to attest this build to this exact workflow run.
+      contents: read
+      id-token: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Node
+        uses: actions/setup-node@v6
+        with:
+          node-version-file: '.nvmrc'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Ensure npm supports OIDC trusted publishing (>=11.5.1)
+        # actions/setup-node only guarantees the npm version bundled with the resolved Node
+        # build; trusted publishing needs npm >=11.5.1 and older npm silently skips OIDC instead
+        # of failing loudly, so an exact known-good version is pinned instead of floating on
+        # npm@latest.
+        env:
+          PINNED_NPM_VERSION: 11.9.0
+        run: |
+          npm install -g "npm@${PINNED_NPM_VERSION}"
+          INSTALLED_VERSION="$(npm --version)"
+          if [ "$INSTALLED_VERSION" != "$PINNED_NPM_VERSION" ]; then
+            echo "Installed npm version (${INSTALLED_VERSION}) does not match the pinned version (${PINNED_NPM_VERSION})." >&2
+            exit 1
+          fi
+
+      - name: Install and build
+        working-directory: agentforge4j-workflow-builder
+        run: |
+          npm ci
+          npm run build
+
+      - name: Publish to npm
+        working-directory: agentforge4j-workflow-builder
+        run: |
+          if [[ "$GITHUB_REF_NAME" == *-RC* ]]; then
+            NPM_TAG=next
+          else
+            NPM_TAG=latest
+          fi
+          npm publish --access public --tag "$NPM_TAG"
+          echo "NPM_TAG=$NPM_TAG" >> "$GITHUB_ENV"
+
+      - name: Verify the stable dist-tag moved
+        if: ${{ env.NPM_TAG == 'latest' }}
+        working-directory: agentforge4j-workflow-builder
+        run: |
+          PUBLISHED_VERSION="$(node -p "require('./package.json').version")"
+          ACTUAL="$(npm view @agentforge4j/workflow-builder-react dist-tags.latest)"
+          if [ "$ACTUAL" != "$PUBLISHED_VERSION" ]; then
+            echo "dist-tag 'latest' is ${ACTUAL}, expected ${PUBLISHED_VERSION} after publish." >&2
+            exit 1
+          fi
+
+  release-announce:
+    name: release-announce
+    needs: release-publish
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Create GitHub Release from the committed note source
+        run: |
+          VERSION="${GITHUB_REF_NAME#builder-v}"
+          NOTES="docs/releases/builder/${VERSION}.md"
+          PRERELEASE=""
+          if [[ "$GITHUB_REF_NAME" == *-RC* ]]; then
+            PRERELEASE="--prerelease"
+          fi
+          gh release create "$GITHUB_REF_NAME" \
+            --title "$GITHUB_REF_NAME" \
+            --notes-file "$NOTES" \
+            --verify-tag \
+            $PRERELEASE
+        env:
+          GH_TOKEN: ${{ github.token }}

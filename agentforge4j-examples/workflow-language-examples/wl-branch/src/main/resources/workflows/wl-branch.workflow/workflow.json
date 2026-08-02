@@ -1,5 +1,6 @@
 {
   "kind": "WORKFLOW",
+  "schemaVersion": 1,
   "id": "wl-branch",
   "name": "Branch Routing",
   "description": "An agent step writes a decision into the context; a BRANCH step routes on it — 'approve' runs an agent step to completion, 'reject' ends the run with FAIL.",

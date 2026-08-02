@@ -1,0 +1,118 @@
+{
+  "id": "structural-summary",
+  "items": [
+    {
+      "type": "SINGLE_CHOICE",
+      "id": "mode",
+      "label": "Estimation mode",
+      "required": true,
+      "options": ["WORKFLOW_RUN", "SDLC_EPIC_PACKAGE"],
+      "hint": "The mode discriminator, resolved by the caller before starting this run: a single target workflow (WORKFLOW_RUN) or an epic-package breakdown (SDLC_EPIC_PACKAGE). Both modes converge on the same structural-summary shape below, so downstream routing does not depend on it — it is recorded for disclosure only."
+    },
+    {
+      "type": "SINGLE_CHOICE",
+      "id": "complexity",
+      "label": "Complexity classification",
+      "required": true,
+      "options": ["SIMPLE", "MODERATE", "COMPLEX", "HIGH_RISK"]
+    },
+    {
+      "type": "BOOLEAN",
+      "id": "ceilingDerivable",
+      "label": "Finite execution ceiling derivable",
+      "required": true
+    },
+    {
+      "type": "TEXT",
+      "id": "noCeilingReason",
+      "label": "No-ceiling reason",
+      "required": false,
+      "hint": "Populated only when a finite execution ceiling could not be derived."
+    },
+    {
+      "type": "NUMBER",
+      "id": "minimumRequiredTokens",
+      "label": "Minimum required input tokens",
+      "required": true
+    },
+    {
+      "type": "NUMBER",
+      "id": "stepCount",
+      "label": "Reachable step count (not loop-expanded)",
+      "required": true
+    },
+    {
+      "type": "NUMBER",
+      "id": "agentStepCount",
+      "label": "Reachable agent-step count (steps that invoke a model)",
+      "required": true
+    },
+    {
+      "type": "NUMBER",
+      "id": "branchCount",
+      "label": "Reachable branch-decision count",
+      "required": true
+    },
+    {
+      "type": "NUMBER",
+      "id": "loopCount",
+      "label": "Reachable loop count",
+      "required": true
+    },
+    {
+      "type": "NUMBER",
+      "id": "agentDrivenLoopCount",
+      "label": "Agent-driven loop count (terminated by agent signal or evaluator)",
+      "required": true
+    },
+    {
+      "type": "NUMBER",
+      "id": "humanGateCount",
+      "label": "Human-gated step count (human-review or human-approval transition)",
+      "required": true
+    },
+    {
+      "type": "NUMBER",
+      "id": "maxNestingDepth",
+      "label": "Maximum structural nesting depth",
+      "required": true
+    },
+    {
+      "type": "NUMBER",
+      "id": "minAgentTurns",
+      "label": "Loop-aware minimum agent turns (loops assumed to run once; not a true floor when branches are present)",
+      "required": true
+    },
+    {
+      "type": "NUMBER",
+      "id": "expectedAgentTurns",
+      "label": "Loop-aware expected agent turns (expected iteration factors; overstated when branches are present)",
+      "required": true
+    },
+    {
+      "type": "NUMBER",
+      "id": "maxAgentTurns",
+      "label": "Loop-aware maximum agent turns (maximum iteration factors; a true conservative ceiling)",
+      "required": true
+    },
+    {
+      "type": "NUMBER",
+      "id": "iterationCeiling",
+      "label": "Largest enclosing loop-iteration product (1 when there are no loops)",
+      "required": true
+    },
+    {
+      "type": "MULTI_CHOICE",
+      "id": "riskFlags",
+      "label": "Structural risk flags, carried through unmodified from the analyzer that produced this summary (comma-separated option names, or NONE when none apply)",
+      "required": true,
+      "options": [
+        "AGENT_DRIVEN_LOOP",
+        "HIGH_ITERATION_CEILING",
+        "LLM_DECIDED_BRANCHING",
+        "DEEP_NESTING",
+        "LARGE_STRUCTURE"
+      ]
+    }
+  ]
+}

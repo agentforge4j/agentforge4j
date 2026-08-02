@@ -1,5 +1,6 @@
 {
   "kind": "WORKFLOW",
+  "schemaVersion": 1,
   "id": "negative-run",
   "name": "Negative Path",
   "steps": [

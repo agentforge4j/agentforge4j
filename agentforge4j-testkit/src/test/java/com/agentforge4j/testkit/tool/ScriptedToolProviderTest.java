@@ -58,19 +58,22 @@ class ScriptedToolProviderTest {
 
   @Test
   void constructorRejectsBlankProviderId() {
-    assertThatThrownBy(() -> new ScriptedToolProvider("  ", "search", ToolResult.success("x", 1L)))
+    assertThatThrownBy(() -> new ScriptedToolProvider("  ", "search",
+        ToolResult.success("x", 1L), "{\"type\":\"object\"}"))
         .isInstanceOf(IllegalArgumentException.class);
   }
 
   @Test
   void constructorRejectsBlankCapability() {
-    assertThatThrownBy(() -> new ScriptedToolProvider("prov", "  ", ToolResult.success("x", 1L)))
+    assertThatThrownBy(() -> new ScriptedToolProvider("prov", "  ",
+        ToolResult.success("x", 1L), "{\"type\":\"object\"}"))
         .isInstanceOf(IllegalArgumentException.class);
   }
 
   @Test
   void constructorRejectsNullResult() {
-    assertThatThrownBy(() -> new ScriptedToolProvider("prov", "search", null))
+    assertThatThrownBy(() -> new ScriptedToolProvider("prov", "search", null,
+        "{\"type\":\"object\"}"))
         .isInstanceOf(IllegalArgumentException.class);
   }
 }

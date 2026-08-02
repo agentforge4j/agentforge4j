@@ -1,0 +1,43 @@
+{
+  "kind": "WORKFLOW",
+  "schemaVersion": 1,
+  "id": "gate-under-branch-predicate",
+  "name": "Gated Input Under Branch Predicate",
+  "steps": [
+    {
+      "kind": "STEP",
+      "stepId": "decide",
+      "name": "Decide",
+      "behaviour": {
+        "type": "AGENT",
+        "agentRef": "branch-agent",
+        "transition": "AUTO"
+      }
+    },
+    {
+      "kind": "STEP",
+      "stepId": "route",
+      "name": "Route",
+      "behaviour": {
+        "type": "BRANCH",
+        "contextKey": "decision",
+        "predicates": [
+          {
+            "kind": "MEMBER_OF",
+            "members": ["go", "yes"],
+            "target": {
+              "kind": "STEP",
+              "stepId": "gated-input",
+              "name": "Gated Input",
+              "behaviour": {
+                "type": "INPUT",
+                "artifactId": "user-form",
+                "transition": "HUMAN_REVIEW"
+              }
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

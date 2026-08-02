@@ -4,7 +4,10 @@
 
 How the workflow language expresses bounded iteration through a looped blueprint, and how the
 termination strategy decides when the loop stops. Two variants are shown side by side: a fixed-count
-loop and an agent-signalled loop. No Spring, no real LLM keys, no network.
+loop and an agent-signalled loop. The example is LLM-agnostic: it runs offline against a deterministic
+fake by default; pointing it at a real provider needs a provider module, credentials, and the agent
+repointed away from the fake — no change to the workflow structure itself. No Spring, no network on
+the default path.
 
 ## AgentForge4j capability demonstrated
 
@@ -33,12 +36,30 @@ From the examples root (`agentforge4j-examples/`), after installing the framewor
 ./mvnw -pl workflow-language-examples/wl-loop -am verify
 ```
 
-`verify` runs the deterministic tests, which assert each loop's iteration count and completion. To
-watch both print, run `WlLoopExample.main` from your IDE.
+`verify` runs the deterministic tests, which always use the bundled fake and assert each loop's
+iteration count and completion.
+
+**Offline (default).** `WlLoopApp.main` runs with no configuration: the `api-key` in
+`src/main/resources/example.properties` is blank, so the deterministic `agentforge4j-llm-fake` provider
+serves the loop body's agent calls — no key, no network, no extra dependency. Run it from your IDE to
+watch both loops print.
+
+**Against a real LLM.** Set a provider key — either `agentforge4j.example.llm.api-key` in
+`example.properties`, or the `AGENTFORGE4J_EXAMPLE_LLM_API_KEY` environment variable (see `.env.example`)
+— add a provider module dependency (for example `agentforge4j-llm-openai`) to this module's `pom.xml`,
+and edit the `providerPreferences` in `src/main/resources/agents/loop-agent.agent/agent.json` to name
+the chosen provider instead of `fake` (the agent ships pinned to the fake provider so the offline
+default is deterministic). With those three changes made, the same workflow structure runs unchanged,
+with the loop body served by the real model — so the agent-signal loop stops whenever the real model
+emits `COMPLETE`, which may take a different number of iterations than the scripted fake. With a key set
+but no provider module on the classpath, assembly fails fast with a clear "no provider factory" message;
+with the module present but the agent still pinned to `fake`, the run fails at the first agent step with
+an `LlmInvocationException` saying the agent has no available provider preferences. Precedence for
+every value is system property, then environment variable, then `example.properties`.
 
 ## Expected behaviour / output
 
-`main` runs both loops and prints, for example:
+On the offline fake path, `main` runs both loops and prints, for example:
 
 ```text
 wl-loop-fixed -> status=COMPLETED, iterations=3
@@ -46,7 +67,7 @@ wl-loop-signal -> status=COMPLETED, iterations=1
 ```
 
 The bundled tests assert exactly 3 iterations for the fixed-count loop and exactly 1 for the
-agent-signal loop, both reaching `COMPLETED`, deterministically.
+agent-signal loop, both reaching `COMPLETED`, deterministically against the fake.
 
 ## Files to read first
 
@@ -54,6 +75,9 @@ agent-signal loop, both reaching `COMPLETED`, deterministically.
    `FIXED_COUNT` `loopConfig` on the blueprint behaviour.
 2. `src/main/resources/workflows/wl-loop-signal.workflow/signal-body.blueprint.json` — the
    `AGENT_SIGNAL` `loopConfig`.
-3. `src/main/java/.../WlLoopExample.java` — scripts one response per iteration and reads iteration
-   counts from the event log.
-4. `src/test/java/.../WlLoopExampleTest.java` — the deterministic iteration-count assertions.
+3. `src/main/java/.../WlLoopApp.java` — runs both loops and reads iteration counts from the event log,
+   resolving fake vs. real.
+4. `src/main/java/.../WlLoopFakeLlm.java` — the single source of truth for the offline scripted
+   per-iteration responses.
+5. `src/main/java/.../ExampleLlmConfig.java` — how the fake/real toggle, provider, and key are resolved.
+6. `src/test/java/.../WlLoopAppTest.java` — the deterministic iteration-count assertions.

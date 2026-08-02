@@ -1,0 +1,11 @@
+{
+  "id": "user-form",
+  "items": [
+    {
+      "type": "TEXT",
+      "id": "name",
+      "label": "Your name",
+      "required": true
+    }
+  ]
+}

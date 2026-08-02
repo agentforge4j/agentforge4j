@@ -14,7 +14,6 @@ import com.networknt.schema.SpecificationVersion;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.util.List;
-import java.util.Set;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -47,14 +46,19 @@ class ScenarioSchemaContractTest {
   }
 
   @Test
-  void noShippedScenarioFixturesExistDuringCleanSlate() {
-    // Clean-slate window: the catalog owns no scenario fixtures, so there is nothing here to validate
-    // against the schema. The inline-document tests below still exercise the full schema contract. PR B
-    // restores the per-fixture validation loop when it ships a workflow with a verification scenario.
-    Set<String> owners = CatalogScenarios.scenarioOwningWorkflowIds();
-    assertThat(owners)
-        .as("during the clean-slate window no scenario fixtures are owned")
-        .isEmpty();
+  void everyShippedScenarioFixtureValidatesAgainstTheSchema() throws IOException {
+    // Each owned scenario's expected-result.json is read from its workflow folder on the classpath,
+    // the same plug-and-play catalog a future external repo would consume — not a sibling source dir.
+    List<ScenarioCase> scenarios = CatalogScenarios.discover();
+    assertThat(scenarios).as("the shipped catalog must own at least one scenario").isNotEmpty();
+    for (ScenarioCase scenario : scenarios) {
+      List<Error> violations =
+          SCENARIO_SCHEMA.validate(MAPPER.readTree(scenario.expectedResultJson()));
+      assertThat(violations)
+          .as("scenario '%s' expected-result.json must validate against the scenario schema",
+              scenario.name())
+          .isEmpty();
+    }
   }
 
   @Test
@@ -68,6 +72,22 @@ class ScenarioSchemaContractTest {
             {"type": "review", "note": "looks good"}
           ],
           "expect": {"status": "COMPLETED", "visitedSteps": ["s1", "s2"]}
+        }
+        """));
+
+    assertThat(violations).isEmpty();
+  }
+
+  @Test
+  void schemaAcceptsContextPresenceAndRegexShapeAssertions() throws IOException {
+    List<Error> violations = SCENARIO_SCHEMA.validate(MAPPER.readTree("""
+        {
+          "workflowId": "demo",
+          "expect": {
+            "status": "AWAITING_STEP_APPROVAL",
+            "contextPresent": ["estimatedMinTokens", "estimatedMaxTokens"],
+            "contextMatches": {"confidence": "HIGH|MEDIUM|LOW|VERY_LOW"}
+          }
         }
         """));
 
@@ -94,35 +114,101 @@ class ScenarioSchemaContractTest {
   }
 
   @Test
+  void schemaAcceptsStepVisitCountsAndOrderedSteps() throws IOException {
+    List<Error> violations = SCENARIO_SCHEMA.validate(MAPPER.readTree("""
+        {
+          "workflowId": "demo",
+          "expect": {
+            "status": "COMPLETED",
+            "stepVisitCounts": {"revise": 2},
+            "orderedSteps": ["draft", "revise", "publish"]
+          }
+        }
+        """));
+
+    assertThat(violations).isEmpty();
+  }
+
+  // Each negative document below carries a valid expect block so the only schema violation left
+  // is the one the test names — without it, the required-expect rule would reject the document
+  // for an incidental second reason and the named coverage would be silently lost.
+
+  @Test
   void schemaRejectsAMissingWorkflowId() throws IOException {
-    assertThat(SCENARIO_SCHEMA.validate(MAPPER.readTree("{\"gates\": []}"))).isNotEmpty();
+    assertThat(SCENARIO_SCHEMA.validate(MAPPER.readTree(
+        "{\"gates\": [], \"expect\": {\"status\": \"COMPLETED\"}}")))
+        .isNotEmpty();
   }
 
   @Test
   void schemaRejectsAnUnknownGateType() throws IOException {
-    assertThat(SCENARIO_SCHEMA.validate(
-        MAPPER.readTree("{\"workflowId\": \"w\", \"gates\": [{\"type\": \"telepathy\"}]}")))
+    assertThat(SCENARIO_SCHEMA.validate(MAPPER.readTree(
+        "{\"workflowId\": \"w\", \"gates\": [{\"type\": \"telepathy\"}], "
+            + "\"expect\": {\"status\": \"COMPLETED\"}}")))
         .isNotEmpty();
   }
 
   @Test
   void schemaRejectsAToolGateWithAnUnknownProperty() throws IOException {
     assertThat(SCENARIO_SCHEMA.validate(MAPPER.readTree(
-        "{\"workflowId\": \"w\", \"gates\": [{\"type\": \"toolApprove\", \"bogus\": true}]}")))
+        "{\"workflowId\": \"w\", \"gates\": [{\"type\": \"toolApprove\", \"bogus\": true}], "
+            + "\"expect\": {\"status\": \"COMPLETED\"}}")))
         .isNotEmpty();
   }
 
   @Test
   void schemaRejectsAToolGateWithABlankInvocationId() throws IOException {
     assertThat(SCENARIO_SCHEMA.validate(MAPPER.readTree(
-        "{\"workflowId\": \"w\", \"gates\": [{\"type\": \"toolRetry\", \"toolInvocationId\": \"\"}]}")))
+        "{\"workflowId\": \"w\", \"gates\": [{\"type\": \"toolRetry\", \"toolInvocationId\": \"\"}], "
+            + "\"expect\": {\"status\": \"COMPLETED\"}}")))
         .isNotEmpty();
   }
 
   @Test
   void schemaRejectsAnUnknownTopLevelProperty() throws IOException {
     assertThat(SCENARIO_SCHEMA.validate(
-        MAPPER.readTree("{\"workflowId\": \"w\", \"surprise\": true}")))
+        MAPPER.readTree("{\"workflowId\": \"w\", \"surprise\": true, "
+            + "\"expect\": {\"status\": \"COMPLETED\"}}")))
         .isNotEmpty();
+  }
+
+  @Test
+  void schemaRejectsAScenarioWithoutAnExpectBlock() throws IOException {
+    // The assertion floor: a scenario that asserts nothing must not be schema-valid.
+    assertThat(SCENARIO_SCHEMA.validate(MAPPER.readTree("{\"workflowId\": \"w\"}")))
+        .isNotEmpty();
+  }
+
+  @Test
+  void schemaRejectsAnExpectWithoutStatus() throws IOException {
+    assertThat(SCENARIO_SCHEMA.validate(MAPPER.readTree(
+        "{\"workflowId\": \"w\", \"expect\": {\"visitedSteps\": [\"s1\"]}}")))
+        .isNotEmpty();
+  }
+
+  @Test
+  void schemaRejectsAStepApprovalGateWithoutAnApproveFlag() throws IOException {
+    // An omitted approve flag would otherwise silently become a rejection at run time.
+    assertThat(SCENARIO_SCHEMA.validate(MAPPER.readTree(
+        "{\"workflowId\": \"w\", \"gates\": [{\"type\": \"stepApproval\"}], "
+            + "\"expect\": {\"status\": \"COMPLETED\"}}")))
+        .isNotEmpty();
+  }
+
+  @Test
+  void schemaAcceptsTheFailurePinningVocabulary() throws IOException {
+    List<Error> violations = SCENARIO_SCHEMA.validate(MAPPER.readTree("""
+        {
+          "workflowId": "demo",
+          "expect": {
+            "status": "FAILED",
+            "failedBecause": "explicitly failed",
+            "absentFiles": ["out/never-written.txt"],
+            "notEmittedEvents": ["RUN_COMPLETED"]
+          }
+        }
+        """));
+
+    assertThat(violations).isEmpty();
   }
 }

@@ -1,0 +1,42 @@
+---
+title: Quick start
+description: Install AgentForge4j and run a minimal workflow.
+kind: doc
+audience: integrating
+diataxis: tutorial
+sidebar_position: 4
+---
+
+# Quick start
+
+This guide gets a minimal AgentForge4j workflow running in an existing Java application. Every code
+block below is included from the runnable `quick-start` example, so it always matches source.
+
+## 1. Provide a workflow definition
+
+Author a workflow JSON document, validated against the [workflow schema](../reference/schemas/index.mdx):
+
+```json file=agentforge4j-examples/framework-examples/quick-start/src/main/resources/workflows/quick-start.workflow/workflow.json title="quick-start.workflow/workflow.json"
+```
+
+## 2. Assemble the runtime
+
+Wire the framework to your workflow and agent directories and an LLM provider, then build the facade:
+
+```java file=agentforge4j-examples/framework-examples/quick-start/src/main/java/com/agentforge4j/examples/quickstart/QuickStartExample.java region=assemble title="QuickStartExample.java"
+```
+
+## 3. Run it
+
+Start the workflow and read its terminal state:
+
+```java file=agentforge4j-examples/framework-examples/quick-start/src/main/java/com/agentforge4j/examples/quickstart/QuickStartExample.java region=run title="QuickStartExample.java"
+```
+
+See [Configure an LLM provider](../how-to/configure-llm-provider.mdx) to swap the deterministic test
+provider for a real one.
+
+## Next steps
+
+- [Your first workflow](../tutorials/first-workflow.mdx) — a fuller walkthrough.
+- [Configuration reference](../reference/config/index.mdx) — all configuration surfaces.
