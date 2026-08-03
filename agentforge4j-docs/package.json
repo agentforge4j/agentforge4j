@@ -7,7 +7,7 @@
   "scripts": {
     "docusaurus": "docusaurus",
     "start": "docusaurus start",
-    "build": "docusaurus build && node scripts/verify-noindex.mjs && node scripts/verify-canonical.mjs",
+    "build": "docusaurus build && node scripts/verify-noindex.mjs && node scripts/verify-canonical.mjs && node scripts/verify-redirect-stubs.mjs",
     "swizzle": "docusaurus swizzle",
     "clear": "docusaurus clear",
     "serve": "docusaurus serve",
@@ -22,7 +22,8 @@
     "lint:javadoc-links": "node scripts/lint-javadoc-links.mjs",
     "lint:archive-drift": "node scripts/archive-drift-check.mjs",
     "lint:navbar-logo": "node scripts/lint-navbar-logo.mjs",
-    "lint": "npm run lint:frontmatter && npm run lint:nav && npm run lint:fixtures && npm run lint:product-name && npm run lint:archive-drift && npm run lint:navbar-logo",
+    "lint:social-image": "node scripts/lint-social-image.mjs",
+    "lint": "npm run lint:frontmatter && npm run lint:nav && npm run lint:fixtures && npm run lint:product-name && npm run lint:archive-drift && npm run lint:navbar-logo && npm run lint:social-image",
     "javadoc": "node scripts/build-javadoc.mjs",
     "javadoc:versions": "node scripts/build-javadoc-versions.mjs",
     "release:stage": "node scripts/release-stage.mjs",

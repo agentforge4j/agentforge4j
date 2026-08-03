@@ -47,6 +47,8 @@ This directory records the architecture decisions that shape AgentForge4j — th
 | [0032](0032-catalog-compatibility-as-an-exact-pinned-framework-version.md) | Catalog compatibility as an exact pinned framework version | Accepted | 2026-07-11 |
 | [0033](0033-numericversion-qualifier-awareness-for-release-candidates.md) | NumericVersion becomes qualifier-aware, as a hard prerequisite for 1.0.0-RC1 | Proposed | 2026-07-10 |
 | [0034](0034-add-generic-aggregate-step-behaviour-and-contextaggregator-spi.md) | Add generic AGGREGATE step behaviour and ContextAggregator SPI | Proposed | 2026-07-11 |
+| [0035](0035-premium-as-a-fourth-model-capability-tier.md) | PREMIUM as a fourth model capability tier | Accepted | 2026-07-28 |
+| [0036](0036-builder-schema-copies-are-committed-mirrors-verified-in-the-build.md) | Builder schema copies are committed mirrors, verified in the build | Accepted | 2026-07-31 |
 
 ## Reserved
 

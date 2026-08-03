@@ -66,7 +66,11 @@ export function collectRoutePaths({ seoRoutesPath = SEO_ROUTES_PATH, catalogueDa
   const catalogueData = existsSync(catalogueDataPath)
     ? JSON.parse(readFileSync(catalogueDataPath, 'utf8'))
     : { workflows: [] };
-  const paths = routes.map((route) => route.path);
+  // Redirect routes are excluded: they render a `<Navigate>` rather than a page, so the browser
+  // would immediately leave for the destination and this pass would capture the DESTINATION's
+  // markup under the redirecting address — re-creating, in the shell, exactly the duplicate content
+  // the redirect exists to remove. build-seo.mjs writes their stubs itself.
+  const paths = routes.filter((route) => !route.redirectTo).map((route) => route.path);
   for (const workflow of catalogueData.workflows ?? []) {
     paths.push(`/catalogue/${workflow.id}`);
   }

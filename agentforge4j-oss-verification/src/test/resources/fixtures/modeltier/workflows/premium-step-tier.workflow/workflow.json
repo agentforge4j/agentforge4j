@@ -1,0 +1,19 @@
+{
+  "kind": "WORKFLOW",
+  "schemaVersion": 1,
+  "id": "premium-step-tier",
+  "name": "Premium Step Tier Override",
+  "steps": [
+    {
+      "kind": "STEP",
+      "stepId": "run",
+      "name": "Run Agent",
+      "modelTier": "PREMIUM",
+      "behaviour": {
+        "type": "AGENT",
+        "agentRef": "tier-agent",
+        "transition": "AUTO"
+      }
+    }
+  ]
+}

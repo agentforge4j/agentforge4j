@@ -17,6 +17,7 @@ Shipped tier defaults for provider id `claude`:
 | `LITE` | `claude-haiku-4-5-20251001` |
 | `STANDARD` | `claude-sonnet-4-6` |
 | `POWERFUL` | `claude-opus-4-8` |
+| `PREMIUM` | `claude-opus-4-8` |
 
 ## How it activates
 

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 //
-// Generates two things from the already-built dist/index.html (run after `vite build` and after
+// Generates three things from the already-built dist/index.html (run after `vite build` and after
 // copy-404.mjs — 404.html must stay the *pre-prerender* empty shell, so an unmatched path served
 // under a real HTTP 404 boots the SPA and renders NotFoundPage, never a static copy of the full
 // prerendered home page body; verify-seo.mjs gates that ordering on every real build):
@@ -75,9 +75,18 @@
 //         bump with no rendering effect) as globally material would defeat the point of tracking
 //         real per-page dependencies at all.
 //
+//  3. The not-found head of the already-copied dist/404.html (see injectNotFoundHead). copy-404.mjs
+//     copies dist/index.html verbatim, which is right for the BODY and wrong for the HEAD — the
+//     catch-all shell would otherwise describe itself as the home page on every mistyped address,
+//     and on /404.html itself, which is served at 200. Only the head is rewritten; the empty
+//     `<div id="root"></div>` mount point the copy carries is preserved by construction.
+//
 // Per-workflow title/description formatting mirrors src/lib/catalogueSeo.ts (used by the
 // client-side title/meta sync, usePageSeo) — duplicated deliberately, not imported, because this
-// is plain Node ESM with no bundler step ahead of it; kept to two small, easy-to-eyeball rules.
+// is plain Node ESM with no bundler step ahead of it. The truncation rule is far too big to keep
+// in sync by eye, so nothing here relies on that: tests/usePageSeo.test.tsx drives BOTH copies of
+// every duplicated unit over the real shipped catalogue data and a shared corpus of hard cases,
+// and requires identical results.
 
 import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
@@ -93,7 +102,11 @@ const DIST_DIR = join(MODULE_ROOT, 'dist');
 const SEO_ROUTES_PATH = join(MODULE_ROOT, 'src', 'config', 'seo-routes.json');
 const CATALOGUE_DATA_PATH = join(MODULE_ROOT, 'src', 'generated', 'catalogue-data.json');
 
-const MAX_DESCRIPTION_LENGTH = 157; // mirrors src/lib/catalogueSeo.ts
+/** The published meta-description budget. Exported, and imported by the test suites rather than
+ * re-typed there — the same "one opaque constant, no second place to drift" reasoning
+ * JSON_LD_SCRIPT_ID's own comment sets out below. src/lib/catalogueSeo.ts holds the one
+ * unavoidable copy (it cannot import this module), bound to this one by tests/usePageSeo.test.tsx. */
+export const MAX_DESCRIPTION_LENGTH = 157;
 
 // Every generated route shell is a directory (dist/<path>/index.html), which GitHub Pages only
 // serves without a redirect at its trailing-slash address — the non-slash form 301s there. The
@@ -226,15 +239,207 @@ function catalogueWorkflowTitle(workflow) {
   return `${workflow.name} — AgentForge4j Catalogue`;
 }
 
-function catalogueWorkflowDescription(workflow) {
+/** Below this a truncated description stops being a useful snippet — see catalogueSeo.ts. Exported
+ * for the same reason MAX_DESCRIPTION_LENGTH is: a test whose fixture puts a sentence end BELOW
+ * this floor proves nothing about the sentence rule, because the floor rejects the cut whatever the
+ * rule decides. Binding fixtures to this number is what stops that happening silently. */
+export const MIN_USEFUL_DESCRIPTION_LENGTH = 80;
+/** A CANDIDATE sentence end; `endsSentence` decides whether it is a real one. See catalogueSeo.ts. */
+const SENTENCE_END_PATTERN = /(\S+)[.!?](?=\s|$)/g;
+/** Dangling clause punctuation, and a `...` run that would otherwise publish `thought...…` — see
+ * catalogueSeo.ts. A single trailing dot is kept: it belongs to an abbreviation. */
+const TRAILING_CLAUSE_PUNCTUATION = /(\.{2,}|[\s,;:—–-])+$/;
+/** The mirror of the above, for `describesCompleteWords` — see catalogueSeo.ts. */
+const DROPPED_CLAUSE_PUNCTUATION = /^(\.{2,}|[,;:—–-])+/;
+/** The last whitespace of any kind in a window — see catalogueSeo.ts. */
+const LAST_WORD_BOUNDARY_PATTERN = /\s\S*$/;
+
+/** Mirrors src/lib/catalogueSeo.ts's `endsSentence` — an abbreviation (`e.g.`, `etc. and`) or a
+ * trailing `...` is not a sentence end, and taking one for a sentence discards most of the budget
+ * and reads as broken. See that copy for the reasoning behind both tests. */
+function endsSentence(raw, word, end) {
+  if (word.includes('.')) {
+    return false;
+  }
+  const rest = raw.slice(end);
+  return rest.trim().length === 0 || /^\s+\p{Lu}/u.test(rest);
+}
+
+/** Mirrors src/lib/catalogueSeo.ts's `truncateDescription` exactly — the same deliberate
+ * duplication (not import) this file's header documents for the other catalogue rules, bound to
+ * that copy by tests/usePageSeo.test.tsx, which drives BOTH implementations over the real shipped
+ * workflow data and a shared corpus of hard cases and requires identical output.
+ *
+ * Never a fixed-offset slice: that is what published `…and a verification starter). Sin…` and
+ * `…tool invoc…` as this site's own meta descriptions. Sentences first, whole words otherwise. */
+export function truncateDescription(raw) {
+  if (raw.length <= MAX_DESCRIPTION_LENGTH) {
+    return raw;
+  }
+  let lastSentenceEnd = -1;
+  for (const match of raw.matchAll(SENTENCE_END_PATTERN)) {
+    const end = match.index + match[0].length;
+    if (end > MAX_DESCRIPTION_LENGTH) {
+      break;
+    }
+    if (endsSentence(raw, match[1], end)) {
+      lastSentenceEnd = end;
+    }
+  }
+  if (lastSentenceEnd >= MIN_USEFUL_DESCRIPTION_LENGTH) {
+    return raw.slice(0, lastSentenceEnd);
+  }
+  const window = raw.slice(0, MAX_DESCRIPTION_LENGTH - 1);
+  const boundary = window.search(LAST_WORD_BOUNDARY_PATTERN);
+  const words = (boundary === -1 ? window : window.slice(0, boundary)).replace(TRAILING_CLAUSE_PUNCTUATION, '');
+  return `${words}…`;
+}
+
+/** Mirrors src/lib/catalogueSeo.ts's `describesCompleteWords` — the mechanical statement of "no word
+ * was cut in half", checked against the source text rather than by inspecting the result. */
+export function describesCompleteWords(raw, description) {
+  const trimmed = raw.trim();
+  if (description === trimmed) {
+    return true;
+  }
+  const body = description.replace(/…$/, '');
+  if (body.length === 0 || !trimmed.startsWith(body)) {
+    return false;
+  }
+  // The one unavoidable case: the source's first word is longer than everything that fits, so no
+  // word-boundary cut exists. See catalogueSeo.ts's copy for why accepting it masks nothing.
+  const firstBoundary = trimmed.search(/\s/);
+  if (firstBoundary === -1 || firstBoundary >= body.length) {
+    return true;
+  }
+  const remainder = trimmed.slice(body.length).replace(DROPPED_CLAUSE_PUNCTUATION, '');
+  return remainder.length === 0 || /^\s/.test(remainder);
+}
+
+/** The published `<meta name="description">` for one catalogue workflow, and the point at which a
+ * description that ends mid-word becomes impossible to publish silently: the rule's output is
+ * checked on every real build, for every shipped workflow — not only for the ones anyone thought
+ * to look at. Exported so tests/usePageSeo.test.tsx can bind it to src/lib/catalogueSeo.ts's copy,
+ * fallback sentence and all. */
+export function catalogueWorkflowDescription(workflow) {
   const raw = workflow.description?.trim();
   if (!raw) {
     return `${workflow.name} — a shipped, ready-to-run AgentForge4j workflow from the workflow catalogue.`;
   }
-  if (raw.length <= MAX_DESCRIPTION_LENGTH) {
-    return raw;
+  const description = truncateDescription(raw);
+  // Reported separately from the word-boundary failure below, because the cause is different and
+  // the fix is different: nothing survived truncation at all (a source that is entirely clause
+  // punctuation), so the workflow's own text is what needs attention, not the rule.
+  if (description.replace(/…$/, '').length === 0) {
+    throw new Error(
+      `build-seo: the description generated for catalogue workflow "${workflow.id}" is empty — its source ` +
+        `text has no words to keep: ${JSON.stringify(raw)}`,
+    );
   }
-  return `${raw.slice(0, MAX_DESCRIPTION_LENGTH - 1).trimEnd()}…`;
+  // The specification of "no word was cut in half", re-checked against the source on every build.
+  // No INPUT reaches this branch while the rule above is correct — every one of its three paths
+  // ends on a real boundary — so it carries no negative test of its own, and that is the point: it
+  // is what stops a future REGRESSION of the rule from publishing, not a filter on bad workflows.
+  // Restoring the fixed-offset slice makes it fire here, inside buildSeo, for the real shipped
+  // agent-creator and workflow-execution-estimator descriptions. The empty-source refusal above is
+  // the reachable one, and the test that drives it end-to-end is what proves this whole block is
+  // wired into buildSeo at all rather than merely present.
+  if (!describesCompleteWords(raw, description)) {
+    throw new Error(
+      `build-seo: the description generated for catalogue workflow "${workflow.id}" does not end on a word ` +
+        `boundary of its source text: ${JSON.stringify(description)}`,
+    );
+  }
+  // Same standing as the check above, and the same reason for having no negative test:
+  // `truncateDescription` cannot exceed the budget on any of its three branches.
+  if (description.length > MAX_DESCRIPTION_LENGTH) {
+    throw new Error(
+      `build-seo: the description generated for catalogue workflow "${workflow.id}" is ${description.length} ` +
+        `characters, over the ${MAX_DESCRIPTION_LENGTH} limit`,
+    );
+  }
+  return description;
+}
+
+/**
+ * The social tags whose value is a pure function of the route's own title/description/canonical,
+ * and therefore the exact set that must be re-derived on every client-side route change as well as
+ * baked into every static shell.
+ *
+ * This table is the single source for both. `injectHead` below builds its replacements from it, and
+ * `src/lib/usePageSeo.ts` re-declares it (it cannot import this module — build-seo.mjs pulls in
+ * node:child_process) with `tests/usePageSeo.test.tsx` importing this constant to bind the two
+ * copies together. That binding is the point: the audited defect was precisely a divergence between
+ * these two surfaces — the static shell rewrote all five of these while the client hook rewrote
+ * none of them, so every one went stale the moment a visitor navigated within the app, and no gate
+ * on either side could see it because each was individually self-consistent.
+ *
+ * Deliberately NOT included: the site-constant social tags (`og:type`, `og:site_name`, `og:image`
+ * and its dimensions/alt, `twitter:card`, `twitter:image`). Those carry the same value on every
+ * page, so index.html is their one home and there is nothing for a route change to re-derive —
+ * `verify-seo.mjs` proves every built shell actually carries them.
+ */
+export const ROUTE_SCOPED_SOCIAL_TAGS = [
+  { attribute: 'property', key: 'og:title', source: 'title' },
+  { attribute: 'property', key: 'og:description', source: 'description' },
+  { attribute: 'property', key: 'og:url', source: 'canonical' },
+  { attribute: 'name', key: 'twitter:title', source: 'title' },
+  { attribute: 'name', key: 'twitter:description', source: 'description' },
+];
+
+/** Escapes a literal so it can be embedded in a RegExp source and match itself. The keys below are
+ * committed constants today, but they arrive through an exported table other modules read and
+ * extend — an unescaped `.` or `+` in a future key would silently change what the pattern matches
+ * rather than failing, which is the worst possible failure mode for a gate. */
+function escapeRegExpLiteral(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/** The pattern matching one route-scoped social tag exactly as index.html writes it. `\s*` after
+ * the tag is included only for a REMOVAL, so deleting a tag does not leave the blank line (and the
+ * trailing spaces on it) that the tag used to occupy. */
+function socialTagPattern(attribute, key, { consumeTrailingWhitespace = false } = {}) {
+  return new RegExp(
+    `<meta\\s+${escapeRegExpLiteral(attribute)}="${escapeRegExpLiteral(key)}"[\\s\\S]*?/>` +
+      (consumeTrailingWhitespace ? '\\s*' : ''),
+  );
+}
+
+/**
+ * The `[pattern, replacement]` pairs for every route-scoped social tag, derived from one route's
+ * resolved values — the single place any producer turns `ROUTE_SCOPED_SOCIAL_TAGS` into edits.
+ *
+ * Every producer of a `<head>` in this module goes through here: ordinary route shells
+ * (`injectHead`), the not-found shell (`injectNotFoundHead`) and redirect stubs
+ * (`injectRedirectStub`). Any further one must too, deriving its social replacements from this
+ * function rather than hand-copying the five tags, because a copy is a copy whether it lives in
+ * another module or in the function next door — and a divergence between two such copies is the
+ * defect this whole table exists to close. `build-seo.test.mjs`'s `PRODUCERS` list is where each
+ * producer is registered for the mutation test that enforces it.
+ *
+ * The three differ only in what they feed this function, which is the point: a route shell derives
+ * `og:url` from its own canonical, a redirect stub from its destination (the stub is not a page
+ * about itself), and a not-found page from nothing at all.
+ *
+ * The replacement half of each pair is a plain string carrying `escapeHtml`ed route data, and
+ * `escapeHtml` deliberately does not escape `$`. Every consumer must therefore apply it through a
+ * REPLACER FUNCTION, never as a bare replacement string — see `injectHead`'s own loop for why.
+ *
+ * A `source` whose value is `null` REMOVES that tag instead of rewriting it, taking the whitespace
+ * it occupied with it. That is not a convenience: a not-found page must carry no `og:url`, because
+ * that tag makes a claim about which URL the content belongs to, and the address does not exist.
+ * Expressing "remove" in the same table-driven pass is what keeps that page from needing its own
+ * copy of the list just to differ in one entry — `injectNotFoundHead` is the producer that relies
+ * on it.
+ */
+export function routeScopedSocialReplacements(values) {
+  return ROUTE_SCOPED_SOCIAL_TAGS.map(({ attribute, key, source }) => {
+    const value = values[source];
+    if (value === null || value === undefined) {
+      return [socialTagPattern(attribute, key, { consumeTrailingWhitespace: true }), ''];
+    }
+    return [socialTagPattern(attribute, key), `<meta ${attribute}="${key}" content="${escapeHtml(value)}" />`];
+  });
 }
 
 /** Replaces the title/description/canonical/OG/Twitter tags already present in the built
@@ -248,17 +453,7 @@ export function injectHead(html, { title, description, canonical }) {
     [/<title>[\s\S]*?<\/title>/, `<title>${safeTitle}</title>`],
     [/<meta\s+name="description"[\s\S]*?\/>/, `<meta name="description" content="${safeDescription}" />`],
     [/<link\s+rel="canonical"[\s\S]*?\/>/, `<link rel="canonical" href="${safeCanonical}" />`],
-    [/<meta\s+property="og:title"[\s\S]*?\/>/, `<meta property="og:title" content="${safeTitle}" />`],
-    [
-      /<meta\s+property="og:description"[\s\S]*?\/>/,
-      `<meta property="og:description" content="${safeDescription}" />`,
-    ],
-    [/<meta\s+property="og:url"[\s\S]*?\/>/, `<meta property="og:url" content="${safeCanonical}" />`],
-    [/<meta\s+name="twitter:title"[\s\S]*?\/>/, `<meta name="twitter:title" content="${safeTitle}" />`],
-    [
-      /<meta\s+name="twitter:description"[\s\S]*?\/>/,
-      `<meta name="twitter:description" content="${safeDescription}" />`,
-    ],
+    ...routeScopedSocialReplacements({ title, description, canonical }),
   ];
 
   let result = html;
@@ -266,9 +461,176 @@ export function injectHead(html, { title, description, canonical }) {
     if (!pattern.test(result)) {
       throw new Error(`build-seo: expected tag not found in dist/index.html: ${pattern}`);
     }
-    result = result.replace(pattern, replacement);
+    // The replacement is supplied via a function, never as a bare replacement string — the same
+    // guard injectRoot and injectJsonLd already carry, and load-bearing here for the same reason.
+    // `String.prototype.replace` expands `$&`, "$`", `$'` and `$$` inside a replacement STRING
+    // *after* escapeHtml has run (escapeHtml handles `& < > "` and deliberately not `$`), so a
+    // `$`-token anywhere in a route title, description or a shipped workflow's name/description
+    // would reach the shell as document text rather than as itself. `$$` is the dangerous one: it
+    // collapses to a single `$` IDENTICALLY on the title, the description meta and all five
+    // route-scoped social tags, so verify-seo.mjs's social-consistency pass — which compares those
+    // tags against each other — sees a perfectly self-consistent page and the corrupted copy ships.
+    // `$&` splices the matched tag's own source into the value, and `$'` splices the entire rest of
+    // the document into it. A replacer function is never scanned for those tokens.
+    result = result.replace(pattern, () => replacement);
   }
   return result;
+}
+
+/**
+ * Turns a route's shell into a redirect stub: it forwards to `target`, says so, and carries no
+ * content of its own.
+ *
+ * The alternative this replaces was a second, fully-rendered copy of the destination page at a
+ * second address, distinguished only by a `canonicalPath` hint. A canonical is advice, not a rule —
+ * so the site was publishing genuine duplicate content and asking search engines to be
+ * understanding about it. A stub has nothing to duplicate.
+ *
+ * `noindex, follow` (not just the canonical) because this address should not be a search result at
+ * all; `follow` so the link to the destination still carries signal. The canonical names the
+ * destination, which is the standard "the real page is over there" pairing for a redirect shell.
+ *
+ * The body is replaced with a plain link rather than left empty: with JavaScript disabled the meta
+ * refresh still fires, but a client that honours neither must still have a way through, and a
+ * crawler that reads the body sees where this address leads.
+ *
+ * On a fresh load with JavaScript enabled this address is forwarded TWICE: the SPA mounts, the
+ * router's REDIRECT_ROUTES entry navigates client-side, and then the refresh the parser already
+ * scheduled performs a full document load of the same destination. That is deliberate and not a
+ * defect to fix by conditioning the refresh on `<noscript>`. The refresh is the only fallback that
+ * still works when JavaScript is enabled but the bundle never arrives (network failure, a blocked
+ * script, an unsupported browser); moving it behind `<noscript>` would strand exactly those
+ * visitors on the anchor. The cost of keeping it unconditional is one redundant same-origin
+ * document request on a low-traffic redirect address, which is the cheaper side of that trade.
+ *
+ * GitHub Pages serves static files with no redirect configuration of any kind (see
+ * .github/workflows/deploy.yml), so a real 301 is not implementable on this host — a meta refresh
+ * plus the canonical is the strongest available equivalent, and it is the same mechanism the docs
+ * archive stubs (agentforge4j-docs/scripts/assemble-site.mjs) already use for the same reason.
+ *
+ * `destination` and `canonical` are two different things and must not be collapsed into one value,
+ * even though they name the same page. `canonical` is a *claim* about where this content really
+ * lives on the public web, so it is absolute (`https://agentforge4j.org/community/`) like every
+ * other canonical this site publishes. `destination` is an *instruction* telling the browser where
+ * to go next, so it must be root-relative (`/community/`) and resolve against whatever origin is
+ * actually serving the page. An absolute destination forwards every non-production origin — the
+ * e2e preview server, a local `npm run preview`, the documented local Docker build, a self-hosted
+ * deployment, a fork's Pages origin — off the artifact under test and onto the live public site.
+ * Both docs-side producers of this same meta refresh (assemble-site.mjs's `writeRedirectStubs` and
+ * the plugin stubs redirect-stub-seo.mjs annotates) already emit root-relative targets; this is the
+ * same rule, not a new one.
+ */
+export function injectRedirectStub(html, { destination, canonical, title, description, linkText = 'Continue' }) {
+  if (!destination.startsWith('/') || destination.startsWith('//')) {
+    // `//host/path` is protocol-relative — an absolute URL wearing a relative shape, and the one
+    // form a `startsWith('/')` check alone would let through onto a foreign origin.
+    throw new Error(
+      `build-seo: a redirect stub's destination must be root-relative, got "${destination}" — ` +
+        'an absolute or protocol-relative target forwards non-production origins off the artifact',
+    );
+  }
+  const safeDestination = escapeHtml(destination);
+  const safeCanonical = escapeHtml(canonical);
+  const replacements = [
+    [/<title>[\s\S]*?<\/title>/, `<title>${escapeHtml(title)}</title>`],
+    [
+      /<meta\s+name="description"[\s\S]*?\/>/,
+      `<meta name="description" content="${escapeHtml(description)}" />\n` +
+        // Carries ROBOTS_META_ID for the same reason the not-found head does: it marks this tag as
+        // written by this build, so usePageSeo's setRobots(null) can remove it on a client-side
+        // navigation away from the stub. Without the id the lookup misses and a `noindex` written
+        // here would ride along onto the destination route — precisely the failure setRobots's own
+        // docblock is written against.
+        `    <meta name="robots" id="${ROBOTS_META_ID}" content="noindex, follow" />\n` +
+        `    <meta http-equiv="refresh" content="0; url=${safeDestination}" />`,
+    ],
+    [/<link\s+rel="canonical"[\s\S]*?\/>/, `<link rel="canonical" href="${safeCanonical}" />`],
+    // The five social tags from the one shared table. A redirect stub's `canonical` source IS the
+    // destination — this page's whole claim is "the content is over there" — so unlike the
+    // not-found head it rewrites all five rather than removing one. Listing them here instead would
+    // be a third copy of the list the table exists to keep single. These are claims about the
+    // public web address, so they take the absolute `canonical`, not the relative destination.
+    ...routeScopedSocialReplacements({ title, description, canonical }),
+  ];
+  let result = html;
+  for (const [pattern, replacement] of replacements) {
+    if (!pattern.test(result)) {
+      throw new Error(`build-seo: expected tag not found while building a redirect stub: ${pattern}`);
+    }
+    result = result.replace(pattern, () => replacement);
+  }
+  if (!EMPTY_ROOT_PATTERN.test(result)) {
+    throw new Error('build-seo: expected an empty <div id="root"></div> mount point while building a redirect stub');
+  }
+  return result.replace(
+    EMPTY_ROOT_PATTERN,
+    // Root-relative for the same reason the refresh is: this anchor is the way through for a client
+    // that honours neither the refresh nor JavaScript, and it must lead to this deployment's own
+    // copy of the destination, not to the public site.
+    () => `<div id="root"><p><a href="${safeDestination}">${escapeHtml(linkText)}</a></p></div>`,
+  );
+}
+
+/**
+ * Rewrites the copied `dist/404.html` head so the catch-all shell describes itself as a not-found
+ * page instead of as the home page.
+ *
+ * copy-404.mjs copies `dist/index.html` verbatim before any per-route rewriting, which is right for
+ * the BODY (it must stay the empty pre-prerender mount point — see that script and verify-seo.mjs)
+ * but leaves the HEAD saying the home page's title, description, canonical and social tags. Served
+ * for every mistyped address, that made a 404 present itself as a second home page, with only the
+ * HTTP 404 status keeping it out of an index — and `/404.html` itself is served at 200, where no
+ * status protects anything and the mismatch between "looks like the home page" and "is not the home
+ * page" is exactly a soft-404 signal.
+ *
+ * Three things change relative to `injectHead`'s per-route treatment, each for its own reason:
+ *  - the canonical link is REMOVED, not repointed. Naming the home page asks a crawler to fold a
+ *    nonexistent URL into a real one; naming itself asserts an arbitrary address is a real page.
+ *    Neither is true, and a 404 is entitled to say nothing.
+ *  - `og:url` is removed for the same reason — it is the canonical's Open Graph counterpart, and
+ *    leaving it pointing at the home page would keep making the claim the canonical no longer does.
+ *  - a `robots` directive is added, since this is the one shell whose own address (`/404.html`) is
+ *    genuinely served at 200. It carries `ROBOTS_META_ID`, which marks it as this build's own: the
+ *    client-side hook adopts and updates THIS node on a direct load instead of appending a second
+ *    one beside it, and — on every other route, where the directive must be cleared — removes only
+ *    a node bearing that id rather than any `meta[name="robots"]` the page happens to have. See
+ *    that constant's own comment.
+ *
+ * Never touches the body, so the empty `<div id="root"></div>` verify-seo.mjs gates on is preserved
+ * by construction rather than by care.
+ */
+export function injectNotFoundHead(html, { title, description, robots }) {
+  const safeTitle = escapeHtml(title);
+  const safeDescription = escapeHtml(description);
+  const replacements = [
+    [/<title>[\s\S]*?<\/title>/, `<title>${safeTitle}</title>`],
+    [/<meta\s+name="description"[\s\S]*?\/>/, `<meta name="description" content="${safeDescription}" />`],
+    // The canonical link is REMOVED, whitespace and all, rather than repointed — see this function's
+    // own doc comment. `\s*` keeps the line it occupied from becoming a blank one.
+    [/<link\s+rel="canonical"[\s\S]*?\/>\s*/, ''],
+    // The five social tags come from the one shared table, with `canonical: null` expressing the one
+    // way this page differs from an ordinary route: no og:url. Listing them here instead — which is
+    // what this function used to do — would be a second copy of exactly the list the table exists to
+    // keep single, and the next tag added to it would reach ordinary routes and silently skip 404s.
+    ...routeScopedSocialReplacements({ title, description, canonical: null }),
+  ];
+
+  let result = html;
+  for (const [pattern, replacement] of replacements) {
+    // Same fail-loudly contract as injectHead: these tags all exist in the committed index.html
+    // template, so one going missing is template drift to surface, not a silent no-op.
+    if (!pattern.test(result)) {
+      throw new Error(`build-seo: expected tag not found in dist/404.html: ${pattern}`);
+    }
+    result = result.replace(pattern, () => replacement);
+  }
+  if (!/<\/head>/.test(result)) {
+    throw new Error('build-seo: expected a </head> closing tag in dist/404.html');
+  }
+  return result.replace(
+    /<\/head>/,
+    () => `<meta name="robots" id="${ROBOTS_META_ID}" content="${escapeHtml(robots)}" />\n  </head>`,
+  );
 }
 
 const EMPTY_ROOT_PATTERN = /<div id="root"><\/div>/;
@@ -313,6 +675,25 @@ export function injectRoot(html, innerHtml) {
 // module — build-seo.mjs pulls in node:child_process), and tests/usePageSeo.test.tsx imports this
 // constant to bind that copy to this one.
 export const JSON_LD_SCRIPT_ID = 'seo-json-ld';
+
+/**
+ * The id stamped on the `<meta name="robots">` this build writes into dist/404.html, and the one
+ * `usePageSeo.ts`'s `setRobots` looks for — an OWNERSHIP marker, exactly as JSON_LD_SCRIPT_ID is
+ * for the structured-data block, and shared with that constant's own "opaque literal, imported
+ * rather than re-derived" rationale above.
+ *
+ * Ownership is the whole point, and it is not cosmetic. The robots directive is the one head tag
+ * this site adds on ONE page and removes on every other, so the client-side hook has to delete a
+ * tag on routes that never declared one — and a deletion keyed on `meta[name="robots"]` alone
+ * deletes whatever it finds, including a directive this build never wrote. A host embedding the
+ * SPA, a future `index.html` line, or an injected `max-image-preview:large` would be served in the
+ * static HTML, then silently vanish from the DOM the moment the bundle hydrated, with every gate
+ * green: verify-seo.mjs reads served HTML (where the tag is still there) and
+ * verify-client-nav-seo.mjs compares direct load against client navigation (which agree, because
+ * the hook erases it on both). Keyed on this id instead, the hook removes only its own node and
+ * anything else on the page survives untouched.
+ */
+export const ROBOTS_META_ID = 'seo-robots';
 
 /** Inserts a route's JSON-LD structured-data block right before `</head>` — an addition, not a
  * replacement (unlike injectHead's tags, no shell starts with one), so only routes that declare a
@@ -552,6 +933,7 @@ export function buildSeo({
 
   const {
     siteUrl,
+    notFound,
     artifactGenerationSourceFiles = [],
     globalSourceFiles = [],
     catalogueSourceFiles = [],
@@ -599,6 +981,36 @@ export function buildSeo({
   let shellsWritten = 0;
 
   for (const route of routes) {
+    if (route.redirectTo) {
+      // A permanent forward, not a page — no prerendered body, no structured data, and never a
+      // sitemap entry regardless of what the entry says (asserted rather than assumed below, since
+      // a redirect listed for indexing is a config error, not a preference).
+      if (route.sitemap !== false) {
+        throw new Error(
+          `build-seo: route "${route.path}" declares redirectTo but is not marked \`"sitemap": false\` — ` +
+            'a redirect has no content to index and must never be submitted for indexing',
+        );
+      }
+      writeShell(
+        distDir,
+        route.path,
+        injectRedirectStub(baseHtml, {
+          // Relative: where the browser goes next, resolved against the serving origin.
+          destination: withTrailingSlash(route.redirectTo),
+          // Absolute: what this address claims about itself on the public web.
+          canonical: `${siteUrl}${withTrailingSlash(route.redirectTo)}`,
+          title: route.title,
+          description: route.description,
+          // Human-readable, not the raw URL: this body is what a visitor with JavaScript disabled
+          // actually reads, and "Continue to https://agentforge4j.org/community/" is an address,
+          // not a sentence. The destination route's own declared title is the name the rest of the
+          // site already uses for that page.
+          linkText: `Continue to ${routes.find((entry) => entry.path === route.redirectTo)?.title ?? route.redirectTo}`,
+        }),
+      );
+      shellsWritten += 1;
+      continue;
+    }
     const canonicalPath = route.canonicalPath ?? route.path;
     const canonical = `${siteUrl}${withTrailingSlash(canonicalPath)}`;
     let html = injectHead(baseHtml, { title: route.title, description: route.description, canonical });
@@ -655,7 +1067,19 @@ export function buildSeo({
 
   writeFileSync(join(distDir, 'sitemap.xml'), sitemapXml(sitemapEntries), 'utf8');
 
-  return { shellsWritten, sitemapUrls: uniqueUrls };
+  // The catch-all shell copy-404.mjs already wrote (it runs BEFORE this script, deliberately — see
+  // its header). Rewriting its head here rather than there keeps that script's one job — produce a
+  // byte-identical, pre-prerender copy — intact and separately verifiable, and puts the head
+  // rewriting in the one module that already owns it. Deliberately not counted in `shellsWritten`:
+  // 404.html is not a route shell and is not a sitemap URL.
+  const notFoundPath = join(distDir, '404.html');
+  let notFoundShellWritten = false;
+  if (notFound && existsSync(notFoundPath)) {
+    writeFileSync(notFoundPath, injectNotFoundHead(readFileSync(notFoundPath, 'utf8'), notFound), 'utf8');
+    notFoundShellWritten = true;
+  }
+
+  return { shellsWritten, sitemapUrls: uniqueUrls, notFoundShellWritten };
 }
 
 async function main() {
@@ -666,7 +1090,8 @@ async function main() {
   const snapshots = await prerenderRoutes({ distDir: DIST_DIR });
   const result = buildSeo({ snapshots });
   console.log(
-    `[build-seo] wrote ${result.shellsWritten} route shell(s), ${result.sitemapUrls.length} sitemap URL(s)`,
+    `[build-seo] wrote ${result.shellsWritten} route shell(s), ${result.sitemapUrls.length} sitemap URL(s)` +
+      `${result.notFoundShellWritten ? ', and gave dist/404.html its own not-found head' : ''}`,
   );
 }
 

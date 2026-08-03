@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import { Link } from 'react-router-dom';
 import { USE_COPY } from '@/copy/use';
+import { DOCS_ENTRY_URL } from '@/config/nav';
 
 export default function UsePage() {
   return (
@@ -20,7 +21,7 @@ export default function UsePage() {
       </p>
       <p className="mt-2 max-w-2xl text-sm text-fg-muted">
         See the{' '}
-        <Link to="/releases" className="text-brand underline">
+        <Link to="/releases/" className="text-brand underline">
           Releases
         </Link>{' '}
         page for what's shipped so far.
@@ -53,7 +54,7 @@ export default function UsePage() {
 
       <p className="mt-10 text-sm text-fg-muted">
         For the full API reference and guides, see the{' '}
-        <a href="/docs/" className="text-brand underline">
+        <a href={DOCS_ENTRY_URL} className="text-brand underline">
           documentation
         </a>
         .

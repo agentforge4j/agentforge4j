@@ -3,13 +3,17 @@ package com.agentforge4j.llm;
 
 import com.agentforge4j.llm.api.LlmExecutionRequest;
 import com.agentforge4j.llm.api.LlmExecutionResponse;
+import com.agentforge4j.llm.api.LlmRetryPolicy;
 import java.io.IOException;
 import java.net.http.HttpRequest;
+import java.time.Duration;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class AbstractHttpLlmClientTest {
@@ -132,6 +136,46 @@ class AbstractHttpLlmClientTest {
       assertThrows(IllegalArgumentException.class, () -> {
         client.execute(new LlmExecutionRequest("openai", null, "\t", "user", null, null, null));
       });
+    }
+  }
+
+  @Nested
+  class RetryPolicyTests {
+
+    @Test
+    void getRetryPolicy_isNull_whenTheConfigurationHasNone() {
+      TestAbstractHttpLlmClient client =
+          new TestAbstractHttpLlmClient(TestFixtures.testConfig("openai", "gpt-4"));
+
+      assertNull(client.getRetryPolicy());
+    }
+
+    @Test
+    void getRetryPolicy_returnsTheConfiguredPolicy() {
+      LlmRetryPolicy policy = new LlmRetryPolicy(2, 1L, 5L, 0L);
+      LlmClientConfiguration config = new LlmClientConfiguration() {
+        @Override
+        public String getProviderName() {
+          return "openai";
+        }
+
+        @Override
+        public String getDefaultModel() {
+          return "gpt-4";
+        }
+
+        @Override
+        public Duration getConnectTimeout() {
+          return Duration.ofSeconds(30);
+        }
+
+        @Override
+        public LlmRetryPolicy getRetryPolicy() {
+          return policy;
+        }
+      };
+
+      assertSame(policy, new TestAbstractHttpLlmClient(config).getRetryPolicy());
     }
   }
 }

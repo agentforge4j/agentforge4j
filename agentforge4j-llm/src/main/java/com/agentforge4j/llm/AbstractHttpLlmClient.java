@@ -62,7 +62,7 @@ public abstract class AbstractHttpLlmClient implements LlmClient {
 
   @Override
   public LlmRetryPolicy getRetryPolicy() {
-    return clientConfiguration.getRetryPolicy().orElse(null);
+    return clientConfiguration.getRetryPolicy();
   }
 
   /**
