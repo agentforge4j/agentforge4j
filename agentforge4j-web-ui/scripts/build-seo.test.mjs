@@ -22,6 +22,7 @@ import {
   gitLastModifiedDateForRouteMetadata,
   injectHead,
   injectJsonLd,
+  injectRedirectStub,
   injectNotFoundHead,
   ROUTE_SCOPED_SOCIAL_TAGS,
   routeScopedSocialReplacements,
@@ -446,6 +447,15 @@ test('every route declared in the real committed seo-routes.json has a sourceFil
   );
   assert.ok(routes.length > 0, 'expected at least one real route to check');
   for (const route of routes) {
+    if (route.redirectTo) {
+      // A redirect route has no `<lastmod>` to compute, because it has no sitemap entry to carry
+      // one — sourceFiles exist to date a published URL, and this address publishes nothing. The
+      // exemption is narrow and self-proving: an entry that is NOT a redirect still fails below,
+      // and buildSeo itself refuses a redirect route that is not `sitemap: false`.
+      assert.equal(route.sitemap, false, `redirect route "${route.path}" must be sitemap: false`);
+      assert.deepEqual(route.sourceFiles ?? [], [], `redirect route "${route.path}" should declare no sourceFiles`);
+      continue;
+    }
     assert.ok(
       Array.isArray(route.sourceFiles) && route.sourceFiles.length > 0,
       `route "${route.path}" must declare a non-empty sourceFiles array`,
@@ -2125,6 +2135,149 @@ test('global dependency scope contract: every file traced as materially affectin
   }
 });
 
+// --- Redirect routes. /contributing was a full second rendering of /community at a second
+// address, with a `canonicalPath` hint as the only thing asking search engines not to treat it as
+// its own page. A canonical is advice; a redirect stub has nothing to duplicate in the first place. ---
+
+const REDIRECT_ROUTES_FIXTURE = {
+  siteUrl: 'https://agentforge4j.org',
+  routes: [
+    { path: '/', title: 'Home Title', description: 'Home description.' },
+    { path: '/community', title: 'Community — AgentForge4j', description: 'Community description.' },
+    {
+      path: '/contributing',
+      title: 'Redirecting to Community — AgentForge4j',
+      description: 'This address has moved.',
+      redirectTo: '/community',
+      sitemap: false,
+    },
+  ],
+};
+
+/** The two forms a stub carries for one destination — see injectRedirectStub's docblock for why
+ * they must not be collapsed: `destination` is where the browser goes (relative to the serving
+ * origin), `canonical` is what the address claims about itself on the public web. */
+const STUB_ARGS = {
+  destination: '/community/',
+  canonical: 'https://agentforge4j.org/community/',
+  title: 'Redirecting to Community — AgentForge4j',
+  description: 'This address has moved.',
+};
+
+test('a redirect stub forwards RELATIVE to the serving origin, is noindex, and canonicalises absolutely to the destination', () => {
+  const html = injectRedirectStub(BASE_INDEX_HTML, STUB_ARGS);
+  assert.match(html, /<meta http-equiv="refresh" content="0; url=\/community\/" \/>/);
+  assert.match(html, new RegExp(`<meta name="robots" id="${ROBOTS_META_ID}" content="noindex, follow" />`));
+  assert.match(html, /<link rel="canonical" href="https:\/\/agentforge4j\.org\/community\/" \/>/);
+  // The whole defect this guards: no navigation value may name a hard-coded origin. The canonical
+  // and og:url legitimately do, so this is scoped to the two that are instructions.
+  assert.doesNotMatch(html, /content="0; url=https?:\/\//);
+  assert.doesNotMatch(html, /<a href="https?:\/\//);
+});
+
+test('injectRedirectStub REJECTS an absolute destination rather than emitting one', () => {
+  assert.throws(
+    () => injectRedirectStub(BASE_INDEX_HTML, { ...STUB_ARGS, destination: 'https://agentforge4j.org/community/' }),
+    /must be root-relative/,
+  );
+});
+
+test('injectRedirectStub REJECTS a protocol-relative destination — `//host/path` is absolute wearing a relative shape', () => {
+  assert.throws(
+    () => injectRedirectStub(BASE_INDEX_HTML, { ...STUB_ARGS, destination: '//evil.example/community/' }),
+    /must be root-relative/,
+  );
+});
+
+test('NEGATIVE CONTROL — a redirect stub carries NO page content: no <h1>, and nothing of the destination page', () => {
+  const html = injectRedirectStub(BASE_INDEX_HTML, STUB_ARGS);
+  assert.equal((html.match(/<h1[\s>]/g) ?? []).length, 0);
+  // Only a link through to the destination — the whole point is that there is no second copy — and
+  // that link is relative too, so a JS-less visitor on a non-production origin stays on it.
+  assert.match(html, /<div id="root"><p><a href="\/community\/">/);
+});
+
+test('a redirect stub still carries social metadata describing the forward, not the destination page', () => {
+  const html = injectRedirectStub(BASE_INDEX_HTML, STUB_ARGS);
+  assert.match(html, /<meta property="og:url" content="https:\/\/agentforge4j\.org\/community\/" \/>/);
+  assert.match(html, /<meta property="og:title" content="Redirecting to Community — AgentForge4j" \/>/);
+});
+
+test('the destination and the canonical are each escaped into every attribute they reach', () => {
+  const html = injectRedirectStub(BASE_INDEX_HTML, {
+    ...STUB_ARGS,
+    destination: '/a&b/',
+    canonical: 'https://agentforge4j.org/a&b/',
+  });
+  assert.match(html, /href="\/a&amp;b\/"/);
+  assert.match(html, /href="https:\/\/agentforge4j\.org\/a&amp;b\/"/);
+  assert.doesNotMatch(html, /url=\/a&b\//);
+});
+
+test('buildSeo writes a redirect route as a stub and keeps it out of the sitemap entirely', () => {
+  const { distDir, seoRoutesPath, catalogueDataPath } = fixture({ routes: REDIRECT_ROUTES_FIXTURE });
+  const result = buildSeo({ distDir, seoRoutesPath, catalogueDataPath, repoRoot: REAL_MODULE_ROOT });
+
+  assert.ok(!result.sitemapUrls.includes('https://agentforge4j.org/contributing/'));
+  assert.ok(result.sitemapUrls.includes('https://agentforge4j.org/community/'));
+
+  const stub = readFileSync(join(distDir, 'contributing', 'index.html'), 'utf8');
+  assert.match(stub, new RegExp(`<meta name="robots" id="${ROBOTS_META_ID}" content="noindex, follow" />`));
+  assert.match(stub, /<link rel="canonical" href="https:\/\/agentforge4j\.org\/community\/" \/>/);
+  assert.equal((stub.match(/<h1[\s>]/g) ?? []).length, 0);
+  // End to end, through the real buildSeo path: the forward is relative even though the config's
+  // siteUrl is absolute and sits right beside it.
+  assert.match(stub, /<meta http-equiv="refresh" content="0; url=\/community\/" \/>/);
+  assert.doesNotMatch(stub, /content="0; url=https?:\/\//);
+});
+
+test('a redirect route never receives a prerendered snapshot, even if one is somehow supplied', () => {
+  // The prerenderer already excludes redirect routes (prerender-routes.mjs), but a snapshot reaching
+  // here would splice the DESTINATION page's markup into the redirecting address — re-creating the
+  // duplicate content the redirect exists to remove.
+  const { distDir, seoRoutesPath, catalogueDataPath } = fixture({ routes: REDIRECT_ROUTES_FIXTURE });
+  buildSeo({
+    distDir,
+    seoRoutesPath,
+    catalogueDataPath,
+    repoRoot: REAL_MODULE_ROOT,
+    snapshots: { '/contributing': '<h1>Community &amp; Contributing</h1><p>a whole duplicate page</p>' },
+  });
+  const stub = readFileSync(join(distDir, 'contributing', 'index.html'), 'utf8');
+  assert.doesNotMatch(stub, /a whole duplicate page/);
+  assert.equal((stub.match(/<h1[\s>]/g) ?? []).length, 0);
+});
+
+test('a redirect route that is not marked sitemap: false fails the build rather than being submitted for indexing', () => {
+  const { distDir, seoRoutesPath, catalogueDataPath } = fixture({
+    routes: {
+      ...REDIRECT_ROUTES_FIXTURE,
+      routes: REDIRECT_ROUTES_FIXTURE.routes.map((route) =>
+        route.redirectTo ? { ...route, sitemap: true } : route,
+      ),
+    },
+  });
+  assert.throws(
+    () => buildSeo({ distDir, seoRoutesPath, catalogueDataPath, repoRoot: REAL_MODULE_ROOT }),
+    /declares redirectTo but is not marked `"sitemap": false`/,
+  );
+});
+
+test('the REAL committed config makes /contributing a redirect to /community, with exactly one indexable representation between them', () => {
+  const real = JSON.parse(readFileSync(join(REAL_MODULE_ROOT, 'src/config/seo-routes.json'), 'utf8'));
+  const contributing = real.routes.find((route) => route.path === '/contributing');
+  const community = real.routes.find((route) => route.path === '/community');
+  assert.equal(contributing.redirectTo, '/community');
+  assert.equal(contributing.sitemap, false);
+  assert.equal(contributing.canonicalPath, undefined);
+  // The destination is the one indexable representation: a real entry, in the sitemap, canonical to
+  // itself.
+  assert.ok(community);
+  assert.notEqual(community.sitemap, false);
+  assert.equal(community.canonicalPath, undefined);
+  assert.equal(community.redirectTo, undefined);
+});
+
 // --- The not-found shell. copy-404.mjs copies dist/index.html verbatim (right for the body, which
 // must stay the empty pre-prerender mount point), which left the head saying the home page's title,
 // description, canonical and social tags on every mistyped address — and on /404.html itself, which
@@ -2267,6 +2420,17 @@ test('the REAL committed seo-routes.json declares not-found metadata — without
 const PRODUCERS = [
   ['injectHead', () => injectHead(BASE_INDEX_HTML, { title: 'T', description: 'D', canonical: 'https://agentforge4j.org/x/' })],
   ['injectNotFoundHead', () => injectNotFoundHead(BASE_INDEX_HTML, NOT_FOUND_CONFIG)],
+  [
+    'injectRedirectStub',
+    () =>
+      injectRedirectStub(BASE_INDEX_HTML, {
+        destination: '/community/',
+        canonical: 'https://agentforge4j.org/community/',
+        title: 'T',
+        description: 'D',
+        linkText: 'Continue to Community',
+      }),
+  ],
 ];
 
 /**
@@ -2288,6 +2452,9 @@ const PRODUCER_OMISSIONS = {
   // A not-found page has nothing truthful to say about which URL its content belongs to, so it is
   // the one producer that removes a route-scoped tag rather than rewriting it.
   injectNotFoundHead: ['og:url'],
+  // A redirect stub omits nothing: its whole claim is "the content is at the destination", so its
+  // canonical source IS that destination and all five tags are rewritten rather than dropped.
+  injectRedirectStub: [],
 };
 
 // --- The shared route-scoped social table. Every producer of a <head> derives its social
@@ -2388,6 +2555,29 @@ test('the not-found head keeps every route-scoped social tag except og:url, and 
   // Neither removal (the canonical link, og:url) may leave the line it occupied behind as
   // whitespace — the cosmetic half of the finding, checked on the real generated head.
   assert.doesNotMatch(html, /\n[ \t]+\n/, 'a removed tag left a blank, space-filled line in the head');
+});
+
+test('the redirect stub renders human-readable link text, not the raw destination URL', () => {
+  const html = injectRedirectStub(BASE_INDEX_HTML, {
+    ...STUB_ARGS,
+    title: 'T',
+    description: 'D',
+    linkText: 'Continue to Community & Contributing',
+  });
+  // What a visitor with JavaScript disabled actually reads.
+  assert.match(html, /<a href="\/community\/">Continue to Community &amp; Contributing<\/a>/);
+  assert.doesNotMatch(html, />Continue to https:\/\//);
+});
+
+test('the redirect stub escapes its link text rather than trusting it', () => {
+  const html = injectRedirectStub(BASE_INDEX_HTML, {
+    ...STUB_ARGS,
+    title: 'T',
+    description: 'D',
+    linkText: 'a <script>alert(1)</script> b',
+  });
+  assert.doesNotMatch(html, /<script>alert\(1\)<\/script>/);
+  assert.match(html, /&lt;script&gt;alert\(1\)&lt;\/script&gt;/);
 });
 
 // --- `$`-substitution. `escapeHtml` handles `& < > "` and deliberately not `$`, so every value

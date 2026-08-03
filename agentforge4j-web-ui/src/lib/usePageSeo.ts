@@ -231,6 +231,22 @@ function applyRouteSeo({ title, description, canonical, robots, jsonLd }: Resolv
  * path here that resolves to "nothing" and no caller-side guard to write. */
 function resolveRouteSeo(path: string): ResolvedRouteSeo {
   const staticEntry = findSeoRoute(path);
+  if (staticEntry?.redirectTo !== undefined) {
+    // A redirect stub, not a page — the same state build-seo.mjs's injectRedirectStub writes into
+    // this address's static shell, so a fresh load and the instant before App.tsx's <Navigate>
+    // fires describe the address identically instead of momentarily contradicting each other. The
+    // page branch below would otherwise emit a SELF-canonical on a redirecting address, and clear
+    // the very `noindex` the stub is serving. Both are transient, but they are transient by luck of
+    // render ordering rather than by construction, and verify-client-nav-seo.mjs deliberately
+    // excludes redirect routes from its convergence corpus, so nothing else would catch it.
+    return {
+      title: staticEntry.title,
+      description: staticEntry.description,
+      canonical: canonicalUrl(staticEntry.redirectTo),
+      robots: 'noindex, follow',
+      jsonLd: staticEntry.jsonLd,
+    };
+  }
   if (staticEntry) {
     return {
       title: staticEntry.title,

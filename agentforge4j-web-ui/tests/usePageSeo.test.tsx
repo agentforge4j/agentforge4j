@@ -42,7 +42,7 @@ import {
 } from '../scripts/build-seo.mjs';
 // The hook's own copy of the table, imported by value so the two can be compared directly rather
 // than only through the tags the hook happened to write on three sampled routes.
-import { ROUTE_SCOPED_SOCIAL_TAGS as HOOK_ROUTE_SCOPED_SOCIAL_TAGS } from '@/lib/usePageSeo';
+import { ROUTE_SCOPED_SOCIAL_TAGS as HOOK_ROUTE_SCOPED_SOCIAL_TAGS, usePageSeo } from '@/lib/usePageSeo';
 // `catalogueData` is already imported above — this side of the merge brought only the client-side
 // half of the duplicated description units, which the corpus tests below drive against the build's.
 import {
@@ -66,6 +66,22 @@ function renderAt(path: string) {
         <App />
       </MemoryRouter>
     </ThemeProvider>,
+  );
+}
+
+/** Mounts `usePageSeo` alone at `path`, with no <Routes> around it. `renderAt` above cannot observe
+ * a redirect route's own head state: <App> renders a <Navigate> for those paths, so the location has
+ * already moved on by the time anything is asserted. This harness isolates what the hook resolves
+ * FOR the address, which is the state a visitor's browser actually holds on a fresh stub load. */
+function renderHookAt(path: string) {
+  function HookOnly() {
+    usePageSeo();
+    return null;
+  }
+  return render(
+    <MemoryRouter initialEntries={[path]}>
+      <HookOnly />
+    </MemoryRouter>,
   );
 }
 
@@ -123,6 +139,31 @@ describe('usePageSeo', () => {
 
   test('/contributing canonicalizes to /community, not itself', () => {
     renderAt('/contributing');
+    expect(canonicalHref()).toBe('https://agentforge4j.org/community/');
+  });
+
+  test('a redirect route describes itself exactly as its static stub does — noindex, canonical at the destination', () => {
+    // Rendered WITHOUT <App>, deliberately. The one address where the build-time head and the
+    // client-side head could disagree by construction is a redirect route: the shell build-seo.mjs
+    // serves for /contributing/ is a noindex stub canonicalised at /community/, and this hook owns
+    // that same document until App.tsx's <Navigate> fires. Mounting the full <App> would perform
+    // that navigation immediately and settle on /community/, so it can only observe the converged
+    // state — which is why the page-branch behaviour here (a SELF-canonical on a redirecting
+    // address, and the stub's noindex cleared) went unnoticed. verify-client-nav-seo.mjs excludes
+    // redirect routes from its convergence corpus for its own good reasons, so this is the only
+    // place the two surfaces are compared on this route.
+    renderHookAt('/contributing');
+    expect(canonicalHref()).toBe('https://agentforge4j.org/community/');
+    expect(robotsContent()).toBe('noindex, follow');
+    expect(document.querySelector('meta[name="robots"]')?.id).toBe(ROBOTS_META_ID);
+  });
+
+  test('navigating on from a redirect route clears the stub noindex rather than carrying it to the destination', () => {
+    // Through the real <App>, so the <Navigate> genuinely fires. Only passes because the stub's
+    // robots meta carries the shared id: setRobots(null) removes it via getElementById, so an
+    // id-less tag would survive and quietly suppress a perfectly indexable page.
+    renderAt('/contributing');
+    expect(robotsContent()).toBeNull();
     expect(canonicalHref()).toBe('https://agentforge4j.org/community/');
   });
 

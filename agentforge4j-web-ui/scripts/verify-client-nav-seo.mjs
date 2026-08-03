@@ -108,7 +108,15 @@ function collectNavigablePaths({
   const catalogueData = existsSync(catalogueDataPath)
     ? JSON.parse(readFileSync(catalogueDataPath, 'utf8'))
     : { workflows: [] };
-  const paths = routes.map((route) => (route.path === '/' ? '/' : `${route.path}/`));
+  // Redirect routes are excluded: they are forwards, not destinations. Visiting one lands the
+  // browser on its target, so "the head at this path" is not a thing that exists for them — and a
+  // convergence check that waited for the location to settle on the redirecting address would hang
+  // rather than fail, which is the worst way to learn this. Their behaviour is covered where it
+  // belongs: verify-seo.mjs asserts the served stub forwards, is noindex and carries no content,
+  // and tests/routeInventory.test.ts asserts each one targets a real indexable route.
+  const paths = routes
+    .filter((route) => !route.redirectTo)
+    .map((route) => (route.path === '/' ? '/' : `${route.path}/`));
   for (const workflow of catalogueData.workflows ?? []) {
     paths.push(`/catalogue/${workflow.id}/`);
   }

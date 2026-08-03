@@ -409,12 +409,17 @@ function socialTagPattern(attribute, key, { consumeTrailingWhitespace = false } 
  * The `[pattern, replacement]` pairs for every route-scoped social tag, derived from one route's
  * resolved values — the single place any producer turns `ROUTE_SCOPED_SOCIAL_TAGS` into edits.
  *
- * Both producers of a `<head>` in this module go through here: ordinary route shells
- * (`injectHead`) and the not-found shell (`injectNotFoundHead`). Any further one must too, deriving
- * its social replacements from this function rather than hand-copying the five tags, because a copy
- * is a copy whether it lives in another module or in the function next door — and a divergence
- * between two such copies is the defect this whole table exists to close. `build-seo.test.mjs`'s
- * `PRODUCERS` list is where each producer is registered for the mutation test that enforces it.
+ * Every producer of a `<head>` in this module goes through here: ordinary route shells
+ * (`injectHead`), the not-found shell (`injectNotFoundHead`) and redirect stubs
+ * (`injectRedirectStub`). Any further one must too, deriving its social replacements from this
+ * function rather than hand-copying the five tags, because a copy is a copy whether it lives in
+ * another module or in the function next door — and a divergence between two such copies is the
+ * defect this whole table exists to close. `build-seo.test.mjs`'s `PRODUCERS` list is where each
+ * producer is registered for the mutation test that enforces it.
+ *
+ * The three differ only in what they feed this function, which is the point: a route shell derives
+ * `og:url` from its own canonical, a redirect stub from its destination (the stub is not a page
+ * about itself), and a not-found page from nothing at all.
  *
  * The replacement half of each pair is a plain string carrying `escapeHtml`ed route data, and
  * `escapeHtml` deliberately does not escape `$`. Every consumer must therefore apply it through a
@@ -470,6 +475,100 @@ export function injectHead(html, { title, description, canonical }) {
     result = result.replace(pattern, () => replacement);
   }
   return result;
+}
+
+/**
+ * Turns a route's shell into a redirect stub: it forwards to `target`, says so, and carries no
+ * content of its own.
+ *
+ * The alternative this replaces was a second, fully-rendered copy of the destination page at a
+ * second address, distinguished only by a `canonicalPath` hint. A canonical is advice, not a rule —
+ * so the site was publishing genuine duplicate content and asking search engines to be
+ * understanding about it. A stub has nothing to duplicate.
+ *
+ * `noindex, follow` (not just the canonical) because this address should not be a search result at
+ * all; `follow` so the link to the destination still carries signal. The canonical names the
+ * destination, which is the standard "the real page is over there" pairing for a redirect shell.
+ *
+ * The body is replaced with a plain link rather than left empty: with JavaScript disabled the meta
+ * refresh still fires, but a client that honours neither must still have a way through, and a
+ * crawler that reads the body sees where this address leads.
+ *
+ * On a fresh load with JavaScript enabled this address is forwarded TWICE: the SPA mounts, the
+ * router's REDIRECT_ROUTES entry navigates client-side, and then the refresh the parser already
+ * scheduled performs a full document load of the same destination. That is deliberate and not a
+ * defect to fix by conditioning the refresh on `<noscript>`. The refresh is the only fallback that
+ * still works when JavaScript is enabled but the bundle never arrives (network failure, a blocked
+ * script, an unsupported browser); moving it behind `<noscript>` would strand exactly those
+ * visitors on the anchor. The cost of keeping it unconditional is one redundant same-origin
+ * document request on a low-traffic redirect address, which is the cheaper side of that trade.
+ *
+ * GitHub Pages serves static files with no redirect configuration of any kind (see
+ * .github/workflows/deploy.yml), so a real 301 is not implementable on this host — a meta refresh
+ * plus the canonical is the strongest available equivalent, and it is the same mechanism the docs
+ * archive stubs (agentforge4j-docs/scripts/assemble-site.mjs) already use for the same reason.
+ *
+ * `destination` and `canonical` are two different things and must not be collapsed into one value,
+ * even though they name the same page. `canonical` is a *claim* about where this content really
+ * lives on the public web, so it is absolute (`https://agentforge4j.org/community/`) like every
+ * other canonical this site publishes. `destination` is an *instruction* telling the browser where
+ * to go next, so it must be root-relative (`/community/`) and resolve against whatever origin is
+ * actually serving the page. An absolute destination forwards every non-production origin — the
+ * e2e preview server, a local `npm run preview`, the documented local Docker build, a self-hosted
+ * deployment, a fork's Pages origin — off the artifact under test and onto the live public site.
+ * Both docs-side producers of this same meta refresh (assemble-site.mjs's `writeRedirectStubs` and
+ * the plugin stubs redirect-stub-seo.mjs annotates) already emit root-relative targets; this is the
+ * same rule, not a new one.
+ */
+export function injectRedirectStub(html, { destination, canonical, title, description, linkText = 'Continue' }) {
+  if (!destination.startsWith('/') || destination.startsWith('//')) {
+    // `//host/path` is protocol-relative — an absolute URL wearing a relative shape, and the one
+    // form a `startsWith('/')` check alone would let through onto a foreign origin.
+    throw new Error(
+      `build-seo: a redirect stub's destination must be root-relative, got "${destination}" — ` +
+        'an absolute or protocol-relative target forwards non-production origins off the artifact',
+    );
+  }
+  const safeDestination = escapeHtml(destination);
+  const safeCanonical = escapeHtml(canonical);
+  const replacements = [
+    [/<title>[\s\S]*?<\/title>/, `<title>${escapeHtml(title)}</title>`],
+    [
+      /<meta\s+name="description"[\s\S]*?\/>/,
+      `<meta name="description" content="${escapeHtml(description)}" />\n` +
+        // Carries ROBOTS_META_ID for the same reason the not-found head does: it marks this tag as
+        // written by this build, so usePageSeo's setRobots(null) can remove it on a client-side
+        // navigation away from the stub. Without the id the lookup misses and a `noindex` written
+        // here would ride along onto the destination route — precisely the failure setRobots's own
+        // docblock is written against.
+        `    <meta name="robots" id="${ROBOTS_META_ID}" content="noindex, follow" />\n` +
+        `    <meta http-equiv="refresh" content="0; url=${safeDestination}" />`,
+    ],
+    [/<link\s+rel="canonical"[\s\S]*?\/>/, `<link rel="canonical" href="${safeCanonical}" />`],
+    // The five social tags from the one shared table. A redirect stub's `canonical` source IS the
+    // destination — this page's whole claim is "the content is over there" — so unlike the
+    // not-found head it rewrites all five rather than removing one. Listing them here instead would
+    // be a third copy of the list the table exists to keep single. These are claims about the
+    // public web address, so they take the absolute `canonical`, not the relative destination.
+    ...routeScopedSocialReplacements({ title, description, canonical }),
+  ];
+  let result = html;
+  for (const [pattern, replacement] of replacements) {
+    if (!pattern.test(result)) {
+      throw new Error(`build-seo: expected tag not found while building a redirect stub: ${pattern}`);
+    }
+    result = result.replace(pattern, () => replacement);
+  }
+  if (!EMPTY_ROOT_PATTERN.test(result)) {
+    throw new Error('build-seo: expected an empty <div id="root"></div> mount point while building a redirect stub');
+  }
+  return result.replace(
+    EMPTY_ROOT_PATTERN,
+    // Root-relative for the same reason the refresh is: this anchor is the way through for a client
+    // that honours neither the refresh nor JavaScript, and it must lead to this deployment's own
+    // copy of the destination, not to the public site.
+    () => `<div id="root"><p><a href="${safeDestination}">${escapeHtml(linkText)}</a></p></div>`,
+  );
 }
 
 /**
@@ -882,6 +981,36 @@ export function buildSeo({
   let shellsWritten = 0;
 
   for (const route of routes) {
+    if (route.redirectTo) {
+      // A permanent forward, not a page — no prerendered body, no structured data, and never a
+      // sitemap entry regardless of what the entry says (asserted rather than assumed below, since
+      // a redirect listed for indexing is a config error, not a preference).
+      if (route.sitemap !== false) {
+        throw new Error(
+          `build-seo: route "${route.path}" declares redirectTo but is not marked \`"sitemap": false\` — ` +
+            'a redirect has no content to index and must never be submitted for indexing',
+        );
+      }
+      writeShell(
+        distDir,
+        route.path,
+        injectRedirectStub(baseHtml, {
+          // Relative: where the browser goes next, resolved against the serving origin.
+          destination: withTrailingSlash(route.redirectTo),
+          // Absolute: what this address claims about itself on the public web.
+          canonical: `${siteUrl}${withTrailingSlash(route.redirectTo)}`,
+          title: route.title,
+          description: route.description,
+          // Human-readable, not the raw URL: this body is what a visitor with JavaScript disabled
+          // actually reads, and "Continue to https://agentforge4j.org/community/" is an address,
+          // not a sentence. The destination route's own declared title is the name the rest of the
+          // site already uses for that page.
+          linkText: `Continue to ${routes.find((entry) => entry.path === route.redirectTo)?.title ?? route.redirectTo}`,
+        }),
+      );
+      shellsWritten += 1;
+      continue;
+    }
     const canonicalPath = route.canonicalPath ?? route.path;
     const canonical = `${siteUrl}${withTrailingSlash(canonicalPath)}`;
     let html = injectHead(baseHtml, { title: route.title, description: route.description, canonical });

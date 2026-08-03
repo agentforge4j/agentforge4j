@@ -129,11 +129,11 @@
     },
     {
       "path": "/contributing",
-      "title": "Contributing — AgentForge4j",
-      "description": "AgentForge4j is open source and welcomes contributions — bug reports, documentation improvements, and code.",
-      "canonicalPath": "/community",
+      "title": "Redirecting to Community & Contributing — AgentForge4j",
+      "description": "This address has moved to the Community & Contributing page.",
+      "redirectTo": "/community",
       "sitemap": false,
-      "sourceFiles": ["agentforge4j-web-ui/src/pages/CommunityPage.tsx", "agentforge4j-web-ui/src/copy/community.ts"]
+      "sourceFiles": []
     },
     {
       "path": "/security",

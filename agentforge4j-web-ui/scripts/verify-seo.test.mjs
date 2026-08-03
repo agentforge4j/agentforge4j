@@ -964,11 +964,11 @@ test('a catalogue-shaped sitemap URL with no structured data passes clean — th
 });
 
 // --- loadStaticRouteInventory: the real per-route verification list, derived from the committed
-// seo-routes.json rather than a hand-maintained subset — this is what makes a sitemap: false alias
-// route like /contributing actually get checked at all, since the sitemap-driven loop above never
-// sees it (it is deliberately excluded from the sitemap). ---
+// seo-routes.json rather than a hand-maintained subset — this is what makes a sitemap: false route
+// like the /contributing redirect stub actually get checked at all, since the sitemap-driven loop
+// above never sees it (it is deliberately excluded from the sitemap). ---
 
-test('loadStaticRouteInventory derives every route from the real committed seo-routes.json, including the sitemap: false /contributing alias', () => {
+test('loadStaticRouteInventory derives every route from the real committed seo-routes.json, including the sitemap: false /contributing redirect stub', () => {
   const { routes } = JSON.parse(readFileSync(join(REAL_MODULE_ROOT, 'src/config/seo-routes.json'), 'utf8'));
   const inventory = loadStaticRouteInventory(join(REAL_MODULE_ROOT, 'src/config/seo-routes.json'));
   assert.equal(inventory.length, routes.length, 'every configured route must be in the inventory, sitemap: false or not');
@@ -977,7 +977,12 @@ test('loadStaticRouteInventory derives every route from the real committed seo-r
   assert.equal(
     contributing.expectedCanonical,
     'https://agentforge4j.org/community/',
-    '/contributing declares canonicalPath: "/community" — its expected canonical must be the alias target, trailing-slash form',
+    '/contributing declares redirectTo: "/community" — its expected canonical is the DESTINATION\'s absolute trailing-slash URL, because a canonical is a claim about the public address',
+  );
+  assert.equal(
+    contributing.redirectTarget,
+    '/community/',
+    "/contributing's redirect TARGET is root-relative — it is a navigation instruction, and an absolute one would forward every non-production origin off to the public site",
   );
   // A route with no canonicalPath expects its own trailing-slash URL.
   const architecture = inventory.find((entry) => entry.requestPath === '/architecture/');
@@ -1045,7 +1050,7 @@ function fixtureDirWithAliasRoute({ contributingCanonical = 'https://agentforge4
   return distDir;
 }
 
-test('a sitemap: false alias route is still verified via the real seo-routes.json-derived inventory (passes when its shell is correct)', async () => {
+test('a sitemap: false page route is still verified via the real seo-routes.json-derived inventory (passes when its shell is correct)', async () => {
   const distDir = fixtureDirWithAliasRoute();
   const staticRoutes = [
     { requestPath: '/', expectedCanonical: 'https://agentforge4j.org/' },
@@ -1054,7 +1059,7 @@ test('a sitemap: false alias route is still verified via the real seo-routes.jso
   await assert.doesNotReject(() => verifySeo({ distDir, staticRoutes }));
 });
 
-test('a sitemap: false alias route with the wrong canonical fails the gate with a clear route + expected/actual message', async () => {
+test('a sitemap: false page route with the wrong canonical fails the gate with a clear route + expected/actual message', async () => {
   const distDir = fixtureDirWithAliasRoute({ contributingCanonical: 'https://agentforge4j.org/contributing/' });
   const staticRoutes = [
     { requestPath: '/', expectedCanonical: 'https://agentforge4j.org/' },
@@ -1066,7 +1071,7 @@ test('a sitemap: false alias route with the wrong canonical fails the gate with 
   );
 });
 
-test('a sitemap: false alias route with an empty/broken shell (no real <h1>) fails the gate', async () => {
+test('a sitemap: false page route with an empty/broken shell (no real <h1>) fails the gate', async () => {
   const distDir = fixtureDirWithAliasRoute({ contributingH1: '<div id="root"></div>' });
   const staticRoutes = [
     { requestPath: '/', expectedCanonical: 'https://agentforge4j.org/' },
@@ -1075,6 +1080,169 @@ test('a sitemap: false alias route with an empty/broken shell (no real <h1>) fai
   await assert.rejects(
     () => verifySeo({ distDir, staticRoutes }),
     /\/contributing\/ — expected exactly one <h1> in the raw served HTML, found 0/,
+  );
+});
+
+// --- Redirect stubs: the branch that holds a `redirectTarget` route to the OPPOSITE standard of a
+// page (must forward, must be noindex, must carry no <h1>) — and, just as importantly, to the SAME
+// standard as a page for everything a stub still has. The stub used to `continue` out of the loop
+// before assertSocialMetaConsistent ran, so its five route-scoped social tags and its site-constant
+// tags were never checked against what was actually served, while the summary line went on claiming
+// the whole enumerated set had been. Each negative case below is a corruption that PASSED then. ---
+
+const STUB_TARGET = '/community/';
+
+/** A redirect stub as build-seo.mjs's injectRedirectStub really writes one: root-relative refresh,
+ * an id-bearing noindex, the destination's absolute canonical, all five route-scoped social tags
+ * derived from that canonical, and no <h1>. `overrides` corrupt exactly one thing at a time. */
+function stubFixture({
+  refreshTarget = STUB_TARGET,
+  robotsAttrs = ` id="${ROBOTS_META_ID}" content="noindex, follow"`,
+  canonical = 'https://agentforge4j.org/community/',
+  socialOverrides = {},
+  constantSocial = {},
+  h1 = '',
+} = {}) {
+  const distDir = fixtureDir();
+  writePage(distDir, '', page({ canonical: 'https://agentforge4j.org/' }));
+  // The real destination has to exist: the stub's fallback anchor is a same-origin internal link,
+  // so the link crawl resolves and fetches it. That it does so is itself the proof the anchor stayed
+  // on this origin — an absolute anchor pointing at the public site would be skipped as external.
+  writePage(distDir, 'community', page({ canonical: 'https://agentforge4j.org/community/', h1: '<h1>Community</h1>' }));
+  writePage(
+    distDir,
+    'contributing',
+    page({
+      canonical,
+      title: 'Community & contributing — AgentForge4j',
+      description: 'This address has moved to the Community page.',
+      h1,
+      socialOverrides,
+      constantSocial,
+      extraHead:
+        `<meta name="robots"${robotsAttrs} />` +
+        `<meta http-equiv="refresh" content="0; url=${refreshTarget}" />`,
+      links: [],
+      extraBody: `<div id="root"><p><a href="${refreshTarget}">Continue</a></p></div>`,
+    }),
+  );
+  writeFileSync(
+    join(distDir, 'sitemap.xml'),
+    sitemapXml([
+      { url: 'https://agentforge4j.org/', lastmod: '2026-07-20' },
+      { url: 'https://agentforge4j.org/community/', lastmod: '2026-07-20' },
+    ]),
+    'utf8',
+  );
+  return distDir;
+}
+
+const STUB_ROUTES = [
+  { requestPath: '/', expectedCanonical: 'https://agentforge4j.org/' },
+  { requestPath: '/community/', expectedCanonical: 'https://agentforge4j.org/community/' },
+  {
+    requestPath: '/contributing/',
+    expectedCanonical: 'https://agentforge4j.org/community/',
+    redirectTarget: STUB_TARGET,
+  },
+];
+
+test('a correctly-built redirect stub passes the gate', async () => {
+  await assert.doesNotReject(() => verifySeo({ distDir: stubFixture(), staticRoutes: STUB_ROUTES }));
+});
+
+test('a redirect stub whose refresh target is absolute fails — it would forward every non-production origin off to the public site', async () => {
+  await assert.rejects(
+    () =>
+      verifySeo({
+        distDir: stubFixture({ refreshTarget: 'https://agentforge4j.org/community/' }),
+        staticRoutes: STUB_ROUTES,
+      }),
+    /\/contributing\/ — expected a meta refresh to "\/community\/", got "https:\/\/agentforge4j\.org\/community\/"/,
+  );
+});
+
+test('a redirect stub whose refresh target is protocol-relative fails — `//host/path` is an absolute URL wearing a relative shape', async () => {
+  // The inventory is given the same protocol-relative value, so the equality check above cannot be
+  // what rejects this: the dedicated root-relative assertion is.
+  await assert.rejects(
+    () =>
+      verifySeo({
+        distDir: stubFixture({ refreshTarget: '//evil.example/community/' }),
+        // Looked up by requestPath, never by index — an index silently retargets this at a
+        // different route the moment the fixture list grows.
+        staticRoutes: STUB_ROUTES.map((route) =>
+          route.redirectTarget === undefined ? route : { ...route, redirectTarget: '//evil.example/community/' },
+        ),
+      }),
+    /the meta refresh target "\/\/evil\.example\/community\/" is not root-relative/,
+  );
+});
+
+test('a redirect stub with no noindex fails — a canonical alone is a hint', async () => {
+  await assert.rejects(
+    () => verifySeo({ distDir: stubFixture({ robotsAttrs: ` id="${ROBOTS_META_ID}" content="all"` }), staticRoutes: STUB_ROUTES }),
+    /\/contributing\/ — a redirect stub must be noindex, got "all"/,
+  );
+});
+
+test('a redirect stub whose robots meta lacks the shared id fails — the client-side hook could not remove it, and the noindex would ride onto the destination', async () => {
+  await assert.rejects(
+    () => verifySeo({ distDir: stubFixture({ robotsAttrs: ' content="noindex, follow"' }), staticRoutes: STUB_ROUTES }),
+    /the redirect stub's robots meta has id null, expected "seo-robots"/,
+  );
+});
+
+test('a redirect stub carrying an <h1> fails — content here means the destination page has been duplicated at this address again', async () => {
+  await assert.rejects(
+    () => verifySeo({ distDir: stubFixture({ h1: '<h1>Community</h1>' }), staticRoutes: STUB_ROUTES }),
+    /\/contributing\/ — a redirect stub must carry no <h1> at all, found 1/,
+  );
+});
+
+// The four cases the `continue` used to exempt. Each of these built a green gate run before the
+// social check was moved out of the page-only branch.
+
+test('a redirect stub whose og:url disagrees with its own canonical fails', async () => {
+  await assert.rejects(
+    () =>
+      verifySeo({
+        distDir: stubFixture({ socialOverrides: { 'og:url': 'https://evil.example/WRONG' } }),
+        staticRoutes: STUB_ROUTES,
+      }),
+    /\/contributing\/ — og:url is "https:\/\/evil\.example\/WRONG" but the page's own canonical is/,
+  );
+});
+
+test('a redirect stub whose og:title disagrees with its own <title> fails', async () => {
+  await assert.rejects(
+    () =>
+      verifySeo({
+        distDir: stubFixture({ socialOverrides: { 'og:title': 'Something Else Entirely' } }),
+        staticRoutes: STUB_ROUTES,
+      }),
+    /\/contributing\/ — og:title is "Something Else Entirely" but the page's own title is/,
+  );
+});
+
+test('a redirect stub missing a route-scoped social tag entirely fails', async () => {
+  await assert.rejects(
+    () => verifySeo({ distDir: stubFixture({ socialOverrides: { 'twitter:description': null } }), staticRoutes: STUB_ROUTES }),
+    /\/contributing\/ — no <meta name="twitter:description"> tag at all/,
+  );
+});
+
+test('a redirect stub missing a site-constant social tag (og:image) fails', async () => {
+  await assert.rejects(
+    () => verifySeo({ distDir: stubFixture({ constantSocial: { 'og:image': null } }), staticRoutes: STUB_ROUTES }),
+    /\/contributing\/ — <meta property="og:image"> is missing or empty/,
+  );
+});
+
+test("a redirect stub whose site-constant social tag disagrees with the rest of the corpus fails — the stub is genuinely part of that corpus now", async () => {
+  await assert.rejects(
+    () => verifySeo({ distDir: stubFixture({ constantSocial: { 'og:site_name': 'A Different Site' } }), staticRoutes: STUB_ROUTES }),
+    /og:site_name/,
   );
 });
 
