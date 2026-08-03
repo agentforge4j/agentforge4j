@@ -116,6 +116,20 @@ export function findSeoRoute(path: string): SeoRouteEntry | undefined {
   return BY_PATH.get(normalizeForMatch(path));
 }
 
+/** A site-relative path in the one trailing-slash form this site serves — the TypeScript twin of
+ * scripts/build-seo.mjs's exported `withTrailingSlash`, and the single place that rule is spelled
+ * out on this side. Every generated route shell is a directory (`dist/<path>/index.html`), which
+ * GitHub Pages only serves without a redirect at its trailing-slash address; `/` is already its own
+ * trailing slash, and an existing trailing slash collapses rather than doubling.
+ *
+ * Appending `'/'` by hand instead is what this exists to prevent: on `'/'` that yields `'//'`, a
+ * protocol-relative URL the browser reads as a foreign host, and on a path already written with a
+ * slash it yields a doubled one. Both pass every route-config gate, so the divergence would only
+ * show up in a browser. */
+export function withTrailingSlash(path: string): string {
+  return path === '/' ? '/' : `${path.replace(/\/+$/, '')}/`;
+}
+
 /** The absolute HTTPS canonical URL for a site-relative path (`/`, `/api`, ...) — always in the
  * trailing-slash form, matching scripts/build-seo.mjs's own `withTrailingSlash` exactly: every
  * generated route shell is a directory (`dist/<path>/index.html`), which GitHub Pages only serves
@@ -123,5 +137,5 @@ export function findSeoRoute(path: string): SeoRouteEntry | undefined {
  * emitting the same form the static shell already declared, or a SPA route transition would
  * silently rewrite `<link rel="canonical">` back to the redirecting non-slash form. */
 export function canonicalUrl(path: string): string {
-  return path === '/' ? `${SITE_URL}/` : `${SITE_URL}${path.replace(/\/+$/, '')}/`;
+  return `${SITE_URL}${withTrailingSlash(path)}`;
 }

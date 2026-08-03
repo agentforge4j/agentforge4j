@@ -2154,46 +2154,64 @@ const REDIRECT_ROUTES_FIXTURE = {
   ],
 };
 
-test('a redirect stub forwards, is noindex, and canonicalises to the destination', () => {
-  const html = injectRedirectStub(BASE_INDEX_HTML, {
-    target: 'https://agentforge4j.org/community/',
-    title: 'Redirecting to Community — AgentForge4j',
-    description: 'This address has moved.',
-  });
-  assert.match(html, /<meta http-equiv="refresh" content="0; url=https:\/\/agentforge4j\.org\/community\/" \/>/);
-  assert.match(html, /<meta name="robots" content="noindex, follow" \/>/);
+/** The two forms a stub carries for one destination — see injectRedirectStub's docblock for why
+ * they must not be collapsed: `destination` is where the browser goes (relative to the serving
+ * origin), `canonical` is what the address claims about itself on the public web. */
+const STUB_ARGS = {
+  destination: '/community/',
+  canonical: 'https://agentforge4j.org/community/',
+  title: 'Redirecting to Community — AgentForge4j',
+  description: 'This address has moved.',
+};
+
+test('a redirect stub forwards RELATIVE to the serving origin, is noindex, and canonicalises absolutely to the destination', () => {
+  const html = injectRedirectStub(BASE_INDEX_HTML, STUB_ARGS);
+  assert.match(html, /<meta http-equiv="refresh" content="0; url=\/community\/" \/>/);
+  assert.match(html, new RegExp(`<meta name="robots" id="${ROBOTS_META_ID}" content="noindex, follow" />`));
   assert.match(html, /<link rel="canonical" href="https:\/\/agentforge4j\.org\/community\/" \/>/);
+  // The whole defect this guards: no navigation value may name a hard-coded origin. The canonical
+  // and og:url legitimately do, so this is scoped to the two that are instructions.
+  assert.doesNotMatch(html, /content="0; url=https?:\/\//);
+  assert.doesNotMatch(html, /<a href="https?:\/\//);
+});
+
+test('injectRedirectStub REJECTS an absolute destination rather than emitting one', () => {
+  assert.throws(
+    () => injectRedirectStub(BASE_INDEX_HTML, { ...STUB_ARGS, destination: 'https://agentforge4j.org/community/' }),
+    /must be root-relative/,
+  );
+});
+
+test('injectRedirectStub REJECTS a protocol-relative destination — `//host/path` is absolute wearing a relative shape', () => {
+  assert.throws(
+    () => injectRedirectStub(BASE_INDEX_HTML, { ...STUB_ARGS, destination: '//evil.example/community/' }),
+    /must be root-relative/,
+  );
 });
 
 test('NEGATIVE CONTROL — a redirect stub carries NO page content: no <h1>, and nothing of the destination page', () => {
-  const html = injectRedirectStub(BASE_INDEX_HTML, {
-    target: 'https://agentforge4j.org/community/',
-    title: 'Redirecting to Community — AgentForge4j',
-    description: 'This address has moved.',
-  });
+  const html = injectRedirectStub(BASE_INDEX_HTML, STUB_ARGS);
   assert.equal((html.match(/<h1[\s>]/g) ?? []).length, 0);
-  // Only a link through to the destination — the whole point is that there is no second copy.
-  assert.match(html, /<div id="root"><p><a href="https:\/\/agentforge4j\.org\/community\/">/);
+  // Only a link through to the destination — the whole point is that there is no second copy — and
+  // that link is relative too, so a JS-less visitor on a non-production origin stays on it.
+  assert.match(html, /<div id="root"><p><a href="\/community\/">/);
 });
 
 test('a redirect stub still carries social metadata describing the forward, not the destination page', () => {
-  const html = injectRedirectStub(BASE_INDEX_HTML, {
-    target: 'https://agentforge4j.org/community/',
-    title: 'Redirecting to Community — AgentForge4j',
-    description: 'This address has moved.',
-  });
+  const html = injectRedirectStub(BASE_INDEX_HTML, STUB_ARGS);
   assert.match(html, /<meta property="og:url" content="https:\/\/agentforge4j\.org\/community\/" \/>/);
   assert.match(html, /<meta property="og:title" content="Redirecting to Community — AgentForge4j" \/>/);
 });
 
-test('the destination is escaped into every attribute it reaches', () => {
+test('the destination and the canonical are each escaped into every attribute they reach', () => {
   const html = injectRedirectStub(BASE_INDEX_HTML, {
-    target: 'https://agentforge4j.org/a&b/',
-    title: 'T',
-    description: 'D',
+    ...STUB_ARGS,
+    destination: '/a&b/',
+    canonical: 'https://agentforge4j.org/a&b/',
   });
+  assert.match(html, /href="\/a&amp;b\/"/);
   assert.match(html, /href="https:\/\/agentforge4j\.org\/a&amp;b\/"/);
-  assert.doesNotMatch(html, /url=https:\/\/agentforge4j\.org\/a&b\//);
+  assert.doesNotMatch(html, /url=\/a&b\//);
 });
 
 test('buildSeo writes a redirect route as a stub and keeps it out of the sitemap entirely', () => {
@@ -2204,9 +2222,13 @@ test('buildSeo writes a redirect route as a stub and keeps it out of the sitemap
   assert.ok(result.sitemapUrls.includes('https://agentforge4j.org/community/'));
 
   const stub = readFileSync(join(distDir, 'contributing', 'index.html'), 'utf8');
-  assert.match(stub, /<meta name="robots" content="noindex, follow" \/>/);
+  assert.match(stub, new RegExp(`<meta name="robots" id="${ROBOTS_META_ID}" content="noindex, follow" />`));
   assert.match(stub, /<link rel="canonical" href="https:\/\/agentforge4j\.org\/community\/" \/>/);
   assert.equal((stub.match(/<h1[\s>]/g) ?? []).length, 0);
+  // End to end, through the real buildSeo path: the forward is relative even though the config's
+  // siteUrl is absolute and sits right beside it.
+  assert.match(stub, /<meta http-equiv="refresh" content="0; url=\/community\/" \/>/);
+  assert.doesNotMatch(stub, /content="0; url=https?:\/\//);
 });
 
 test('a redirect route never receives a prerendered snapshot, even if one is somehow supplied', () => {
@@ -2402,7 +2424,8 @@ const PRODUCERS = [
     'injectRedirectStub',
     () =>
       injectRedirectStub(BASE_INDEX_HTML, {
-        target: 'https://agentforge4j.org/community/',
+        destination: '/community/',
+        canonical: 'https://agentforge4j.org/community/',
         title: 'T',
         description: 'D',
         linkText: 'Continue to Community',
@@ -2536,19 +2559,19 @@ test('the not-found head keeps every route-scoped social tag except og:url, and 
 
 test('the redirect stub renders human-readable link text, not the raw destination URL', () => {
   const html = injectRedirectStub(BASE_INDEX_HTML, {
-    target: 'https://agentforge4j.org/community/',
+    ...STUB_ARGS,
     title: 'T',
     description: 'D',
     linkText: 'Continue to Community & Contributing',
   });
   // What a visitor with JavaScript disabled actually reads.
-  assert.match(html, /<a href="https:\/\/agentforge4j\.org\/community\/">Continue to Community &amp; Contributing<\/a>/);
+  assert.match(html, /<a href="\/community\/">Continue to Community &amp; Contributing<\/a>/);
   assert.doesNotMatch(html, />Continue to https:\/\//);
 });
 
 test('the redirect stub escapes its link text rather than trusting it', () => {
   const html = injectRedirectStub(BASE_INDEX_HTML, {
-    target: 'https://agentforge4j.org/community/',
+    ...STUB_ARGS,
     title: 'T',
     description: 'D',
     linkText: 'a <script>alert(1)</script> b',

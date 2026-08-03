@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import { lazy, Suspense } from 'react';
 import { Routes, Route, Navigate, useMatch } from 'react-router-dom';
-import { REDIRECT_ROUTES } from '@/config/seo';
+import { REDIRECT_ROUTES, withTrailingSlash } from '@/config/seo';
 import SiteHeader from '@/components/SiteHeader';
 import SiteFooter from '@/components/SiteFooter';
 import CatalogueDetailPage from '@/pages/CatalogueDetailPage';
@@ -50,9 +50,11 @@ export default function App() {
               stubs are generated from (see config/seo.ts's REDIRECT_ROUTES). `replace` so the
               redirecting address does not become a history entry the back button returns to.
               A visitor arriving on one of these client-side ends up on the destination, exactly
-              like the static stub's meta refresh does for a fresh load. */}
+              like the static stub's meta refresh does for a fresh load. The target goes through the
+              same `withTrailingSlash` the build-time shell and every canonical use, so the two
+              surfaces this one declaration drives cannot compute different destinations from it. */}
           {REDIRECT_ROUTES.map(({ path, redirectTo }) => (
-            <Route key={path} path={path} element={<Navigate to={`${redirectTo}/`} replace />} />
+            <Route key={path} path={path} element={<Navigate to={withTrailingSlash(redirectTo)} replace />} />
           ))}
           <Route path={CATALOGUE_DETAIL_ROUTE_PATH} element={<CatalogueDetailPage />} />
           <Route

@@ -4,8 +4,9 @@
 // SPA route. App.tsx's <Routes> renders one <Route> per entry here via a map — it does not
 // hand-write these paths a second time — so this array and what the app actually renders can
 // never independently drift apart. tests/routeInventory.test.ts compares the full expected route
-// set (this array, plus the two named exceptions below) against seo-routes.json to catch a route
-// added to one and forgotten in the other.
+// set (this array, plus /builder below, plus the REDIRECT_ROUTES derived from seo-routes.json's own
+// `redirectTo` entries — which App.tsx renders as <Navigate> rather than as pages) against
+// seo-routes.json to catch a route added to one and forgotten in the other.
 //
 // Three routes are NOT plain-`<Component />` entries in this array, and are the drift check's
 // documented, mechanically-represented exceptions:
@@ -65,10 +66,10 @@ export const CATCH_ALL_ROUTE_PATH = '*';
 
 /**
  * Static routes that are deliberately excluded from having their own seo-routes.json entry
- * entirely (not even as a `canonicalPath` alias) — distinct from `/contributing`, which IS present
- * in seo-routes.json but declares itself an alias of `/community`. Empty today: every current
- * static route has its own real or alias entry. A future route added here must carry a comment
- * explaining why it is intentionally non-indexable, mirroring this codebase's other allowlist
- * conventions (e.g. lint-content-gate.mjs's EXTRA_FILES).
+ * entirely — distinct from a `redirectTo` entry such as `/contributing`, which IS present in
+ * seo-routes.json (as a redirect stub, not a page) and so is not excluded from anything. Empty
+ * today: every current static route has its own real entry. A future route added here must carry a
+ * comment explaining why it is intentionally non-indexable, mirroring this codebase's other
+ * allowlist conventions (e.g. lint-content-gate.mjs's EXTRA_FILES).
  */
 export const NON_INDEXABLE_STATIC_ROUTE_PATHS: readonly string[] = [];

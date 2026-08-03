@@ -494,27 +494,63 @@ export function injectHead(html, { title, description, canonical }) {
  * refresh still fires, but a client that honours neither must still have a way through, and a
  * crawler that reads the body sees where this address leads.
  *
+ * On a fresh load with JavaScript enabled this address is forwarded TWICE: the SPA mounts, the
+ * router's REDIRECT_ROUTES entry navigates client-side, and then the refresh the parser already
+ * scheduled performs a full document load of the same destination. That is deliberate and not a
+ * defect to fix by conditioning the refresh on `<noscript>`. The refresh is the only fallback that
+ * still works when JavaScript is enabled but the bundle never arrives (network failure, a blocked
+ * script, an unsupported browser); moving it behind `<noscript>` would strand exactly those
+ * visitors on the anchor. The cost of keeping it unconditional is one redundant same-origin
+ * document request on a low-traffic redirect address, which is the cheaper side of that trade.
+ *
  * GitHub Pages serves static files with no redirect configuration of any kind (see
  * .github/workflows/deploy.yml), so a real 301 is not implementable on this host — a meta refresh
  * plus the canonical is the strongest available equivalent, and it is the same mechanism the docs
  * archive stubs (agentforge4j-docs/scripts/assemble-site.mjs) already use for the same reason.
+ *
+ * `destination` and `canonical` are two different things and must not be collapsed into one value,
+ * even though they name the same page. `canonical` is a *claim* about where this content really
+ * lives on the public web, so it is absolute (`https://agentforge4j.org/community/`) like every
+ * other canonical this site publishes. `destination` is an *instruction* telling the browser where
+ * to go next, so it must be root-relative (`/community/`) and resolve against whatever origin is
+ * actually serving the page. An absolute destination forwards every non-production origin — the
+ * e2e preview server, a local `npm run preview`, the documented local Docker build, a self-hosted
+ * deployment, a fork's Pages origin — off the artifact under test and onto the live public site.
+ * Both docs-side producers of this same meta refresh (assemble-site.mjs's `writeRedirectStubs` and
+ * the plugin stubs redirect-stub-seo.mjs annotates) already emit root-relative targets; this is the
+ * same rule, not a new one.
  */
-export function injectRedirectStub(html, { target, title, description, linkText = 'Continue' }) {
-  const safeTarget = escapeHtml(target);
+export function injectRedirectStub(html, { destination, canonical, title, description, linkText = 'Continue' }) {
+  if (!destination.startsWith('/') || destination.startsWith('//')) {
+    // `//host/path` is protocol-relative — an absolute URL wearing a relative shape, and the one
+    // form a `startsWith('/')` check alone would let through onto a foreign origin.
+    throw new Error(
+      `build-seo: a redirect stub's destination must be root-relative, got "${destination}" — ` +
+        'an absolute or protocol-relative target forwards non-production origins off the artifact',
+    );
+  }
+  const safeDestination = escapeHtml(destination);
+  const safeCanonical = escapeHtml(canonical);
   const replacements = [
     [/<title>[\s\S]*?<\/title>/, `<title>${escapeHtml(title)}</title>`],
     [
       /<meta\s+name="description"[\s\S]*?\/>/,
       `<meta name="description" content="${escapeHtml(description)}" />\n` +
-        `    <meta name="robots" content="noindex, follow" />\n` +
-        `    <meta http-equiv="refresh" content="0; url=${safeTarget}" />`,
+        // Carries ROBOTS_META_ID for the same reason the not-found head does: it marks this tag as
+        // written by this build, so usePageSeo's setRobots(null) can remove it on a client-side
+        // navigation away from the stub. Without the id the lookup misses and a `noindex` written
+        // here would ride along onto the destination route — precisely the failure setRobots's own
+        // docblock is written against.
+        `    <meta name="robots" id="${ROBOTS_META_ID}" content="noindex, follow" />\n` +
+        `    <meta http-equiv="refresh" content="0; url=${safeDestination}" />`,
     ],
-    [/<link\s+rel="canonical"[\s\S]*?\/>/, `<link rel="canonical" href="${safeTarget}" />`],
+    [/<link\s+rel="canonical"[\s\S]*?\/>/, `<link rel="canonical" href="${safeCanonical}" />`],
     // The five social tags from the one shared table. A redirect stub's `canonical` source IS the
     // destination — this page's whole claim is "the content is over there" — so unlike the
     // not-found head it rewrites all five rather than removing one. Listing them here instead would
-    // be a third copy of the list the table exists to keep single.
-    ...routeScopedSocialReplacements({ title, description, canonical: target }),
+    // be a third copy of the list the table exists to keep single. These are claims about the
+    // public web address, so they take the absolute `canonical`, not the relative destination.
+    ...routeScopedSocialReplacements({ title, description, canonical }),
   ];
   let result = html;
   for (const [pattern, replacement] of replacements) {
@@ -528,7 +564,10 @@ export function injectRedirectStub(html, { target, title, description, linkText 
   }
   return result.replace(
     EMPTY_ROOT_PATTERN,
-    () => `<div id="root"><p><a href="${safeTarget}">${escapeHtml(linkText)}</a></p></div>`,
+    // Root-relative for the same reason the refresh is: this anchor is the way through for a client
+    // that honours neither the refresh nor JavaScript, and it must lead to this deployment's own
+    // copy of the destination, not to the public site.
+    () => `<div id="root"><p><a href="${safeDestination}">${escapeHtml(linkText)}</a></p></div>`,
   );
 }
 
@@ -956,7 +995,10 @@ export function buildSeo({
         distDir,
         route.path,
         injectRedirectStub(baseHtml, {
-          target: `${siteUrl}${withTrailingSlash(route.redirectTo)}`,
+          // Relative: where the browser goes next, resolved against the serving origin.
+          destination: withTrailingSlash(route.redirectTo),
+          // Absolute: what this address claims about itself on the public web.
+          canonical: `${siteUrl}${withTrailingSlash(route.redirectTo)}`,
           title: route.title,
           description: route.description,
           // Human-readable, not the raw URL: this body is what a visitor with JavaScript disabled

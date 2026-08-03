@@ -135,8 +135,9 @@ const orgRoute = (path: string): EntryTarget => ({ kind: 'route', path });
 /** One manifest entry per `SITE_ROUTES` row, at the routine coverage level. Extra states
  *  for the same route (nav open, footer, etc.) are separate entries below — this loop only
  *  covers "the page as it loads". Single source of truth: importing `SITE_ROUTES` instead of
- *  re-listing the 11 routes here is what keeps this manifest and the functional `web-ui` suite
- *  from drifting apart (never duplicate route lists across scripts). */
+ *  re-listing the routes here is what keeps this manifest and the functional `web-ui` suite
+ *  from drifting apart (never duplicate route lists across scripts). Redirects are not in that
+ *  list and get no entry here: a stub has no rendered state to capture. */
 const ROUTE_ENTRIES: VisualManifestEntry[] = SITE_ROUTES.map((route) => {
   const id = `org-${route.path === '/' ? 'home' : route.path.replace(/^\//, '').replace(/\//g, '-')}`;
   const overflowProne = route.path === '/architecture'; // embeds two SVG diagrams
