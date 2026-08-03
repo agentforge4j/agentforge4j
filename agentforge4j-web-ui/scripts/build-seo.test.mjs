@@ -16,49 +16,50 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath, URL } from 'node:url';
 import {
   buildSeo,
+  describesCompleteWords,
   escapeHtml,
   gitLastModifiedDate,
   gitLastModifiedDateForRouteMetadata,
   injectHead,
   injectJsonLd,
+  injectRedirectStub,
+  injectNotFoundHead,
+  ROUTE_SCOPED_SOCIAL_TAGS,
+  routeScopedSocialReplacements,
   injectRoot,
   JSON_LD_SCRIPT_ID,
+  MAX_DESCRIPTION_LENGTH,
+  MIN_USEFUL_DESCRIPTION_LENGTH,
   newestGitLastModifiedDate,
+  ROBOTS_META_ID,
+  truncateDescription,
   withTrailingSlash,
 } from './build-seo.mjs';
 import { WORKFLOW_ID_PATTERN } from './workflow-id-contract.mjs';
 
 const REAL_MODULE_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 
-const BASE_INDEX_HTML = `<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <title>AgentForge4j — Governed AI Workflows for Java</title>
-    <meta
-      name="description"
-      content="AgentForge4j is an open-source Java framework for building governed AI workflows."
-    />
-    <link rel="canonical" href="https://agentforge4j.org/" />
-    <meta property="og:type" content="website" />
-    <meta property="og:url" content="https://agentforge4j.org/" />
-    <meta property="og:title" content="AgentForge4j — Governed AI Workflows for Java" />
-    <meta
-      property="og:description"
-      content="AgentForge4j is an open-source Java framework for building governed AI workflows."
-    />
-    <meta name="twitter:card" content="summary" />
-    <meta name="twitter:title" content="AgentForge4j — Governed AI Workflows for Java" />
-    <meta
-      name="twitter:description"
-      content="AgentForge4j is an open-source Java framework for building governed AI workflows."
-    />
-  </head>
-  <body>
-    <div id="root"></div>
-  </body>
-</html>
-`;
+/**
+ * The real committed `index.html`, not a hand-written imitation of it.
+ *
+ * This used to be a literal, and it went stale the moment the shell grew tags: it carried no
+ * `og:site_name`, no `og:image` or its dimensions/alt, no `twitter:image`/`twitter:image:alt`, still
+ * declared `twitter:card` as `summary` after production moved to `summary_large_image`, and — most
+ * relevantly — had no `<head>` comment sitting between `og:description` and `twitter:title`, which
+ * is precisely the shape the shell has and precisely the shape `injectHead`'s first-occurrence
+ * regexes are sensitive to. Every producer test below therefore ran against a head that no longer
+ * resembled the one production feeds them, and the only thing that would have caught the difference
+ * was the real build.
+ *
+ * Reading the committed file instead makes these tests self-maintaining, and turns the "keep this
+ * comment free of literal angle-bracket tag text" NOTE in `index.html` from editor discipline into
+ * something a test can fail on (see the duplicate-emission test at the end of this file).
+ *
+ * The source file rather than `dist/index.html` deliberately: it is the committed artefact that
+ * controls the head, it needs no build to read, and Vite's output preserves the head structure these
+ * functions act on.
+ */
+const BASE_INDEX_HTML = readFileSync(join(REAL_MODULE_ROOT, 'index.html'), 'utf8');
 
 const SAMPLE_ROUTES = {
   siteUrl: 'https://agentforge4j.org',
@@ -296,7 +297,7 @@ test('truncates an over-length workflow description rather than overflowing the 
   const html = readFileSync(join(distDir, 'catalogue', 'long', 'index.html'), 'utf8');
   const match = /name="description" content="([^"]*)"/.exec(html);
   assert.ok(match);
-  assert.ok(match[1].length <= 157);
+  assert.ok(match[1].length <= MAX_DESCRIPTION_LENGTH);
   assert.ok(match[1].endsWith('…'));
 });
 
@@ -348,8 +349,17 @@ test('injectHead cannot be broken out of the href/content attribute by an unesca
     description: 'desc',
     canonical: maliciousCanonical,
   });
-  // No live <script> element may appear anywhere in the generated shell.
-  assert.ok(!/<script>/.test(html), 'a live <script> element must never appear in the generated shell');
+  // The malicious value must not add a live <script> element. Asserted as a DELTA against the base
+  // shell, not as an absolute "there are none": the committed index.html legitimately carries the
+  // theme-bootstrap inline script and the module entrypoint, so an absolute claim here was only ever
+  // a statement about the old hand-written fixture's shape — it said nothing about what injectHead
+  // does to the shell production actually feeds it.
+  assert.equal(
+    countScriptOpenTags(html) - countScriptOpenTags(BASE_INDEX_HTML),
+    0,
+    'the malicious canonical must not add a <script> element to the generated shell',
+  );
+  assert.ok(!html.includes('<script>alert(1)</script>'), 'the raw script payload must not reach the HTML unescaped');
   // Every canonical-bearing tag must remain a single, well-formed element whose attribute value
   // is the fully-escaped string, quote-for-quote — i.e. it is structurally impossible to break out
   // of the href/content attribute using the malicious input above.
@@ -437,6 +447,15 @@ test('every route declared in the real committed seo-routes.json has a sourceFil
   );
   assert.ok(routes.length > 0, 'expected at least one real route to check');
   for (const route of routes) {
+    if (route.redirectTo) {
+      // A redirect route has no `<lastmod>` to compute, because it has no sitemap entry to carry
+      // one — sourceFiles exist to date a published URL, and this address publishes nothing. The
+      // exemption is narrow and self-proving: an entry that is NOT a redirect still fails below,
+      // and buildSeo itself refuses a redirect route that is not `sitemap: false`.
+      assert.equal(route.sitemap, false, `redirect route "${route.path}" must be sitemap: false`);
+      assert.deepEqual(route.sourceFiles ?? [], [], `redirect route "${route.path}" should declare no sourceFiles`);
+      continue;
+    }
     assert.ok(
       Array.isArray(route.sourceFiles) && route.sourceFiles.length > 0,
       `route "${route.path}" must declare a non-empty sourceFiles array`,
@@ -546,10 +565,9 @@ test('injectJsonLd fails closed when the shell has no </head> to insert before (
 });
 
 /** `<script` open tags in a document. The assertions below compare this as a DELTA against the
- * base shell rather than against an absolute number: BASE_INDEX_HTML happens to carry none, but
- * the real built index.html carries two (the theme-bootstrap inline script and the module
- * entrypoint), so an absolute "exactly 1" would only ever have been a statement about this
- * fixture's shape, not about what injectJsonLd does to a real shell. */
+ * base shell rather than against an absolute number: the committed index.html carries two (the
+ * theme-bootstrap inline script and the module entrypoint), so an absolute "exactly 1" would only
+ * ever have been a statement about one shell's shape, not about what injectJsonLd does to it. */
 function countScriptOpenTags(html) {
   return (html.match(/<script[ >]/g) ?? []).length;
 }
@@ -2115,4 +2133,746 @@ test('global dependency scope contract: every file traced as materially affectin
       `${relFile} belongs in globalSourceFiles specifically (the shared render surface), not just anywhere global`,
     );
   }
+});
+
+// --- Redirect routes. /contributing was a full second rendering of /community at a second
+// address, with a `canonicalPath` hint as the only thing asking search engines not to treat it as
+// its own page. A canonical is advice; a redirect stub has nothing to duplicate in the first place. ---
+
+const REDIRECT_ROUTES_FIXTURE = {
+  siteUrl: 'https://agentforge4j.org',
+  routes: [
+    { path: '/', title: 'Home Title', description: 'Home description.' },
+    { path: '/community', title: 'Community — AgentForge4j', description: 'Community description.' },
+    {
+      path: '/contributing',
+      title: 'Redirecting to Community — AgentForge4j',
+      description: 'This address has moved.',
+      redirectTo: '/community',
+      sitemap: false,
+    },
+  ],
+};
+
+/** The two forms a stub carries for one destination — see injectRedirectStub's docblock for why
+ * they must not be collapsed: `destination` is where the browser goes (relative to the serving
+ * origin), `canonical` is what the address claims about itself on the public web. */
+const STUB_ARGS = {
+  destination: '/community/',
+  canonical: 'https://agentforge4j.org/community/',
+  title: 'Redirecting to Community — AgentForge4j',
+  description: 'This address has moved.',
+};
+
+test('a redirect stub forwards RELATIVE to the serving origin, is noindex, and canonicalises absolutely to the destination', () => {
+  const html = injectRedirectStub(BASE_INDEX_HTML, STUB_ARGS);
+  assert.match(html, /<meta http-equiv="refresh" content="0; url=\/community\/" \/>/);
+  assert.match(html, new RegExp(`<meta name="robots" id="${ROBOTS_META_ID}" content="noindex, follow" />`));
+  assert.match(html, /<link rel="canonical" href="https:\/\/agentforge4j\.org\/community\/" \/>/);
+  // The whole defect this guards: no navigation value may name a hard-coded origin. The canonical
+  // and og:url legitimately do, so this is scoped to the two that are instructions.
+  assert.doesNotMatch(html, /content="0; url=https?:\/\//);
+  assert.doesNotMatch(html, /<a href="https?:\/\//);
+});
+
+test('injectRedirectStub REJECTS an absolute destination rather than emitting one', () => {
+  assert.throws(
+    () => injectRedirectStub(BASE_INDEX_HTML, { ...STUB_ARGS, destination: 'https://agentforge4j.org/community/' }),
+    /must be root-relative/,
+  );
+});
+
+test('injectRedirectStub REJECTS a protocol-relative destination — `//host/path` is absolute wearing a relative shape', () => {
+  assert.throws(
+    () => injectRedirectStub(BASE_INDEX_HTML, { ...STUB_ARGS, destination: '//evil.example/community/' }),
+    /must be root-relative/,
+  );
+});
+
+test('NEGATIVE CONTROL — a redirect stub carries NO page content: no <h1>, and nothing of the destination page', () => {
+  const html = injectRedirectStub(BASE_INDEX_HTML, STUB_ARGS);
+  assert.equal((html.match(/<h1[\s>]/g) ?? []).length, 0);
+  // Only a link through to the destination — the whole point is that there is no second copy — and
+  // that link is relative too, so a JS-less visitor on a non-production origin stays on it.
+  assert.match(html, /<div id="root"><p><a href="\/community\/">/);
+});
+
+test('a redirect stub still carries social metadata describing the forward, not the destination page', () => {
+  const html = injectRedirectStub(BASE_INDEX_HTML, STUB_ARGS);
+  assert.match(html, /<meta property="og:url" content="https:\/\/agentforge4j\.org\/community\/" \/>/);
+  assert.match(html, /<meta property="og:title" content="Redirecting to Community — AgentForge4j" \/>/);
+});
+
+test('the destination and the canonical are each escaped into every attribute they reach', () => {
+  const html = injectRedirectStub(BASE_INDEX_HTML, {
+    ...STUB_ARGS,
+    destination: '/a&b/',
+    canonical: 'https://agentforge4j.org/a&b/',
+  });
+  assert.match(html, /href="\/a&amp;b\/"/);
+  assert.match(html, /href="https:\/\/agentforge4j\.org\/a&amp;b\/"/);
+  assert.doesNotMatch(html, /url=\/a&b\//);
+});
+
+test('buildSeo writes a redirect route as a stub and keeps it out of the sitemap entirely', () => {
+  const { distDir, seoRoutesPath, catalogueDataPath } = fixture({ routes: REDIRECT_ROUTES_FIXTURE });
+  const result = buildSeo({ distDir, seoRoutesPath, catalogueDataPath, repoRoot: REAL_MODULE_ROOT });
+
+  assert.ok(!result.sitemapUrls.includes('https://agentforge4j.org/contributing/'));
+  assert.ok(result.sitemapUrls.includes('https://agentforge4j.org/community/'));
+
+  const stub = readFileSync(join(distDir, 'contributing', 'index.html'), 'utf8');
+  assert.match(stub, new RegExp(`<meta name="robots" id="${ROBOTS_META_ID}" content="noindex, follow" />`));
+  assert.match(stub, /<link rel="canonical" href="https:\/\/agentforge4j\.org\/community\/" \/>/);
+  assert.equal((stub.match(/<h1[\s>]/g) ?? []).length, 0);
+  // End to end, through the real buildSeo path: the forward is relative even though the config's
+  // siteUrl is absolute and sits right beside it.
+  assert.match(stub, /<meta http-equiv="refresh" content="0; url=\/community\/" \/>/);
+  assert.doesNotMatch(stub, /content="0; url=https?:\/\//);
+});
+
+test('a redirect route never receives a prerendered snapshot, even if one is somehow supplied', () => {
+  // The prerenderer already excludes redirect routes (prerender-routes.mjs), but a snapshot reaching
+  // here would splice the DESTINATION page's markup into the redirecting address — re-creating the
+  // duplicate content the redirect exists to remove.
+  const { distDir, seoRoutesPath, catalogueDataPath } = fixture({ routes: REDIRECT_ROUTES_FIXTURE });
+  buildSeo({
+    distDir,
+    seoRoutesPath,
+    catalogueDataPath,
+    repoRoot: REAL_MODULE_ROOT,
+    snapshots: { '/contributing': '<h1>Community &amp; Contributing</h1><p>a whole duplicate page</p>' },
+  });
+  const stub = readFileSync(join(distDir, 'contributing', 'index.html'), 'utf8');
+  assert.doesNotMatch(stub, /a whole duplicate page/);
+  assert.equal((stub.match(/<h1[\s>]/g) ?? []).length, 0);
+});
+
+test('a redirect route that is not marked sitemap: false fails the build rather than being submitted for indexing', () => {
+  const { distDir, seoRoutesPath, catalogueDataPath } = fixture({
+    routes: {
+      ...REDIRECT_ROUTES_FIXTURE,
+      routes: REDIRECT_ROUTES_FIXTURE.routes.map((route) =>
+        route.redirectTo ? { ...route, sitemap: true } : route,
+      ),
+    },
+  });
+  assert.throws(
+    () => buildSeo({ distDir, seoRoutesPath, catalogueDataPath, repoRoot: REAL_MODULE_ROOT }),
+    /declares redirectTo but is not marked `"sitemap": false`/,
+  );
+});
+
+test('the REAL committed config makes /contributing a redirect to /community, with exactly one indexable representation between them', () => {
+  const real = JSON.parse(readFileSync(join(REAL_MODULE_ROOT, 'src/config/seo-routes.json'), 'utf8'));
+  const contributing = real.routes.find((route) => route.path === '/contributing');
+  const community = real.routes.find((route) => route.path === '/community');
+  assert.equal(contributing.redirectTo, '/community');
+  assert.equal(contributing.sitemap, false);
+  assert.equal(contributing.canonicalPath, undefined);
+  // The destination is the one indexable representation: a real entry, in the sitemap, canonical to
+  // itself.
+  assert.ok(community);
+  assert.notEqual(community.sitemap, false);
+  assert.equal(community.canonicalPath, undefined);
+  assert.equal(community.redirectTo, undefined);
+});
+
+// --- The not-found shell. copy-404.mjs copies dist/index.html verbatim (right for the body, which
+// must stay the empty pre-prerender mount point), which left the head saying the home page's title,
+// description, canonical and social tags on every mistyped address — and on /404.html itself, which
+// is served at 200 where the HTTP status protects nothing. ---
+
+const NOT_FOUND_CONFIG = {
+  title: 'Page not found — AgentForge4j',
+  description: 'This address does not match any page on agentforge4j.org.',
+  robots: 'noindex, follow',
+};
+
+test('injectNotFoundHead replaces the home title/description with the not-found ones', () => {
+  const html = injectNotFoundHead(BASE_INDEX_HTML, NOT_FOUND_CONFIG);
+  assert.match(html, /<title>Page not found — AgentForge4j<\/title>/);
+  assert.match(html, /<meta name="description" content="This address does not match any page on agentforge4j\.org\." \/>/);
+  assert.doesNotMatch(html, /Governed AI Workflows for Java/);
+});
+
+test('injectNotFoundHead REMOVES the canonical link rather than repointing it — a 404 must name no canonical URL at all', () => {
+  const html = injectNotFoundHead(BASE_INDEX_HTML, NOT_FOUND_CONFIG);
+  assert.doesNotMatch(html, /<link\s+rel="canonical"/);
+});
+
+test('injectNotFoundHead removes og:url too — it makes the same claim the canonical no longer does', () => {
+  const html = injectNotFoundHead(BASE_INDEX_HTML, NOT_FOUND_CONFIG);
+  assert.doesNotMatch(html, /property="og:url"/);
+});
+
+test('injectNotFoundHead adds the configured robots directive, since /404.html itself is served at 200', () => {
+  const html = injectNotFoundHead(BASE_INDEX_HTML, NOT_FOUND_CONFIG);
+  assert.match(html, /<meta name="robots" id="[^"]+" content="noindex, follow" \/>/);
+});
+
+test('the robots directive carries the shared ownership id, so the client-side hook adopts it rather than appending a second one', () => {
+  // Asserted against the exported constant rather than a re-typed literal: this is the build side
+  // of the same binding tests/usePageSeo.test.tsx closes on the hook side, and a hardcoded string
+  // here would keep matching a renamed constant forever.
+  const html = injectNotFoundHead(BASE_INDEX_HTML, NOT_FOUND_CONFIG);
+  assert.match(html, new RegExp(`<meta name="robots" id="${ROBOTS_META_ID}" content=`));
+  // Non-vacuity: an empty id would satisfy a bare "contains id=" check while owning nothing.
+  assert.ok(ROBOTS_META_ID.length > 0, 'expected a non-empty robots ownership id');
+});
+
+test('the shell carries exactly one robots meta — a second one is the shape a hook that appends leaves behind', () => {
+  const html = injectNotFoundHead(BASE_INDEX_HTML, NOT_FOUND_CONFIG);
+  assert.equal((html.match(/<meta[^>]*name="robots"/g) ?? []).length, 1);
+});
+
+test('injectNotFoundHead rewrites the social title/description as well, so the shell does not describe itself as the home page anywhere', () => {
+  const html = injectNotFoundHead(BASE_INDEX_HTML, NOT_FOUND_CONFIG);
+  assert.match(html, /<meta property="og:title" content="Page not found — AgentForge4j" \/>/);
+  assert.match(html, /<meta name="twitter:title" content="Page not found — AgentForge4j" \/>/);
+  assert.match(html, /<meta property="og:description" content="This address does not match any page on agentforge4j\.org\." \/>/);
+  assert.match(html, /<meta name="twitter:description" content="This address does not match any page on agentforge4j\.org\." \/>/);
+});
+
+test('injectNotFoundHead never touches the body — the empty mount point verify-seo gates on survives', () => {
+  const html = injectNotFoundHead(BASE_INDEX_HTML, NOT_FOUND_CONFIG);
+  assert.match(html, /<div id="root"><\/div>/);
+});
+
+test('injectNotFoundHead escapes its values into the head rather than trusting them', () => {
+  const html = injectNotFoundHead(BASE_INDEX_HTML, {
+    title: 'Not "found" <yet>',
+    description: 'A & B',
+    robots: 'noindex, follow',
+  });
+  assert.match(html, /<title>Not &quot;found&quot; &lt;yet&gt;<\/title>/);
+  assert.match(html, /content="A &amp; B"/);
+});
+
+test('injectNotFoundHead fails loudly on template drift rather than silently leaving the home metadata in place', () => {
+  const withoutTitle = BASE_INDEX_HTML.replace(/<title>[\s\S]*?<\/title>/, '');
+  assert.throws(() => injectNotFoundHead(withoutTitle, NOT_FOUND_CONFIG), /expected tag not found in dist\/404\.html/);
+});
+
+test('buildSeo gives a real dist/404.html its own not-found head, and reports having done so', () => {
+  const { distDir, seoRoutesPath, catalogueDataPath } = fixture({
+    routes: { ...SAMPLE_ROUTES, notFound: NOT_FOUND_CONFIG },
+  });
+  // Exactly what copy-404.mjs leaves behind before this runs: a verbatim copy of the built shell.
+  writeFileSync(join(distDir, '404.html'), BASE_INDEX_HTML, 'utf8');
+
+  const result = buildSeo({ distDir, seoRoutesPath, catalogueDataPath, repoRoot: REAL_MODULE_ROOT });
+  assert.equal(result.notFoundShellWritten, true);
+
+  const html = readFileSync(join(distDir, '404.html'), 'utf8');
+  assert.match(html, /<title>Page not found — AgentForge4j<\/title>/);
+  assert.doesNotMatch(html, /<link\s+rel="canonical"/);
+  assert.match(html, new RegExp(`<meta name="robots" id="${ROBOTS_META_ID}" content="noindex, follow" />`));
+  assert.match(html, /<div id="root"><\/div>/);
+});
+
+test('the not-found shell never receives structured data, even when a route declares some', () => {
+  const { distDir, seoRoutesPath, catalogueDataPath } = fixture({
+    routes: {
+      ...SAMPLE_ROUTES,
+      notFound: NOT_FOUND_CONFIG,
+      routes: [
+        {
+          path: '/',
+          title: 'Home Title',
+          description: 'Home description.',
+          jsonLd: { '@context': 'https://schema.org', '@type': 'WebSite', name: 'AgentForge4j' },
+        },
+        ...SAMPLE_ROUTES.routes.slice(1),
+      ],
+    },
+  });
+  writeFileSync(join(distDir, '404.html'), BASE_INDEX_HTML, 'utf8');
+
+  buildSeo({ distDir, seoRoutesPath, catalogueDataPath, repoRoot: REAL_MODULE_ROOT });
+
+  // The home shell gets it; the catch-all shell must not — that structured data asserts the URL IS
+  // the site's WebSite entity, which is untrue of every address that lands on the 404.
+  assert.match(readFileSync(join(distDir, 'index.html'), 'utf8'), /application\/ld\+json/);
+  assert.doesNotMatch(readFileSync(join(distDir, '404.html'), 'utf8'), /application\/ld\+json/);
+});
+
+test('buildSeo leaves 404.html alone (and says so) when the config declares no notFound metadata', () => {
+  const { distDir, seoRoutesPath, catalogueDataPath } = fixture();
+  writeFileSync(join(distDir, '404.html'), BASE_INDEX_HTML, 'utf8');
+  const result = buildSeo({ distDir, seoRoutesPath, catalogueDataPath, repoRoot: REAL_MODULE_ROOT });
+  assert.equal(result.notFoundShellWritten, false);
+  assert.equal(readFileSync(join(distDir, '404.html'), 'utf8'), BASE_INDEX_HTML);
+});
+
+test('the REAL committed seo-routes.json declares not-found metadata — without it every mistyped address ships the home page head', () => {
+  const real = JSON.parse(readFileSync(join(REAL_MODULE_ROOT, 'src/config/seo-routes.json'), 'utf8'));
+  assert.ok(real.notFound, 'expected a top-level `notFound` entry');
+  assert.ok(real.notFound.title.length > 0);
+  assert.ok(real.notFound.description.length > 0);
+  assert.match(real.notFound.robots, /\bnoindex\b/);
+  assert.notEqual(real.notFound.title, real.routes.find((route) => route.path === '/').title);
+});
+
+/** Every producer of a `<head>` in this module, as a zero-argument call against the same base
+ * shell. Each PR that adds a producer adds it here — that is what makes the shared-table mutation
+ * test below a statement about ALL of them rather than about whichever one was written last. */
+const PRODUCERS = [
+  ['injectHead', () => injectHead(BASE_INDEX_HTML, { title: 'T', description: 'D', canonical: 'https://agentforge4j.org/x/' })],
+  ['injectNotFoundHead', () => injectNotFoundHead(BASE_INDEX_HTML, NOT_FOUND_CONFIG)],
+  [
+    'injectRedirectStub',
+    () =>
+      injectRedirectStub(BASE_INDEX_HTML, {
+        destination: '/community/',
+        canonical: 'https://agentforge4j.org/community/',
+        title: 'T',
+        description: 'D',
+        linkText: 'Continue to Community',
+      }),
+  ],
+];
+
+/**
+ * The route-scoped tags each producer deliberately emits ZERO of, because it removes them rather
+ * than rewriting them (`routeScopedSocialReplacements`'s `null` source).
+ *
+ * Declared per producer, and defaulting to "omits nothing", so the duplicate test below can assert
+ * an exact count instead of a blanket "at most one". That blanket allowance was written to leave
+ * room for a producer that removes `og:url` — but it also let a producer emit zero copies of a tag
+ * it is supposed to rewrite, which is the same shape of under-checking as the defect the shared
+ * table exists to close, under a test whose name says "exactly one".
+ *
+ * The default is fail-closed on purpose: a producer added here without an entry is held to "exactly
+ * one of everything" and fails loudly until whoever added it states what it drops. That is the
+ * declaration this map exists to force.
+ */
+const PRODUCER_OMISSIONS = {
+  injectHead: [],
+  // A not-found page has nothing truthful to say about which URL its content belongs to, so it is
+  // the one producer that removes a route-scoped tag rather than rewriting it.
+  injectNotFoundHead: ['og:url'],
+  // A redirect stub omits nothing: its whole claim is "the content is at the destination", so its
+  // canonical source IS that destination and all five tags are rewritten rather than dropped.
+  injectRedirectStub: [],
+};
+
+// --- The shared route-scoped social table. Every producer of a <head> derives its social
+// replacements from ROUTE_SCOPED_SOCIAL_TAGS through routeScopedSocialReplacements — no producer
+// keeps its own copy of the five tags. These tests prove the coupling is real, not documentary. ---
+
+test('routeScopedSocialReplacements produces one replacement per declared tag, in table order', () => {
+  const pairs = routeScopedSocialReplacements({ title: 'T', description: 'D', canonical: 'C' });
+  assert.equal(pairs.length, ROUTE_SCOPED_SOCIAL_TAGS.length);
+  for (const [index, { attribute, key }] of ROUTE_SCOPED_SOCIAL_TAGS.entries()) {
+    assert.match(pairs[index][1], new RegExp(`^<meta ${attribute}="${key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}" content=`));
+  }
+});
+
+test('a null source REMOVES its tag, and takes the whitespace it occupied with it', () => {
+  const pairs = routeScopedSocialReplacements({ title: 'T', description: 'D', canonical: null });
+  const urlEntry = ROUTE_SCOPED_SOCIAL_TAGS.findIndex((tag) => tag.source === 'canonical');
+  assert.equal(pairs[urlEntry][1], '');
+  // The removal pattern consumes trailing whitespace; the rewrite patterns must not.
+  assert.match(pairs[urlEntry][0].source, /\\s\*$/);
+  const titleEntry = ROUTE_SCOPED_SOCIAL_TAGS.findIndex((tag) => tag.source === 'title');
+  assert.doesNotMatch(pairs[titleEntry][0].source, /\\s\*$/);
+});
+
+test('values are escaped into the emitted tag rather than trusted', () => {
+  const pairs = routeScopedSocialReplacements({ title: 'A & B <c> "d"', description: 'D', canonical: 'C' });
+  assert.match(pairs[0][1], /content="A &amp; B &lt;c&gt; &quot;d&quot;"/);
+});
+
+test('a key containing a RegExp metacharacter is escaped, not interpreted', () => {
+  // The table is committed data today, but it is exported and read by other modules. An unescaped
+  // `.` would match any character, so a pattern built for `og:a.b` would also rewrite `og:aXb`.
+  ROUTE_SCOPED_SOCIAL_TAGS.push({ attribute: 'property', key: 'og:a.b', source: 'title' });
+  try {
+    const pattern = routeScopedSocialReplacements({ title: 'T', description: 'D', canonical: 'C' }).at(-1)[0];
+    assert.equal(pattern.test('<meta property="og:a.b" content="x" />'), true);
+    assert.equal(pattern.test('<meta property="og:aXb" content="x" />'), false, 'the dot must be literal');
+  } finally {
+    ROUTE_SCOPED_SOCIAL_TAGS.pop();
+  }
+});
+
+test('MUTATION EVIDENCE — adding a tag to the shared table reaches every producer, with no producer edited', () => {
+  // The one assertion that proves single-sourcing rather than describing it: add an entry the
+  // committed index.html has no tag for, and every producer must now demand it and fail loudly.
+  // A producer still carrying its own hardcoded list would sail past this untouched.
+  ROUTE_SCOPED_SOCIAL_TAGS.push({ attribute: 'property', key: 'og:locale', source: 'title' });
+  try {
+    for (const [name, run] of PRODUCERS) {
+      assert.throws(run, /expected tag not found/, `${name} is not driven by the shared table`);
+    }
+  } finally {
+    ROUTE_SCOPED_SOCIAL_TAGS.pop();
+  }
+  // ...and with the entry removed again, every producer is happy against the same shell.
+  for (const [name, run] of PRODUCERS) {
+    assert.doesNotThrow(run, `${name} broke after the table was restored`);
+  }
+});
+
+test('every producer declares what it omits — a new one cannot arrive without saying so', () => {
+  // The fail-closed default only helps if it is reachable: a producer with no entry here is held to
+  // "exactly one of everything" by the test below. This states that expectation up front so the
+  // failure reads as "declare your omissions", not as a mysterious count mismatch.
+  for (const [name] of PRODUCERS) {
+    assert.ok(
+      Object.hasOwn(PRODUCER_OMISSIONS, name),
+      `${name} has no PRODUCER_OMISSIONS entry — declare the route-scoped tags it removes, or [] if none`,
+    );
+  }
+});
+
+test('every producer emits exactly one instance of each route-scoped tag it does not declare it omits', () => {
+  // Run against the real committed index.html (see BASE_INDEX_HTML), so this is also the mechanical
+  // guard behind that file's "keep this comment free of literal angle-bracket tag text" NOTE:
+  // tag-like text in a head comment ahead of twitter:title is rewritten in place of the real tag,
+  // leaving two, and this fails on it rather than relying on an editor having read the note.
+  for (const [name, run] of PRODUCERS) {
+    const html = run();
+    const omits = PRODUCER_OMISSIONS[name] ?? [];
+    for (const { attribute, key } of ROUTE_SCOPED_SOCIAL_TAGS) {
+      const count = (html.match(new RegExp(`${attribute}="${key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}"`, 'g')) ?? []).length;
+      const expected = omits.includes(key) ? 0 : 1;
+      assert.equal(count, expected, `${name} emitted ${count} copies of ${key}, expected ${expected}`);
+    }
+  }
+});
+
+test('the not-found head keeps every route-scoped social tag except og:url, and leaves no blank line behind', () => {
+  const html = injectNotFoundHead(BASE_INDEX_HTML, NOT_FOUND_CONFIG);
+  for (const { attribute, key, source } of ROUTE_SCOPED_SOCIAL_TAGS) {
+    const present = html.includes(`${attribute}="${key}"`);
+    // `canonical` is the one source a not-found page has nothing truthful to say for, so og:url —
+    // and only og:url — is absent. Derived from the shared table, so a sixth tag added there is
+    // covered here without editing this test.
+    assert.equal(present, source !== 'canonical', `${key} presence should be ${source !== 'canonical'}`);
+  }
+  // Neither removal (the canonical link, og:url) may leave the line it occupied behind as
+  // whitespace — the cosmetic half of the finding, checked on the real generated head.
+  assert.doesNotMatch(html, /\n[ \t]+\n/, 'a removed tag left a blank, space-filled line in the head');
+});
+
+test('the redirect stub renders human-readable link text, not the raw destination URL', () => {
+  const html = injectRedirectStub(BASE_INDEX_HTML, {
+    ...STUB_ARGS,
+    title: 'T',
+    description: 'D',
+    linkText: 'Continue to Community & Contributing',
+  });
+  // What a visitor with JavaScript disabled actually reads.
+  assert.match(html, /<a href="\/community\/">Continue to Community &amp; Contributing<\/a>/);
+  assert.doesNotMatch(html, />Continue to https:\/\//);
+});
+
+test('the redirect stub escapes its link text rather than trusting it', () => {
+  const html = injectRedirectStub(BASE_INDEX_HTML, {
+    ...STUB_ARGS,
+    title: 'T',
+    description: 'D',
+    linkText: 'a <script>alert(1)</script> b',
+  });
+  assert.doesNotMatch(html, /<script>alert\(1\)<\/script>/);
+  assert.match(html, /&lt;script&gt;alert\(1\)&lt;\/script&gt;/);
+});
+
+// --- `$`-substitution. `escapeHtml` handles `& < > "` and deliberately not `$`, so every value
+// reaching String.prototype.replace must go in through a replacer function. injectRoot and
+// injectJsonLd already carry this guard and their own tests; these are injectHead's. ---
+
+test('injectHead ships `$`-sequences in a route title/description verbatim, never as replacement patterns', () => {
+  const probes = ['A $$ B', 'A $& B', "A $' B", 'A $` B'];
+  for (const probe of probes) {
+    // The expected value is the HTML-escaped probe (`$&` contains a literal `&`), so this asserts
+    // escaping ran AND that nothing expanded a `$`-token after it.
+    const expected = escapeHtml(probe);
+    const html = injectHead(BASE_INDEX_HTML, {
+      title: probe,
+      description: probe,
+      canonical: 'https://agentforge4j.org/x/',
+    });
+    assert.equal(
+      /<title>([\s\S]*?)<\/title>/.exec(html)?.[1],
+      expected,
+      `<title> corrupted a $-token in ${JSON.stringify(probe)}`,
+    );
+    for (const { attribute, key } of ROUTE_SCOPED_SOCIAL_TAGS.filter((tag) => tag.source !== 'canonical')) {
+      const pattern = new RegExp(`<meta ${attribute}="${key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}" content="([\\s\\S]*?)" />`);
+      assert.equal(pattern.exec(html)?.[1], expected, `${key} corrupted a $-token in ${JSON.stringify(probe)}`);
+    }
+    // Structural footprint of each expansion, asserted directly rather than trusted to the value
+    // comparisons above: `$&` splices the matched tag's own source in, "$`" the preceding document,
+    // `$'` the following one.
+    assert.equal((html.match(/<\/head>/g) ?? []).length, 1, `a $-token spliced a second </head> in for ${JSON.stringify(probe)}`);
+    assert.equal((html.match(/<body>/g) ?? []).length, 1, `a $-token spliced a copy of the body in for ${JSON.stringify(probe)}`);
+  }
+});
+
+test('NEGATIVE CONTROL — `$$` is the case every consistency gate is blind to, so the unit must catch it', () => {
+  // `$$` collapses to a single `$` identically on the title, the description meta and all five
+  // route-scoped social tags. verify-seo.mjs's social pass compares those tags against each other,
+  // so a perfectly self-consistent — and silently wrong — page passes it. Nothing downstream of
+  // here can see this; it has to be caught at the producer.
+  const html = injectHead(BASE_INDEX_HTML, {
+    title: 'Costs $$ per run',
+    description: 'Costs $$ per run',
+    canonical: 'https://agentforge4j.org/x/',
+  });
+  assert.equal(/<title>([\s\S]*?)<\/title>/.exec(html)?.[1], 'Costs $$ per run');
+  assert.equal(
+    /<meta name="description" content="([\s\S]*?)" \/>/.exec(html)?.[1],
+    'Costs $$ per run',
+    'a lone `$` here means String.replace collapsed `$$`, consistently and invisibly',
+  );
+});
+
+test('injectHead escapes a `$`-token AND the HTML metacharacters around it, together', () => {
+  const html = injectHead(BASE_INDEX_HTML, {
+    title: 'A & B $& <c>',
+    description: 'D',
+    canonical: 'https://agentforge4j.org/x/',
+  });
+  assert.equal(/<title>([\s\S]*?)<\/title>/.exec(html)?.[1], 'A &amp; B $&amp; &lt;c&gt;');
+});
+
+test('injectNotFoundHead ships `$`-sequences verbatim too — the guard is on the shared apply path, not one producer', () => {
+  // The sibling of injectHead's control above. This producer already used a replacer function, so
+  // this is a regression guard rather than a fix: both heads go through the same table, and a
+  // future one that reverted to a bare replacement string would corrupt values the same way.
+  const html = injectNotFoundHead(BASE_INDEX_HTML, {
+    ...NOT_FOUND_CONFIG,
+    title: 'Not found $$ here',
+    description: "Nothing at $' this address",
+  });
+  assert.equal(/<title>([\s\S]*?)<\/title>/.exec(html)?.[1], 'Not found $$ here');
+  assert.equal(
+    /<meta name="description" content="([\s\S]*?)" \/>/.exec(html)?.[1],
+    "Nothing at $' this address",
+  );
+  assert.equal((html.match(/<body>/g) ?? []).length, 1, "`$'` must not have spliced a copy of the document into the head");
+});
+
+// --- Catalogue description truncation. The published meta descriptions really did read
+// `…and a verification starter). Sin…` and `…tool invoc…`: a fixed-offset slice plus an ellipsis,
+// which cuts whatever word happens to straddle the offset. ---
+
+const LONG_WITH_EARLY_SENTENCE =
+  'Turns a freeform agent idea into an approved, validated, downloadable agent bundle (agent.json, ' +
+  'systemprompt.md, README.md, and a verification starter). Single-pass and approval-gated: it structures ' +
+  'requirements, optionally clarifies, assesses complexity and risk, and then generates the bundle.';
+
+const LONG_WITH_NO_EARLY_SENTENCE =
+  'Estimates the execution shape of a workflow run (Mode 1) or an SDLC epic-package breakdown (Mode 2) ' +
+  'before it executes: token range, agent turns, tool invocations, complexity, confidence inputs, ' +
+  'structural risk flags, and a continue/narrow/stop recommendation. The caller resolves the mode first.';
+
+test('a description that already fits is used unchanged, with no ellipsis', () => {
+  const short = 'A short, complete description.';
+  assert.equal(truncateDescription(short), short);
+});
+
+test('a long description ending a sentence within budget stops at that sentence — complete, and with no ellipsis at all', () => {
+  const result = truncateDescription(LONG_WITH_EARLY_SENTENCE);
+  assert.equal(result, 'Turns a freeform agent idea into an approved, validated, downloadable agent bundle (agent.json, systemprompt.md, README.md, and a verification starter).');
+  assert.doesNotMatch(result, /…$/);
+  assert.ok(result.length <= MAX_DESCRIPTION_LENGTH);
+});
+
+test('NEGATIVE CONTROL — the exact output the fixed-offset slice published is no longer produced', () => {
+  // What the fixed-offset slice published for this same source text.
+  assert.notEqual(
+    truncateDescription(LONG_WITH_EARLY_SENTENCE),
+    `${LONG_WITH_EARLY_SENTENCE.slice(0, MAX_DESCRIPTION_LENGTH - 1).trimEnd()}…`,
+  );
+  assert.doesNotMatch(truncateDescription(LONG_WITH_EARLY_SENTENCE), /\bSin…$/);
+  assert.doesNotMatch(truncateDescription(LONG_WITH_NO_EARLY_SENTENCE), /\binvoc…$/);
+});
+
+test('with no sentence ending in budget, it cuts at the last complete word and marks the cut', () => {
+  const result = truncateDescription(LONG_WITH_NO_EARLY_SENTENCE);
+  assert.match(result, /…$/);
+  assert.ok(result.length <= MAX_DESCRIPTION_LENGTH);
+  assert.ok(describesCompleteWords(LONG_WITH_NO_EARLY_SENTENCE, result));
+});
+
+test('dangling clause punctuation is not left in front of the ellipsis', () => {
+  const raw = `${'word '.repeat(28)}alpha, beta gamma delta epsilon zeta eta theta iota kappa lambda`;
+  const result = truncateDescription(raw);
+  assert.doesNotMatch(result, /[,;:—–-]…$/);
+});
+
+test('a very long first sentence does not collapse the description to a useless opening fragment', () => {
+  // "Ok." is a real sentence end at character 3 (a capital follows it, so `endsSentence` accepts
+  // it) — taking it would be a technically-complete, useless snippet, so the useful-length floor
+  // rejects it, the word-boundary path is used instead, and most of the budget is kept.
+  const raw = `Ok. ${'Alpha beta gamma delta '.repeat(20)}`;
+  const result = truncateDescription(raw);
+  assert.ok(result.length > 80, `expected a useful length, got ${result.length}: ${result}`);
+});
+
+/** Fails a fixture that has drifted to where the useful-length floor, not the sentence rule, is
+ * what produces the expected result. A terminator BELOW the floor is rejected whatever
+ * `endsSentence` decides, so such a fixture proves nothing about the rule it is named for — a
+ * silent way for these guards to stop guarding, and exactly how it happened once already. The
+ * follower must also be upper-case, or the continuation rule alone would explain the result. */
+function assertIsolatesTheSentenceRule(raw, terminator) {
+  const end = raw.indexOf(terminator) + terminator.length;
+  assert.ok(end >= 0, `fixture drift: ${terminator} not present`);
+  assert.ok(
+    end >= MIN_USEFUL_DESCRIPTION_LENGTH,
+    `fixture drift: "${terminator}" ends at ${end}, below the ${MIN_USEFUL_DESCRIPTION_LENGTH}-character ` +
+      'useful-length floor — the floor would reject this cut on its own, so this test proves nothing',
+  );
+  assert.ok(end <= MAX_DESCRIPTION_LENGTH, `fixture drift: "${terminator}" ends at ${end}, past the budget`);
+  assert.match(raw.slice(end), /^\s+\p{Lu}/u, `fixture drift: "${terminator}" must be followed by a capital`);
+}
+
+test('an abbreviation is not a sentence end — `e.g.` never ends the description', () => {
+  // The failure this prevents is the mirror image of a mid-word cut: a technically-complete
+  // fragment that stops at "e.g." and throws away most of the budget. The capital after it is
+  // deliberate — it makes the dotted-word rule the ONLY thing that can reject this cut.
+  const raw =
+    'Runs adapters over several transports for governed workflow execution and delivery to each ' +
+    'configured provider, e.g. HTTP, gRPC and in-process, chosen per agent and per step of the run.';
+  assertIsolatesTheSentenceRule(raw, 'e.g.');
+  const result = truncateDescription(raw);
+  assert.doesNotMatch(result, /e\.g\.$/);
+  assert.ok(result.length > 120, `expected most of the budget kept, got ${result.length}: ${result}`);
+  assert.ok(describesCompleteWords(raw, result), result);
+});
+
+test('a lower-case continuation after a full stop is not a sentence end — `etc. and` never ends the description', () => {
+  // The mirror of the test above: no dot inside `etc`, so only the continuation rule can reject it.
+  const raw =
+    'Estimates token range, agent turns, tool invocations, structural risk flags, etc. and then ' +
+    'returns a continue, narrow or stop recommendation for the caller to act on before executing.';
+  const end = raw.indexOf('etc.') + 'etc.'.length;
+  assert.ok(
+    end >= MIN_USEFUL_DESCRIPTION_LENGTH,
+    `fixture drift: "etc." ends at ${end}, below the ${MIN_USEFUL_DESCRIPTION_LENGTH}-character floor`,
+  );
+  const result = truncateDescription(raw);
+  assert.doesNotMatch(result, /etc\.$/);
+  assert.ok(describesCompleteWords(raw, result), result);
+});
+
+test('a trailing `...` is not a sentence end either — the three-dot form, not just the single character', () => {
+  // Capital after the dots, again so the dotted-word rule is the only thing that can reject it.
+  const raw =
+    'A governed workflow summary with a long lead-in clause that eventually trails off and then ' +
+    'stops mid thought... And afterwards it continues for a good while longer than the budget allows.';
+  assertIsolatesTheSentenceRule(raw, 'thought...');
+  const result = truncateDescription(raw);
+  assert.doesNotMatch(result, /thought\.\.\.$/);
+  // And the cut never publishes the source's dots and this rule's ellipsis together.
+  assert.doesNotMatch(result, /\.\.\.…$/);
+  assert.ok(describesCompleteWords(raw, result), result);
+});
+
+test('a word ending in `...` immediately before the cut loses the dots rather than doubling up with the ellipsis', () => {
+  // The word branch cuts right after `thought...` here, because the next token is longer than the
+  // rest of the budget — the one shape that produces the doubling.
+  const raw = `A governed workflow summary that stops mid thought... ${'x'.repeat(200)}`;
+  const result = truncateDescription(raw);
+  assert.ok(result.endsWith('thought…'), result);
+  assert.ok(describesCompleteWords(raw, result), result);
+});
+
+test('a word boundary that is a newline, not a space, is still found — the cut never lands mid-word', () => {
+  const raw = `${'alpha\nbeta\ngamma\n'.repeat(20)}delta`;
+  const result = truncateDescription(raw);
+  assert.ok(result.length <= MAX_DESCRIPTION_LENGTH);
+  assert.ok(describesCompleteWords(raw, result), JSON.stringify(result));
+});
+
+test('a single unbroken token longer than the budget is still cut to the limit rather than published whole', () => {
+  const raw = 'x'.repeat(400);
+  const result = truncateDescription(raw);
+  assert.ok(result.length <= MAX_DESCRIPTION_LENGTH);
+  assert.match(result, /…$/);
+});
+
+test('describesCompleteWords rejects a mid-word cut and accepts a word-boundary cut', () => {
+  const raw = 'token range, agent turns, tool invocations, complexity';
+  assert.equal(describesCompleteWords(raw, 'token range, agent turns, tool invoc…'), false);
+  assert.equal(describesCompleteWords(raw, 'token range, agent turns, tool…'), true);
+  assert.equal(describesCompleteWords(raw, raw), true);
+});
+
+test('describesCompleteWords rejects text that is not a prefix of the source at all', () => {
+  assert.equal(describesCompleteWords('alpha beta gamma', 'alpha delta…'), false);
+});
+
+test('EVERY real shipped catalogue workflow gets a complete-word description within the limit — not only the ones anyone thought to look at', () => {
+  const catalogueData = JSON.parse(readFileSync(join(REAL_MODULE_ROOT, 'src/generated/catalogue-data.json'), 'utf8'));
+  assert.ok(catalogueData.workflows.length > 0, 'expected at least one shipped workflow to check');
+  for (const workflow of catalogueData.workflows) {
+    const raw = (workflow.description ?? '').trim();
+    if (!raw) {
+      continue;
+    }
+    const description = truncateDescription(raw);
+    assert.ok(description.length <= MAX_DESCRIPTION_LENGTH, `${workflow.id}: ${description.length} characters`);
+    assert.ok(
+      describesCompleteWords(raw, description),
+      `${workflow.id}: description does not end on a word boundary: ${JSON.stringify(description)}`,
+    );
+  }
+});
+
+test('the build REFUSES to publish a description the rule could not reduce to whole words — driven through buildSeo, not asserted about', () => {
+  // A source that is nothing but clause punctuation is the one shape reachable from outside: every
+  // candidate is stripped, leaving a bare ellipsis. This is what proves the refusal block is really
+  // wired into buildSeo and really aborts it, rather than being present but unreachable — the other
+  // two checks in that block cannot fire while the truncation rule is correct (see their comments).
+  const { distDir, seoRoutesPath, catalogueDataPath } = fixture({
+    workflows: [{ id: 'punctuation-only', name: 'Punctuation Only', description: ','.repeat(300) }],
+  });
+  assert.throws(
+    () => buildSeo({ distDir, seoRoutesPath, catalogueDataPath, repoRoot: REAL_MODULE_ROOT }),
+    /has no words to keep/,
+  );
+  assert.ok(
+    !existsSync(join(distDir, 'catalogue', 'punctuation-only', 'index.html')),
+    'the shell must not be written when the description is refused',
+  );
+});
+
+test('the word-boundary check rejects the exact output the fixed-offset slice used to publish — the shape the build guard exists to stop', () => {
+  // The rule cannot currently emit a mid-word cut, so the guard's own branch is unreachable from
+  // outside; this drives its PREDICATE with the exact output the removed slice published. If a
+  // future change to truncateDescription reintroduced that output, this is the property that says
+  // the build must stop — and it does: reverting the rule makes the guard throw inside buildSeo.
+  const raw = LONG_WITH_NO_EARLY_SENTENCE;
+  const asPublishedBefore = `${raw.slice(0, MAX_DESCRIPTION_LENGTH - 1).trimEnd()}…`;
+  assert.match(asPublishedBefore, /\binvoc…$/, 'fixture drift: this is no longer the shape that was published');
+  assert.equal(describesCompleteWords(raw, asPublishedBefore), false);
+});
+
+test('a workflow with no description at all still publishes the fallback sentence, and the guard does not fire on it', () => {
+  const { distDir, seoRoutesPath, catalogueDataPath } = fixture({
+    workflows: [{ id: 'no-description', name: 'No Description', description: null }],
+  });
+  buildSeo({ distDir, seoRoutesPath, catalogueDataPath, repoRoot: REAL_MODULE_ROOT });
+  const html = readFileSync(join(distDir, 'catalogue', 'no-description', 'index.html'), 'utf8');
+  const description = /<meta name="description" content="([^"]*)"/.exec(html)[1];
+  assert.equal(
+    description,
+    'No Description — a shipped, ready-to-run AgentForge4j workflow from the workflow catalogue.',
+  );
+});
+
+test('buildSeo writes the complete-word description into the real shell it publishes', () => {
+  const { distDir, seoRoutesPath, catalogueDataPath } = fixture({
+    workflows: [{ id: 'estimator', name: 'Estimator', description: LONG_WITH_NO_EARLY_SENTENCE }],
+  });
+  buildSeo({ distDir, seoRoutesPath, catalogueDataPath, repoRoot: REAL_MODULE_ROOT });
+  const html = readFileSync(join(distDir, 'catalogue', 'estimator', 'index.html'), 'utf8');
+  const description = /<meta name="description" content="([^"]*)"/.exec(html)[1];
+  assert.ok(describesCompleteWords(LONG_WITH_NO_EARLY_SENTENCE, description), description);
+  assert.doesNotMatch(description, /\binvoc…/);
 });

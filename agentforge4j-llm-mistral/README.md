@@ -17,6 +17,7 @@ Shipped tier defaults for provider id `mistral`:
 | `LITE` | `mistral-small-2603` |
 | `STANDARD` | `mistral-medium-3-5` |
 | `POWERFUL` | `mistral-large-2512` |
+| `PREMIUM` | `mistral-large-2512` |
 
 ## How it activates
 

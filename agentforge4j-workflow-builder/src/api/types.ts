@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import type { CanvasModel } from '../model/canvasModel';
+import type { PreservedStepFields } from '../model/preservedStepFields';
 
 export type BehaviourType =
   | 'INPUT'
@@ -82,6 +83,11 @@ export type EditableStep = {
   config: StepConfig;
   stepPrompt?: string;
   contextMapping?: ContextMapping;
+  /**
+   * Step-level properties the framework defines and this builder does not model, captured at
+   * import and re-emitted on export. See {@link PreservedStepFields}.
+   */
+  preservedFields?: PreservedStepFields;
 };
 
 export type BlueprintJsonObject = Record<string, unknown>;

@@ -4,6 +4,7 @@ import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import App from '@/App';
+import { DOCS_ENTRY_URL, FOOTER_COLUMNS, PRIMARY_NAV } from '@/config/nav';
 import { ThemeProvider } from '@/theme/ThemeContext';
 
 function renderAt(path: string) {
@@ -85,7 +86,11 @@ describe('docs route collision', () => {
     renderAt('/');
     const primaryNav = screen.getByRole('navigation', { name: 'Primary' });
     const docsLink = within(primaryNav).getByRole('link', { name: 'Docs' });
-    expect(docsLink).toHaveAttribute('href', '/docs/');
+    expect(docsLink).toHaveAttribute('href', DOCS_ENTRY_URL);
+    // The resolved version, never the bare /docs/ client-redirect stub the site used to route
+    // everyone through — see config/nav.ts and scripts/build-docs-entry.mjs.
+    expect(docsLink.getAttribute('href')).not.toBe('/docs/');
+    expect(docsLink.getAttribute('href')).toMatch(/^\/docs\/.+\/$/);
     expect(docsLink.tagName).toBe('A');
   });
 
@@ -94,7 +99,11 @@ describe('docs route collision', () => {
     const footer = container.querySelector('footer');
     expect(footer).not.toBeNull();
     const docsLink = within(footer as HTMLElement).getByRole('link', { name: 'Docs' });
-    expect(docsLink).toHaveAttribute('href', '/docs/');
+    expect(docsLink).toHaveAttribute('href', DOCS_ENTRY_URL);
+    // The resolved version, never the bare /docs/ client-redirect stub the site used to route
+    // everyone through — see config/nav.ts and scripts/build-docs-entry.mjs.
+    expect(docsLink.getAttribute('href')).not.toBe('/docs/');
+    expect(docsLink.getAttribute('href')).toMatch(/^\/docs\/.+\/$/);
     expect(docsLink.tagName).toBe('A');
   });
 });
@@ -194,7 +203,7 @@ describe('api nav placement', () => {
   test('/api appears in the primary navigation landmark, not footer-only', () => {
     renderAt('/');
     const primaryNav = screen.getByRole('navigation', { name: 'Primary' });
-    expect(within(primaryNav).getByRole('link', { name: 'API' })).toHaveAttribute('href', '/api');
+    expect(within(primaryNav).getByRole('link', { name: 'API' })).toHaveAttribute('href', '/api/');
   });
 });
 
@@ -221,14 +230,61 @@ describe('footer navigation', () => {
   test('every route is reachable from either the primary nav or the footer, except deliberate aliases', () => {
     // /contributing is a deliberate alias of /community (same content, same nav entry) —
     // not a defect, so it's excluded here rather than asserted unreachable. /docs is excluded
-    // too: it is deliberately NOT an SPA route (the docs link nav test above covers its real
-    // href, /docs/, into the composed artifact rather than an internal route).
+    // too: it is deliberately NOT an SPA route (the docs link nav tests above cover its real
+    // href — the versioned /docs/<version>/ tree in the composed artifact, resolved at build
+    // time by scripts/build-docs-entry.mjs — rather than an internal route).
     renderAt('/');
     const reachableHrefs = new Set(
       screen.getAllByRole('link').map((link) => link.getAttribute('href')),
     );
-    for (const path of ['/api', '/use', '/catalogue', '/builder', '/architecture', '/releases', '/community', '/security', '/legal', '/contact']) {
+    for (const path of ['/api/', '/use/', '/catalogue/', '/builder/', '/architecture/', '/releases/', '/community/', '/security/', '/legal/', '/contact/']) {
       expect(reachableHrefs.has(path)).toBe(true);
+    }
+  });
+});
+
+// Deliberately its own block rather than part of `footer navigation` above: the assertion below
+// spans the whole rendered shell — header nav, CTA, logo, page body, mobile menu and footer — so
+// filing it under one of those surfaces would let a future change that prunes or rescopes that
+// surface quietly take a shell-wide regression guard with it.
+describe('canonical internal link form', () => {
+  test('every internal link the shell renders, including the client-only mobile menu, is in the canonical trailing-slash form rather than the redirecting bare form', async () => {
+    // The companion, source-level half of scripts/verify-seo.mjs's production crawl. The two
+    // cover different corpora and neither subsumes the other: that gate reads the built site's
+    // prerendered markup, so it reaches every page body but nothing that exists only after a
+    // client-side interaction; this one renders the shell and OPENS THE MOBILE MENU, so it reaches
+    // the surface the crawl structurally cannot see. Each built route is a directory, so only the
+    // trailing-slash address is served without a 301 — and it is the exact form seo.ts's
+    // canonicalUrl already publishes as that page's canonical, so a bare-form href makes the site's
+    // own navigation disagree with its own canonicals.
+    const user = userEvent.setup();
+    renderAt('/');
+    await user.click(screen.getByRole('button', { name: 'Open menu' }));
+    const internalHrefs = screen
+      .getAllByRole('link')
+      .map((link) => link.getAttribute('href') ?? '')
+      .filter((href) => href.startsWith('/') && !href.startsWith('//'));
+    // Non-vacuity floor, derived from the nav config rather than hand-picked: with the menu open
+    // the shell must render every primary entry and the CTA twice (desktop nav + mobile panel) plus
+    // every footer link. It exists so a render that produced no links — or lost a whole surface —
+    // cannot satisfy the loop below by having nothing to check.
+    //
+    // Scoped to what it actually proves: the shell renders 27 such links (desktop nav 6, mobile
+    // panel 7, footer 10, plus the CTA, logo and page body) against a floor of 24, so the margin
+    // absorbs the loss of up to three. Losing one of the three multi-link surfaces outright is
+    // therefore caught, since the smallest of them is the desktop nav at six. Three things are NOT
+    // caught: pruning a few links out of a surface, dropping the single-link CTA or logo, and
+    // deleting entries from the nav config itself — the floor is computed from the same arrays the
+    // components render from, so a config deletion moves floor and render together. Route
+    // reachability is the `footer navigation` assertion's job above, which names its routes
+    // explicitly; this floor only keeps the form check below from passing on an empty or gutted
+    // render. Greater-than-or-equal, not equal: the home page body legitimately adds links of its
+    // own, and this guard is about their form, not their number.
+    const navInternalLinkCount =
+      (PRIMARY_NAV.length + 1) * 2 + FOOTER_COLUMNS.reduce((total, column) => total + column.links.length, 0);
+    expect(internalHrefs.length).toBeGreaterThanOrEqual(navInternalLinkCount);
+    for (const href of internalHrefs) {
+      expect(href).toMatch(/\/$/);
     }
   });
 });

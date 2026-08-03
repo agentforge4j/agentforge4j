@@ -5,6 +5,7 @@ import type { ArtifactItemDraft, CanvasModel, DecisionCaseDraft, NodeDataByKind 
 import type { NodeKind } from '../model/nodeKinds';
 import { NODE_KIND_META } from '../model/nodeKinds';
 import { canvasToWorkflow } from '../model/mapper';
+import { isPreservedStepFields } from '../model/preservedStepFields';
 
 const KNOWN_NODE_KINDS = new Set(Object.keys(NODE_KIND_META));
 
@@ -187,6 +188,12 @@ function isRestorableNode(value: unknown): boolean {
     return false;
   }
   if (value.parentNode !== undefined && typeof value.parentNode !== 'string') {
+    return false;
+  }
+  // Preserved framework fields are re-emitted verbatim onto the exported step, so a restored draft
+  // carrying something that is not a plain object would produce a malformed document rather than a
+  // render-time crash — type-checked here for the same fail-closed reason as every other field.
+  if (value.preservedFields !== undefined && !isPreservedStepFields(value.preservedFields)) {
     return false;
   }
   const position = value.position;

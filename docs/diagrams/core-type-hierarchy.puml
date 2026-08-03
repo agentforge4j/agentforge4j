@@ -300,6 +300,7 @@ package "llm-api  (core does NOT depend on this)" #FFF3F3 {
     LITE
     STANDARD
     POWERFUL
+    PREMIUM
   }
   interface ModelTierResolver {
     +resolve(provider : String, tier : ModelTier) : String

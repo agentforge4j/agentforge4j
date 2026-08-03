@@ -5,7 +5,7 @@
 // navigation is client-side only, so this hook (wired once in App.tsx) is what keeps the
 // document's <head> honest after that.
 
-import { describe, expect, test } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { MemoryRouter, useNavigate } from 'react-router-dom';
 import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
@@ -14,7 +14,8 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import App from '@/App';
 import { ThemeProvider } from '@/theme/ThemeContext';
-import { findSeoRoute } from '@/config/seo';
+import { findSeoRoute, NOT_FOUND_SEO } from '@/config/seo';
+import { catalogueData } from '@/lib/catalogueData';
 // JSON_LD_SCRIPT_ID comes from build-seo.mjs deliberately, never re-typed as a literal here: the
 // static shell's script id and the one usePageSeo.ts's `setJsonLd` looks for MUST be the same
 // string, and this import is the only thing in the suite that can fail when they drift. A
@@ -22,9 +23,41 @@ import { findSeoRoute } from '@/config/seo';
 // long after build-seo.mjs had been renamed — leaving the shell shipping one id, the hook hunting
 // for another, and every gate still green. (usePageSeo.ts itself cannot import this module —
 // build-seo.mjs pulls in node:child_process — so the binding has to live here.)
-import { buildSeo, JSON_LD_SCRIPT_ID } from '../scripts/build-seo.mjs';
+//
+// ROUTE_SCOPED_SOCIAL_TAGS is imported for the same reason and plays the same role for the social
+// tags: it is the build side's own table, and the tests below assert the hook really writes every
+// entry in it, with the same derivation. Re-listing those tags here would let the two surfaces
+// diverge exactly as they already did once, with the suite still green.
+import {
+  buildSeo,
+  catalogueWorkflowDescription as buildCatalogueWorkflowDescription,
+  describesCompleteWords as buildDescribesCompleteWords,
+  injectNotFoundHead,
+  JSON_LD_SCRIPT_ID,
+  MAX_DESCRIPTION_LENGTH as buildMaxDescriptionLength,
+  MIN_USEFUL_DESCRIPTION_LENGTH as buildMinUsefulDescriptionLength,
+  ROBOTS_META_ID,
+  ROUTE_SCOPED_SOCIAL_TAGS,
+  truncateDescription as buildTruncateDescription,
+} from '../scripts/build-seo.mjs';
+// The hook's own copy of the table, imported by value so the two can be compared directly rather
+// than only through the tags the hook happened to write on three sampled routes.
+import { ROUTE_SCOPED_SOCIAL_TAGS as HOOK_ROUTE_SCOPED_SOCIAL_TAGS, usePageSeo } from '@/lib/usePageSeo';
+// `catalogueData` is already imported above — this side of the merge brought only the client-side
+// half of the duplicated description units, which the corpus tests below drive against the build's.
+import {
+  catalogueWorkflowDescription,
+  describesCompleteWords,
+  MAX_DESCRIPTION_LENGTH,
+  MIN_USEFUL_DESCRIPTION_LENGTH,
+  truncateDescription,
+} from '@/lib/catalogueSeo';
 
 const MODULE_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
+// The committed index.html template every built shell (including dist/404.html) derives from —
+// read from the real file so the build-vs-client comparison below runs against the real template,
+// not a stand-in for it.
+const STATIC_SHELL_HTML = readFileSync(join(MODULE_ROOT, 'index.html'), 'utf8');
 
 function renderAt(path: string) {
   return render(
@@ -33,6 +66,22 @@ function renderAt(path: string) {
         <App />
       </MemoryRouter>
     </ThemeProvider>,
+  );
+}
+
+/** Mounts `usePageSeo` alone at `path`, with no <Routes> around it. `renderAt` above cannot observe
+ * a redirect route's own head state: <App> renders a <Navigate> for those paths, so the location has
+ * already moved on by the time anything is asserted. This harness isolates what the hook resolves
+ * FOR the address, which is the state a visitor's browser actually holds on a fresh stub load. */
+function renderHookAt(path: string) {
+  function HookOnly() {
+    usePageSeo();
+    return null;
+  }
+  return render(
+    <MemoryRouter initialEntries={[path]}>
+      <HookOnly />
+    </MemoryRouter>,
   );
 }
 
@@ -93,16 +142,42 @@ describe('usePageSeo', () => {
     expect(canonicalHref()).toBe('https://agentforge4j.org/community/');
   });
 
+  test('a redirect route describes itself exactly as its static stub does — noindex, canonical at the destination', () => {
+    // Rendered WITHOUT <App>, deliberately. The one address where the build-time head and the
+    // client-side head could disagree by construction is a redirect route: the shell build-seo.mjs
+    // serves for /contributing/ is a noindex stub canonicalised at /community/, and this hook owns
+    // that same document until App.tsx's <Navigate> fires. Mounting the full <App> would perform
+    // that navigation immediately and settle on /community/, so it can only observe the converged
+    // state — which is why the page-branch behaviour here (a SELF-canonical on a redirecting
+    // address, and the stub's noindex cleared) went unnoticed. verify-client-nav-seo.mjs excludes
+    // redirect routes from its convergence corpus for its own good reasons, so this is the only
+    // place the two surfaces are compared on this route.
+    renderHookAt('/contributing');
+    expect(canonicalHref()).toBe('https://agentforge4j.org/community/');
+    expect(robotsContent()).toBe('noindex, follow');
+    expect(document.querySelector('meta[name="robots"]')?.id).toBe(ROBOTS_META_ID);
+  });
+
+  test('navigating on from a redirect route clears the stub noindex rather than carrying it to the destination', () => {
+    // Through the real <App>, so the <Navigate> genuinely fires. Only passes because the stub's
+    // robots meta carries the shared id: setRobots(null) removes it via getElementById, so an
+    // id-less tag would survive and quietly suppress a perfectly indexable page.
+    renderAt('/contributing');
+    expect(robotsContent()).toBeNull();
+    expect(canonicalHref()).toBe('https://agentforge4j.org/community/');
+  });
+
   test('a real catalogue workflow id gets its own title and canonical', () => {
     renderAt('/catalogue/workflow-execution-estimator');
     expect(document.title).toBe('Workflow Execution Estimator — AgentForge4j Catalogue');
     expect(canonicalHref()).toBe('https://agentforge4j.org/catalogue/workflow-execution-estimator/');
   });
 
-  test('an unmatched path falls back to the home title/canonical rather than a stale value', () => {
+  test('an unmatched path gets the not-found metadata, neither a stale value nor the home page\'s', () => {
     renderAt('/this-route-does-not-exist');
-    expect(document.title).toBe('AgentForge4j — Governed AI Workflows for Java');
-    expect(canonicalHref()).toBe('https://agentforge4j.org/');
+    expect(document.title).toBe(NOT_FOUND_SEO.title);
+    expect(document.title).not.toBe('AgentForge4j — Governed AI Workflows for Java');
+    expect(canonicalHref()).toBeNull();
   });
 
   // React Router's own default matching is case-insensitive and tolerates an optional trailing
@@ -129,20 +204,21 @@ describe('usePageSeo', () => {
     expect(canonicalHref()).toBe('https://agentforge4j.org/catalogue/workflow-execution-estimator/');
   });
 
-  test('an unknown route with a trailing slash still falls back to Home, not a stale value', () => {
+  test('an unknown route with a trailing slash is not-found too, not a stale value', () => {
     renderAt('/this-route-does-not-exist/');
-    expect(document.title).toBe('AgentForge4j — Governed AI Workflows for Java');
-    expect(canonicalHref()).toBe('https://agentforge4j.org/');
+    expect(document.title).toBe(NOT_FOUND_SEO.title);
+    expect(canonicalHref()).toBeNull();
   });
 
-  test('an unknown catalogue workflow id uses NotFound (= Home) metadata, not stale or fabricated metadata', () => {
+  test('an unknown catalogue workflow id uses the not-found metadata, not stale or fabricated metadata', () => {
     // /catalogue/:id matches the route shape (CatalogueDetailPage renders), but no real workflow
-    // has this id, so CatalogueDetailPage itself renders NotFoundPage — this app has no metadata
-    // distinct from Home for "not found" (404.html is byte-identical to the home shell by design),
-    // so falling back to Home's title/canonical here is the correct "NotFound metadata", not a bug.
+    // has this id, so CatalogueDetailPage itself renders NotFoundPage — and the metadata must agree
+    // with what rendered. It used to fall back to Home's title/canonical because the app had no
+    // distinct not-found metadata at all; it now has its own, and this is one of the addresses that
+    // must get it.
     renderAt('/catalogue/this-workflow-id-does-not-exist');
-    expect(document.title).toBe('AgentForge4j — Governed AI Workflows for Java');
-    expect(canonicalHref()).toBe('https://agentforge4j.org/');
+    expect(document.title).toBe(NOT_FOUND_SEO.title);
+    expect(canonicalHref()).toBeNull();
   });
 
   test('build-time canonical (build-seo.mjs) and client-side canonical (usePageSeo) agree for a real shipped catalogue workflow id', () => {
@@ -197,14 +273,14 @@ describe('usePageSeo', () => {
     expect(jsonLdScript()).toBeNull();
   });
 
-  // The static 404.html shell carries NO JSON-LD of its own: copy-404.mjs takes it from the built
-  // index.html *before* build-seo.mjs injects anything, so unlike title/canonical — which that
-  // pre-injection shell already happens to carry in their home form — structured data on an
-  // unmatched path exists only because this hook adds it. Do not read this fallback as redundant
-  // with the shell; removing it would leave every unmatched path with no structured data at all.
-  test('an unmatched path gets home\'s jsonLd added client-side — the static 404.html shell ships with none of its own', () => {
+  // Both surfaces agree that an unmatched path carries no structured data: the static dist/404.html
+  // shell never receives any (build-seo.mjs's injectNotFoundHead adds none, and copy-404.mjs's
+  // source copy predates injection), and this hook actively clears whatever the previous route left
+  // behind. Adding home's JSON-LD here — which this branch used to do — asserted that a nonexistent
+  // address IS the site's WebSite entity and its Organization's home page.
+  test('an unmatched path carries no structured data at all, rather than inheriting the home page\'s identity', () => {
     renderAt('/this-route-does-not-exist');
-    expect(jsonLdContent()).toEqual(findSeoRoute('/')?.jsonLd);
+    expect(jsonLdScript()).toBeNull();
   });
 
   test('a client-side navigation from a route with no jsonLd to "/" adds it, without a fresh page load', () => {
@@ -262,5 +338,437 @@ describe('usePageSeo', () => {
     navigate();
 
     expect(document.head.querySelectorAll('script[type="application/ld+json"]').length).toBe(0);
+  });
+});
+
+// --- Not-found SEO in the rendered DOM. The static dist/404.html shell (build-seo.mjs's
+// injectNotFoundHead) covers the first request; this hook is what an unmatched route reaches after
+// a client-side navigation, and the two must say the same thing about what a 404 is. ---
+
+function robotsContent(): string | null {
+  return document.querySelector('meta[name="robots"]')?.getAttribute('content') ?? null;
+}
+
+describe('usePageSeo not-found metadata', () => {
+  test('an unknown route gets its OWN title and description, never the home page\'s', () => {
+    renderAt('/no-such-page');
+    expect(document.title).toBe(NOT_FOUND_SEO.title);
+    expect(metaDescription()).toBe(NOT_FOUND_SEO.description);
+    expect(document.title).not.toBe(findSeoRoute('/')?.title);
+  });
+
+  test('an unknown route carries NO canonical link at all — neither the home page nor itself', () => {
+    renderAt('/no-such-page');
+    expect(canonicalHref()).toBeNull();
+  });
+
+  test('an unknown route carries a noindex robots directive', () => {
+    renderAt('/no-such-page');
+    expect(robotsContent()).toBe(NOT_FOUND_SEO.robots);
+    expect(robotsContent()).toMatch(/\bnoindex\b/);
+  });
+
+  test('an unknown route carries no structured data — the home page\'s WebSite/Organization identity is not its own', () => {
+    renderAt('/no-such-page');
+    expect(jsonLdScript()).toBeNull();
+  });
+
+  test('an unknown catalogue workflow id is treated as not-found, not as the home page', () => {
+    renderAt('/catalogue/no-such-workflow');
+    expect(document.title).toBe(NOT_FOUND_SEO.title);
+    expect(canonicalHref()).toBeNull();
+    expect(jsonLdScript()).toBeNull();
+  });
+
+  test('navigating INTO a missing route from "/" drops the home canonical and JSON-LD rather than leaving them behind', () => {
+    const { navigate } = renderWithNavigation('/', '/no-such-page');
+    expect(canonicalHref()).toBe('https://agentforge4j.org/');
+    expect(jsonLdScript()).not.toBeNull();
+
+    navigate();
+    expect(document.title).toBe(NOT_FOUND_SEO.title);
+    expect(canonicalHref()).toBeNull();
+    expect(jsonLdScript()).toBeNull();
+    expect(robotsContent()).toMatch(/\bnoindex\b/);
+  });
+
+  test('navigating OUT of a missing route restores the destination canonical and clears the noindex — a real page must not inherit it', () => {
+    const { navigate } = renderWithNavigation('/no-such-page', '/architecture');
+    expect(robotsContent()).toMatch(/\bnoindex\b/);
+    expect(canonicalHref()).toBeNull();
+
+    navigate();
+    expect(document.title).toBe('Architecture — AgentForge4j');
+    expect(canonicalHref()).toBe('https://agentforge4j.org/architecture/');
+    expect(robotsContent()).toBeNull();
+  });
+
+  test('navigating out of a missing route to "/" restores the home JSON-LD as well as its canonical', () => {
+    const { navigate } = renderWithNavigation('/no-such-page', '/');
+    expect(jsonLdScript()).toBeNull();
+    navigate();
+    expect(canonicalHref()).toBe('https://agentforge4j.org/');
+    expect(jsonLdContent()).toEqual(findSeoRoute('/')?.jsonLd);
+    expect(robotsContent()).toBeNull();
+  });
+
+  test('navigating out of a missing route to a catalogue detail page also clears the noindex', () => {
+    const workflow = catalogueData.workflows[0];
+    const { navigate } = renderWithNavigation('/no-such-page', `/catalogue/${workflow.id}`);
+    navigate();
+    expect(canonicalHref()).toBe(`https://agentforge4j.org/catalogue/${workflow.id}/`);
+    expect(robotsContent()).toBeNull();
+  });
+
+  test('the client-side not-found state matches what build-seo.mjs writes into the static shell — one 404 policy, not two', () => {
+    // injectNotFoundHead is the build side's implementation; driving it here with the same committed
+    // config and comparing against what the hook produced is what binds the two together. A change
+    // to one that is not made in the other fails here rather than shipping two different 404s.
+    renderAt('/no-such-page');
+    const shell = injectNotFoundHead(STATIC_SHELL_HTML, NOT_FOUND_SEO);
+
+    expect(shell).toContain(`<title>${document.title}</title>`);
+    expect(shell).toContain(`content="${metaDescription()}"`);
+    expect(shell).toContain(`<meta name="robots" id="${ROBOTS_META_ID}" content="${robotsContent()}" />`);
+    // Both sides omit these entirely, rather than each choosing its own wrong answer.
+    expect(shell).not.toMatch(/<link\s+rel="canonical"/);
+    expect(canonicalHref()).toBeNull();
+    expect(shell).not.toMatch(/application\/ld\+json/);
+    expect(jsonLdScript()).toBeNull();
+    // og:url is the social counterpart of the canonical, and both surfaces drop it for the same
+    // reason — proven here against both at once rather than trusted on either side.
+    expect(shell).not.toMatch(/property="og:url"/);
+    expect(document.querySelector('meta[property="og:url"]')).toBeNull();
+  });
+});
+
+// --- Robots-tag OWNERSHIP. `robots` is the only tag this hook writes on one route and DELETES on
+// every other, which makes its removal rule load-bearing in a way no other tag's is: a deletion
+// keyed on `meta[name="robots"]` removes whatever it finds, including a directive this codebase
+// never wrote. The tag is keyed on a shared id instead (build-seo.mjs's ROBOTS_META_ID), so the
+// static 404 shell's own tag is ADOPTED rather than duplicated, and everything else is left alone.
+//
+// No gate above these tests can see the over-deletion: verify-seo.mjs reads served HTML, where a
+// foreign directive is still present, and verify-client-nav-seo.mjs compares direct load against
+// client navigation, which agree precisely because the hook erased it on both. ---
+
+function robotsTags(): HTMLMetaElement[] {
+  return [...document.querySelectorAll<HTMLMetaElement>('meta[name="robots"]')];
+}
+
+describe('usePageSeo robots-tag ownership', () => {
+  // jsdom's document is shared across this file, and these tests deliberately plant robots tags the
+  // hook does NOT own — which, by design, it will never clean up. Removing them here keeps that
+  // deliberate leftover from leaking into the `expect(robotsContent()).toBeNull()` assertions in the
+  // suites around this one. In an `afterEach` rather than at the end of each test so a failing
+  // assertion cannot skip the cleanup and turn one red test into several.
+  afterEach(() => {
+    robotsTags().forEach((tag) => tag.remove());
+  });
+
+  test('the robots meta the hook CREATES carries the exact id build-seo.mjs stamps on the static 404 shell', () => {
+    // The one assertion binding usePageSeo.ts's own copy of the literal to build-seo.mjs's exported
+    // constant — the same role, and the same failure mode, as the JSON-LD id test above. Every other
+    // guard on this invariant lives on the build side and compares the shell against that same
+    // constant, so all of them stay green if it is renamed while production ships a shell the hook
+    // can no longer find: it would then append a SECOND robots meta on the 404 and strand the
+    // shell's own, and its clearing pass on every real route would reach neither.
+    renderAt('/no-such-page');
+    expect(robotsTags()).toHaveLength(1);
+    expect(robotsTags()[0].id).toBe(ROBOTS_META_ID);
+  });
+
+  test('adopts and updates the static 404 shell\'s own robots meta on mount, rather than appending a second one', () => {
+    // The real first-request condition on /404.html: build-seo.mjs already wrote this node, with
+    // this id, before React ever ran.
+    const shellTag = document.createElement('meta');
+    shellTag.id = ROBOTS_META_ID;
+    shellTag.setAttribute('name', 'robots');
+    shellTag.setAttribute('content', 'noindex, nofollow');
+    document.head.appendChild(shellTag);
+
+    renderAt('/no-such-page');
+
+    expect(robotsTags()).toHaveLength(1);
+    expect(robotsTags()[0]).toBe(shellTag);
+    expect(robotsContent()).toBe(NOT_FOUND_SEO.robots);
+  });
+
+  test('a robots directive this site did not write SURVIVES hydration on a real route, rather than being silently deleted', () => {
+    // The regression this ownership rule exists to prevent. A host embedding the SPA (or a future
+    // index.html line) declares a directive of its own; the hook must clear ITS not-found tag on a
+    // real route without touching this one.
+    const foreign = document.createElement('meta');
+    foreign.setAttribute('name', 'robots');
+    foreign.setAttribute('content', 'max-image-preview:large');
+    document.head.appendChild(foreign);
+
+    renderAt('/architecture');
+
+    expect(robotsTags()).toContain(foreign);
+    expect(foreign.getAttribute('content')).toBe('max-image-preview:large');
+  });
+
+  test('it survives a client-side navigation too — and the hook still clears its OWN tag on the way out', () => {
+    const foreign = document.createElement('meta');
+    foreign.setAttribute('name', 'robots');
+    foreign.setAttribute('content', 'max-image-preview:large');
+    document.head.appendChild(foreign);
+
+    const { navigate } = renderWithNavigation('/no-such-page', '/architecture');
+    // On the not-found route both are present: the foreign one and the hook's own noindex.
+    expect(robotsTags()).toHaveLength(2);
+    expect(document.getElementById(ROBOTS_META_ID)?.getAttribute('content')).toBe(NOT_FOUND_SEO.robots);
+
+    navigate();
+
+    // Leaving the missing route clears the noindex — and nothing else. Both halves matter: a hook
+    // that cleared neither would leave a real page noindexed, and one that cleared both would
+    // silently drop a directive it never owned.
+    expect(document.getElementById(ROBOTS_META_ID)).toBeNull();
+    expect(robotsTags()).toHaveLength(1);
+    expect(robotsTags()[0]).toBe(foreign);
+    expect(foreign.getAttribute('content')).toBe('max-image-preview:large');
+  });
+
+  test('repeated navigation in and out of a missing route never accumulates robots tags', () => {
+    const { navigate } = renderWithNavigation('/no-such-page', '/architecture');
+    navigate();
+    navigate();
+    navigate();
+    expect(robotsTags()).toHaveLength(0);
+  });
+});
+
+// --- Route-scoped Open Graph / Twitter sync. The audited defect: the static shell rewrote all five
+// of these per route while the hook rewrote none, so every one of them went stale the moment a
+// visitor navigated inside the app — with title, description and canonical updating correctly
+// around them, which is why nothing looked obviously broken. ---
+
+function metaContent(attribute: string, key: string): string | null {
+  return document.querySelector(`meta[${attribute}="${key}"]`)?.getAttribute('content') ?? null;
+}
+
+function metaCount(attribute: string, key: string): number {
+  return document.querySelectorAll(`meta[${attribute}="${key}"]`).length;
+}
+
+/** The three values every route-scoped social tag is derived from, read back off the document. */
+function derivedSources(): Record<string, string | null> {
+  return { title: document.title, description: metaDescription(), canonical: canonicalHref() };
+}
+
+describe('usePageSeo route-scoped social metadata', () => {
+  // jsdom's `document` is shared across the tests in this file and Testing Library's cleanup only
+  // unmounts components — anything the hook wrote into <head> survives into the next test. The
+  // JSON-LD tests above already clear their own script for the same reason; the tag-COUNT
+  // assertions below are only meaningful against a head this test put into a known state.
+  beforeEach(() => {
+    for (const { attribute, key } of ROUTE_SCOPED_SOCIAL_TAGS) {
+      document.querySelectorAll(`meta[${attribute}="${key}"]`).forEach((el) => el.remove());
+    }
+  });
+
+  // The binding between the two copies of the table, stated as an equality so it holds in BOTH
+  // directions. The per-route assertions below prove the hook writes everything the build writes;
+  // only this proves the hook writes NOTHING MORE. A tag present in the hook's table and absent
+  // from build-seo.mjs's would ship to JavaScript-executing consumers only — missing from every
+  // static shell a crawler receives — and neither verify-seo.mjs (which states its own required
+  // list) nor verify-client-nav-seo.mjs (whose two sides are both hook-written, so they converge)
+  // would see it.
+  test('the hook\'s route-scoped table and the build\'s are element-for-element equal', () => {
+    expect(HOOK_ROUTE_SCOPED_SOCIAL_TAGS).toEqual(ROUTE_SCOPED_SOCIAL_TAGS);
+    // Non-vacuity: two empty tables would satisfy the equality and check nothing.
+    expect(HOOK_ROUTE_SCOPED_SOCIAL_TAGS.length).toBeGreaterThan(0);
+  });
+
+  // Every entry in the build's table is asserted against what the hook really wrote. Adding a sixth
+  // tag on the build side without teaching the hook about it fails here — which is precisely the
+  // drift that produced the audited defect, just in the other direction.
+  test.each(['/', '/api', '/architecture'])(
+    'every tag the static shell rewrites for a route is also written client-side, with the same derivation (%s)',
+    (path) => {
+      renderAt(path);
+      const sources = derivedSources();
+      expect(ROUTE_SCOPED_SOCIAL_TAGS.length).toBeGreaterThan(0);
+      for (const { attribute, key, source } of ROUTE_SCOPED_SOCIAL_TAGS) {
+        expect(metaCount(attribute, key), `${key} should exist exactly once`).toBe(1);
+        expect(metaContent(attribute, key), `${key} should equal the page's ${source}`).toBe(sources[source]);
+      }
+    },
+  );
+
+  test('a client-side navigation A -> B leaves every social tag describing B, not A', () => {
+    const { navigate } = renderWithNavigation('/', '/architecture');
+    expect(metaContent('property', 'og:title')).toBe('AgentForge4j — Governed AI Workflows for Java');
+    navigate();
+    expect(document.title).toBe('Architecture — AgentForge4j');
+    expect(metaContent('property', 'og:title')).toBe('Architecture — AgentForge4j');
+    expect(metaContent('property', 'og:url')).toBe('https://agentforge4j.org/architecture/');
+    expect(metaContent('name', 'twitter:title')).toBe('Architecture — AgentForge4j');
+    expect(metaContent('property', 'og:description')).toBe(metaDescription());
+    expect(metaContent('name', 'twitter:description')).toBe(metaDescription());
+  });
+
+  test('the reverse navigation B -> A is equally correct — the sync is not one-directional', () => {
+    const { navigate } = renderWithNavigation('/architecture', '/');
+    expect(metaContent('property', 'og:title')).toBe('Architecture — AgentForge4j');
+    navigate();
+    expect(metaContent('property', 'og:title')).toBe('AgentForge4j — Governed AI Workflows for Java');
+    expect(metaContent('property', 'og:url')).toBe('https://agentforge4j.org/');
+  });
+
+  test('navigating to a catalogue detail route carries that workflow\'s own social metadata', () => {
+    const workflow = catalogueData.workflows[0];
+    const { navigate } = renderWithNavigation('/', `/catalogue/${workflow.id}`);
+    navigate();
+    expect(metaContent('property', 'og:title')).toBe(document.title);
+    expect(metaContent('property', 'og:url')).toBe(`https://agentforge4j.org/catalogue/${workflow.id}/`);
+  });
+
+  test('an unknown route\'s social tags agree with whatever fallback metadata it resolved to, never a stale previous route', () => {
+    const { navigate } = renderWithNavigation('/architecture', '/no-such-page');
+    navigate();
+    const sources = derivedSources();
+    for (const { attribute, key, source } of ROUTE_SCOPED_SOCIAL_TAGS) {
+      expect(metaContent(attribute, key)).toBe(sources[source]);
+    }
+    expect(metaContent('property', 'og:title')).not.toBe('Architecture — AgentForge4j');
+  });
+
+  test('adopts and UPDATES the static shell\'s own social tags rather than appending duplicates beside them', () => {
+    // The real first-request condition: build-seo.mjs already wrote these into the shell's <head>
+    // before React ever ran. A hook that appended would leave two contradictory og:title tags, and
+    // a crawler reading the first would get the value from the initially-loaded route forever.
+    const shellTag = document.createElement('meta');
+    shellTag.setAttribute('property', 'og:title');
+    shellTag.setAttribute('content', 'stale shell value');
+    document.head.appendChild(shellTag);
+
+    const { navigate } = renderWithNavigation('/', '/architecture');
+    navigate();
+    expect(metaCount('property', 'og:title')).toBe(1);
+    expect(metaContent('property', 'og:title')).toBe('Architecture — AgentForge4j');
+  });
+
+  test('repeated navigation around the same routes never accumulates tags', () => {
+    const { navigate } = renderWithNavigation('/', '/architecture');
+    navigate();
+    navigate();
+    navigate();
+    for (const { attribute, key } of ROUTE_SCOPED_SOCIAL_TAGS) {
+      expect(metaCount(attribute, key), `${key} accumulated`).toBe(1);
+    }
+  });
+});
+
+// --- Catalogue description truncation: the TS implementation the client renders from and the
+// plain-ESM one the build shell is written from are deliberate duplicates (neither can import the
+// other). This is what binds them, and it is the ONLY thing that does — the rule is far too big to
+// keep in sync by eye. Every duplicated unit is driven in both implementations, over the REAL
+// shipped workflow data AND over a corpus of hard cases the real data does not happen to contain,
+// and must agree exactly. A fix applied to one copy and forgotten in the other fails here instead
+// of shipping two different meta descriptions for the same page.
+//
+// The corpus matters as much as the real data: with only two shipped workflows, a divergence that
+// does not change those two specific strings would otherwise ship unobserved.
+
+const BINDING_CORPUS: readonly string[] = [
+  'A short, complete description.',
+  'x'.repeat(MAX_DESCRIPTION_LENGTH),
+  'x'.repeat(MAX_DESCRIPTION_LENGTH + 1),
+  'x'.repeat(400),
+  ','.repeat(300),
+  `Ok. ${'Alpha beta gamma delta '.repeat(20)}`,
+  `${'word '.repeat(28)}alpha, beta gamma delta epsilon zeta eta theta iota kappa lambda`,
+  `${'alpha\nbeta\ngamma\n'.repeat(20)}delta`,
+  // The `e.g.`/`...` entries deliberately place the terminator ABOVE MIN_USEFUL_DESCRIPTION_LENGTH
+  // and follow it with a capital: below the floor, or before a lower-case word, something other
+  // than the dotted-word rule explains the result and the entry stops binding that rule at all.
+  'Runs adapters over several transports for governed workflow execution and delivery to each ' +
+    'configured provider, e.g. HTTP, gRPC and in-process, chosen per agent and per step of the run.',
+  'Estimates token range, agent turns, tool invocations, structural risk flags, etc. and then ' +
+    'returns a continue, narrow or stop recommendation for the caller to act on before executing.',
+  'A governed workflow summary with a long lead-in clause that eventually trails off and then ' +
+    'stops mid thought... And afterwards it continues for a good while longer than the budget allows.',
+  `A governed workflow summary that stops mid thought... ${'x'.repeat(200)}`,
+  `Runs adapters for governed AI workflow execution, e.g. ${'y'.repeat(200)}`,
+  'Supports the governed workflow contract as shipped in release 1.0. The rest of this sentence ' +
+    'exists only to push the text past the budget so the rule has something to shorten.',
+];
+
+describe('catalogue description truncation', () => {
+  test('both thresholds are one number each, not two — the TS copies match the build copies', () => {
+    expect(MAX_DESCRIPTION_LENGTH).toBe(buildMaxDescriptionLength);
+    expect(MIN_USEFUL_DESCRIPTION_LENGTH).toBe(buildMinUsefulDescriptionLength);
+  });
+
+  test('the corpus really exercises the sentence rule — every abbreviation entry sits above the useful-length floor', () => {
+    // Without this, a reworded corpus entry can drop its terminator below the floor and quietly
+    // stop binding the rule it was added for, while every test still passes. That is not
+    // hypothetical: it is how the `e.g.` binding was lost once, unnoticed by a green suite.
+    for (const terminator of ['e.g.', 'thought...']) {
+      const entry = BINDING_CORPUS.find((raw) => raw.includes(terminator));
+      expect(entry, terminator).toBeDefined();
+      const end = entry!.indexOf(terminator) + terminator.length;
+      expect(end, `${terminator} ends at ${end}`).toBeGreaterThanOrEqual(MIN_USEFUL_DESCRIPTION_LENGTH);
+      expect(end, `${terminator} ends at ${end}`).toBeLessThanOrEqual(MAX_DESCRIPTION_LENGTH);
+      expect(entry!.slice(end)).toMatch(/^\s+\p{Lu}/u);
+    }
+  });
+
+  test('the client-side and build-time implementations produce identical descriptions for every real shipped workflow, fallback included', () => {
+    expect(catalogueData.workflows.length).toBeGreaterThan(0);
+    for (const workflow of catalogueData.workflows) {
+      // Bound against the build's OWN entry point, not its truncation rule: that is what covers
+      // the no-description fallback sentence, which `truncateDescription` never sees. A workflow
+      // with no description is valid (`description` is optional in workflow.schema.json), and
+      // comparing against the rule alone would fail on it while both copies behaved correctly.
+      expect(catalogueWorkflowDescription(workflow), workflow.id).toBe(
+        buildCatalogueWorkflowDescription(workflow),
+      );
+    }
+  });
+
+  test('a workflow with no description is bound too — both copies emit the same fallback sentence', () => {
+    const workflow = { id: 'no-description', name: 'No Description', description: null };
+    expect(catalogueWorkflowDescription(workflow)).toBe(buildCatalogueWorkflowDescription(workflow));
+    expect(catalogueWorkflowDescription(workflow)).toContain('ready-to-run AgentForge4j workflow');
+  });
+
+  test('both truncation implementations agree on every case in the shared corpus, not only on the two shipped strings', () => {
+    for (const raw of BINDING_CORPUS) {
+      expect(truncateDescription(raw), JSON.stringify(raw.slice(0, 40))).toBe(buildTruncateDescription(raw));
+    }
+  });
+
+  test('both validator implementations agree on every case in the shared corpus, and on the shapes the rule must reject', () => {
+    for (const raw of BINDING_CORPUS) {
+      const description = truncateDescription(raw);
+      expect(describesCompleteWords(raw, description), JSON.stringify(description)).toBe(
+        buildDescribesCompleteWords(raw, description),
+      );
+    }
+    // Rejection shapes, so the binding covers `false` results and not only `true` ones.
+    const source = 'token range, agent turns, tool invocations, complexity';
+    for (const candidate of ['token range, agent turns, tool invoc…', 'alpha delta…', '…', source]) {
+      expect(describesCompleteWords(source, candidate), candidate).toBe(
+        buildDescribesCompleteWords(source, candidate),
+      );
+    }
+  });
+
+  test('every real shipped workflow ends on a complete word, within the limit — and none reproduces the mid-word cut this rule replaced', () => {
+    for (const workflow of catalogueData.workflows) {
+      const raw = (workflow.description ?? '').trim();
+      const description = catalogueWorkflowDescription(workflow);
+      expect(description.length, workflow.id).toBeLessThanOrEqual(MAX_DESCRIPTION_LENGTH);
+      if (raw) {
+        expect(describesCompleteWords(raw, description), `${workflow.id}: ${description}`).toBe(true);
+      }
+      // The two descriptions this site actually published, stated as the properties they violated.
+      expect(description).not.toMatch(/\bSin…$/);
+      expect(description).not.toMatch(/\binvoc…$/);
+    }
   });
 });

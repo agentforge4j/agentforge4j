@@ -64,9 +64,11 @@ either `npm run test:e2e:builder -- --headed` or `npm run test:e2e:web-ui -- --h
 
 `specs/web-ui/hosting.spec.ts` pins how the plain (un-assembled) `agentforge4j-web-ui` SPA build
 behaves on GitHub-Pages-style static hosting: any known route with no matching on-disk file
-(every route except `/`) is served via the `404.html` SPA-fallback (`scripts/copy-404.mjs` makes
-it byte-identical to `index.html`), so the response carries a real HTTP 404 status and the page
-then boots the SPA client-side to render the correct route. The spec runs a minimal
+(every route except `/`) is served via the `404.html` SPA-fallback (`scripts/copy-404.mjs` copies
+it from `index.html`, and `scripts/build-seo.mjs` then rewrites its `<head>` alone to the site's
+not-found metadata — the body it boots from stays the same empty mount point), so the response
+carries a real HTTP 404 status and the page then boots the SPA client-side to render the correct
+route. The spec runs a minimal
 GitHub-Pages-equivalent static server against the already-built `dist/` rather than Vite's preview
 server, whose built-in SPA-fallback middleware would return 200 and mask whether the `404.html`
 mechanism itself works.
@@ -263,9 +265,12 @@ a mandatory regression test immediately, no registration needed.
   manual `npm run preview`) is holding the port. Find and stop it. Passing a different port on the
   command line is not supported by this config; edit the `PORT` constant in
   `playwright.builder-functional.config.ts` for a one-off local override.
-- **`build:dev-harness` fails with a schema sync error**: run `npm run sync-schema` in
-  `agentforge4j-workflow-builder` manually first — it copies `agentforge4j-schema`'s JSON Schema
-  into the package; a stale/missing copy fails the Vite build outright.
+- **`build:dev-harness` fails in `verify-schemas`, before Vite runs**: the builder commits a copy
+  of each of `agentforge4j-schema`'s JSON Schemas, and `verify-schema-mirrors.mjs` fails the build
+  when a copy no longer matches its canonical source or has gone missing. It names the offending
+  file. Run `npm run sync-schema` in `agentforge4j-workflow-builder` to rewrite the copies from
+  canonical, then commit them alongside whatever canonical change you made. Build and test
+  deliberately verify rather than sync, so drift is reported instead of being repaired silently.
 - **A test fails only under `--repeat-each`/parallel runs, never alone**: check whether it shares
   browser-context state with another test in the same file via something outside Playwright's
   per-test isolation (e.g. a module-level mutable constant) — localStorage/cookies/sessionStorage

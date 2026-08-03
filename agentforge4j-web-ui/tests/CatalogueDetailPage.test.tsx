@@ -18,6 +18,23 @@ function renderDetailAt(id: string) {
 describe('CatalogueDetailPage (real generated data)', () => {
   const [estimator] = catalogueData.workflows;
 
+  // CataloguePage links `/catalogue/<id>/` — the canonical trailing-slash form GitHub Pages serves
+  // without a 301 — so that, not the bare form the rest of this file mounts, is the address a real
+  // click now produces. Asserted rather than left to react-router's trailing-slash tolerance: that
+  // tolerance is an implementation detail of a dependency this site does not control, and if it
+  // ever changed, every catalogue click would land on the no-match branch with nothing here to say
+  // so.
+  test.each(['', '/'])('renders the detail page when mounted at /catalogue/<id>%s', (suffix) => {
+    render(
+      <MemoryRouter initialEntries={[`/catalogue/${estimator.id}${suffix}`]}>
+        <Routes>
+          <Route path="/catalogue/:id" element={<CatalogueDetailPage />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+    expect(screen.getByRole('heading', { level: 1, name: estimator.name })).toBeInTheDocument();
+  });
+
   test('renders the real shipped workflow name and description', () => {
     renderDetailAt(estimator.id);
     expect(screen.getByRole('heading', { level: 1, name: estimator.name })).toBeInTheDocument();
@@ -43,9 +60,9 @@ describe('CatalogueDetailPage (real generated data)', () => {
     expect(graph.querySelector('svg')).not.toBeNull();
   });
 
-  test('renders an "Open the Builder" link pointing at /builder, with a note that it opens an empty canvas', () => {
+  test('renders an "Open the Builder" link pointing at /builder/, with a note that it opens an empty canvas', () => {
     renderDetailAt(estimator.id);
-    expect(screen.getByRole('link', { name: 'Open the Builder' })).toHaveAttribute('href', '/builder');
+    expect(screen.getByRole('link', { name: 'Open the Builder' })).toHaveAttribute('href', '/builder/');
     expect(screen.getByText(/isn't loaded automatically yet/)).toBeInTheDocument();
   });
 

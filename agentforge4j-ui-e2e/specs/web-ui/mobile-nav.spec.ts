@@ -25,7 +25,7 @@ test.describe('mobile navigation', () => {
     await page.getByRole('button', { name: 'Open menu' }).click();
     await page.locator('#primary-nav-mobile').getByRole('link', { name: 'Catalogue' }).click();
 
-    await expect(page).toHaveURL(/\/catalogue$/);
+    await expect(page).toHaveURL(/\/catalogue\/$/);
     await expect(page.getByRole('navigation', { name: 'Primary' })).toHaveCount(0);
   });
 

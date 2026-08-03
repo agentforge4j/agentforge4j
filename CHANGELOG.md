@@ -13,7 +13,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`PREMIUM` capability tier.** A fourth `ModelTier` above `POWERFUL`, with a shipped default on
+  every built-in provider — that provider's strongest available model, which is the same model as
+  `POWERFUL` wherever no distinct higher-capability one is configured. Operators retarget it per
+  provider like any other tier, through `agentforge4j.llm.model-tiers.<provider>.premium`.
+  The tier is declarable in configuration as well as resolvable at runtime: the shipped
+  `agent.schema.json` and `workflow.schema.json` accept `"modelTier": "PREMIUM"` on an agent
+  definition and as a step-level override, alongside the three tiers that were already valid.
+
 ### Changed
+
+- **Retry-policy absence is expressed the same way on both LLM contracts — breaking.**
+  `LlmClientConfiguration.getRetryPolicy()` now returns a nullable `LlmRetryPolicy` instead of
+  `Optional<LlmRetryPolicy>`, matching `LlmClient.getRetryPolicy()`, which already used `null` to
+  mean "no policy requested". *Migration:* a configuration that overrides the method changes its
+  return type and returns `null` where it returned `Optional.empty()`; callers replace
+  `getRetryPolicy().orElse(null)` with `getRetryPolicy()`, and `getRetryPolicy().isPresent()` with
+  a `!= null` check. Configurations that never overrode the method need no change. In the same
+  pass, `RetryingLlmClient.getRetryPolicy()` reports the policy it was constructed with — the one
+  it actually retries with — rather than the wrapped client's own value, which could be `null`
+  while retries were genuinely running.
+- **Invalid-tier error messages list the tier set from the enum.** Bootstrap configuration
+  parsing, agent invocation, and Spring auto-configuration previously each restated
+  `LITE, STANDARD, POWERFUL` in their own message; all three now derive the list from
+  `ModelTier`, so a tier added later cannot go missing from one of them.
 
 ### Deprecated
 
