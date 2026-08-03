@@ -4,6 +4,7 @@ package com.agentforge4j.runtime.execution.loop;
 import com.agentforge4j.core.workflow.step.blueprint.BlueprintDefinition;
 import com.agentforge4j.core.workflow.step.loop.LoopConfig;
 import com.agentforge4j.core.workflow.step.loop.LoopTerminationStrategy;
+import com.agentforge4j.runtime.LoopEvaluationContext;
 import com.agentforge4j.runtime.LoopEvaluator;
 import com.agentforge4j.runtime.event.EventRecorder;
 import com.agentforge4j.runtime.execution.ExecutionContext;
@@ -44,8 +45,10 @@ public final class EvaluatorLoopStrategy extends AbstractLoopStrategy {
 
   private boolean shouldTerminate(LoopConfig config, ExecutionContext executionContext,
       int iteration) {
+    LoopEvaluationContext context = new LoopEvaluationContext(executionContext.getState(),
+        executionContext.getActiveWorkflowId());
     boolean termination = loopEvaluator.shouldTerminate(config.evaluatorAgentId(), iteration,
-        executionContext);
+        context);
     LOG.log(System.Logger.Level.DEBUG,
         "Loop iteration complete iteration={0}, terminationSignal={1}",
         iteration, termination);

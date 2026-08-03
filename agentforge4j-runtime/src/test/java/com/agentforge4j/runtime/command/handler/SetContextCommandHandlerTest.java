@@ -15,6 +15,7 @@ import com.agentforge4j.runtime.repository.InMemoryWorkflowEventLog;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -68,6 +69,85 @@ class SetContextCommandHandlerTest {
         .hasMessageContaining(UntrustedInputEnvelope.KEY)
         .hasMessageContaining("reserved");
     assertThat(state.getContextValue(UntrustedInputEnvelope.KEY)).isEmpty();
+  }
+
+  @Test
+  void rejects_reserved_retry_attempt_counter_key() {
+    WorkflowState state = stateAtStep("s1");
+    SetContextCommand cmd = new SetContextCommand("__retry_a_attempts",
+        new StringContextValue("0", ContextProvenance.USER_SUPPLIED));
+
+    assertThatThrownBy(() ->
+        handler.apply(cmd, new CommandApplicationRequest(state, ContextMapping.none(), "agent-1", 1)))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("__retry_a_attempts")
+        .hasMessageContaining("reserved");
+    assertThat(state.getContextValue("__retry_a_attempts")).isEmpty();
+  }
+
+  @Test
+  void rejects_reserved_llm_token_total_key() {
+    WorkflowState state = stateAtStep("s1");
+    SetContextCommand cmd = new SetContextCommand("__llm_tokens_total",
+        new StringContextValue("0", ContextProvenance.USER_SUPPLIED));
+
+    assertThatThrownBy(() ->
+        handler.apply(cmd, new CommandApplicationRequest(state, ContextMapping.none(), "agent-1", 1)))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("__llm_tokens_total")
+        .hasMessageContaining("reserved");
+    assertThat(state.getContextValue("__llm_tokens_total")).isEmpty();
+  }
+
+  @Test
+  void reserved_namespace_cannot_even_be_declared_in_an_output_keys_allow_list() {
+    // An outputKeys allow-list naming a reserved key can no longer exist at all: ContextMapping
+    // rejects it at construction, closing the "allow-list rescues a reserved key" avenue one layer
+    // before the handler's own absolute guard (which remains as write-path defense, proven by the
+    // rejection tests above against an empty mapping).
+    assertThatThrownBy(() -> new ContextMapping(List.of(), List.of("__retry_a_attempts")))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("reserved")
+        .hasMessageContaining("__retry_a_attempts");
+  }
+
+  @Test
+  void normal_non_reserved_key_writes_continue_to_work() {
+    WorkflowState state = stateAtStep("s1");
+    SetContextCommand cmd = new SetContextCommand("myKey",
+        new StringContextValue("value", ContextProvenance.USER_SUPPLIED));
+
+    CommandApplicationResult result =
+        handler.apply(cmd, new CommandApplicationRequest(state, ContextMapping.none(), "agent-1", 1));
+
+    assertThat(result).isEqualTo(CommandApplicationResult.CONTINUE);
+    assertThat(state.getContextValue("myKey")).isPresent();
+  }
+
+  @Test
+  void single_underscore_key_is_not_reserved_and_writes() {
+    WorkflowState state = stateAtStep("s1");
+    SetContextCommand cmd = new SetContextCommand("_x",
+        new StringContextValue("v", ContextProvenance.USER_SUPPLIED));
+
+    CommandApplicationResult result =
+        handler.apply(cmd, new CommandApplicationRequest(state, ContextMapping.none(), "agent-1", 1));
+
+    assertThat(result).isEqualTo(CommandApplicationResult.CONTINUE);
+    assertThat(state.getContextValue("_x")).isPresent();
+  }
+
+  @Test
+  void interior_double_underscore_key_is_not_reserved_and_writes() {
+    WorkflowState state = stateAtStep("s1");
+    SetContextCommand cmd = new SetContextCommand("a__b",
+        new StringContextValue("v", ContextProvenance.USER_SUPPLIED));
+
+    CommandApplicationResult result =
+        handler.apply(cmd, new CommandApplicationRequest(state, ContextMapping.none(), "agent-1", 1));
+
+    assertThat(result).isEqualTo(CommandApplicationResult.CONTINUE);
+    assertThat(state.getContextValue("a__b")).isPresent();
   }
 
   private static WorkflowState stateAtStep(String stepId) {

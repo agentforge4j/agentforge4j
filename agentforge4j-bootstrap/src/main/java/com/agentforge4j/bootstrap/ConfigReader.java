@@ -21,7 +21,7 @@ final class ConfigReader {
 
   /**
    * Returns a merged map of all AgentForge4j configuration entries found in the environment and
-   * system properties, keyed in dot-form (e.g. {@code agentforge4j.llm.openai.api-key}). System
+   * system properties, keyed in dot-form (e.g. {@code agentforge4j.llm.openai.api.key}). System
    * properties take precedence over environment variables on collision.
    *
    * @return immutable map of normalised configuration keys to their values; never {@code null}

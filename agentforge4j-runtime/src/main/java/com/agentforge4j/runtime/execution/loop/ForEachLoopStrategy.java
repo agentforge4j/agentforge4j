@@ -103,13 +103,13 @@ public final class ForEachLoopStrategy extends AbstractLoopStrategy {
       LOG.log(System.Logger.Level.DEBUG,
           "Loop iteration start strategy={0}, iteration={1}, maxIterations={2}",
           strategy(), iteration, config.maxIterations());
-      markLoopIterationStart(executionContext, blueprintId, iteration);
+      boolean newIterationEntry = markLoopIterationStart(executionContext, blueprintId, iteration);
       ContextValue current = items.values().get(iteration - 1);
       Optional<ContextValue> previous = state.getContextValue(LOOP_ITEM_KEY);
       state.putContextValue(LOOP_ITEM_KEY, current);
       ExecutionOutcome outcome;
       try {
-        outcome = execute(blueprint, executionContext, iteration);
+        outcome = execute(blueprint, executionContext, iteration, newIterationEntry);
       } catch (RuntimeException e) {
         restorePreviousItem(state, previous);
         // Mirrors the list-mutation/ceiling-exceeded restarts above: the thrown iteration's own
@@ -149,8 +149,9 @@ public final class ForEachLoopStrategy extends AbstractLoopStrategy {
   }
 
   private ExecutionOutcome execute(BlueprintDefinition blueprint,
-      ExecutionContext executionContext, int iteration) {
-    ExecutionOutcome outcome = executeIteration(blueprint, iteration, executionContext);
+      ExecutionContext executionContext, int iteration, boolean newIterationEntry) {
+    ExecutionOutcome outcome =
+        executeIteration(blueprint, iteration, executionContext, newIterationEntry);
     LOG.log(System.Logger.Level.DEBUG,
         "Loop iteration complete iteration={0}, terminationSignal={1}",
         iteration, false);

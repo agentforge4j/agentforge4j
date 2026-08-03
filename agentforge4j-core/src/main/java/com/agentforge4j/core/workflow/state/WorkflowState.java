@@ -36,6 +36,16 @@ public final class WorkflowState {
   @Setter
   private String currentStepId;
   private WorkflowStatus status;
+  /**
+   * Durable, one-way marker set only by {@code DefaultWorkflowRuntime.cancel()} — never by a step
+   * behaviour handler's own status transitions (which routinely overwrite {@link #status} with
+   * {@code AWAITING_*}/{@code PAUSED} values as a normal part of driving a run, entirely
+   * unsynchronized against a concurrent {@code cancel()}). {@link #status} alone cannot reliably
+   * signal "a cancellation happened during this drive" once such a handler has run afterward and
+   * silently clobbered it; this field survives that clobber so the drive's own finalisation can
+   * still detect the cancellation and correct the persisted status before saving.
+   */
+  private boolean cancellationRequested;
   private Instant lastUpdatedAt;
   @Setter
   private ArtifactDefinition pendingArtifact;
@@ -97,6 +107,24 @@ public final class WorkflowState {
    * execution range, so a completed marker never survives a rewind to at or before the loop.
    */
   private final Map<String, Integer> completedLoopBlueprintUids;
+  /**
+   * For {@code AGENT_SIGNAL} (and other agent-driven termination) loops only: the execution uid at
+   * which an agent step most recently applied a {@code COMPLETE} command while that blueprint's
+   * iteration was on the active-loop call stack, keyed by blueprint id. Presence of a key means "the
+   * last agent step evaluated for this blueprint signalled completion"; the entry is overwritten
+   * (not merely set-once) on every agent step so a later, non-signalling agent step in the same
+   * iteration correctly un-signals it — mirroring the runtime's transient per-drive completion
+   * flag, just durable across a pause/resume where that transient flag is lost.
+   *
+   * <p>Cleared explicitly by {@link #clearLoopIterationCursor(String)} (a terminated or abandoned
+   * loop must forget its signal, or a later run of the same blueprint id — nested or repeated —
+   * would read a stale completion), and swept by uid via
+   * {@link #clearStepEntriesFromUid(int)}/{@link #clearEntriesFromUid(int, java.util.Set)} exactly
+   * like {@link #completedLoopBlueprintUids}, so a normal iteration-boundary advance or a legitimate
+   * retry/rewind of the signalling step invalidates a stale entry the same way it invalidates other
+   * loop-iteration bookkeeping.
+   */
+  private final Map<String, Integer> agentSignalCompletionUidByBlueprintId;
   /**
    * The blueprint id of the loop currently paused via {@code MaxIterationsAction.AWAIT_USER}, or
    * {@code null} when no loop is in that specific pause. Set only by the handler that performs that
@@ -160,6 +188,7 @@ public final class WorkflowState {
     this.forEachListFingerprintByBlueprintId = new HashMap<>();
     this.loopIterationBodyStartUidByBlueprintId = new HashMap<>();
     this.completedLoopBlueprintUids = new HashMap<>();
+    this.agentSignalCompletionUidByBlueprintId = new HashMap<>();
     this.collectionStateByStepId = new HashMap<>();
     this.generatedArtifactDescriptors = new ArrayList<>();
     this.capturedArtifactPaths = new LinkedHashSet<>();
@@ -191,6 +220,15 @@ public final class WorkflowState {
 
   public void setStatus(WorkflowStatus status) {
     this.status = Validate.notNull(status, "WorkflowState status must not be null");
+  }
+
+  /**
+   * Durably records that cancellation was requested for this run. One-way: never cleared. Distinct
+   * from {@link #setStatus}, which a step behaviour handler may still overwrite afterward as a
+   * normal part of driving the run — this marker survives that overwrite.
+   */
+  public void markCancellationRequested() {
+    this.cancellationRequested = true;
   }
 
   public void setLastUpdatedAt(Instant lastUpdatedAt) {
@@ -232,6 +270,10 @@ public final class WorkflowState {
 
   public Map<String, Integer> getCompletedLoopBlueprintUids() {
     return Collections.unmodifiableMap(completedLoopBlueprintUids);
+  }
+
+  public Map<String, Integer> getAgentSignalCompletionUidByBlueprintId() {
+    return Collections.unmodifiableMap(agentSignalCompletionUidByBlueprintId);
   }
 
   public Map<String, CollectionState> getCollectionStateByStepId() {
@@ -375,11 +417,16 @@ public final class WorkflowState {
    * in-progress-or-not loop, so a loop that is no longer in progress must forget both. Also clears
    * {@link #blueprintIdAwaitingMaxIterationsDecision} when it names this blueprint: a loop that just
    * terminated (or is being rewound) can no longer be the one a pending resume rewind applies to.
+   * Also clears any persisted {@link #isAgentSignalCompleted(String) agent-signal completion} for
+   * this blueprint: a loop that just terminated or is being abandoned must not leave a stale signal
+   * for a later, unrelated re-entry of the same blueprint id (nested or repeated) to read as already
+   * complete.
    */
   public void clearLoopIterationCursor(String blueprintId) {
     String bid = Validate.notBlank(blueprintId, "blueprintId must not be blank");
     loopIterationCursorByBlueprintId.remove(bid);
     loopIterationBodyStartUidByBlueprintId.remove(bid);
+    agentSignalCompletionUidByBlueprintId.remove(bid);
     if (bid.equals(blueprintIdAwaitingMaxIterationsDecision)) {
       blueprintIdAwaitingMaxIterationsDecision = null;
     }
@@ -475,6 +522,59 @@ public final class WorkflowState {
                 && entry.getValue() != null
                 && entry.getValue() >= 0)
         .forEach(entry -> completedLoopBlueprintUids.put(entry.getKey(), entry.getValue()));
+  }
+
+  /**
+   * Returns whether the most recently evaluated agent step for {@code blueprintId}'s active loop
+   * iteration applied a {@code COMPLETE} command, persisted so the signal survives a pause/resume
+   * within the same iteration.
+   *
+   * @param blueprintId the loop blueprint id; must not be blank
+   * @return {@code true} when a completion signal is currently recorded for the blueprint
+   */
+  public boolean isAgentSignalCompleted(String blueprintId) {
+    return agentSignalCompletionUidByBlueprintId.containsKey(
+        Validate.notBlank(blueprintId, "blueprintId must not be blank"));
+  }
+
+  /**
+   * Records that an agent step applied a {@code COMPLETE} command for {@code blueprintId}'s active
+   * loop iteration at execution uid {@code uid}, overwriting any previous entry.
+   *
+   * @param blueprintId the loop blueprint id; must not be blank
+   * @param uid         the signalling step's execution uid; must be at least 1
+   */
+  public void setAgentSignalCompleted(String blueprintId, int uid) {
+    String bid = Validate.notBlank(blueprintId, "blueprintId must not be blank");
+    Validate.isTrue(uid >= 1, "agent signal completion uid must be at least 1");
+    agentSignalCompletionUidByBlueprintId.put(bid, uid);
+  }
+
+  /**
+   * Clears {@code blueprintId}'s persisted completion signal — either because a later, non-signalling
+   * agent step in the same iteration superseded it, or because the loop terminated/was abandoned.
+   *
+   * @param blueprintId the loop blueprint id; must not be blank
+   */
+  public void clearAgentSignalCompleted(String blueprintId) {
+    agentSignalCompletionUidByBlueprintId.remove(
+        Validate.notBlank(blueprintId, "blueprintId must not be blank"));
+  }
+
+  /**
+   * Replaces agent-signal completion markers when loading persisted snapshot state.
+   */
+  public void replaceAgentSignalCompletionUids(Map<String, Integer> uids) {
+    agentSignalCompletionUidByBlueprintId.clear();
+    if (uids == null) {
+      return;
+    }
+    uids.entrySet().stream()
+        .filter(entry ->
+            StringUtils.isNotBlank(entry.getKey())
+                && entry.getValue() != null
+                && entry.getValue() >= 1)
+        .forEach(entry -> agentSignalCompletionUidByBlueprintId.put(entry.getKey(), entry.getValue()));
   }
 
   public int getUserPromptPauseCountForStep(String stepId) {
@@ -646,6 +746,13 @@ public final class WorkflowState {
    * emitted by earlier iterations stay recorded (descriptors are upserted by path, so a re-emit on
    * a later iteration replaces rather than duplicates).
    *
+   * <p>Also drops any {@link #isAgentSignalCompleted(String) agent-signal completion} marker whose
+   * recorded uid is at or after {@code fromUid} — the same uid-keyed clearing as
+   * {@link #completedLoopBlueprintUids}. This covers both a normal iteration-boundary advance
+   * (the previous, non-terminating iteration's signal must not leak into the next one) and a
+   * legitimate retry/rewind of the signalling step itself (a stale "already signalled" marker must
+   * not survive a rewind that will genuinely re-execute that step).
+   *
    * @param fromUid the uid threshold; step entries with uid &gt;= this value are cleared
    */
   public void clearStepEntriesFromUid(int fromUid) {
@@ -659,6 +766,7 @@ public final class WorkflowState {
     }
 
     completedLoopBlueprintUids.values().removeIf(completionUid -> completionUid >= fromUid);
+    agentSignalCompletionUidByBlueprintId.values().removeIf(signalUid -> signalUid >= fromUid);
   }
 
   /**
@@ -676,6 +784,9 @@ public final class WorkflowState {
         new WorkflowState(runId, workflowId, parentRunId, startedAt);
     copy.setCurrentStepId(currentStepId);
     copy.setStatus(status);
+    if (cancellationRequested) {
+      copy.markCancellationRequested();
+    }
     copy.setLastUpdatedAt(lastUpdatedAt);
     copy.setPendingArtifact(pendingArtifact);
     copy.setPendingUserPrompt(pendingUserPrompt);
@@ -708,6 +819,10 @@ public final class WorkflowState {
             : Map.copyOf(loopIterationBodyStartUidByBlueprintId));
     copy.replaceCompletedLoopBlueprintUids(
         completedLoopBlueprintUids.isEmpty() ? null : Map.copyOf(completedLoopBlueprintUids));
+    copy.replaceAgentSignalCompletionUids(
+        agentSignalCompletionUidByBlueprintId.isEmpty()
+            ? null
+            : Map.copyOf(agentSignalCompletionUidByBlueprintId));
     copy.setBlueprintIdAwaitingMaxIterationsDecision(blueprintIdAwaitingMaxIterationsDecision);
     copy.replaceCollectionStates(
         collectionStateByStepId.isEmpty() ? null : Map.copyOf(collectionStateByStepId));

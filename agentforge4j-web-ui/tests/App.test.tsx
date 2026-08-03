@@ -4,19 +4,22 @@ import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import App from '@/App';
+import { DOCS_ENTRY_URL, FOOTER_COLUMNS, PRIMARY_NAV } from '@/config/nav';
+import { ThemeProvider } from '@/theme/ThemeContext';
 
 function renderAt(path: string) {
   return render(
-    <MemoryRouter initialEntries={[path]}>
-      <App />
-    </MemoryRouter>,
+    <ThemeProvider>
+      <MemoryRouter initialEntries={[path]}>
+        <App />
+      </MemoryRouter>
+    </ThemeProvider>,
   );
 }
 
 describe('App routing', () => {
   test.each([
     ['/', 'AgentForge4j'],
-    ['/docs', 'Documentation'],
     ['/api', 'API reference'],
     ['/use', 'Get started'],
     ['/catalogue', 'Workflow catalogue'],
@@ -40,11 +43,18 @@ describe('App routing', () => {
     // of depending on being the first test in the file to touch /builder — any other test
     // rendering /builder earlier (e.g. under shuffled test order) must not break this one.
     vi.resetModules();
+    // ThemeProvider must be re-imported fresh alongside App here too: `vi.resetModules()`
+    // invalidates every module, including ThemeContext.tsx — wrapping with the OLD (top-of-file)
+    // ThemeProvider would provide a value on a stale React Context object distinct from the one
+    // FreshApp's freshly re-imported SiteHeader reads via useTheme(), which throws.
     const { default: FreshApp } = await import('@/App');
+    const { ThemeProvider: FreshThemeProvider } = await import('@/theme/ThemeContext');
     render(
-      <MemoryRouter initialEntries={['/builder']}>
-        <FreshApp />
-      </MemoryRouter>,
+      <FreshThemeProvider>
+        <MemoryRouter initialEntries={['/builder']}>
+          <FreshApp />
+        </MemoryRouter>
+      </FreshThemeProvider>,
     );
     expect(screen.getByRole('status')).toHaveTextContent(/loading the workflow builder/i);
     // The default 1000ms findBy timeout is too tight for this route specifically: it can be
@@ -58,6 +68,43 @@ describe('App routing', () => {
   test('renders NotFoundPage for an unmatched path', () => {
     renderAt('/this-route-does-not-exist');
     expect(screen.getByRole('heading', { level: 1, name: 'Page not found' })).toBeInTheDocument();
+  });
+});
+
+describe('docs route collision', () => {
+  // Regression guard: /docs must not be an SPA-owned client route. The Assembler track composes
+  // the real Docusaurus build at that exact path in the deployed artifact — an SPA route at the
+  // same path would intercept every client-side navigation before a real browser request for the
+  // real docs could ever happen (the bug this guards against; see nav.ts's `external` flag).
+  test('/docs is not a registered SPA route — client-side navigation falls through to the 404 fallback', () => {
+    renderAt('/docs');
+    expect(screen.getByRole('heading', { level: 1, name: 'Page not found' })).toBeInTheDocument();
+    expect(screen.queryByText(/Continue to the documentation/)).not.toBeInTheDocument();
+  });
+
+  test('the header Docs link is a real anchor targeting the composed docs artifact, not a client-side route', () => {
+    renderAt('/');
+    const primaryNav = screen.getByRole('navigation', { name: 'Primary' });
+    const docsLink = within(primaryNav).getByRole('link', { name: 'Docs' });
+    expect(docsLink).toHaveAttribute('href', DOCS_ENTRY_URL);
+    // The resolved version, never the bare /docs/ client-redirect stub the site used to route
+    // everyone through — see config/nav.ts and scripts/build-docs-entry.mjs.
+    expect(docsLink.getAttribute('href')).not.toBe('/docs/');
+    expect(docsLink.getAttribute('href')).toMatch(/^\/docs\/.+\/$/);
+    expect(docsLink.tagName).toBe('A');
+  });
+
+  test('the footer Docs link is a real anchor targeting the composed docs artifact, not a client-side route', () => {
+    const { container } = renderAt('/');
+    const footer = container.querySelector('footer');
+    expect(footer).not.toBeNull();
+    const docsLink = within(footer as HTMLElement).getByRole('link', { name: 'Docs' });
+    expect(docsLink).toHaveAttribute('href', DOCS_ENTRY_URL);
+    // The resolved version, never the bare /docs/ client-redirect stub the site used to route
+    // everyone through — see config/nav.ts and scripts/build-docs-entry.mjs.
+    expect(docsLink.getAttribute('href')).not.toBe('/docs/');
+    expect(docsLink.getAttribute('href')).toMatch(/^\/docs\/.+\/$/);
+    expect(docsLink.tagName).toBe('A');
   });
 });
 
@@ -156,7 +203,7 @@ describe('api nav placement', () => {
   test('/api appears in the primary navigation landmark, not footer-only', () => {
     renderAt('/');
     const primaryNav = screen.getByRole('navigation', { name: 'Primary' });
-    expect(within(primaryNav).getByRole('link', { name: 'API' })).toHaveAttribute('href', '/api');
+    expect(within(primaryNav).getByRole('link', { name: 'API' })).toHaveAttribute('href', '/api/');
   });
 });
 
@@ -182,13 +229,62 @@ describe('header and footer GitHub links', () => {
 describe('footer navigation', () => {
   test('every route is reachable from either the primary nav or the footer, except deliberate aliases', () => {
     // /contributing is a deliberate alias of /community (same content, same nav entry) —
-    // not a defect, so it's excluded here rather than asserted unreachable.
+    // not a defect, so it's excluded here rather than asserted unreachable. /docs is excluded
+    // too: it is deliberately NOT an SPA route (the docs link nav tests above cover its real
+    // href — the versioned /docs/<version>/ tree in the composed artifact, resolved at build
+    // time by scripts/build-docs-entry.mjs — rather than an internal route).
     renderAt('/');
     const reachableHrefs = new Set(
       screen.getAllByRole('link').map((link) => link.getAttribute('href')),
     );
-    for (const path of ['/docs', '/api', '/use', '/catalogue', '/builder', '/architecture', '/releases', '/community', '/security', '/legal', '/contact']) {
+    for (const path of ['/api/', '/use/', '/catalogue/', '/builder/', '/architecture/', '/releases/', '/community/', '/security/', '/legal/', '/contact/']) {
       expect(reachableHrefs.has(path)).toBe(true);
+    }
+  });
+});
+
+// Deliberately its own block rather than part of `footer navigation` above: the assertion below
+// spans the whole rendered shell — header nav, CTA, logo, page body, mobile menu and footer — so
+// filing it under one of those surfaces would let a future change that prunes or rescopes that
+// surface quietly take a shell-wide regression guard with it.
+describe('canonical internal link form', () => {
+  test('every internal link the shell renders, including the client-only mobile menu, is in the canonical trailing-slash form rather than the redirecting bare form', async () => {
+    // The companion, source-level half of scripts/verify-seo.mjs's production crawl. The two
+    // cover different corpora and neither subsumes the other: that gate reads the built site's
+    // prerendered markup, so it reaches every page body but nothing that exists only after a
+    // client-side interaction; this one renders the shell and OPENS THE MOBILE MENU, so it reaches
+    // the surface the crawl structurally cannot see. Each built route is a directory, so only the
+    // trailing-slash address is served without a 301 — and it is the exact form seo.ts's
+    // canonicalUrl already publishes as that page's canonical, so a bare-form href makes the site's
+    // own navigation disagree with its own canonicals.
+    const user = userEvent.setup();
+    renderAt('/');
+    await user.click(screen.getByRole('button', { name: 'Open menu' }));
+    const internalHrefs = screen
+      .getAllByRole('link')
+      .map((link) => link.getAttribute('href') ?? '')
+      .filter((href) => href.startsWith('/') && !href.startsWith('//'));
+    // Non-vacuity floor, derived from the nav config rather than hand-picked: with the menu open
+    // the shell must render every primary entry and the CTA twice (desktop nav + mobile panel) plus
+    // every footer link. It exists so a render that produced no links — or lost a whole surface —
+    // cannot satisfy the loop below by having nothing to check.
+    //
+    // Scoped to what it actually proves: the shell renders 27 such links (desktop nav 6, mobile
+    // panel 7, footer 10, plus the CTA, logo and page body) against a floor of 24, so the margin
+    // absorbs the loss of up to three. Losing one of the three multi-link surfaces outright is
+    // therefore caught, since the smallest of them is the desktop nav at six. Three things are NOT
+    // caught: pruning a few links out of a surface, dropping the single-link CTA or logo, and
+    // deleting entries from the nav config itself — the floor is computed from the same arrays the
+    // components render from, so a config deletion moves floor and render together. Route
+    // reachability is the `footer navigation` assertion's job above, which names its routes
+    // explicitly; this floor only keeps the form check below from passing on an empty or gutted
+    // render. Greater-than-or-equal, not equal: the home page body legitimately adds links of its
+    // own, and this guard is about their form, not their number.
+    const navInternalLinkCount =
+      (PRIMARY_NAV.length + 1) * 2 + FOOTER_COLUMNS.reduce((total, column) => total + column.links.length, 0);
+    expect(internalHrefs.length).toBeGreaterThanOrEqual(navInternalLinkCount);
+    for (const href of internalHrefs) {
+      expect(href).toMatch(/\/$/);
     }
   });
 });
@@ -270,15 +366,18 @@ describe('content-track pages', () => {
     );
   });
 
-  test('releases page is honest that nothing is published to Maven Central yet', () => {
+  test('releases page reports both the framework and the Workflow Catalog as published at 0.1.0', () => {
     renderAt('/releases');
-    expect(screen.getByText(/has not published a 0\.1\.0 release to Maven Central yet/)).toBeInTheDocument();
+    expect(
+      screen.getByText(/Framework 0\.1\.0 and Workflow Catalog 0\.1\.0 are both published/),
+    ).toBeInTheDocument();
   });
 
-  test('use page does not print copy-pasteable Maven coordinates before anything is published', () => {
+  test('use page prints the published Maven coordinates', () => {
     renderAt('/use');
-    expect(screen.getByText(/not yet published to Maven Central/)).toBeInTheDocument();
-    expect(screen.queryByText(/<dependency>/)).not.toBeInTheDocument();
+    expect(screen.getByText('org.agentforge4j')).toBeInTheDocument();
+    expect(screen.getByText('0.1.0')).toBeInTheDocument();
+    expect(screen.getByText('agentforge4j-bootstrap')).toBeInTheDocument();
   });
 
   test('legal page links the Apache-2.0 licence', () => {

@@ -6,10 +6,59 @@
 
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync} from 'node:fs';
+import {execFileSync} from 'node:child_process';
+import {existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
-import {join} from 'node:path';
-import {assembleSite} from './assemble-site.mjs';
+import {dirname, join, resolve} from 'node:path';
+import {fileURLToPath} from 'node:url';
+import sax from 'sax';
+import {SitemapStream, streamToPromise} from 'sitemap';
+import {
+  verifyComposedArtifact,
+  assembleSite,
+  javadocSitemapEntries,
+  removeConsumedFragments,
+  scanComposedHtmlForForbiddenContent,
+  urlsMissingFrom,
+  verifyComposedJavadocLinks,
+  verifyComposedAnchorLinks,
+} from './assemble-site.mjs';
+
+// The real repository root, for the handful of assertions that must be made against a committed
+// file rather than against a fixture this module wrote itself.
+const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
+
+function sitemapXmlFixture(urls) {
+  const body = urls.map((url) => `  <url>\n    <loc>${url}</loc>\n  </url>`).join('\n');
+  return (
+    '<?xml version="1.0" encoding="UTF-8"?>\n' +
+    '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n' +
+    `${body}\n</urlset>\n`
+  );
+}
+
+function sitemapXmlFixtureWithLastmod(entries) {
+  const body = entries
+    .map(({url, lastmod}) => `  <url>\n    <loc>${url}</loc>\n    <lastmod>${lastmod}</lastmod>\n  </url>`)
+    .join('\n');
+  return (
+    '<?xml version="1.0" encoding="UTF-8"?>\n' +
+    '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n' +
+    `${body}\n</urlset>\n`
+  );
+}
+
+// Mirrors the real raw maven-javadoc-plugin overview-page shape closely enough for
+// javadoc-seo.mjs's applyJavadocSeo (run by assembleSite itself, against every composed javadoc/**
+// surface) to recognise and post-process it, the same way it must against a real Javadoc build —
+// `marker` stands in for whatever distinguishes one version's real content from another's.
+function realisticJavadocHtml(marker) {
+  return (
+    '<!DOCTYPE HTML>\n<html lang>\n<head>\n<title>Overview</title>\n' +
+    '<meta name="description" content="module index">\n</head>\n' +
+    `<body>${marker}</body>\n</html>\n`
+  );
+}
 
 function fixture() {
   const root = mkdtempSync(join(tmpdir(), 'assemble-'));
@@ -17,15 +66,47 @@ function fixture() {
   const buildDir = join(root, 'build');
   const javadocDir = join(root, 'javadoc-next');
   mkdirSync(spaDir, {recursive: true});
-  writeFileSync(join(spaDir, 'index.html'), '<html>spa</html>');
-  // The real SPA build ships dist/404.html byte-identical to dist/index.html (copy-404.mjs).
+  // The real SPA links the documentation entry point directly, in both its primary nav and its
+  // footer (agentforge4j-web-ui/src/config/nav.ts). Modelling that here rather than as a bare
+  // `<html>spa</html>` is what makes `verifyComposedSpaDocsLinks` non-vacuous in these suites — a
+  // fixture with no docs link would satisfy the gate by having nothing for it to check.
+  writeFileSync(join(spaDir, 'index.html'), '<html><body><a href="/docs/0.1.0/">Docs</a></body></html>');
+  // The real SPA build ships dist/404.html as the empty pre-prerender SPA shell (copy-404.mjs).
   writeFileSync(join(spaDir, '404.html'), '<html>spa</html>');
+  // The real SPA build also ships its own robots.txt and sitemap.xml fragment (build-seo.mjs) —
+  // both real static files assemble-site.mjs's own contract now requires.
+  writeFileSync(join(spaDir, 'robots.txt'), 'User-agent: *\nAllow: /\n\nSitemap: https://agentforge4j.org/sitemap.xml\n');
+  writeFileSync(join(spaDir, 'sitemap.xml'), sitemapXmlFixture(['https://agentforge4j.org/']));
   mkdirSync(buildDir, {recursive: true});
-  writeFileSync(join(buildDir, 'index.html'), '<html>docs</html>');
+  // The docs build's root page really is a client-redirect stub, in both lifecycle states — the
+  // redirects plugin always emits `/` -> the current version (docusaurus.config.ts's
+  // `redirectConfig`). Modelling it here rather than as a generic `<html>docs</html>` keeps the
+  // fixture the shape assembleSite actually composes, and is what the redirect-stub labelling pass
+  // (and its fail-closed "found none" guard) is asserted against.
+  writeFileSync(
+    join(buildDir, 'index.html'),
+    '<!DOCTYPE html><html><head><meta charset="UTF-8">' +
+      '<meta http-equiv="refresh" content="0; url=/docs/0.1.0/">' +
+      '<link rel="canonical" href="/docs/0.1.0/" /></head></html>',
+  );
+  // The versioned tree that stub — and the SPA's own Docs link — actually point at. Without it the
+  // composed artifact would carry a documentation entry point that does not exist, which is exactly
+  // what `verifyComposedSpaDocsLinks` is there to refuse.
+  mkdirSync(join(buildDir, '0.1.0'), {recursive: true});
+  writeFileSync(join(buildDir, '0.1.0', 'index.html'), '<html><head><title>Get started</title></head><body>docs</body></html>');
+  // The real Docusaurus build ships its own sitemap.xml (the sitemap plugin's postBuild output).
+  writeFileSync(join(buildDir, 'sitemap.xml'), sitemapXmlFixture(['https://agentforge4j.org/docs/0.1.0/']));
   mkdirSync(javadocDir, {recursive: true});
-  writeFileSync(join(javadocDir, 'index.html'), '<html>javadoc</html>');
+  writeFileSync(join(javadocDir, 'index.html'), realisticJavadocHtml('javadoc next'));
   return {root, spaDir, buildDir, javadocDir, archiveDir: join(root, 'archive-absent'), siteDir: join(root, '_site')};
 }
+
+// An empty directory that is not a git repository, so no release tag resolves in it — the "never
+// invent a date" path. Its own directory rather than `tmpdir()` itself, and passed explicitly by
+// every test that supplies `releasedVersions`: `assembleSite`'s `repoRoot` defaults to THIS
+// checkout, so a fixture test that omits it silently makes its composed output a function of
+// whatever tags the ambient repository happens to carry.
+const NO_TAGS_REPO = mkdtempSync(join(tmpdir(), 'assemble-no-tags-'));
 
 test('composes the _site layout: docs/, javadoc/next, javadoc/latest', () => {
   const {spaDir, buildDir, javadocDir, archiveDir, siteDir} = fixture();
@@ -35,11 +116,100 @@ test('composes the _site layout: docs/, javadoc/next, javadoc/latest', () => {
   assert.ok(existsSync(join(siteDir, 'javadoc', 'latest', 'index.html')));
 });
 
+test('the full generated Javadoc tree — not only the overview page — receives javadoc-seo\'s canonical/OG/Twitter policy once composed', () => {
+  const {spaDir, buildDir, javadocDir, archiveDir, siteDir} = fixture();
+  // A real nested class page alongside the fixture's own overview index.html — mirrors a real
+  // `javadoc` (JDK 17) build's shape closely enough for javadoc-seo.mjs to recognise it.
+  mkdirSync(join(javadocDir, 'com', 'example'), {recursive: true});
+  writeFileSync(
+    join(javadocDir, 'com', 'example', 'Foo.html'),
+    '<!DOCTYPE HTML>\n<html lang="en">\n<head>\n<title>Foo</title>\n' +
+      '<meta name="description" content="declaration: package: com.example, class: Foo">\n</head>\n' +
+      '<body><h1 class="title">Class Foo</h1></body>\n</html>\n',
+  );
+  assembleSite({spaDir, buildDir, javadocDir, archiveDir, siteDir, customDomain: null});
+  const nested = readFileSync(join(siteDir, 'javadoc', 'next', 'com', 'example', 'Foo.html'), 'utf8');
+  assert.match(nested, /<link rel="canonical" href="https:\/\/agentforge4j\.org\/javadoc\/next\/com\/example\/Foo\.html">/);
+  assert.match(nested, /<meta property="og:title"/);
+  assert.match(nested, /<meta name="twitter:card" content="summary">/);
+  // Real generated body content must survive.
+  assert.match(nested, /<h1 class="title">Class Foo<\/h1>/);
+
+  // /javadoc/latest/ mirrors /javadoc/next/ when there are no released versions — its own copy of
+  // the same nested page must be processed too, independently (latest is a real, separately
+  // composed copy, not a symlink).
+  const latestNested = readFileSync(join(siteDir, 'javadoc', 'latest', 'com', 'example', 'Foo.html'), 'utf8');
+  assert.match(latestNested, /<link rel="canonical" href="https:\/\/agentforge4j\.org\/javadoc\/latest\/com\/example\/Foo\.html">/);
+});
+
+test('a real Javadoc build\'s own overview-summary.html redirect stub (which natively carries a canonical tag) does not abort site assembly — composed as-is, plugin canonical intact', () => {
+  const {spaDir, buildDir, javadocDir, archiveDir, siteDir} = fixture();
+  // The exact page kind javadoc (17)'s IndexRedirectWriter drops next to every real overview page —
+  // the only raw plugin output that already contains a <link rel="canonical"> of its own. Without
+  // javadoc-seo's redirect-stub carve-out this single file kills the whole assembly ("already has a
+  // <link rel="canonical"> tag") on every deploy.
+  const redirectStub =
+    '<!DOCTYPE HTML>\n<html lang>\n<head>\n<title>Overview</title>\n' +
+    '<meta name="description" content="index redirect">\n' +
+    '<meta name="generator" content="javadoc/IndexRedirectWriter">\n' +
+    '<link rel="canonical" href="index.html">\n</head>\n' +
+    '<body class="index-redirect-page"><p><a href="index.html">index.html</a></p></body>\n</html>\n';
+  writeFileSync(join(javadocDir, 'overview-summary.html'), redirectStub);
+  assembleSite({spaDir, buildDir, javadocDir, archiveDir, siteDir, customDomain: null});
+  // /latest/ is indexable, so its stub is composed byte-identical. /next/ is noindex, so its stub
+  // gains the robots tag and NOTHING else — the surface's indexability policy must not be escapable
+  // through a redirect shell, while the redirect itself stays exactly as the plugin wrote it.
+  const latestStub = readFileSync(join(siteDir, 'javadoc', 'latest', 'overview-summary.html'), 'utf8');
+  assert.equal(latestStub, redirectStub, '/latest/ stub must be composed byte-identical, never SEO-rewritten');
+
+  const nextStub = readFileSync(join(siteDir, 'javadoc', 'next', 'overview-summary.html'), 'utf8');
+  assert.equal(
+    nextStub,
+    redirectStub.replace('</head>', '<meta name="robots" content="noindex,follow">\n</head>'),
+    '/next/ stub must gain exactly the robots tag, with its plugin canonical and body untouched',
+  );
+  assert.match(nextStub, /<link rel="canonical" href="index\.html">/);
+  // The real overview page next to the stub is still processed normally.
+  const overview = readFileSync(join(siteDir, 'javadoc', 'next', 'index.html'), 'utf8');
+  assert.match(overview, /<link rel="canonical" href="https:\/\/agentforge4j\.org\/javadoc\/next\/">/);
+});
+
+test('in the no-released-version composition, /next/ and /latest/ are copied from the exact same source (assembleSite\'s own latestSource fallback) but receive divergent robots policy from applyJavadocSeo() — /latest/ stays indexable, /next/ is suppressed as the duplicate', () => {
+  const {spaDir, buildDir, javadocDir, archiveDir, siteDir} = fixture();
+  mkdirSync(join(javadocDir, 'com', 'example'), {recursive: true});
+  writeFileSync(
+    join(javadocDir, 'com', 'example', 'Foo.html'),
+    '<!DOCTYPE HTML>\n<html lang="en">\n<head>\n<title>Foo</title>\n' +
+      '<meta name="description" content="declaration: package: com.example, class: Foo">\n</head>\n' +
+      '<body><h1 class="title">Class Foo</h1></body>\n</html>\n',
+  );
+  // No releasedVersions/javadocVersionsDir passed — assembleSite's own default (empty array) is
+  // exactly the no-release lifecycle state this test targets.
+  assembleSite({spaDir, buildDir, javadocDir, archiveDir, siteDir, customDomain: null});
+
+  for (const relPath of ['index.html', 'com/example/Foo.html']) {
+    const next = readFileSync(join(siteDir, 'javadoc', 'next', ...relPath.split('/')), 'utf8');
+    assert.match(
+      next,
+      /<meta name="robots" content="noindex,follow">/,
+      `/javadoc/next/${relPath} must be noindex,follow — a byte-for-byte duplicate of /latest/ in the no-release state`,
+    );
+    const latest = readFileSync(join(siteDir, 'javadoc', 'latest', ...relPath.split('/')), 'utf8');
+    assert.doesNotMatch(
+      latest,
+      /<meta name="robots"/,
+      `/javadoc/latest/${relPath} must stay indexable — the evergreen public entry point`,
+    );
+  }
+});
+
 test('copies the SPA build to the site root, including its own index.html/404.html', () => {
   const {spaDir, buildDir, javadocDir, archiveDir, siteDir} = fixture();
   assembleSite({spaDir, buildDir, javadocDir, archiveDir, siteDir, customDomain: null});
-  assert.equal(readFileSync(join(siteDir, 'index.html'), 'utf8'), '<html>spa</html>');
-  assert.equal(readFileSync(join(siteDir, '404.html'), 'utf8'), '<html>spa</html>');
+  // Compared against the fixture's own bytes rather than a duplicated literal: the point is that the
+  // SPA is copied through unchanged, which stays true however the fixture's pages evolve.
+  assert.equal(readFileSync(join(siteDir, 'index.html'), 'utf8'), readFileSync(join(spaDir, 'index.html'), 'utf8'));
+  assert.equal(readFileSync(join(siteDir, '404.html'), 'utf8'), readFileSync(join(spaDir, '404.html'), 'utf8'));
   assert.ok(existsSync(join(siteDir, '.nojekyll')));
 });
 
@@ -49,6 +219,21 @@ test('SPA files coexist with docs/ and javadoc/ without collision', () => {
   assert.ok(existsSync(join(siteDir, 'index.html')));
   assert.ok(existsSync(join(siteDir, 'docs', 'index.html')));
   assert.ok(existsSync(join(siteDir, 'javadoc', 'next', 'index.html')));
+});
+
+test('the composed docs/index.html is the real Docusaurus homepage, not the SPA shell or a placeholder', () => {
+  // Regression guard for the /docs route-collision bug (agentforge4j-web-ui/src/pages/DocsPage.tsx,
+  // removed): the SPA used to own a client-side route at /docs rendering a placeholder ("Continue
+  // to the documentation ...") instead of ever letting a real request reach the composed
+  // Docusaurus build mounted at this exact path. The composed docs/index.html must be the real
+  // Docusaurus output — distinct from the SPA's own index.html — and must not carry the removed
+  // placeholder's exact wording.
+  const {spaDir, buildDir, javadocDir, archiveDir, siteDir} = fixture();
+  assembleSite({spaDir, buildDir, javadocDir, archiveDir, siteDir, customDomain: null});
+  const spaIndex = readFileSync(join(siteDir, 'index.html'), 'utf8');
+  const docsIndex = readFileSync(join(siteDir, 'docs', 'index.html'), 'utf8');
+  assert.notEqual(docsIndex, spaIndex);
+  assert.doesNotMatch(docsIndex, /Continue to the documentation/);
 });
 
 test('fails closed when spaDir does not exist', () => {
@@ -110,7 +295,7 @@ test('copies one version-pinned Javadoc surface per released version; /javadoc/l
   const javadocVersionsDir = join(root, 'javadoc-versions');
   for (const version of ['1.1.0', '1.0.0']) {
     mkdirSync(join(javadocVersionsDir, version), {recursive: true});
-    writeFileSync(join(javadocVersionsDir, version, 'index.html'), `<html>javadoc ${version}</html>`);
+    writeFileSync(join(javadocVersionsDir, version, 'index.html'), realisticJavadocHtml(`javadoc ${version}`));
   }
   assembleSite({
     spaDir,
@@ -121,19 +306,20 @@ test('copies one version-pinned Javadoc surface per released version; /javadoc/l
     archiveDir,
     siteDir,
     customDomain: null,
+    repoRoot: NO_TAGS_REPO,
   });
-  assert.equal(
+  assert.match(
     readFileSync(join(siteDir, 'javadoc', '1.1.0', 'index.html'), 'utf8'),
-    '<html>javadoc 1.1.0</html>',
+    /javadoc 1\.1\.0/,
   );
-  assert.equal(
+  assert.match(
     readFileSync(join(siteDir, 'javadoc', '1.0.0', 'index.html'), 'utf8'),
-    '<html>javadoc 1.0.0</html>',
+    /javadoc 1\.0\.0/,
   );
   // releasedVersions[0] (newest, per versions.json's newest-first convention) is the /latest source.
-  assert.equal(
+  assert.match(
     readFileSync(join(siteDir, 'javadoc', 'latest', 'index.html'), 'utf8'),
-    '<html>javadoc 1.1.0</html>',
+    /javadoc 1\.1\.0/,
   );
 });
 
@@ -209,7 +395,7 @@ test('an archived version carried in releasedVersions still publishes its /javad
   const javadocVersionsDir = join(root, 'javadoc-versions');
   for (const version of ['1.1.0', '1.0.0']) {
     mkdirSync(join(javadocVersionsDir, version), {recursive: true});
-    writeFileSync(join(javadocVersionsDir, version, 'index.html'), `<html>javadoc ${version}</html>`);
+    writeFileSync(join(javadocVersionsDir, version, 'index.html'), realisticJavadocHtml(`javadoc ${version}`));
   }
   const archiveDir = join(root, 'archive');
   mkdirSync(join(archiveDir, '1.0.0'), {recursive: true});
@@ -224,11 +410,12 @@ test('an archived version carried in releasedVersions still publishes its /javad
     archiveDir,
     siteDir,
     customDomain: null,
+    repoRoot: NO_TAGS_REPO,
   });
 
-  assert.equal(
+  assert.match(
     readFileSync(join(siteDir, 'javadoc', '1.0.0', 'index.html'), 'utf8'),
-    '<html>javadoc 1.0.0</html>',
+    /javadoc 1\.0\.0/,
   );
   assert.equal(
     readFileSync(join(siteDir, 'docs', 'archive', '1.0.0', 'index.html'), 'utf8'),
@@ -236,9 +423,9 @@ test('an archived version carried in releasedVersions still publishes its /javad
   );
   // Only releasedVersions[0] (the true newest ACTIVE version) sources /latest — an archived version
   // must never become the alias target.
-  assert.equal(
+  assert.match(
     readFileSync(join(siteDir, 'javadoc', 'latest', 'index.html'), 'utf8'),
-    '<html>javadoc 1.1.0</html>',
+    /javadoc 1\.1\.0/,
   );
 });
 
@@ -366,4 +553,1837 @@ test('verifyComposedArtifact fails closed when an expected entry file exists but
     /exit\(1\)/,
   );
   assert.deepEqual(exitCodes, [1]);
+});
+
+test('verifyComposedArtifact fails closed when /javadoc/latest/ silently composed empty (a real bug: an upstream Javadoc build failing without erroring left an empty, existsSync-true directory)', () => {
+  const {spaDir, buildDir, javadocDir, archiveDir, siteDir} = fixture();
+  const exitCodes = [];
+  const fakeExit = (code) => {
+    exitCodes.push(code);
+    throw new Error(`exit(${code})`);
+  };
+  assert.throws(
+    () =>
+      assembleSite({
+        spaDir,
+        buildDir,
+        // No javadocVersionsDir/releasedVersions passed — with releasedVersions empty, /latest
+        // sources from javadocDir itself (assembleSite's own fallback) — override it to a real,
+        // pre-existing-but-empty directory to reproduce the exact bug shape.
+        javadocDir: (() => {
+          const emptyDir = javadocDir.replace('javadoc-next', 'javadoc-next-composes-empty');
+          mkdirSync(emptyDir, {recursive: true}); // exists, but has no index.html
+          return emptyDir;
+        })(),
+        archiveDir,
+        siteDir,
+        customDomain: null,
+        exit: fakeExit,
+      }),
+    /exit\(1\)/,
+  );
+  assert.deepEqual(exitCodes, [1]);
+});
+
+test('verifyComposedArtifact fails closed when a released version\'s /javadoc/<v>/ silently composed empty', () => {
+  const {root, spaDir, buildDir, javadocDir, archiveDir, siteDir} = fixture();
+  const javadocVersionsDir = join(root, 'javadoc-versions');
+  // 1.1.0 has a real surface; 1.0.0's directory exists (so requireDir's input-side check passes)
+  // but is empty — exactly the real bug shape (an upstream per-version Javadoc build that failed
+  // without throwing, or without existing before the copy step ran requireDir at all).
+  mkdirSync(join(javadocVersionsDir, '1.1.0'), {recursive: true});
+  writeFileSync(join(javadocVersionsDir, '1.1.0', 'index.html'), realisticJavadocHtml('javadoc 1.1.0'));
+  mkdirSync(join(javadocVersionsDir, '1.0.0'), {recursive: true});
+
+  const exitCodes = [];
+  const fakeExit = (code) => {
+    exitCodes.push(code);
+    throw new Error(`exit(${code})`);
+  };
+  assert.throws(
+    () =>
+      assembleSite({
+        spaDir,
+        buildDir,
+        javadocDir,
+        javadocVersionsDir,
+        releasedVersions: ['1.1.0', '1.0.0'],
+        archiveDir,
+        siteDir,
+        customDomain: null,
+        repoRoot: NO_TAGS_REPO,
+        exit: fakeExit,
+      }),
+    /exit\(1\)/,
+  );
+  assert.deepEqual(exitCodes, [1]);
+});
+
+test('merges the SPA and docs sitemap fragments, plus the indexable Javadoc surfaces, into one final sitemap.xml at the site root', () => {
+  const {spaDir, buildDir, javadocDir, archiveDir, siteDir} = fixture();
+  assembleSite({spaDir, buildDir, javadocDir, archiveDir, siteDir, customDomain: null});
+  const xml = readFileSync(join(siteDir, 'sitemap.xml'), 'utf8');
+  const locs = [...xml.matchAll(/<loc>([^<]+)<\/loc>/g)].map((m) => m[1]);
+  // The Javadoc trees have no generator of their own, so their entries are computed during
+  // composition — see javadocSitemapEntries. /javadoc/latest/ is the one indexable surface here.
+  assert.deepEqual(locs, [
+    'https://agentforge4j.org/',
+    'https://agentforge4j.org/docs/0.1.0/',
+    'https://agentforge4j.org/javadoc/latest/',
+  ]);
+});
+
+test('the merged sitemap.xml is not just a copy of the SPA fragment — it includes docs URLs too', () => {
+  const {spaDir, buildDir, javadocDir, archiveDir, siteDir} = fixture();
+  assembleSite({spaDir, buildDir, javadocDir, archiveDir, siteDir, customDomain: null});
+  const merged = readFileSync(join(siteDir, 'sitemap.xml'), 'utf8');
+  const spaOnly = readFileSync(join(spaDir, 'sitemap.xml'), 'utf8');
+  assert.notEqual(merged, spaOnly);
+  assert.match(merged, /https:\/\/agentforge4j\.org\/docs\/0\.1\.0\//);
+});
+
+test('preserves each fragment\'s own <lastmod> through the merge, and tolerates a fragment entry with none', () => {
+  const {spaDir, buildDir, javadocDir, archiveDir, siteDir} = fixture();
+  writeFileSync(
+    join(spaDir, 'sitemap.xml'),
+    sitemapXmlFixtureWithLastmod([{url: 'https://agentforge4j.org/', lastmod: '2026-07-20'}]),
+  );
+  writeFileSync(
+    join(buildDir, 'sitemap.xml'),
+    sitemapXmlFixture(['https://agentforge4j.org/docs/0.1.0/']), // no lastmod at all
+  );
+  assembleSite({spaDir, buildDir, javadocDir, archiveDir, siteDir, customDomain: null});
+  const xml = readFileSync(join(siteDir, 'sitemap.xml'), 'utf8');
+  assert.match(xml, /<loc>https:\/\/agentforge4j\.org\/<\/loc>\s*<lastmod>2026-07-20<\/lastmod>/);
+  const docsBlock = /<url>\s*<loc>https:\/\/agentforge4j\.org\/docs\/0\.1\.0\/<\/loc>\s*<\/url>/;
+  assert.match(xml, docsBlock, 'the docs entry (no lastmod in its own fragment) must carry none through the merge either');
+});
+
+test('robots.txt is copied through to the site root from the SPA build', () => {
+  const {spaDir, buildDir, javadocDir, archiveDir, siteDir} = fixture();
+  assembleSite({spaDir, buildDir, javadocDir, archiveDir, siteDir, customDomain: null});
+  assert.match(
+    readFileSync(join(siteDir, 'robots.txt'), 'utf8'),
+    /Sitemap: https:\/\/agentforge4j\.org\/sitemap\.xml/,
+  );
+});
+
+test('fails closed when the SPA sitemap fragment is missing', () => {
+  const {spaDir, buildDir, javadocDir, archiveDir, siteDir} = fixture();
+  rmSync(join(spaDir, 'sitemap.xml'));
+
+  const exitCodes = [];
+  const originalExit = process.exit;
+  process.exit = (code) => {
+    exitCodes.push(code);
+    throw new Error(`exit(${code})`);
+  };
+  try {
+    assert.throws(
+      () => assembleSite({spaDir, buildDir, javadocDir, archiveDir, siteDir, customDomain: null}),
+      /exit\(1\)/,
+    );
+  } finally {
+    process.exit = originalExit;
+  }
+  assert.deepEqual(exitCodes, [1]);
+});
+
+test('fails closed when the docs sitemap fragment is missing', () => {
+  const {spaDir, buildDir, javadocDir, archiveDir, siteDir} = fixture();
+  rmSync(join(buildDir, 'sitemap.xml'));
+
+  const exitCodes = [];
+  const originalExit = process.exit;
+  process.exit = (code) => {
+    exitCodes.push(code);
+    throw new Error(`exit(${code})`);
+  };
+  try {
+    assert.throws(
+      () => assembleSite({spaDir, buildDir, javadocDir, archiveDir, siteDir, customDomain: null}),
+      /exit\(1\)/,
+    );
+  } finally {
+    process.exit = originalExit;
+  }
+  assert.deepEqual(exitCodes, [1]);
+});
+
+test('fails closed on a duplicate URL across the SPA and docs sitemap fragments', () => {
+  const {spaDir, buildDir, javadocDir, archiveDir, siteDir} = fixture();
+  writeFileSync(join(buildDir, 'sitemap.xml'), sitemapXmlFixture(['https://agentforge4j.org/']));
+
+  const exitCodes = [];
+  const fakeExit = (code) => {
+    exitCodes.push(code);
+    throw new Error(`exit(${code})`);
+  };
+  assert.throws(
+    () => assembleSite({spaDir, buildDir, javadocDir, archiveDir, siteDir, customDomain: null, exit: fakeExit}),
+    /exit\(1\)/,
+  );
+  assert.deepEqual(exitCodes, [1]);
+});
+
+test('fails closed when a <url> block does not match the expected <url><loc>...</loc>[<lastmod>...</lastmod>]</url> shape — must not silently drop that URL from the merged sitemap', () => {
+  const {spaDir, buildDir, javadocDir, archiveDir, siteDir} = fixture();
+  // A <url> block with an extra element after <loc> (e.g. an xhtml:link alternate, the kind of
+  // thing a future sitemap-plugin/Docusaurus bump could add) does not match the strict per-block
+  // regex at all — without the loc-count cross-check, this URL would silently vanish from the
+  // published sitemap instead of failing the build.
+  writeFileSync(
+    join(buildDir, 'sitemap.xml'),
+    '<?xml version="1.0" encoding="UTF-8"?>\n' +
+      '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n' +
+      '  <url>\n    <loc>https://agentforge4j.org/docs/0.1.0/</loc>\n' +
+      '    <xhtml:link rel="alternate" href="https://agentforge4j.org/docs/0.1.0/" />\n' +
+      '  </url>\n</urlset>\n',
+  );
+
+  const exitCodes = [];
+  const fakeExit = (code) => {
+    exitCodes.push(code);
+    throw new Error(`exit(${code})`);
+  };
+  assert.throws(
+    () => assembleSite({spaDir, buildDir, javadocDir, archiveDir, siteDir, customDomain: null, exit: fakeExit}),
+    /exit\(1\)/,
+  );
+  assert.deepEqual(exitCodes, [1]);
+});
+
+test('fails closed when a <url> block has no <loc> at all (e.g. a typo\'d <location>) alongside one valid entry — a <loc>-only count comparison alone would miss this, since both sides would be zero for the malformed block', () => {
+  const {spaDir, buildDir, javadocDir, archiveDir, siteDir} = fixture();
+  writeFileSync(
+    join(buildDir, 'sitemap.xml'),
+    '<?xml version="1.0" encoding="UTF-8"?>\n' +
+      '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n' +
+      '  <url>\n    <loc>https://agentforge4j.org/docs/0.1.0/</loc>\n  </url>\n' +
+      '  <url>\n    <location>https://agentforge4j.org/docs/0.1.0/other/</location>\n  </url>\n' +
+      '</urlset>\n',
+  );
+
+  const missingLocExitCodes = [];
+  const fakeExitMissingLoc = (code) => {
+    missingLocExitCodes.push(code);
+    throw new Error(`exit(${code})`);
+  };
+  assert.throws(
+    () => assembleSite({spaDir, buildDir, javadocDir, archiveDir, siteDir, customDomain: null, exit: fakeExitMissingLoc}),
+    /exit\(1\)/,
+  );
+  assert.deepEqual(missingLocExitCodes, [1]);
+});
+
+// --- Root-cause malformed-sitemap sweep (structural parsing, not regex/count heuristics) --------
+//
+// The two tests above (extra element after <loc>, typo'd <location>) predate this sweep and are
+// retained unmodified. Everything below proves the ROOT CAUSE is fixed — a real structural parser
+// (sax, strict mode) rejects every one of these shapes by construction, not by adding another
+// special-case count. `expectSitemapMergeFailure` writes malformed XML into ONE fragment (SPA or
+// docs, both exercised across this sweep — the same protection must apply to either input) and
+// asserts assembleSite() itself fails closed with exit(1), never silently composing a sitemap that
+// dropped the malformed entry.
+
+function expectSitemapMergeFailure(rawXml, {fragment = 'docs'} = {}) {
+  const {spaDir, buildDir, javadocDir, archiveDir, siteDir} = fixture();
+  writeFileSync(join(fragment === 'spa' ? spaDir : buildDir, 'sitemap.xml'), rawXml);
+  const exitCodes = [];
+  const fakeExit = (code) => {
+    exitCodes.push(code);
+    throw new Error(`exit(${code})`);
+  };
+  assert.throws(
+    () => assembleSite({spaDir, buildDir, javadocDir, archiveDir, siteDir, customDomain: null, exit: fakeExit}),
+    /exit\(1\)/,
+  );
+  assert.deepEqual(exitCodes, [1]);
+}
+
+const SITEMAP_HEADER =
+  '<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n';
+const SITEMAP_FOOTER = '</urlset>\n';
+
+test('fails closed on a self-closing <url/> — the exact root-cause gap: zero matched entries, zero <url> tags, zero <loc> tags all agreed under the old count-heuristic, so this vanished silently instead of failing the build', () => {
+  expectSitemapMergeFailure(`${SITEMAP_HEADER}  <url/>\n${SITEMAP_FOOTER}`);
+});
+
+test('fails closed on an orphan </url> with no matching opening tag', () => {
+  expectSitemapMergeFailure(`${SITEMAP_HEADER}  </url>\n${SITEMAP_FOOTER}`);
+});
+
+test('fails closed on an unclosed <url> (no closing tag before the document ends)', () => {
+  expectSitemapMergeFailure(
+    '<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n' +
+      '  <url>\n    <loc>https://agentforge4j.org/example/</loc>\n</urlset>\n',
+  );
+});
+
+test('fails closed on mismatched closing tags inside a <url> entry', () => {
+  expectSitemapMergeFailure(
+    `${SITEMAP_HEADER}  <url>\n    <loc>https://agentforge4j.org/example/</loc>\n  </loc>\n${SITEMAP_FOOTER}`,
+  );
+});
+
+test('fails closed on a self-closing <loc/> — an empty <loc> is treated the same as a missing one', () => {
+  expectSitemapMergeFailure(`${SITEMAP_HEADER}  <url>\n    <loc/>\n  </url>\n${SITEMAP_FOOTER}`, {fragment: 'spa'});
+});
+
+test('fails closed on multiple <loc> elements inside one <url> entry', () => {
+  expectSitemapMergeFailure(
+    `${SITEMAP_HEADER}  <url>\n    <loc>https://agentforge4j.org/a/</loc>\n    <loc>https://agentforge4j.org/b/</loc>\n  </url>\n${SITEMAP_FOOTER}`,
+  );
+});
+
+test('fails closed on a self-closing <lastmod/> — an empty <lastmod> must fail the build rather than silently vanish from the merged sitemap', () => {
+  expectSitemapMergeFailure(
+    `${SITEMAP_HEADER}  <url>\n    <loc>https://agentforge4j.org/example/</loc>\n    <lastmod/>\n  </url>\n${SITEMAP_FOOTER}`,
+    {fragment: 'spa'},
+  );
+});
+
+test('fails closed on an empty <lastmod></lastmod> (no self-closing tag, but no text content either) — same guard as the self-closing form', () => {
+  expectSitemapMergeFailure(
+    `${SITEMAP_HEADER}  <url>\n    <loc>https://agentforge4j.org/example/</loc>\n    <lastmod></lastmod>\n  </url>\n${SITEMAP_FOOTER}`,
+  );
+});
+
+test('fails closed on multiple <lastmod> elements inside one <url> entry', () => {
+  expectSitemapMergeFailure(
+    `${SITEMAP_HEADER}  <url>\n    <loc>https://agentforge4j.org/example/</loc>\n    <lastmod>2026-07-23</lastmod>\n    <lastmod>2026-07-24</lastmod>\n  </url>\n${SITEMAP_FOOTER}`,
+    {fragment: 'spa'},
+  );
+});
+
+test('fails closed on a malformed <lastmod> containing a nested element instead of plain text', () => {
+  expectSitemapMergeFailure(
+    `${SITEMAP_HEADER}  <url>\n    <loc>https://agentforge4j.org/example/</loc>\n    <lastmod><bad/></lastmod>\n  </url>\n${SITEMAP_FOOTER}`,
+  );
+});
+
+test('fails closed on a malformed <loc> containing a nested element instead of plain text', () => {
+  expectSitemapMergeFailure(
+    `${SITEMAP_HEADER}  <url>\n    <loc><bad/>https://agentforge4j.org/example/</loc>\n  </url>\n${SITEMAP_FOOTER}`,
+    {fragment: 'spa'},
+  );
+});
+
+test('fails closed on malformed XML appearing after an otherwise-valid <url> entry earlier in the same document — must not silently keep only the entries seen before the corruption', () => {
+  expectSitemapMergeFailure(
+    `${SITEMAP_HEADER}  <url>\n    <loc>https://agentforge4j.org/valid/</loc>\n  </url>\n  <bogus<${SITEMAP_FOOTER}`,
+  );
+});
+
+test('accepts <lastmod> before <loc> inside a <url> entry — child element order is not significant, both are identified by tag name', () => {
+  const {spaDir, buildDir, javadocDir, archiveDir, siteDir} = fixture();
+  writeFileSync(
+    join(buildDir, 'sitemap.xml'),
+    `${SITEMAP_HEADER}  <url>\n    <lastmod>2026-07-23</lastmod>\n    <loc>https://agentforge4j.org/docs/0.1.0/</loc>\n  </url>\n${SITEMAP_FOOTER}`,
+  );
+  assembleSite({spaDir, buildDir, javadocDir, archiveDir, siteDir, customDomain: null});
+  const xml = readFileSync(join(siteDir, 'sitemap.xml'), 'utf8');
+  assert.match(xml, /<loc>https:\/\/agentforge4j\.org\/docs\/0\.1\.0\/<\/loc>\s*<lastmod>2026-07-23<\/lastmod>/);
+});
+
+test('a structurally valid but completely empty <urlset> is valid and contributes zero entries — not itself a malformed-input case', () => {
+  const {spaDir, buildDir, javadocDir, archiveDir, siteDir} = fixture();
+  writeFileSync(join(buildDir, 'sitemap.xml'), `${SITEMAP_HEADER}${SITEMAP_FOOTER}`);
+  assembleSite({spaDir, buildDir, javadocDir, archiveDir, siteDir, customDomain: null});
+  const xml = readFileSync(join(siteDir, 'sitemap.xml'), 'utf8');
+  const locs = [...xml.matchAll(/<loc>([^<]+)<\/loc>/g)].map((m) => m[1]);
+  // Only the SPA fragment's one URL survives from the two FRAGMENTS — the empty docs <urlset>
+  // legitimately contributed none, and the build did not fail because of it. The Javadoc surface
+  // entry is computed during composition, not read from a fragment, so it is unaffected.
+  assert.deepEqual(locs, ['https://agentforge4j.org/', 'https://agentforge4j.org/javadoc/latest/']);
+});
+
+test('an unexpected sibling child element inside <url> fails closed even when it is the only content (no <loc> present either)', () => {
+  expectSitemapMergeFailure(
+    `${SITEMAP_HEADER}  <url>\n    <changefreq>daily</changefreq>\n  </url>\n${SITEMAP_FOOTER}`,
+    {fragment: 'spa'},
+  );
+});
+
+test('a <loc> containing an XML-escaped & round-trips through the merge as valid XML, not as a literal unescaped &', () => {
+  // A real structural parser correctly decodes &amp; -> & when reading the value (unlike a raw
+  // regex extractor, which only ever saw the literal escaped text) — the merge must re-escape it
+  // on the way back out, or the composed sitemap.xml itself would no longer be well-formed XML.
+  const {spaDir, buildDir, javadocDir, archiveDir, siteDir} = fixture();
+  writeFileSync(
+    join(buildDir, 'sitemap.xml'),
+    `${SITEMAP_HEADER}  <url>\n    <loc>https://agentforge4j.org/docs/0.1.0/?a=1&amp;b=2</loc>\n  </url>\n${SITEMAP_FOOTER}`,
+  );
+  assembleSite({spaDir, buildDir, javadocDir, archiveDir, siteDir, customDomain: null});
+  const xml = readFileSync(join(siteDir, 'sitemap.xml'), 'utf8');
+  assert.match(xml, /<loc>https:\/\/agentforge4j\.org\/docs\/0\.1\.0\/\?a=1&amp;b=2<\/loc>/);
+  assert.doesNotMatch(xml, /\?a=1&b=2/, 'the & must be re-escaped, never written back literally');
+});
+
+test('a <loc>/<lastmod> containing an XML-escaped < or > round-trips through the merge as valid XML, not as a literal unescaped < or >', () => {
+  // extractSitemapEntries only constrains <url> entry *structure*, not the characters <loc>/<lastmod>
+  // text may legally decode to — a value that legitimately decoded &lt;/&gt; entities must still
+  // re-escape safely on the way back out, or the composed sitemap.xml itself is no longer well-formed
+  // XML. Proven here by feeding the real, produced output back through a real strict XML parser
+  // (sax), not just by pattern-matching the expected escaped substrings.
+  const {spaDir, buildDir, javadocDir, archiveDir, siteDir} = fixture();
+  writeFileSync(
+    join(buildDir, 'sitemap.xml'),
+    `${SITEMAP_HEADER}  <url>\n    <loc>https://agentforge4j.org/docs/0.1.0/?a=1&lt;2&gt;3</loc>\n` +
+      '    <lastmod>2026&lt;07&gt;23</lastmod>\n  </url>\n' +
+      `${SITEMAP_FOOTER}`,
+  );
+  assembleSite({spaDir, buildDir, javadocDir, archiveDir, siteDir, customDomain: null});
+  const xml = readFileSync(join(siteDir, 'sitemap.xml'), 'utf8');
+  assert.match(xml, /<loc>https:\/\/agentforge4j\.org\/docs\/0\.1\.0\/\?a=1&lt;2&gt;3<\/loc>/);
+  assert.match(xml, /<lastmod>2026&lt;07&gt;23<\/lastmod>/);
+  assert.doesNotMatch(xml, /\?a=1<2>3/, 'the < and > must be re-escaped, never written back literally');
+  assert.doesNotMatch(xml, />2026<07>23</, 'the < and > must be re-escaped, never written back literally');
+  // The definitive proof: the produced file itself must parse as well-formed strict XML. sax stays
+  // silent on error unless onerror is wired to throw (it does not throw by default), so this must
+  // set onerror explicitly rather than relying on write()/close() throwing on its own.
+  assert.doesNotThrow(() => {
+    const parser = sax.parser(true);
+    parser.onerror = (err) => {
+      throw err;
+    };
+    parser.write(xml).close();
+  }, 'the composed sitemap.xml must itself be well-formed XML');
+});
+
+// --- scanComposedHtmlForForbiddenContent ------------------------------------------------------
+
+test('scanComposedHtmlForForbiddenContent passes clean on ordinary composed HTML', () => {
+  const root = mkdtempSync(join(tmpdir(), 'scan-clean-'));
+  writeFileSync(join(root, 'index.html'), '<html><body><p>Nothing forbidden here.</p></body></html>');
+  const exitCodes = [];
+  scanComposedHtmlForForbiddenContent(root, (code) => exitCodes.push(code));
+  assert.deepEqual(exitCodes, []);
+});
+
+test('scanComposedHtmlForForbiddenContent fails closed on literal, unparsed admonition syntax', () => {
+  // The exact real regression this pass fixes: an MDX3 admonition using the old `:::note Title`
+  // (space-separated) form, which is not valid directive syntax and so renders as literal text.
+  const root = mkdtempSync(join(tmpdir(), 'scan-admonition-'));
+  mkdirSync(join(root, 'how-to'), {recursive: true});
+  writeFileSync(
+    join(root, 'how-to', 'index.html'),
+    '<html><body><p>:::note Authoritative lists</p><p>see the list</p><p>:::</p></body></html>',
+  );
+  const exitCodes = [];
+  const fakeExit = (code) => {
+    exitCodes.push(code);
+    throw new Error(`exit(${code})`);
+  };
+  assert.throws(() => scanComposedHtmlForForbiddenContent(root, fakeExit), /exit\(1\)/);
+  assert.deepEqual(exitCodes, [1]);
+});
+
+test('scanComposedHtmlForForbiddenContent fails closed on a raw {@code}/{@link} Javadoc tag', () => {
+  const root = mkdtempSync(join(tmpdir(), 'scan-javadoc-tag-'));
+  writeFileSync(
+    join(root, 'index.html'),
+    '<html><body><td>filesystem directory ({@code agentforge4j.integrations.dir})</td></body></html>',
+  );
+  const exitCodes = [];
+  const fakeExit = (code) => {
+    exitCodes.push(code);
+    throw new Error(`exit(${code})`);
+  };
+  assert.throws(() => scanComposedHtmlForForbiddenContent(root, fakeExit), /exit\(1\)/);
+  assert.deepEqual(exitCodes, [1]);
+});
+
+test('scanComposedHtmlForForbiddenContent fails closed on a /docs/javadoc/ link', () => {
+  const root = mkdtempSync(join(tmpdir(), 'scan-wrong-javadoc-path-'));
+  writeFileSync(join(root, 'index.html'), '<html><body><a href="/docs/javadoc/next/">API</a></body></html>');
+  const exitCodes = [];
+  const fakeExit = (code) => {
+    exitCodes.push(code);
+    throw new Error(`exit(${code})`);
+  };
+  assert.throws(() => scanComposedHtmlForForbiddenContent(root, fakeExit), /exit\(1\)/);
+  assert.deepEqual(exitCodes, [1]);
+});
+
+test('scanComposedHtmlForForbiddenContent fails closed on stale "wired in a later phase" placeholder copy', () => {
+  const root = mkdtempSync(join(tmpdir(), 'scan-stale-placeholder-'));
+  writeFileSync(join(root, 'index.html'), '<html><body><p>The generator is wired in a later phase.</p></body></html>');
+  const exitCodes = [];
+  const fakeExit = (code) => {
+    exitCodes.push(code);
+    throw new Error(`exit(${code})`);
+  };
+  assert.throws(() => scanComposedHtmlForForbiddenContent(root, fakeExit), /exit\(1\)/);
+  assert.deepEqual(exitCodes, [1]);
+});
+
+test('assembleSite itself fails closed when the composed SPA output contains exposed admonition syntax', () => {
+  // Integration-level: the check runs as part of the real assembleSite() call, not just in isolation.
+  const {spaDir, buildDir, javadocDir, archiveDir, siteDir} = fixture();
+  writeFileSync(join(spaDir, 'index.html'), '<html>spa :::note broken :::</html>');
+  const exitCodes = [];
+  const fakeExit = (code) => {
+    exitCodes.push(code);
+    throw new Error(`exit(${code})`);
+  };
+  assert.throws(
+    () => assembleSite({spaDir, buildDir, javadocDir, archiveDir, siteDir, customDomain: null, exit: fakeExit}),
+    /exit\(1\)/,
+  );
+  assert.deepEqual(exitCodes, [1]);
+});
+
+// --- verifyComposedJavadocLinks ----------------------------------------------------------------
+
+function javadocLinkFixtureRoot() {
+  const root = mkdtempSync(join(tmpdir(), 'javadoc-links-'));
+  const docsSourceDir = join(root, 'docs');
+  const versionedDocsSourceDir = join(root, 'versioned_docs');
+  const siteDir = join(root, '_site');
+  mkdirSync(docsSourceDir, {recursive: true});
+  mkdirSync(versionedDocsSourceDir, {recursive: true});
+  mkdirSync(siteDir, {recursive: true});
+  return {root, docsSourceDir, versionedDocsSourceDir, siteDir};
+}
+
+test('verifyComposedJavadocLinks passes when every live javadoc: reference resolves to a real composed file', () => {
+  const {docsSourceDir, siteDir} = javadocLinkFixtureRoot();
+  writeFileSync(
+    join(docsSourceDir, 'page.mdx'),
+    'See `javadoc:com.agentforge4j.core.workflow.Workflow` for details.\n',
+  );
+  mkdirSync(join(siteDir, 'javadoc', 'next', 'agentforge4j.core', 'com', 'agentforge4j', 'core', 'workflow'), {
+    recursive: true,
+  });
+  writeFileSync(
+    join(siteDir, 'javadoc', 'next', 'agentforge4j.core', 'com', 'agentforge4j', 'core', 'workflow', 'Workflow.html'),
+    '<html>Workflow</html>',
+  );
+  const exitCodes = [];
+  verifyComposedJavadocLinks(siteDir, docsSourceDir, join(docsSourceDir, '..', 'versioned_docs'), (code) =>
+    exitCodes.push(code),
+  );
+  assert.deepEqual(exitCodes, []);
+});
+
+test('verifyComposedJavadocLinks fails closed when a javadoc: reference has no matching file in the composed artifact', () => {
+  const {docsSourceDir, versionedDocsSourceDir, siteDir} = javadocLinkFixtureRoot();
+  writeFileSync(
+    join(docsSourceDir, 'page.mdx'),
+    'See `javadoc:com.agentforge4j.core.workflow.Workflow` for details.\n',
+  );
+  // siteDir has no javadoc/next/... surface at all — the composed artifact is missing the target.
+  const exitCodes = [];
+  const fakeExit = (code) => {
+    exitCodes.push(code);
+    throw new Error(`exit(${code})`);
+  };
+  assert.throws(
+    () => verifyComposedJavadocLinks(siteDir, docsSourceDir, versionedDocsSourceDir, fakeExit),
+    /exit\(1\)/,
+  );
+  assert.deepEqual(exitCodes, [1]);
+});
+
+test('verifyComposedJavadocLinks pins a versioned snapshot reference to its own version, not next', () => {
+  const {versionedDocsSourceDir, siteDir} = javadocLinkFixtureRoot();
+  const versionDir = join(versionedDocsSourceDir, 'version-0.1.0');
+  mkdirSync(versionDir, {recursive: true});
+  writeFileSync(
+    join(versionDir, 'page.mdx'),
+    'See `javadoc:com.agentforge4j.core.workflow.Workflow` for details.\n',
+  );
+  // Only the 0.1.0-pinned surface exists — if the check wrongly resolved against `next`, it would fail.
+  mkdirSync(join(siteDir, 'javadoc', '0.1.0', 'agentforge4j.core', 'com', 'agentforge4j', 'core', 'workflow'), {
+    recursive: true,
+  });
+  writeFileSync(
+    join(siteDir, 'javadoc', '0.1.0', 'agentforge4j.core', 'com', 'agentforge4j', 'core', 'workflow', 'Workflow.html'),
+    '<html>Workflow</html>',
+  );
+  const exitCodes = [];
+  verifyComposedJavadocLinks(siteDir, join(versionedDocsSourceDir, '..', 'docs'), versionedDocsSourceDir, (code) =>
+    exitCodes.push(code),
+  );
+  assert.deepEqual(exitCodes, []);
+});
+
+test('verifyComposedJavadocLinks is a no-op (0 checked, never fails) when no source dirs are supplied', () => {
+  const {siteDir} = javadocLinkFixtureRoot();
+  const exitCodes = [];
+  verifyComposedJavadocLinks(siteDir, undefined, undefined, (code) => exitCodes.push(code));
+  assert.deepEqual(exitCodes, []);
+});
+
+// --- verifyComposedAnchorLinks: in-repo relative links carrying a URL fragment must resolve to a
+// REAL anchor on the real composed page, not just an existing file --------------------------------
+
+function anchorFixtureRoot() {
+  const root = mkdtempSync(join(tmpdir(), 'anchor-links-'));
+  const docsSourceDir = join(root, 'docs');
+  const versionedDocsSourceDir = join(root, 'versioned_docs');
+  const siteDir = join(root, '_site');
+  mkdirSync(docsSourceDir, {recursive: true});
+  mkdirSync(versionedDocsSourceDir, {recursive: true});
+  mkdirSync(siteDir, {recursive: true});
+  return {root, docsSourceDir, versionedDocsSourceDir, siteDir};
+}
+
+function writeBuiltPage(siteDir, versionSegment, relDirSegments, slug, html) {
+  const dir = join(siteDir, 'docs', versionSegment, ...relDirSegments, ...(slug ? [slug] : []));
+  mkdirSync(dir, {recursive: true});
+  writeFileSync(join(dir, 'index.html'), html, 'utf8');
+}
+
+test('verifyComposedAnchorLinks passes against a minified build that drops attribute quotes (id=foo, not id="foo")', () => {
+  // Real regression: a production Docusaurus build's minifier strips quotes from any attribute
+  // value that is a safe unquoted-HTML5 token (every heading-slug id qualifies) — a naive
+  // quoted-only `id="foo"` text search false-positive-failed against every real page the first
+  // time this checker ran against an actual build, even though the anchors were genuinely present.
+  const {docsSourceDir, versionedDocsSourceDir, siteDir} = anchorFixtureRoot();
+  writeFileSync(join(docsSourceDir, 'page.mdx'), 'See [Foo](#foo) below.\n');
+  writeBuiltPage(siteDir, 'next', [], 'page', '<h3 id=foo>Foo<a href=#foo class=hash-link></a></h3>');
+
+  const exitCodes = [];
+  verifyComposedAnchorLinks(siteDir, docsSourceDir, versionedDocsSourceDir, (code) => exitCodes.push(code));
+  assert.deepEqual(exitCodes, []);
+});
+
+test('verifyComposedAnchorLinks passes when a same-page anchor exists on the real composed page', () => {
+  const {docsSourceDir, siteDir} = anchorFixtureRoot();
+  writeFileSync(join(docsSourceDir, 'page.mdx'), 'See [Foo](#foo) below.\n\n### Foo\n');
+  writeBuiltPage(siteDir, 'next', [], 'page', '<html><h3 id="foo">Foo</h3></html>');
+
+  const exitCodes = [];
+  verifyComposedAnchorLinks(siteDir, docsSourceDir, join(docsSourceDir, '..', 'versioned_docs'), (code) =>
+    exitCodes.push(code),
+  );
+  assert.deepEqual(exitCodes, []);
+});
+
+test('verifyComposedAnchorLinks fails closed when the anchor does not exist on an otherwise-real page (the real bug class this closes)', () => {
+  const {docsSourceDir, versionedDocsSourceDir, siteDir} = anchorFixtureRoot();
+  writeFileSync(join(docsSourceDir, 'page.mdx'), 'See [Foo](#foo) below.\n');
+  // The page exists and is well-formed, but genuinely has no id="foo" anywhere — exactly what a
+  // stale/incorrect cross-link looks like when only file existence is checked.
+  writeBuiltPage(siteDir, 'next', [], 'page', '<html><h3 id="bar">Bar</h3></html>');
+
+  const exitCodes = [];
+  const fakeExit = (code) => {
+    exitCodes.push(code);
+    throw new Error(`exit(${code})`);
+  };
+  assert.throws(
+    () => verifyComposedAnchorLinks(siteDir, docsSourceDir, versionedDocsSourceDir, fakeExit),
+    /exit\(1\)/,
+  );
+  assert.deepEqual(exitCodes, [1]);
+});
+
+test('verifyComposedAnchorLinks resolves a cross-file anchor to the target file\'s own id-based route (the real blueprint->workflow shape)', () => {
+  const {docsSourceDir, versionedDocsSourceDir, siteDir} = anchorFixtureRoot();
+  mkdirSync(join(docsSourceDir, 'schemas'), {recursive: true});
+  writeFileSync(
+    join(docsSourceDir, 'schemas', 'blueprint.mdx'),
+    '---\nid: reference-schema-blueprint\n---\n\n| [StepDefinition](./workflow.mdx#stepdefinition) |\n',
+  );
+  writeFileSync(
+    join(docsSourceDir, 'schemas', 'workflow.mdx'),
+    '---\nid: reference-schema-workflow\n---\n\n### StepDefinition\n',
+  );
+  writeBuiltPage(siteDir, 'next', ['schemas'], 'reference-schema-workflow', '<html><h3 id="stepdefinition">StepDefinition</h3></html>');
+
+  const exitCodes = [];
+  verifyComposedAnchorLinks(siteDir, docsSourceDir, versionedDocsSourceDir, (code) => exitCodes.push(code));
+  assert.deepEqual(exitCodes, []);
+});
+
+test('verifyComposedAnchorLinks fails closed when the cross-file target page is missing from the composed artifact', () => {
+  const {docsSourceDir, versionedDocsSourceDir, siteDir} = anchorFixtureRoot();
+  mkdirSync(join(docsSourceDir, 'schemas'), {recursive: true});
+  writeFileSync(
+    join(docsSourceDir, 'schemas', 'blueprint.mdx'),
+    '---\nid: reference-schema-blueprint\n---\n\n| [StepDefinition](./workflow.mdx#stepdefinition) |\n',
+  );
+  writeFileSync(join(docsSourceDir, 'schemas', 'workflow.mdx'), '---\nid: reference-schema-workflow\n---\n\n### StepDefinition\n');
+  // workflow's built page was never written — the composed artifact is missing it entirely.
+
+  const exitCodes = [];
+  const fakeExit = (code) => {
+    exitCodes.push(code);
+    throw new Error(`exit(${code})`);
+  };
+  assert.throws(
+    () => verifyComposedAnchorLinks(siteDir, docsSourceDir, versionedDocsSourceDir, fakeExit),
+    /exit\(1\)/,
+  );
+  assert.deepEqual(exitCodes, [1]);
+});
+
+test('verifyComposedAnchorLinks resolves an index page anchor at its own directory root, not an id-named subdirectory', () => {
+  const {docsSourceDir, versionedDocsSourceDir, siteDir} = anchorFixtureRoot();
+  mkdirSync(join(docsSourceDir, 'reference'), {recursive: true});
+  writeFileSync(
+    join(docsSourceDir, 'reference', 'index.mdx'),
+    '---\nid: reference-config\n---\n\nSee [details](#details).\n\n### Details\n',
+  );
+  // index.mdx maps to its own directory (reference/index.html), never reference/reference-config/.
+  writeBuiltPage(siteDir, 'next', ['reference'], null, '<html><h3 id="details">Details</h3></html>');
+
+  const exitCodes = [];
+  verifyComposedAnchorLinks(siteDir, docsSourceDir, versionedDocsSourceDir, (code) => exitCodes.push(code));
+  assert.deepEqual(exitCodes, []);
+});
+
+test('verifyComposedAnchorLinks resolves a versioned snapshot\'s anchor against that version\'s own composed path, not next', () => {
+  const {docsSourceDir, versionedDocsSourceDir, siteDir} = anchorFixtureRoot();
+  const versionDir = join(versionedDocsSourceDir, 'version-0.1.0', 'schemas');
+  mkdirSync(versionDir, {recursive: true});
+  writeFileSync(join(versionDir, 'blueprint.mdx'), '---\nid: reference-schema-blueprint\n---\n\n| [StepDefinition](./workflow.mdx#stepdefinition) |\n');
+  writeFileSync(join(versionDir, 'workflow.mdx'), '---\nid: reference-schema-workflow\n---\n\n### StepDefinition\n');
+  // Only the 0.1.0-pinned surface exists — if resolution wrongly fell back to `next`, this would fail.
+  writeBuiltPage(siteDir, '0.1.0', ['schemas'], 'reference-schema-workflow', '<html><h3 id="stepdefinition">StepDefinition</h3></html>');
+
+  const exitCodes = [];
+  verifyComposedAnchorLinks(siteDir, docsSourceDir, versionedDocsSourceDir, (code) => exitCodes.push(code));
+  assert.deepEqual(exitCodes, []);
+});
+
+test('verifyComposedAnchorLinks does not flag an absolute/external link with a fragment (out of its scope)', () => {
+  const {docsSourceDir, versionedDocsSourceDir, siteDir} = anchorFixtureRoot();
+  writeFileSync(docsSourceDir + '/page.mdx', 'See [external](https://example.com/foo#bar) and [javadoc](pathname:///javadoc/next/Foo.html#bar).\n');
+
+  const exitCodes = [];
+  verifyComposedAnchorLinks(siteDir, docsSourceDir, versionedDocsSourceDir, (code) => exitCodes.push(code));
+  assert.deepEqual(exitCodes, []); // 0 checked, 0 failures — neither link matches the in-repo pattern
+});
+
+test('verifyComposedJavadocLinks is fragment-aware: a resolved URL fragment must exist as a real anchor on the target page', () => {
+  // resolveJavadocUrl never emits a fragment today, so this proves the checker's own fragment
+  // handling directly, independent of that role ever actually producing one.
+  const {siteDir} = anchorFixtureRoot();
+  const docsSourceDir = mkdtempSync(join(tmpdir(), 'anchor-links-docs-'));
+  writeFileSync(join(docsSourceDir, 'page.mdx'), 'See `javadoc:com.agentforge4j.core.workflow.Workflow` for details.\n');
+  const targetDir = join(siteDir, 'javadoc', 'next', 'agentforge4j.core', 'com', 'agentforge4j', 'core', 'workflow');
+  mkdirSync(targetDir, {recursive: true});
+  // The file exists, but genuinely has no id="someMethod" anchor — file-existence alone would pass.
+  writeFileSync(join(targetDir, 'Workflow.html'), '<html><body>no anchors here</body></html>');
+
+  const exitCodes = [];
+  verifyComposedJavadocLinks(siteDir, docsSourceDir, join(docsSourceDir, '..', 'versioned_docs'), (code) =>
+    exitCodes.push(code),
+  );
+  // No fragment was ever appended by resolveJavadocUrl, so this still passes today — this test
+  // documents/locks in that the checker reads resolved.url's own fragment, not the source text.
+  assert.deepEqual(exitCodes, []);
+});
+
+test('fails closed on a sitemap URL outside https://agentforge4j.org/', () => {
+  const {spaDir, buildDir, javadocDir, archiveDir, siteDir} = fixture();
+  writeFileSync(join(buildDir, 'sitemap.xml'), sitemapXmlFixture(['https://evil.example/docs/0.1.0/']));
+
+  const exitCodes = [];
+  const fakeExit = (code) => {
+    exitCodes.push(code);
+    throw new Error(`exit(${code})`);
+  };
+  assert.throws(
+    () => assembleSite({spaDir, buildDir, javadocDir, archiveDir, siteDir, customDomain: null, exit: fakeExit}),
+    /exit\(1\)/,
+  );
+  assert.deepEqual(exitCodes, [1]);
+});
+
+// --- <urlset>/<url>/<loc>/<lastmod> attribute policy ------------------------------------------
+//
+// The parser's narrow structural contract (exactly one <loc>, optional <lastmod>, no other
+// sibling) was previously silent on attributes: sax parses `<url foo="bar">` successfully, and the
+// serializer only ever reads element text, so any attribute on any of these four elements was
+// accepted and quietly dropped — undermining the doc comment's claim of an exhaustive, narrow
+// contract. `<urlset>` alone may carry attributes, and only the exact sitemap namespace
+// declarations real first-party output actually uses (see URLSET_ALLOWED_ATTRIBUTES); `<url>`,
+// `<loc>`, and `<lastmod>` may carry none.
+
+test('accepts the real Docusaurus <urlset> shape: all five sitemap namespace declarations (xmlns + news/xhtml/image/video)', () => {
+  // Byte-for-byte the root element `npm run build` in this exact module produced (verified against
+  // a real build/sitemap.xml before this test was written) — the `sitemap` npm package's
+  // SitemapStream declares all four extension namespaces unconditionally by default, and
+  // @docusaurus/plugin-sitemap never overrides that default.
+  const {spaDir, buildDir, javadocDir, archiveDir, siteDir} = fixture();
+  writeFileSync(
+    join(buildDir, 'sitemap.xml'),
+    '<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" ' +
+      'xmlns:news="http://www.google.com/schemas/sitemap-news/0.9" xmlns:xhtml="http://www.w3.org/1999/xhtml" ' +
+      'xmlns:image="http://www.google.com/schemas/sitemap-image/1.1" xmlns:video="http://www.google.com/schemas/sitemap-video/1.1">' +
+      '<url><loc>https://agentforge4j.org/docs/0.1.0/</loc></url></urlset>',
+  );
+  assembleSite({spaDir, buildDir, javadocDir, archiveDir, siteDir, customDomain: null});
+  const xml = readFileSync(join(siteDir, 'sitemap.xml'), 'utf8');
+  assert.match(xml, /<loc>https:\/\/agentforge4j\.org\/docs\/0\.1\.0\/<\/loc>/);
+});
+
+test('accepts the real SPA <urlset> shape: only the bare xmlns declaration', () => {
+  // build-seo.mjs hand-writes its own sitemap.xml template with only the base xmlns — proven
+  // compatible in every other test via sitemapXmlFixture(), which uses exactly this shape; this
+  // test names the property explicitly rather than leaving it implicit.
+  const {spaDir, buildDir, javadocDir, archiveDir, siteDir} = fixture();
+  assembleSite({spaDir, buildDir, javadocDir, archiveDir, siteDir, customDomain: null});
+  assert.ok(existsSync(join(siteDir, 'sitemap.xml')));
+});
+
+test('fails closed on an unexpected <urlset> attribute', () => {
+  expectSitemapMergeFailure(
+    '<?xml version="1.0" encoding="UTF-8"?>\n' +
+      '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" foo="bar">\n' +
+      '  <url>\n    <loc>https://agentforge4j.org/example/</loc>\n  </url>\n</urlset>\n',
+  );
+});
+
+test('fails closed on a known <urlset> attribute name with the wrong (foreign) value', () => {
+  // A namespace declaration that lies about its own URI must not be silently trusted — same class
+  // of defect as accepting an unknown attribute name outright.
+  expectSitemapMergeFailure(
+    '<?xml version="1.0" encoding="UTF-8"?>\n' +
+      '<urlset xmlns="https://not-the-real-sitemap-namespace.example/">\n' +
+      '  <url>\n    <loc>https://agentforge4j.org/example/</loc>\n  </url>\n</urlset>\n',
+    {fragment: 'spa'},
+  );
+});
+
+test('fails closed on an attribute on <url>', () => {
+  expectSitemapMergeFailure(`${SITEMAP_HEADER}  <url foo="bar">\n    <loc>https://agentforge4j.org/example/</loc>\n  </url>\n${SITEMAP_FOOTER}`);
+});
+
+test('fails closed on an attribute on <loc>', () => {
+  expectSitemapMergeFailure(
+    `${SITEMAP_HEADER}  <url>\n    <loc foo="bar">https://agentforge4j.org/example/</loc>\n  </url>\n${SITEMAP_FOOTER}`,
+    {fragment: 'spa'},
+  );
+});
+
+test('fails closed on an attribute on <lastmod>', () => {
+  expectSitemapMergeFailure(
+    `${SITEMAP_HEADER}  <url>\n    <loc>https://agentforge4j.org/example/</loc>\n    <lastmod foo="bar">2026-07-23</lastmod>\n  </url>\n${SITEMAP_FOOTER}`,
+  );
+});
+
+// --- Untested fail-closed branches: wrong root, stray top-level sibling, nested <url> ----------
+//
+// These three shapes were already correctly rejected by extractSitemapEntries (confirmed by manual
+// trace of the onopentag handler), but had no direct test proving it. Exercised through the real
+// assembleSite()/mergeSitemaps() path, like every other malformed-fragment test in this suite, so
+// the assertion proves actual deployment behavior rather than a bare unit of the parser.
+
+test('fails closed when the document root is not <urlset>', () => {
+  expectSitemapMergeFailure('<?xml version="1.0" encoding="UTF-8"?>\n<foo>\n  <bar/>\n</foo>\n');
+});
+
+test('fails closed when the document root is a bare <url> with no <urlset> wrapper at all — the specific shape the dedicated root check exists for (confirmed by negative control: with only that check disabled, this exact document is silently accepted and merged)', () => {
+  expectSitemapMergeFailure(
+    '<?xml version="1.0" encoding="UTF-8"?>\n<url>\n  <loc>https://agentforge4j.org/example/</loc>\n</url>\n',
+  );
+});
+
+test('fails closed on a stray top-level sibling element alongside <url> under <urlset>', () => {
+  expectSitemapMergeFailure(
+    `${SITEMAP_HEADER}  <url>\n    <loc>https://agentforge4j.org/example/</loc>\n  </url>\n  <foo/>\n${SITEMAP_FOOTER}`,
+    {fragment: 'spa'},
+  );
+});
+
+test('fails closed on a bare top-level <loc> outside any <url> wrapper — the specific shape the top-level stray-element check exists for (a name that also happens to be a valid <url> child, so only the top-level guard, not the child-name guard, can catch it)', () => {
+  expectSitemapMergeFailure(
+    `${SITEMAP_HEADER}  <loc>https://agentforge4j.org/example/</loc>\n${SITEMAP_FOOTER}`,
+    {fragment: 'spa'},
+  );
+});
+
+test('fails closed on a <url> nested inside another <url>', () => {
+  expectSitemapMergeFailure(
+    `${SITEMAP_HEADER}  <url>\n    <loc>https://agentforge4j.org/outer/</loc>\n` +
+      '    <url>\n      <loc>https://agentforge4j.org/inner/</loc>\n    </url>\n  </url>\n' +
+      `${SITEMAP_FOOTER}`,
+  );
+});
+
+// --- <urlset> is only the document root; element names are exact; lastmod may not be blank -----
+//
+// The urlset-acceptance branch originally ran before the inside-<url>/inside-leaf guards, so a
+// <urlset>-named element was silently accepted at ANY depth: a stray <urlset/> inside <url> was
+// ignored, one inside <loc> text spliced the surrounding text into a single corrupted published
+// URL (`.../a<urlset/>b` -> `.../ab`), and a second root-level <urlset> after the real root closed
+// was accepted outright (sax does not reject multi-root documents on its own). These tests pin the
+// root-only rule, the exact-name rule (no namespace-prefix folding), and the whitespace-only
+// <lastmod> guard — all through the real assembleSite()/mergeSitemaps() path.
+
+test('fails closed on a <urlset/> nested inside a <url> entry — <urlset> is only accepted as the document root', () => {
+  expectSitemapMergeFailure(
+    `${SITEMAP_HEADER}  <url>\n    <loc>https://agentforge4j.org/example/</loc>\n    <urlset/>\n  </url>\n${SITEMAP_FOOTER}`,
+  );
+});
+
+test('fails closed on a <urlset/> inside <loc> text — previously the element was silently dropped and the text around it published as one corrupted URL', () => {
+  expectSitemapMergeFailure(
+    `${SITEMAP_HEADER}  <url>\n    <loc>https://agentforge4j.org/a<urlset/>b</loc>\n  </url>\n${SITEMAP_FOOTER}`,
+    {fragment: 'spa'},
+  );
+});
+
+test('fails closed on a second root-level <urlset> after the real root closed — a sitemap document has exactly one root', () => {
+  expectSitemapMergeFailure(
+    `${SITEMAP_HEADER}  <url>\n    <loc>https://agentforge4j.org/example/</loc>\n  </url>\n</urlset>\n<urlset/>\n`,
+  );
+});
+
+test('fails closed on a namespace-prefixed root <sm:urlset> — the root must be exactly <urlset>, not a prefixed spelling of it', () => {
+  expectSitemapMergeFailure(
+    '<?xml version="1.0" encoding="UTF-8"?>\n<sm:urlset xmlns:sm="http://www.sitemaps.org/schemas/sitemap/0.9">\n' +
+      '  <url>\n    <loc>https://agentforge4j.org/example/</loc>\n  </url>\n</sm:urlset>\n',
+  );
+});
+
+test('fails closed on a namespace-prefixed <x:url> under <urlset> — element names are matched exactly, never folded to their bare local name', () => {
+  expectSitemapMergeFailure(
+    `${SITEMAP_HEADER}  <x:url>\n    <loc>https://agentforge4j.org/example/</loc>\n  </x:url>\n${SITEMAP_FOOTER}`,
+    {fragment: 'spa'},
+  );
+});
+
+test('fails closed on a namespace-prefixed <foo:loc> inside <url> — a prefixed spelling is an unexpected child, not a <loc>', () => {
+  expectSitemapMergeFailure(
+    `${SITEMAP_HEADER}  <url>\n    <foo:loc>https://agentforge4j.org/example/</foo:loc>\n  </url>\n${SITEMAP_FOOTER}`,
+  );
+});
+
+test('fails closed on a whitespace-only <lastmod> — treated the same as present-but-empty, never shipped verbatim as an invalid W3C datetime', () => {
+  expectSitemapMergeFailure(
+    `${SITEMAP_HEADER}  <url>\n    <loc>https://agentforge4j.org/example/</loc>\n    <lastmod>   </lastmod>\n  </url>\n${SITEMAP_FOOTER}`,
+  );
+});
+
+// --- Comments, processing instructions, DOCTYPE, HTML-only entities, duplicate <urlset>
+// attributes, and stray text: sibling gaps in the invariants already fixed above --------------
+//
+// A comment or processing instruction inside a <loc>/<lastmod> leaf splices the surrounding text
+// into one corrupted value exactly like a stray nested element did before that was fixed; an
+// HTML-only entity (e.g. `&copy;`) decodes text that is not actually well-formed XML, the same
+// class the well-formedness guarantee already covers; a duplicate <urlset> attribute is a
+// well-formedness violation the allowlist check alone cannot see, because sax silently keeps only
+// the first value and never surfaces the dropped duplicate through any callback; DOCTYPE and stray
+// top-level text were simply never enumerated.
+
+test('fails closed on a comment spliced into <loc> text — previously silently spliced the surrounding text into one corrupted published URL', () => {
+  expectSitemapMergeFailure(
+    `${SITEMAP_HEADER}  <url>\n    <loc>https://agentforge4j.org/a<!--x-->b/</loc>\n  </url>\n${SITEMAP_FOOTER}`,
+    {fragment: 'spa'},
+  );
+});
+
+test('fails closed on a comment spliced into <lastmod> text', () => {
+  expectSitemapMergeFailure(
+    `${SITEMAP_HEADER}  <url>\n    <loc>https://agentforge4j.org/example/</loc>\n    <lastmod>2026-07-<!--x-->24</lastmod>\n  </url>\n${SITEMAP_FOOTER}`,
+  );
+});
+
+test('fails closed on a comment as a sibling inside <url>, outside any leaf', () => {
+  expectSitemapMergeFailure(
+    `${SITEMAP_HEADER}  <url>\n    <loc>https://agentforge4j.org/example/</loc>\n    <!-- a comment -->\n  </url>\n${SITEMAP_FOOTER}`,
+    {fragment: 'spa'},
+  );
+});
+
+test('fails closed on a processing instruction spliced into <loc> text', () => {
+  expectSitemapMergeFailure(
+    `${SITEMAP_HEADER}  <url>\n    <loc>https://agentforge4j.org/a<?pi target?>b/</loc>\n  </url>\n${SITEMAP_FOOTER}`,
+  );
+});
+
+test('fails closed on a DOCTYPE declaration', () => {
+  expectSitemapMergeFailure(
+    '<?xml version="1.0" encoding="UTF-8"?>\n<!DOCTYPE urlset>\n' +
+      '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n' +
+      '  <url>\n    <loc>https://agentforge4j.org/example/</loc>\n  </url>\n</urlset>\n',
+  );
+});
+
+test('fails closed on an HTML-only character entity (&copy;) inside <loc> — decoding it would accept text that is not actually well-formed XML', () => {
+  expectSitemapMergeFailure(
+    `${SITEMAP_HEADER}  <url>\n    <loc>https://agentforge4j.org/example/&copy;</loc>\n  </url>\n${SITEMAP_FOOTER}`,
+    {fragment: 'spa'},
+  );
+});
+
+test('accepts the five standard XML entities and a numeric character reference in <loc> — strictEntities narrows only the HTML-only entity table, not real XML text content', () => {
+  const {spaDir, buildDir, javadocDir, archiveDir, siteDir} = fixture();
+  writeFileSync(
+    join(buildDir, 'sitemap.xml'),
+    `${SITEMAP_HEADER}  <url>\n    <loc>https://agentforge4j.org/a&amp;b&#169;/</loc>\n  </url>\n${SITEMAP_FOOTER}`,
+  );
+  assembleSite({spaDir, buildDir, javadocDir, archiveDir, siteDir, customDomain: null});
+  const xml = readFileSync(join(siteDir, 'sitemap.xml'), 'utf8');
+  assert.match(xml, /<loc>https:\/\/agentforge4j\.org\/a&amp;b©\/<\/loc>/);
+});
+
+test('fails closed on a duplicate <urlset> attribute name — even when the first, kept value is the genuine one and a foreign second declaration would otherwise be silently dropped unseen', () => {
+  expectSitemapMergeFailure(
+    '<?xml version="1.0" encoding="UTF-8"?>\n' +
+      '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns="https://foreign.example/">\n' +
+      '  <url>\n    <loc>https://agentforge4j.org/example/</loc>\n  </url>\n</urlset>\n',
+  );
+});
+
+test('fails closed on stray non-whitespace text directly inside <urlset>, outside any <url> — previously silently discarded', () => {
+  expectSitemapMergeFailure(
+    `${SITEMAP_HEADER}  stray\n  <url>\n    <loc>https://agentforge4j.org/example/</loc>\n  </url>\n${SITEMAP_FOOTER}`,
+  );
+});
+
+test('fails closed on stray non-whitespace text directly inside <url>, outside <loc>/<lastmod> — previously silently discarded', () => {
+  expectSitemapMergeFailure(
+    `${SITEMAP_HEADER}  <url>\n    <loc>https://agentforge4j.org/example/</loc>\n    stray\n  </url>\n${SITEMAP_FOOTER}`,
+    {fragment: 'spa'},
+  );
+});
+
+test('fails closed on a <loc> with trailing whitespace — not a valid URL value, and previously shipped verbatim', () => {
+  expectSitemapMergeFailure(
+    `${SITEMAP_HEADER}  <url>\n    <loc>https://agentforge4j.org/example/ </loc>\n  </url>\n${SITEMAP_FOOTER}`,
+    {fragment: 'spa'},
+  );
+});
+
+test('fails closed on a <loc> with leading whitespace', () => {
+  expectSitemapMergeFailure(
+    `${SITEMAP_HEADER}  <url>\n    <loc> https://agentforge4j.org/example/</loc>\n  </url>\n${SITEMAP_FOOTER}`,
+  );
+});
+
+test('fails closed on a <lastmod> with trailing whitespace around otherwise-valid content — the same guard applied to <loc>, applied symmetrically', () => {
+  expectSitemapMergeFailure(
+    `${SITEMAP_HEADER}  <url>\n    <loc>https://agentforge4j.org/example/</loc>\n    <lastmod>2026-07-24 </lastmod>\n  </url>\n${SITEMAP_FOOTER}`,
+    {fragment: 'spa'},
+  );
+});
+
+// --- The leading <?xml ...?> declaration is exempted only by POSITION, never by name alone -----
+//
+// The declaration is well-formed XML only as the very first thing in the document. A same-named
+// PI anywhere else is not the declaration and must fail like any other PI — previously the PI
+// handler exempted any PI named "xml" (case-insensitively) no matter where it appeared, so one
+// spliced into a <loc>/<lastmod> leaf silently corrupted the published value instead of failing.
+
+test('fails closed on a same-named "xml" processing instruction spliced into <loc> text — the leading-declaration exemption must not apply mid-document', () => {
+  expectSitemapMergeFailure(
+    `${SITEMAP_HEADER}  <url>\n    <loc>https://agentforge4j.org/a<?xml version="1.0"?>b/</loc>\n  </url>\n${SITEMAP_FOOTER}`,
+    {fragment: 'spa'},
+  );
+});
+
+test('fails closed on an uppercase "XML" processing instruction spliced into <loc> text — the exemption is not merely case-sensitive, it is position-sensitive', () => {
+  expectSitemapMergeFailure(
+    `${SITEMAP_HEADER}  <url>\n    <loc>https://agentforge4j.org/a<?XML foo?>b/</loc>\n  </url>\n${SITEMAP_FOOTER}`,
+  );
+});
+
+test('fails closed on a repeated <?xml ...?> declaration appearing as a <url> sibling after the real root opened', () => {
+  expectSitemapMergeFailure(
+    `${SITEMAP_HEADER}  <?xml version="1.0"?>\n  <url>\n    <loc>https://agentforge4j.org/example/</loc>\n  </url>\n${SITEMAP_FOOTER}`,
+    {fragment: 'spa'},
+  );
+});
+
+// --- Characters outside the XML 1.0 Char production must fail closed, even when the numeric ----
+// character reference or raw byte that produces them is itself syntactically well-formed --------
+//
+// sax validates a numeric character reference's syntax (`&#x1;`) and a raw literal byte's tag/
+// entity structure, but never whether the resulting codepoint is an XML 1.0 Char at all. Both
+// decode straight into <loc>/<lastmod> text like any other character, so previously they shipped
+// straight into the composed sitemap.xml — making the published artifact itself not well-formed
+// XML, undetectable by the suite's own reparse-with-sax round-trip proof (sax skips this exact
+// check on the way back in too).
+
+test('fails closed on a numeric character reference to a codepoint the XML 1.0 Char production forbids (&#x1;) inside <loc>', () => {
+  expectSitemapMergeFailure(
+    `${SITEMAP_HEADER}  <url>\n    <loc>https://agentforge4j.org/a&#x1;b/</loc>\n  </url>\n${SITEMAP_FOOTER}`,
+    {fragment: 'spa'},
+  );
+});
+
+test('fails closed on a raw literal control byte (U+000B) inside <lastmod> — not caught by the stray-whitespace allowance, since JS treats U+000B as whitespace', () => {
+  expectSitemapMergeFailure(
+    `${SITEMAP_HEADER}  <url>\n    <loc>https://agentforge4j.org/example/</loc>\n    <lastmod>2026-0724</lastmod>\n  </url>\n${SITEMAP_FOOTER}`,
+  );
+});
+
+test('accepts the three whitespace XML 1.0 Chars (tab, LF, CR) embedded in <loc> text — the invalid-character guard narrows only genuinely illegal codepoints, not legal control chars', () => {
+  const {spaDir, buildDir, javadocDir, archiveDir, siteDir} = fixture();
+  writeFileSync(
+    join(buildDir, 'sitemap.xml'),
+    `${SITEMAP_HEADER}  <url>\n    <loc>https://agentforge4j.org/a&#x9;b&#xA;c&#xD;d/</loc>\n  </url>\n${SITEMAP_FOOTER}`,
+  );
+  assembleSite({spaDir, buildDir, javadocDir, archiveDir, siteDir, customDomain: null});
+  const xml = readFileSync(join(siteDir, 'sitemap.xml'), 'utf8');
+  assert.match(xml, /<loc>https:\/\/agentforge4j\.org\/a\tb\nc\rd\/<\/loc>/);
+});
+
+// --- CDATA sections are outside the narrow, enumerated contract, symmetric with comments/PIs ----
+//
+// Previously a CDATA section was silently folded into leaf text (`oncdata = ontext`), round-
+// tripping correctly but newly asymmetric with the comment/PI/DOCTYPE rejections added alongside
+// it, and never mentioned by the "every case is enumerated" contract.
+
+test('fails closed on a CDATA section spliced into <loc> text', () => {
+  expectSitemapMergeFailure(
+    `${SITEMAP_HEADER}  <url>\n    <loc>https://agentforge4j.org/a<![CDATA[b]]>c/</loc>\n  </url>\n${SITEMAP_FOOTER}`,
+    {fragment: 'spa'},
+  );
+});
+
+test('fails closed on a CDATA section as a sibling inside <url>, outside any leaf', () => {
+  expectSitemapMergeFailure(
+    `${SITEMAP_HEADER}  <url>\n    <loc>https://agentforge4j.org/example/</loc>\n    <![CDATA[stray]]>\n  </url>\n${SITEMAP_FOOTER}`,
+  );
+});
+
+// --- Root-cause regression: the parser's narrow <url> contract stays compatible with
+// docusaurus.config.ts's real, live sitemap options --------------------------------------------
+
+test("the real Docusaurus sitemap config stays compatible with the parser's narrow <url> contract", async () => {
+  // Reads docusaurus.config.ts itself (Node's native TS type-stripping imports it directly — no
+  // hardcoded copy of "changefreq: null, priority: null" in this test) and drives the REAL `sitemap`
+  // npm package's item-serialization code (the exact library @docusaurus/plugin-sitemap's own
+  // xml.js uses) with those live values. If a future edit to docusaurus.config.ts ever restores
+  // `changefreq`/`priority` to a non-null value, this test fails at the config change — the real
+  // library will emit a real <changefreq>/<priority> element, and the real parser will reject it —
+  // instead of the failure surfacing later as an opaque, unrelated composed-site build break.
+  const {default: docusaurusConfig} = await import('../docusaurus.config.ts');
+  const [, presetOptions] = docusaurusConfig.presets[0];
+  const {sitemap: sitemapOptions} = presetOptions;
+
+  const stream = new SitemapStream({});
+  stream.write({
+    url: 'https://agentforge4j.org/docs/0.1.0/',
+    changefreq: sitemapOptions.changefreq,
+    priority: sitemapOptions.priority,
+    lastmod: undefined,
+    video: [],
+    img: [],
+    links: [],
+  });
+  stream.end();
+  const realGeneratedXml = (await streamToPromise(stream)).toString();
+
+  const {spaDir, buildDir, javadocDir, archiveDir, siteDir} = fixture();
+  writeFileSync(join(buildDir, 'sitemap.xml'), realGeneratedXml);
+  // Must NOT fail closed — this is the compatibility proof itself.
+  assembleSite({spaDir, buildDir, javadocDir, archiveDir, siteDir, customDomain: null});
+  const merged = readFileSync(join(siteDir, 'sitemap.xml'), 'utf8');
+  assert.match(merged, /<loc>https:\/\/agentforge4j\.org\/docs\/0\.1\.0\/<\/loc>/);
+});
+
+// --- Steps 8 and 9 must be WIRED, not merely implemented. Both are exported and unit-tested
+// directly by redirect-stub-seo.test.mjs, which says nothing about whether assembleSite calls them:
+// deleting either call left every one of these suites green while the stubs shipped raw and the
+// documentation entry point went unverified. `assemble-site.mjs` runs only in the deploy workflow,
+// so a unit test of a function nobody calls is the whole guard. ---
+
+test('WIRING — assembleSite itself labels the composed client-redirect stubs (step 8)', () => {
+  const {spaDir, buildDir, javadocDir, archiveDir, siteDir} = fixture();
+  assembleSite({spaDir, buildDir, javadocDir, archiveDir, siteDir, customDomain: null});
+
+  const stub = readFileSync(join(siteDir, 'docs', 'index.html'), 'utf8');
+  assert.match(stub, /<title>Documentation — AgentForge4j<\/title>/, 'the composed stub must carry a real title');
+  assert.match(stub, /<meta name="robots" content="noindex, follow">/, 'and be explicitly non-indexable');
+  assert.match(stub, /<meta name="description" content="[^"]+">/, 'and describe itself');
+  // The redirect itself, and the plugin's own canonical, are untouched by the pass.
+  assert.match(stub, /<meta http-equiv="refresh" content="0; url=\/docs\/0\.1\.0\/">/);
+  assert.match(stub, /<link rel="canonical" href="\/docs\/0\.1\.0\/" \/>/);
+});
+
+test('WIRING — assembleSite itself verifies the /docs/ addresses the composed SPA links (step 9)', () => {
+  const {spaDir, buildDir, javadocDir, archiveDir, siteDir} = fixture();
+  // The SPA links /docs/0.1.0/, but this docs build does not publish it. That is precisely the
+  // silent failure the gate exists for: every other check passes, and the site's only route into
+  // the documentation 404s.
+  rmSync(join(buildDir, '0.1.0'), {recursive: true, force: true});
+  const exits = [];
+  assembleSite({spaDir, buildDir, javadocDir, archiveDir, siteDir, customDomain: null, exit: (code) => exits.push(code)});
+  assert.ok(exits.includes(1), 'a docs link with no page behind it must fail the composition');
+});
+
+test('NEGATIVE CONTROL — a composed SPA that links no /docs/ address at all fails closed', () => {
+  // The gate must not pass by having nothing to check: the site has a Docs entry in both its nav and
+  // its footer, so "no docs links found" means they stopped being emitted, not that all is well.
+  const {spaDir, buildDir, javadocDir, archiveDir, siteDir} = fixture();
+  writeFileSync(join(spaDir, 'index.html'), '<html><body>no docs link here</body></html>');
+  const exits = [];
+  assembleSite({spaDir, buildDir, javadocDir, archiveDir, siteDir, customDomain: null, exit: (code) => exits.push(code)});
+  assert.ok(exits.includes(1), 'zero recognised docs links must fail, not pass vacuously');
+});
+
+test('step 9 accepts the real composed artifact — the SPA link resolves to a published page', () => {
+  const {spaDir, buildDir, javadocDir, archiveDir, siteDir} = fixture();
+  const exits = [];
+  assembleSite({spaDir, buildDir, javadocDir, archiveDir, siteDir, customDomain: null, exit: (code) => exits.push(code)});
+  assert.deepEqual(exits, [], 'the happy path must not exit');
+  assert.ok(existsSync(join(siteDir, 'docs', '0.1.0', 'index.html')));
+});
+
+// --- Javadoc surfaces in the sitemap. /javadoc/latest/ is indexable, is a real published surface,
+// and appeared in no sitemap at all — the only one of the site's three surfaces with no discovery
+// path. The entries are derived from the SAME indexability policy that stamps the robots tags, so a
+// sitemap advertising a suppressed surface is not expressible. ---
+
+test('exactly the indexable Javadoc surfaces are listed: /latest/ in, /next/ out, the mirrored pinned version out', () => {
+  const entries = javadocSitemapEntries('https://agentforge4j.org', ['0.1.0'], NO_TAGS_REPO);
+  assert.deepEqual(
+    entries.map((entry) => entry.url),
+    ['https://agentforge4j.org/javadoc/latest/'],
+  );
+});
+
+test('NEGATIVE CONTROL — a noindex surface can never appear: /javadoc/next/ and the mirrored version are absent in every lifecycle state', () => {
+  for (const releasedVersions of [[], ['0.1.0'], ['0.3.0', '0.2.0', '0.1.0']]) {
+    const urls = javadocSitemapEntries('https://agentforge4j.org', releasedVersions, NO_TAGS_REPO).map((e) => e.url);
+    assert.ok(!urls.includes('https://agentforge4j.org/javadoc/next/'), '/javadoc/next/ is noindex in every state');
+    if (releasedVersions.length > 0) {
+      assert.ok(
+        !urls.includes(`https://agentforge4j.org/javadoc/${releasedVersions[0]}/`),
+        'the pinned version /latest/ mirrors is noindex, so it must not be advertised',
+      );
+    }
+  }
+});
+
+test('an older released version becomes discoverable the moment a newer one ships — no version string written down anywhere', () => {
+  // 0.1.0 is suppressed while it is what /latest/ mirrors...
+  assert.deepEqual(
+    javadocSitemapEntries('https://agentforge4j.org', ['0.1.0'], NO_TAGS_REPO).map((e) => e.url),
+    ['https://agentforge4j.org/javadoc/latest/'],
+  );
+  // ...and becomes genuinely distinct historical content, indexable and listed, once 0.2.0 lands.
+  assert.deepEqual(
+    javadocSitemapEntries('https://agentforge4j.org', ['0.2.0', '0.1.0'], NO_TAGS_REPO).map((e) => e.url),
+    ['https://agentforge4j.org/javadoc/latest/', 'https://agentforge4j.org/javadoc/0.1.0/'],
+  );
+});
+
+test('the sitemap never advertises a surface whose own composed page suppresses it — asserted against the shipped bytes, both directions', () => {
+  // The binding that makes "sitemap advertises a page the robots tag suppresses" unrepresentable.
+  // Asserted across the composed artifact rather than by recomputing the implementation's own
+  // expression: both halves are read back off disk — the <loc> list out of _site/sitemap.xml, the
+  // robots directive out of each surface's own composed index.html — so this fails if the two
+  // consumers of javadocSurfaces ever stop agreeing, which a comparison against javadocSurfaces
+  // itself cannot detect.
+  const {root, spaDir, buildDir, javadocDir, archiveDir, siteDir} = fixture();
+  const javadocVersionsDir = join(root, 'javadoc-versions');
+  for (const version of ['0.2.0', '0.1.0']) {
+    mkdirSync(join(javadocVersionsDir, version), {recursive: true});
+    writeFileSync(join(javadocVersionsDir, version, 'index.html'), realisticJavadocHtml(`javadoc ${version}`));
+  }
+  assembleSite({
+    spaDir,
+    buildDir,
+    javadocDir,
+    javadocVersionsDir,
+    // Two released versions so BOTH polarities occur twice: /next/ and the mirrored /0.2.0/ are
+    // suppressed, /latest/ and the superseded /0.1.0/ are indexable.
+    releasedVersions: ['0.2.0', '0.1.0'],
+    archiveDir,
+    siteDir,
+    customDomain: null,
+    repoRoot: NO_TAGS_REPO,
+  });
+
+  const advertised = new Set(
+    [...readFileSync(join(siteDir, 'sitemap.xml'), 'utf8').matchAll(/<loc>([^<]+)<\/loc>/g)].map((match) => match[1]),
+  );
+  const observed = ['javadoc/next', 'javadoc/latest', 'javadoc/0.2.0', 'javadoc/0.1.0'].map((mountPath) => ({
+    mountPath,
+    suppressed: /<meta name="robots" content="[^"]*noindex/i.test(
+      readFileSync(join(siteDir, ...mountPath.split('/'), 'index.html'), 'utf8'),
+    ),
+    listed: advertised.has(`https://agentforge4j.org/${mountPath}/`),
+  }));
+
+  // Neither half of the equivalence may hold vacuously.
+  assert.ok(observed.some((surface) => surface.suppressed), 'the fixture must compose a suppressed surface');
+  assert.ok(observed.some((surface) => !surface.suppressed), 'the fixture must compose an indexable surface');
+
+  for (const {mountPath, suppressed, listed} of observed) {
+    assert.equal(
+      listed,
+      !suppressed,
+      `${mountPath}: its composed page ${suppressed ? 'carries' : 'does not carry'} a noindex robots tag, ` +
+        `but the composed sitemap ${listed ? 'advertises' : 'omits'} it`,
+    );
+  }
+});
+
+test('pre-release, /javadoc/latest/ is still listed — it is the evergreen entry point in both lifecycle states', () => {
+  assert.deepEqual(
+    javadocSitemapEntries('https://agentforge4j.org', [], NO_TAGS_REPO).map((e) => e.url),
+    ['https://agentforge4j.org/javadoc/latest/'],
+  );
+});
+
+test('a surface with no resolvable release tag carries no <lastmod> rather than an invented one', () => {
+  for (const entry of javadocSitemapEntries('https://agentforge4j.org', ['0.1.0'], NO_TAGS_REPO)) {
+    assert.equal(entry.lastmod, null);
+  }
+});
+
+test('a real release tag dates the surface it built, reproducibly', () => {
+  const repoRoot = mkdtempSync(join(tmpdir(), 'javadoc-tag-'));
+  const git = (...args) =>
+    execFileSync('git', args, {
+      cwd: repoRoot,
+      encoding: 'utf8',
+      env: {
+        ...process.env,
+        GIT_AUTHOR_NAME: 'T', GIT_AUTHOR_EMAIL: 't@example.com', GIT_AUTHOR_DATE: '2026-03-04T10:00:00Z',
+        GIT_COMMITTER_NAME: 'T', GIT_COMMITTER_EMAIL: 't@example.com', GIT_COMMITTER_DATE: '2026-03-04T10:00:00Z',
+      },
+    });
+  git('init', '-q');
+  writeFileSync(join(repoRoot, 'a.txt'), 'x');
+  git('add', '.');
+  git('commit', '-q', '-m', 'release');
+  git('tag', 'framework-v0.1.0');
+
+  const [latest] = javadocSitemapEntries('https://agentforge4j.org', ['0.1.0'], repoRoot);
+  assert.equal(latest.url, 'https://agentforge4j.org/javadoc/latest/');
+  // /latest/ mirrors 0.1.0, so it is dated by 0.1.0's own release tag — the commit that really
+  // produced the content, not the time this build happened to run.
+  assert.equal(latest.lastmod, '2026-03-04');
+});
+
+test('the composed sitemap really carries the Javadoc entry end to end', () => {
+  const {spaDir, buildDir, javadocDir, archiveDir, siteDir} = fixture();
+  assembleSite({spaDir, buildDir, javadocDir, archiveDir, siteDir, customDomain: null, repoRoot: NO_TAGS_REPO});
+  const composed = readFileSync(join(siteDir, 'sitemap.xml'), 'utf8');
+  assert.match(composed, /<loc>https:\/\/agentforge4j\.org\/javadoc\/latest\/<\/loc>/);
+  assert.doesNotMatch(composed, /<loc>https:\/\/agentforge4j\.org\/javadoc\/next\/<\/loc>/);
+});
+
+// --- The documented `siteUrl` seam. This function now CONSTRUCTS sitemap URLs from it (the Javadoc
+// entries above) as well as validating URLs against it, so the origin it builds from and the origin
+// it checks against must be the same one. A guard pinned to a second hardcoded copy of the
+// production host rejected every entry the seam produced, the first time the seam was used. ---
+
+const OVERRIDE_URL = 'https://staging.example.test';
+
+test('an overridden siteUrl survives composition — all three sources are emitted at, and accepted on, that origin', () => {
+  const {spaDir, buildDir, javadocDir, archiveDir, siteDir} = fixture();
+  // A host publishing at a different origin generates its fragments at that origin too; only the
+  // Javadoc entries are constructed inside assembleSite.
+  writeFileSync(join(spaDir, 'sitemap.xml'), sitemapXmlFixture([`${OVERRIDE_URL}/`]));
+  writeFileSync(join(buildDir, 'sitemap.xml'), sitemapXmlFixture([`${OVERRIDE_URL}/docs/0.1.0/`]));
+
+  const exitCodes = [];
+  assembleSite({
+    spaDir,
+    buildDir,
+    javadocDir,
+    archiveDir,
+    siteDir,
+    customDomain: null,
+    siteUrl: OVERRIDE_URL,
+    repoRoot: NO_TAGS_REPO,
+    exit: (code) => exitCodes.push(code),
+  });
+  assert.deepEqual(exitCodes, [], 'composition must not fail closed against its own origin');
+
+  const composed = readFileSync(join(siteDir, 'sitemap.xml'), 'utf8');
+  assert.match(composed, /<loc>https:\/\/staging\.example\.test\/<\/loc>/, 'SPA fragment');
+  assert.match(composed, /<loc>https:\/\/staging\.example\.test\/docs\/0\.1\.0\/<\/loc>/, 'docs fragment');
+  assert.match(composed, /<loc>https:\/\/staging\.example\.test\/javadoc\/latest\/<\/loc>/, 'Javadoc entries');
+  assert.doesNotMatch(composed, /agentforge4j\.org/, 'no entry may carry the production host');
+});
+
+test('NEGATIVE CONTROL — the origin guard still fails closed: a fragment on a different host than the one being published is refused', () => {
+  const {spaDir, buildDir, javadocDir, archiveDir, siteDir} = fixture();
+  // The fragments are left on the production host while the site is published at the override —
+  // exactly the misconfigured-siteConfig.url case the guard exists for.
+  const exitCodes = [];
+  assembleSite({
+    spaDir,
+    buildDir,
+    javadocDir,
+    archiveDir,
+    siteDir,
+    customDomain: null,
+    siteUrl: OVERRIDE_URL,
+    repoRoot: NO_TAGS_REPO,
+    exit: (code) => exitCodes.push(code),
+  });
+  assert.ok(exitCodes.includes(1), 'a URL outside the published origin must fail closed');
+});
+
+test('a siteUrl given with a trailing slash is normalised — no doubled slash reaches a published URL', () => {
+  // The seam is documented, so it can be held wrong. Everything downstream appends `/…` to siteUrl,
+  // and the origin guard derives its own prefix from it — so an unnormalised trailing slash would
+  // publish `https://host//javadoc/latest/` AND build a `https://host//` prefix that accepts it,
+  // making the guard vacuous against exactly the input that broke it.
+  const {spaDir, buildDir, javadocDir, archiveDir, siteDir} = fixture();
+  writeFileSync(join(spaDir, 'sitemap.xml'), sitemapXmlFixture([`${OVERRIDE_URL}/`]));
+  writeFileSync(join(buildDir, 'sitemap.xml'), sitemapXmlFixture([`${OVERRIDE_URL}/docs/0.1.0/`]));
+
+  const exitCodes = [];
+  assembleSite({
+    spaDir,
+    buildDir,
+    javadocDir,
+    archiveDir,
+    siteDir,
+    customDomain: null,
+    siteUrl: `${OVERRIDE_URL}/`,
+    repoRoot: NO_TAGS_REPO,
+    exit: (code) => exitCodes.push(code),
+  });
+  assert.deepEqual(exitCodes, [], 'a trailing slash must not fail composition');
+
+  const composed = readFileSync(join(siteDir, 'sitemap.xml'), 'utf8');
+  assert.match(composed, /<loc>https:\/\/staging\.example\.test\/javadoc\/latest\/<\/loc>/);
+  assert.doesNotMatch(composed, /staging\.example\.test\/\//, 'no published URL may carry a doubled slash');
+});
+
+// --- One site, one sitemap. Every per-module fragment is a merge INPUT: nothing links them,
+// robots.txt names only the root sitemap, and mergeSitemaps is their sole consumer. Published, each
+// was a second, partial sitemap covering a subset of the root one's URLs with nothing saying which
+// wins. Proven here for the docs fragment, for an archived version's, and — by the invariant rather
+// than by path — for a fragment anywhere else in the composed tree. ---
+
+test('the composed artifact publishes exactly one sitemap — the redundant /docs/sitemap.xml fragment is gone', () => {
+  const {spaDir, buildDir, javadocDir, archiveDir, siteDir} = fixture();
+  assembleSite({spaDir, buildDir, javadocDir, archiveDir, siteDir, customDomain: null});
+
+  assert.ok(existsSync(join(siteDir, 'sitemap.xml')), 'the merged root sitemap must be published');
+  assert.equal(
+    existsSync(join(siteDir, 'docs', 'sitemap.xml')),
+    false,
+    '/docs/sitemap.xml is a merge input, not a published surface',
+  );
+});
+
+test('removing the fragment loses no coverage — every docs URL it carried is in the merged root sitemap', () => {
+  const {spaDir, buildDir, javadocDir, archiveDir, siteDir} = fixture();
+  // Read the fragment's URLs before assembly consumes and deletes it, so this compares against what
+  // the docs build really produced rather than against a hardcoded expectation.
+  const docsUrls = [...readFileSync(join(buildDir, 'sitemap.xml'), 'utf8').matchAll(/<loc>([^<]+)<\/loc>/g)].map(
+    (match) => match[1],
+  );
+  assert.ok(docsUrls.length > 0, 'fixture must contain at least one docs URL for this to mean anything');
+
+  assembleSite({spaDir, buildDir, javadocDir, archiveDir, siteDir, customDomain: null});
+
+  const merged = readFileSync(join(siteDir, 'sitemap.xml'), 'utf8');
+  for (const url of docsUrls) {
+    assert.ok(merged.includes(`<loc>${url}</loc>`), `${url} was dropped when the docs fragment was removed`);
+  }
+});
+
+test('NEGATIVE CONTROL — an artifact that still ships /docs/sitemap.xml fails the composed-output check', () => {
+  const {spaDir, buildDir, javadocDir, archiveDir, siteDir} = fixture();
+  const exits = [];
+  assembleSite({spaDir, buildDir, javadocDir, archiveDir, siteDir, customDomain: null, exit: (code) => exits.push(code)});
+  assert.deepEqual(exits, [], 'the clean run must not have failed');
+
+  // Put the fragment back, exactly as a future change that stopped removing it would leave things,
+  // and re-run only the output verification.
+  writeFileSync(join(siteDir, 'docs', 'sitemap.xml'), readFileSync(join(siteDir, 'sitemap.xml'), 'utf8'), 'utf8');
+  const reExits = [];
+  verifyComposedArtifact(siteDir, [], (code) => reExits.push(code));
+  assert.deepEqual(reExits, [1]);
+});
+
+test('the REAL shipped robots.txt names the one root sitemap, and names no other', () => {
+  // Deliberately NOT the composed fixture's robots.txt: that file is written by `fixture()` itself a
+  // few lines up, so asserting against it would only prove this test module can read back its own
+  // literal. The claim being made — "robots.txt names exactly one sitemap, the root one" — is about
+  // the committed file the SPA build ships, so that is the file this opens. Adding a second
+  // `Sitemap:` directive there must fail here.
+  const robots = readFileSync(join(REPO_ROOT, 'agentforge4j-web-ui', 'public', 'robots.txt'), 'utf8');
+  const sitemapDirectives = [...robots.matchAll(/^Sitemap:\s*(\S+)$/gim)].map((match) => match[1]);
+  assert.deepEqual(sitemapDirectives, ['https://agentforge4j.org/sitemap.xml']);
+});
+
+// --- The same invariant, on its sibling path: an archived version is frozen as a WHOLE Docusaurus
+// export, so it carries its own sitemap.xml for exactly the reason the docs build does, and step 4
+// copies it into /docs/archive/<v>/. It is a merge input too. ---
+
+/** Adds a frozen archive artifact for `version` — an `index.html` page plus the export's own
+ *  sitemap.xml, which `verify-canonical.mjs` requires to exist before an export may be frozen. */
+function writeArchivedVersion(archiveDir, version, urls) {
+  mkdirSync(join(archiveDir, version), {recursive: true});
+  writeFileSync(join(archiveDir, version, 'index.html'), `<html>archived ${version}</html>`);
+  writeFileSync(join(archiveDir, version, 'sitemap.xml'), sitemapXmlFixture(urls));
+}
+
+test("an archived version's own sitemap fragment is merged into the root sitemap, not published alongside it", () => {
+  const {spaDir, buildDir, javadocDir, siteDir, root} = fixture();
+  const archiveDir = join(root, 'archive');
+  const archivedUrls = [
+    'https://agentforge4j.org/docs/archive/0.0.9/',
+    'https://agentforge4j.org/docs/archive/0.0.9/intro/',
+  ];
+  writeArchivedVersion(archiveDir, '0.0.9', archivedUrls);
+
+  assembleSite({spaDir, buildDir, javadocDir, archiveDir, siteDir, customDomain: null});
+
+  assert.equal(
+    existsSync(join(siteDir, 'docs', 'archive', '0.0.9', 'sitemap.xml')),
+    false,
+    "an archived version's fragment is a merge input, not a second published sitemap",
+  );
+  assert.ok(
+    existsSync(join(siteDir, 'docs', 'archive', '0.0.9', 'index.html')),
+    'only the fragment is removed — the archived pages themselves are carried forward untouched',
+  );
+  const merged = readFileSync(join(siteDir, 'sitemap.xml'), 'utf8');
+  for (const url of archivedUrls) {
+    assert.ok(merged.includes(`<loc>${url}</loc>`), `${url} must survive the merge, not vanish with the fragment`);
+  }
+});
+
+test('an archive frozen without a sitemap fragment is carried forward unchanged, and is not an error', () => {
+  const {spaDir, buildDir, javadocDir, siteDir, root} = fixture();
+  const archiveDir = join(root, 'archive');
+  mkdirSync(join(archiveDir, '0.0.8'), {recursive: true});
+  writeFileSync(join(archiveDir, '0.0.8', 'index.html'), '<html>archived 0.0.8</html>');
+
+  const exits = [];
+  assembleSite({spaDir, buildDir, javadocDir, archiveDir, siteDir, customDomain: null, exit: (code) => exits.push(code)});
+
+  assert.deepEqual(exits, [], 'a fragment-less archive contributes nothing and must not fail the build');
+  assert.ok(existsSync(join(siteDir, 'docs', 'archive', '0.0.8', 'index.html')));
+});
+
+test('NEGATIVE CONTROL — an artifact that still ships an archived sitemap fragment fails the composed-output check', () => {
+  const {spaDir, buildDir, javadocDir, siteDir, root} = fixture();
+  const archiveDir = join(root, 'archive');
+  writeArchivedVersion(archiveDir, '0.0.9', ['https://agentforge4j.org/docs/archive/0.0.9/']);
+  const exits = [];
+  assembleSite({spaDir, buildDir, javadocDir, archiveDir, siteDir, customDomain: null, exit: (code) => exits.push(code)});
+  assert.deepEqual(exits, [], 'the clean run must not have failed');
+
+  // Exactly as a future change that stopped removing it would leave things. The check must catch it
+  // by the invariant ("exactly one sitemap.xml, at the root"), not by knowing this specific path.
+  writeFileSync(
+    join(siteDir, 'docs', 'archive', '0.0.9', 'sitemap.xml'),
+    readFileSync(join(siteDir, 'sitemap.xml'), 'utf8'),
+    'utf8',
+  );
+  const reExits = [];
+  verifyComposedArtifact(siteDir, [], (code) => reExits.push(code));
+  assert.deepEqual(reExits, [1]);
+});
+
+test('NEGATIVE CONTROL — a sitemap.xml anywhere else in the composed tree fails the composed-output check', () => {
+  // Neither of the two fragment paths that exist today: the guard is the invariant, so a fragment
+  // arriving from some future surface's build output must fail without anyone editing a path list.
+  const {spaDir, buildDir, javadocDir, archiveDir, siteDir} = fixture();
+  const exits = [];
+  assembleSite({spaDir, buildDir, javadocDir, archiveDir, siteDir, customDomain: null, exit: (code) => exits.push(code)});
+  assert.deepEqual(exits, []);
+
+  writeFileSync(join(siteDir, 'javadoc', 'next', 'sitemap.xml'), readFileSync(join(siteDir, 'sitemap.xml'), 'utf8'), 'utf8');
+  const reExits = [];
+  verifyComposedArtifact(siteDir, [], (code) => reExits.push(code));
+  assert.deepEqual(reExits, [1]);
+});
+
+// --- The coverage precondition for deleting a fragment, tested in BOTH directions. The caller's own
+// refusal branch is unreachable from any real input (sitemapXml/extractSitemapEntries round-trip
+// losslessly, deliberately), so the pure function that decides it is what gets proven here. ---
+
+test('urlsMissingFrom reports nothing when the merge carried every fragment URL across', () => {
+  const merged = [
+    {url: 'https://agentforge4j.org/', lastmod: '2026-07-20'},
+    {url: 'https://agentforge4j.org/docs/0.1.0/', lastmod: null},
+  ];
+  const fragment = [{url: 'https://agentforge4j.org/docs/0.1.0/', lastmod: null}];
+  assert.deepEqual(urlsMissingFrom(merged, fragment), []);
+});
+
+test('urlsMissingFrom reports exactly the fragment URLs the merge lost — the refusal branch\'s trigger', () => {
+  const merged = [{url: 'https://agentforge4j.org/', lastmod: null}];
+  const fragment = [
+    {url: 'https://agentforge4j.org/docs/0.1.0/', lastmod: null},
+    {url: 'https://agentforge4j.org/', lastmod: null},
+    {url: 'https://agentforge4j.org/docs/archive/0.0.9/', lastmod: '2026-01-01'},
+  ];
+  assert.deepEqual(urlsMissingFrom(merged, fragment), [
+    'https://agentforge4j.org/docs/0.1.0/',
+    'https://agentforge4j.org/docs/archive/0.0.9/',
+  ]);
+});
+
+test('urlsMissingFrom compares URLs only — a differing <lastmod> is not a lost URL', () => {
+  const merged = [{url: 'https://agentforge4j.org/docs/0.1.0/', lastmod: '2026-07-20'}];
+  const fragment = [{url: 'https://agentforge4j.org/docs/0.1.0/', lastmod: null}];
+  assert.deepEqual(urlsMissingFrom(merged, fragment), []);
+});
+
+// --- The scope of the removal proof. mergeSitemaps deletes the fragment FILES it consumed, and is
+// entitled to do that only because every URL those files carried has just been proved to survive
+// into the merged sitemap. The computed Javadoc entries have no file behind them, so they must
+// never enter that proof: "was this URL lost from a fragment" is not a question that can be asked
+// about a URL no fragment ever supplied, and counting them would make the guard report a survival
+// it never checked — inflating its own evidence exactly where it is about to delete data.
+//
+// `removeConsumedFragments` is the whole of that step, and it takes the fragment PATHS rather than
+// a list of entries: it reads them itself, immediately before unlinking them. So the tests below
+// are ordinary behavioural tests of an exported function.
+//
+// What that does and does not buy, stated accurately because an earlier version of this comment
+// overstated it: there is no entry-list parameter to contaminate, which removes the easy accident.
+// It does NOT make contamination impossible. `javadocSitemapEntries` needs `siteUrl`,
+// `releasedVersions` and `repoRoot`, but `DEFAULT_SITE_URL` and `REPO_ROOT` are module-scope
+// constants in that file and an empty released-version list is valid, so it can still be called
+// from inside `removeConsumedFragments` with the signature untouched. The load-bearing guard is
+// therefore behavioural, not structural: every test below asserts the EXACT proved count, so any
+// extra entry folded into the proof set changes a number and fails. Keep it that way — a count
+// assertion is what actually bites here, and loosening one to a range would give that up.
+
+function fragmentFixture(prefix, urlsPerFragment) {
+  const root = mkdtempSync(join(tmpdir(), prefix));
+  const paths = urlsPerFragment.map((urls, index) => {
+    const path = join(root, `sitemap-${index}.xml`);
+    writeFileSync(path, sitemapXmlFixture(urls), 'utf8');
+    return path;
+  });
+  return {root, paths};
+}
+
+test('removeConsumedFragments deletes the fragments and reports the URL count it proved', () => {
+  const {paths} = fragmentFixture('removal-proof-ok-', [
+    ['https://agentforge4j.org/docs/', 'https://agentforge4j.org/docs/intro/'],
+    ['https://agentforge4j.org/docs/archive/0.1.0/'],
+  ]);
+  const exitCodes = [];
+  const merged = [
+    {url: 'https://agentforge4j.org/', lastmod: null},
+    {url: 'https://agentforge4j.org/docs/', lastmod: null},
+    {url: 'https://agentforge4j.org/docs/intro/', lastmod: null},
+    {url: 'https://agentforge4j.org/docs/archive/0.1.0/', lastmod: null},
+    {url: 'https://agentforge4j.org/javadoc/latest/', lastmod: null},
+  ];
+
+  const proved = removeConsumedFragments(paths, merged, (code) => exitCodes.push(code));
+
+  assert.deepEqual(exitCodes, []);
+  // 3, not 5: the count is what the FRAGMENTS carried. The merged sitemap's two other URLs — the SPA
+  // root and a computed Javadoc surface — are not the function's to vouch for, and a count that
+  // included them would be the guard overstating what it checked.
+  assert.equal(proved, 3);
+  assert.deepEqual(
+    paths.map((path) => existsSync(path)),
+    [false, false],
+  );
+});
+
+test('removeConsumedFragments refuses and leaves every fragment in place when a URL was lost', () => {
+  const {paths} = fragmentFixture('removal-proof-lost-', [
+    ['https://agentforge4j.org/docs/'],
+    ['https://agentforge4j.org/docs/archive/0.1.0/'],
+  ]);
+  const exitCodes = [];
+
+  // Only the first fragment's URL survived the merge.
+  const proved = removeConsumedFragments(
+    paths,
+    [{url: 'https://agentforge4j.org/docs/', lastmod: null}],
+    (code) => exitCodes.push(code),
+  );
+
+  assert.equal(proved, null);
+  assert.deepEqual(exitCodes, [1]);
+  // Neither file removed — including the one whose URL did survive. Partial deletion would leave the
+  // artifact in a state no rerun reproduces.
+  assert.deepEqual(
+    paths.map((path) => existsSync(path)),
+    [true, true],
+  );
+});
+
+test('removeConsumedFragments proves the fragments it is deleting, not whatever else the merge holds', () => {
+  // The merged sitemap legitimately carries URLs from sources that have no fragment file: the SPA's
+  // own entries and the computed Javadoc surfaces. Their presence must not be mistaken for evidence
+  // about the files being deleted, and their ABSENCE from the fragment set must not fail the proof.
+  const {paths} = fragmentFixture('removal-proof-scope-', [['https://agentforge4j.org/docs/']]);
+  const exitCodes = [];
+
+  const proved = removeConsumedFragments(
+    paths,
+    [
+      {url: 'https://agentforge4j.org/docs/', lastmod: null},
+      {url: 'https://agentforge4j.org/javadoc/latest/', lastmod: null},
+    ],
+    (code) => exitCodes.push(code),
+  );
+
+  assert.deepEqual(exitCodes, []);
+  assert.equal(proved, 1);
+});
+
+test('removeConsumedFragments handles the no-archives case without claiming anything it did not check', () => {
+  const exitCodes = [];
+  const proved = removeConsumedFragments([], [{url: 'https://agentforge4j.org/', lastmod: null}], (code) =>
+    exitCodes.push(code),
+  );
+  assert.deepEqual(exitCodes, []);
+  assert.equal(proved, 0);
+});
+
+// A rejected fragment must not authorize its own deletion.
+//
+// Every test above injects a RECORDING exit seam rather than a throwing one, which is the honest
+// way to test a function whose contract says it returns after a refusal — but it also means
+// execution continues past a rejection that `process.exit` would have ended. `extractSitemapEntries`
+// reports a semantic violation through `fail`, which calls `exit` and then carries on parsing, so
+// before this was fixed it handed back the entries it had collected BEFORE the bad one: a truncated
+// set, indistinguishable from a smaller valid file. `removeConsumedFragments` then compared that
+// short set against the merged sitemap, found nothing missing, and unlinked the fragment — losing
+// the URL the rejected entry carried, while reporting success.
+//
+// `<location>` is well-formed XML and a legal element name; it is simply not a child `<url>` accepts.
+// That matters: a NON-well-formed fragment throws out of the parser instead, which always stopped
+// the deletion, so a well-formed-but-semantically-rejected file is the shape that reached the bug.
+test('removeConsumedFragments removes nothing when a fragment is rejected as it is read', () => {
+  const root = mkdtempSync(join(tmpdir(), 'removal-proof-rejected-'));
+  const fragmentPath = join(root, 'sitemap-0.xml');
+  writeFileSync(
+    fragmentPath,
+    '<?xml version="1.0" encoding="UTF-8"?>\n' +
+      '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n' +
+      '  <url>\n    <loc>https://agentforge4j.org/docs/kept/</loc>\n  </url>\n' +
+      '  <url>\n    <location>https://agentforge4j.org/docs/lost/</location>\n  </url>\n' +
+      '</urlset>\n',
+    'utf8',
+  );
+  const exitCodes = [];
+
+  // The merged set deliberately contains the one URL that parsed cleanly. That is what made the old
+  // behaviour pass its own check: every entry it managed to read WAS present, so nothing looked lost.
+  const proved = removeConsumedFragments(
+    [fragmentPath],
+    [{url: 'https://agentforge4j.org/docs/kept/', lastmod: null}],
+    (code) => exitCodes.push(code),
+  );
+
+  assert.deepEqual(exitCodes, [1], 'the rejected fragment must fail the build');
+  assert.equal(proved, null, 'a rejected read must report failure, not a proved count');
+  assert.equal(existsSync(fragmentPath), true, 'the rejected fragment must still be on disk');
+});
+
+// The same fail-closed property one level up, through the real merge rather than the exported
+// function. Needed because `mergeSitemaps` reads its sources through the same seam and has its own
+// early return: every other malformed-fragment test in this file injects a THROWING exit stub, which
+// unwinds before that return is ever reached, so the branch would otherwise be untested. A recording
+// stub is the only way to observe it — and the only way a partial read could ever travel onwards.
+test('mergeSitemaps writes nothing and deletes nothing when a fragment is rejected and exit returns', () => {
+  const {spaDir, buildDir, javadocDir, archiveDir, siteDir} = fixture();
+  writeFileSync(
+    join(buildDir, 'sitemap.xml'),
+    '<?xml version="1.0" encoding="UTF-8"?>\n' +
+      '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n' +
+      '  <url>\n    <loc>https://agentforge4j.org/docs/0.1.0/</loc>\n  </url>\n' +
+      '  <url>\n    <location>https://agentforge4j.org/docs/0.1.0/lost/</location>\n  </url>\n' +
+      '</urlset>\n',
+  );
+  const exitCodes = [];
+
+  assembleSite({
+    spaDir,
+    buildDir,
+    javadocDir,
+    archiveDir,
+    siteDir,
+    customDomain: null,
+    exit: (code) => exitCodes.push(code),
+    repoRoot: NO_TAGS_REPO,
+  });
+
+  assert.equal(exitCodes[0], 1, 'the rejected docs fragment must fail the build');
+  assert.equal(
+    existsSync(join(siteDir, 'docs', 'sitemap.xml')),
+    true,
+    'the rejected fragment must not be consumed — it is still a build input nobody proved',
+  );
+  // The root sitemap is still the SPA fragment copied in at step 1: the merge returned before its
+  // own write, so no Javadoc entry (which only the merge adds) can be in it.
+  assert.equal(
+    readFileSync(join(siteDir, 'sitemap.xml'), 'utf8').includes('/javadoc/latest/'),
+    false,
+    'the merged sitemap must not have been written from a rejected read',
+  );
+});
+
+/**
+ * The body of a top-level `function <name>(` in assemble-site.mjs, with comments removed.
+ *
+ * Scoping a structural assertion to one function body is the difference between proving something
+ * about the code and proving something about the file: a whole-file `assert.match` for a call shape
+ * is satisfied by that shape appearing in ANY comment, and this module quotes call shapes in prose
+ * routinely. Comments are stripped for the same reason. The `//` strip requires start-of-line or
+ * whitespace before the slashes so that a `https://` inside a string literal survives untouched.
+ *
+ * Deliberately a text slice rather than a real parse: the module has no JS parser available to its
+ * tests, and the alternative — matching the whole file — is what made the previous version of this
+ * assertion unable to fail. A brace-counting scan is overkill for top-level functions whose closing
+ * brace is the next line that is exactly `}`.
+ */
+function functionBodyWithoutComments(functionName) {
+  const source = readFileSync(join(REPO_ROOT, 'agentforge4j-docs', 'scripts', 'assemble-site.mjs'), 'utf8');
+  const opener = `\nfunction ${functionName}(`;
+  const exportedOpener = `\nexport function ${functionName}(`;
+  const start = source.includes(opener) ? source.indexOf(opener) : source.indexOf(exportedOpener);
+  assert.notEqual(start, -1, `assemble-site.mjs must declare a top-level function ${functionName}`);
+  const end = source.indexOf('\n}\n', start);
+  assert.notEqual(end, -1, `could not find the end of ${functionName} — the scan is no longer valid`);
+
+  // `start + 1` drops the leading newline the search pattern carried, so the slice begins exactly at
+  // the declaration and `^` in the assertions below anchors to it.
+  return source
+    .slice(start + 1, end)
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .split('\n')
+    .map((line) => line.replace(/(^|\s)\/\/.*$/, ''))
+    .join('\n');
+}
+
+// The one thing the behavioural tests above cannot express, because it is a property of the shape of
+// the code rather than of its output: where the proof's input comes from at the call site. Scoped to
+// the two function bodies concerned, not the whole file, so a comment quoting either shape cannot
+// satisfy it.
+//
+// Note what this is NOT: it is not a proof that computed entries cannot reach the proof set. They
+// can — see the comment above the behavioural tests. This pins the call shape so that changing it is
+// deliberate and visible in review; the exact proved counts asserted above are what actually fail
+// when the set is contaminated.
+test('the removal proof takes fragment paths, and mergeSitemaps hands it exactly those', () => {
+  const declaration = functionBodyWithoutComments('removeConsumedFragments');
+  const mergeBody = functionBodyWithoutComments('mergeSitemaps');
+
+  // Whitespace-tolerant on purpose: the parameter LIST is the invariant, so a reformat that wraps
+  // the arguments must not turn this red. The identifiers and their order are still exact. The
+  // `exit` default is required, not merely tolerated — every other exported exit-taking helper in
+  // this module defaults it to process.exit, and omitting it here made this the odd one out.
+  assert.match(
+    declaration,
+    /^export function removeConsumedFragments\(\s*fragmentPaths,\s*mergedEntries,\s*exit\s*=\s*process\.exit,?\s*\)\s*\{/,
+    'removeConsumedFragments must keep its (fragmentPaths, mergedEntries, exit = process.exit) ' +
+      'signature — adding an entry-list parameter would make contaminating the proof trivial, and ' +
+      'dropping the exit default would break the convention its sibling exports follow',
+  );
+
+  // And it is called with the paths themselves, so the set it proves is re-derived at the call site
+  // from the files about to be unlinked rather than from anything assembled earlier in the merge.
+  assert.match(
+    mergeBody,
+    /removeConsumedFragments\(\s*fragmentPaths,\s*merged,\s*exit,?\s*\)/,
+    'mergeSitemaps must pass fragmentPaths — the files it is about to delete — as the proof source',
+  );
 });

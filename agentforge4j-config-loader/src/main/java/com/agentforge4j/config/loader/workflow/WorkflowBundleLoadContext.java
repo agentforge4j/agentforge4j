@@ -23,6 +23,12 @@ public record WorkflowBundleLoadContext(Optional<Path> workflowRoot) {
         Optional.of(Validate.notNull(root, "root must not be null")));
   }
 
+  /**
+   * Returns the filesystem workflow root.
+   *
+   * @return the workflow root
+   * @throws IllegalStateException when this context has no workflow root (a classpath context)
+   */
   public Path requireWorkflowRoot() {
     return workflowRoot.orElseThrow(() -> new IllegalStateException(
         "Workflow root is required for filesystem workflow loading"));

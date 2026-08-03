@@ -50,6 +50,18 @@ class RetryPreviousAgentTargetTest {
   }
 
   @Test
+  void retryPreviousSingleStepToSparTargetCompletesInsteadOfFailing() {
+    // Same uid-allocation crash class as the AGENT target, via the SPAR handler instead: the
+    // rewound SPAR step (primary + challenger + resolution turns) must re-run cleanly.
+    WorkflowRunResult result = harness().run("retry-previous-spar-single");
+
+    WorkflowRunAssert.assertThat(result)
+        .isCompleted()
+        .stepVisitCount("seed", 2)
+        .didNotVisitStep("fallback");
+  }
+
+  @Test
   void retryPreviousFromStepToAgentRangeCompletesInsteadOfFailing() {
     WorkflowRunResult result = harness().run("retry-previous-agent-from-step");
 

@@ -17,7 +17,7 @@
   <description>Examples that demonstrate the shipped catalog of ready-made AgentForge4j workflows —
     how to discover, configure, and run the workflows the framework provides out of the box, rather
     than authoring your own from scratch. Each leaf is deterministic and offline, driven by the
-    shipped fake LLM provider. Leaf modules are added per example in later batches.</description>
+    shipped fake LLM provider.</description>
 
   <licenses>
     <license>

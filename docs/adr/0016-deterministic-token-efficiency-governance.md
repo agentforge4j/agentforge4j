@@ -4,6 +4,9 @@
 
 Proposed
 
+Implementation is deferred beyond the 0.1.0 release: no part of this decision ships in 0.1.0,
+and the ADR remains Proposed until the implementation lands and is promoted separately.
+
 ## Date
 
 2026-07-10 (proposal date)
@@ -32,7 +35,8 @@ Introduce opt-in, deterministic token-governance primitives:
 - **`CompactBehaviour`**: a new sealed `StepBehaviour` permit for explicit, replayable compaction of designated context — never silent truncation.
 - **`RequestContextCommand`**: a new sealed `LlmCommand` permit letting an agent request additional context through the governed path.
 - **Shared `TokenEstimator` SPI** in the LLM API layer, with a default implementation extracted from the previously duplicated per-provider character-based heuristic (those providers now delegate). Provider modules may register better estimators via `ServiceLoader`. This SPI is the single estimation home; other consumers (including workflow execution estimation, ADR-0017) consume it rather than duplicating it.
-- **`PREMIUM` model tier** added to the sealed `ModelTier` set with resolver and shipped-defaults wiring, as neutral capability vocabulary.
+
+A `PREMIUM` model tier was originally scoped here as neutral capability vocabulary. It is no longer part of this decision: the tier stands on its own as an amendment to ADR-0008 and is recorded in [ADR-0035](0035-premium-as-a-fourth-model-capability-tier.md), which owns it end to end. Nothing in this record depends on it.
 
 No changes to `PromptLayerBoundaries` or prompt-layer structure.
 
@@ -69,16 +73,16 @@ No changes to `PromptLayerBoundaries` or prompt-layer structure.
 
 ## Compatibility impact
 
-- **API**: new `TokenEstimator` SPI (additive); two new sealed permits (`CompactBehaviour`, `RequestContextCommand`); `PREMIUM` added to `ModelTier`. Pre-1.0 clean-break policy applies (ADR-0013).
+- **API**: new `TokenEstimator` SPI (additive); two new sealed permits (`CompactBehaviour`, `RequestContextCommand`). Pre-1.0 clean-break policy applies (ADR-0013).
 - **Runtime behavior**: unchanged unless a workflow opts in; compaction adds a replay-by-record path.
 - **Workflow definitions**: additive, schema-versioned fields (`contextSelection`, output contracts, compact steps, context packs).
 - **Configuration**: estimator registration via `ServiceLoader`; pack loading configuration.
-- **Docs/examples**: author-facing vocabulary — needs a dedicated guide plus reference pages; tier documentation gains `PREMIUM` with capability-only wording.
+- **Docs/examples**: author-facing vocabulary — needs a dedicated guide plus reference pages.
 - **Users**: no impact on existing definitions; incremental opt-in.
 
 ## Verification note
 
-Becomes Accepted once the root pull request targeting `main` (#16) has merged and black-box verification asserts selection, ledger, and compaction evidence through the runtime event contract (ADR-0011). All implementation increments (estimator SPI and `PREMIUM` tier, core domain types and `CompactBehaviour`, schema surface, context-pack loading, context-selection validation, the estimator-backed ledger, context-pack selectors) plus a prompt-cache-stability verification pass are complete and merged into each other on a single stacked branch — none of this has reached `main` yet; every dependent pull request has merged into #16's branch rather than into `main` itself, so `main` currently carries none of this ADR's surface (no `PREMIUM` tier, no `TokenEstimator` SPI, no `CompactBehaviour`, no `RequestContextCommand`). Until #16 merges, Proposed is unambiguous, not a judgment call.
+Becomes Accepted once the root pull request targeting `main` (#16) has merged and black-box verification asserts selection, ledger, and compaction evidence through the runtime event contract (ADR-0011). All implementation increments (estimator SPI, core domain types and `CompactBehaviour`, schema surface, context-pack loading, context-selection validation, the estimator-backed ledger, context-pack selectors) plus a prompt-cache-stability verification pass are complete and merged into each other on a single stacked branch — none of this has reached `main` yet; every dependent pull request has merged into #16's branch rather than into `main` itself, so `main` currently carries none of this ADR's surface (no `TokenEstimator` SPI, no `CompactBehaviour`, no `RequestContextCommand`). The `PREMIUM` model tier is deliberately absent from that list: it was lifted out of this stack and lands independently under ADR-0035, so whether `main` carries it says nothing about this record's status either way. Until #16 merges, Proposed is unambiguous, not a judgment call.
 
 ## Follow-up work
 
@@ -90,4 +94,5 @@ If verification shows the composition contract with `contextScope` cannot be enf
 - ADR-0011 — runtime event contract as the verification surface
 - ADR-0013 — pre-1.0 compatibility policy
 - ADR-0017 — workflow execution estimation (estimation SPI consumer)
+- ADR-0035 — the `PREMIUM` model tier, originally scoped here and now recorded on its own
 - `docs/adr/README.md` — index

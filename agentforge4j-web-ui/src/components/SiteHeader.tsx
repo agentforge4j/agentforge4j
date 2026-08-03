@@ -3,10 +3,14 @@ import { useEffect, useRef, useState } from 'react';
 import { ExternalLink, Menu, X } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { GITHUB_URL, NAV_CTA, PRIMARY_NAV } from '@/config/nav';
+import ThemeToggle from '@/components/ThemeToggle';
+import { useTheme } from '@/theme/ThemeContext';
 
 export default function SiteHeader() {
   const [menuOpen, setMenuOpen] = useState(false);
   const toggleButtonRef = useRef<HTMLButtonElement>(null);
+  const { effectiveTheme } = useTheme();
+  const logoSrc = effectiveTheme === 'dark' ? '/brand/logo-horizontal-dark.svg' : '/brand/logo-horizontal.svg';
 
   useEffect(() => {
     if (!menuOpen) {
@@ -36,15 +40,21 @@ export default function SiteHeader() {
           className="flex shrink-0 items-center"
           onClick={() => setMenuOpen(false)}
         >
-          <img src="/brand/logo-horizontal.svg" alt="AgentForge4j" className="h-16 w-auto block" />
+          <img src={logoSrc} alt="AgentForge4j" className="h-16 w-auto block" />
         </Link>
 
         <nav aria-label="Primary" className="hidden flex-1 items-center gap-6 lg:flex">
-          {PRIMARY_NAV.map((item) => (
-            <Link key={item.to} to={item.to} className="text-sm font-medium text-fg hover:text-brand">
-              {item.label}
-            </Link>
-          ))}
+          {PRIMARY_NAV.map((item) =>
+            item.external ? (
+              <a key={item.to} href={item.to} className="text-sm font-medium text-fg hover:text-brand">
+                {item.label}
+              </a>
+            ) : (
+              <Link key={item.to} to={item.to} className="text-sm font-medium text-fg hover:text-brand">
+                {item.label}
+              </Link>
+            ),
+          )}
         </nav>
         <a
           href={GITHUB_URL}
@@ -62,6 +72,10 @@ export default function SiteHeader() {
           {NAV_CTA.label}
         </Link>
 
+        <div className="ml-auto lg:ml-0">
+          <ThemeToggle />
+        </div>
+
         <button
           ref={toggleButtonRef}
           type="button"
@@ -69,7 +83,7 @@ export default function SiteHeader() {
           aria-controls="primary-nav-mobile"
           aria-label={menuOpen ? 'Close menu' : 'Open menu'}
           onClick={() => setMenuOpen((open) => !open)}
-          className="ml-auto flex items-center justify-center rounded-md p-2 text-fg lg:hidden"
+          className="flex items-center justify-center rounded-md p-2 text-fg lg:hidden"
         >
           {menuOpen ? <X size={22} aria-hidden="true" /> : <Menu size={22} aria-hidden="true" />}
         </button>
@@ -81,16 +95,27 @@ export default function SiteHeader() {
           aria-label="Primary"
           className="flex flex-col gap-1 border-t border-border px-6 py-4 lg:hidden"
         >
-          {PRIMARY_NAV.map((item) => (
-            <Link
-              key={item.to}
-              to={item.to}
-              onClick={() => setMenuOpen(false)}
-              className="rounded-md px-2 py-2 text-sm font-medium text-fg hover:bg-bg hover:text-brand"
-            >
-              {item.label}
-            </Link>
-          ))}
+          {PRIMARY_NAV.map((item) =>
+            item.external ? (
+              <a
+                key={item.to}
+                href={item.to}
+                onClick={() => setMenuOpen(false)}
+                className="rounded-md px-2 py-2 text-sm font-medium text-fg hover:bg-bg hover:text-brand"
+              >
+                {item.label}
+              </a>
+            ) : (
+              <Link
+                key={item.to}
+                to={item.to}
+                onClick={() => setMenuOpen(false)}
+                className="rounded-md px-2 py-2 text-sm font-medium text-fg hover:bg-bg hover:text-brand"
+              >
+                {item.label}
+              </Link>
+            ),
+          )}
           <a
             href={GITHUB_URL}
             target="_blank"

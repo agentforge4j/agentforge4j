@@ -20,7 +20,7 @@ export default function CatalogueDetailPage() {
 
   return (
     <div className="mx-auto px-6 py-16" style={{ maxWidth: 'var(--max-content-width)' }}>
-      <Link to="/catalogue" className="text-sm text-brand underline">
+      <Link to="/catalogue/" className="text-sm text-brand underline">
         {CATALOGUE_COPY.backToList}
       </Link>
 
@@ -67,7 +67,7 @@ export default function CatalogueDetailPage() {
       </section>
 
       <Link
-        to="/builder"
+        to="/builder/"
         className="mt-10 inline-block rounded-md bg-brand px-4 py-2 text-sm font-medium text-brand-ink hover:bg-brand-shade"
       >
         {CATALOGUE_COPY.openInBuilder}

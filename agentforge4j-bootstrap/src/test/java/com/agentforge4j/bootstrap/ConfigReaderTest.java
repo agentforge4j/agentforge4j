@@ -42,11 +42,11 @@ class ConfigReaderTest {
 
   @Test
   void systemPropertyWithPrefixIsIncluded() {
-    setProperty("agentforge4j.llm.openai.api-key", "test-key");
+    setProperty("agentforge4j.llm.openai.api.key", "test-key");
 
     Map<String, String> result = ConfigReader.read();
 
-    assertThat(result).containsEntry("agentforge4j.llm.openai.api-key", "test-key");
+    assertThat(result).containsEntry("agentforge4j.llm.openai.api.key", "test-key");
   }
 
   @Test

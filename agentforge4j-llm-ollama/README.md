@@ -18,6 +18,7 @@ Shipped tier defaults for provider id `ollama`:
 | `LITE` | `qwen3:4b` |
 | `STANDARD` | `qwen3:14b` |
 | `POWERFUL` | `qwen3:32b` |
+| `PREMIUM` | `qwen3:32b` |
 
 Pull the corresponding models in Ollama (or override the tier mapping to models you have pulled).
 
@@ -28,8 +29,10 @@ OllamaLlmClientFactory` (provider id `"ollama"`, `requiresApiKey()` is `false`).
 
 ## Configuration
 
-No API key. Set the server URL (defaults to `http://localhost:11434` inside the adapter when unset).
-Under the Spring starter, Ollama is gated by an `enabled` toggle.
+No API key. Set the server URL. The plain-Java bootstrap facade defaults it to `http://localhost:11434`
+(vLLM similarly gets a bootstrap default, `http://localhost:8000`); under the Spring starter, set `url`
+explicitly to point at your Ollama server. The provider itself requires a base URL — the bootstrap
+default simply supplies one. Under the Spring starter, Ollama is gated by an `enabled` toggle.
 
 **Spring Boot starter** — bind under `agentforge4j.llm.ollama`:
 
@@ -39,7 +42,7 @@ agentforge4j:
     ollama:
       enabled: true
       default-model: qwen3:14b      # optional
-      url: http://localhost:11434   # optional; adapter default when null
+      url: http://localhost:11434   # required
       connect-timeout: 10s          # optional; defaults to 10s
       request-timeout: 5m           # optional; defaults to 5m
 ```

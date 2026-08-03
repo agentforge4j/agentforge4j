@@ -65,11 +65,17 @@ abstract class AbstractLoopStrategy implements LoopStrategy {
    * method genuinely started a new iteration. A resume into a paused iteration is detected by the
    * persisted cursor already equalling {@code iteration}: in that case nothing is cleared, so
    * steps completed before the pause are still skipped correctly on re-entry.
+   *
+   * @return {@code true} when {@code iteration} is genuinely being entered for the first time
+   *     (the persisted cursor did not already equal it) — {@code false} when this call is instead
+   *     resuming an iteration already in progress (a pause is being redriven). Callers use this to
+   *     gate {@code LOOP_ITERATION_STARTED} so a resumed iteration is not double-counted.
    */
-  protected static void markLoopIterationStart(ExecutionContext executionContext,
+  protected static boolean markLoopIterationStart(ExecutionContext executionContext,
       String blueprintId, int iteration) {
     WorkflowState state = executionContext.getState();
-    if (state.getLoopIterationCursor(blueprintId) != iteration) {
+    boolean newIterationEntry = state.getLoopIterationCursor(blueprintId) != iteration;
+    if (newIterationEntry) {
       int previousBodyStartUid = state.getLoopIterationBodyStartUid(blueprintId);
       if (previousBodyStartUid > 0) {
         state.clearStepEntriesFromUid(previousBodyStartUid);
@@ -77,6 +83,7 @@ abstract class AbstractLoopStrategy implements LoopStrategy {
       state.setLoopIterationBodyStartUid(blueprintId, executionContext.peekNextStepSequenceUid());
     }
     state.setLoopIterationCursor(blueprintId, iteration);
+    return newIterationEntry;
   }
 
   protected static void clearLoopIterationCursor(WorkflowState state, String blueprintId) {
@@ -100,12 +107,27 @@ abstract class AbstractLoopStrategy implements LoopStrategy {
    * when at least one step genuinely executed — including a step that started and then paused, which
    * still allocates its uid before pausing.
    *
+   * <p>{@code LOOP_ITERATION_STARTED} is additionally gated on {@code newIterationEntry} (see
+   * {@link #markLoopIterationStart}): a redrive that resumes an iteration already in progress (the
+   * one that just paused) must not record a second {@code STARTED} for the same iteration index.
+   * {@code LOOP_ITERATION_COMPLETED} is gated on the iteration's outcome genuinely being
+   * {@link ExecutionOutcome#COMPLETED} — a {@code PAUSED} or {@code FAILED} outcome must never record
+   * a completion for an iteration that did not complete; when a resumed iteration goes on to finish
+   * cleanly, {@code COMPLETED} is recorded then (on this later call), not before. This holds even
+   * when the resumed call itself allocates no new uid at all — a body whose only remaining step was
+   * already uid-allocated before a pause (for example a lone {@code INPUT} step) resumes, answers,
+   * and completes without the resume-skip guard allocating anything fresh; {@code COMPLETED} is still
+   * recorded for that already-started iteration (see the uid-unchanged branch below), while a
+   * brand-new iteration entry whose body allocates nothing at all (a self-terminating loop already
+   * fully done, redriven with everything skipped) still emits neither event.
+   *
    * <p>An uncaught {@link RuntimeException} from the body is handled the same way: {@code
    * StepSequenceExecutor} allocates a step's execution uid before invoking its behaviour, so the uid
    * counter has already advanced by the time such a step throws. The counter is therefore still
    * checked (in a {@code catch}, before the exception propagates) so a genuine mid-body failure still
-   * leaves a {@code LOOP_ITERATION_STARTED} audit entry — only {@code COMPLETED} is inherently
-   * unreachable on this path, since the iteration never actually completed.
+   * leaves a {@code LOOP_ITERATION_STARTED} audit entry when this is a new iteration entry — only
+   * {@code COMPLETED} is inherently unreachable on this path, since the iteration never actually
+   * completed.
    *
    * <p>Brackets the body call with {@link ExecutionContext#pushActiveLoopBlueprint(String)}/
    * {@link ExecutionContext#popActiveLoopBlueprint()} so a rewind issued from inside the body — for
@@ -113,10 +135,15 @@ abstract class AbstractLoopStrategy implements LoopStrategy {
    * can tell {@code WorkflowState.clearEntriesFromUid} that this loop's iteration is still genuinely in
    * progress, not being externally re-entered, so its cursor/body-start-uid bookkeeping must survive
    * the rewind.
+   *
+   * @param newIterationEntry whether {@code iteration} is genuinely being entered for the first
+   *                          time on this call (from {@link #markLoopIterationStart}), as opposed to
+   *                          resuming an iteration already in progress
    */
   protected ExecutionOutcome executeIteration(BlueprintDefinition blueprint,
       int iteration,
-      ExecutionContext executionContext) {
+      ExecutionContext executionContext,
+      boolean newIterationEntry) {
     if (executionContext.getState().getStatus() == WorkflowStatus.CANCELLED) {
       return ExecutionOutcome.PAUSED;
     }
@@ -128,7 +155,7 @@ abstract class AbstractLoopStrategy implements LoopStrategy {
     try {
       outcome = stepSequenceExecutor.executeAll(blueprint.steps(), executionContext);
     } catch (RuntimeException exception) {
-      if (executionContext.peekNextStepSequenceUid() != uidBeforeIteration) {
+      if (newIterationEntry && executionContext.peekNextStepSequenceUid() != uidBeforeIteration) {
         eventRecorder.record(runId, blueprint.blueprintId(),
             WorkflowEventType.LOOP_ITERATION_STARTED, payload, "runtime");
       }
@@ -137,12 +164,28 @@ abstract class AbstractLoopStrategy implements LoopStrategy {
       executionContext.popActiveLoopBlueprint();
     }
     if (executionContext.peekNextStepSequenceUid() == uidBeforeIteration) {
+      // No new uid was allocated on this call. Usually that means nothing genuinely happened (a
+      // self-terminating loop already fully done, redriven with its whole body skipped) — but when
+      // this is a RESUME of an iteration already marked started on an earlier call
+      // (newIterationEntry == false) and the body outcome is genuinely COMPLETED, the iteration did
+      // just complete: its only remaining step (for example a paused INPUT) already carried a
+      // recorded uid/output from before the pause, so resuming it answers the step without the
+      // resume-skip guard allocating a fresh one. STARTED was already recorded on that earlier
+      // call, so only COMPLETED is missing here.
+      if (!newIterationEntry && outcome == ExecutionOutcome.COMPLETED) {
+        eventRecorder.record(runId, blueprint.blueprintId(),
+            WorkflowEventType.LOOP_ITERATION_COMPLETED, payload, "runtime");
+      }
       return outcome;
     }
-    eventRecorder.record(runId, blueprint.blueprintId(),
-        WorkflowEventType.LOOP_ITERATION_STARTED, payload, "runtime");
-    eventRecorder.record(runId, blueprint.blueprintId(),
-        WorkflowEventType.LOOP_ITERATION_COMPLETED, payload, "runtime");
+    if (newIterationEntry) {
+      eventRecorder.record(runId, blueprint.blueprintId(),
+          WorkflowEventType.LOOP_ITERATION_STARTED, payload, "runtime");
+    }
+    if (outcome == ExecutionOutcome.COMPLETED) {
+      eventRecorder.record(runId, blueprint.blueprintId(),
+          WorkflowEventType.LOOP_ITERATION_COMPLETED, payload, "runtime");
+    }
     return outcome;
   }
 
@@ -153,11 +196,13 @@ abstract class AbstractLoopStrategy implements LoopStrategy {
    */
   protected ExecutionOutcome runIteration(BlueprintDefinition blueprint, LoopConfig config,
       ExecutionContext executionContext, int iteration) {
-    markLoopIterationStart(executionContext, blueprint.blueprintId(), iteration);
+    boolean newIterationEntry =
+        markLoopIterationStart(executionContext, blueprint.blueprintId(), iteration);
     LOG.log(System.Logger.Level.DEBUG,
         "Loop iteration start strategy={0}, iteration={1}, maxIterations={2}",
         strategy(), iteration, config.maxIterations());
-    ExecutionOutcome outcome = executeIteration(blueprint, iteration, executionContext);
+    ExecutionOutcome outcome =
+        executeIteration(blueprint, iteration, executionContext, newIterationEntry);
     LOG.log(System.Logger.Level.DEBUG, "Loop iteration complete strategy={0}, iteration={1}, outcome={2}",
         strategy(), iteration, outcome);
     return outcome;

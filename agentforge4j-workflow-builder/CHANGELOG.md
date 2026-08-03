@@ -8,6 +8,176 @@ workflow catalog.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this package adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- Step-level fields the builder has no editor for (e.g. `modelTier`, token estimates, prompt-round
+  caps) now survive an import→export round trip instead of being silently dropped. The mechanism
+  is bounded to step level and does not interpret what it holds, so a genuinely unrecognized field
+  is still rejected — visibly, at both import and export — rather than carried into an invalid
+  document.
+
+### Fixed
+- The exporter no longer emits a root-level `kind` field on a REPEAT loop's exported blueprint
+  body. The framework's published `blueprint.schema.json` declares no such field and rejects any
+  document carrying one — earlier drafts of it did, and the builder's bundled copy still required
+  it — so the `<blueprintId>.blueprint.json` documents the builder produced were invalid against
+  the schema the framework actually publishes. The runtime happens to ignore the field, so nothing
+  failed at load, and bundles exported by earlier versions still import unchanged.
+- The bundled copies of the framework's `agent`, `artifact`, `blueprint` and `workflow` schemas
+  are now derived from, and checked against, the versions the framework itself publishes. Two had
+  drifted: the blueprint schema still required the root `kind` above, still permitted an inline
+  nested blueprint the framework no longer accepts, and was missing the loop behaviour's
+  `expectedIterations` hint; the artifact schema was missing `hint` on text and text-area items.
+  Validation messages shown while editing now match what the framework will actually accept.
+
+## [0.6.1] - 2026-07-18
+
+### Fixed
+- The exporter no longer emits the retired `allowAgentSwap` / `allowPromptOverride` fields on an
+  AI Step or AI Debate step's `retryPolicy`. Both fields were always decorative — the runtime
+  never read them — and the framework's `RetryPolicy` schema definition was tightened to a
+  three-field shape (`allowRetry`, `allowRetryFromPrevious`, `maxAttempts`) with
+  `additionalProperties: false`, rejecting any document that still declares either field. No
+  public API change; patch release.
+- A `retryPolicy` at its default (disabled) setting is now also omitted from a REPEAT loop's
+  exported blueprint body, not only from the top-level `workflow.json`. The runtime schema
+  requires `maxAttempts >= 1`, so a disabled policy must be omitted rather than emitted with
+  `maxAttempts: 0`; blueprint bodies were missing this normalization, so a loop body containing an
+  AI Step or AI Debate step at its default retry setting produced an invalid
+  `<blueprintId>.blueprint.json`.
+- The release-time check for the two retired `RetryPolicy` fields now scans every packed
+  JavaScript artifact under `dist/` — not only the two ESM/CJS entry files — because the ESM build
+  is code-split into content-hashed chunk files, and the RetryPolicy-emitting code (and its bundled
+  schema copy) can land in one of those chunks rather than the entry file itself.
+
+## [0.6.0] - 2026-07-17
+
+### Added
+- Draft-recovery persistence: the canvas model is now saved automatically (debounced) as it is
+  edited and silently restored — with a small dismissible "Restored your previous session"
+  notice offering a "Start fresh" action — after a page reload, so in-progress work is no longer
+  discarded on refresh. Falls back to a built-in `localStorage`-backed implementation when no
+  `persistence` prop is supplied; the package never makes a network call for this either way, so
+  the standalone builder never requires a server. Host applications can supply their own
+  `persistence: { load, save, clear }` adapter on `WorkflowBuilderProps` to replace or intercept
+  local persistence and save drafts to their own backend instead — `clear` is required (not
+  optional): the built-in "Start fresh" action always offers itself once a draft has been
+  restored, and its contract is to permanently discard the saved draft, so every adapter must
+  be able to honor that. Restoring on mount is skipped whenever the host passes
+  `initialWorkflow` (even a metadata-only seed) and in read-only mode. A pending debounced save
+  is flushed when the builder unmounts (covering SPA navigation), and a best-effort
+  `beforeunload` warning covers the remaining page-unload gap. The built-in adapter stores a
+  version-stamped envelope and keeps a single global draft slot per origin; on load, a version
+  mismatch or a draft failing the full structural gate — which validates every field the editor
+  dereferences (per-kind step fields, decision cases, artifact definitions, edges), not just
+  container presence — is discarded fail-closed (never restored into code that cannot render
+  it): built-in drafts are cleared, host-adapter drafts are skipped without touching the host's
+  storage. Adapter writes are serialized in invocation order, so "Start fresh" cannot be
+  silently undone by a debounced save that was still in flight when the draft was cleared. This
+  mechanism is independent of `capabilities.save`, which continues to gate a separate host
+  backend-persistence action. The editing posture (`mode`) is treated as mount-stable for
+  persistence purposes: whether drafts restore and save is decided by the mode supplied at
+  mount, and changing `mode` at runtime is not a supported transition — remount the builder
+  to change posture.
+- Narrow-container gate: below a supported container width (`47.9375rem` / 767px, matching
+  the narrow-viewport breakpoint already used elsewhere in `workflow-builder.css`), the builder
+  no longer renders the editor at all. It takes a synchronous first measurement before paint
+  (no editor flash on phones) and then tracks its own rendered root element via
+  `ResizeObserver` (never `window.innerWidth`, since the builder may be embedded in a host panel
+  of arbitrary size), showing a message directing the user to a larger screen instead. This is
+  a full replacement, not an overlay — the canvas, palette, inspector, and toolbar are not
+  mounted underneath it, and there is no reduced or read-only mobile editing surface (deferred,
+  out of scope for 0.1.0). This is the resolution for the mobile "+ Add step" control, the
+  obstructed name field, and the checklist overlay blocking the canvas: those interactions are
+  now unreachable below the breakpoint rather than individually patched. The step palette's
+  compact bottom-sheet variant now keys off the same container measurement (a prop fed from
+  this gate) instead of a viewport media query, so the two narrowness axes can never disagree;
+  the remaining narrow-viewport CSS blocks are cosmetic-only.
+- Full undo/redo for every meaningful builder change: adding/deleting steps, step config edits,
+  connections (create/delete/reroute), reordering a step in the chain, workflow name/id, and
+  start-step changes. Toolbar Undo/Redo controls (each disabled when its stack is empty) plus
+  Ctrl+Z / Ctrl+Shift+Z (or Ctrl+Y) keyboard shortcuts; shortcuts are skipped while a text field
+  has focus so the browser's native per-field undo is unaffected while typing.
+  Rapid-fire changes to the same field or the same node's config (typing, quick edits) coalesce
+  into one undo step instead of one per keystroke; dragging a step coalesces into a single step
+  for the whole drag gesture, sealed on release.
+- A confirmation dialog before a step is actually deleted — a lightweight, complementary safety
+  net alongside undo/redo for a first-time user who has not yet discovered Ctrl+Z. Shared by
+  every deletion trigger: the inspector's "Delete step" button and the canvas Delete/Backspace
+  key both resolve the same confirmation gate.
+- Dragging an ordinary next-step edge's endpoint to a different step ("rerouting") now actually
+  updates the workflow — previously `edgesReconnectable` was enabled but no `onReconnect` handler
+  was wired, so the drag had no effect and the edge snapped back to its original endpoints.
+  Decision-branch case edges still snap back on purpose: their routing lives in the decision
+  step's case configuration (edited in the inspector), not in the drawn edge, so rerouting the
+  drawing would silently diverge from what the exported workflow actually does.
+- A persistent "Start" marker on whichever node is the workflow's current start step,
+  visible on the canvas in both Guided and Advanced mode — previously the entry point could
+  only be inferred from graph position, or was labeled explicitly in Advanced mode's
+  starter hint alone.
+- A direct "Start step" chooser in Guided mode, shown once a workflow has more than one
+  node and at least one other node is eligible to become the start step: a dropdown
+  listing every eligible node, reassigning the start step on selection.
+  It reuses the same reposition-to-Start mechanism as the inspector's existing "Runs after:
+  Start" option rather than a parallel one; the eligibility rules (top-level, not
+  DECISION/RETRY, not branch-owned, at most one linear predecessor/successor) are shared
+  with that selector too. The chooser also offers a node with no other valid position (a
+  second, detached root) even though the inspector's own selector stays disabled for it —
+  moving such a node to Start still detaches it from whatever it was chained to, the same
+  way every other reposition target already does.
+- A visible, persisted on-page confirmation after a successful Export, showing the produced
+  filename (e.g. "Exported my-workflow.workflow.zip") and a dismiss control — replacing the
+  previous silent revert to the button's resting state with no other feedback. The filename
+  comes from the adapter itself: `BuilderAdapters.exportBundle` may now resolve an
+  `ExportOutcome` (`{ filename?: string }`) — the built-in adapter does, as does the package's
+  public `exportBundle` helper (which now delegates to the same implementation) — while a host
+  adapter resolving `void` (every existing implementation remains valid) gets a generic
+  confirmation instead of a fabricated filename. The confirmation is cleared automatically when a different
+  workflow is imported, so it never describes a stale document.
+
+### Changed
+- Importing/loading a new workflow document now resets undo/redo history instead of leaving it
+  in place — undoing after an import returns to the freshly-imported document, not back into a
+  different, previously open workflow's shape.
+
+### Fixed
+- The step-library panel no longer silently clips step types with no scroll affordance:
+  `.wf-palette__panel` (between `.wf-palette`, which has the real definite height, and
+  `.wf-palette__body`, which declares `flex: 1; overflow: auto;`) had no `display: flex`
+  of its own, so it sized to its content instead of filling `.wf-palette` and the flex
+  sizing on `.wf-palette__body` never took effect. `.wf-palette__panel` is now a column
+  flex container that fills its parent, and `.wf-palette__body` gained `min-height: 0` so
+  it can shrink below its content size and actually scroll.
+- The validation "N things to fix" popover no longer renders behind an already-open step
+  inspector panel. The pill's own stacking context (established by the toolbar's non-`auto`
+  `z-index`) could never be escaped by raising the popover's `z-index` alone, since a raised value
+  stays scoped inside that ancestor context; the popover is now rendered via a `document.body`
+  portal, positioned from the pill's own screen coordinates, so it always paints above open panels
+  regardless of which ancestor stacking context the pill itself lives in.
+- Guided mode's "Add approval" checklist item now genuinely reveals the field it checks for.
+  `StepConfigPanel`'s Approval control (`TransitionField`) already existed and worked, but was
+  hidden inside the "Behavior" section, which defaults to collapsed in guided mode; the checklist
+  item's action now selects the relevant AI step, force-opens that section, and focuses the field
+  instead of silently choosing "Requires human approval" on the user's behalf.
+- The validation popover (which is portaled to `document.body`, outside the themed builder
+  root) now carries the host's `theme.variables`/`theme.className`, so themed hosts no longer
+  get a default-palette popover.
+- The "Add approval" checklist action no longer silently does nothing on a repeat click after the
+  user has manually collapsed the revealed Behavior section: the section is now force-opened
+  imperatively, not just via a React prop the browser's own `<summary>` toggle can already have
+  invalidated.
+- Dismissing the validation popover by clicking elsewhere, or via its "Fix" action, no longer
+  steals focus back to the pill toggle button — restoring focus to the toggle now only happens on
+  dismissals (Escape, the popover's own close button) that don't already establish a different
+  focus target.
+- Pressing Escape while the validation popover is open now dismisses only the popover, even when a
+  step inspector panel is open underneath it, instead of also closing the inspector.
+- Activating "Fix" on a validation issue now moves focus into the step inspector it opens, instead
+  of leaving it on the document body once the popover (which held it) unmounts.
+- Pressing Escape after focus has already moved away from the open validation popover (e.g. via
+  Tab to another control) no longer steals it back to the pill toggle button on close.
+
 ## [0.5.0] - 2026-07-12
 
 (0.4.0's changes are folded in below — that version was merged to `main` but never published to

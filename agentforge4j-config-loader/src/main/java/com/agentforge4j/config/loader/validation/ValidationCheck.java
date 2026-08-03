@@ -58,7 +58,9 @@ public record ValidationCheck(
         new ValidationCheck("validateRequirements", false,
             (workflows, agents) -> validator.validateRequirements(workflows)),
         new ValidationCheck("validateValidateBehaviourContracts", false,
-            (workflows, agents) -> validator.validateValidateBehaviourContracts(workflows))
+            (workflows, agents) -> validator.validateValidateBehaviourContracts(workflows)),
+        new ValidationCheck("validateNoCollectionSteps", false,
+            (workflows, agents) -> validator.validateNoCollectionSteps(workflows))
     );
   }
 }

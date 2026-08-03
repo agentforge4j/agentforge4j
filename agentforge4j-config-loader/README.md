@@ -14,11 +14,12 @@ configuration and the typed contracts in `core`.
 ## How it fits
 
 `agentforge4j-config-loader` depends on [`agentforge4j-core`](../agentforge4j-core/README.md),
-[`agentforge4j-util`](../agentforge4j-util/README.md),
-[`agentforge4j-schema`](../agentforge4j-schema/README.md) (for the validation contracts), and
-[`agentforge4j-workflows`](../agentforge4j-workflows/README.md) (for the shipped-bundle locators). It
-uses Jackson and `networknt`'s JSON Schema validator (pinned to the 2.0.x / Jackson-2 line) to parse
-and validate. The [`agentforge4j-bootstrap`](../agentforge4j-bootstrap/README.md) facade and the
+[`agentforge4j-util`](../agentforge4j-util/README.md), and
+[`agentforge4j-schema`](../agentforge4j-schema/README.md) (for the validation contracts). It locates
+shipped bundles on the classpath at the `shipped-workflows` / `shipped-agents` roots that a
+separately shipped, independently-versioned workflow catalog provides, without depending on that
+catalog module at compile time. It uses Jackson and `networknt`'s JSON Schema validator (pinned to
+the 2.0.x / Jackson-2 line) to parse and validate. The [`agentforge4j-bootstrap`](../agentforge4j-bootstrap/README.md) facade and the
 Spring Boot starter drive it; applications rarely call it directly.
 
 ## Key public types
@@ -52,8 +53,8 @@ are supplied by the caller (the bootstrap facade or the Spring starter).
 requires agentforge4j.config.loader;
 ```
 
-Exports `com.agentforge4j.config.loader` and its `.agent`, `.workflow`, `.integration`, `.prompt`,
-`.repository`, and `.validation` sub-packages.
+Exports `com.agentforge4j.config.loader` and its `.agent`, `.catalog`, `.workflow`, `.integration`,
+`.prompt`, `.repository`, and `.validation` sub-packages.
 
 ## Licence
 

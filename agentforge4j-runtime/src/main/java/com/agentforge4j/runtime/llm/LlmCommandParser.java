@@ -17,6 +17,10 @@ import java.util.Set;
 import java.util.TreeSet;
 import java.util.stream.Collectors;
 
+/**
+ * Parses raw LLM output text into a list of {@link LlmCommand}s, validating each command's type
+ * against the agent's {@link CommandResponseSchema} and required fields before binding.
+ */
 public final class LlmCommandParser {
 
   private static final System.Logger LOG = System.getLogger(LlmCommandParser.class.getName());
@@ -27,6 +31,15 @@ public final class LlmCommandParser {
     this.objectMapper = Validate.notNull(objectMapper, "objectMapper should not be null");
   }
 
+  /**
+   * Parses {@code rawResponse} into commands allowed by {@code schema}.
+   *
+   * @param rawResponse raw model output text, expected to contain a JSON array of command objects
+   * @param schema      the calling agent's command schema, used to validate types and required fields
+   * @return parsed commands in response order
+   * @throws LlmCommandParseException if the output is not valid JSON, is not a non-empty JSON array,
+   *                                   or any element names an unknown/disallowed type or fails binding
+   */
   public List<LlmCommand> parse(String rawResponse, CommandResponseSchema schema) {
     Validate.notBlank(rawResponse, "rawResponse must not be blank");
     Validate.notNull(schema, "schema must not be null");

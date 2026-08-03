@@ -5,10 +5,13 @@ import com.agentforge4j.core.command.ToolInvocationCommand;
 import com.agentforge4j.core.spi.integration.ToolProviderFactory;
 import com.agentforge4j.core.spi.tool.ApprovalDecision;
 import com.agentforge4j.core.spi.tool.HealthStatus;
+import com.agentforge4j.core.spi.tool.PendingToolInvocation;
+import com.agentforge4j.core.spi.tool.PendingToolInvocationStore;
 import com.agentforge4j.core.spi.tool.PolicyDecision;
 import com.agentforge4j.core.spi.tool.ToolDescriptor;
 import com.agentforge4j.core.spi.tool.ToolExecutionOptions;
 import com.agentforge4j.core.spi.tool.ToolExecutionOutcome;
+import com.agentforge4j.core.spi.tool.ToolInvocationClaimLostException;
 import com.agentforge4j.core.spi.tool.ToolInvocationContext;
 import com.agentforge4j.core.spi.tool.ToolPolicy;
 import com.agentforge4j.core.spi.tool.ToolProvider;
@@ -31,11 +34,16 @@ import java.util.ArrayList;
 import java.util.Deque;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+@Timeout(value = 30)
 class DefaultToolExecutionServiceTest {
 
   private static final String SCHEMA = "{\"type\":\"object\",\"required\":[\"title\"]}";
@@ -164,11 +172,67 @@ class DefaultToolExecutionServiceTest {
   }
 
   @Test
-  void resumeWithUnknownIdFails() {
-    ToolExecutionOutcome outcome =
-        service(allow()).resume("run-1", "missing", new ApprovalDecision.Approve("alice"));
+  void resumeWithUnknownIdThrowsTheTypedClaimLostSignalRatherThanAToolFailure() {
+    assertThatThrownBy(() ->
+        service(allow()).resume("run-1", "missing", new ApprovalDecision.Approve("alice")))
+        .isInstanceOf(ToolInvocationClaimLostException.class);
+  }
 
-    assertThat(outcome.status()).isEqualTo(ToolExecutionOutcome.Status.FAILED);
+  /**
+   * Regression for the stale-peek race in {@code resume()}'s POLICY_DENIED terminal check: an
+   * {@code Approve} racing a concurrent {@code Reject} on the same policy-denied row must never
+   * emit an override-rejected event or throw {@code PolicyDenialTerminalException} once the
+   * {@code Reject} has already resolved the row — it must observe the row is gone and report a lost
+   * claim instead. Deterministic, no sleeps: a wrapping store delays the {@code Approve} thread's
+   * {@code verifyStillCurrent} call (the atomic re-check this fix introduces) until the main thread's
+   * {@code Reject} call has fully applied and removed the row.
+   */
+  @Test
+  void concurrentRejectResolvingAPolicyDeniedRowNeverLetsARacingApproveEmitAStaleOverrideRejectedEvent()
+      throws InterruptedException {
+    ToolInvocationCommand command = command(Map.of("title", "x"));
+    CountDownLatch verifyEntered = new CountDownLatch(1);
+    CountDownLatch rejectApplied = new CountDownLatch(1);
+    VerifyDelayingStore delayingStore = new VerifyDelayingStore(store, verifyEntered, rejectApplied);
+    DefaultToolExecutionService service = new DefaultToolExecutionService(
+        new IntegrationToolProviderResolver(new InMemoryIntegrationRepository(),
+            unusedFactory(), List.of(provider)),
+        deny("nope"),
+        delayingStore,
+        ToolExecutionOptions.defaults(),
+        eventRecorder,
+        new ObjectMapper(),
+        Clock.fixed(Instant.parse("2026-05-01T00:00:00Z"), ZoneOffset.UTC));
+    service.execute(command, ctx);
+
+    AtomicReference<Throwable> approveError = new AtomicReference<>();
+    Thread approveThread = new Thread(() -> {
+      try {
+        service.resume("run-1", command.toolInvocationId(), new ApprovalDecision.Approve("alice"));
+      } catch (Throwable t) {
+        approveError.set(t);
+      }
+    });
+    approveThread.start();
+    try {
+      assertThat(verifyEntered.await(10, TimeUnit.SECONDS))
+          .as("verifyStillCurrent() was never entered - the stale-peek re-check regressed")
+          .isTrue();
+
+      ToolExecutionOutcome rejectOutcome = service.resume("run-1", command.toolInvocationId(),
+          new ApprovalDecision.Reject("bob", "not allowed"));
+      assertThat(rejectOutcome.status()).isEqualTo(ToolExecutionOutcome.Status.DENIED);
+
+      rejectApplied.countDown();
+      approveThread.join();
+
+      assertThat(approveError.get()).isInstanceOf(ToolInvocationClaimLostException.class);
+      assertThat(eventTypes()).doesNotContain(WorkflowEventType.TOOL_INVOCATION_OVERRIDE_REJECTED);
+      assertThat(store.find("run-1", command.toolInvocationId())).isNull();
+    } finally {
+      rejectApplied.countDown();
+      approveThread.join();
+    }
   }
 
   @Test
@@ -337,6 +401,64 @@ class DefaultToolExecutionServiceTest {
     @Override
     public HealthStatus health() {
       return new HealthStatus(HealthStatus.State.UP, null);
+    }
+  }
+
+  /**
+   * Delays the first {@link #verifyStillCurrent} call — signalling entry, then blocking until
+   * released — so a test can force a concurrent claim to fully apply in the gap between an
+   * {@code Approve} thread's initial peek and its atomic re-check. Every other method delegates
+   * immediately.
+   */
+  private static final class VerifyDelayingStore implements PendingToolInvocationStore {
+
+    private final PendingToolInvocationStore delegate;
+    private final CountDownLatch verifyEntered;
+    private final CountDownLatch proceed;
+
+    VerifyDelayingStore(PendingToolInvocationStore delegate, CountDownLatch verifyEntered,
+        CountDownLatch proceed) {
+      this.delegate = delegate;
+      this.verifyEntered = verifyEntered;
+      this.proceed = proceed;
+    }
+
+    @Override
+    public void save(PendingToolInvocation pending) {
+      delegate.save(pending);
+    }
+
+    @Override
+    public PendingToolInvocation find(String runId, String toolInvocationId) {
+      return delegate.find(runId, toolInvocationId);
+    }
+
+    @Override
+    public List<PendingToolInvocation> findByRun(String runId) {
+      return delegate.findByRun(runId);
+    }
+
+    @Override
+    public void remove(String runId, String toolInvocationId) {
+      delegate.remove(runId, toolInvocationId);
+    }
+
+    @Override
+    public PendingToolInvocation claim(String runId, String toolInvocationId,
+        PendingToolInvocation expectedPending) {
+      return delegate.claim(runId, toolInvocationId, expectedPending);
+    }
+
+    @Override
+    public PendingToolInvocation verifyStillCurrent(String runId, String toolInvocationId,
+        PendingToolInvocation expectedPending) {
+      verifyEntered.countDown();
+      try {
+        proceed.await();
+      } catch (InterruptedException e) {
+        Thread.currentThread().interrupt();
+      }
+      return delegate.verifyStillCurrent(runId, toolInvocationId, expectedPending);
     }
   }
 

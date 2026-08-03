@@ -13,16 +13,40 @@ export interface SiteRoute {
 
 export const SITE_ROUTES: readonly SiteRoute[] = [
   { path: '/', heading: 'AgentForge4j' },
-  { path: '/docs', heading: 'Documentation' },
+  // /docs is deliberately absent: it is NOT an agentforge4j-web-ui SPA route (see
+  // agentforge4j-web-ui/src/config/nav.ts's `external` flag) — the Assembler track composes the
+  // real Docusaurus build at that exact path on the deployed artifact, and the SPA must not
+  // intercept it client-side. The functional specs here (routes/navigation/responsive) exercise
+  // the plain SPA build only, so /docs has no place in this list; the assembled-site visual
+  // capture of the real composed page lives as its own standalone entry in visual/manifest.ts.
+  { path: '/api', heading: 'API reference' },
   { path: '/use', heading: 'Get started' },
   { path: '/catalogue', heading: 'Workflow catalogue' },
   { path: '/architecture', heading: 'Architecture' },
   { path: '/releases', heading: 'Releases' },
   { path: '/community', heading: 'Community & contributing' },
-  { path: '/contributing', heading: 'Community & contributing' },
+  // /contributing is deliberately absent: it is no longer a page. It used to render a second full
+  // copy of the Community page, distinguished only by a canonical hint; it is now a redirect to
+  // /community/ and has no <h1>, no content and no visual state of its own to capture. It is
+  // covered instead by SITE_REDIRECTS below, which asserts what a redirect is actually for.
   { path: '/security', heading: 'Security' },
   { path: '/legal', heading: 'Legal' },
   { path: '/contact', heading: 'Contact' },
+] as const;
+
+/** An address the site keeps alive for inbound links but no longer serves a page at: it forwards
+ *  to `destination` and renders nothing of its own. `destinationHeading` is the <h1> that proves
+ *  the forward actually arrived, rather than merely that something loaded. */
+export interface SiteRedirect {
+  readonly path: string;
+  readonly destination: string;
+  readonly destinationHeading: string;
+}
+
+/** The redirect inventory, kept beside SITE_ROUTES so the two cannot disagree about what an
+ *  address is. A route belongs in exactly one of these lists. */
+export const SITE_REDIRECTS: readonly SiteRedirect[] = [
+  { path: '/contributing', destination: '/community/', destinationHeading: 'Community & contributing' },
 ] as const;
 
 /** A real, currently-shipped catalogue workflow id — used by the catalogue-detail entry check
@@ -36,10 +60,10 @@ export interface NamedViewport {
   readonly height: number;
 }
 
-/** Representative sizes per the Day 1 review brief plus the final-review addendum (mobile
- *  landscape, tablet landscape at the `lg:` breakpoint boundary, and a large desktop) — still not
- *  an exhaustive device matrix, but wide enough to catch orientation- and breakpoint-specific
- *  overflow that the original three portrait/laptop sizes couldn't. */
+/** Representative sizes (mobile portrait/landscape, tablet portrait, tablet landscape at the
+ *  `lg:` breakpoint boundary, laptop, and a large desktop) — not an exhaustive device matrix,
+ *  but wide enough to catch orientation- and breakpoint-specific overflow that three
+ *  portrait/laptop sizes alone couldn't. */
 export const VIEWPORTS: readonly NamedViewport[] = [
   { name: 'mobile', width: 390, height: 844 },
   { name: 'mobile-landscape', width: 844, height: 390 },

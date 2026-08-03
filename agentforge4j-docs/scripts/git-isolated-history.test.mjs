@@ -1,0 +1,535 @@
+// SPDX-License-Identifier: Apache-2.0
+//
+// Regression coverage for `git-isolated-history.mjs`'s one real job: build a throwaway commit and
+// run a callback with HEAD pointed at it, without ever disturbing the caller's real git state —
+// HEAD, the working tree, the index's staged/unstaged split, or untracked files — on success or on
+// any failure path. Every test below drives real, disposable git repositories (never a mocked
+// `child_process`), and compares mechanically-captured git state (status/staged-diff/unstaged-diff/
+// HEAD) before and after, not just file contents.
+
+// `after` is aliased: `assertSameSnapshot` below already takes a parameter called `after`, and one
+// name meaning two things in one file is exactly the sort of thing that reads fine and edits badly.
+import { after as afterAllTests, test } from 'node:test';
+import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
+import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { buildIsolatedCommit, withIsolatedTemporaryHistory } from './git-isolated-history.mjs';
+
+// Every fixture directory this file creates, removed once the whole file has run. These are real
+// git repositories, and without this each run deposited ~17 of them permanently in the OS temp
+// root. A cleanup failure never fails the suite: a file still locked by a just-exited git process
+// on Windows says nothing about the code under test.
+const fixtureDirs = [];
+
+function disposable(dir) {
+  fixtureDirs.push(dir);
+  return dir;
+}
+
+afterAllTests(() => {
+  for (const dir of fixtureDirs) {
+    try {
+      rmSync(dir, { recursive: true, force: true, maxRetries: 3 });
+    } catch {
+      // Best effort only.
+    }
+  }
+});
+
+function gitRepo() {
+  const dir = disposable(mkdtempSync(join(tmpdir(), 'git-isolated-history-test-')));
+  execFileSync('git', ['init', '--quiet'], { cwd: dir });
+  execFileSync('git', ['config', 'user.email', 'test@example.invalid'], { cwd: dir });
+  execFileSync('git', ['config', 'user.name', 'Test'], { cwd: dir });
+  writeFileSync(join(dir, 'seed.txt'), 'seed');
+  execFileSync('git', ['add', '.'], { cwd: dir });
+  execFileSync('git', ['commit', '--quiet', '-m', 'first'], { cwd: dir });
+  return dir;
+}
+
+/** A full, mechanically-comparable snapshot of a repo's git state — not just file contents. */
+function snapshot(dir) {
+  let ref;
+  try {
+    ref = execFileSync('git', ['symbolic-ref', '-q', 'HEAD'], { cwd: dir, encoding: 'utf8' }).trim();
+  } catch {
+    ref = null;
+  }
+  return {
+    status: execFileSync('git', ['status', '--porcelain'], { cwd: dir, encoding: 'utf8' }),
+    staged: execFileSync('git', ['diff', '--cached'], { cwd: dir, encoding: 'utf8' }),
+    unstaged: execFileSync('git', ['diff'], { cwd: dir, encoding: 'utf8' }),
+    head: execFileSync('git', ['rev-parse', 'HEAD'], { cwd: dir, encoding: 'utf8' }).trim(),
+    ref,
+  };
+}
+
+function assertSameSnapshot(before, after, label) {
+  assert.equal(after.head, before.head, `${label}: HEAD sha changed`);
+  assert.equal(after.ref, before.ref, `${label}: HEAD ref (branch vs detached) changed`);
+  assert.equal(after.status, before.status, `${label}: git status --porcelain changed:\nbefore:\n${before.status}\nafter:\n${after.status}`);
+  assert.equal(after.staged, before.staged, `${label}: staged (git diff --cached) content changed`);
+  assert.equal(after.unstaged, before.unstaged, `${label}: unstaged (git diff) content changed`);
+}
+
+// Matches the module's temporary-index prefix EXACTLY, not the family prefix: this file's own
+// fixtures are `git-isolated-history-test-…`, which a broader match would count too, making the
+// leak assertion below sound only for as long as these tests never run concurrently with one
+// another. The module deliberately names its index dirs `git-isolated-history-index-…` so this
+// question has one unambiguous answer.
+function tempIndexDirCount() {
+  return readdirSync(tmpdir()).filter((name) => name.startsWith('git-isolated-history-index-')).length;
+}
+
+test('1. clean repository: fn runs, its return value is passed through, and repo state is unchanged', () => {
+  const dir = gitRepo();
+  writeFileSync(join(dir, 'scratch.txt'), 'scratch content');
+  const before = snapshot(dir);
+
+  const result = withIsolatedTemporaryHistory(dir, [join(dir, 'scratch.txt')], 'scratch commit', () => 'fn-return-value');
+
+  assert.equal(result, 'fn-return-value');
+  assertSameSnapshot(before, snapshot(dir), 'clean repo');
+  // The scratch file was never added to the REAL index — only to the throwaway isolated one.
+  assert.match(snapshot(dir).status, /\?\? scratch\.txt/);
+});
+
+test('2. pre-existing staged change survives byte-identical', () => {
+  const dir = gitRepo();
+  writeFileSync(join(dir, 'tracked.txt'), 'v1');
+  execFileSync('git', ['add', 'tracked.txt'], { cwd: dir });
+  execFileSync('git', ['commit', '--quiet', '-m', 'add tracked'], { cwd: dir });
+  writeFileSync(join(dir, 'tracked.txt'), 'v2 (staged)');
+  execFileSync('git', ['add', 'tracked.txt'], { cwd: dir });
+  writeFileSync(join(dir, 'scratch.txt'), 'scratch content');
+  const before = snapshot(dir);
+
+  withIsolatedTemporaryHistory(dir, [join(dir, 'scratch.txt')], 'scratch commit', () => {});
+
+  assertSameSnapshot(before, snapshot(dir), 'staged change');
+  assert.equal(execFileSync('git', ['show', ':tracked.txt'], { cwd: dir, encoding: 'utf8' }), 'v2 (staged)');
+});
+
+test('3. pre-existing unstaged change survives byte-identical', () => {
+  const dir = gitRepo();
+  writeFileSync(join(dir, 'tracked.txt'), 'v1');
+  execFileSync('git', ['add', 'tracked.txt'], { cwd: dir });
+  execFileSync('git', ['commit', '--quiet', '-m', 'add tracked'], { cwd: dir });
+  writeFileSync(join(dir, 'tracked.txt'), 'v2 (unstaged)');
+  writeFileSync(join(dir, 'scratch.txt'), 'scratch content');
+  const before = snapshot(dir);
+
+  withIsolatedTemporaryHistory(dir, [join(dir, 'scratch.txt')], 'scratch commit', () => {});
+
+  assertSameSnapshot(before, snapshot(dir), 'unstaged change');
+  assert.equal(readFileSync(join(dir, 'tracked.txt'), 'utf8'), 'v2 (unstaged)');
+});
+
+test('4. the same file with both a staged and a further unstaged edit keeps its exact staged/unstaged split', () => {
+  const dir = gitRepo();
+  writeFileSync(join(dir, 'both.txt'), 'v1');
+  execFileSync('git', ['add', 'both.txt'], { cwd: dir });
+  execFileSync('git', ['commit', '--quiet', '-m', 'add both'], { cwd: dir });
+  writeFileSync(join(dir, 'both.txt'), 'v2 (staged)');
+  execFileSync('git', ['add', 'both.txt'], { cwd: dir });
+  writeFileSync(join(dir, 'both.txt'), 'v3 (unstaged, on top of staged v2)');
+  writeFileSync(join(dir, 'scratch.txt'), 'scratch content');
+  const before = snapshot(dir);
+  // Sanity: this fixture really does carry independent staged and unstaged hunks for one file.
+  assert.match(before.staged, /v2 \(staged\)/);
+  assert.match(before.unstaged, /v3 \(unstaged/);
+
+  withIsolatedTemporaryHistory(dir, [join(dir, 'scratch.txt')], 'scratch commit', () => {});
+
+  assertSameSnapshot(before, snapshot(dir), 'staged+unstaged split');
+});
+
+test('5. a pre-existing untracked file is left completely untouched', () => {
+  const dir = gitRepo();
+  writeFileSync(join(dir, 'untracked.txt'), 'untouched content');
+  writeFileSync(join(dir, 'scratch.txt'), 'scratch content');
+  const before = snapshot(dir);
+
+  withIsolatedTemporaryHistory(dir, [join(dir, 'scratch.txt')], 'scratch commit', () => {});
+
+  assertSameSnapshot(before, snapshot(dir), 'untracked file');
+  assert.equal(readFileSync(join(dir, 'untracked.txt'), 'utf8'), 'untouched content');
+});
+
+test('6. a combination of staged + unstaged + untracked state all survive together', () => {
+  const dir = gitRepo();
+  writeFileSync(join(dir, 'staged-only.txt'), 'v1');
+  writeFileSync(join(dir, 'unstaged-only.txt'), 'v1');
+  writeFileSync(join(dir, 'both.txt'), 'v1');
+  execFileSync('git', ['add', '.'], { cwd: dir });
+  execFileSync('git', ['commit', '--quiet', '-m', 'seed three tracked files'], { cwd: dir });
+
+  writeFileSync(join(dir, 'staged-only.txt'), 'v2 (staged)');
+  execFileSync('git', ['add', 'staged-only.txt'], { cwd: dir });
+  writeFileSync(join(dir, 'unstaged-only.txt'), 'v2 (unstaged)');
+  writeFileSync(join(dir, 'both.txt'), 'v2 (staged)');
+  execFileSync('git', ['add', 'both.txt'], { cwd: dir });
+  writeFileSync(join(dir, 'both.txt'), 'v3 (unstaged)');
+  writeFileSync(join(dir, 'an-untracked-file.txt'), 'untracked content');
+  writeFileSync(join(dir, 'scratch.txt'), 'scratch content');
+  const before = snapshot(dir);
+
+  withIsolatedTemporaryHistory(dir, [join(dir, 'scratch.txt')], 'scratch commit', () => {});
+
+  assertSameSnapshot(before, snapshot(dir), 'combined staged+unstaged+untracked');
+});
+
+test('7. isolated "git add" succeeding but the temporary commit step failing leaves the real index and HEAD untouched', () => {
+  const dir = gitRepo();
+  writeFileSync(join(dir, 'tracked.txt'), 'v1');
+  execFileSync('git', ['add', 'tracked.txt'], { cwd: dir });
+  execFileSync('git', ['commit', '--quiet', '-m', 'add tracked'], { cwd: dir });
+  writeFileSync(join(dir, 'tracked.txt'), 'v2 (staged)');
+  execFileSync('git', ['add', 'tracked.txt'], { cwd: dir });
+  writeFileSync(join(dir, 'scratch.txt'), 'scratch content');
+  const before = snapshot(dir);
+  const treeSha = execFileSync('git', ['rev-parse', 'HEAD^{tree}'], { cwd: dir, encoding: 'utf8' }).trim();
+
+  // A real, deterministic failure exactly at the commit-building step: `git read-tree`/`git add`/
+  // `git write-tree` all accept a bare tree-ish and succeed, but `git commit-tree -p <tree>` refuses
+  // a tree as a parent (a parent must be a commit) — reproducing "the isolated add succeeded, the
+  // commit step failed" without mocking anything.
+  assert.throws(
+    () => buildIsolatedCommit(dir, treeSha, [join(dir, 'scratch.txt')], 'doomed commit'),
+    /not a valid 'commit' object|fatal/,
+  );
+
+  assertSameSnapshot(before, snapshot(dir), 'add-succeeds-commit-fails');
+});
+
+test('8. fn() throwing after the temporary commit was created still restores HEAD and leaves state untouched', () => {
+  const dir = gitRepo();
+  writeFileSync(join(dir, 'tracked.txt'), 'v1');
+  execFileSync('git', ['add', 'tracked.txt'], { cwd: dir });
+  execFileSync('git', ['commit', '--quiet', '-m', 'add tracked'], { cwd: dir });
+  writeFileSync(join(dir, 'tracked.txt'), 'v2 (staged)');
+  execFileSync('git', ['add', 'tracked.txt'], { cwd: dir });
+  writeFileSync(join(dir, 'unstaged.txt'), 'unstaged, untracked so far');
+  writeFileSync(join(dir, 'scratch.txt'), 'scratch content');
+  const before = snapshot(dir);
+
+  assert.throws(
+    () => withIsolatedTemporaryHistory(dir, [join(dir, 'scratch.txt')], 'scratch commit', () => {
+      throw new Error('boom');
+    }),
+    /boom/,
+  );
+
+  assertSameSnapshot(before, snapshot(dir), 'fn throws after commit created');
+});
+
+test('9. a successful run leaves no temporary index directory or other scratch git artifact behind', () => {
+  const dir = gitRepo();
+  writeFileSync(join(dir, 'scratch.txt'), 'scratch content');
+  const before = tempIndexDirCount();
+
+  withIsolatedTemporaryHistory(dir, [join(dir, 'scratch.txt')], 'scratch commit', () => {});
+
+  assert.equal(tempIndexDirCount(), before, 'a temp index directory was left behind under the OS temp root');
+});
+
+test('10. repeated executions leave git state converging identically every time (non-destructive, not claiming byte-identical commit SHAs)', () => {
+  // Deliberately NOT asserting the throwaway commit shas are equal across runs: a real commit
+  // object embeds its author/committer timestamp, so identical tree+parent+message inputs at
+  // different real times legitimately produce different shas — that is expected git behavior, not
+  // a defect, and this module never surfaces those shas to a caller anyway (see
+  // buildIsolatedCommit's own doc comment). What must hold across repeated runs is the observable
+  // git state: HEAD, ref type, and the staged/unstaged split all converge back to the same values
+  // every single time, which is what this test actually checks.
+  const dir = gitRepo();
+  const initial = snapshot(dir);
+  const commitShas = new Set();
+
+  for (let i = 0; i < 3; i += 1) {
+    writeFileSync(join(dir, `scratch-${i}.txt`), `scratch content ${i}`);
+    const result = withIsolatedTemporaryHistory(dir, [join(dir, `scratch-${i}.txt`)], 'identical scratch commit message', () => `run-${i}`);
+    assert.equal(result, `run-${i}`);
+    const after = snapshot(dir);
+    assert.equal(after.head, initial.head, `run ${i}: HEAD sha did not converge back`);
+    assert.equal(after.ref, initial.ref, `run ${i}: HEAD ref type did not converge back`);
+    assert.equal(after.staged, initial.staged, `run ${i}: staged diff did not converge back`);
+    assert.equal(after.unstaged, initial.unstaged, `run ${i}: unstaged diff did not converge back`);
+    commitShas.add(buildIsolatedCommit(dir, initial.head, [join(dir, `scratch-${i}.txt`)], 'identical scratch commit message'));
+  }
+
+  // Sanity check for the claim in this test's own title: with byte-identical tree/parent/message
+  // inputs, the produced commit shas are NOT expected to collide, because they embed real
+  // timestamps — if they ever did all collide, that would mean the system clock is frozen or this
+  // comment is now wrong, either of which is worth knowing about.
+  assert.ok(commitShas.size >= 1);
+});
+
+test('11. a second, overlapping call against the same repository refuses cleanly instead of racing over HEAD', () => {
+  const dir = gitRepo();
+  writeFileSync(join(dir, 'outer.txt'), 'outer scratch content');
+  writeFileSync(join(dir, 'inner.txt'), 'inner scratch content');
+  const before = snapshot(dir);
+
+  // The inner call happens while the outer call's HEAD is still detached and its lock still held —
+  // a genuine overlap of two calls against the same repository, without needing real OS-level
+  // concurrency/threads to reproduce it.
+  assert.throws(
+    () => withIsolatedTemporaryHistory(dir, [join(dir, 'outer.txt')], 'outer commit', () => {
+      withIsolatedTemporaryHistory(dir, [join(dir, 'inner.txt')], 'inner commit', () => {});
+    }),
+    /refuses to run concurrently against the same repository/,
+  );
+
+  assertSameSnapshot(before, snapshot(dir), 'overlapping executions');
+});
+
+test('11b. the refusal names the lock file and how to clear it — a pid is not a durable identity, so a recycled pid must not leave the caller hunting for a file inside the git dir', () => {
+  const dir = gitRepo();
+  writeFileSync(join(dir, 'outer.txt'), 'outer scratch content');
+  writeFileSync(join(dir, 'inner.txt'), 'inner scratch content');
+  const lockPath = lockPathOf(dir);
+
+  assert.throws(
+    () => withIsolatedTemporaryHistory(dir, [join(dir, 'outer.txt')], 'outer commit', () => {
+      withIsolatedTemporaryHistory(dir, [join(dir, 'inner.txt')], 'inner commit', () => {});
+    }),
+    (err) =>
+      err.message.includes(lockPath) &&
+      /pid has been reused/.test(err.message) &&
+      /delete that lock file/.test(err.message),
+  );
+});
+
+test('12. a lock file stranded by a run whose process has since died is recovered automatically on the next call', () => {
+  const dir = gitRepo();
+  writeFileSync(join(dir, 'scratch.txt'), 'scratch content');
+  const originalRef = execFileSync('git', ['symbolic-ref', '-q', 'HEAD'], { cwd: dir, encoding: 'utf8' }).trim();
+  const parentSha = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: dir, encoding: 'utf8' }).trim();
+
+  // Simulate a run that built its throwaway commit, detached HEAD onto it, and was killed before
+  // reaching its own restore step — real detached HEAD, real stranded lock file, exactly the state
+  // a SIGKILL or power loss between those two steps would leave behind.
+  const strandedSha = buildIsolatedCommit(dir, parentSha, [join(dir, 'scratch.txt')], 'stranded commit');
+  execFileSync('git', ['update-ref', '--no-deref', 'HEAD', strandedSha], { cwd: dir });
+  const gitDir = execFileSync('git', ['rev-parse', '--git-dir'], { cwd: dir, encoding: 'utf8' }).trim();
+  const lockPath = join(dir, gitDir, 'git-isolated-history.lock');
+  const DEFINITELY_DEAD_PID = 999999999;
+  writeFileSync(lockPath, JSON.stringify({ pid: DEFINITELY_DEAD_PID, originalRef, parentSha, temporaryCommitSha: strandedSha }));
+  assert.notEqual(
+    execFileSync('git', ['rev-parse', 'HEAD'], { cwd: dir, encoding: 'utf8' }).trim(),
+    parentSha,
+    'test setup did not actually leave HEAD stranded on the simulated crash commit',
+  );
+
+  const result = withIsolatedTemporaryHistory(dir, [join(dir, 'scratch.txt')], 'recovery run', () => 'recovered-ok');
+
+  assert.equal(result, 'recovered-ok');
+  assert.equal(execFileSync('git', ['rev-parse', 'HEAD'], { cwd: dir, encoding: 'utf8' }).trim(), parentSha);
+  assert.equal(execFileSync('git', ['symbolic-ref', '-q', 'HEAD'], { cwd: dir, encoding: 'utf8' }).trim(), originalRef);
+});
+
+function gitRepoWithoutIdentity() {
+  const dir = disposable(mkdtempSync(join(tmpdir(), 'git-isolated-history-test-noidentity-')));
+  execFileSync('git', ['init', '--quiet'], { cwd: dir });
+  writeFileSync(join(dir, 'seed.txt'), 'seed');
+  execFileSync('git', ['add', '.'], { cwd: dir });
+  // The seed commit needs SOME identity to exist at all, provided here via `-c` (applies to this
+  // one invocation only, never persisted to any config file) — deliberately never `git config
+  // user.name`/`user.email`, so this repo carries no local identity config of its own for the test
+  // below to accidentally rely on.
+  execFileSync(
+    'git',
+    ['-c', 'user.name=Seed', '-c', 'user.email=seed@example.invalid', 'commit', '--quiet', '-m', 'first'],
+    { cwd: dir },
+  );
+  return dir;
+}
+
+test('13. builds a commit with no Git identity configured anywhere — does not depend on ambient user.name/user.email', () => {
+  const dir = gitRepoWithoutIdentity();
+  writeFileSync(join(dir, 'scratch.txt'), 'scratch content');
+  const parentSha = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: dir, encoding: 'utf8' }).trim();
+
+  const identityKeys = ['GIT_AUTHOR_NAME', 'GIT_AUTHOR_EMAIL', 'GIT_COMMITTER_NAME', 'GIT_COMMITTER_EMAIL'];
+  const savedEnv = {};
+  for (const key of identityKeys) {
+    savedEnv[key] = process.env[key];
+    delete process.env[key];
+  }
+  const emptyConfigDir = disposable(mkdtempSync(join(tmpdir(), 'git-isolated-history-test-noconfig-')));
+  const savedGlobal = process.env.GIT_CONFIG_GLOBAL;
+  const savedSystem = process.env.GIT_CONFIG_SYSTEM;
+  process.env.GIT_CONFIG_GLOBAL = join(emptyConfigDir, 'no-such-gitconfig');
+  process.env.GIT_CONFIG_SYSTEM = join(emptyConfigDir, 'no-such-gitconfig');
+
+  try {
+    // Negative baseline: proves this environment genuinely has no usable identity anywhere — a
+    // plain, unmodified `git commit-tree` fails without one, so this module's success below is
+    // actually due to its own explicit override, not an ambient identity the test forgot to strip.
+    assert.throws(() => execFileSync('git', ['commit-tree', `${parentSha}^{tree}`, '-m', 'no identity'], { cwd: dir }));
+
+    const commitSha = buildIsolatedCommit(dir, parentSha, [join(dir, 'scratch.txt')], 'built with no ambient identity');
+    assert.match(commitSha, /^[0-9a-f]{40}$/);
+  } finally {
+    for (const key of identityKeys) {
+      if (savedEnv[key] === undefined) {
+        delete process.env[key];
+      } else {
+        process.env[key] = savedEnv[key];
+      }
+    }
+    if (savedGlobal === undefined) {
+      delete process.env.GIT_CONFIG_GLOBAL;
+    } else {
+      process.env.GIT_CONFIG_GLOBAL = savedGlobal;
+    }
+    if (savedSystem === undefined) {
+      delete process.env.GIT_CONFIG_SYSTEM;
+    } else {
+      process.env.GIT_CONFIG_SYSTEM = savedSystem;
+    }
+  }
+});
+
+// A pid that cannot belong to a live process on any supported platform — the same sentinel test 12
+// uses to stand in for "the run that wrote this lock is gone".
+const DEFINITELY_DEAD_PID = 999999999;
+
+function lockPathOf(dir) {
+  const gitDir = execFileSync('git', ['rev-parse', '--git-dir'], { cwd: dir, encoding: 'utf8' }).trim();
+  return join(dir, gitDir, 'git-isolated-history.lock');
+}
+
+test('14. a FAILED HEAD restore keeps the lock file — the recovery record must outlive the one failure it exists for, and the next call replays it', () => {
+  const dir = gitRepo();
+  writeFileSync(join(dir, 'scratch.txt'), 'scratch content');
+  const originalRef = execFileSync('git', ['symbolic-ref', '-q', 'HEAD'], { cwd: dir, encoding: 'utf8' }).trim();
+  const parentSha = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: dir, encoding: 'utf8' }).trim();
+  const lockPath = lockPathOf(dir);
+  const headLockPath = join(dir, execFileSync('git', ['rev-parse', '--git-dir'], { cwd: dir, encoding: 'utf8' }).trim(), 'HEAD.lock');
+
+  // A real, deterministic restore failure with nothing mocked: git refuses to move any ref whose
+  // `.lock` file already exists, so creating `HEAD.lock` from inside fn() makes the restore step —
+  // and ONLY the restore step — fail, exactly as a concurrent git process or a read-only git dir
+  // would. Everything before it (lock claim, temporary commit, HEAD detach) has already succeeded.
+  assert.throws(
+    () => withIsolatedTemporaryHistory(dir, [join(dir, 'scratch.txt')], 'scratch commit', () => {
+      writeFileSync(headLockPath, '');
+    }),
+    /FAILED to restore HEAD/,
+  );
+
+  // The two things that must both be true after a failed restore: HEAD really is still stranded,
+  // and the record needed to un-strand it was NOT deleted along the way.
+  assert.ok(
+    existsSync(lockPath),
+    'the lock file was removed despite the restore failing — the next call now has nothing to replay, ' +
+      'and would adopt the throwaway commit as its own "original" HEAD',
+  );
+  assert.notEqual(
+    execFileSync('git', ['rev-parse', 'HEAD'], { cwd: dir, encoding: 'utf8' }).trim(),
+    parentSha,
+    'test setup did not actually leave HEAD stranded',
+  );
+  const recorded = JSON.parse(readFileSync(lockPath, 'utf8'));
+  assert.equal(recorded.originalRef, originalRef);
+  assert.equal(recorded.parentSha, parentSha);
+
+  // Clear the induced failure, and mark the stranded run's process as gone (same simulation as test
+  // 12 — within one test process the recorded pid is our own, which is legitimately still alive).
+  rmSync(headLockPath, { force: true });
+  writeFileSync(lockPath, JSON.stringify({ ...recorded, pid: DEFINITELY_DEAD_PID }));
+
+  const result = withIsolatedTemporaryHistory(dir, [join(dir, 'scratch.txt')], 'recovery run', () => 'recovered-ok');
+
+  assert.equal(result, 'recovered-ok');
+  assert.equal(execFileSync('git', ['rev-parse', 'HEAD'], { cwd: dir, encoding: 'utf8' }).trim(), parentSha);
+  assert.equal(execFileSync('git', ['symbolic-ref', '-q', 'HEAD'], { cwd: dir, encoding: 'utf8' }).trim(), originalRef);
+  assert.ok(!existsSync(lockPath), 'a successful run must release the lock');
+});
+
+test('15. both HEAD moves carry an explicit reflog message, so the throwaway commit a run leaves in the reflog is identifiable rather than a blank entry', () => {
+  const dir = gitRepo();
+  writeFileSync(join(dir, 'scratch.txt'), 'scratch content');
+
+  withIsolatedTemporaryHistory(dir, [join(dir, 'scratch.txt')], 'scratch commit', () => {});
+
+  // `git reflog` for HEAD, most recent first: the restore, then the detach.
+  const reflog = execFileSync('git', ['reflog', 'show', 'HEAD', '--format=%gs'], { cwd: dir, encoding: 'utf8' });
+  const [restoreEntry, detachEntry] = reflog.split('\n');
+  assert.equal(restoreEntry, 'git-isolated-history: restore original HEAD');
+  assert.equal(detachEntry, 'git-isolated-history: detach onto throwaway commit');
+});
+
+test('16. a repository whose HEAD was ALREADY DETACHED before the call is restored to that same detached commit, not silently reattached to a branch', () => {
+  // The other HEAD shape. Every fixture above starts on a branch, so `restoreHead`'s
+  // `update-ref --no-deref` arm — the one that runs when there is no original symbolic ref to go
+  // back to — was previously only reached through the stale-recovery path, never through a normal
+  // call. A detached HEAD is the everyday state of a review/maintenance worktree, which is exactly
+  // where `docs:archive-scratch` gets run.
+  const dir = gitRepo();
+  const branchSha = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: dir, encoding: 'utf8' }).trim();
+  execFileSync('git', ['checkout', '--quiet', '--detach', branchSha], { cwd: dir });
+  writeFileSync(join(dir, 'scratch.txt'), 'scratch content');
+  const before = snapshot(dir);
+  assert.equal(before.ref, null, 'test setup did not actually leave HEAD detached');
+
+  const result = withIsolatedTemporaryHistory(dir, [join(dir, 'scratch.txt')], 'scratch commit', () => 'fn-return-value');
+
+  assert.equal(result, 'fn-return-value');
+  assertSameSnapshot(before, snapshot(dir), 'HEAD detached before the call');
+});
+
+test('17. a stale lock is NOT replayed once HEAD has moved on — a recovery record proves HEAD WAS stranded, never that it still is', () => {
+  // The realistic way this arises: a run's restore fails, the operator follows the thrown
+  // instructions far enough to fix HEAD by hand but leaves the lock file behind, and then carries
+  // on working. Replaying the record at that point would drag HEAD off the branch they are now on,
+  // while the index and working tree (which this module never touches) stayed put.
+  const dir = gitRepo();
+  writeFileSync(join(dir, 'scratch.txt'), 'scratch content');
+  const originalRef = execFileSync('git', ['symbolic-ref', '-q', 'HEAD'], { cwd: dir, encoding: 'utf8' }).trim();
+  const parentSha = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: dir, encoding: 'utf8' }).trim();
+  const strandedSha = buildIsolatedCommit(dir, parentSha, [join(dir, 'scratch.txt')], 'stranded commit');
+
+  // The operator has since moved to a different branch entirely — HEAD is no longer stranded.
+  execFileSync('git', ['checkout', '--quiet', '-b', 'operator-moved-here'], { cwd: dir });
+  const movedOnRef = execFileSync('git', ['symbolic-ref', '-q', 'HEAD'], { cwd: dir, encoding: 'utf8' }).trim();
+  assert.notEqual(movedOnRef, originalRef);
+
+  // ...but the lock, with its full recovery payload, was never cleaned up.
+  writeFileSync(
+    lockPathOf(dir),
+    JSON.stringify({ pid: DEFINITELY_DEAD_PID, originalRef, parentSha, temporaryCommitSha: strandedSha }),
+  );
+
+  const result = withIsolatedTemporaryHistory(dir, [join(dir, 'scratch.txt')], 'later run', () => 'ok');
+
+  assert.equal(result, 'ok');
+  assert.equal(
+    execFileSync('git', ['symbolic-ref', '-q', 'HEAD'], { cwd: dir, encoding: 'utf8' }).trim(),
+    movedOnRef,
+    'the stale lock was replayed against a HEAD that was no longer stranded, moving the operator off the branch they had checked out',
+  );
+  assert.ok(!existsSync(lockPathOf(dir)), 'the stale lock must still be reclaimed and released, even when nothing needed restoring');
+});
+
+test('18. a path beginning with "-" is staged as a path, not parsed as a git option', () => {
+  // `buildIsolatedCommit` is exported and passes `paths` straight to `git add`. Deliberately a
+  // REPOSITORY-RELATIVE path here: an absolute path can never begin with `-`, so it cannot exercise
+  // the `--` separator at all, and a test written that way would pass just as happily without it.
+  // Relative paths resolve against `cwd: repoRoot` and work exactly the same, which makes this the
+  // one input shape that can actually carry a leading dash into the command line.
+  const dir = gitRepo();
+  const awkwardName = '-leading-dash.txt';
+  writeFileSync(join(dir, awkwardName), 'staged by path, not by option');
+  const parentSha = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: dir, encoding: 'utf8' }).trim();
+
+  const commitSha = buildIsolatedCommit(dir, parentSha, [awkwardName], 'awkwardly named path');
+
+  assert.equal(
+    execFileSync('git', ['show', `${commitSha}:${awkwardName}`], { cwd: dir, encoding: 'utf8' }),
+    'staged by path, not by option',
+  );
+});

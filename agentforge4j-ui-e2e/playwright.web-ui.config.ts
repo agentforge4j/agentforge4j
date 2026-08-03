@@ -11,8 +11,8 @@ import { defineConfig, devices } from '@playwright/test';
  * (see `.github/workflows/ui-e2e.yml`'s own path-filtered `changes` job).
  *
  * Server model: `agentforge4j-web-ui` has its own `preview` script (unlike the builder, which
- * doesn't) — run the real production build, then serve it, matching the Day 1 review brief's
- * instruction to test "the production-style built or preview site". `hosting.spec.ts` runs its
+ * doesn't) — run the real production build, then serve it, so the suite tests the
+ * production-style built/preview site rather than the dev server. `hosting.spec.ts` runs its
  * own separate static server against the same build output to verify the GitHub-Pages-specific
  * 404 mechanism, which `vite preview`'s own SPA-fallback middleware would otherwise mask.
  */

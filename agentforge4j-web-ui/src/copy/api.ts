@@ -2,7 +2,7 @@
 
 export const API_COPY = {
   heading: 'API reference',
-  intro: 'Generated Javadoc for the framework, published alongside every build.',
+  intro: 'Generated Javadoc for the framework, published for the latest stable release and the next (development) version.',
   latestLabel: 'Latest stable API reference',
   nextLabel: 'Next (development) API reference',
 } as const;

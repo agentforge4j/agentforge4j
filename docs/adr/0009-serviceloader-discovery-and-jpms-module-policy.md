@@ -20,7 +20,7 @@ An embeddable framework needs a principled answer to three questions: how module
 
 1. **JPMS descriptors on every module that ships main code, with two documented carve-outs** — the Spring Boot starter (its ecosystem is not module-path-friendly) and the MCP module (the upstream SDK's automatic module name is invalid, so the module is classpath-only). Resources-only artifacts declare an `Automatic-Module-Name` instead of a descriptor; test-only modules carry none. Named modules export public packages only.
 2. **Providers are discovered, never declared.** LLM providers register via JPMS `provides ... LlmClientFactory` **and** matching `META-INF/services` entries, so discovery works identically whether the provider jar sits on the module path or the classpath (the starter carve-out depends on the latter). Adding a provider means adding a dependency, not editing wiring.
-3. **`bootstrap` is the assembly entry point.** The `bootstrap` module offers framework-agnostic defaults for assembling a runtime and declares **no** concrete providers; the Spring Boot starter depends on `bootstrap`, not on `runtime` directly, so any integration layer builds on the same assembly surface.
+3. **`bootstrap` is the assembly entry point.** The `bootstrap` module offers framework-agnostic defaults for assembling a runtime and declares **no** concrete providers. The Spring Boot starter depends on both `bootstrap` and `runtime` directly: `bootstrap` for the shared assembly defaults, and `runtime` for the Spring-specific wiring it builds on top (see the 2026-07-18 amendment below) — so any integration layer builds on the same assembly surface, without the starter being limited to only what `bootstrap` exposes.
 
 ## Alternatives considered
 
@@ -52,7 +52,17 @@ Exported packages define the public API surface; `provides`/`uses` clauses on `L
 
 ## Implementation notes
 
-`module-info.java` present in every reactor module that ships main code except the two carve-outs, `agentforge4j-spring-boot-starter` and `agentforge4j-mcp` (the latter documented in its own build file: the SDK's automatic module name contains a hyphen and is not a legal module name); the resources-only catalog artifact declares `Automatic-Module-Name` in its manifest (see ADR-0006); test-only verification and fixture modules ship no main code and no descriptor. Every LLM provider module carries both a `provides ... LlmClientFactory` clause in its `module-info.java` and a matching `META-INF/services/...LlmClientFactory` resource — the two registrations are kept in lockstep rather than one being derived from the other. `LlmClientWiring` loads providers with `ServiceLoader.load(LlmClientFactory.class, Thread.currentThread().getContextClassLoader())`, which reads whichever registration form the classloader can see: `provides` on the module path, `META-INF/services` on the classpath. `bootstrap` declares no concrete providers; the starter depends on `bootstrap`, has no module descriptor of its own, and resolves providers through the classpath route. Verified on `main @ 9ad289dd` (2026-07-09).
+`module-info.java` present in every reactor module that ships main code except the two carve-outs, `agentforge4j-spring-boot-starter` and `agentforge4j-mcp` (the latter documented in its own build file: the SDK's automatic module name contains a hyphen and is not a legal module name); the resources-only catalog artifact declares `Automatic-Module-Name` in its manifest (see ADR-0006); test-only verification and fixture modules ship no main code and no descriptor. Every LLM provider module carries both a `provides ... LlmClientFactory` clause in its `module-info.java` and a matching `META-INF/services/...LlmClientFactory` resource — the two registrations are kept in lockstep rather than one being derived from the other. `LlmClientWiring` loads providers with `ServiceLoader.load(LlmClientFactory.class, Thread.currentThread().getContextClassLoader())`, which reads whichever registration form the classloader can see: `provides` on the module path, `META-INF/services` on the classpath. `bootstrap` declares no concrete providers; the starter depends on both `bootstrap` and `runtime`, has no module descriptor of its own, and resolves providers through the classpath route. Verified on `main @ 9ad289dd` (2026-07-09); the starter's direct `runtime` dependency corrected in the 2026-07-18 amendment below, verified on `main @ 4401a49e`.
+
+## Amendment (2026-07-18)
+
+A release review found this record's dependency-direction claim ("the Spring Boot starter depends on
+`bootstrap`, not on `runtime` directly") did not match the live starter `pom.xml`, which declares a
+direct, used dependency on `agentforge4j-runtime` for Spring-specific wiring (Spring beans over
+runtime types that `bootstrap`'s framework-agnostic surface does not itself expose), alongside its
+`agentforge4j-bootstrap` dependency for the shared assembly defaults. The direct `runtime` dependency
+is the accepted architecture, not a defect: this record is corrected to describe it, with no change
+to the starter's actual dependencies and no new seam introduced in `bootstrap` to avoid it.
 
 ## Follow-up work
 

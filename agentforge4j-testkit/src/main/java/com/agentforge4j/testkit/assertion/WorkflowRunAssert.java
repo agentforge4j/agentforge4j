@@ -677,14 +677,23 @@ public final class WorkflowRunAssert {
   // --- run metadata -------------------------------------------------------------------------
 
   /**
-   * Asserts the deterministic total token usage recorded on the run.
+   * Asserts the deterministic total token usage recorded on the run. Fails when no token total was
+   * recorded at all — an absent {@code LLM_TOKENS_TOTAL} means token tracking never ran, which must
+   * not satisfy an expectation of {@code 0} (a genuinely-tracked zero and a missing tracker are
+   * different facts).
    *
    * @param expectedTotal the expected total
    *
    * @return this
    */
   public WorkflowRunAssert tokenTotals(int expectedTotal) {
-    int actual = tokenTotal();
+    Integer actual = tokenTotal();
+    if (actual == null) {
+      throw error(
+          "Expected total token usage %d but no token total was recorded on the run (context key "
+              + "'%s' absent — token tracking never ran)"
+              .formatted(expectedTotal, ReservedContextKeys.LLM_TOKENS_TOTAL));
+    }
     if (actual != expectedTotal) {
       throw error("Expected total token usage %d but was %d".formatted(expectedTotal, actual));
     }
@@ -693,11 +702,11 @@ public final class WorkflowRunAssert {
 
   // --- internals ----------------------------------------------------------------------------
 
-  private int tokenTotal() {
+  private Integer tokenTotal() {
     return result.finalState().getContextValue(ReservedContextKeys.LLM_TOKENS_TOTAL)
         .filter(NumberContextValue.class::isInstance)
         .map(value -> ((NumberContextValue) value).value().intValue())
-        .orElse(0);
+        .orElse(null);
   }
 
   private ContextValue requirePresent(String key) {

@@ -11,6 +11,7 @@ export type StepNodeProps = {
     selected?: boolean;
     issueCount?: number;
     needsApproval?: boolean;
+    isStart?: boolean;
   };
 };
 
@@ -44,7 +45,7 @@ function subtitle(node: CanvasNode): string {
 }
 
 export function StepNode({ data }: StepNodeProps) {
-  const { canvasNode: node, selected, issueCount = 0, needsApproval = false } = data;
+  const { canvasNode: node, selected, issueCount = 0, needsApproval = false, isStart = false } = data;
   const meta = NODE_KIND_META[node.kind];
   const title = node.data.name?.trim() || meta.label;
 
@@ -59,6 +60,7 @@ export function StepNode({ data }: StepNodeProps) {
         selected={selected}
         issueCount={issueCount}
         needsApproval={needsApproval}
+        isStart={isStart}
       />
       <Handle type="source" position={Position.Bottom} className={['wf-handle', selected ? 'wf-handle--selected' : ''].filter(Boolean).join(' ')} />
     </div>

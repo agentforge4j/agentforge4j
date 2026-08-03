@@ -19,9 +19,11 @@ import {
   readIndexIds,
   crossCheckBundles,
   checkNoDuplicateIds,
+  checkIdFormat,
   readSupportedWorkflowSchemaVersion,
   createWorkflowValidator,
 } from './build-catalogue-data.mjs';
+import { WORKFLOW_ID_PATTERN } from './workflow-id-contract.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(here, '..', '..');
@@ -200,6 +202,58 @@ test('fail-closed: identity mismatch — workflow.json id does not match its ind
     () => buildCatalogueData(defaultInputs(dir)),
     /identity mismatch.*bundle-name.*different-declared-id/s,
   );
+});
+
+test('checkIdFormat accepts every currently shipped real catalogue workflow id unchanged', () => {
+  const realIds = readIndexIds(
+    join(REPO_ROOT, 'agentforge4j-workflows-catalog', 'src', 'main', 'resources', 'shipped-workflows'),
+  );
+  assert.ok(realIds.length > 0, 'expected at least one real shipped id to check');
+  assert.doesNotThrow(() => checkIdFormat(realIds));
+  for (const id of realIds) {
+    assert.match(id, WORKFLOW_ID_PATTERN, `real shipped id ${JSON.stringify(id)} must satisfy the contract`);
+  }
+});
+
+test('checkIdFormat fails closed on an empty id (defense in depth: unreachable via a real index file, whose blank lines are already filtered by readIndexIds, but not unreachable for any future direct caller)', () => {
+  assert.throws(() => checkIdFormat(['']), /unsafe id/);
+});
+
+test('fail-closed: unsafe id — every id shape the slug contract must reject', () => {
+  const invalidIds = [
+    '.',
+    '..',
+    '/etc/passwd',
+    'a\\b',
+    'Bad-Id', // uppercase
+    '-leading-hyphen',
+    'trailing-hyphen-',
+    'double--hyphen',
+    'has space',
+    'has_underscore',
+    'has.dot',
+  ];
+  for (const id of invalidIds) {
+    const dir = tempShippedWorkflowsDir();
+    writeManifest(dir);
+    writeIndex(dir, [id]);
+    writeWorkflow(dir, id);
+    assert.throws(
+      () => buildCatalogueData(defaultInputs(dir)),
+      /unsafe id.*catalogue route segment/s,
+      `expected id ${JSON.stringify(id)} to be rejected`,
+    );
+  }
+});
+
+test('fail-closed: unsafe id runs before the bundle cross-check, so a malformed id fails with its own specific message rather than an incidental "missing bundle"', () => {
+  const dir = tempShippedWorkflowsDir();
+  writeManifest(dir);
+  // No workflow.json bundle written at all — if checkIdFormat did not run first, this would fail
+  // with "missing bundle" instead, a confusing diagnostic for what is really an id-format problem.
+  writeIndex(dir, ['/etc/passwd']);
+
+  assert.throws(() => buildCatalogueData(defaultInputs(dir)), /unsafe id/);
 });
 
 test('createWorkflowValidator uses the 2020-12 dialect: a prefixItems tuple constraint is enforced, not silently ignored', () => {

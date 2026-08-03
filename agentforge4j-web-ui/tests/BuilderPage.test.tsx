@@ -17,6 +17,13 @@ describe('BuilderPage', () => {
     expect(screen.getByTestId('workflow-builder')).toBeInTheDocument();
   });
 
+  test('provides a visually-hidden page heading — the canvas has no other document structure until a step is selected', () => {
+    renderPage();
+    const heading = screen.getByRole('heading', { level: 1, name: BUILDER_COPY.heading });
+    expect(heading).toBeInTheDocument();
+    expect(heading).toHaveClass('sr-only');
+  });
+
   test('does not render a read-only badge (editable mode)', () => {
     renderPage();
     expect(screen.queryByTestId('workflow-builder-readonly-badge')).not.toBeInTheDocument();
@@ -48,6 +55,22 @@ describe('BuilderPage', () => {
     expect(screen.getByText(BUILDER_COPY.accessibilityNote)).toHaveClass('shrink-0');
     const builderPane = screen.getByTestId('workflow-builder').parentElement as HTMLElement;
     expect(builderPane).toHaveClass('flex-1', 'min-h-0', 'overflow-y-auto');
+  });
+
+  test('themes the builder through the documented --afb-* token contract, not only the legacy .wf-* aliases', () => {
+    // The package's canvas/node/chrome selectors consume --afb-* directly (README "Design
+    // tokens"); the older --color-* names only reach the .wf-* control styles. If the --afb-*
+    // mappings are dropped, the canvas and cards silently revert to the package's fixed internal
+    // palette in both site themes — exactly the defect this guard pins. Values must be var()
+    // references to site tokens (not resolved colors) so a data-theme flip re-themes live.
+    renderPage();
+    const root = screen.getByTestId('workflow-builder');
+    expect(root.style.getPropertyValue('--afb-canvas-bg')).toBe('var(--color-bg)');
+    expect(root.style.getPropertyValue('--afb-node-surface')).toBe('var(--color-bg-elevated)');
+    expect(root.style.getPropertyValue('--afb-node-text')).toBe('var(--color-fg)');
+    expect(root.style.getPropertyValue('--afb-chrome-bg')).toBe('var(--color-bg-elevated)');
+    expect(root.style.getPropertyValue('--afb-chrome-text')).toBe('var(--color-fg)');
+    expect(root.style.getPropertyValue('--afb-accent')).toBe('var(--color-brand)');
   });
 
   test('structural guard: does not pass a custom adapters prop to WorkflowBuilder', () => {
