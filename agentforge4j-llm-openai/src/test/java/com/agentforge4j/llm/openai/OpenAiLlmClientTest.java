@@ -119,7 +119,8 @@ class OpenAiLlmClientTest {
       OpenAiLlmClient client = new OpenAiLlmClient(mapper, FixedOpenAiConfiguration.defaults());
 
       assertThatThrownBy(() -> client.validateAndExtractResponse(""))
-          .isInstanceOf(LlmInvocationException.class);
+          .isInstanceOf(LlmInvocationException.class)
+          .hasMessageContaining("openai response body must not be blank");
     }
 
     @Test
@@ -143,19 +144,19 @@ class OpenAiLlmClientTest {
     void should_truncate_large_response_body_embedded_in_exception_message() {
       ObjectMapper mapper = new ObjectMapper();
       OpenAiLlmClient client = new OpenAiLlmClient(mapper, FixedOpenAiConfiguration.defaults());
-      String largePadding = "X".repeat(2_000) + "_TAIL_MARKER_END";
-      String json = """
-          { "error": null, "output": [], "model": "%s" }
-          """.formatted(largePadding);
+      String largePadding = "0123456789".repeat(300) + "_TAIL_MARKER_END";
+      String json = "{\"model\":\"%s\",\"error\":null,\"output\":[]}".formatted(largePadding);
 
       assertThatThrownBy(() -> client.validateAndExtractResponse(json))
           .isInstanceOf(LlmInvocationException.class)
           .hasMessageContaining("missing or empty output")
-          .hasMessageContainingAll("XXX")
           .satisfies(thrown -> {
             String message = thrown.getMessage();
+            // Exactly 500 characters of the body survive: the first 500 are present, and the
+            // 501st is not. A widened bound fails here instead of shipping.
+            assertThat(message).contains(json.substring(0, 500));
+            assertThat(message).doesNotContain(json.substring(0, 501));
             assertThat(message).doesNotContain("_TAIL_MARKER_END");
-            assertThat(message.length()).isLessThan(json.length());
           });
     }
 

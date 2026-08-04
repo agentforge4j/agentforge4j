@@ -150,6 +150,27 @@ class OpenAiCompatibleLlmClientTest {
   class ValidateAndExtractResponseTests {
 
     @Test
+    void should_truncate_the_embedded_response_body_at_exactly_the_shared_bound() {
+      ObjectMapper mapper = new ObjectMapper();
+      OpenAiCompatibleLlmClient client =
+          new OpenAiCompatibleLlmClient(mapper, FixedOpenAiCompatibleConfiguration.defaults());
+      String padding = "0123456789".repeat(300) + "_TAIL_MARKER_END";
+      String json = "{\"model\":\"%s\",\"output\":[]}".formatted(padding);
+
+      assertThatThrownBy(() -> client.validateAndExtractResponse(json))
+          .isInstanceOf(LlmInvocationException.class)
+          .hasMessageContaining("missing or empty output")
+          .satisfies(thrown -> {
+            String message = thrown.getMessage();
+            // Exactly 500 characters of the body survive: the first 500 are present, and the
+            // 501st is not. A widened bound fails here instead of shipping.
+            assertThat(message).contains(json.substring(0, 500));
+            assertThat(message).doesNotContain(json.substring(0, 501));
+            assertThat(message).doesNotContain("_TAIL_MARKER_END");
+          });
+    }
+
+    @Test
     void should_throw_when_error_object_has_message() {
       ObjectMapper mapper = new ObjectMapper();
       OpenAiCompatibleLlmClient client =
@@ -307,6 +328,49 @@ class OpenAiCompatibleLlmClientTest {
       );
 
       assertThat(mapper.readTree(body)).isEqualTo(mapper.valueToTree(expected));
+    }
+
+    @Test
+    void should_omit_max_output_tokens_entirely_when_the_request_sets_none() throws Exception {
+      ObjectMapper mapper = new ObjectMapper();
+      var config = FixedOpenAiCompatibleConfiguration.builder()
+          .defaultModel("ada-model")
+          .build();
+      OpenAiCompatibleLlmClient client = new OpenAiCompatibleLlmClient(mapper, config);
+      LlmExecutionRequest request =
+          new LlmExecutionRequest("openai-compatible", null, "Be brief.", "Ping", null, null, null);
+
+      String body = collectUtf8RequestBody(client.buildHttpRequest(request));
+
+      // Asserted on the literal document, not against a re-serialized record: the key must be
+      // absent, not present-and-null. Servers that validate parameter types reject an explicit
+      // null here.
+      assertThat(mapper.readTree(body)).isEqualTo(mapper.readTree("""
+          {
+            "model": "ada-model",
+            "input": [
+              { "role": "system", "content": "Be brief." },
+              { "role": "user", "content": "Ping" }
+            ]
+          }
+          """));
+      assertThat(mapper.readTree(body).has("max_output_tokens")).isFalse();
+      assertThat(body).doesNotContain("max_output_tokens");
+    }
+
+    @Test
+    void should_send_max_output_tokens_when_the_request_sets_one() throws Exception {
+      ObjectMapper mapper = new ObjectMapper();
+      var config = FixedOpenAiCompatibleConfiguration.builder()
+          .defaultModel("ada-model")
+          .build();
+      OpenAiCompatibleLlmClient client = new OpenAiCompatibleLlmClient(mapper, config);
+      LlmExecutionRequest request =
+          new LlmExecutionRequest("openai-compatible", null, "Be brief.", "Ping", 256, null, null);
+
+      String body = collectUtf8RequestBody(client.buildHttpRequest(request));
+
+      assertThat(mapper.readTree(body).path("max_output_tokens").asInt()).isEqualTo(256);
     }
 
     @Test

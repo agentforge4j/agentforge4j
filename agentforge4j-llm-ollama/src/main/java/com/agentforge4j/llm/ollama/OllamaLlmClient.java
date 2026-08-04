@@ -10,7 +10,6 @@ import com.agentforge4j.llm.api.TokenUsageReport;
 import com.agentforge4j.llm.ollama.dto.MessageDto;
 import com.agentforge4j.llm.ollama.dto.OllamaChatRequestDto;
 import com.agentforge4j.llm.ollama.dto.OllamaChatResponseDto;
-import com.agentforge4j.llm.wireprotocol.InputRole;
 import com.agentforge4j.util.Validate;
 import com.agentforge4j.util.text.CodeFence;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -66,7 +65,8 @@ public final class OllamaLlmClient extends AbstractHttpLlmClient {
    */
   @Override
   protected LlmExecutionResponse validateAndExtractResponse(String json) throws IOException {
-    Validate.notBlank(json, () -> new LlmInvocationException("LLM client json must not be blank"));
+    Validate.notBlank(json, () -> new LlmInvocationException(
+        "%s response body must not be blank".formatted(getProviderName())));
     String truncatedJson = LlmHttpErrorBodyTruncate.truncateForEmbeddedMessage(json);
     OllamaChatResponseDto dto = objectMapper.readValue(json, OllamaChatResponseDto.class);
     validateApiError(dto, truncatedJson);

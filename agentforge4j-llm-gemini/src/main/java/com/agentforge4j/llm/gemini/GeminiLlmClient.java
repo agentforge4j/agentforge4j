@@ -108,7 +108,8 @@ public final class GeminiLlmClient extends AbstractHttpLlmClient {
    */
   @Override
   protected LlmExecutionResponse validateAndExtractResponse(String json) throws IOException {
-    Validate.notBlank(json, () -> new LlmInvocationException("LLM client json must not be null"));
+    Validate.notBlank(json, () -> new LlmInvocationException(
+        "%s response body must not be blank".formatted(getProviderName())));
     LOG.log(System.Logger.Level.DEBUG, "Gemini response body (full) body={0}", json);
     String truncatedJson = LlmHttpErrorBodyTruncate.truncateForEmbeddedMessage(json);
     GeminiResponse dto = objectMapper.readValue(json, GeminiResponse.class);

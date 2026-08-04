@@ -23,32 +23,19 @@ public final class LlmHttpErrorBodyTruncate {
   private LlmHttpErrorBodyTruncate() {}
 
   /**
-   * Truncates {@code body} to at most {@code maxChars} characters, treating {@code null} as an
-   * empty string.
-   *
-   * @param body     the raw body to truncate; {@code null} is treated as empty
-   * @param maxChars the maximum number of characters to retain; non-positive values return an
-   *                 empty string
-   *
-   * @return the truncated body
-   */
-  public static String truncateForEmbeddedMessage(String body, int maxChars) {
-    String s = StringUtils.defaultString(body);
-    if (maxChars <= 0) {
-      return "";
-    }
-    return s.substring(0, Math.min(maxChars, s.length()));
-  }
-
-  /**
-   * Truncates {@code body} to {@link #DEFAULT_MAX_CHARS} characters, treating {@code null} as an
-   * empty string.
+   * Truncates {@code body} to at most {@link #DEFAULT_MAX_CHARS} characters, treating {@code null}
+   * as an empty string.
+   * <p>
+   * Truncation counts {@code char} units, not code points, so a body cut mid-surrogate-pair may
+   * end in an unpaired surrogate. That is acceptable here: the result is only ever embedded in a
+   * diagnostic message, never re-parsed or sent back over the wire.
    *
    * @param body the raw body to truncate; {@code null} is treated as empty
    *
-   * @return the truncated body
+   * @return the truncated body, never {@code null}
    */
   public static String truncateForEmbeddedMessage(String body) {
-    return truncateForEmbeddedMessage(body, DEFAULT_MAX_CHARS);
+    String s = StringUtils.defaultString(body);
+    return s.substring(0, Math.min(DEFAULT_MAX_CHARS, s.length()));
   }
 }

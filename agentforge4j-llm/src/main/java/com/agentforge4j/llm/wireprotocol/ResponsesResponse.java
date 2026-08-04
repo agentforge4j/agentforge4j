@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package com.agentforge4j.llm.wireprotocol;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+
 import java.util.List;
 
 /**
@@ -11,6 +13,7 @@ import java.util.List;
  * @param usage  token usage, or {@code null} when the provider omits it
  * @param model  the model that produced the response, when reported
  */
+@JsonIgnoreProperties(ignoreUnknown = true)
 public record ResponsesResponse(
     ApiError error,
     List<ResponsesOutputItem> output,

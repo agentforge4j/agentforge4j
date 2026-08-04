@@ -6,14 +6,11 @@ import com.agentforge4j.llm.LlmHttpErrorBodyTruncate;
 import com.agentforge4j.llm.api.LlmExecutionRequest;
 import com.agentforge4j.llm.api.LlmExecutionResponse;
 import com.agentforge4j.llm.api.LlmInvocationException;
-import com.agentforge4j.llm.api.TokenUsageReport;
-import com.agentforge4j.llm.vllm.dto.VllmChoice;
-import com.agentforge4j.llm.vllm.dto.VllmMessage;
-import com.agentforge4j.llm.vllm.dto.VllmPromptTokensDetails;
-import com.agentforge4j.llm.vllm.dto.VllmRequest;
-import com.agentforge4j.llm.vllm.dto.VllmResponse;
-import com.agentforge4j.llm.vllm.dto.VllmUsage;
-import com.agentforge4j.llm.wireprotocol.InputRole;
+import com.agentforge4j.llm.wireprotocol.ChatChoice;
+import com.agentforge4j.llm.wireprotocol.ChatCompletionsApiSupport;
+import com.agentforge4j.llm.wireprotocol.ChatCompletionsRequest;
+import com.agentforge4j.llm.wireprotocol.ChatCompletionsResponse;
+import com.agentforge4j.llm.wireprotocol.ChatMessage;
 import com.agentforge4j.util.Validate;
 import com.agentforge4j.util.text.CodeFence;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -27,7 +24,11 @@ import org.apache.commons.lang3.StringUtils;
 /**
  * vLLM LLM client implementation.
  * <p>
- * Sends requests to a vLLM server using the chat completions API.
+ * Sends requests to a vLLM server using the chat completions API. Request/response wire shapes and
+ * usage mapping are shared with {@code AzureOpenAiLlmClient} and {@code MistralLlmClient} via
+ * {@link ChatCompletionsApiSupport}; vLLM sends an explicit {@code "stream": false} where the
+ * other two omit the field. Unlike those two, vLLM performs no API-error check &mdash; a failed
+ * call surfaces as an empty {@code choices} array.
  */
 public final class VllmLlmClient extends AbstractHttpLlmClient {
 
@@ -81,52 +82,33 @@ public final class VllmLlmClient extends AbstractHttpLlmClient {
    */
   @Override
   protected LlmExecutionResponse validateAndExtractResponse(String json) throws IOException {
+    Validate.notBlank(json, () -> new LlmInvocationException(
+        "%s response body must not be blank".formatted(getProviderName())));
     LOG.log(System.Logger.Level.DEBUG, "vLLM response body (full) body={0}", json);
     String truncatedJson = LlmHttpErrorBodyTruncate.truncateForEmbeddedMessage(json);
-    VllmResponse response = objectMapper.readValue(json, VllmResponse.class);
-    List<VllmChoice> choices = Validate.notEmpty(
+    ChatCompletionsResponse response = objectMapper.readValue(json, ChatCompletionsResponse.class);
+    List<ChatChoice> choices = Validate.notEmpty(
         response == null ? null : response.choices(),
         () -> new LlmInvocationException(
             "vLLM response choices are empty: %s".formatted(truncatedJson)));
 
-    String rawContent = choices.get(0) == null || choices.get(0).message() == null
-        ? null
-        : choices.get(0).message().content();
+    ChatChoice firstChoice = choices.get(0);
+    ChatMessage message = firstChoice == null ? null : firstChoice.message();
+    String rawContent = message == null ? null : message.content();
     String content = Validate.notBlank(rawContent, () -> new LlmInvocationException(
         "vLLM response first choice content is blank: %s".formatted(truncatedJson)));
 
-    VllmUsage usage = response == null ? null : response.usage();
     String modelUsed = response == null ? null : response.model();
     return new LlmExecutionResponse(
         CodeFence.strip(content.strip()),
         StringUtils.trimToNull(modelUsed),
-        toTokenUsageReport(usage));
-  }
-
-  private static TokenUsageReport toTokenUsageReport(VllmUsage usage) {
-    if (usage == null) {
-      return null;
-    }
-    Integer cachedInputTokens = null;
-    VllmPromptTokensDetails details = usage.promptTokensDetails();
-    if (details != null) {
-      cachedInputTokens = details.cachedTokens();
-    }
-    return new TokenUsageReport(
-        usage.promptTokens(),
-        usage.completionTokens(),
-        cachedInputTokens,
-        null);
+        ChatCompletionsApiSupport.toTokenUsageReport(response == null ? null : response.usage()));
   }
 
   private String generateRequestBody(LlmExecutionRequest request) {
     String model = StringUtils.defaultIfBlank(request.model(), getDefaultModel());
-    VllmRequest body = new VllmRequest(
-        model,
-        List.of(
-            new VllmMessage(InputRole.SYSTEM, request.systemPrompt()),
-            new VllmMessage(InputRole.USER, request.userInput())),
-        false);
+    ChatCompletionsRequest body = ChatCompletionsApiSupport.buildRequest(
+        model, request.systemPrompt(), request.userInput(), Boolean.FALSE);
     try {
       return objectMapper.writeValueAsString(body);
     } catch (Exception e) {

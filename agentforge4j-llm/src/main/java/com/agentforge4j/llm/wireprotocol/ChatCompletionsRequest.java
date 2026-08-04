@@ -7,8 +7,10 @@ import java.util.List;
 /**
  * Request body for an OpenAI-style chat-completions API.
  * <p>
- * Shared by Azure OpenAI and Mistral; vLLM keeps its own request DTO since it always sends an
- * explicit {@code "stream": false} field rather than omitting it.
+ * Shared by Azure OpenAI, Mistral and vLLM. {@code stream} is the one field the three do not
+ * agree on: vLLM sends an explicit {@code "stream": false}, while Azure OpenAI and Mistral omit
+ * the field entirely. {@link JsonInclude.Include#NON_NULL} is what makes both shapes expressible
+ * from one record &mdash; passing {@code null} drops the field, so it must not be removed.
  *
  * @param model    the model identifier
  * @param messages the conversation messages
@@ -21,7 +23,4 @@ public record ChatCompletionsRequest(
     Boolean stream
 ) {
 
-  public ChatCompletionsRequest(String model, List<ChatMessage> messages) {
-    this(model, messages, null);
-  }
 }

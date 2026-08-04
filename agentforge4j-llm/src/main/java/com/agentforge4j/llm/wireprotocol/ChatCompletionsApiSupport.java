@@ -5,21 +5,19 @@ import com.agentforge4j.llm.api.TokenUsageReport;
 import java.util.List;
 
 /**
- * Shared request-building and usage-mapping logic for OpenAI-style chat-completions API clients
- * that are strict about unrecognized response fields: Azure OpenAI and Mistral.
+ * Shared request-building and usage-mapping logic for OpenAI-style chat-completions API clients:
+ * Azure OpenAI, Mistral and vLLM.
  * <p>
- * vLLM is deliberately excluded: it is intentionally lenient about unknown JSON fields (its own
- * {@code dto} classes are annotated {@code @JsonIgnoreProperties(ignoreUnknown = true)} and it has
- * a test asserting that tolerance), while Azure and Mistral each have a test asserting the
- * opposite &mdash; a strict failure on unrecognized fields. Forcing both behaviors onto one shared
- * {@code @JsonIgnoreProperties}-annotated class is not possible without breaking one of them, so
- * vLLM keeps its own DTOs and request builder instead of using this class.
+ * All three tolerate unrecognized response fields. That is a property of the shared DTOs
+ * themselves &mdash; they are annotated {@code @JsonIgnoreProperties(ignoreUnknown = true)} &mdash;
+ * rather than of the {@code ObjectMapper} the embedding application supplies, so a provider adding
+ * a response field cannot break parsing on any host. See {@code ADR-0037}.
  * <p>
- * Error handling and choice/content extraction are also deliberately <b>not</b> centralized here
- * even for Azure/Mistral: Azure embeds provider-specific context (the deployment name) in failure
- * messages that Mistral does not. Only the pieces that are byte-for-byte identical between the two
- * &mdash; the request/response wire shapes and the usage-to-{@link TokenUsageReport} mapping
- * &mdash; are shared.
+ * Error handling and choice/content extraction are deliberately <b>not</b> centralized here:
+ * Azure embeds provider-specific context (the deployment name) in failure messages that Mistral
+ * and vLLM do not, and vLLM performs no API-error check at all. Only the pieces that are
+ * identical across the three &mdash; the request/response wire shapes and the
+ * usage-to-{@link TokenUsageReport} mapping &mdash; are shared.
  */
 public final class ChatCompletionsApiSupport {
 

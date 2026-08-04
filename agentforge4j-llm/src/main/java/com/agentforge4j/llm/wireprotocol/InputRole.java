@@ -6,12 +6,18 @@ import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 
 /**
- * Roles for messages in OpenAI-style Responses and chat-completions APIs.
+ * Canonical message role, replacing what were eight near-identical per-provider copies.
  * <p>
- * Shared across every {@code agentforge4j-llm-*} provider module whose wire protocol follows
- * this OpenAI-style shape (OpenAI, OpenAI-compatible, Azure OpenAI, Mistral, vLLM). Providers
- * that only ever need a subset of these roles (for example a single-turn client that always
- * sends {@link #USER}) simply never reference the other constants.
+ * Used by every provider module that names a message role on the wire, whether or not that
+ * provider speaks an OpenAI-style protocol: OpenAI, OpenAI-compatible, Azure OpenAI, Mistral and
+ * vLLM via the shared {@code wireprotocol} DTOs, and Claude, Gemini and Ollama via their own
+ * provider DTOs. Providers that only ever <em>send</em> a subset of these roles (for example a
+ * single-turn client that always sends {@link #USER}) simply never reference the other constants.
+ * <p>
+ * The enum sits on response-side DTOs as well as request-side ones &mdash; Gemini's
+ * {@code GeminiContent} and the shared {@code ChatMessage} are both deserialized from provider
+ * payloads &mdash; so the constant set has to cover every role a provider may <em>report</em>, not
+ * only the ones this framework sends.
  * <p>
  * Jackson serializes and deserializes using the API wire strings via {@link JsonValue} on
  * {@link #toString()}.

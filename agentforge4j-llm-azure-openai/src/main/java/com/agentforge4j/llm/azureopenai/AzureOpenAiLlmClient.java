@@ -30,7 +30,7 @@ import org.apache.commons.lang3.StringUtils;
  * Sends requests to Azure OpenAI using the chat completions API. Request/response wire shapes and
  * usage mapping are shared with {@code MistralLlmClient} and {@code VllmLlmClient} via
  * {@link ChatCompletionsApiSupport}; error/choice validation stays here because Azure's failure
- * messages embed the deployment name, unlike the other two providers.
+ * messages embed the deployment name, which neither of the other two carries.
  */
 @ToString(exclude = {"apiKey", "objectMapper"}, callSuper = true)
 public final class AzureOpenAiLlmClient extends AbstractHttpLlmClient {
@@ -105,7 +105,8 @@ public final class AzureOpenAiLlmClient extends AbstractHttpLlmClient {
    */
   @Override
   protected LlmExecutionResponse validateAndExtractResponse(String json) throws IOException {
-    Validate.notBlank(json, () -> new LlmInvocationException("LLM client json must not be blank"));
+    Validate.notBlank(json, () -> new LlmInvocationException(
+        "%s response body must not be blank".formatted(getProviderName())));
     LOG.log(System.Logger.Level.DEBUG, "azure-openai response body (full) body={0}", json);
     String truncatedJson = LlmHttpErrorBodyTruncate.truncateForEmbeddedMessage(json);
     ChatCompletionsResponse dto = objectMapper.readValue(json, ChatCompletionsResponse.class);

@@ -1,11 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 package com.agentforge4j.llm.wireprotocol;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
 
 /**
  * Token usage on Responses API payloads ({@code usage}).
  */
+@JsonIgnoreProperties(ignoreUnknown = true)
 public record ResponsesUsage(
     @JsonProperty("input_tokens") Integer inputTokens,
     @JsonProperty("output_tokens") Integer outputTokens,

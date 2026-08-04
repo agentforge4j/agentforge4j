@@ -92,7 +92,8 @@ public final class ClaudeLlmClient extends AbstractHttpLlmClient {
    */
   @Override
   protected LlmExecutionResponse validateAndExtractResponse(String json) throws IOException {
-    Validate.notBlank(json, () -> new LlmInvocationException("LLM client json must not be blank"));
+    Validate.notBlank(json, () -> new LlmInvocationException(
+        "%s response body must not be blank".formatted(getProviderName())));
     String truncatedJson = LlmHttpErrorBodyTruncate.truncateForEmbeddedMessage(json);
     ClaudeResponse response = objectMapper.readValue(json, ClaudeResponse.class);
     Validate.notNull(response, () -> new LlmInvocationException(

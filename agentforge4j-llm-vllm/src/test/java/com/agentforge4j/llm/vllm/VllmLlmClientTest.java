@@ -4,8 +4,8 @@ package com.agentforge4j.llm.vllm;
 import com.agentforge4j.llm.api.LlmExecutionRequest;
 import com.agentforge4j.llm.api.LlmInvocationException;
 import com.agentforge4j.llm.api.PromptLayerBoundaries;
-import com.agentforge4j.llm.vllm.dto.VllmMessage;
-import com.agentforge4j.llm.vllm.dto.VllmRequest;
+import com.agentforge4j.llm.wireprotocol.ChatCompletionsRequest;
+import com.agentforge4j.llm.wireprotocol.ChatMessage;
 import com.agentforge4j.llm.wireprotocol.InputRole;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -216,6 +216,26 @@ class VllmLlmClientTest {
     }
 
     @Test
+    void should_truncate_the_embedded_response_body_at_exactly_the_shared_bound() {
+      ObjectMapper mapper = new ObjectMapper();
+      VllmLlmClient client = new VllmLlmClient(mapper, FixedVllmConfiguration.defaults());
+      String padding = "0123456789".repeat(300) + "_TAIL_MARKER_END";
+      String json = "{\"model\":\"%s\",\"choices\":[]}".formatted(padding);
+
+      assertThatThrownBy(() -> client.validateAndExtractResponse(json))
+          .isInstanceOf(LlmInvocationException.class)
+          .hasMessageContaining("choices are empty")
+          .satisfies(thrown -> {
+            String message = thrown.getMessage();
+            // Exactly 500 characters of the body survive: the first 500 are present, and
+            // the 501th is not. A widened bound fails here instead of shipping.
+            assertThat(message).contains(json.substring(0, 500));
+            assertThat(message).doesNotContain(json.substring(0, 501));
+            assertThat(message).doesNotContain("_TAIL_MARKER_END");
+          });
+    }
+
+    @Test
     void should_ignore_unknown_json_properties_on_response() throws Exception {
       ObjectMapper mapper = new ObjectMapper();
       VllmLlmClient client = new VllmLlmClient(mapper, FixedVllmConfiguration.defaults());
@@ -277,14 +297,35 @@ class VllmLlmClientTest {
           new LlmExecutionRequest("vllm", null, "Be brief.", "Ping", null, null, null);
 
       String body = collectUtf8RequestBody(client.buildHttpRequest(request));
-      var expected = new VllmRequest(
+      var expected = new ChatCompletionsRequest(
           "default-model",
           List.of(
-              new VllmMessage(InputRole.SYSTEM, "Be brief."),
-              new VllmMessage(InputRole.USER, "Ping")),
-          false);
+              new ChatMessage(InputRole.SYSTEM, "Be brief."),
+              new ChatMessage(InputRole.USER, "Ping")),
+          Boolean.FALSE);
 
       assertThat(mapper.readTree(body)).isEqualTo(mapper.valueToTree(expected));
+    }
+
+    @Test
+    void should_serialize_exactly_the_pre_consolidation_wire_shape() throws Exception {
+      ObjectMapper mapper = new ObjectMapper();
+      VllmLlmClient client = new VllmLlmClient(mapper, FixedVllmConfiguration.defaults());
+      LlmExecutionRequest request =
+          new LlmExecutionRequest("vllm", null, "Be brief.", "Ping", null, null, null);
+
+      String body = collectUtf8RequestBody(client.buildHttpRequest(request));
+
+      assertThat(mapper.readTree(body)).isEqualTo(mapper.readTree("""
+          {
+            "model": "meta-llama/Llama-2-7b-chat-hf",
+            "messages": [
+              { "role": "system", "content": "Be brief." },
+              { "role": "user", "content": "Ping" }
+            ],
+            "stream": false
+          }
+          """));
     }
 
     @Test

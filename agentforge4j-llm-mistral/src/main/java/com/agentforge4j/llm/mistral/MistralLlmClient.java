@@ -25,9 +25,9 @@ import org.apache.commons.lang3.StringUtils;
 /**
  * Mistral AI LLM client using the OpenAI-compatible chat completions API.
  * <p>
- * Request/response wire shapes and usage mapping are shared with {@code AzureOpenAiLlmClient} via
- * {@link ChatCompletionsApiSupport}; error/choice validation stays here because Mistral's failure
- * messages omit the deployment-name context that Azure includes.
+ * Request/response wire shapes and usage mapping are shared with {@code AzureOpenAiLlmClient} and
+ * {@code VllmLlmClient} via {@link ChatCompletionsApiSupport}; error/choice validation stays here
+ * because Mistral's failure messages omit the deployment-name context that Azure includes.
  */
 @ToString(exclude = {"apiKey", "objectMapper"}, callSuper = true)
 public final class MistralLlmClient extends AbstractHttpLlmClient {
@@ -78,8 +78,15 @@ public final class MistralLlmClient extends AbstractHttpLlmClient {
 
   /**
    * Validates the Mistral chat completions payload and extracts assistant text plus {@code usage}
-   * ({@code usage.prompt_tokens}, {@code usage.completion_tokens}) and root {@code model} for
+   * ({@code usage.prompt_tokens}, {@code usage.completion_tokens},
+   * {@code usage.prompt_tokens_details.cached_tokens} when present) and root {@code model} for
    * {@link LlmExecutionResponse#modelUsed()}.
+   * <p>
+   * Mistral's documented {@code usage} block carries no cached-token breakdown, so
+   * {@link com.agentforge4j.llm.api.TokenUsageReport#cachedInputTokens()} is normally {@code null}.
+   * It is read rather than hardcoded to {@code null} so that a Mistral deployment (or an
+   * OpenAI-compatible gateway fronting one) that does report prompt caching is metered correctly
+   * without a code change.
    *
    * @param json the raw JSON response from Mistral
    * @return execution response; {@link LlmExecutionResponse#tokenUsage()} is {@code null} when the
@@ -88,7 +95,8 @@ public final class MistralLlmClient extends AbstractHttpLlmClient {
    */
   @Override
   protected LlmExecutionResponse validateAndExtractResponse(String json) throws IOException {
-    Validate.notBlank(json, () -> new LlmInvocationException("LLM client json must not be blank"));
+    Validate.notBlank(json, () -> new LlmInvocationException(
+        "%s response body must not be blank".formatted(getProviderName())));
     LOG.log(System.Logger.Level.DEBUG, "mistral response body (full) body={0}", json);
     String truncatedJson = LlmHttpErrorBodyTruncate.truncateForEmbeddedMessage(json);
     ChatCompletionsResponse dto = objectMapper.readValue(json, ChatCompletionsResponse.class);
