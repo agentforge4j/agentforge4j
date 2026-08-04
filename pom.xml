@@ -65,12 +65,12 @@
          jar's required Java version before accepting future major bumps. -->
     <checkstyle.version>12.3.1</checkstyle.version>
     <dependency-check-maven.version>12.2.2</dependency-check-maven.version>
-    <cyclonedx-maven-plugin.version>2.9.2</cyclonedx-maven-plugin.version>
+    <cyclonedx-maven-plugin.version>2.9.3</cyclonedx-maven-plugin.version>
     <spotbugs-annotations.version>4.10.3</spotbugs-annotations.version>
     <jqwik.version>1.10.1</jqwik.version>
     <jacoco-maven-plugin.version>0.8.15</jacoco-maven-plugin.version>
     <sonar-maven-plugin.version>5.7.0.6970</sonar-maven-plugin.version>
-    <license-maven-plugin.version>5.0.0</license-maven-plugin.version>
+    <license-maven-plugin.version>5.1.1</license-maven-plugin.version>
     <!-- SonarQube Cloud coordinates (public OSS project). Plain build properties, NOT secrets;
          the analysis token is supplied separately via the SONAR_TOKEN env/secret in CI. -->
     <sonar.organization>agentforge4j</sonar.organization>
