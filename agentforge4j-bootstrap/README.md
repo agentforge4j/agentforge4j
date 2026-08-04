@@ -39,7 +39,7 @@ Bootstrap reads `AGENTFORGE4J_*` environment variables and `agentforge4j.*` syst
 | `AGENTFORGE4J_LLM_<PROVIDER>_API_KEY` | String | API key for the named provider |
 | `AGENTFORGE4J_LLM_<PROVIDER>_BASE_URL` | String | Override base URL |
 | `AGENTFORGE4J_LLM_<PROVIDER>_DEFAULT_MODEL` | String | Override default model |
-| `AGENTFORGE4J_LLM_<PROVIDER>_CONNECT_TIMEOUT` | Duration | Override connect timeout — ISO-8601 (`PT30S`) or compact shorthand (`30s`, `500ms`) |
+| `AGENTFORGE4J_LLM_<PROVIDER>_CONNECT_TIMEOUT` | Duration | Override connect timeout — ISO-8601 such as `PT30S`, or compact shorthand such as `30s` and `500ms`; a unitless number is interpreted as milliseconds (`5000` means five seconds) |
 | `agentforge4j.agents.path` | Path | Filesystem directory of agent definitions |
 | `agentforge4j.workflows.path` | Path | Filesystem directory of workflow definitions |
 | `agentforge4j.filesink.path` | Path | Base directory for `CreateFileCommand` output |

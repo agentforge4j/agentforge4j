@@ -44,6 +44,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Bootstrap `connect.timeout` uses the shared duration grammar.** A provider's connect timeout
+  discovered from an environment variable or system property previously accepted ISO-8601 only,
+  while the same setting written as provider configuration or a provider option accepted more; all
+  three now accept ISO-8601 (`PT30S`), the compact shorthand (`30s`, `500ms`), and a unitless
+  amount interpreted as milliseconds (`5000` means five seconds). Duration-typed settings on other
+  surfaces keep their own grammar. The bootstrap README documented an
+  `AGENTFORGE4J_LLM_<PROVIDER>_CONNECT_TIMEOUT_SECONDS` key that was never read — the key is
+  `AGENTFORGE4J_LLM_<PROVIDER>_CONNECT_TIMEOUT`.
+
 ### Security
 
 ## [0.1.0] - 2026-07-19

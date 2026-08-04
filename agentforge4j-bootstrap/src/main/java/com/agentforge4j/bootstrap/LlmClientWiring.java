@@ -28,8 +28,9 @@ import org.apache.commons.lang3.StringUtils;
  * Auto-discovery reads keys under {@code agentforge4j.llm.<provider>.} in the canonical
  * <b>lowercase, dot-separated</b> form: {@code api.key} (credential — a literal value or an
  * {@code ${env:NAME}}/{@code ${sysprop:name}} reference), {@code base.url}, {@code default.model},
- * {@code connect.timeout} (ISO-8601 like {@code PT30S}, or the shared compact shorthand like {@code 30s} /
- * {@code 500ms} — see {@link DurationParser}). Every other {@code agentforge4j.llm.<provider>.*} key is a
+ * {@code connect.timeout} (ISO-8601 such as {@code PT30S}, or the shared compact shorthand such as {@code 30s}
+ * and {@code 500ms}; a unitless number is interpreted as milliseconds, so {@code 5000} means five seconds —
+ * see {@link DurationParser}). Every other {@code agentforge4j.llm.<provider>.*} key is a
  * provider-specific option (for example {@code request.timeout}, {@code auth.header.name}, {@code api.version}).
  *
  * <p>Environment variables map by {@code AGENTFORGE4J_LLM_<PROVIDER>_<KEY>} with {@code _} normalised
@@ -255,7 +256,8 @@ final class LlmClientWiring {
     try {
       // Shared grammar with RawProviderConfiguration/MapLlmProviderOptions: the same logical
       // property accepts the same forms whether set programmatically or auto-discovered here.
-      return DurationParser.parse(value.trim());
+      // DurationParser trims the value itself, so no trimming is needed at this call site.
+      return DurationParser.parse(value);
     } catch (IllegalArgumentException cause) {
       throw new LlmProviderConfigurationException(
           "Provider '%s' option '%s' is not a valid duration (ISO-8601 like PT30S, or shorthand like 30s, 500ms)"

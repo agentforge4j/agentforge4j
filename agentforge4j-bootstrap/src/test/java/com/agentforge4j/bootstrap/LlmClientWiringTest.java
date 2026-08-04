@@ -184,13 +184,30 @@ class LlmClientWiringTest {
   }
 
   @Test
+  void connectTimeoutAcceptsUnitlessValueAsMilliseconds() {
+    // A unitless amount is milliseconds, so 5000 is five seconds -- and 30 would be thirty
+    // milliseconds, not thirty seconds. Documented on the README env-var row and this class's
+    // Javadoc; pinned here because the auto-discovery path started accepting the form with #81.
+    setProperty("agentforge4j.llm.openai.api.key", "sk");
+    setProperty("agentforge4j.llm.openai.connect.timeout", "5000");
+
+    assertThat(assemble(Map.of())).hasSize(1);
+    assertThat(captured("openai").configuration().getConnectTimeout())
+        .isEqualTo(java.time.Duration.ofMillis(5000));
+  }
+
+  @Test
   void invalidConnectTimeoutFailsFast() {
     setProperty("agentforge4j.llm.openai.api.key", "sk");
     setProperty("agentforge4j.llm.openai.connect.timeout", "not-a-duration");
 
     assertThatThrownBy(() -> assemble(Map.of()))
         .isInstanceOf(LlmProviderConfigurationException.class)
-        .hasMessageContaining("connect.timeout");
+        .hasMessageContaining("connect.timeout")
+        // The message names both accepted forms, so an operator who wrote the wrong one is told
+        // what the right ones are without having to find the documentation.
+        .hasMessageContaining("PT30S")
+        .hasMessageContaining("30s");
   }
 
   @Test
