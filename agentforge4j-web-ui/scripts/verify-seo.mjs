@@ -21,18 +21,18 @@ import { dirname, extname, isAbsolute, join, relative, resolve } from 'node:path
 // build-seo.test.mjs and prerender-routes.test.mjs already do, and what this repo's lint block for
 // `scripts/**/*.mjs` requires (it declares only console/process/Buffer/fetch as globals).
 import { fileURLToPath, URL } from 'node:url';
-// The one import of another script's internals in this file, and a deliberate exception to the
+// The only imports of another script's internals in this file, and a deliberate exception to the
 // convention withTrailingSlash's own comment below documents ("duplicated deliberately, not
 // imported"). That convention governs DERIVATIONS — two scripts computing the same answer from the
 // same committed config compute it separately, so a bug in one cannot make the other agree with it.
-// JSON_LD_SCRIPT_ID is not a derivation: it is an opaque literal whose entire contract is "these
-// bytes are identical everywhere", with no config to re-derive it from. Re-typing it here would not
-// buy independence, only a third place to drift.
+// JSON_LD_SCRIPT_ID and ROBOTS_META_ID are not derivations: they are opaque literals whose entire
+// contract is "these bytes are identical everywhere", with no config to re-derive them from.
+// Re-typing them here would not buy independence, only a third place to drift.
 //
 // The route-scoped social tag list is deliberately NOT imported — see
 // REQUIRED_ROUTE_SCOPED_SOCIAL_TAGS below for why an imported list would make this gate's coverage
 // a function of the very producer it is checking.
-import { JSON_LD_SCRIPT_ID } from './build-seo.mjs';
+import { JSON_LD_SCRIPT_ID, ROBOTS_META_ID } from './build-seo.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const MODULE_ROOT = join(here, '..');
@@ -182,6 +182,120 @@ function isRealCalendarDate(value) {
 
 function h1Count(html) {
   return (html.match(/<h1[\s>]/g) ?? []).length;
+}
+
+/**
+ * The catch-all shell GitHub Pages serves for every unmatched address must describe itself as a
+ * not-found page — not as the home page, which is what a verbatim copy of dist/index.html made it.
+ *
+ * Each clause below is one of the audited claims, checked against the real built artifact:
+ *  - it carries the configured not-found title and description, so it is not simply the home page
+ *    under a different status code;
+ *  - it carries a `noindex` robots directive, bearing ROBOTS_META_ID. `/404.html` is itself served
+ *    at 200, so nothing else keeps this out of an index, and the mismatch between "reads as a real
+ *    page" and "is not one" is precisely a soft-404 signal. The id is what marks the tag as this
+ *    build's own, so the client-side hook adopts this node instead of appending a second one, and
+ *    removes only this one on every real route (see build-seo.mjs's ROBOTS_META_ID);
+ *  - it has NO canonical link, and none of the route-scoped social tags DERIVED from a canonical.
+ *    Either one, pointed anywhere, makes a claim about a URL that does not exist (see
+ *    build-seo.mjs's injectNotFoundHead);
+ *  - every OTHER route-scoped social tag describes THIS page — the not-found title and description,
+ *    not whichever page dist/404.html was copied from. This is the same invariant
+ *    `assertSocialMetaConsistent` states for every published page, on the one shell that is not in
+ *    that corpus: dist/404.html is neither a sitemap URL nor a configured static route, so nothing
+ *    else in this file ever looks at it. Without it, a 404 whose social card still read
+ *    "AgentForge4j — Governed AI Workflows for Java" while its own `<title>` read "Page not found"
+ *    passed every gate — the exact defect this function exists to prevent, surviving in the four
+ *    tags it did not name;
+ *  - it carries NO structured data. The home page's JSON-LD asserts this URL is the site's WebSite
+ *    entity and its Organization's home page, which is untrue of every address that lands here.
+ *
+ * The social clauses are driven by REQUIRED_ROUTE_SCOPED_SOCIAL_TAGS rather than by a hand-listed
+ * set of four keys, so the shell this gate holds the 404 to is the same one it holds every other
+ * page to. A tag added to that table is checked here on the next run without a second edit; a
+ * hand-copied list is precisely how the previous version came to check `og:url` and nothing else.
+ *
+ * `expected` comes from the same committed seo-routes.json the build reads, so this compares the
+ * artifact against the declared intent rather than against a second copy of the copy.
+ */
+function assertNotFoundShellSeo(html, expected) {
+  if (!expected) {
+    throw new Error(
+      'verify-seo: seo-routes.json declares no `notFound` metadata — dist/404.html would ship the home page\'s ' +
+        'title, description and canonical, which is the exact defect this check exists to prevent',
+    );
+  }
+  const title = extractTag(html, /<title>([\s\S]*?)<\/title>/);
+  if (title !== expected.title) {
+    throw new Error(`verify-seo: dist/404.html — expected the not-found title "${expected.title}", got "${title}"`);
+  }
+  const description = extractTag(html, /<meta name="description" content="([^"]*)"/);
+  if (description !== expected.description) {
+    throw new Error(`verify-seo: dist/404.html — expected the not-found description, got "${description}"`);
+  }
+  const robotsMeta = singleRobotsMeta(html, 'dist/404.html');
+  const robots = robotsMeta === null ? null : robotsMeta.content;
+  if (robots === null || !/\bnoindex\b/i.test(robots)) {
+    throw new Error(
+      `verify-seo: dist/404.html — robots directive is ${JSON.stringify(robots)}, which does not say noindex; ` +
+        '/404.html is served at 200, so nothing else stops it being indexed',
+    );
+  }
+  // Scoped honestly, exactly as the JSON-LD id check below the sitemap loop is: this compares the
+  // SERVED shell against the same constant build-seo.mjs writes, so what it catches is a 404 shell
+  // whose robots meta lost or changed its id by some route other than that constant. It cannot
+  // catch a rename of the constant itself — producer and verifier move together. The binding that
+  // does catch that is tests/usePageSeo.test.tsx's assertion on the id the HOOK creates.
+  if (robotsMeta.id !== ROBOTS_META_ID) {
+    throw new Error(
+      `verify-seo: dist/404.html's robots meta has id ${JSON.stringify(robotsMeta.id)} — expected ` +
+        `${JSON.stringify(ROBOTS_META_ID)} so client-side hydration (usePageSeo.ts) adopts it instead of appending a ` +
+        'second one, and so its own removal on every real route reaches this tag rather than any robots directive the ' +
+        'page happens to carry',
+    );
+  }
+  if (/<link\s+rel="canonical"/.test(html)) {
+    throw new Error(
+      'verify-seo: dist/404.html carries a canonical link — a 404 must not name any URL as its canonical ' +
+        '(the home page would consolidate a nonexistent URL into a real one; itself would assert the address is real)',
+    );
+  }
+  // A not-found page has a title and a description of its own, and no canonical — so a tag derived
+  // from the canonical must be ABSENT, and every other one must equal the value it is derived from.
+  // Both halves come from the same table and the same `source` mapping the published-page pass uses.
+  const notFoundSources = { title: expected.title, description: expected.description, canonical: null };
+  for (const { attribute, key, source } of REQUIRED_ROUTE_SCOPED_SOCIAL_TAGS) {
+    const actual = singleMetaContent(html, attribute, key, 'dist/404.html');
+    if (notFoundSources[source] === null) {
+      if (actual !== null) {
+        throw new Error(
+          `verify-seo: dist/404.html carries ${key} ("${actual}") — it is derived from the canonical, and a 404 has ` +
+            'none; the claim it makes about which URL this content belongs to is as untrue as a canonical link',
+        );
+      }
+      continue;
+    }
+    if (actual === null) {
+      throw new Error(
+        `verify-seo: dist/404.html — no <meta ${attribute}="${key}"> tag at all; the copied shell must be given the ` +
+          "not-found page's own social metadata, not stripped of it",
+      );
+    }
+    if (actual !== notFoundSources[source]) {
+      throw new Error(
+        `verify-seo: dist/404.html — ${key} is "${actual}" but the not-found ${source} is ` +
+          `"${notFoundSources[source]}"; the shell's social card must describe the not-found page, not whichever ` +
+          'page dist/404.html was copied from',
+      );
+    }
+  }
+  const jsonLdBlocks = [...html.matchAll(/<script\b[^>]*type="application\/ld\+json"[^>]*>/gi)];
+  if (jsonLdBlocks.length > 0) {
+    throw new Error(
+      `verify-seo: dist/404.html carries ${jsonLdBlocks.length} JSON-LD block(s) — a not-found page must not ` +
+        "assert the home page's WebSite/Organization identity",
+    );
+  }
 }
 
 /**
@@ -474,18 +588,27 @@ function withTrailingSlash(routePath) {
 
 /** The real static-route verification inventory — every route declared in the committed
  * seo-routes.json, not a hand-maintained subset. This is the only way a route excluded from the
- * sitemap (e.g. `/contributing`, `sitemap: false`) still gets its raw-HTML/H1/canonical checked at
- * all: the sitemap-driven loop below never sees a route that isn't in the sitemap.
+ * sitemap (any `sitemap: false` entry — today that is every `redirectTo` stub, which build-seo.mjs
+ * *requires* to be `sitemap: false`) still gets its raw-HTML/canonical checked at all: the
+ * sitemap-driven loop below never sees a route that isn't in the sitemap.
  *
- * Each entry's `expectedCanonical` is the route's own trailing-slash URL, or its `canonicalPath`
- * target's trailing-slash URL when the route is a declared alias — normalized the same way
- * build-seo.mjs itself normalizes them when it writes the real canonical tag, so this check fails
- * the moment the two ever disagree. */
+ * Each entry's `expectedCanonical` is the route's own trailing-slash URL, its `redirectTo`
+ * destination's when it is a redirect stub, or its `canonicalPath` target's when it is a declared
+ * alias — normalized the same way build-seo.mjs itself normalizes them when it writes the real
+ * canonical tag, so this check fails the moment the two ever disagree. It stays absolute because a
+ * canonical is a claim about the public address.
+ *
+ * `redirectTarget`, in contrast, is the *navigation* a stub performs and is therefore root-relative,
+ * matching what build-seo.mjs writes — see injectRedirectStub's docblock for why the two forms must
+ * not be collapsed. */
 export function loadStaticRouteInventory(seoRoutesPath) {
   const { siteUrl, routes } = JSON.parse(readFileSync(seoRoutesPath, 'utf8'));
   return routes.map((route) => ({
     requestPath: withTrailingSlash(route.path),
-    expectedCanonical: `${siteUrl}${withTrailingSlash(route.canonicalPath ?? route.path)}`,
+    expectedCanonical: `${siteUrl}${withTrailingSlash(route.redirectTo ?? route.canonicalPath ?? route.path)}`,
+    // A redirect route is checked as a redirect stub, not as a page: it deliberately has no <h1>
+    // and no content of its own, which is the entire point of it.
+    ...(route.redirectTo !== undefined ? { redirectTarget: withTrailingSlash(route.redirectTo) } : {}),
     // Present only when the route actually declares one, so an entry with no jsonLd deep-equals
     // exactly what every existing hand-built inventory fixture (and the tests asserting against
     // one) already expects — no `jsonLd: undefined` key showing up where none existed before.
@@ -590,6 +713,28 @@ function singleMetaContent(html, attribute, key, label) {
     );
   }
   return contents.length === 1 ? contents[0] : null;
+}
+
+/** The `{content, id}` of the single `<meta name="robots">`, or `null` when absent — read through
+ * the same tokenizer `singleMetaContent` uses, and throwing on duplicates for the same reason.
+ *
+ * A dedicated reader rather than a `singleMetaContent` call because the robots tag is the one whose
+ * `id` is load-bearing: it is what makes the tag this build's own, and reading content alone would
+ * leave the ownership half of the contract unverified. Duplicates matter here more than anywhere
+ * else — two robots metas is exactly the shape a client-side hook that appends instead of adopting
+ * leaves behind, and a crawler combines their directives rather than picking one.
+ *
+ * `label` names the page under inspection, matching every sibling reader in this file. */
+function singleRobotsMeta(html, label) {
+  const nameAttr = attributePattern('name');
+  const attrs = metaAttributeLists(html).filter((list) => attributeValue(list, nameAttr) === 'robots');
+  if (attrs.length > 1) {
+    throw new Error(`verify-seo: ${label} — ${attrs.length} <meta name="robots"> tags on one page — expected exactly one`);
+  }
+  if (attrs.length === 0) {
+    return null;
+  }
+  return { content: attributeValue(attrs[0], CONTENT_ATTR_PATTERN), id: attributeValue(attrs[0], ID_ATTR_PATTERN) };
 }
 
 /** The `href` of the single `<link rel="canonical">`, or `null` when absent — read through the same
@@ -738,13 +883,15 @@ export async function verifySeo({
   if (!existsSync(notFoundPath)) {
     throw new Error(`verify-seo: ${notFoundPath} does not exist — run the full build first`);
   }
-  if (!/<div id="root"><\/div>/.test(readFileSync(notFoundPath, 'utf8'))) {
+  const notFoundHtml = readFileSync(notFoundPath, 'utf8');
+  if (!/<div id="root"><\/div>/.test(notFoundHtml)) {
     throw new Error(
       'verify-seo: dist/404.html no longer contains an empty <div id="root"></div> mount point — ' +
         'it must stay the pre-prerender SPA shell (copy-404.mjs must run before build-seo.mjs, ' +
         'never after it)',
     );
   }
+  assertNotFoundShellSeo(notFoundHtml, JSON.parse(readFileSync(seoRoutesPath, 'utf8')).notFound);
 
   // Which served paths have a declaration of their own to be checked against, below. Every other
   // sitemap URL is a route that can only legitimately carry zero structured data — see the sitemap
@@ -846,7 +993,7 @@ export async function verifySeo({
       assertSocialMetaConsistent(url, html, constantSocialValues);
     }
 
-    for (const { requestPath, expectedCanonical, jsonLd } of staticRoutes) {
+    for (const { requestPath, expectedCanonical, jsonLd, redirectTarget } of staticRoutes) {
       const response = await fetch(`${origin}${requestPath}`, { redirect: 'manual' });
       if (response.status !== 200) {
         throw new Error(
@@ -926,15 +1073,70 @@ export async function verifySeo({
         );
       }
 
-      const count = h1Count(html);
-      if (count !== 1) {
-        throw new Error(`verify-seo: ${requestPath} — expected exactly one <h1> in the raw served HTML, found ${count}`);
-      }
-      const h1Text = extractTag(html, /<h1[^>]*>([\s\S]*?)<\/h1>/);
-      if (!h1Text || !h1Text.replace(/<[^>]+>/g, '').trim()) {
-        throw new Error(`verify-seo: ${requestPath} — the raw <h1> has no real visible text content`);
+      if (redirectTarget !== undefined) {
+        // A redirect stub is held to the opposite standard of a page: it must forward, say it is
+        // not for indexing, and carry NO content — the duplicate-content defect this replaced was
+        // precisely a second full copy of the destination page living at this address.
+        const refresh = extractTag(html, /<meta http-equiv="refresh" content="0; url=([^"]+)"/);
+        if (refresh !== redirectTarget) {
+          throw new Error(
+            `verify-seo: ${requestPath} — expected a meta refresh to "${redirectTarget}", got ${JSON.stringify(refresh)}`,
+          );
+        }
+        // Root-relative is the whole point (see build-seo.mjs's injectRedirectStub): an absolute or
+        // protocol-relative target forwards every non-production origin serving this artifact — the
+        // e2e preview server, a local preview, a self-hosted deployment, a fork — off to the public
+        // site. Checked against what was actually SERVED, so it holds even if the inventory this
+        // was compared to were ever computed the old way.
+        if (!refresh.startsWith('/') || refresh.startsWith('//')) {
+          throw new Error(
+            `verify-seo: ${requestPath} — the meta refresh target "${refresh}" is not root-relative; a redirect stub ` +
+              'must forward within whatever origin is serving it, not to a hard-coded one',
+          );
+        }
+        const robotsMeta = singleRobotsMeta(html, requestPath);
+        const robots = robotsMeta === null ? null : robotsMeta.content;
+        if (robots === null || !/\bnoindex\b/i.test(robots)) {
+          throw new Error(
+            `verify-seo: ${requestPath} — a redirect stub must be noindex, got ${JSON.stringify(robots)}; a canonical ` +
+              'alone is a hint, and two indexable copies of one page is what this address used to be',
+          );
+        }
+        // Same ownership contract the 404 shell's robots tag is held to, and load-bearing for the
+        // same reason: without the id, usePageSeo's setRobots(null) cannot find this tag when the
+        // SPA navigates on from the stub, and the `noindex` rides along onto the destination.
+        if (robotsMeta.id !== ROBOTS_META_ID) {
+          throw new Error(
+            `verify-seo: ${requestPath} — the redirect stub's robots meta has id ${JSON.stringify(robotsMeta.id)}, ` +
+              `expected ${JSON.stringify(ROBOTS_META_ID)} so the client-side hook adopts and later removes this exact ` +
+              'tag rather than leaving a noindex behind on the page it forwards to',
+          );
+        }
+        const stubH1Count = h1Count(html);
+        if (stubH1Count !== 0) {
+          throw new Error(
+            `verify-seo: ${requestPath} — a redirect stub must carry no <h1> at all, found ${stubH1Count}; content ` +
+              'here means the destination page has been duplicated at this address again',
+          );
+        }
+      } else {
+        const count = h1Count(html);
+        if (count !== 1) {
+          throw new Error(`verify-seo: ${requestPath} — expected exactly one <h1> in the raw served HTML, found ${count}`);
+        }
+        const h1Text = extractTag(html, /<h1[^>]*>([\s\S]*?)<\/h1>/);
+        if (!h1Text || !h1Text.replace(/<[^>]+>/g, '').trim()) {
+          throw new Error(`verify-seo: ${requestPath} — the raw <h1> has no real visible text content`);
+        }
       }
 
+      // Deliberately OUTSIDE the branch above, and the last statement of the loop body for both
+      // kinds of route. A redirect stub carries all five route-scoped social tags and every
+      // site-constant one — build-seo.mjs derives them from the same shared table it uses for real
+      // pages, and build-seo.test.mjs's PRODUCERS list holds it to that table — so exempting the
+      // stub here left the one gate that reads what a crawler ACTUALLY receives blind to them,
+      // while the summary below went on claiming the whole enumerated set had been checked. An
+      // earlier `continue` here would silently exempt stubs from anything appended after it too.
       assertSocialMetaConsistent(requestPath, html, constantSocialValues);
     }
 
@@ -1053,19 +1255,29 @@ export async function verifySeo({
   }
 
   // Scoped to exactly what was checked. The JSON-LD absence claim covers every sitemap URL and
-  // every configured static route — between them, every shell build-seo.mjs writes — but NOT
-  // dist/404.html, which is neither, and is gated separately above (empty pre-prerender shell).
-  // Keep this sentence and the checks above in step: a claim of absence is only worth as much as
-  // the set it was actually evaluated over.
+  // every configured static route — between them, every shell build-seo.mjs writes — plus
+  // dist/404.html, which is neither of those and is gated separately above (empty pre-prerender
+  // shell, not-found title/description, an id-bearing noindex, no canonical, and every
+  // route-scoped social tag either absent-because-canonical-derived or equal to the not-found
+  // value it comes from). Keep this sentence and the checks above in step: a claim of absence is
+  // only worth as much as the set it was actually evaluated over.
+  const redirectRouteCount = staticRoutes.filter((route) => route.redirectTarget !== undefined).length;
   console.log(
     `[verify-seo] verified ${entries.length} sitemap URL(s) (200, no redirect, self-canonical, exactly one real <h1>) ` +
-      `and ${staticRoutes.length} configured static route(s) (200, no redirect, exactly one real <h1>, expected canonical, ` +
-      `declared JSON-LD present with the shared script id and matching content, every same-origin asset it names served ` +
-      `200) — with no JSON-LD on any sitemap URL or configured route that declares none — and, on every one of those ` +
-      `pages, each of the ${REQUIRED_ROUTE_SCOPED_SOCIAL_TAGS.length} route-scoped social tags present exactly once and equal ` +
+      `and ${staticRoutes.length - redirectRouteCount} configured page route(s) (200, no redirect, exactly one real ` +
+      `<h1>, expected canonical, declared JSON-LD present with the shared script id and matching content, every ` +
+      `same-origin asset it names served 200) plus ${redirectRouteCount} redirect stub(s) (200, expected canonical, ` +
+      `forwarding to its declared destination by a ROOT-RELATIVE meta refresh, an id-bearing noindex, and carrying no ` +
+      `<h1> of its own) — with no JSON-LD on any sitemap URL or configured route that declares none — and, on every ` +
+      `one of those pages AND every redirect stub alike, each of the ${REQUIRED_ROUTE_SCOPED_SOCIAL_TAGS.length} ` +
+      `route-scoped social tags present exactly once and equal ` +
       `to the page's own title/description/canonical, every site-constant social tag present, non-empty and genuinely ` +
       `constant across the corpus, each of the ${MIRRORED_SOCIAL_TAG_PAIRS.length} mirrored og:/twitter: pair(s) ` +
-      `carrying one value in both vocabularies, social image ${socialImageChecked} — plus ${internalLinksChecked} ` +
+      `carrying one value in both vocabularies, social image ${socialImageChecked} — with dist/404.html itself ` +
+      `holding the empty pre-prerender mount point, the declared not-found title/description, an id-bearing noindex ` +
+      `robots directive, no canonical link, no structured data, and each of the same ` +
+      `${REQUIRED_ROUTE_SCOPED_SOCIAL_TAGS.length} route-scoped social tags either absent (canonical-derived) or ` +
+      `equal to the not-found value it derives from — plus ${internalLinksChecked} ` +
       `distinct internal link target(s) across those pages, each served 200 with no redirect (composed-artifact-only ` +
       `mounts ${COMPOSED_ONLY_LINK_PREFIXES.join(', ')} excluded, each re-proven absent from this build so none can ` +
       'be shadowing a real path) — all clean',

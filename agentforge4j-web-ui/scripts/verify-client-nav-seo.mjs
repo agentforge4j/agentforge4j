@@ -50,6 +50,14 @@ const UNKNOWN_ROUTE_PATH = '/definitely-not-a-real-route-cf1d9d/';
  * tag `usePageSeo` is responsible for, and the count of each so a hook that APPENDS a second
  * og:title instead of updating the first is caught rather than passing on "the first one is right".
  *
+ * "Every tag" is the literal contract, and it has to be maintained by hand: a tag the hook writes
+ * but this function does not read is a tag whose direct-load and client-navigation states are never
+ * compared, so the one defect class this whole file exists to catch goes uncaught for it. `robots`
+ * is the case in point — it is the tag that DIFFERS between a real route and a not-found one, which
+ * makes it the one whose convergence is least safe to assume, and it was absent from this list
+ * while the doc above already claimed completeness. Add the corresponding entry here whenever
+ * `applyRouteSeo` grows a write.
+ *
  * Runs inside the page — Playwright serializes this function and executes it in the browser, so
  * `document` here is that page's real DOM global, never a Node one (the same arrangement, and the
  * same lint exemption, prerender-routes.mjs already uses for its in-browser predicates). */
@@ -68,6 +76,7 @@ const readHeadState = () => {
       count: canonicalLinks.length,
       content: canonicalLinks.map((link) => link.getAttribute('href')),
     },
+    robots: metaByKey('name', 'robots'),
     ogTitle: metaByKey('property', 'og:title'),
     ogDescription: metaByKey('property', 'og:description'),
     ogUrl: metaByKey('property', 'og:url'),
@@ -99,7 +108,15 @@ function collectNavigablePaths({
   const catalogueData = existsSync(catalogueDataPath)
     ? JSON.parse(readFileSync(catalogueDataPath, 'utf8'))
     : { workflows: [] };
-  const paths = routes.map((route) => (route.path === '/' ? '/' : `${route.path}/`));
+  // Redirect routes are excluded: they are forwards, not destinations. Visiting one lands the
+  // browser on its target, so "the head at this path" is not a thing that exists for them — and a
+  // convergence check that waited for the location to settle on the redirecting address would hang
+  // rather than fail, which is the worst way to learn this. Their behaviour is covered where it
+  // belongs: verify-seo.mjs asserts the served stub forwards, is noindex and carries no content,
+  // and tests/routeInventory.test.ts asserts each one targets a real indexable route.
+  const paths = routes
+    .filter((route) => !route.redirectTo)
+    .map((route) => (route.path === '/' ? '/' : `${route.path}/`));
   for (const workflow of catalogueData.workflows ?? []) {
     paths.push(`/catalogue/${workflow.id}/`);
   }
@@ -399,8 +416,8 @@ if (process.argv[1]?.endsWith('verify-client-nav-seo.mjs')) {
           `navigation(s) checked in headless Chromium — ${clickedTransitions} by clicking the site's own rendered ` +
           `link, ${pushedTransitions} by history push for routes the departure page links to nowhere. Every one ` +
           'stayed in the document (window sentinel survived, so none silently degraded to a full page load) and ' +
-          'reaches the same title, description, canonical, og:*, twitter:* and JSON-LD state (and the same tag ' +
-          'COUNTS) as a direct load of that URL',
+          'reaches the same title, description, canonical, robots, og:*, twitter:* and JSON-LD state (and the ' +
+          'same tag COUNTS) as a direct load of that URL',
       );
     })
     .catch((error) => {
