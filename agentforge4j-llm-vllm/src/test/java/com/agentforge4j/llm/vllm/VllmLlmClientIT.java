@@ -154,7 +154,7 @@ class VllmLlmClientIT {
 
       assertThatThrownBy(() -> client.execute(request))
           .isInstanceOf(LlmInvocationException.class)
-          .hasMessageContaining("vllm request failed");
+          .hasMessageContaining("vllm response body must not be blank");
     }
   }
 

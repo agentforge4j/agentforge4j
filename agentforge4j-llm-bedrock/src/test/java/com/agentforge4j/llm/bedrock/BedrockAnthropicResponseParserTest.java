@@ -47,6 +47,24 @@ class BedrockAnthropicResponseParserTest {
   }
 
   @Test
+  void truncatesTheEmbeddedResponseBodyAtExactlyTheSharedBound() {
+    String padding = "0123456789".repeat(300) + "_TAIL_MARKER_END";
+    String json = "{\"model\":\"%s\",\"content\":[]}".formatted(padding);
+
+    assertThatThrownBy(() -> parser.parse(json, mapper, TEST_MODEL_ID))
+        .isInstanceOf(LlmInvocationException.class)
+        .hasMessageContaining("missing or empty content array")
+        .satisfies(thrown -> {
+          String message = thrown.getMessage();
+          // Exactly 500 characters of the body survive: the first 500 are present, and the
+          // 501st is not. A widened bound fails here instead of shipping.
+          assertThat(message).contains(json.substring(0, 500));
+          assertThat(message).doesNotContain(json.substring(0, 501));
+          assertThat(message).doesNotContain("_TAIL_MARKER_END");
+        });
+  }
+
+  @Test
   void rejectsEmptyTextBlocks() {
     String json = """
         {"content":[{"type":"text","text":"  "},{"type":"tool_use","name":"x","id":"1","input":{}}]}
@@ -60,7 +78,7 @@ class BedrockAnthropicResponseParserTest {
   void rejectsBlankJson() {
     assertThatThrownBy(() -> parser.parse("   ", mapper, TEST_MODEL_ID))
         .isInstanceOf(LlmInvocationException.class)
-        .hasMessageContaining("blank");
+        .hasMessageContaining("Bedrock response body must not be blank");
   }
 
   @Test

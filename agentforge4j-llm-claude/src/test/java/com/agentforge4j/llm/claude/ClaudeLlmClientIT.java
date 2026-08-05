@@ -279,7 +279,7 @@ class ClaudeLlmClientIT {
 
       assertThatThrownBy(() -> client.execute(request))
           .isInstanceOf(LlmInvocationException.class)
-          .hasMessageContaining("json");
+          .hasMessageContaining("claude response body must not be blank");
     }
   }
 
