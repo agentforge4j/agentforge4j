@@ -51,10 +51,19 @@ class RawProviderConfigurationTest {
   }
 
   @Test
-  void rejectsMalformedDurationWithoutEchoingTheValue() {
+  void rejectsMalformedDurationNamingEveryAcceptedFormButNotTheValue() {
     assertThatThrownBy(() -> single("request-timeout", "not-a-duration").getDuration("request-timeout"))
         .isInstanceOf(LlmProviderConfigurationException.class)
         .hasMessageContaining("agentforge4j.llm.openai.request-timeout")
+        // Every form the shared grammar accepts, so an operator who wrote the wrong one is told what
+        // the right ones are. The unitless form matters most: a bare number meaning seconds is read
+        // as milliseconds, and this message is the only place that says so.
+        .hasMessageContaining("PT15S")
+        .hasMessageContaining("15s")
+        .hasMessageContaining("500ms")
+        .hasMessageContaining("unitless number of milliseconds")
+        .hasMessageContaining("5000 (five seconds)")
+        // Unchanged rule: name the provider and the key, never the offending value.
         .hasMessageNotContaining("not-a-duration");
   }
 

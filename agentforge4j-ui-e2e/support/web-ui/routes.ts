@@ -25,10 +25,28 @@ export const SITE_ROUTES: readonly SiteRoute[] = [
   { path: '/architecture', heading: 'Architecture' },
   { path: '/releases', heading: 'Releases' },
   { path: '/community', heading: 'Community & contributing' },
-  { path: '/contributing', heading: 'Community & contributing' },
+  // /contributing is deliberately absent: it is no longer a page. It used to render a second full
+  // copy of the Community page, distinguished only by a canonical hint; it is now a redirect to
+  // /community/ and has no <h1>, no content and no visual state of its own to capture. It is
+  // covered instead by SITE_REDIRECTS below, which asserts what a redirect is actually for.
   { path: '/security', heading: 'Security' },
   { path: '/legal', heading: 'Legal' },
   { path: '/contact', heading: 'Contact' },
+] as const;
+
+/** An address the site keeps alive for inbound links but no longer serves a page at: it forwards
+ *  to `destination` and renders nothing of its own. `destinationHeading` is the <h1> that proves
+ *  the forward actually arrived, rather than merely that something loaded. */
+export interface SiteRedirect {
+  readonly path: string;
+  readonly destination: string;
+  readonly destinationHeading: string;
+}
+
+/** The redirect inventory, kept beside SITE_ROUTES so the two cannot disagree about what an
+ *  address is. A route belongs in exactly one of these lists. */
+export const SITE_REDIRECTS: readonly SiteRedirect[] = [
+  { path: '/contributing', destination: '/community/', destinationHeading: 'Community & contributing' },
 ] as const;
 
 /** A real, currently-shipped catalogue workflow id — used by the catalogue-detail entry check

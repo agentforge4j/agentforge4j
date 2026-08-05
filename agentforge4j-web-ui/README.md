@@ -34,10 +34,33 @@ application (not published to npm) and is independent of the Maven reactor.
   defined in `agentforge4j-docs/scripts/product-name.mjs`, imported via a relative path — not a
   duplicated copy. Generated/build output (`dist/`, `node_modules/`, `.tsbuildinfo` caches) is
   never in scope.
-- **404**: `scripts/copy-404.mjs` ships `dist/404.html` as a byte-identical copy of `dist/index.html`
-  after every build, so GitHub Pages serves a real HTTP 404 with the site's own branded not-found
-  page.
+- **404**: `scripts/copy-404.mjs` ships `dist/404.html` as a copy of `dist/index.html` after every
+  build, so GitHub Pages serves a real HTTP 404 with the site's own branded not-found page.
+  `scripts/build-seo.mjs` then rewrites that copy's `<head>` — and only its head; the body stays the
+  empty pre-prerender mount point — so the catch-all describes itself as a not-found page instead of
+  as the home page: the not-found title and description, a `noindex` robots directive, no canonical
+  link and no `og:url`, no structured data, and social tags carrying the not-found copy.
+  `scripts/verify-seo.mjs` gates every one of those on each real build.
 - **Styling**: Tailwind CSS 4, semantic design tokens in `src/styles/tokens.css`.
+
+## Sibling modules this build reads
+
+This module is not buildable on its own — its `pre*` npm scripts generate `src/generated/` from two
+sibling checkouts, so the repository root must be present:
+
+| Read from | By | Produces |
+| --- | --- | --- |
+| `../agentforge4j-workflows-catalog` | `scripts/build-catalogue-data.mjs` | `src/generated/catalogue-data.json` |
+| `../agentforge4j-docs` (`versions.json`, `lts.json`, `scripts/support-window.mjs`, `scripts/redirect-config.mjs`) | `scripts/build-docs-entry.mjs` | `src/generated/docs-entry.json` |
+
+The docs dependency is deliberate and one-directional at the source level: the site's Docs links must
+resolve to whatever version the docs build itself considers current, so both sides call the *same*
+pure functions over the *same* version lists rather than keeping two copies of the rule. A release
+cut moves both with no code change. Nothing in `agentforge4j-docs` imports from here — it composes
+this module's **built output** (`agentforge4j-docs/scripts/assemble-site.mjs`), not its sources.
+
+`Web UI` CI runs on every push and pull request with no `paths:` filter, so a change on either side
+of that coupling is always gated.
 
 ## Local development
 

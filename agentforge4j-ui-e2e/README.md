@@ -64,9 +64,11 @@ either `npm run test:e2e:builder -- --headed` or `npm run test:e2e:web-ui -- --h
 
 `specs/web-ui/hosting.spec.ts` pins how the plain (un-assembled) `agentforge4j-web-ui` SPA build
 behaves on GitHub-Pages-style static hosting: any known route with no matching on-disk file
-(every route except `/`) is served via the `404.html` SPA-fallback (`scripts/copy-404.mjs` makes
-it byte-identical to `index.html`), so the response carries a real HTTP 404 status and the page
-then boots the SPA client-side to render the correct route. The spec runs a minimal
+(every route except `/`) is served via the `404.html` SPA-fallback (`scripts/copy-404.mjs` copies
+it from `index.html`, and `scripts/build-seo.mjs` then rewrites its `<head>` alone to the site's
+not-found metadata — the body it boots from stays the same empty mount point), so the response
+carries a real HTTP 404 status and the page then boots the SPA client-side to render the correct
+route. The spec runs a minimal
 GitHub-Pages-equivalent static server against the already-built `dist/` rather than Vite's preview
 server, whose built-in SPA-fallback middleware would return 200 and mask whether the `404.html`
 mechanism itself works.

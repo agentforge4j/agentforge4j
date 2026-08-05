@@ -2,6 +2,7 @@
 package com.agentforge4j.llm.claude;
 
 import com.agentforge4j.llm.AbstractHttpLlmClient;
+import com.agentforge4j.llm.LlmHttpErrorBodyTruncate;
 import com.agentforge4j.llm.api.LlmExecutionRequest;
 import com.agentforge4j.llm.api.LlmExecutionResponse;
 import com.agentforge4j.llm.api.LlmInvocationException;
@@ -12,7 +13,7 @@ import com.agentforge4j.llm.claude.dto.ClaudeRequest;
 import com.agentforge4j.llm.claude.dto.ClaudeResponse;
 import com.agentforge4j.llm.claude.dto.ClaudeSystemContentBlock;
 import com.agentforge4j.llm.claude.dto.ClaudeUsage;
-import com.agentforge4j.llm.claude.dto.InputRole;
+import com.agentforge4j.llm.wireprotocol.InputRole;
 import com.agentforge4j.util.Validate;
 import com.agentforge4j.util.text.CodeFence;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -91,15 +92,17 @@ public final class ClaudeLlmClient extends AbstractHttpLlmClient {
    */
   @Override
   protected LlmExecutionResponse validateAndExtractResponse(String json) throws IOException {
-    Validate.notBlank(json, () -> new LlmInvocationException("LLM client json must not be blank"));
+    Validate.notBlank(json, () -> new LlmInvocationException(
+        "%s response body must not be blank".formatted(getProviderName())));
+    String truncatedJson = LlmHttpErrorBodyTruncate.truncateForEmbeddedMessage(json);
     ClaudeResponse response = objectMapper.readValue(json, ClaudeResponse.class);
     Validate.notNull(response, () -> new LlmInvocationException(
         "Claude response deserialized to null for model %s: %s".formatted(
-            getDefaultModel(), json)));
+            getDefaultModel(), truncatedJson)));
 
     List<ClaudeContentBlock> content = Validate.notEmpty(response.content(),
         () -> new LlmInvocationException(
-            "Claude response content is empty: %s".formatted(json)));
+            "Claude response content is empty: %s".formatted(truncatedJson)));
 
     String text = content.stream()
         .filter(block -> block != null && "text".equals(block.type()))
@@ -107,7 +110,7 @@ public final class ClaudeLlmClient extends AbstractHttpLlmClient {
         .filter(StringUtils::isNotBlank)
         .findFirst()
         .orElseThrow(() -> new LlmInvocationException(
-            "Claude response has no text content block: %s".formatted(json)));
+            "Claude response has no text content block: %s".formatted(truncatedJson)));
 
     return new LlmExecutionResponse(
         CodeFence.strip(text.strip()),

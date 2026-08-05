@@ -148,7 +148,7 @@ class ClaudeLlmClientTest {
 
       assertThatThrownBy(() -> client.validateAndExtractResponse(""))
           .isInstanceOf(LlmInvocationException.class)
-          .hasMessageContaining("json");
+          .hasMessageContaining("claude response body must not be blank");
     }
 
     @Test
@@ -198,6 +198,26 @@ class ClaudeLlmClientTest {
       assertThatThrownBy(() -> client.validateAndExtractResponse(json))
           .isInstanceOf(LlmInvocationException.class)
           .hasMessageContaining("no text content");
+    }
+
+    @Test
+    void shouldTruncateLargeResponseBodyEmbeddedInExceptionMessage() {
+      ClaudeLlmClient client = new ClaudeLlmClient(new ObjectMapper(),
+          FixedClaudeConfiguration.defaults());
+      String largePadding = "0123456789".repeat(300) + "_TAIL_MARKER_END";
+      String json = "{\"model\":\"%s\",\"content\":[]}".formatted(largePadding);
+
+      assertThatThrownBy(() -> client.validateAndExtractResponse(json))
+          .isInstanceOf(LlmInvocationException.class)
+          .hasMessageContaining("empty")
+          .satisfies(thrown -> {
+            String message = thrown.getMessage();
+            // Exactly 500 characters of the body survive: the first 500 are present, and the
+            // 501st is not. A widened bound fails here instead of shipping.
+            assertThat(message).contains(json.substring(0, 500));
+            assertThat(message).doesNotContain(json.substring(0, 501));
+            assertThat(message).doesNotContain("_TAIL_MARKER_END");
+          });
     }
 
     @Test
@@ -461,16 +481,24 @@ class ClaudeLlmClientTest {
     }
 
     @Test
-    void shouldCapBreakpointsDeepestFirst() throws Exception {
+    void shouldMarkOnlyLayersWhoseCumulativePrefixClearsTheThreshold() throws Exception {
       String separator = "\n\n";
       String layer1 = cacheableLayerUtf8(1023);
       String layer2 = cacheableLayerUtf8(4096);
       String layer3 = cacheableLayerUtf8(4096);
+      String systemPrompt = layer1 + separator + layer2 + separator + layer3;
       PromptLayerBoundaries boundaries = boundariesFor(layer1, separator, layer2, layer3);
-      boolean[] marked = ClaudePromptCacheSupport.selectBreakpoints(
-          boundaries, "claude-3-opus-20240229");
+      LlmExecutionRequest request = new LlmExecutionRequest(
+          "claude", "claude-3-opus-20240229", systemPrompt, "user", null, boundaries, null);
+      ClaudeLlmClient client = new ClaudeLlmClient(new ObjectMapper(),
+          FixedClaudeConfiguration.defaults());
 
-      assertThat(marked).containsExactly(false, true, true);
+      JsonNode system = parseRequestBody(client.buildHttpRequest(request)).path("system");
+
+      assertThat(system).hasSize(3);
+      assertThat(system.path(0).has("cache_control")).isFalse();
+      assertThat(system.path(1).path("cache_control").path("type").asText()).isEqualTo("ephemeral");
+      assertThat(system.path(2).path("cache_control").path("type").asText()).isEqualTo("ephemeral");
     }
 
     @Test

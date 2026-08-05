@@ -35,6 +35,23 @@ export interface SeoRouteEntry {
   /** Present only when this route's canonical URL is a different, real route (e.g. an
    * intentional alias serving identical content) — never a fabricated destination. */
   readonly canonicalPath?: string;
+  /**
+   * Present only when this path is not a page at all but a permanent forward to one — the value is
+   * the real route it forwards to.
+   *
+   * `/contributing` is the one such entry today. It used to be a full second copy of `/community`:
+   * the same component, the same prerendered body, the same visible content at a second address,
+   * with only a `canonicalPath` asking search engines to please disregard one of them. A canonical
+   * is a hint, and it was the only thing standing between the site and two indexable pages with
+   * identical content and conflicting titles. Forwarding removes the duplicate rather than
+   * annotating it, while keeping the address alive for inbound links that already exist — which is
+   * the whole reason it cannot simply be deleted.
+   *
+   * A redirect route has no content of its own, so it is never prerendered, never carries an `<h1>`,
+   * never appears in the sitemap, and is served as a `noindex` stub whose canonical names the
+   * destination.
+   */
+  readonly redirectTo?: string;
   /** `false` excludes this route from the sitemap (e.g. a non-canonical alias). Defaults to
    * included. */
   readonly sitemap?: boolean;
@@ -43,8 +60,41 @@ export interface SeoRouteEntry {
   readonly jsonLd?: JsonLd;
 }
 
+/**
+ * The metadata an address that matches no route gets — deliberately its own entry rather than a
+ * fall back to the home page's.
+ *
+ * Falling back to home was the audited defect. An unknown URL served the home page's title,
+ * description, canonical AND its WebSite+Organization+SoftwareSourceCode structured data, which
+ * says three untrue things at once: that a mistyped address is the home page, that the home page's
+ * identity claims apply to it, and — through the canonical — that a URL which does not exist is a
+ * legitimate alternate address for one that does. The HTTP 404 status was the only thing keeping
+ * that out of an index, and `/404.html` itself is served at 200, where no status protects anything.
+ *
+ * `canonicalPath` is absent by design, and its absence is meaningful: a not-found page gets NO
+ * canonical link at all. A canonical pointing at the home page would ask a crawler to consolidate a
+ * nonexistent URL into a real one (a textbook soft-404 signal), and a self-referential one would
+ * assert that this arbitrary address is a real, canonical page of the site. Neither is true; saying
+ * nothing is.
+ */
+export interface NotFoundSeo {
+  readonly title: string;
+  readonly description: string;
+  /** The `robots` directive a not-found page carries. `follow` is deliberate: the page is not
+   * indexable, but the site navigation on it is still worth crawling. */
+  readonly robots: string;
+}
+
 export const SITE_URL: string = seoData.siteUrl;
 export const SEO_ROUTES: readonly SeoRouteEntry[] = seoData.routes;
+export const NOT_FOUND_SEO: NotFoundSeo = seoData.notFound;
+
+/** Every route that is a permanent forward rather than a page — see `redirectTo`. App.tsx renders
+ * one `<Navigate replace>` per entry, so the router and the static shells agree about which paths
+ * are redirects without either side keeping its own list. */
+export const REDIRECT_ROUTES: readonly (SeoRouteEntry & { readonly redirectTo: string })[] = SEO_ROUTES.filter(
+  (entry): entry is SeoRouteEntry & { readonly redirectTo: string } => entry.redirectTo !== undefined,
+);
 
 /** Normalizes a path for *route-matching purposes only* — lowercased, with any trailing slash
  * (other than the root `/` itself) stripped. React Router's own default matching is
@@ -66,6 +116,20 @@ export function findSeoRoute(path: string): SeoRouteEntry | undefined {
   return BY_PATH.get(normalizeForMatch(path));
 }
 
+/** A site-relative path in the one trailing-slash form this site serves — the TypeScript twin of
+ * scripts/build-seo.mjs's exported `withTrailingSlash`, and the single place that rule is spelled
+ * out on this side. Every generated route shell is a directory (`dist/<path>/index.html`), which
+ * GitHub Pages only serves without a redirect at its trailing-slash address; `/` is already its own
+ * trailing slash, and an existing trailing slash collapses rather than doubling.
+ *
+ * Appending `'/'` by hand instead is what this exists to prevent: on `'/'` that yields `'//'`, a
+ * protocol-relative URL the browser reads as a foreign host, and on a path already written with a
+ * slash it yields a doubled one. Both pass every route-config gate, so the divergence would only
+ * show up in a browser. */
+export function withTrailingSlash(path: string): string {
+  return path === '/' ? '/' : `${path.replace(/\/+$/, '')}/`;
+}
+
 /** The absolute HTTPS canonical URL for a site-relative path (`/`, `/api`, ...) — always in the
  * trailing-slash form, matching scripts/build-seo.mjs's own `withTrailingSlash` exactly: every
  * generated route shell is a directory (`dist/<path>/index.html`), which GitHub Pages only serves
@@ -73,5 +137,5 @@ export function findSeoRoute(path: string): SeoRouteEntry | undefined {
  * emitting the same form the static shell already declared, or a SPA route transition would
  * silently rewrite `<link rel="canonical">` back to the redirecting non-slash form. */
 export function canonicalUrl(path: string): string {
-  return path === '/' ? `${SITE_URL}/` : `${SITE_URL}${path.replace(/\/+$/, '')}/`;
+  return `${SITE_URL}${withTrailingSlash(path)}`;
 }
