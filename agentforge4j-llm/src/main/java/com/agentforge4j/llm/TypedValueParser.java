@@ -1,12 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 package com.agentforge4j.llm;
 
+import com.agentforge4j.util.time.DurationParser;
 import java.time.Duration;
 import java.time.format.DateTimeParseException;
-import java.util.Locale;
 import java.util.function.Function;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 /**
  * Shared, package-private parsing for the typed-value accessors of {@link RawProviderConfiguration} and
@@ -16,17 +14,13 @@ import java.util.regex.Pattern;
  * {@link Throwable} when there is one, or {@code null} when a value is simply the wrong shape (for example an
  * unrecognised boolean token, or a duration that matches neither accepted grammar).
  *
- * <p>Duration parsing accepts both ISO-8601 (for example {@code PT15S}) and a compact shorthand — an amount plus an
- * optional {@code ns}/{@code us}/{@code ms}/{@code s}/{@code m}/{@code h}/{@code d} unit suffix, defaulting to
- * milliseconds (for example {@code 15s}, {@code 2m}, {@code 500ms}, {@code 5000}) — so a duration-typed
- * configuration value or provider option can be written in either form, regardless of which accessor reads it.
+ * <p>Duration parsing delegates to the shared {@link DurationParser} grammar — ISO-8601 (for example
+ * {@code PT15S}) and a compact shorthand (for example {@code 15s}, {@code 2m}, {@code 500ms},
+ * {@code 5000}) — so a duration-typed configuration value or provider option can be written in either
+ * form, regardless of which accessor reads it, and stays in lockstep with the bootstrap
+ * auto-discovery surface that shares the same grammar.
  */
 final class TypedValueParser {
-
-  // Compact duration shorthand: an amount plus an optional unit suffix (ns/us/ms/s/m/h/d), defaulting to
-  // milliseconds -- for example "15s", "2m", "500ms". Accepted alongside ISO-8601 so a duration value can be
-  // written in either form.
-  private static final Pattern COMPACT_DURATION = Pattern.compile("^([+-]?\\d+)\\s*([a-zA-Z]{0,2})$");
 
   private TypedValueParser() {
   }
@@ -94,34 +88,13 @@ final class TypedValueParser {
    * @return the parsed value
    */
   static Duration parseDuration(String value, Function<Throwable, LlmProviderConfigurationException> errorFactory) {
-    String lower = value.toLowerCase(Locale.ROOT);
-    if (lower.startsWith("p") || lower.startsWith("+p") || lower.startsWith("-p")) {
-      try {
-        return Duration.parse(value);
-      } catch (DateTimeParseException cause) {
-        throw errorFactory.apply(cause);
-      }
-    }
-    Matcher matcher = COMPACT_DURATION.matcher(value);
-    if (!matcher.matches()) {
-      throw errorFactory.apply(null);
-    }
     try {
-      long amount = Long.parseLong(matcher.group(1));
-      return switch (matcher.group(2).toLowerCase(Locale.ROOT)) {
-        case "", "ms" -> Duration.ofMillis(amount);
-        case "ns" -> Duration.ofNanos(amount);
-        case "us" -> Duration.ofNanos(Math.multiplyExact(amount, 1_000L));
-        case "s" -> Duration.ofSeconds(amount);
-        case "m" -> Duration.ofMinutes(amount);
-        case "h" -> Duration.ofHours(amount);
-        case "d" -> Duration.ofDays(amount);
-        default -> throw errorFactory.apply(null);
-      };
-    } catch (ArithmeticException | NumberFormatException cause) {
-      // An out-of-range amount (overflow on parse or on the microsecond multiply) is a malformed
-      // duration, not an ArithmeticException/NumberFormatException leak.
-      throw errorFactory.apply(cause);
+      return DurationParser.parse(value);
+    } catch (IllegalArgumentException failure) {
+      // DurationParser attaches the causing DateTimeParseException/numeric failure when one
+      // exists and none for a value that matches neither grammar's shape — the same distinction
+      // this method's errorFactory contract promises its callers.
+      throw errorFactory.apply(failure.getCause());
     }
   }
 }

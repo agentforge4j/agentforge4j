@@ -165,7 +165,7 @@ class OpenAiCompatibleLlmClientIT {
 
       assertThatThrownBy(() -> client.execute(request))
           .isInstanceOf(LlmInvocationException.class)
-          .hasMessageContaining("openai-compatible request failed");
+          .hasMessageContaining("openai-compatible response body must not be blank");
     }
   }
 
