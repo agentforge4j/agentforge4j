@@ -36,7 +36,7 @@
          build-from-source only; they gain the Central alternative once 0.1.0 is actually
          published, independent of this property. -->
     <agentforge4j.version>0.1.0</agentforge4j.version>
-    <license-maven-plugin.version>5.0.0</license-maven-plugin.version>
+    <license-maven-plugin.version>5.1.1</license-maven-plugin.version>
     <!-- Spring Boot — managed via its BOM so the spring-boot example declares starters versionless. -->
     <spring-boot.version>3.5.16</spring-boot.version>
     <!-- Re-asserts the framework's own commons-lang3 (it calls ObjectUtils.getIfNull, added in a
