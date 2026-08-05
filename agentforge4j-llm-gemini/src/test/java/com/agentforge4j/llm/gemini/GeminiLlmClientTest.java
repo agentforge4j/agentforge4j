@@ -8,7 +8,7 @@ import com.agentforge4j.llm.gemini.dto.GeminiContent;
 import com.agentforge4j.llm.gemini.dto.GeminiPart;
 import com.agentforge4j.llm.gemini.dto.GeminiRequest;
 import com.agentforge4j.llm.gemini.dto.GeminiSystemInstruction;
-import com.agentforge4j.llm.gemini.dto.InputRole;
+import com.agentforge4j.llm.wireprotocol.InputRole;
 import com.fasterxml.jackson.core.JsonParseException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -108,6 +108,26 @@ class GeminiLlmClientTest {
 
   @Nested
   class ValidateAndExtractResponseTests {
+
+    @Test
+    void should_truncate_the_embedded_response_body_at_exactly_the_shared_bound() {
+      ObjectMapper mapper = new ObjectMapper();
+      GeminiLlmClient client = new GeminiLlmClient(mapper, FixedGeminiConfiguration.defaults());
+      String padding = "0123456789".repeat(300) + "_TAIL_MARKER_END";
+      String json = "{\"modelVersion\":\"%s\",\"candidates\":[]}".formatted(padding);
+
+      assertThatThrownBy(() -> client.validateAndExtractResponse(json))
+          .isInstanceOf(LlmInvocationException.class)
+          .hasMessageContaining("has no candidates")
+          .satisfies(thrown -> {
+            String message = thrown.getMessage();
+            // Exactly 500 characters of the body survive: the first 500 are present, and the
+            // 501st is not. A widened bound fails here instead of shipping.
+            assertThat(message).contains(json.substring(0, 500));
+            assertThat(message).doesNotContain(json.substring(0, 501));
+            assertThat(message).doesNotContain("_TAIL_MARKER_END");
+          });
+    }
 
     @Test
     void should_throw_when_json_blank() {

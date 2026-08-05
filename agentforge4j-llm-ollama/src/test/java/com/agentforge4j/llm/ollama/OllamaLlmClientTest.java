@@ -97,7 +97,8 @@ class OllamaLlmClientTest {
       OllamaLlmClient client = new OllamaLlmClient(mapper, config);
 
       assertThatThrownBy(() -> client.validateAndExtractResponse(""))
-          .isInstanceOf(LlmInvocationException.class);
+          .isInstanceOf(LlmInvocationException.class)
+          .hasMessageContaining("ollama response body must not be blank");
     }
 
     @Test
@@ -122,6 +123,28 @@ class OllamaLlmClientTest {
       assertThatThrownBy(() -> client.validateAndExtractResponse(invalidResponse))
           .isInstanceOf(LlmInvocationException.class)
           .hasMessageContaining("missing message");
+    }
+
+    @Test
+    void shouldTruncateLargeResponseBodyEmbeddedInExceptionMessage() {
+      OllamaConfiguration config = new TestOllamaConfiguration();
+      ObjectMapper mapper = new ObjectMapper();
+      OllamaLlmClient client = new OllamaLlmClient(mapper, config);
+      String largePadding = "0123456789".repeat(300) + "_TAIL_MARKER_END";
+      String invalidResponse =
+          "{\"model\":\"%s\",\"error\":null,\"message\":null}".formatted(largePadding);
+
+      assertThatThrownBy(() -> client.validateAndExtractResponse(invalidResponse))
+          .isInstanceOf(LlmInvocationException.class)
+          .hasMessageContaining("missing message")
+          .satisfies(thrown -> {
+            String message = thrown.getMessage();
+            // Exactly 500 characters of the body survive: the first 500 are present, and the
+            // 501st is not. A widened bound fails here instead of shipping.
+            assertThat(message).contains(invalidResponse.substring(0, 500));
+            assertThat(message).doesNotContain(invalidResponse.substring(0, 501));
+            assertThat(message).doesNotContain("_TAIL_MARKER_END");
+          });
     }
 
     @Test
