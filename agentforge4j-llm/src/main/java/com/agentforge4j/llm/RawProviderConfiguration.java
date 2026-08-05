@@ -147,8 +147,12 @@ public final class RawProviderConfiguration {
   }
 
   private LlmProviderConfigurationException durationError(String key) {
+    // Names every accepted form -- the unitless one especially: an operator who writes a bare number
+    // meaning seconds gets milliseconds, and this message is where they find that out. The offending
+    // value is still never echoed, only the provider and the fully-qualified key.
     return new LlmProviderConfigurationException(
-        "Provider '%s' property '%s' must be a duration (ISO-8601 such as PT15S, or shorthand such as 15s)"
+        ("Provider '%s' property '%s' must be a duration — ISO-8601 such as PT15S, compact shorthand "
+            + "such as 15s or 500ms, or a unitless number of milliseconds such as 5000 (five seconds)")
             .formatted(providerId, fullKey(key)));
   }
 

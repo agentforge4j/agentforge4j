@@ -8,9 +8,9 @@ import com.agentforge4j.llm.LlmSecretReference;
 import com.agentforge4j.llm.LlmSecretResolver;
 import com.agentforge4j.llm.api.LlmClient;
 import com.agentforge4j.util.Validate;
+import com.agentforge4j.util.time.DurationParser;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.Duration;
-import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -28,7 +28,9 @@ import org.apache.commons.lang3.StringUtils;
  * Auto-discovery reads keys under {@code agentforge4j.llm.<provider>.} in the canonical
  * <b>lowercase, dot-separated</b> form: {@code api.key} (credential — a literal value or an
  * {@code ${env:NAME}}/{@code ${sysprop:name}} reference), {@code base.url}, {@code default.model},
- * {@code connect.timeout} (ISO-8601, e.g. {@code PT30S}). Every other {@code agentforge4j.llm.<provider>.*} key is a
+ * {@code connect.timeout} (ISO-8601 such as {@code PT30S}, or the shared compact shorthand such as {@code 30s}
+ * and {@code 500ms}; a unitless number is interpreted as milliseconds, so {@code 5000} means five seconds —
+ * see {@link DurationParser}). Every other {@code agentforge4j.llm.<provider>.*} key is a
  * provider-specific option (for example {@code request.timeout}, {@code auth.header.name}, {@code api.version}).
  *
  * <p>Environment variables map by {@code AGENTFORGE4J_LLM_<PROVIDER>_<KEY>} with {@code _} normalised
@@ -252,11 +254,17 @@ final class LlmClientWiring {
       return DEFAULT_CONNECT_TIMEOUT;
     }
     try {
-      return Duration.parse(value);
-    } catch (DateTimeParseException cause) {
+      // Shared grammar with RawProviderConfiguration/MapLlmProviderOptions: the same logical
+      // property accepts the same forms whether set programmatically or auto-discovered here.
+      // DurationParser trims the value itself, so no trimming is needed at this call site.
+      return DurationParser.parse(value);
+    } catch (IllegalArgumentException cause) {
+      // Names every accepted form, matching the provider-option and raw-configuration messages. The
+      // unitless one matters most here: this is the path where an operator writes a bare number.
       throw new LlmProviderConfigurationException(
-          "Provider '%s' option '%s' is not an ISO-8601 duration (e.g. PT30S)".formatted(
-              provider, CONNECT_TIMEOUT), cause);
+          ("Provider '%s' option '%s' is not a valid duration — ISO-8601 such as PT30S, compact shorthand "
+              + "such as 30s or 500ms, or a unitless number of milliseconds such as 5000 (five seconds)")
+              .formatted(provider, CONNECT_TIMEOUT), cause);
     }
   }
 
