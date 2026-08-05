@@ -259,8 +259,11 @@ final class LlmClientWiring {
       // DurationParser trims the value itself, so no trimming is needed at this call site.
       return DurationParser.parse(value);
     } catch (IllegalArgumentException cause) {
+      // Names every accepted form, matching the provider-option and raw-configuration messages. The
+      // unitless one matters most here: this is the path where an operator writes a bare number.
       throw new LlmProviderConfigurationException(
-          "Provider '%s' option '%s' is not a valid duration (ISO-8601 like PT30S, or shorthand like 30s, 500ms)"
+          ("Provider '%s' option '%s' is not a valid duration — ISO-8601 such as PT30S, compact shorthand "
+              + "such as 30s or 500ms, or a unitless number of milliseconds such as 5000 (five seconds)")
               .formatted(provider, CONNECT_TIMEOUT), cause);
     }
   }

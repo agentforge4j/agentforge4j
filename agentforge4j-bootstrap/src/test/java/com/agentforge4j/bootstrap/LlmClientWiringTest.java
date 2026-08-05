@@ -204,10 +204,13 @@ class LlmClientWiringTest {
     assertThatThrownBy(() -> assemble(Map.of()))
         .isInstanceOf(LlmProviderConfigurationException.class)
         .hasMessageContaining("connect.timeout")
-        // The message names both accepted forms, so an operator who wrote the wrong one is told
-        // what the right ones are without having to find the documentation.
+        // The message names every accepted form, so an operator who wrote the wrong one is told what
+        // the right ones are without having to find the documentation. The unitless form is the one
+        // that most needs saying here: this is the path where a bare number gets written.
         .hasMessageContaining("PT30S")
-        .hasMessageContaining("30s");
+        .hasMessageContaining("30s")
+        .hasMessageContaining("unitless number of milliseconds")
+        .hasMessageContaining("5000 (five seconds)");
   }
 
   @Test
