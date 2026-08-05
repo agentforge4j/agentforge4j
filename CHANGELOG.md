@@ -23,6 +23,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **One shared wire protocol behind the OpenAI-style provider adapters.** The request and response
+  shapes that OpenAI, OpenAI-compatible, Azure OpenAI, Mistral and vLLM had each been carrying
+  their own copy of now live once, in the exported `com.agentforge4j.llm.wireprotocol` package,
+  along with a single message-role enum shared by every provider that names a role on the wire.
+  Unknown response fields are tolerated by these types themselves rather than depending on the
+  `ObjectMapper` the embedding application supplies, so a provider adding a field cannot break
+  parsing on any host. Two behaviour changes ride along: the OpenAI-compatible adapter now omits
+  `max_output_tokens` entirely when no output-token budget is requested, instead of sending an
+  explicit `null` that strict servers reject; and Mistral now reports cached input tokens when its
+  deployment provides them, where it previously always reported none. `LlmHttpErrorBodyTruncate`
+  is public, and the 500-character cap it applies to response bodies embedded in exception messages
+  now also covers the parse-failure paths of all nine HTTP providers, not just non-2xx responses.
+- **Some providers log the full response body at DEBUG.** The Azure OpenAI, Bedrock, Gemini,
+  Mistral, OpenAI, OpenAI-compatible and vLLM adapters log the complete response body at `DEBUG`
+  before parsing it, so a malformed or unexpected payload can be inspected without reproducing the
+  call. Claude and Ollama do not. Operators enabling `DEBUG` on `com.agentforge4j.llm.*` should
+  note that this writes model output verbatim to logs; `INFO` and above are unaffected, and
+  anything embedded in an exception message or `ERROR` log stays capped at 500 characters. A
+  single provider-independent policy for response-body logging is still to be decided.
 - **Retry-policy absence is expressed the same way on both LLM contracts — breaking.**
   `LlmClientConfiguration.getRetryPolicy()` now returns a nullable `LlmRetryPolicy` instead of
   `Optional<LlmRetryPolicy>`, matching `LlmClient.getRetryPolicy()`, which already used `null` to
@@ -43,6 +62,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Removed
 
 ### Fixed
+
+- **Bootstrap `connect.timeout` uses the shared duration grammar.** A provider's connect timeout
+  discovered from an environment variable or system property previously accepted ISO-8601 only,
+  while the same setting written as provider configuration or a provider option accepted more; all
+  three now accept ISO-8601 (`PT30S`), the compact shorthand (`30s`, `500ms`), and a unitless
+  amount interpreted as milliseconds (`5000` means five seconds). Duration-typed settings on other
+  surfaces keep their own grammar. The bootstrap README documented an
+  `AGENTFORGE4J_LLM_<PROVIDER>_CONNECT_TIMEOUT_SECONDS` key that was never read — the key is
+  `AGENTFORGE4J_LLM_<PROVIDER>_CONNECT_TIMEOUT`.
 
 ### Security
 

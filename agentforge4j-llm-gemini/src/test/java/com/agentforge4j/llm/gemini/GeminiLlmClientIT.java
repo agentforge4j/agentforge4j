@@ -151,8 +151,7 @@ class GeminiLlmClientIT {
 
       assertThatThrownBy(() -> client.execute(request))
           .isInstanceOf(LlmInvocationException.class)
-          .hasMessageMatching(
-              "(?s).*(gemini request failed|LLM client json must not be null).*");
+          .hasMessageContaining("gemini response body must not be blank");
     }
   }
 

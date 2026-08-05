@@ -16,6 +16,12 @@ final class MapLlmProviderOptions implements LlmProviderOptions {
 
   static final MapLlmProviderOptions EMPTY = new MapLlmProviderOptions("", Map.of());
 
+  // Names every form the shared duration grammar accepts, including the unitless one -- an operator
+  // who writes a bare number meaning seconds gets milliseconds, so the message has to say so.
+  private static final String DURATION_EXPECTATION =
+      "a duration — ISO-8601 such as PT30S, compact shorthand such as 15s, 2m or 500ms, "
+          + "or a unitless number of milliseconds such as 5000 (five seconds)";
+
   private final String providerName;
   private final Map<String, String> values;
 
@@ -44,8 +50,8 @@ final class MapLlmProviderOptions implements LlmProviderOptions {
 
   @Override
   public Optional<Duration> duration(String key) {
-    return trimmed(key).map(value -> TypedValueParser.parseDuration(value,
-        cause -> invalid(key, "an ISO-8601 duration (e.g. PT30S) or shorthand (e.g. 15s, 2m, 500ms)", cause)));
+    return trimmed(key)
+        .map(value -> TypedValueParser.parseDuration(value, cause -> invalid(key, DURATION_EXPECTATION, cause)));
   }
 
   @Override
