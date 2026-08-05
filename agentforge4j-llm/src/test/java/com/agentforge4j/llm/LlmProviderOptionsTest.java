@@ -2,6 +2,7 @@
 package com.agentforge4j.llm;
 
 import java.time.Duration;
+import java.time.format.DateTimeParseException;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 
@@ -84,12 +85,23 @@ class LlmProviderOptionsTest {
   }
 
   @Test
-  void invalid_duration_throws() {
+  void invalid_duration_throws_naming_every_accepted_form_but_not_the_value() {
     LlmProviderOptions options = LlmProviderOptions.of("openai", Map.of("request.timeout", "not-a-duration"));
 
     assertThatThrownBy(() -> options.duration("request.timeout"))
         .isInstanceOf(LlmProviderConfigurationException.class)
-        .hasMessageContaining("request.timeout");
+        .hasMessageContaining("openai")
+        .hasMessageContaining("request.timeout")
+        // Every form the shared grammar accepts, so an operator who wrote the wrong one is told
+        // what the right ones are. The unitless form matters most: someone who writes a bare
+        // number meaning seconds gets milliseconds, and the message is where they find that out.
+        .hasMessageContaining("PT30S")
+        .hasMessageContaining("15s")
+        .hasMessageContaining("500ms")
+        .hasMessageContaining("unitless number of milliseconds")
+        .hasMessageContaining("5000 (five seconds)")
+        // Same rule as the other typed accessors: name the provider and key, never the value.
+        .hasMessageNotContaining("not-a-duration");
   }
 
   @Test
@@ -105,5 +117,42 @@ class LlmProviderOptionsTest {
     assertThat(options.duration("request.timeout")).contains(Duration.ofSeconds(15));
     assertThat(options.duration("retry.backoff")).contains(Duration.ofMinutes(2));
     assertThat(options.duration("poll.interval")).contains(Duration.ofMillis(500));
+  }
+
+  // ----- duration failure causes -----
+  //
+  // duration() is the only typed accessor that forwards the causing exception to the operator
+  // (RawProviderConfiguration deliberately discards it), so these three cases are what pins
+  // TypedValueParser's error-factory contract: the factory must receive the *original* failure,
+  // not the IllegalArgumentException the shared DurationParser wraps it in. Forwarding the wrapper
+  // instead of its cause leaves every message identical and fails only these assertions.
+
+  @Test
+  void malformed_iso_duration_keeps_the_parse_exception_as_the_cause() {
+    LlmProviderOptions options = LlmProviderOptions.of("openai", Map.of("request.timeout", "PT30X"));
+
+    assertThatThrownBy(() -> options.duration("request.timeout"))
+        .isInstanceOf(LlmProviderConfigurationException.class)
+        .hasCauseInstanceOf(DateTimeParseException.class);
+  }
+
+  @Test
+  void duration_matching_neither_grammar_has_no_cause() {
+    LlmProviderOptions options =
+        LlmProviderOptions.of("openai", Map.of("request.timeout", "not-a-duration"));
+
+    assertThatThrownBy(() -> options.duration("request.timeout"))
+        .isInstanceOf(LlmProviderConfigurationException.class)
+        .hasNoCause();
+  }
+
+  @Test
+  void overflowing_duration_amount_keeps_the_arithmetic_failure_as_the_cause() {
+    LlmProviderOptions options =
+        LlmProviderOptions.of("openai", Map.of("request.timeout", "9223372036854775807us"));
+
+    assertThatThrownBy(() -> options.duration("request.timeout"))
+        .isInstanceOf(LlmProviderConfigurationException.class)
+        .hasCauseInstanceOf(ArithmeticException.class);
   }
 }

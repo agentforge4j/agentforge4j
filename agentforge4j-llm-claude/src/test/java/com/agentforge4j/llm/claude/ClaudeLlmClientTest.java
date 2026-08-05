@@ -148,7 +148,7 @@ class ClaudeLlmClientTest {
 
       assertThatThrownBy(() -> client.validateAndExtractResponse(""))
           .isInstanceOf(LlmInvocationException.class)
-          .hasMessageContaining("json");
+          .hasMessageContaining("claude response body must not be blank");
     }
 
     @Test
@@ -198,6 +198,26 @@ class ClaudeLlmClientTest {
       assertThatThrownBy(() -> client.validateAndExtractResponse(json))
           .isInstanceOf(LlmInvocationException.class)
           .hasMessageContaining("no text content");
+    }
+
+    @Test
+    void shouldTruncateLargeResponseBodyEmbeddedInExceptionMessage() {
+      ClaudeLlmClient client = new ClaudeLlmClient(new ObjectMapper(),
+          FixedClaudeConfiguration.defaults());
+      String largePadding = "0123456789".repeat(300) + "_TAIL_MARKER_END";
+      String json = "{\"model\":\"%s\",\"content\":[]}".formatted(largePadding);
+
+      assertThatThrownBy(() -> client.validateAndExtractResponse(json))
+          .isInstanceOf(LlmInvocationException.class)
+          .hasMessageContaining("empty")
+          .satisfies(thrown -> {
+            String message = thrown.getMessage();
+            // Exactly 500 characters of the body survive: the first 500 are present, and the
+            // 501st is not. A widened bound fails here instead of shipping.
+            assertThat(message).contains(json.substring(0, 500));
+            assertThat(message).doesNotContain(json.substring(0, 501));
+            assertThat(message).doesNotContain("_TAIL_MARKER_END");
+          });
     }
 
     @Test

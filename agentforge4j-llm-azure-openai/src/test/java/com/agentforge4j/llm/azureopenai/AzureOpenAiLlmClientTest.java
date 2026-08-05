@@ -4,8 +4,8 @@ package com.agentforge4j.llm.azureopenai;
 import com.agentforge4j.llm.api.LlmExecutionRequest;
 import com.agentforge4j.llm.api.LlmInvocationException;
 import com.agentforge4j.llm.api.PromptLayerBoundaries;
+import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.exc.UnrecognizedPropertyException;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.io.ByteArrayOutputStream;
@@ -291,13 +291,38 @@ class AzureOpenAiLlmClientTest {
     }
 
     @Test
-    void should_propagate_jackson_failure_for_unknown_json_fields() {
+    void should_truncate_the_embedded_response_body_at_exactly_the_shared_bound() {
       ObjectMapper mapper = new ObjectMapper();
-      AzureOpenAiLlmClient client =
-          new AzureOpenAiLlmClient(mapper, FixedAzureOpenAiConfiguration.defaults());
+      AzureOpenAiLlmClient client = new AzureOpenAiLlmClient(mapper, FixedAzureOpenAiConfiguration.defaults());
+      String padding = "0123456789".repeat(300) + "_TAIL_MARKER_END";
+      String json = "{\"model\":\"%s\",\"choices\":[]}".formatted(padding);
 
+      assertThatThrownBy(() -> client.validateAndExtractResponse(json))
+          .isInstanceOf(LlmInvocationException.class)
+          .hasMessageContaining("choices are empty")
+          .satisfies(thrown -> {
+            String message = thrown.getMessage();
+            // Exactly 500 characters of the body survive: the first 500 are present, and
+            // the 501th is not. A widened bound fails here instead of shipping.
+            assertThat(message).contains(json.substring(0, 500));
+            assertThat(message).doesNotContain(json.substring(0, 501));
+            assertThat(message).doesNotContain("_TAIL_MARKER_END");
+          });
+    }
+
+    @Test
+    void should_tolerate_unknown_json_fields_even_under_a_strict_object_mapper() {
+      ObjectMapper strictMapper = new ObjectMapper()
+          .enable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES);
+      AzureOpenAiLlmClient client =
+          new AzureOpenAiLlmClient(strictMapper, FixedAzureOpenAiConfiguration.defaults());
+
+      // Unknown-field tolerance is a property of the shared wire-protocol DTOs, not of the
+      // ObjectMapper the embedding application happens to supply, so an unrecognized field is
+      // ignored and the response fails on its own missing content instead.
       assertThatThrownBy(() -> client.validateAndExtractResponse("{\"unexpected\":true}"))
-          .isInstanceOf(UnrecognizedPropertyException.class);
+          .isInstanceOf(LlmInvocationException.class)
+          .hasMessageContaining("choices are empty");
     }
 
     @Test
