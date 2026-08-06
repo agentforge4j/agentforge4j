@@ -9,6 +9,13 @@ body:
         never been decided or written down — and something upcoming depends on the answer. The goal
         is to force and record the choice, not to argue for one. For an outright defect use the bug
         report; for a new capability use the feature request.
+
+        Please do **not** raise a decision with security implications here — if the choice affects
+        the security of the framework or its users, report it privately first via
+        [SECURITY.md](https://github.com/agentforge4j/agentforge4j/blob/main/SECURITY.md).
+
+        This repository is public. Keep the issue to this framework: describe what depends on the
+        decision in terms of the framework's own behaviour, not downstream systems or plans.
   - type: dropdown
     id: component
     attributes:
@@ -39,7 +46,7 @@ body:
       description: >-
         Why this needs deciding rather than simply documenting. What contradicts what — a contract
         that reads one way and behaves another, two call sites that disagree, a documented intent
-        the implementation inverts. Include what depends on the answer and by when.
+        the implementation inverts. Include what in this framework depends on the answer, and when.
     validations:
       required: true
   - type: textarea
