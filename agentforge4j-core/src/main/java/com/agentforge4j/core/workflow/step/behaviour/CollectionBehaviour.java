@@ -19,7 +19,8 @@ import com.agentforge4j.util.Validate;
  * constraints; this record validates only intrinsic field bounds and does not itself enforce them.
  *
  * @param itemSchemaRef            optional id of a JSON schema validating each item's inline JSON;
- *                                 {@code null} when none
+ *                                 {@code null} when none, and never blank when present. The value
+ *                                 is kept verbatim; surrounding whitespace is not trimmed
  * @param minItems                minimum non-withdrawn items required to close; {@code 0} allows
  *                                 closing with no submissions
  * @param maxItems                maximum items accepted; {@code null} means unbounded
@@ -58,6 +59,10 @@ public record CollectionBehaviour(
   public static final int DEFAULT_MAX_INLINE_PAYLOAD_BYTES = 64 * 1024;
 
   public CollectionBehaviour {
+    if (itemSchemaRef != null) {
+      Validate.notBlank(itemSchemaRef,
+          "CollectionBehaviour itemSchemaRef must be null or non-blank");
+    }
     Validate.isNotNegative(minItems, "CollectionBehaviour minItems must not be negative");
     if (maxItems != null) {
       Validate.isGreaterThanZero(maxItems, "CollectionBehaviour maxItems must be at least 1");

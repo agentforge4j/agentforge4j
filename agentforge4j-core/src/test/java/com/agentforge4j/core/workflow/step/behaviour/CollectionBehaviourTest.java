@@ -66,6 +66,66 @@ class CollectionBehaviourTest {
   }
 
   @Test
+  void acceptsNullItemSchemaRefAsNoSchemaDeclared() {
+    CollectionBehaviour behaviour =
+        new CollectionBehaviour(null, 0, null, null, 0, null, null, null, null, null, null, null, null);
+
+    assertThat(behaviour.itemSchemaRef()).isNull();
+  }
+
+  @Test
+  void acceptsNonBlankItemSchemaRef() {
+    CollectionBehaviour behaviour =
+        new CollectionBehaviour("cv-schema", 0, null, null, 0, null, null, null, null, null, null,
+            null, null);
+
+    assertThat(behaviour.itemSchemaRef()).isEqualTo("cv-schema");
+  }
+
+  @Test
+  void rejectsEmptyItemSchemaRef() {
+    assertThatThrownBy(() ->
+        new CollectionBehaviour("", 0, null, null, 0, null, null, null, null, null, null, null, null))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("CollectionBehaviour")
+        .hasMessageContaining("itemSchemaRef");
+  }
+
+  @Test
+  void rejectsWhitespaceOnlyItemSchemaRef() {
+    assertThatThrownBy(() ->
+        new CollectionBehaviour("   ", 0, null, null, 0, null, null, null, null, null, null, null,
+            null))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("CollectionBehaviour")
+        .hasMessageContaining("itemSchemaRef");
+  }
+
+  /**
+   * The blank definition is {@code Validate}'s, which also treats Unicode space characters such as
+   * U+00A0 as blank; {@link String#isBlank()} would accept this value.
+   */
+  @Test
+  void rejectsItemSchemaRefMadeOnlyOfNonBreakingSpace() {
+    String nonBreakingSpace = Character.toString(0x00A0);
+
+    assertThatThrownBy(() ->
+        new CollectionBehaviour(nonBreakingSpace, 0, null, null, 0, null, null, null, null, null,
+            null, null, null))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("itemSchemaRef");
+  }
+
+  @Test
+  void keepsSurroundingWhitespaceOnAnOtherwiseNonBlankItemSchemaRef() {
+    CollectionBehaviour behaviour =
+        new CollectionBehaviour("  cv-schema  ", 0, null, null, 0, null, null, null, null, null,
+            null, null, null);
+
+    assertThat(behaviour.itemSchemaRef()).isEqualTo("  cv-schema  ");
+  }
+
+  @Test
   void serialisesAndDeserialisesViaSealedDiscriminator() throws Exception {
     StepBehaviour original = new CollectionBehaviour("cv-schema", 1, 10, 3, 2048,
         DuplicatePolicy.REJECT_BY_CLIENT_TOKEN, ReplacementPolicy.OWNER_REPLACE,
