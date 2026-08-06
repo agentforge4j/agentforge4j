@@ -60,9 +60,9 @@ body:
     attributes:
       label: Decision
       description: >-
-        Left empty until the decision is made. Fill in with the option chosen, the reasoning, and
-        where the resulting contract is documented. Closing this issue without completing this
-        section loses the whole point of filing it.
+        Leave the stub as-is when filing; it is filled in once the decision is made. Replace it with
+        the option chosen, the reasoning, and where the resulting contract is documented. Closing
+        this issue while it still reads Undecided loses the whole point of filing it.
       value: |
         _Undecided._
 
