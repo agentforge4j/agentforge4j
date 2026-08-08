@@ -1,24 +1,22 @@
 name: CodeQL
 
-# Static application security testing (SAST) for the Java codebase.
+# Static application security testing (SAST) for the Java codebase. Runs the CodeQL
+# `security-extended` query suite on every push/PR to main and on a weekly schedule, and uploads
+# the results to the repository's Security tab. Distinct from the CI build gate and the Gitleaks
+# secret-scanning workflow.
 #
-# DISABLED for automatic runs while this repo is private without GitHub Advanced Security:
-# code scanning / SARIF upload requires GHAS on private repos, so push/PR/schedule runs fail at
-# the upload step. The workflow is kept manual-only (workflow_dispatch) for now.
-#
-# TO RE-ENABLE once the repo is public (code scanning is free) or GHAS is enabled, restore the
-# automatic triggers by replacing the `on:` block below with:
-#
-#   on:
-#     push:
-#       branches: ["main"]
-#     pull_request:
-#       branches: ["main"]
-#     schedule:
-#       - cron: "17 6 * * 1"
-#     workflow_dispatch:
+# Code scanning is free on public repositories, so no GitHub Advanced Security subscription is
+# needed. If this repository is ever made private again, the SARIF upload step will start
+# failing unless GHAS is enabled for it.
 
 on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+  schedule:
+    # Weekly, Monday 06:17 UTC.
+    - cron: "17 6 * * 1"
   workflow_dispatch:
 
 permissions:
