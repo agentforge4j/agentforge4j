@@ -1,0 +1,87 @@
+name: Decision required
+description: Record an open design decision that needs settling before work depends on it
+labels: ["decision"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this when the current behaviour is not obviously wrong, but the contract behind it has
+        never been decided or written down — and something upcoming depends on the answer. The goal
+        is to force and record the choice, not to argue for one. For an outright defect use the bug
+        report; for a new capability use the feature request.
+
+        Please do **not** raise a decision with security implications here — if the choice affects
+        the security of the framework or its users, report it privately first via
+        [SECURITY.md](https://github.com/agentforge4j/agentforge4j/blob/main/SECURITY.md).
+
+        This repository is public. Keep the issue to this framework: describe what depends on the
+        decision in terms of the framework's own behaviour, not downstream systems or plans.
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component
+      description: Which release track does this concern?
+      options:
+        - Framework (Maven reactor, framework-v*)
+        - Shipped workflow catalog (catalog-v*)
+        - Workflow builder (npm, builder-v*)
+        - Documentation
+        - Web UI (agentforge4j-web-ui)
+        - Other / not sure
+    validations:
+      required: true
+  - type: textarea
+    id: current
+    attributes:
+      label: Current behaviour
+      description: >-
+        What the code does today, with file and line references. Describe it neutrally — this
+        section is the shared factual baseline, not the argument.
+    validations:
+      required: true
+  - type: textarea
+    id: tension
+    attributes:
+      label: Tension
+      description: >-
+        Why this needs deciding rather than simply documenting. What contradicts what — a contract
+        that reads one way and behaves another, two call sites that disagree, a documented intent
+        the implementation inverts. Include what in this framework depends on the answer, and when.
+    validations:
+      required: true
+  - type: textarea
+    id: options
+    attributes:
+      label: Options
+      description: >-
+        The candidate answers, each with its cost and its blast radius. Include the status quo as an
+        explicit option. State them even-handedly; do not recommend one here.
+      placeholder: |
+        **Option A — <name> (status quo).** What it means. Cost: …
+        **Option B — <name>.** What it means. Cost: … Breaking for: …
+        **Option C — <name>.** What it means. Cost: …
+    validations:
+      required: true
+  - type: textarea
+    id: decision
+    attributes:
+      label: Decision
+      description: >-
+        Leave the stub as-is when filing; it is filled in once the decision is made. Replace it with
+        the option chosen, the reasoning, and where the resulting contract is documented. Closing
+        this issue while it still reads Undecided loses the whole point of filing it.
+      value: |
+        _Undecided._
+
+        - Chosen option:
+        - Reasoning:
+        - Documented in:
+    validations:
+      required: false
+  - type: textarea
+    id: additional
+    attributes:
+      label: Additional context
+      description: Related behaviour, prior art elsewhere in the codebase, or anything else that informs the choice.
+    validations:
+      required: false
