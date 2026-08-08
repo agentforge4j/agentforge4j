@@ -82,7 +82,8 @@ class RunFailedSingleEmissionRuntimeTest {
   private static WorkflowDefinition workflow(String id,
       Map<String, BlueprintDefinition> blueprints, List<Executable> steps) {
     return new WorkflowDefinition(id, id, null, null, null, null, null,
-        WorkflowSource.CUSTOM, WorkflowLifecycle.ACTIVE, Map.of(), blueprints, steps, List.of());
+        WorkflowSource.CUSTOM, WorkflowLifecycle.ACTIVE, Map.of(), blueprints, steps, List.of(),
+        List.of());
   }
 
   private static Fixture fixture(WorkflowDefinition workflow) {

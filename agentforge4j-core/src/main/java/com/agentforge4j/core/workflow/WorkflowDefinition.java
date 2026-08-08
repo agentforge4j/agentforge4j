@@ -38,7 +38,10 @@ public record WorkflowDefinition(
      // Central, self-targeting requirement declarations; {@code null} or absent becomes an empty
      // list. Opaque to {@code core}: structurally validated at load and asserted at the run-start
      // checkpoint, but never interpreted here.
-    List<WorkflowRequirement> requirements
+    List<WorkflowRequirement> requirements,
+     // Structured ledger declarations; {@code null} or absent becomes an empty list. Opaque to
+     // {@code core}: schema refs resolve and merge rules apply at load and run time, not here.
+    List<LedgerDefinition> ledgers
 ) implements Executable {
 
   public WorkflowDefinition {
@@ -54,6 +57,7 @@ public record WorkflowDefinition(
         "WorkflowDefinition steps must not be empty for workflow: %s".formatted(id));
     steps = List.copyOf(steps);
     requirements = requirements != null ? List.copyOf(requirements) : List.of();
+    ledgers = ledgers != null ? List.copyOf(ledgers) : List.of();
   }
 
   /**
@@ -82,7 +86,8 @@ public record WorkflowDefinition(
         workflowDefinition.artifacts(),
         blueprints,
         loadedStepPrompts,
-        workflowDefinition.requirements());
+        workflowDefinition.requirements(),
+        workflowDefinition.ledgers());
   }
 
   public static WorkflowDefinition duplicate(WorkflowDefinition workflowDefinition,
@@ -102,7 +107,8 @@ public record WorkflowDefinition(
         artifacts,
         blueprints,
         loadedStepPrompts,
-        workflowDefinition.requirements());
+        workflowDefinition.requirements(),
+        workflowDefinition.ledgers());
   }
 
   /**
@@ -125,6 +131,7 @@ public record WorkflowDefinition(
     private Map<String, BlueprintDefinition> blueprints;
     private List<Executable> steps;
     private List<WorkflowRequirement> requirements;
+    private List<LedgerDefinition> ledgers;
 
     private Builder() {
       // obtain via WorkflowDefinition.builder()
@@ -287,13 +294,25 @@ public record WorkflowDefinition(
     }
 
     /**
+     * Sets the workflow's structured ledger declarations.
+     *
+     * @param ledgers ledger declarations; {@code null} becomes an empty list
+     *
+     * @return this builder
+     */
+    public Builder withLedgers(List<LedgerDefinition> ledgers) {
+      this.ledgers = ledgers;
+      return this;
+    }
+
+    /**
      * Builds the validated {@link WorkflowDefinition}.
      *
      * @return immutable workflow definition; never {@code null}
      */
     public WorkflowDefinition build() {
       return new WorkflowDefinition(id, name, description, author, contact, version, uuid, source,
-          lifecycle, artifacts, blueprints, steps, requirements);
+          lifecycle, artifacts, blueprints, steps, requirements, ledgers);
     }
   }
 }

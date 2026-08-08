@@ -188,7 +188,7 @@ class ResumeVerbCancelRaceRuntimeTest {
             .withName("s1")
             .withBehaviour(new ResourceBehaviour("/examples/sample.txt", "out", StepTransition.AUTO))
             .withContextMapping(ContextMapping.none())
-            .build()), List.of());
+            .build()), List.of(), List.of());
     EventRecorder eventRecorder = new EventRecorder(log, CLOCK);
     return new DefaultWorkflowRuntime(
         new InMemoryWorkflowRepository(Map.of(workflow.id(), workflow)),

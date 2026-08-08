@@ -2,10 +2,15 @@
 package com.agentforge4j.runtime.command.handler;
 
 import com.agentforge4j.core.command.RunCommandCommand;
+import com.agentforge4j.core.workflow.WorkflowDefinition;
+import com.agentforge4j.core.workflow.WorkflowLifecycle;
+import com.agentforge4j.core.workflow.WorkflowSource;
 import com.agentforge4j.core.workflow.context.ContextMapping;
 import com.agentforge4j.core.workflow.event.WorkflowEvent;
 import com.agentforge4j.core.workflow.event.WorkflowEventType;
 import com.agentforge4j.core.workflow.state.WorkflowState;
+import com.agentforge4j.core.workflow.step.StepDefinition;
+import com.agentforge4j.core.workflow.step.behaviour.FailBehaviour;
 import com.agentforge4j.runtime.command.CommandApplicationRequest;
 import com.agentforge4j.runtime.command.CommandApplicationResult;
 import com.agentforge4j.runtime.command.ShellCommandRunner;
@@ -15,6 +20,7 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.List;
+import java.util.Map;
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -41,7 +47,7 @@ class RunCommandHandlerTest {
     WorkflowState state = stateAtStep("s1");
 
     CommandApplicationResult result = handler.apply(new RunCommandCommand("do-thing"),
-        new CommandApplicationRequest(state, ContextMapping.none(), "agent-1", 1));
+        request(state));
 
     assertThat(result).isEqualTo(CommandApplicationResult.CONTINUE);
     assertThat(state.getStepOutputs()).containsEntry("s1.stdout", "captured output for do-thing");
@@ -58,7 +64,7 @@ class RunCommandHandlerTest {
     WorkflowState state = stateAtStep("s1");
 
     handler.apply(new RunCommandCommand("ignored"),
-        new CommandApplicationRequest(state, ContextMapping.none(), "agent-1", 1));
+        request(state));
 
     assertThat(state.getStepOutputs()).containsEntry("s1.stdout", "");
   }
@@ -70,7 +76,7 @@ class RunCommandHandlerTest {
     WorkflowState state = stateAtStep("s1");
 
     handler.apply(new RunCommandCommand("ignored"),
-        new CommandApplicationRequest(state, ContextMapping.none(), "agent-1", 1));
+        request(state));
 
     assertThat(state.getStepOutputs()).containsEntry("s1.stdout", "");
   }
@@ -84,7 +90,7 @@ class RunCommandHandlerTest {
     WorkflowState state = stateAtStep("s1");
 
     assertThatThrownBy(() -> handler.apply(new RunCommandCommand("do-thing"),
-        new CommandApplicationRequest(state, ContextMapping.none(), "agent-1", 1)))
+        request(state)))
         .isInstanceOf(IllegalStateException.class)
         .hasMessageContaining("runner exploded");
     assertThat(state.getStepOutputs()).doesNotContainKey("s1.stdout");
@@ -96,5 +102,15 @@ class RunCommandHandlerTest {
         new WorkflowState("run-1", "wf-1", null, Instant.parse("2026-05-01T00:00:00Z"));
     state.setCurrentStepId(stepId);
     return state;
+  }
+
+  private static CommandApplicationRequest request(WorkflowState state) {
+    StepDefinition step = StepDefinition.builder().withStepId("s1").withName("s1")
+        .withBehaviour(new FailBehaviour("stop")).build();
+    WorkflowDefinition workflow = new WorkflowDefinition("wf-1", "W", null, null, null, "1.0.0",
+        null, WorkflowSource.CUSTOM, WorkflowLifecycle.ACTIVE, Map.of(), Map.of(), List.of(step),
+        List.of(), List.of());
+    return new CommandApplicationRequest(state, ContextMapping.none(), "agent-1", 1, step, workflow,
+        0);
   }
 }

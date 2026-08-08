@@ -940,7 +940,7 @@ class DefaultWorkflowRuntimeToolDecisionRealServiceTest {
         List.of(new StepDefinition(
             "s1", "s1",
             new ResourceBehaviour("/examples/sample.txt", "out", transition),
-            ContextMapping.none(), null, null, null, null, null)), List.of());
+            ContextMapping.none(), null, null, null, null, null, null)), List.of(), List.of());
   }
 
   private static ToolPolicy allow() {

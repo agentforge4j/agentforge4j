@@ -14,9 +14,14 @@ import com.agentforge4j.core.spi.tool.ToolResult;
 import com.agentforge4j.core.spi.tool.ToolRiskMetadata;
 import com.agentforge4j.core.spi.tool.ToolSource;
 import com.agentforge4j.core.spi.tool.ToolSourceKind;
+import com.agentforge4j.core.workflow.WorkflowDefinition;
+import com.agentforge4j.core.workflow.WorkflowLifecycle;
+import com.agentforge4j.core.workflow.WorkflowSource;
 import com.agentforge4j.core.workflow.context.ContextMapping;
 import com.agentforge4j.core.workflow.state.WorkflowState;
 import com.agentforge4j.core.workflow.state.WorkflowStatus;
+import com.agentforge4j.core.workflow.step.StepDefinition;
+import com.agentforge4j.core.workflow.step.behaviour.FailBehaviour;
 import com.agentforge4j.runtime.command.CommandApplicationRequest;
 import com.agentforge4j.runtime.command.CommandApplicationResult;
 import com.agentforge4j.runtime.event.EventRecorder;
@@ -136,7 +141,13 @@ class ToolInvocationCommandHandlerTest {
   }
 
   private CommandApplicationRequest request() {
-    return new CommandApplicationRequest(state, ContextMapping.none(), "agent-1", 7);
+    StepDefinition step = StepDefinition.builder().withStepId(state.getCurrentStepId())
+        .withName(state.getCurrentStepId()).withBehaviour(new FailBehaviour("stop")).build();
+    WorkflowDefinition workflow = new WorkflowDefinition("wf-1", "W", null, null, null, "1.0.0",
+        null, WorkflowSource.CUSTOM, WorkflowLifecycle.ACTIVE, Map.of(), Map.of(), List.of(step),
+        List.of(), List.of());
+    return new CommandApplicationRequest(state, ContextMapping.none(), "agent-1", 7, step, workflow,
+        0);
   }
 
   private static ToolInvocationCommand command(Map<String, Object> arguments) {

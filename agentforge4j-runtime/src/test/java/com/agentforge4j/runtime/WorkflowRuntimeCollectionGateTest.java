@@ -251,7 +251,7 @@ class WorkflowRuntimeCollectionGateTest {
     WorkflowDefinition root = new WorkflowDefinition(
         "wf-late-root", "wf-late-root", null, null, null, null, null,
         WorkflowSource.CUSTOM, WorkflowLifecycle.ACTIVE, Map.of("gate-form", form), Map.of(),
-        List.of(gate, invokeSub), List.of());
+        List.of(gate, invokeSub), List.of(), List.of());
     InMemoryWorkflowRepository repository = new InMemoryWorkflowRepository(
         Map.of(root.id(), root, cleanSub.id(), cleanSub));
     WorkflowRuntime runtime = new WorkflowRuntimeBuilder()
@@ -390,7 +390,7 @@ class WorkflowRuntimeCollectionGateTest {
   private static WorkflowDefinition workflow(String id, Map<String, BlueprintDefinition> blueprints,
       List<Executable> steps) {
     return new WorkflowDefinition(id, id, null, null, null, null, null,
-        WorkflowSource.CUSTOM, WorkflowLifecycle.ACTIVE, Map.of(), blueprints, steps, List.of());
+        WorkflowSource.CUSTOM, WorkflowLifecycle.ACTIVE, Map.of(), blueprints, steps, List.of(), List.of());
   }
 
   private static WorkflowRuntimeBuilder builderFor(WorkflowDefinition workflow) {

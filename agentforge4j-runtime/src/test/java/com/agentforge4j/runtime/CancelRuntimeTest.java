@@ -190,7 +190,7 @@ class CancelRuntimeTest {
         .build();
     return new WorkflowDefinition("wf-cancel-input", "wf-cancel-input", null, null, null, null,
         null, WorkflowSource.CUSTOM, WorkflowLifecycle.ACTIVE, Map.of("form", artifact), Map.of(),
-        List.of(inputStep), List.of());
+        List.of(inputStep), List.of(), List.of());
   }
 
   private static StepDefinition resourceStep(String stepId, StepTransition transition) {
@@ -203,6 +203,6 @@ class CancelRuntimeTest {
 
   private static WorkflowDefinition workflow(String id, Executable... steps) {
     return new WorkflowDefinition(id, id, null, null, null, null, null, WorkflowSource.CUSTOM,
-        WorkflowLifecycle.ACTIVE, Map.of(), Map.of(), List.of(steps), List.of());
+        WorkflowLifecycle.ACTIVE, Map.of(), Map.of(), List.of(steps), List.of(), List.of());
   }
 }

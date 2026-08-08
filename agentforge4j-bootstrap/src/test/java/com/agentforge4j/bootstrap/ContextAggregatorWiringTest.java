@@ -68,7 +68,7 @@ class ContextAggregatorWiringTest {
     WorkflowDefinition wf = new WorkflowDefinition(
         "wf1", "W", null, null, null, null, null,
         WorkflowSource.CUSTOM, WorkflowLifecycle.ACTIVE, Map.of(), Map.of(),
-        List.of(aggregate), List.of());
+        List.of(aggregate), List.of(), List.of());
 
     WorkflowStateRepository stateRepository = new InMemoryWorkflowStateRepository();
     AgentForge4j af = AgentForge4jBootstrap.defaults()

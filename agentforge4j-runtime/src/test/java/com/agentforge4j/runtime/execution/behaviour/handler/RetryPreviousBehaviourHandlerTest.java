@@ -508,7 +508,7 @@ class RetryPreviousBehaviourHandlerTest {
       WorkflowDefinition nestedWorkflowComposite = new WorkflowDefinition(
           "nested-wf", "nested-wf", null, null, null, null, null,
           WorkflowSource.CUSTOM, WorkflowLifecycle.ACTIVE, Map.of(), Map.of(),
-          List.of(nestedWorkflowStep), List.of());
+          List.of(nestedWorkflowStep), List.of(), List.of());
       List<Executable> fullSequenceWithNestedWorkflow = new ArrayList<>(List.of(
           f.executable("s1"), nestedWorkflowComposite, f.executable("s3")));
       when(f.context().getCurrentSequenceExecutableList())

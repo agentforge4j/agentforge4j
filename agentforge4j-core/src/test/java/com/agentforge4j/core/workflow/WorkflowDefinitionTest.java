@@ -55,7 +55,9 @@ class WorkflowDefinitionTest {
         lifecycle,
         artifacts,
         blueprints,
-        steps, List.of());
+        steps,
+        List.of(),
+        List.of());
   }
 
   private static WorkflowDefinition minimal(String id, String name, List<Executable> steps) {

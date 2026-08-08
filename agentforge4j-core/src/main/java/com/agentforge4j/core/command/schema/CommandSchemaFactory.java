@@ -12,6 +12,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.TreeSet;
 import org.apache.commons.lang3.StringUtils;
 
@@ -22,12 +23,13 @@ import org.apache.commons.lang3.StringUtils;
 public final class CommandSchemaFactory {
 
   /**
-   * Command type advertised to an agent only when it explicitly lists it in
+   * Command types advertised to an agent only when it explicitly lists them in
    * {@code supportedCommands}; excluded from the all-commands default so existing agents are
-   * unaffected and the runtime never receives a {@code TOOL_INVOCATION} for an unconfigured tool
-   * path.
+   * unaffected. {@code TOOL_INVOCATION} is excluded so the runtime never receives one for an
+   * unconfigured tool path; {@code REQUEST_CONTEXT} is excluded because context expansion is gated by
+   * a step's declared expandable scope rather than offered to every agent by default.
    */
-  private static final String OPT_IN_TOOL_INVOCATION = "TOOL_INVOCATION";
+  private static final Set<String> OPT_IN_COMMANDS = Set.of("TOOL_INVOCATION", "REQUEST_CONTEXT");
 
   private CommandSchemaFactory() {
   }
@@ -65,7 +67,7 @@ public final class CommandSchemaFactory {
       Map<String, Class<? extends LlmCommand>> registry) {
     if (supportedCommands == null || supportedCommands.isEmpty()) {
       return registry.keySet().stream()
-          .filter(name -> !OPT_IN_TOOL_INVOCATION.equals(name))
+          .filter(name -> !OPT_IN_COMMANDS.contains(name))
           .toList();
     }
     LinkedHashSet<String> unique = new LinkedHashSet<>();

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package com.agentforge4j.runtime.execution.loop;
 
+import com.agentforge4j.core.spi.governance.WasteSignalPolicy;
 import com.agentforge4j.core.workflow.context.ContextProvenance;
 import com.agentforge4j.core.workflow.WorkflowDefinition;
 import com.agentforge4j.core.workflow.WorkflowLifecycle;
@@ -23,6 +24,7 @@ import com.agentforge4j.runtime.event.EventRecorder;
 import com.agentforge4j.runtime.execution.ExecutionContext;
 import com.agentforge4j.runtime.execution.ExecutionOutcome;
 import com.agentforge4j.runtime.execution.StepSequenceExecutor;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -89,7 +91,7 @@ class ForEachLoopStrategyTest {
     stepSequenceExecutor = mock(StepSequenceExecutor.class);
     generatedArtifactStore = new InMemoryGeneratedArtifactStore();
     strategy = new ForEachLoopStrategy(stepSequenceExecutor, eventRecorder, maxIterationsHandler,
-        generatedArtifactStore);
+        new ObjectMapper(), WasteSignalPolicy.NO_OP, generatedArtifactStore);
     state = new WorkflowState("run-1", "wf-1", null, Instant.parse("2026-05-01T12:00:00Z"));
     WorkflowDefinition workflow = new WorkflowDefinition(
         "wf-1",
@@ -103,7 +105,9 @@ class ForEachLoopStrategyTest {
         WorkflowLifecycle.ACTIVE,
         Map.of(),
         Map.of(),
-        List.of(dummyStep()), List.of());
+        List.of(dummyStep()),
+        List.of(),
+        List.of());
     executionContext = new ExecutionContext(state, workflow, 32);
     blueprint = new BlueprintDefinition(
         BLUEPRINT_ID,

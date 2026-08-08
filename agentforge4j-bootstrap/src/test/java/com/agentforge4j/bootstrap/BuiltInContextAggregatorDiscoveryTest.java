@@ -74,7 +74,7 @@ class BuiltInContextAggregatorDiscoveryTest {
         .build());
     return new WorkflowDefinition(
         "wf1", "W", null, null, null, null, null,
-        WorkflowSource.CUSTOM, WorkflowLifecycle.ACTIVE, Map.of(), Map.of(), steps, List.of());
+        WorkflowSource.CUSTOM, WorkflowLifecycle.ACTIVE, Map.of(), Map.of(), steps, List.of(), List.of());
   }
 
   private static List<StepDefinition> assignSteps() {

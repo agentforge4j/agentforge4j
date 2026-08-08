@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package com.agentforge4j.runtime.execution.loop;
 
+import com.agentforge4j.core.spi.governance.WasteSignalPolicy;
 import com.agentforge4j.core.workflow.WorkflowDefinition;
 import com.agentforge4j.core.workflow.WorkflowLifecycle;
 import com.agentforge4j.core.workflow.WorkflowSource;
@@ -19,6 +20,7 @@ import com.agentforge4j.runtime.event.EventRecorder;
 import com.agentforge4j.runtime.execution.ExecutionContext;
 import com.agentforge4j.runtime.execution.ExecutionOutcome;
 import com.agentforge4j.runtime.execution.StepSequenceExecutor;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
@@ -58,12 +60,12 @@ class AgentSignalLoopStrategyTest {
         Clock.fixed(Instant.parse("2026-05-01T12:00:00Z"), ZoneOffset.UTC));
     stepSequenceExecutor = mock(StepSequenceExecutor.class);
     strategy = new AgentSignalLoopStrategy(stepSequenceExecutor, eventRecorder,
-        maxIterationsHandler);
+        maxIterationsHandler, new ObjectMapper(), WasteSignalPolicy.NO_OP);
     state = new WorkflowState("run-1", "wf-1", null, Instant.parse("2026-05-01T00:00:00Z"));
     WorkflowDefinition workflow = new WorkflowDefinition(
         "wf-1", "wf-1", null, null, null, null, null,
         WorkflowSource.CUSTOM, WorkflowLifecycle.ACTIVE,
-        Map.of(), Map.of(), List.of(dummyStep()), List.of());
+        Map.of(), Map.of(), List.of(dummyStep()), List.of(), List.of());
     executionContext = new ExecutionContext(state, workflow, 32);
     loopConfig = agentSignalConfig(8, MaxIterationsAction.AWAIT_USER);
     blueprint = new BlueprintDefinition(

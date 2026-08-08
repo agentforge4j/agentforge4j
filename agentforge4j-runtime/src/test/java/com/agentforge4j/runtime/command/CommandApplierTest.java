@@ -4,20 +4,42 @@ package com.agentforge4j.runtime.command;
 import com.agentforge4j.core.command.CompleteCommand;
 import com.agentforge4j.core.command.ContinueCommand;
 import com.agentforge4j.core.command.LlmCommand;
+import com.agentforge4j.core.command.RequestContextCommand;
 import com.agentforge4j.core.command.RunCommandCommand;
+import com.agentforge4j.core.workflow.WorkflowDefinition;
+import com.agentforge4j.core.workflow.WorkflowLifecycle;
+import com.agentforge4j.core.workflow.WorkflowSource;
 import com.agentforge4j.core.workflow.context.ContextMapping;
+import com.agentforge4j.core.workflow.context.ContextProvenance;
+import com.agentforge4j.core.workflow.context.StringContextValue;
+import com.agentforge4j.core.workflow.event.WorkflowEvent;
+import com.agentforge4j.core.workflow.state.ReservedContextKeys;
+import com.agentforge4j.core.workflow.event.WorkflowEventType;
 import com.agentforge4j.core.workflow.state.WorkflowState;
+import com.agentforge4j.core.workflow.step.ContextSelection;
+import com.agentforge4j.core.workflow.step.ContextSelector;
+import com.agentforge4j.core.workflow.step.ContextSourceKind;
+import com.agentforge4j.core.workflow.step.ContextVariant;
+import com.agentforge4j.core.workflow.step.StepDefinition;
+import com.agentforge4j.core.workflow.step.behaviour.FailBehaviour;
+import java.util.ArrayList;
+import java.util.Map;
 import com.agentforge4j.runtime.InMemoryGeneratedArtifactStore;
 import com.agentforge4j.runtime.command.handler.CompleteCommandHandler;
 import com.agentforge4j.runtime.command.handler.ContinueCommandHandler;
 import com.agentforge4j.runtime.command.handler.CreateFileCommandHandler;
 import com.agentforge4j.runtime.command.handler.EscalateCommandHandler;
 import com.agentforge4j.runtime.command.handler.GeneralQuestionCommandHandler;
+import com.agentforge4j.runtime.command.handler.RequestContextCommandHandler;
 import com.agentforge4j.runtime.command.handler.RunCommandHandler;
 import com.agentforge4j.runtime.command.handler.SetContextCommandHandler;
 import com.agentforge4j.runtime.command.handler.UserPromptCommandHandler;
+import com.agentforge4j.runtime.ContextPackRegistry;
+import com.agentforge4j.runtime.context.ContextSourceResolver;
 import com.agentforge4j.runtime.event.EventRecorder;
+import com.agentforge4j.runtime.llm.ContextRenderer;
 import com.agentforge4j.runtime.repository.InMemoryWorkflowEventLog;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
@@ -60,7 +82,8 @@ class CommandApplierTest {
     ContextMapping mapping = ContextMapping.none();
 
     assertThatThrownBy(() -> applier.apply(
-        List.of(new RunCommandCommand("echo hi")), state, mapping, "agent-1", 1))
+        List.of(new RunCommandCommand("echo hi")), state, mapping, "agent-1", 1, step("s1"),
+        workflow()))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("No CommandHandler registered")
         .hasMessageContaining("RunCommandCommand");
@@ -79,7 +102,9 @@ class CommandApplierTest {
         state,
         mapping,
         "agent-1",
-        1);
+        1,
+        step("s1"),
+        workflow());
 
     assertThat(result).isEqualTo(CommandApplicationResult.COMPLETE_SIGNAL);
   }
@@ -87,9 +112,160 @@ class CommandApplierTest {
   @Test
   void apply_rejectsNullCommands() {
     CommandApplier applier = applier();
-    assertThatThrownBy(() -> applier.apply(null, stateAtStep("s1"), ContextMapping.none(), "a", 1))
+    assertThatThrownBy(() -> applier.apply(null, stateAtStep("s1"), ContextMapping.none(), "a", 1,
+        step("s1"), workflow()))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("commands must not be null");
+  }
+
+  @Test
+  void apply_countsPriorExpansionsPerSelectorAndOnlyForRequestContextCommands() {
+    // CommandApplicationRequest documents priorRequestContextExpansions as the number of selectors
+    // requested by EARLIER RequestContextCommands in the batch (0 for any other command type — a
+    // non-RCC command after an RCC must not inherit the counter). Selectors are counted, not
+    // commands, so a two-selector command advances the counter by two.
+    List<Integer> continuePriors = new ArrayList<>();
+    List<Integer> requestContextPriors = new ArrayList<>();
+    CommandHandler<ContinueCommand> capturingContinue = new CommandHandler<>() {
+      @Override
+      public Class<ContinueCommand> getCommandClass() {
+        return ContinueCommand.class;
+      }
+
+      @Override
+      public CommandApplicationResult apply(ContinueCommand command,
+          CommandApplicationRequest request) {
+        continuePriors.add(request.priorRequestContextExpansions());
+        return CommandApplicationResult.CONTINUE;
+      }
+    };
+    CommandHandler<RequestContextCommand> capturingRequestContext = new CommandHandler<>() {
+      @Override
+      public Class<RequestContextCommand> getCommandClass() {
+        return RequestContextCommand.class;
+      }
+
+      @Override
+      public CommandApplicationResult apply(RequestContextCommand command,
+          CommandApplicationRequest request) {
+        requestContextPriors.add(request.priorRequestContextExpansions());
+        return CommandApplicationResult.CONTINUE;
+      }
+    };
+    CommandApplier applier = new CommandApplier(List.of(capturingContinue,
+        capturingRequestContext));
+    ContextSelector selector = new ContextSelector(ContextSourceKind.STATE_KEY, "k",
+        ContextVariant.FULL);
+    ContextSelector otherSelector = new ContextSelector(ContextSourceKind.STATE_KEY, "k2",
+        ContextVariant.FULL);
+
+    applier.apply(
+        List.of(
+            new RequestContextCommand(List.of(selector)),
+            new ContinueCommand(null, null, null),
+            new RequestContextCommand(List.of(selector, otherSelector)),
+            new ContinueCommand(null, null, null),
+            new RequestContextCommand(List.of(selector))),
+        stateAtStep("s1"), ContextMapping.none(), "agent-1", 1, step("s1"), workflow());
+
+    assertThat(requestContextPriors).containsExactly(0, 1, 3);
+    assertThat(continuePriors).containsExactly(0, 0);
+  }
+
+  @Test
+  void apply_enforcesMaxExpansionsAcrossSeparateBatchesForTheSameStepExecutionUid() {
+    // Two separate apply() calls sharing the same currentStepUid model a step invocation that
+    // pauses and resumes (or is retried) between command-application batches. The second batch
+    // must see the count persisted by the first, not restart from zero.
+    ContextSelector selector = new ContextSelector(ContextSourceKind.STATE_KEY, "k",
+        ContextVariant.FULL);
+    ContextSelection selection = new ContextSelection(List.of(), List.of(selector), 1);
+    StepDefinition step = StepDefinition.builder().withStepId("s1").withName("s1")
+        .withBehaviour(new FailBehaviour("stop")).withContextSelection(selection).build();
+    WorkflowDefinition workflow = new WorkflowDefinition("wf-1", "W", null, null, null, "1.0.0",
+        null, WorkflowSource.CUSTOM, WorkflowLifecycle.ACTIVE, Map.of(), Map.of(), List.of(step),
+        List.of(), List.of());
+    WorkflowState state = stateAtStep("s1");
+    state.putContextValue("k", new StringContextValue("v", ContextProvenance.SYSTEM_GENERATED));
+    ObjectMapper mapper = new ObjectMapper();
+    InMemoryWorkflowEventLog eventLog = new InMemoryWorkflowEventLog();
+    RequestContextCommandHandler handler = new RequestContextCommandHandler(
+        new ContextSourceResolver(new ContextRenderer(mapper), mapper, ContextPackRegistry.EMPTY),
+        new EventRecorder(eventLog, CLOCK));
+    CommandApplier applier = new CommandApplier(List.of(handler));
+    int sharedStepExecutionUid = 7;
+
+    applier.apply(List.of(new RequestContextCommand(List.of(selector))), state,
+        ContextMapping.none(), "agent-1", sharedStepExecutionUid, step, workflow);
+    applier.apply(List.of(new RequestContextCommand(List.of(selector))), state,
+        ContextMapping.none(), "agent-1", sharedStepExecutionUid, step, workflow);
+
+    List<WorkflowEvent> events = eventLog.getEvents("run-1");
+    assertThat(events).hasSize(2);
+    assertThat(events.get(0).eventType()).isEqualTo(WorkflowEventType.CONTEXT_EXPANSION_GRANTED);
+    assertThat(events.get(1).eventType()).isEqualTo(WorkflowEventType.CONTEXT_EXPANSION_DENIED);
+    assertThat(events.get(1).payload()).contains("MAX_EXPANSIONS_REACHED");
+  }
+
+  @Test
+  void apply_startsACleanExpansionCountForADifferentStepExecutionUid() {
+    // A genuinely new step invocation (different currentStepUid, e.g. the next loop iteration)
+    // must not inherit another invocation's persisted count.
+    ContextSelector selector = new ContextSelector(ContextSourceKind.STATE_KEY, "k",
+        ContextVariant.FULL);
+    ContextSelection selection = new ContextSelection(List.of(), List.of(selector), 1);
+    StepDefinition step = StepDefinition.builder().withStepId("s1").withName("s1")
+        .withBehaviour(new FailBehaviour("stop")).withContextSelection(selection).build();
+    WorkflowDefinition workflow = new WorkflowDefinition("wf-1", "W", null, null, null, "1.0.0",
+        null, WorkflowSource.CUSTOM, WorkflowLifecycle.ACTIVE, Map.of(), Map.of(), List.of(step),
+        List.of(), List.of());
+    WorkflowState state = stateAtStep("s1");
+    state.putContextValue("k", new StringContextValue("v", ContextProvenance.SYSTEM_GENERATED));
+    ObjectMapper mapper = new ObjectMapper();
+    InMemoryWorkflowEventLog eventLog = new InMemoryWorkflowEventLog();
+    RequestContextCommandHandler handler = new RequestContextCommandHandler(
+        new ContextSourceResolver(new ContextRenderer(mapper), mapper, ContextPackRegistry.EMPTY),
+        new EventRecorder(eventLog, CLOCK));
+    CommandApplier applier = new CommandApplier(List.of(handler));
+
+    applier.apply(List.of(new RequestContextCommand(List.of(selector))), state,
+        ContextMapping.none(), "agent-1", 7, step, workflow);
+    applier.apply(List.of(new RequestContextCommand(List.of(selector))), state,
+        ContextMapping.none(), "agent-1", 8, step, workflow);
+
+    List<WorkflowEvent> events = eventLog.getEvents("run-1");
+    assertThat(events).hasSize(2);
+    assertThat(events).extracting(WorkflowEvent::eventType)
+        .containsExactly(WorkflowEventType.CONTEXT_EXPANSION_GRANTED,
+            WorkflowEventType.CONTEXT_EXPANSION_GRANTED);
+  }
+
+  @Test
+  void apply_failsWithAClearErrorWhenThePersistedExpansionCountIsCorrupted() {
+    WorkflowState state = stateAtStep("s1");
+    state.putContextValue(ReservedContextKeys.expansionCountKey(7),
+        new StringContextValue("not-a-number", ContextProvenance.SYSTEM_GENERATED));
+    CommandApplier applier = applier();
+
+    assertThatThrownBy(() -> applier.apply(List.of(new ContinueCommand(null, null, null)), state,
+        ContextMapping.none(), "agent-1", 7, step("s1"), workflow()))
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessageContaining(ReservedContextKeys.expansionCountKey(7))
+        .hasMessageContaining("not-a-number");
+  }
+
+  @Test
+  void apply_failsWithAClearErrorWhenThePersistedExpansionCountHoldsTheWrongValueType() {
+    WorkflowState state = stateAtStep("s1");
+    state.putContextValue(ReservedContextKeys.expansionCountKey(7),
+        new com.agentforge4j.core.workflow.context.JsonContextValue("{\"count\":3}",
+            ContextProvenance.SYSTEM_GENERATED));
+    CommandApplier applier = applier();
+
+    assertThatThrownBy(() -> applier.apply(List.of(new ContinueCommand(null, null, null)), state,
+        ContextMapping.none(), "agent-1", 7, step("s1"), workflow()))
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessageContaining("unexpected value type");
   }
 
   private static WorkflowState stateAtStep(String stepId) {
@@ -100,6 +276,17 @@ class CommandApplierTest {
         Instant.parse("2026-05-01T00:00:00Z"));
     state.setCurrentStepId(stepId);
     return state;
+  }
+
+  private static StepDefinition step(String stepId) {
+    return StepDefinition.builder().withStepId(stepId).withName(stepId)
+        .withBehaviour(new FailBehaviour("stop")).build();
+  }
+
+  private static WorkflowDefinition workflow() {
+    return new WorkflowDefinition("wf-1", "W", null, null, null, "1.0.0", null,
+        WorkflowSource.CUSTOM, WorkflowLifecycle.ACTIVE, Map.of(), Map.of(), List.of(step("s1")),
+        List.of(), List.of());
   }
 
   private static CommandApplier applier() {

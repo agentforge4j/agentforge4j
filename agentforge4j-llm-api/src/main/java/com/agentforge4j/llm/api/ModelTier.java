@@ -22,7 +22,7 @@ public enum ModelTier {
   LITE,
 
   /**
-   * Balanced default tier — general-purpose capability and cost.
+   * Balanced default tier for general-purpose steps.
    */
   STANDARD,
 
@@ -40,8 +40,8 @@ public enum ModelTier {
 
   /**
    * Parses a declared tier name into a {@link ModelTier}, trimming surrounding whitespace and upper-casing before
-   * matching. This is the single canonical tier-name parse shared by every caller (invocation and cost-estimate paths)
-   * so the accepted set of spellings can never drift between them. Callers decide how to surface a failure — the
+   * matching. This is the single canonical tier-name parse shared by every caller (invocation and execution-estimate
+   * paths) so the accepted set of spellings can never drift between them. Callers decide how to surface a failure — the
    * runtime rethrows as a hard {@link ModelTierResolutionException}; the estimate path catches it and emits a marker
    * key.
    *

@@ -205,7 +205,7 @@ class LoopIterationEventSemanticsRuntimeTest {
     List<Executable> steps = List.of(new BlueprintRef(BLUEPRINT_ID));
     return new WorkflowDefinition(id, id, null, null, null, null, null,
         WorkflowSource.CUSTOM, WorkflowLifecycle.ACTIVE, artifacts,
-        Map.of(BLUEPRINT_ID, blueprint), steps, List.of());
+        Map.of(BLUEPRINT_ID, blueprint), steps, List.of(), List.of());
   }
 
   private static List<WorkflowEventType> loopEventTypes(Fixture fixture, String runId) {

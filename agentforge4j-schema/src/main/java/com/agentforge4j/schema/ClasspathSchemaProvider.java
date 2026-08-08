@@ -22,6 +22,7 @@ public final class ClasspathSchemaProvider implements SchemaProvider {
   private final String blueprintSchema;
   private final String artifactSchema;
   private final String integrationSchema;
+  private final String contextPackSchema;
 
   /**
    * Creates a provider by loading all required schemas from the classpath.
@@ -40,6 +41,7 @@ public final class ClasspathSchemaProvider implements SchemaProvider {
     this.blueprintSchema = load(resourceLoader, "/schema/blueprint.schema.json");
     this.artifactSchema = load(resourceLoader, "/schema/artifact.schema.json");
     this.integrationSchema = load(resourceLoader, "/schema/integration.schema.json");
+    this.contextPackSchema = load(resourceLoader, "/schema/context-pack.schema.json");
   }
 
   private static String load(Function<String, InputStream> resourceLoader, String resourcePath) {

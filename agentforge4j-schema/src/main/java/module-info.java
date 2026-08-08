@@ -17,4 +17,5 @@ module agentforge4j.schema {
   requires static lombok;
   exports com.agentforge4j.schema;
   opens schema;
+  opens schema.ledger;
 }

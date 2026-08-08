@@ -78,7 +78,7 @@ class AgentSignalLoopPauseAfterSignalRuntimeTest {
     WorkflowDefinition workflow = new WorkflowDefinition(
         "wf-agent-signal-pause", "wf-agent-signal-pause", null, null, null, null, null,
         WorkflowSource.CUSTOM, WorkflowLifecycle.ACTIVE, Map.of("form1", form),
-        Map.of(BLUEPRINT_ID, blueprint), List.of(new BlueprintRef(BLUEPRINT_ID)), List.of());
+        Map.of(BLUEPRINT_ID, blueprint), List.of(new BlueprintRef(BLUEPRINT_ID)), List.of(), List.of());
 
     Fixture fixture = fixture(workflow, completingAgentInvoker());
     String runId = fixture.runtime().start(workflow.id());

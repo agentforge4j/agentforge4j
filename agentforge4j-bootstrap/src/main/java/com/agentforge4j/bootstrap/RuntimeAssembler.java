@@ -18,6 +18,7 @@ import com.agentforge4j.llm.RetryingLlmClientResolver;
 import com.agentforge4j.llm.api.LlmClient;
 import com.agentforge4j.llm.api.LlmRetryPolicy;
 import com.agentforge4j.llm.api.ModelTierResolver;
+import com.agentforge4j.runtime.ContextPackRegistry;
 import com.agentforge4j.runtime.WorkflowRuntimeBuilder;
 import com.agentforge4j.runtime.interceptor.RunExecutionInterceptor;
 import com.agentforge4j.runtime.command.FileSink;
@@ -164,6 +165,8 @@ final class RuntimeAssembler {
    *                                to its {@code NO_OP} interceptor
    * @param embedderContextAggregators additional {@code ContextAggregator}s to append to the ServiceLoader-discovered
    *                                built-in set
+   * @param contextPackRegistry     the context packs loaded by the bootstrap, keyed by name; empty when none are
+   *                                configured — matches {@code WorkflowRuntimeBuilder}'s own {@code EMPTY} default
    *
    * @return assembled runtime; never {@code null}
    */
@@ -181,7 +184,8 @@ final class RuntimeAssembler {
       RunExecutionInterceptor runExecutionInterceptor,
       ObjectMapper objectMapper,
       List<ArtifactValidator> embedderArtifactValidators,
-      List<ContextAggregator> embedderContextAggregators) {
+      List<ContextAggregator> embedderContextAggregators,
+      ContextPackRegistry contextPackRegistry) {
     // Built-in ArtifactValidators are discovered via ServiceLoader (the built-in agent-bundle validator stays present
     // so shipped agent-bundle workflows keep working); each factory receives the same configured ObjectMapper the agent
     // loaders use, so validation parses in lockstep with production load. Embedder-supplied validators are appended; a
@@ -207,7 +211,15 @@ final class RuntimeAssembler {
         .eventRecorder(eventRecorder)
         .runExecutionInterceptor(runExecutionInterceptor)
         .artifactValidators(List.copyOf(artifactValidators))
-        .contextAggregators(List.copyOf(contextAggregators));
+        .contextAggregators(List.copyOf(contextAggregators))
+        // Without this, WorkflowRuntimeBuilder defaults to its own bare new ObjectMapper() for
+        // context-selection JSON handling (ledger content, compact siblings), diverging from the
+        // mapper configuration loading and artifact validation above already use.
+        .objectMapper(objectMapper)
+        // The same packs loaded for CONTEXT_PACK selector validation (see
+        // AgentForge4jBootstrap.Builder#loadContextPacks) must also be resolvable here, or a
+        // workflow that passed load-time validation would fail at every run.
+        .contextPackRegistry(contextPackRegistry);
 
     if (maxNestingDepth != null) {
       runtimeBuilder.maxNestingDepth(maxNestingDepth);

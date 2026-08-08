@@ -51,7 +51,7 @@ class WorkflowRuntimeInterceptorIT {
         .build();
     WorkflowDefinition workflow = new WorkflowDefinition("wf-input", "wf-input", null, null, null,
         null, null, WorkflowSource.CUSTOM, WorkflowLifecycle.ACTIVE, Map.of("form", artifact),
-        Map.of(), List.of(inputStep), List.of());
+        Map.of(), List.of(inputStep), List.of(), List.of());
 
     List<RunExecutionContext> mainEntries = new ArrayList<>();
     RunExecutionInterceptor recording = new RunExecutionInterceptor() {

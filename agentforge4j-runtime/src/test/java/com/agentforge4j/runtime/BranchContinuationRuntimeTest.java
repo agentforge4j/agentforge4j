@@ -263,7 +263,9 @@ class BranchContinuationRuntimeTest {
         WorkflowLifecycle.ACTIVE,
         Map.of(),
         blueprints,
-        steps, List.of());
+        steps,
+        List.of(),
+        List.of());
   }
 
   private static Fixture fixture(WorkflowDefinition workflow) {

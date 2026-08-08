@@ -2,8 +2,15 @@
 package com.agentforge4j.runtime.command;
 
 import com.agentforge4j.core.command.LlmCommand;
+import com.agentforge4j.core.command.RequestContextCommand;
+import com.agentforge4j.core.workflow.WorkflowDefinition;
 import com.agentforge4j.core.workflow.context.ContextMapping;
+import com.agentforge4j.core.workflow.context.ContextProvenance;
+import com.agentforge4j.core.workflow.context.ContextValue;
+import com.agentforge4j.core.workflow.context.StringContextValue;
+import com.agentforge4j.core.workflow.state.ReservedContextKeys;
 import com.agentforge4j.core.workflow.state.WorkflowState;
+import com.agentforge4j.core.workflow.step.StepDefinition;
 import com.agentforge4j.util.Validate;
 import java.util.List;
 import java.util.Map;
@@ -41,6 +48,8 @@ public final class CommandApplier {
    * @param contextMapping   allowed output keys for {@code agentId}
    * @param agentId          agent id recorded on events and permission checks
    * @param currentStepUid   step instance id used when recording context writes
+   * @param step             the step whose commands are being applied
+   * @param enclosingWorkflow the workflow definition enclosing {@code step}
    * @return aggregated control-flow result for the batch
    * @throws IllegalArgumentException if any argument is {@code null} or no handler is registered
    *                                  for a command's concrete class
@@ -49,21 +58,87 @@ public final class CommandApplier {
       WorkflowState state,
       ContextMapping contextMapping,
       String agentId,
-      int currentStepUid) {
+      int currentStepUid,
+      StepDefinition step,
+      WorkflowDefinition enclosingWorkflow) {
     Validate.notNull(commands, "commands must not be null");
     Validate.notNull(state, "state must not be null");
     Validate.notNull(contextMapping, "contextMapping must not be null");
     Validate.notNull(agentId, "agentId must not be null");
+    Validate.notNull(step, "step must not be null");
+    Validate.notNull(enclosingWorkflow, "enclosingWorkflow must not be null");
 
-    CommandApplicationRequest request = new CommandApplicationRequest(state, contextMapping,
-        agentId, currentStepUid);
+    // Starts from the count already persisted for this step execution uid, not zero, so
+    // maxExpansions bounds the total requested expansions across every command-application batch
+    // belonging to the same step invocation (a pause/resume or retry that reuses the same uid), not
+    // just this batch. A genuinely new step invocation gets a new uid (see
+    // ExecutionContext#allocateStepSequenceUid), so its count naturally starts at zero.
+    int requestContextExpansions = readPersistedExpansionCount(state, currentStepUid);
     for (LlmCommand command : commands) {
+      // The prior-expansion count is meaningful only on a RequestContextCommand; every other
+      // command type carries 0, as CommandApplicationRequest documents. Counting SELECTORS (not
+      // commands) makes maxExpansions bound the total requested expansions in the batch — packing
+      // many selectors into one command must not evade the limit.
+      int priorExpansions = 0;
+      int updatedExpansions = requestContextExpansions;
+      boolean requestsContext = command instanceof RequestContextCommand;
+      if (requestsContext) {
+        priorExpansions = requestContextExpansions;
+        updatedExpansions = requestContextExpansions
+            + ((RequestContextCommand) command).requestedSelectors().size();
+      }
+      CommandApplicationRequest request = new CommandApplicationRequest(state, contextMapping,
+          agentId, currentStepUid, step, enclosingWorkflow, priorExpansions);
+      // Persist before applying: a handler is allowed to throw partway through a selector loop
+      // (e.g. CompactSiblingUnavailableException), and by then some selectors may already have
+      // resolved and written granted content to state. Persisting the updated count first ensures
+      // real budget consumption is always durably recorded before the side effect that spends it
+      // is attempted, so a mid-command failure can never leave granted content with no
+      // corresponding record — the safer failure mode for a token-governance budget: at worst a
+      // retry sees slightly less remaining budget than it strictly needed, never more.
+      if (requestsContext) {
+        requestContextExpansions = updatedExpansions;
+        writePersistedExpansionCount(state, currentStepUid, requestContextExpansions);
+      }
       CommandApplicationResult result = applyOne(command, request);
       if (result != CommandApplicationResult.CONTINUE) {
         return result;
       }
     }
     return CommandApplicationResult.CONTINUE;
+  }
+
+  private static int readPersistedExpansionCount(WorkflowState state, int stepExecutionUid) {
+    String key = ReservedContextKeys.expansionCountKey(stepExecutionUid);
+    return state.getContextValue(key)
+        .map(CommandApplier::expansionCountContentOf)
+        .map(content -> parseExpansionCount(content, key))
+        .orElse(0);
+  }
+
+  private static int parseExpansionCount(String content, String key) {
+    try {
+      return Integer.parseInt(content);
+    } catch (NumberFormatException e) {
+      throw new IllegalStateException(
+          "Persisted expansion-count key '%s' holds a non-numeric value: '%s'"
+              .formatted(key, content), e);
+    }
+  }
+
+  private static void writePersistedExpansionCount(WorkflowState state, int stepExecutionUid,
+      int count) {
+    state.putContextValue(ReservedContextKeys.expansionCountKey(stepExecutionUid),
+        new StringContextValue(Integer.toString(count), ContextProvenance.SYSTEM_GENERATED));
+  }
+
+  private static String expansionCountContentOf(ContextValue value) {
+    if (value instanceof StringContextValue text) {
+      return text.value();
+    }
+    throw new IllegalStateException(
+        "Persisted expansion-count key holds an unexpected value type: %s"
+            .formatted(value.getClass()));
   }
 
   private CommandApplicationResult applyOne(LlmCommand command, CommandApplicationRequest request) {

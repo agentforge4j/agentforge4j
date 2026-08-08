@@ -11,11 +11,8 @@ import com.agentforge4j.runtime.command.CommandApplicationResult;
 import com.agentforge4j.runtime.command.CommandHandler;
 import com.agentforge4j.runtime.command.FileSink;
 import com.agentforge4j.runtime.event.EventRecorder;
+import com.agentforge4j.util.Sha256;
 import com.agentforge4j.util.Validate;
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
-import java.util.HexFormat;
 
 /**
  * Handles {@link CreateFileCommand} by forwarding content to {@link FileSink}, then — only once the
@@ -87,7 +84,7 @@ public final class CreateFileCommandHandler implements CommandHandler<CreateFile
     try {
       generatedArtifactStore.register(runId, stepId, cmd.path(), cmd.content());
       request.state().addGeneratedArtifactDescriptor(
-          new ArtifactDescriptor(cmd.path(), sha256Hex(cmd.content()), stepId, request.currentStepUid()));
+          new ArtifactDescriptor(cmd.path(), Sha256.hex(cmd.content()), stepId, request.currentStepUid()));
     } catch (RuntimeException captureFailure) {
       // The external file is already written; do not roll it back. Record that the write succeeded but
       // capture failed afterward (partial output), then fail the run closed with no descriptor added.
@@ -99,12 +96,4 @@ public final class CreateFileCommandHandler implements CommandHandler<CreateFile
     }
   }
 
-  private static String sha256Hex(String content) {
-    try {
-      MessageDigest digest = MessageDigest.getInstance("SHA-256");
-      return HexFormat.of().formatHex(digest.digest(content.getBytes(StandardCharsets.UTF_8)));
-    } catch (NoSuchAlgorithmException e) {
-      throw new IllegalStateException("SHA-256 algorithm not available", e);
-    }
-  }
 }

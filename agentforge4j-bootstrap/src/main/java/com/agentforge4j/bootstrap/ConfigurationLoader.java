@@ -12,6 +12,7 @@ import com.agentforge4j.config.loader.prompt.PromptLoader;
 import com.agentforge4j.config.loader.workflow.ClasspathWorkflowLoader;
 import com.agentforge4j.config.loader.workflow.FileSystemWorkflowLoader;
 import com.agentforge4j.config.loader.workflow.WorkflowDirectoryLoader;
+import com.agentforge4j.core.spi.contextpack.ContextPack;
 import com.fasterxml.jackson.core.JsonParser;
 import com.fasterxml.jackson.databind.DeserializationContext;
 import com.fasterxml.jackson.databind.DeserializationFeature;
@@ -21,6 +22,7 @@ import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.databind.deser.DeserializationProblemHandler;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import java.nio.file.Path;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 
@@ -79,6 +81,8 @@ final class ConfigurationLoader {
    * @param workflowsDir         optional filesystem workflows directory
    * @param loadShippedAgents    whether to load classpath-bundled agents
    * @param loadShippedWorkflows whether to load classpath-bundled workflows
+   * @param loadedPacksByName    the context packs actually loaded for this assembly, keyed by
+   *                             name; empty when none are configured
    *
    * @return loaded configuration; never {@code null}
    *
@@ -88,7 +92,8 @@ final class ConfigurationLoader {
       Path agentsDir,
       Path workflowsDir,
       boolean loadShippedAgents,
-      boolean loadShippedWorkflows) {
+      boolean loadShippedWorkflows,
+      Map<String, ContextPack> loadedPacksByName) {
     WorkflowDirectoryLoader workflowDirectoryLoader = new FileSystemWorkflowLoader(objectMapper);
 
     ClasspathAgentLoader shippedClasspathAgentLoader = null;
@@ -114,7 +119,8 @@ final class ConfigurationLoader {
           Optional.ofNullable(agentsDir),
           Optional.ofNullable(workflowsDir),
           classpathAgentLoader,
-          classpathWorkflowLoader);
+          classpathWorkflowLoader,
+          loadedPacksByName);
     } catch (RuntimeException exception) {
       throw new IllegalStateException("Failed to load AgentForge4j configuration", exception);
     }

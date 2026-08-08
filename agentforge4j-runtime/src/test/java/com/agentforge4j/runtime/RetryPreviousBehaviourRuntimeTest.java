@@ -114,7 +114,7 @@ class RetryPreviousBehaviourRuntimeTest {
     WorkflowDefinition workflow = new WorkflowDefinition(
         "wf-retry-previous-resume", "wf-retry-previous-resume", null, null, null, null, null,
         WorkflowSource.CUSTOM, WorkflowLifecycle.ACTIVE, Map.of("form1", form), Map.of(),
-        List.of(a, r, b), List.of());
+        List.of(a, r, b), List.of(), List.of());
 
     Fixture fixture = fixture(workflow, continuingAgentInvoker());
     String runId = fixture.runtime().start(workflow.id());
@@ -185,7 +185,7 @@ class RetryPreviousBehaviourRuntimeTest {
     WorkflowDefinition workflow = new WorkflowDefinition(
         "wf-retry-previous-external-rewind", "wf-retry-previous-external-rewind", null, null, null,
         null, null, WorkflowSource.CUSTOM, WorkflowLifecycle.ACTIVE, Map.of("form1", form),
-        Map.of(), List.of(a, r, b, fail), List.of());
+        Map.of(), List.of(a, r, b, fail), List.of(), List.of());
 
     Fixture fixture = fixture(workflow, continuingAgentInvoker());
     String runId = fixture.runtime().start(workflow.id());
@@ -264,7 +264,7 @@ class RetryPreviousBehaviourRuntimeTest {
     WorkflowDefinition workflow = new WorkflowDefinition(
         "wf-retry-previous-in-range-pause", "wf-retry-previous-in-range-pause", null, null, null,
         null, null, WorkflowSource.CUSTOM, WorkflowLifecycle.ACTIVE, Map.of("form1", form),
-        Map.of(), List.of(a, inp, r), List.of());
+        Map.of(), List.of(a, inp, r), List.of(), List.of());
 
     Fixture fixture = fixture(workflow, continuingAgentInvoker());
     String runId = fixture.runtime().start(workflow.id());
@@ -333,7 +333,7 @@ class RetryPreviousBehaviourRuntimeTest {
     WorkflowDefinition workflow = new WorkflowDefinition(
         "wf-retry-previous-single-step-pause", "wf-retry-previous-single-step-pause", null, null,
         null, null, null, WorkflowSource.CUSTOM, WorkflowLifecycle.ACTIVE, Map.of("form1", form),
-        Map.of(), List.of(inp, r), List.of());
+        Map.of(), List.of(inp, r), List.of(), List.of());
 
     Fixture fixture = fixture(workflow, continuingAgentInvoker());
     String runId = fixture.runtime().start(workflow.id());
@@ -385,7 +385,7 @@ class RetryPreviousBehaviourRuntimeTest {
     WorkflowDefinition workflow = new WorkflowDefinition(
         "wf-retry-previous-key-alias", "wf-retry-previous-key-alias", null, null, null, null, null,
         WorkflowSource.CUSTOM, WorkflowLifecycle.ACTIVE, Map.of(), Map.of(),
-        List.of(policyX, r), List.of());
+        List.of(policyX, r), List.of(), List.of());
 
     Fixture fixture = fixture(workflow, continuingAgentInvoker());
     String runId = fixture.runtime().start(workflow.id());
@@ -451,7 +451,7 @@ class RetryPreviousBehaviourRuntimeTest {
         "wf-retry-previous-fallback-pause", "wf-retry-previous-fallback-pause", null, null, null,
         null, null, WorkflowSource.CUSTOM, WorkflowLifecycle.ACTIVE,
         Map.of("form-fb", fallbackForm, "form-b", bForm), Map.of(),
-        List.of(a, r, b, fail), List.of());
+        List.of(a, r, b, fail), List.of(), List.of());
 
     Fixture fixture = fixture(workflow, continuingAgentInvoker());
     String runId = fixture.runtime().start(workflow.id());
@@ -544,7 +544,7 @@ class RetryPreviousBehaviourRuntimeTest {
         "wf-retry-previous-composite-fallback", "wf-retry-previous-composite-fallback", null, null,
         null, null, null, WorkflowSource.CUSTOM, WorkflowLifecycle.ACTIVE,
         Map.of("form-fb", fallbackForm, "form-b", bForm), Map.of("fb-bp", fallbackBlueprint),
-        List.of(a, r, b, fail), List.of());
+        List.of(a, r, b, fail), List.of(), List.of());
 
     Fixture fixture = fixture(workflow, continuingAgentInvoker());
     String runId = fixture.runtime().start(workflow.id());
@@ -627,7 +627,7 @@ class RetryPreviousBehaviourRuntimeTest {
     WorkflowDefinition workflow = new WorkflowDefinition(
         "wf-retry-previous-approval-fallback", "wf-retry-previous-approval-fallback", null, null,
         null, null, null, WorkflowSource.CUSTOM, WorkflowLifecycle.ACTIVE, Map.of("form-b", bForm),
-        Map.of(), List.of(a, r, b, fail), List.of());
+        Map.of(), List.of(a, r, b, fail), List.of(), List.of());
 
     AgentInvoker invoker = mock(AgentInvoker.class);
     when(invoker.invoke(eq("a-agent"), any(), any(), any(), any(), any()))

@@ -5,6 +5,7 @@ import com.agentforge4j.config.loader.validation.WorkflowValidator;
 import com.agentforge4j.core.command.LlmCommand;
 import com.agentforge4j.core.runtime.WorkflowRuntime;
 import com.agentforge4j.core.spi.aggregation.ContextAggregator;
+import com.agentforge4j.core.spi.governance.WasteSignalPolicy;
 import com.agentforge4j.core.spi.tool.PendingToolInvocationStore;
 import com.agentforge4j.core.spi.validation.ArtifactValidator;
 import com.agentforge4j.core.spi.tool.ToolExecutionService;
@@ -24,6 +25,7 @@ import com.agentforge4j.runtime.command.handler.ContinueCommandHandler;
 import com.agentforge4j.runtime.command.handler.CreateFileCommandHandler;
 import com.agentforge4j.runtime.command.handler.EscalateCommandHandler;
 import com.agentforge4j.runtime.command.handler.GeneralQuestionCommandHandler;
+import com.agentforge4j.runtime.command.handler.RequestContextCommandHandler;
 import com.agentforge4j.runtime.command.handler.RunCommandHandler;
 import com.agentforge4j.runtime.command.handler.SetContextCommandHandler;
 import com.agentforge4j.runtime.command.handler.UserPromptCommandHandler;
@@ -39,6 +41,7 @@ import com.agentforge4j.runtime.execution.behaviour.handler.AgentBehaviourHandle
 import com.agentforge4j.runtime.execution.behaviour.handler.AggregateBehaviourHandler;
 import com.agentforge4j.runtime.execution.behaviour.handler.AssignContextBehaviourHandler;
 import com.agentforge4j.runtime.execution.behaviour.handler.BranchBehaviourHandler;
+import com.agentforge4j.runtime.execution.behaviour.handler.CompactBehaviourHandler;
 import com.agentforge4j.runtime.execution.behaviour.handler.FailBehaviourHandler;
 import com.agentforge4j.runtime.execution.behaviour.handler.InputBehaviourHandler;
 import com.agentforge4j.runtime.execution.behaviour.handler.ResourceBehaviourHandler;
@@ -53,11 +56,16 @@ import com.agentforge4j.runtime.execution.loop.EvaluatorLoopStrategy;
 import com.agentforge4j.runtime.execution.loop.FixedCountLoopStrategy;
 import com.agentforge4j.runtime.execution.loop.ForEachLoopStrategy;
 import com.agentforge4j.runtime.execution.loop.MaxIterationsHandler;
+import com.agentforge4j.runtime.context.ContextSourceResolver;
 import com.agentforge4j.runtime.interceptor.RunExecutionInterceptor;
 import com.agentforge4j.runtime.llm.AgentInvoker;
+import com.agentforge4j.runtime.llm.ContextRenderer;
 import com.agentforge4j.runtime.tool.ToolInvocationCommandHandler;
 import com.agentforge4j.runtime.tool.ToolResultApplier;
 import com.agentforge4j.util.Validate;
+import com.agentforge4j.llm.TokenEstimatorResolver;
+import com.agentforge4j.llm.api.TokenEstimator;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.Clock;
 import java.util.ArrayList;
 import java.util.List;
@@ -96,6 +104,9 @@ public final class WorkflowRuntimeBuilder {
   private RunExecutionInterceptor runExecutionInterceptor = RunExecutionInterceptor.NO_OP;
   private GeneratedArtifactStore generatedArtifactStore;
   private List<ArtifactValidator> artifactValidators = List.of();
+  private ObjectMapper objectMapper;
+  private TokenEstimator tokenEstimator;
+  private ContextPackRegistry contextPackRegistry;
   private List<ContextAggregator> contextAggregators = List.of();
 
   /**
@@ -322,6 +333,48 @@ public final class WorkflowRuntimeBuilder {
   }
 
   /**
+   * Configures the {@link ObjectMapper} used for context-selection JSON handling (ledger content,
+   * compact siblings). Defaults to a new {@link ObjectMapper} when not set.
+   *
+   * @param value object mapper
+   *
+   * @return this builder
+   */
+  public WorkflowRuntimeBuilder objectMapper(ObjectMapper value) {
+    this.objectMapper = Validate.notNull(value, "objectMapper must not be null");
+    return this;
+  }
+
+  /**
+   * Configures the {@link TokenEstimator} used to decide whether a {@code COMPACT} step's source is
+   * large enough to be worth compacting. Defaults to {@link TokenEstimatorResolver#resolve()} when not
+   * set.
+   *
+   * @param value token estimator
+   *
+   * @return this builder
+   */
+  public WorkflowRuntimeBuilder tokenEstimator(TokenEstimator value) {
+    this.tokenEstimator = Validate.notNull(value, "tokenEstimator must not be null");
+    return this;
+  }
+
+  /**
+   * Configures the {@link ContextPackRegistry} used to resolve {@code CONTEXT_PACK} context
+   * selectors. Defaults to {@link ContextPackRegistry#EMPTY} (no packs configured) when not set — a
+   * {@code CONTEXT_PACK} selector then fails with a clear "unknown context pack" error rather than
+   * silently resolving nothing.
+   *
+   * @param value context pack registry
+   *
+   * @return this builder
+   */
+  public WorkflowRuntimeBuilder contextPackRegistry(ContextPackRegistry value) {
+    this.contextPackRegistry = Validate.notNull(value, "contextPackRegistry must not be null");
+    return this;
+  }
+
+  /**
    * Configures the {@link ContextAggregator}s an {@code AGGREGATE} step may select by
    * {@code aggregatorId}. Defaults to none; an embedding assembly (for example bootstrap) supplies
    * the defaults.
@@ -366,10 +419,18 @@ public final class WorkflowRuntimeBuilder {
     EventRecorder resolvedEventRecorder = eventRecorder != null
         ? eventRecorder
         : new EventRecorder(workflowEventLog, resolvedClock);
+    ObjectMapper resolvedObjectMapper = ObjectUtils.getIfNull(objectMapper, ObjectMapper::new);
+    TokenEstimator resolvedTokenEstimator = ObjectUtils.getIfNull(tokenEstimator,
+        TokenEstimatorResolver::resolve);
+    ContextPackRegistry resolvedContextPackRegistry = ObjectUtils.getIfNull(contextPackRegistry,
+        ContextPackRegistry.EMPTY);
+    ContextSourceResolver contextSourceResolver = new ContextSourceResolver(
+        new ContextRenderer(resolvedObjectMapper), resolvedObjectMapper,
+        resolvedContextPackRegistry);
 
     CommandApplier commandApplier = new CommandApplier(determineCommandHandlers(
         resolvedEventRecorder, resolvedFileSink, resolvedShell, resolvedClock,
-        resolvedGeneratedArtifactStore));
+        resolvedGeneratedArtifactStore, contextSourceResolver));
 
     LoopEvaluator resolvedEvaluator = resolveLoopEvaluator(agentInvoker);
 
@@ -400,7 +461,10 @@ public final class WorkflowRuntimeBuilder {
         branchBehaviourHandler,
         retryPreviousBehaviourHandler,
         transitionGate,
-        resolvedGeneratedArtifactStore);
+        resolvedGeneratedArtifactStore,
+        resolvedObjectMapper,
+        resolvedTokenEstimator,
+        contextSourceResolver);
 
     ExecutableExecutor executableExecutor =
         new ExecutableExecutor(stepExecutor, blueprintExecutor, workflowExecutor,
@@ -411,8 +475,7 @@ public final class WorkflowRuntimeBuilder {
 
     setupBlueprintLoopStrategies(blueprintExecutor, stepSequenceExecutor, resolvedEventRecorder,
         maxIterationsHandler,
-        resolvedEvaluator,
-        resolvedGeneratedArtifactStore);
+        resolvedEvaluator, resolvedObjectMapper, resolvedGeneratedArtifactStore);
     blueprintExecutor.setStepSequenceExecutor(stepSequenceExecutor);
     blueprintExecutor.setTransitionGate(transitionGate);
     workflowExecutor.setStepSequenceExecutor(stepSequenceExecutor);
@@ -436,19 +499,26 @@ public final class WorkflowRuntimeBuilder {
   private static void setupBlueprintLoopStrategies(BlueprintExecutor blueprintExecutor,
       StepSequenceExecutor stepSequenceExecutor, EventRecorder eventRecorder,
       MaxIterationsHandler maxIterationsHandler, LoopEvaluator resolvedEvaluator,
-      GeneratedArtifactStore resolvedGeneratedArtifactStore) {
+      ObjectMapper resolvedObjectMapper, GeneratedArtifactStore resolvedGeneratedArtifactStore) {
+    // WasteSignalPolicy is not yet exposed as a builder option (see AgentInvoker, which has the
+    // same NO_OP default) — only the waste-signal emission side is wired in this pass, not policy
+    // configurability.
+    WasteSignalPolicy wasteSignalPolicy = WasteSignalPolicy.NO_OP;
     blueprintExecutor.setLoopStrategies(List.of(
-        new FixedCountLoopStrategy(stepSequenceExecutor, eventRecorder, maxIterationsHandler),
+        new FixedCountLoopStrategy(stepSequenceExecutor, eventRecorder, maxIterationsHandler,
+            resolvedObjectMapper, wasteSignalPolicy),
         new ForEachLoopStrategy(stepSequenceExecutor, eventRecorder, maxIterationsHandler,
-            resolvedGeneratedArtifactStore),
-        new AgentSignalLoopStrategy(stepSequenceExecutor, eventRecorder, maxIterationsHandler),
-        new EvaluatorLoopStrategy(
-            stepSequenceExecutor, eventRecorder, maxIterationsHandler, resolvedEvaluator)));
+            resolvedObjectMapper, wasteSignalPolicy, resolvedGeneratedArtifactStore),
+        new AgentSignalLoopStrategy(stepSequenceExecutor, eventRecorder, maxIterationsHandler,
+            resolvedObjectMapper, wasteSignalPolicy),
+        new EvaluatorLoopStrategy(stepSequenceExecutor, eventRecorder, maxIterationsHandler,
+            resolvedEvaluator, resolvedObjectMapper, wasteSignalPolicy)));
   }
 
   private List<CommandHandler<? extends LlmCommand>> determineCommandHandlers(
       EventRecorder eventRecorder, FileSink resolvedFileSink, ShellCommandRunner resolvedShell,
-      Clock resolvedClock, GeneratedArtifactStore resolvedGeneratedArtifactStore) {
+      Clock resolvedClock, GeneratedArtifactStore resolvedGeneratedArtifactStore,
+      ContextSourceResolver contextSourceResolver) {
     List<CommandHandler<? extends LlmCommand>> handlers = new ArrayList<>(List.of(
         new CompleteCommandHandler(eventRecorder),
         new ContinueCommandHandler(),
@@ -457,7 +527,8 @@ public final class WorkflowRuntimeBuilder {
         new GeneralQuestionCommandHandler(eventRecorder, resolvedClock),
         new RunCommandHandler(eventRecorder, resolvedShell),
         new SetContextCommandHandler(eventRecorder),
-        new UserPromptCommandHandler(eventRecorder, resolvedClock)));
+        new UserPromptCommandHandler(eventRecorder, resolvedClock),
+        new RequestContextCommandHandler(contextSourceResolver, eventRecorder)));
     // TOOL_INVOCATION is dispatched only when a ToolExecutionService is configured; otherwise the
     // command is never advertised (opt-in) and never reaches the applier.
     if (toolExecutionService != null) {
@@ -475,7 +546,10 @@ public final class WorkflowRuntimeBuilder {
       BranchBehaviourHandler branchBehaviourHandler,
       RetryPreviousBehaviourHandler retryPreviousBehaviourHandler,
       TransitionGate transitionGate,
-      GeneratedArtifactStore generatedArtifactStore) {
+      GeneratedArtifactStore generatedArtifactStore,
+      ObjectMapper resolvedObjectMapper,
+      TokenEstimator resolvedTokenEstimator,
+      ContextSourceResolver contextSourceResolver) {
     // No handler is registered for CollectionBehaviour (COLLECTION): that step type has no runtime
     // completion in this release. build() rejects any registered workflow reaching a COLLECTION
     // step before returning (see rejectUnsupportedCollectionSteps()), so StepExecutor never has to
@@ -491,6 +565,8 @@ public final class WorkflowRuntimeBuilder {
         retryPreviousBehaviourHandler,
         new ValidateBehaviourHandler(generatedArtifactStore, artifactValidators, eventRecorder),
         new AssignContextBehaviourHandler(eventRecorder),
+        new CompactBehaviourHandler(contextSourceResolver, resolvedTokenEstimator,
+            workflowRepository, eventRecorder, resolvedObjectMapper, agentInvoker),
         new AggregateBehaviourHandler(contextAggregators, eventRecorder));
     return new StepExecutor(handlers, eventRecorder, resolvedClock, transitionGate);
   }

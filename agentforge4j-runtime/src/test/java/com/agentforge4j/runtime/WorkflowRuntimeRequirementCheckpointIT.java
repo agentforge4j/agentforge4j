@@ -153,7 +153,8 @@ class WorkflowRuntimeRequirementCheckpointIT {
         null, null, WorkflowSource.CUSTOM, WorkflowLifecycle.ACTIVE, Map.of(), Map.of("bp", blueprint),
         List.<Executable>of(new BlueprintRef("bp")),
         List.of(new WorkflowRequirement("bp-late", "rbac_step_action_allowed", RequirementScope.STEP,
-            "bp-inner", null, true, null, ResolutionMode.DEFERRED)));
+            "bp-inner", null, true, null, ResolutionMode.DEFERRED)),
+        List.of());
     WorkflowRuntime runtime = runtime(Map.of(workflow.id(), workflow), ALWAYS_EMPTY);
 
     String runId = runtime.start(workflow.id());
@@ -169,7 +170,7 @@ class WorkflowRuntimeRequirementCheckpointIT {
         .build();
     return new WorkflowDefinition("wf-req", "wf-req", null, null, null, null, null,
         WorkflowSource.CUSTOM, WorkflowLifecycle.ACTIVE, Map.of(), Map.of(), List.of(step),
-        requirements);
+        requirements, List.of());
   }
 
   private static WorkflowDefinition nestedWorkflow(List<WorkflowRequirement> requirements) {
@@ -180,7 +181,7 @@ class WorkflowRuntimeRequirementCheckpointIT {
         .build();
     return new WorkflowDefinition("wf-nested", "wf-nested", null, null, null, null, null,
         WorkflowSource.CUSTOM, WorkflowLifecycle.ACTIVE, Map.of(), Map.of(), List.of(step),
-        requirements);
+        requirements, List.of());
   }
 
   private static WorkflowDefinition parentWorkflow(String nestedRef) {
@@ -191,7 +192,7 @@ class WorkflowRuntimeRequirementCheckpointIT {
         .build();
     return new WorkflowDefinition("wf-parent", "wf-parent", null, null, null, null, null,
         WorkflowSource.CUSTOM, WorkflowLifecycle.ACTIVE, Map.of(), Map.of(),
-        List.<Executable>of(callNested), List.of());
+        List.<Executable>of(callNested), List.of(), List.of());
   }
 
   private static WorkflowRuntime runtime(Map<String, WorkflowDefinition> workflows,
